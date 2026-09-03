@@ -350,7 +350,7 @@
       anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlaG5sdG9vZ3NjbmJqaHZpeG13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NzMwMTgsImV4cCI6MjA5NDM0OTAxOH0.NNdRrOYLzucKuQfz4bVPPWOhYvgVswDiEtvCrtphF0I"
     };
 
-    const supabase = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+    const sb = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
 
     // Populate Settings
     document.getElementById("cfgSupabaseUrl").value = SUPABASE_CONFIG.url;
@@ -406,7 +406,7 @@
       container.innerHTML = '<div class="p-8 text-center text-slate-500 col-span-2">Lade Dokumente aus Supabase...</div>';
 
       try {
-        const { data, error } = await supabase
+        const { data, error } = await sb
           .from('knowledge_documents')
           .select('*')
           .order('created_at', { ascending: false });
@@ -447,8 +447,8 @@
     }
 
     async function viewDocDetails(docId) {
-      const { data: doc } = await supabase.from('knowledge_documents').select('*').eq('id', docId).single();
-      const { data: sections } = await supabase.from('knowledge_sections').select('*').eq('document_id', docId).order('section_index', { ascending: true });
+      const { data: doc } = await sb.from('knowledge_documents').select('*').eq('id', docId).single();
+      const { data: sections } = await sb.from('knowledge_sections').select('*').eq('document_id', docId).order('section_index', { ascending: true });
 
       if (!doc) return;
 
@@ -494,7 +494,7 @@
         const formattedMarkdown = `# ${cleanTitle}\n\n## 1. Überblick & Fakten\n${content}\n\n## 2. Status & Metadaten\n- **Quelle:** ${sourceType}\n- **Erfasst am:** ${new Date().toLocaleString('de-DE')}`;
 
         // 1. Insert into knowledge_documents
-        const { data: docData, error: docErr } = await supabase
+        const { data: docData, error: docErr } = await sb
           .from('knowledge_documents')
           .insert([{
             title: cleanTitle,
@@ -510,7 +510,7 @@
         if (docErr) throw docErr;
 
         // 2. Insert into knowledge_sections
-        await supabase
+        await sb
           .from('knowledge_sections')
           .insert([{
             document_id: docData.id,
@@ -589,7 +589,7 @@
 
       try {
         // Query Supabase for relevant context chunks
-        const { data: docs } = await supabase
+        const { data: docs } = await sb
           .from('knowledge_documents')
           .select('title, summary, knowledge_sections(heading, markdown_content)')
           .limit(5);

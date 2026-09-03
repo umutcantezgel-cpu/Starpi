@@ -1,0 +1,5 @@
+backend/
+*.py
+*.pyc
+requirements.txt
+__pycache__/
