@@ -1,0 +1,20 @@
+{
+  "name": "starpi",
+  "version": "1.0.0",
+  "description": "Starpi: Private Enterprise AI Brain & Cloud Knowledge Base Web App",
+  "private": true,
+  "scripts": {
+    "dev": "npx serve .",
+    "start": "npx serve ."
+  },
+  "keywords": [
+    "starpi",
+    "enterprise-brain",
+    "supabase",
+    "rag",
+    "pgvector",
+    "gemini"
+  ],
+  "author": "umutcantezgel-cpu",
+  "license": "MIT"
+}

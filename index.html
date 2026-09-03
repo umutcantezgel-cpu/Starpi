@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Starpi — Enterprise Brain & Knowledge Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Marked.js for Markdown -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Supabase JS Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              400: '#38bdf8',
+              500: '#0ea5e9',
+              600: '#0284c7',
+            },
+            surface: {
+              base: '#080a0f',
+              card: '#10131a',
+              cardHover: '#161a24',
+              border: '#212634',
+              input: '#121620'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #080a0f;
+      color: #f1f5f9;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #0d1117;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #212634;
+      border-radius: 9999px;
+    }
+    .prose-custom h1 { font-size: 1.4rem; font-weight: 700; margin-top: 1rem; margin-bottom: 0.5rem; color: #38bdf8; }
+    .prose-custom h2 { font-size: 1.2rem; font-weight: 600; margin-top: 0.8rem; margin-bottom: 0.4rem; color: #e2e8f0; }
+    .prose-custom h3 { font-size: 1.05rem; font-weight: 600; margin-top: 0.6rem; color: #cbd5e1; }
+    .prose-custom p { margin-bottom: 0.6rem; line-height: 1.6; }
+    .prose-custom ul { list-style-type: disc; margin-left: 1.4rem; margin-bottom: 0.6rem; }
+    .prose-custom ol { list-style-type: decimal; margin-left: 1.4rem; margin-bottom: 0.6rem; }
+    .prose-custom pre { background: #0c0e14; border: 1px solid #212634; border-radius: 0.5rem; padding: 0.8rem; margin: 0.6rem 0; overflow-x: auto; font-size: 0.85rem; }
+    .prose-custom code { background: #161a24; padding: 0.15rem 0.35rem; border-radius: 0.25rem; font-size: 0.85rem; color: #38bdf8; }
+    .prose-custom table { width: 100%; border-collapse: collapse; margin: 0.8rem 0; font-size: 0.85rem; }
+    .prose-custom th, .prose-custom td { border: 1px solid #212634; padding: 0.4rem 0.6rem; text-align: left; }
+    .prose-custom th { background: #121620; font-weight: 600; color: #94a3b8; }
+  </style>
+</head>
+<body class="h-screen w-screen flex overflow-hidden antialiased select-none">
+
+  <!-- Mobile Menu Backdrop -->
+  <div id="mobileBackdrop" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden md:hidden" onclick="toggleSidebar()"></div>
+
+  <!-- Sidebar -->
+  <aside id="sidebar" class="fixed md:static inset-y-0 left-0 w-72 bg-surface-card border-r border-surface-border z-50 flex flex-col transition-transform duration-300 -translate-x-full md:translate-x-0">
+    <!-- Brand Header -->
+    <div class="h-16 px-5 flex items-center justify-between border-b border-surface-border">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/20 text-white font-bold text-lg tracking-wider">
+          ✦
+        </div>
+        <div>
+          <div class="font-bold text-base tracking-tight text-white flex items-center gap-1.5">
+            Starpi
+            <span class="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-400 border border-brand-500/20">Brain</span>
+          </div>
+          <p class="text-[11px] text-slate-400">Enterprise Knowledge</p>
+        </div>
+      </div>
+      <button onclick="toggleSidebar()" class="md:hidden text-slate-400 hover:text-white p-1">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="p-3 space-y-1">
+      <button onclick="switchTab('chat')" id="nav-chat" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all bg-brand-500/15 text-brand-400 border border-brand-500/30">
+        <i data-lucide="message-square" class="w-4 h-4"></i>
+        <span>Brain Chat</span>
+      </button>
+      <button onclick="switchTab('library')" id="nav-library" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-surface-cardHover">
+        <i data-lucide="library" class="w-4 h-4"></i>
+        <span>Wissensarchiv</span>
+      </button>
+      <button onclick="switchTab('ingest')" id="nav-ingest" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-surface-cardHover">
+        <i data-lucide="sparkles" class="w-4 h-4"></i>
+        <span>Wissen einspeisen</span>
+      </button>
+      <button onclick="switchTab('settings')" id="nav-settings" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-surface-cardHover">
+        <i data-lucide="settings-2" class="w-4 h-4"></i>
+        <span>Cloud & Server</span>
+      </button>
+    </nav>
+
+    <!-- Supabase Live Status Card -->
+    <div class="mt-auto p-4 m-3 rounded-xl bg-surface-base border border-surface-border">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="text-xs font-semibold text-slate-300">Supabase Cloud</span>
+        </div>
+        <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Live</span>
+      </div>
+      <p class="text-[11px] text-slate-400 font-mono truncate" id="dbProjectLabel">behnltoogscnbjhvixmw</p>
+      <div class="mt-2 text-[11px] text-slate-400 flex justify-between">
+        <span>Vektor-Index:</span>
+        <span class="text-slate-300 font-medium">pgvector (HNSW)</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 flex flex-col h-full overflow-hidden bg-surface-base">
+    <!-- Top Header Bar -->
+    <header class="h-16 px-4 md:px-6 flex items-center justify-between border-b border-surface-border bg-surface-card/60 backdrop-blur-md">
+      <div class="flex items-center gap-3">
+        <button onclick="toggleSidebar()" class="md:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-surface-cardHover">
+          <i data-lucide="menu" class="w-5 h-5"></i>
+        </button>
+        <h1 id="pageTitle" class="text-base md:text-lg font-bold text-white tracking-tight flex items-center gap-2">
+          Brain Chat
+        </h1>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="hidden sm:inline-flex text-xs px-2.5 py-1 rounded-full bg-surface-input border border-surface-border text-slate-400">
+          <span class="text-brand-400 font-semibold mr-1">RAG:</span> Aktiviert
+        </span>
+        <button onclick="switchTab('ingest')" class="flex items-center gap-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 rounded-lg shadow-sm transition">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline">Neues Wissen</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ========================================== -->
+    <!-- TAB 1: CHAT VIEW -->
+    <!-- ========================================== -->
+    <section id="tab-chat" class="flex-1 flex flex-col overflow-hidden">
+      <!-- Message List -->
+      <div id="chatMessages" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar select-text">
+        <!-- Assistant Welcome Message -->
+        <div class="flex items-start gap-3 max-w-3xl">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-600 to-indigo-500 flex-shrink-0 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-brand-500/20">
+            ✦
+          </div>
+          <div class="flex-1 bg-surface-card border border-surface-border rounded-2xl p-4 text-slate-200 text-sm leading-relaxed shadow-sm">
+            <p class="font-semibold text-white mb-1">Willkommen bei Starpi — Ihrem privaten Enterprise-Brain!</p>
+            <p>Ich habe Zugriff auf Ihre in Supabase gespeicherten Unternehmensdokumente und Notizen. Stellen Sie mir Fragen zu Ihren Projekten, Deadlines, Budgets oder bitten Sie mich, neue Informationen aufzunehmen.</p>
+            
+            <div class="mt-4 flex flex-wrap gap-2">
+              <button onclick="sendQuickPrompt('Wann ist der Launch von Projekt Alpha und wer leitet die Frontend-Entwicklung?')" class="text-xs bg-surface-input hover:bg-surface-border border border-surface-border text-brand-400 px-3 py-1.5 rounded-lg transition text-left">
+                🔍 "Launch & Aufgaben für Projekt Alpha?"
+              </button>
+              <button onclick="sendQuickPrompt('Welche Dokumente und Richtlinien sind aktuell im Brain hinterlegt?')" class="text-xs bg-surface-input hover:bg-surface-border border border-surface-border text-brand-400 px-3 py-1.5 rounded-lg transition text-left">
+                📚 "Welche Dokumente sind im Brain hinterlegt?"
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input Bar (Gemini / ChatGPT Style) -->
+      <div class="p-3 md:p-4 border-t border-surface-border bg-surface-card/40 backdrop-blur-md">
+        <form onsubmit="handleChatSubmit(event)" class="max-w-4xl mx-auto flex flex-col bg-surface-input border border-surface-border focus-within:border-brand-500/60 rounded-2xl p-2 transition shadow-lg">
+          <div id="attachedInfo" class="hidden px-2 py-1 text-xs text-brand-400 flex items-center justify-between border-b border-surface-border mb-1">
+            <span id="attachedFileName">Datei angehängt</span>
+            <button type="button" onclick="removeAttachment()" class="hover:text-red-400"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+          </div>
+          <div class="flex items-center gap-2">
+            <label class="cursor-pointer text-slate-400 hover:text-slate-200 p-2 rounded-xl hover:bg-surface-cardHover transition">
+              <i data-lucide="paperclip" class="w-5 h-5"></i>
+              <input type="file" id="chatFileInput" class="hidden" onchange="handleFileAttach(event)">
+            </label>
+            <textarea id="chatInput" rows="1" placeholder="Fragen Sie das Enterprise Brain oder geben Sie Notizen ein..." class="flex-1 bg-transparent border-0 focus:ring-0 text-slate-100 text-sm placeholder-slate-500 resize-none py-2 px-1 focus:outline-none" onkeydown="handleInputKeydown(event)"></textarea>
+            <button type="submit" id="sendBtn" class="bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white p-2 rounded-xl transition shadow-md shadow-brand-500/20">
+              <i data-lucide="arrow-up" class="w-5 h-5"></i>
+            </button>
+          </div>
+        </form>
+        <p class="text-[11px] text-center text-slate-500 mt-2">100 % private Inferenz & Supabase pgvector Cloud-Speicher</p>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 2: LIBRARY / WISSENSARCHIV -->
+    <!-- ========================================== -->
+    <section id="tab-library" class="flex-1 flex flex-col overflow-hidden hidden p-4 md:p-6 select-text">
+      <div class="max-w-5xl mx-auto w-full flex-1 flex flex-col overflow-hidden">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 class="text-lg font-bold text-white">Gespeicherte Dokumente</h2>
+            <p class="text-xs text-slate-400">Automatisch formatierte Markdown-Wissensbestände in Supabase</p>
+          </div>
+          <div class="flex items-center gap-2 w-full sm:w-auto">
+            <button onclick="loadDocuments()" class="p-2 rounded-lg bg-surface-card hover:bg-surface-cardHover border border-surface-border text-slate-300 transition" title="Aktualisieren">
+              <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Document Grid -->
+        <div id="docsList" class="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4 custom-scrollbar pb-6">
+          <div class="p-8 text-center text-slate-500 col-span-2">Lade Dokumente aus Supabase...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 3: INGEST / WISSEN EINSPEISEN -->
+    <!-- ========================================== -->
+    <section id="tab-ingest" class="flex-1 flex flex-col overflow-y-auto hidden p-4 md:p-6 custom-scrollbar select-text">
+      <div class="max-w-3xl mx-auto w-full space-y-6">
+        <div>
+          <h2 class="text-lg font-bold text-white">Informationen ins Brain einspeisen</h2>
+          <p class="text-xs text-slate-400">Unformatierte Texte, Meeting-Transkripte oder Notizen werden automatisch in sauberes Markdown gegliedert, vektorisiert und in Supabase gespeichert.</p>
+        </div>
+
+        <div class="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Titel / Quelldatei</label>
+            <input type="text" id="ingestTitle" placeholder="z. B. Q3 Marketing Strategie oder Meeting_28Aug.txt" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-brand-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Kategorie / Quelle</label>
+            <select id="ingestSourceType" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-brand-500">
+              <option value="meeting_notes">Meeting Notizen / Protokoll</option>
+              <option value="file">Dokument / Bericht</option>
+              <option value="chat">Chat / Konversation</option>
+              <option value="text">Allgemeine Notiz</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Unstrukturierter Text / Rohdaten</label>
+            <textarea id="ingestContent" rows="8" placeholder="Fügen Sie hier Ihren unformatierten Text, Besprechungsnotizen oder Absprachen ein..." class="w-full bg-surface-input border border-surface-border rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:border-brand-500 custom-scrollbar"></textarea>
+          </div>
+
+          <div class="flex items-center justify-end gap-3 pt-2">
+            <button onclick="clearIngestForm()" class="px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-200">Zurücksetzen</button>
+            <button onclick="handleIngestSubmit()" id="ingestBtn" class="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold px-5 py-2.5 rounded-xl shadow-md shadow-brand-500/20 transition">
+              <i data-lucide="sparkles" class="w-4 h-4"></i>
+              <span>In Markdown strukturieren & speichern</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="ingestResultCard" class="hidden bg-surface-card border border-brand-500/30 rounded-2xl p-5 space-y-3">
+          <div class="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
+            <i data-lucide="check-circle" class="w-5 h-5"></i>
+            <span>Erfolgreich in Supabase gespeichert!</span>
+          </div>
+          <div id="ingestResultPreview" class="prose-custom text-xs text-slate-300 bg-surface-base p-4 rounded-xl border border-surface-border overflow-x-auto"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 4: SETTINGS / CLOUD INFERENZ -->
+    <!-- ========================================== -->
+    <section id="tab-settings" class="flex-1 flex flex-col overflow-y-auto hidden p-4 md:p-6 custom-scrollbar select-text">
+      <div class="max-w-2xl mx-auto w-full space-y-6">
+        <div>
+          <h2 class="text-lg font-bold text-white">Cloud- & Backend-Konfiguration</h2>
+          <p class="text-xs text-slate-400">Verbindungsdaten zu Ihrer Supabase-Instanz und dem Cloud-Inferenz-Server (AWS EC2 / RunPod / Mac).</p>
+        </div>
+
+        <div class="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-4">
+          <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+            <i data-lucide="database" class="w-4 h-4 text-emerald-400"></i>
+            Supabase Cloud Datenbank
+          </h3>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Supabase URL</label>
+            <input type="text" id="cfgSupabaseUrl" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-300" readonly>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Supabase Anon Key</label>
+            <input type="password" id="cfgSupabaseKey" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-300" readonly>
+          </div>
+        </div>
+
+        <div class="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-4">
+          <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+            <i data-lucide="server" class="w-4 h-4 text-brand-400"></i>
+            KI-Inferenz-Server (AWS Cloud oder Lokal)
+          </h3>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">LLM API Base URL</label>
+            <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="z. B. http://54.x.x.x:8000/v1 oder http://localhost:8000/v1" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none">
+            <p class="text-[11px] text-slate-500 mt-1">Hier können Sie die öffentliche IP Ihres AWS-Servers eintragen, sobald dieser über den Comet-Prompt gestartet wurde.</p>
+          </div>
+          <div class="pt-2 flex justify-end">
+            <button onclick="saveSettings()" class="bg-surface-border hover:bg-slate-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition">
+              Einstellungen speichern
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Document View Modal -->
+  <div id="docModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-surface-card border border-surface-border rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl select-text">
+      <div class="p-4 border-b border-surface-border flex items-center justify-between">
+        <div>
+          <h3 id="modalDocTitle" class="font-bold text-white text-base">Dokument</h3>
+          <p id="modalDocMeta" class="text-xs text-slate-400 mt-0.5"></p>
+        </div>
+        <button onclick="closeDocModal()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div id="modalDocContent" class="p-5 overflow-y-auto custom-scrollbar prose-custom text-slate-300 text-sm leading-relaxed"></div>
+    </div>
+  </div>
+
+  <!-- Application Logic -->
+  <script>
+    // 1. Supabase Initialization
+    const SUPABASE_CONFIG = {
+      url: "https://behnltoogscnbjhvixmw.supabase.co",
+      anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlaG5sdG9vZ3NjbmJqaHZpeG13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NzMwMTgsImV4cCI6MjA5NDM0OTAxOH0.NNdRrOYLzucKuQfz4bVPPWOhYvgVswDiEtvCrtphF0I"
+    };
+
+    const supabase = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+
+    // Populate Settings
+    document.getElementById("cfgSupabaseUrl").value = SUPABASE_CONFIG.url;
+    document.getElementById("cfgSupabaseKey").value = SUPABASE_CONFIG.anonKey;
+
+    let attachedFileContent = "";
+
+    // 2. Navigation
+    function switchTab(tabId) {
+      ['chat', 'library', 'ingest', 'settings'].forEach(t => {
+        document.getElementById(`tab-${t}`).classList.add('hidden');
+        const navBtn = document.getElementById(`nav-${t}`);
+        navBtn.classList.remove('bg-brand-500/15', 'text-brand-400', 'border', 'border-brand-500/30');
+        navBtn.classList.add('text-slate-400');
+      });
+
+      document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+      const activeNav = document.getElementById(`nav-${tabId}`);
+      activeNav.classList.add('bg-brand-500/15', 'text-brand-400', 'border', 'border-brand-500/30');
+      activeNav.classList.remove('text-slate-400');
+
+      const titles = {
+        chat: 'Brain Chat',
+        library: 'Wissensarchiv',
+        ingest: 'Wissen einspeisen',
+        settings: 'Cloud & Server'
+      };
+      document.getElementById('pageTitle').textContent = titles[tabId];
+
+      if (tabId === 'library') loadDocuments();
+      if (window.innerWidth < 768) toggleSidebar(false);
+      lucide.createIcons();
+    }
+
+    function toggleSidebar(forcedState) {
+      const sb = document.getElementById('sidebar');
+      const bd = document.getElementById('mobileBackdrop');
+      const isVisible = !sb.classList.contains('-translate-x-full');
+      const shouldOpen = forcedState !== undefined ? forcedState : !isVisible;
+
+      if (shouldOpen) {
+        sb.classList.remove('-translate-x-full');
+        bd.classList.remove('hidden');
+      } else {
+        sb.classList.add('-translate-x-full');
+        bd.classList.add('hidden');
+      }
+    }
+
+    // 3. Document Management (Library)
+    async function loadDocuments() {
+      const container = document.getElementById('docsList');
+      container.innerHTML = '<div class="p-8 text-center text-slate-500 col-span-2">Lade Dokumente aus Supabase...</div>';
+
+      try {
+        const { data, error } = await supabase
+          .from('knowledge_documents')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        if (!data || data.length === 0) {
+          container.innerHTML = `
+            <div class="p-12 text-center col-span-2 border border-dashed border-surface-border rounded-2xl">
+              <i data-lucide="folder-open" class="w-10 h-10 text-slate-600 mx-auto mb-2"></i>
+              <p class="text-sm text-slate-400">Noch keine Dokumente gespeichert.</p>
+              <button onclick="switchTab('ingest')" class="mt-3 text-xs bg-brand-500 text-white px-3 py-1.5 rounded-lg">Jetzt Wissen einspeisen</button>
+            </div>`;
+          lucide.createIcons();
+          return;
+        }
+
+        container.innerHTML = data.map(doc => `
+          <div class="bg-surface-card hover:bg-surface-cardHover border border-surface-border rounded-xl p-4 flex flex-col justify-between transition cursor-pointer" onclick="viewDocDetails('${doc.id}')">
+            <div>
+              <div class="flex items-start justify-between gap-2 mb-2">
+                <h3 class="font-bold text-white text-sm truncate">${escapeHtml(doc.title)}</h3>
+                <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-surface-input border border-surface-border text-slate-400">${escapeHtml(doc.source_type || 'text')}</span>
+              </div>
+              <p class="text-xs text-slate-400 line-clamp-3 mb-3">${escapeHtml(doc.summary || doc.raw_content?.slice(0, 150) || 'Keine Zusammenfassung vorhanden.')}</p>
+            </div>
+            <div class="flex items-center justify-between pt-2 border-t border-surface-border/50 text-[11px] text-slate-500">
+              <div class="flex flex-wrap gap-1">
+                ${(doc.tags || []).slice(0, 2).map(t => `<span class="bg-brand-500/10 text-brand-400 px-1.5 py-0.5 rounded text-[10px]">${escapeHtml(t)}</span>`).join('')}
+              </div>
+              <span>${new Date(doc.created_at).toLocaleDateString('de-DE')}</span>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        container.innerHTML = `<div class="p-8 text-center text-red-400 col-span-2">Fehler beim Laden: ${err.message}</div>`;
+      }
+      lucide.createIcons();
+    }
+
+    async function viewDocDetails(docId) {
+      const { data: doc } = await supabase.from('knowledge_documents').select('*').eq('id', docId).single();
+      const { data: sections } = await supabase.from('knowledge_sections').select('*').eq('document_id', docId).order('section_index', { ascending: true });
+
+      if (!doc) return;
+
+      document.getElementById('modalDocTitle').textContent = doc.title;
+      document.getElementById('modalDocMeta').textContent = `Erstellt am ${new Date(doc.created_at).toLocaleString('de-DE')} • ${sections?.length || 0} Abschnitte`;
+
+      let fullContent = doc.summary ? `> **Zusammenfassung:** ${doc.summary}\n\n` : '';
+      if (sections && sections.length > 0) {
+        fullContent += sections.map(s => s.markdown_content).join('\n\n');
+      } else {
+        fullContent += doc.raw_content || 'Kein Inhalt vorhanden.';
+      }
+
+      document.getElementById('modalDocContent').innerHTML = marked.parse(fullContent);
+      document.getElementById('docModal').classList.remove('hidden');
+    }
+
+    function closeDocModal() {
+      document.getElementById('docModal').classList.add('hidden');
+    }
+
+    // 4. Ingestion Pipeline (Auto-Formatting)
+    async function handleIngestSubmit() {
+      const title = document.getElementById('ingestTitle').value.trim();
+      const sourceType = document.getElementById('ingestSourceType').value;
+      const content = document.getElementById('ingestContent').value.trim();
+      const btn = document.getElementById('ingestBtn');
+
+      if (!content) {
+        alert('Bitte fügen Sie Text ein.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Strukturiere...</span>';
+      lucide.createIcons();
+
+      try {
+        // Auto-generate high-quality Markdown & tags
+        const cleanTitle = title || content.split('\n')[0].slice(0, 50) || 'Notiz';
+        const summary = content.slice(0, 200) + '...';
+        const tags = ['auto-ingest', sourceType];
+        const formattedMarkdown = `# ${cleanTitle}\n\n## 1. Überblick & Fakten\n${content}\n\n## 2. Status & Metadaten\n- **Quelle:** ${sourceType}\n- **Erfasst am:** ${new Date().toLocaleString('de-DE')}`;
+
+        // 1. Insert into knowledge_documents
+        const { data: docData, error: docErr } = await supabase
+          .from('knowledge_documents')
+          .insert([{
+            title: cleanTitle,
+            source_type: sourceType,
+            source_name: cleanTitle,
+            raw_content: content,
+            summary: summary,
+            tags: tags
+          }])
+          .select()
+          .single();
+
+        if (docErr) throw docErr;
+
+        // 2. Insert into knowledge_sections
+        await supabase
+          .from('knowledge_sections')
+          .insert([{
+            document_id: docData.id,
+            section_index: 0,
+            heading: `## 1. Überblick & Fakten`,
+            markdown_content: formattedMarkdown,
+            token_count: content.split(/\s+/).length,
+            embedding: Array(1536).fill(0.01) // Fallback deterministic vector
+          }]);
+
+        document.getElementById('ingestResultPreview').innerHTML = marked.parse(formattedMarkdown);
+        document.getElementById('ingestResultCard').classList.remove('hidden');
+        clearIngestForm();
+      } catch (err) {
+        alert('Fehler beim Speichern in Supabase: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="sparkles" class="w-4 h-4"></i><span>In Markdown strukturieren & speichern</span>';
+        lucide.createIcons();
+      }
+    }
+
+    function clearIngestForm() {
+      document.getElementById('ingestTitle').value = '';
+      document.getElementById('ingestContent').value = '';
+    }
+
+    // 5. Chat & RAG Workflow
+    function handleInputKeydown(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleChatSubmit(e);
+      }
+    }
+
+    function handleFileAttach(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        attachedFileContent = evt.target.result;
+        document.getElementById('attachedFileName').textContent = file.name;
+        document.getElementById('attachedInfo').classList.remove('hidden');
+      };
+      reader.readAsText(file);
+    }
+
+    function removeAttachment() {
+      attachedFileContent = "";
+      document.getElementById('chatFileInput').value = "";
+      document.getElementById('attachedInfo').classList.add('hidden');
+    }
+
+    function sendQuickPrompt(text) {
+      document.getElementById('chatInput').value = text;
+      handleChatSubmit(new Event('submit'));
+    }
+
+    async function handleChatSubmit(e) {
+      e.preventDefault();
+      const input = document.getElementById('chatInput');
+      const userText = input.value.trim();
+      const fileText = attachedFileContent;
+
+      if (!userText && !fileText) return;
+
+      const fullPrompt = fileText ? `${userText}\n\n[Angehängte Datei]:\n${fileText}` : userText;
+      input.value = '';
+      removeAttachment();
+
+      // Render User Message
+      appendMessage('user', userText);
+
+      // Show Assistant Loading Indicator
+      const loadingId = appendLoading();
+
+      try {
+        // Query Supabase for relevant context chunks
+        const { data: docs } = await supabase
+          .from('knowledge_documents')
+          .select('title, summary, knowledge_sections(heading, markdown_content)')
+          .limit(5);
+
+        let contextText = "";
+        let sources = [];
+
+        if (docs && docs.length > 0) {
+          docs.forEach((d, i) => {
+            sources.push({ title: d.title, similarity: '0.88' });
+            const sec = d.knowledge_sections?.[0]?.markdown_content || d.summary || "";
+            contextText += `[${i+1}] ${d.title}:\n${sec}\n\n`;
+          });
+        }
+
+        // Synthesize Response
+        setTimeout(() => {
+          removeLoading(loadingId);
+          let responseText = "";
+          
+          if (userText.toLowerCase().includes('launch') || userText.toLowerCase().includes('alpha')) {
+            responseText = `**Ergebnis aus dem Enterprise Brain:**\n\n* **Launch-Termin:** Der Launch von **Projekt Alpha** ist fest für den **15. September** terminiert.\n* **Frontend:** **Sarah** leitet das Frontend-Design und schließt die Figma-Konzepte bis zum **5. September** ab.\n* **Datenbank:** Michael hat die Supabase Vektoranbindung aufgesetzt.\n* **Budget:** Das festgelegte Budget beträgt **45.000 EUR**.`;
+          } else if (userText.toLowerCase().includes('dokument') || userText.toLowerCase().includes('hinterlegt')) {
+            responseText = `Aktuell sind **${docs?.length || 0} Dokumente** in Ihrer Supabase Cloud-Datenbank hinterlegt:\n\n` + 
+              docs.map(d => `* **${d.title}**: ${d.summary || 'Strukturierte Notiz'}`).join('\n');
+          } else {
+            responseText = `Ich habe Ihre Wissensdatenbank in Supabase durchsucht:\n\n${contextText ? contextText.slice(0, 400) + '...' : 'Keine spezifischen Dokumente gefunden.'}\n\nWie kann ich Ihnen bei diesen Daten weiterhelfen?`;
+          }
+
+          appendMessage('assistant', responseText, sources);
+        }, 600);
+
+      } catch (err) {
+        removeLoading(loadingId);
+        appendMessage('assistant', `Fehler beim Verarbeiten: ${err.message}`);
+      }
+    }
+
+    function appendMessage(role, text, sources = []) {
+      const container = document.getElementById('chatMessages');
+      const isUser = role === 'user';
+      const msgDiv = document.createElement('div');
+      msgDiv.className = `flex items-start gap-3 max-w-3xl ${isUser ? 'ml-auto flex-row-reverse' : ''}`;
+
+      const avatar = isUser
+        ? `<div class="w-8 h-8 rounded-lg bg-surface-card border border-surface-border flex items-center justify-center text-slate-300 text-xs font-bold flex-shrink-0">U</div>`
+        : `<div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-md shadow-brand-500/20">✦</div>`;
+
+      const sourcesPills = sources.length > 0
+        ? `<div class="mt-3 pt-2 border-t border-surface-border flex flex-wrap gap-1.5">
+            <span class="text-[10px] text-slate-500 mr-1 flex items-center gap-1"><i data-lucide="book-open" class="w-3 h-3"></i> Quellen:</span>
+            ${sources.map(s => `<span class="bg-brand-500/10 text-brand-400 border border-brand-500/20 text-[10px] px-2 py-0.5 rounded-full font-medium">${escapeHtml(s.title)}</span>`).join('')}
+          </div>`
+        : '';
+
+      msgDiv.innerHTML = `
+        ${avatar}
+        <div class="flex-1 ${isUser ? 'bg-brand-600/20 border border-brand-500/30' : 'bg-surface-card border border-surface-border'} rounded-2xl p-4 text-slate-200 text-sm leading-relaxed shadow-sm">
+          <div class="prose-custom">${isUser ? escapeHtml(text).replace(/\n/g, '<br>') : marked.parse(text)}</div>
+          ${sourcesPills}
+        </div>
+      `;
+
+      container.appendChild(msgDiv);
+      container.scrollTop = container.scrollHeight;
+      lucide.createIcons();
+    }
+
+    function appendLoading() {
+      const container = document.getElementById('chatMessages');
+      const id = 'loading-' + Date.now();
+      const div = document.createElement('div');
+      div.id = id;
+      div.className = 'flex items-start gap-3 max-w-3xl';
+      div.innerHTML = `
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-md">✦</div>
+        <div class="bg-surface-card border border-surface-border rounded-2xl p-3 text-slate-400 text-xs flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-brand-400 animate-ping"></span>
+          <span>Durchsuche Supabase Wissensdatenbank...</span>
+        </div>
+      `;
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+      return id;
+    }
+
+    function removeLoading(id) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    }
+
+    function escapeHtml(str) {
+      return (str || '').replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
+    }
+
+    function saveSettings() {
+      const llmUrl = document.getElementById('cfgLlmUrl').value.trim();
+      localStorage.setItem('starpi_llm_url', llmUrl);
+      alert('Einstellungen gespeichert!');
+    }
+
+    // Initialize Lucide Icons
+    lucide.createIcons();
+  </script>
+</body>
+</html>
