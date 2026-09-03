@@ -158,3 +158,19 @@ BEGIN
     RETURN new_doc_id;
 END;
 $$;
+
+-- 8. Row Level Security (RLS) & Policies
+ALTER TABLE public.knowledge_documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.knowledge_sections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chat_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.brain_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read documents" ON public.knowledge_documents FOR SELECT USING (true);
+CREATE POLICY "Allow public insert documents" ON public.knowledge_documents FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update documents" ON public.knowledge_documents FOR UPDATE USING (true);
+
+CREATE POLICY "Allow public read sections" ON public.knowledge_sections FOR SELECT USING (true);
+CREATE POLICY "Allow public insert sections" ON public.knowledge_sections FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Allow public all chat_history" ON public.chat_history FOR ALL USING (true);
+CREATE POLICY "Allow public read brain_settings" ON public.brain_settings FOR SELECT USING (true);
