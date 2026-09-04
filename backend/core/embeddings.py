@@ -20,7 +20,7 @@ def get_embedding(text: str) -> List[float]:
     headers = {"Authorization": f"Bearer {config.embedding_api_key}"} if config.embedding_api_key != "EMPTY" else {}
     
     try:
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=1.5) as client:
             resp = client.post(
                 f"{config.embedding_base_url.rstrip('/')}/embeddings",
                 json=payload,
