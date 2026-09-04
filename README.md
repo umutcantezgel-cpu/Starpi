@@ -1,28 +1,29 @@
-# ✦ Starpi — Enterprise AI Brain & Cloud Knowledge Assistant
+# ✦ Starpi — Enterprise AI Brain & Knowledge Assistant
 
-> **Live Web App:** [https://starpi-three.vercel.app/](https://starpi-three.vercel.app/)  
-> **Backend & Vector Database:** Supabase (`pgvector` + HNSW Cosine Indexing)  
-> **LLM Engine Support:** AWS Cloud EC2 (vLLM) / Apple Silicon MLX Local
+> **Live Web App:** [https://starpi-three-iota.vercel.app/](https://starpi-three-iota.vercel.app/) (oder [https://starpi-three.vercel.app/](https://starpi-three.vercel.app/))  
+> **Backend & Vektordatenbank:** Dediziertes Supabase-Projekt in Frankfurt am Main (`eu-central-1`, `pgvector` + HNSW-Index)  
+> **Architektur:** Vercel (Edge-Gateway) + Supabase (Brain/Cloud-Speicher) + BYOC Lokale Rechenpower (0 € GPU-Cloudkosten)
 
 ---
 
 ## 🌟 Überblick
 
-**Starpi** ist ein privates Unternehmens-Brain und ein intelligenter Wissensassistent. Es nimmt unstrukturierte Notizen, Meeting-Transkripte und Berichte auf, strukturiert diese automatisch in sauberes, hierarchisches Markdown, speichert sie in einer cloudbasierten PostgreSQL-Vektordatenbank (**Supabase**) und macht das Wissen über eine blitzschnelle semantische RAG-Suche abrufbar.
+**Starpi** ist ein privates Unternehmens-Brain und ein intelligenter Wissensassistent. Es nimmt unstrukturierte Notizen, Meeting-Transkripte und Berichte auf, strukturiert diese automatisch in sauberes, hierarchisches Markdown, speichert sie in einer cloudbasierten PostgreSQL-Vektordatenbank (**Supabase in Frankfurt**) und macht das Wissen über eine blitzschnelle semantische RAG-Suche abrufbar.
 
-### 📱 Features
+### 📱 Features & Architektur
+* **BYOC (Bring Your Own Compute):** Die Inferenz-Rechenkapazität wird direkt vom Rechner des Anwenders erbracht (z. B. Apple Silicon M4 Pro GPU über MLX/Ollama oder lokaler Tunnel) – 0 € Cloud-GPU-Kosten!
 * **Multi-Device Web App:** Optimiert für Smartphones (Safari/Chrome) und Desktop-Browser.
 * **Brain Ingestion:** Automatisches Formatieren von Rohtexten mit Überschriften, Kernfakten und Tags.
 * **Wissensarchiv:** Durchsuchen und Betrachten aller hinterlegten Dokumente im Volltext.
 * **Live RAG-Chat:** Antworten mit genauen Quellenangaben, Ähnlichkeitsscores und Zitaten.
-* **Datenschutz & Unabhängigkeit:** 100 % private Datenhaltung in der EU (`eu-west-1`), keine unverschlüsselten Schnittstellen zu Drittanbietern.
+* **Datenschutz & EU-Hosting:** 100 % DSGVO-konforme Datenhaltung in Frankfurt (`eu-central-1`).
 
 ---
 
 ## 🚀 Schnelleinstieg
 
 ### 1. Web-App öffnen
-Besuchen Sie einfach **[https://starpi-three.vercel.app/](https://starpi-three.vercel.app/)** in einem beliebigen Browser.
+Besuchen Sie einfach **[https://starpi-three-iota.vercel.app/](https://starpi-three-iota.vercel.app/)** in einem beliebigen Browser auf Handy oder Desktop.
 
 ### 2. Lokale Entwicklung
 ```bash
