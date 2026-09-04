@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Starpi — Enterprise Brain & Knowledge Assistant</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#020617">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Starpi">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✦</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -109,6 +114,10 @@
         <i data-lucide="library" class="w-4 h-4"></i>
         <span>Wissensarchiv</span>
       </button>
+      <button onclick="switchTab('graph')" id="nav-graph" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-surface-cardHover">
+        <i data-lucide="network" class="w-4 h-4"></i>
+        <span>Wissensgraph</span>
+      </button>
       <button onclick="switchTab('ingest')" id="nav-ingest" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-surface-cardHover">
         <i data-lucide="sparkles" class="w-4 h-4"></i>
         <span>Wissen einspeisen</span>
@@ -208,10 +217,14 @@
             <button type="button" onclick="removeAttachment()" class="hover:text-red-400"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
           </div>
           <div class="flex items-center gap-2">
-            <label class="cursor-pointer text-slate-400 hover:text-slate-200 p-2 rounded-xl hover:bg-surface-cardHover transition">
+            <label class="cursor-pointer text-slate-400 hover:text-slate-200 p-2 rounded-xl hover:bg-surface-cardHover transition" title="Datei anhängen">
               <i data-lucide="paperclip" class="w-5 h-5"></i>
               <input type="file" id="chatFileInput" class="hidden" onchange="handleFileAttach(event)">
             </label>
+            <button type="button" id="voiceBtn" onclick="toggleVoiceInput()" class="relative text-slate-400 hover:text-brand-400 p-2 rounded-xl hover:bg-surface-cardHover transition" title="Spracheingabe aktivieren">
+              <i data-lucide="mic" class="w-5 h-5"></i>
+              <span id="voicePulse" class="hidden absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+            </button>
             <textarea id="chatInput" rows="1" placeholder="Fragen Sie das Enterprise Brain oder geben Sie Notizen ein..." class="flex-1 bg-transparent border-0 focus:ring-0 text-slate-100 text-sm placeholder-slate-500 resize-none py-2 px-1 focus:outline-none" onkeydown="handleInputKeydown(event)"></textarea>
             <button type="submit" id="sendBtn" class="bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white p-2 rounded-xl transition shadow-md shadow-brand-500/20">
               <i data-lucide="arrow-up" class="w-5 h-5"></i>
@@ -247,6 +260,72 @@
     </section>
 
     <!-- ========================================== -->
+    <!-- TAB: KNOWLEDGE GRAPH / WISSENSGRAPH -->
+    <!-- ========================================== -->
+    <section id="tab-graph" class="flex-1 flex flex-col overflow-hidden hidden p-4 md:p-6 select-text">
+      <div class="max-w-6xl mx-auto w-full flex-1 flex flex-col overflow-hidden">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 class="text-lg font-bold text-white">Interaktiver Wissensgraph</h2>
+              <span class="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-brand-500/10 text-brand-400 border border-brand-500/20">Graph RAG</span>
+            </div>
+            <p class="text-xs text-slate-400">Verknüpfte Entitäten (Personen, Projekte, Budgets, Technologien & Richtlinien) aus Supabase</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="loadKnowledgeGraph()" class="p-2 rounded-lg bg-surface-card hover:bg-surface-cardHover border border-surface-border text-slate-300 transition" title="Graph neu laden">
+              <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            </button>
+            <button onclick="openNewEntityModal()" class="flex items-center gap-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 rounded-lg shadow-sm transition">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+              <span>Neue Entität</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Graph Visualization & Entity Details Grid -->
+        <div class="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0 overflow-hidden">
+          <!-- Graph Canvas Container -->
+          <div class="lg:col-span-2 bg-surface-card border border-surface-border rounded-2xl p-4 flex flex-col relative overflow-hidden">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-2 z-10">
+              <div class="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block"></span> Projekt</span>
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-indigo-400 inline-block"></span> Person</span>
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"></span> Metrik</span>
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span> Tech</span>
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block"></span> Richtlinie</span>
+              </div>
+              <span class="text-[10px] text-slate-500 font-mono">Interaktive Knoten</span>
+            </div>
+            <div class="flex-1 relative w-full h-full min-h-[350px]">
+              <canvas id="graphCanvas" class="w-full h-full rounded-xl bg-surface-base border border-surface-border cursor-pointer"></canvas>
+              <div id="graphLoading" class="absolute inset-0 bg-surface-base/80 backdrop-blur-sm flex items-center justify-center text-xs text-slate-400">
+                <i data-lucide="loader-2" class="w-5 h-5 animate-spin mr-2 text-brand-400"></i> Lade Graph aus Supabase...
+              </div>
+            </div>
+          </div>
+
+          <!-- Entity & Relation Details Panel -->
+          <div class="bg-surface-card border border-surface-border rounded-2xl p-4 flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between pb-3 border-b border-surface-border">
+              <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                <i data-lucide="info" class="w-4 h-4 text-brand-400"></i>
+                <span>Entitäts-Details</span>
+              </h3>
+              <span id="selectedEntityBadge" class="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-surface-input text-slate-400 border border-surface-border">Info</span>
+            </div>
+            <div id="entityDetailContent" class="flex-1 overflow-y-auto custom-scrollbar pt-3 text-xs space-y-4">
+              <div class="text-center py-12 text-slate-500">
+                <i data-lucide="mouse-pointer-click" class="w-8 h-8 mx-auto mb-2 opacity-40"></i>
+                <p>Klicken Sie auf einen Knoten im Wissensgraphen, um Verknüpfungen und Fakten anzuzeigen.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
     <!-- TAB 3: INGEST / WISSEN EINSPEISEN -->
     <!-- ========================================== -->
     <section id="tab-ingest" class="flex-1 flex flex-col overflow-y-auto hidden p-4 md:p-6 custom-scrollbar select-text">
@@ -254,6 +333,19 @@
         <div>
           <h2 class="text-lg font-bold text-white">Informationen ins Brain einspeisen</h2>
           <p class="text-xs text-slate-400">Unformatierte Texte, Meeting-Transkripte oder Notizen werden automatisch in sauberes Markdown gegliedert, vektorisiert und in Supabase gespeichert.</p>
+        </div>
+
+        <!-- Drag & Drop Zone -->
+        <div id="dropZone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)" class="border-2 border-dashed border-surface-border hover:border-brand-500/60 rounded-2xl p-6 text-center transition cursor-pointer bg-surface-card/60 backdrop-blur-sm group">
+          <div class="w-12 h-12 rounded-xl bg-brand-500/10 text-brand-400 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+            <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+          </div>
+          <p class="text-sm font-semibold text-white">Dateien per Drag & Drop hier ablegen</p>
+          <p class="text-xs text-slate-400 mt-1">Unterstützt .txt, .md, .json, .csv (Automatisches Auslesen & Vorbefüllen)</p>
+          <input type="file" id="ingestFileInput" class="hidden" accept=".txt,.md,.json,.csv,.log" onchange="handleFileDropUpload(event)">
+          <button type="button" onclick="document.getElementById('ingestFileInput').click()" class="mt-3 text-xs bg-surface-input hover:bg-surface-card border border-surface-border text-slate-300 px-3.5 py-1.5 rounded-lg transition font-medium">
+            Datei vom Gerät wählen
+          </button>
         </div>
 
         <div class="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-4">
@@ -356,6 +448,40 @@
             </button>
           </div>
         </div>
+
+        <!-- Mobile & Multi-Device Compute Tunnel Card -->
+        <div class="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+              <i data-lucide="smartphone" class="w-4 h-4 text-brand-400"></i>
+              Mac-zu-Handy P2P Tunnel (Mobile Inferenz)
+            </h3>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-brand-500/10 text-brand-400 border border-brand-500/20">Zero Cloud Cost</span>
+          </div>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Große LLMs (z. B. 27B / 70B) passen aufgrund von Smartphone-RAM-Limits nicht direkt in den mobilen Webbrowser. Über einen verschlüsselten P2P-Tunnel nutzt Ihr Smartphone die <strong>Apple Silicon Metal GPU Ihres Macs</strong> von unterwegs:
+          </p>
+          <div class="space-y-2 bg-surface-base p-3.5 rounded-xl border border-surface-border text-xs">
+            <p class="text-slate-400 font-semibold flex items-center gap-1.5">
+              <span class="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center text-[10px]">1</span>
+              Auf dem Mac MLX-Server starten:
+            </p>
+            <pre class="text-[11px] text-emerald-400 font-mono bg-black/40 p-2 rounded border border-surface-border overflow-x-auto">python -m mlx_lm.server --model /Users/umurey/LocalModels/Qwen3.8-27B-Uncensored-MLX/4-bit --port 8000</pre>
+
+            <p class="text-slate-400 font-semibold flex items-center gap-1.5 pt-1">
+              <span class="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center text-[10px]">2</span>
+              Kostenlosen Tunnel starten (Cloudflare / Tailscale):
+            </p>
+            <pre class="text-[11px] text-brand-400 font-mono bg-black/40 p-2 rounded border border-surface-border overflow-x-auto">cloudflared tunnel --url http://localhost:8000</pre>
+
+            <p class="text-slate-400 font-semibold flex items-center gap-1.5 pt-1">
+              <span class="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center text-[10px]">3</span>
+              Generierte URL am Handy in das Feld oben einfügen:
+            </p>
+            <p class="text-[11px] text-slate-400 italic">z. B. <code class="text-slate-300">https://my-mac.trycloudflare.com/v1</code></p>
+          </div>
+          <p class="text-[11px] text-slate-500">Für leichtgewichtigere mobile Inferenz direkt im mobilen Safari/Chrome-Browser können Sie oben auch einfach auf <strong>„⚡ In-Browser WebGPU“</strong> schalten.</p>
+        </div>
       </div>
     </section>
   </main>
@@ -373,6 +499,43 @@
         </button>
       </div>
       <div id="modalDocContent" class="p-5 overflow-y-auto custom-scrollbar prose-custom text-slate-300 text-sm leading-relaxed"></div>
+    </div>
+  </div>
+
+  <!-- Entity Creation Modal -->
+  <div id="entityModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-surface-card border border-surface-border rounded-2xl w-full max-w-lg p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-surface-border pb-3">
+        <h3 class="font-bold text-white text-sm flex items-center gap-2">
+          <i data-lucide="plus-circle" class="w-4 h-4 text-brand-400"></i>
+          Neue Wissensgraph-Entität anlegen
+        </h3>
+        <button onclick="closeNewEntityModal()" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div>
+        <label class="block text-xs text-slate-300 font-semibold mb-1">Name der Entität</label>
+        <input type="text" id="newEntityName" placeholder="z. B. Projekt Beta oder Anna Müller" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-300 font-semibold mb-1">Typ</label>
+        <select id="newEntityType" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+          <option value="project">Projekt (project)</option>
+          <option value="person">Person (person)</option>
+          <option value="metric">Metrik / Budget (metric)</option>
+          <option value="tech">Technologie (tech)</option>
+          <option value="regulation">Richtlinie / Compliance (regulation)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-slate-300 font-semibold mb-1">Beschreibung</label>
+        <textarea id="newEntityDesc" rows="3" placeholder="Kurzbeschreibung oder Relevanz im Unternehmen..." class="w-full bg-surface-input border border-surface-border rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-brand-500"></textarea>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2">
+        <button onclick="closeNewEntityModal()" class="px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200">Abbrechen</button>
+        <button onclick="saveNewEntity()" class="bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-xl transition shadow-md shadow-brand-500/20">Speichern</button>
+      </div>
     </div>
   </div>
 
@@ -469,27 +632,35 @@
 
     // 2. Navigation
     function switchTab(tabId) {
-      ['chat', 'library', 'ingest', 'settings'].forEach(t => {
-        document.getElementById(`tab-${t}`).classList.add('hidden');
+      ['chat', 'library', 'graph', 'ingest', 'settings'].forEach(t => {
+        const tabEl = document.getElementById(`tab-${t}`);
+        if (tabEl) tabEl.classList.add('hidden');
         const navBtn = document.getElementById(`nav-${t}`);
-        navBtn.classList.remove('bg-brand-500/15', 'text-brand-400', 'border', 'border-brand-500/30');
-        navBtn.classList.add('text-slate-400');
+        if (navBtn) {
+          navBtn.classList.remove('bg-brand-500/15', 'text-brand-400', 'border', 'border-brand-500/30');
+          navBtn.classList.add('text-slate-400');
+        }
       });
 
-      document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+      const activeTab = document.getElementById(`tab-${tabId}`);
+      if (activeTab) activeTab.classList.remove('hidden');
       const activeNav = document.getElementById(`nav-${tabId}`);
-      activeNav.classList.add('bg-brand-500/15', 'text-brand-400', 'border', 'border-brand-500/30');
-      activeNav.classList.remove('text-slate-400');
+      if (activeNav) {
+        activeNav.classList.add('bg-brand-500/15', 'text-brand-400', 'border', 'border-brand-500/30');
+        activeNav.classList.remove('text-slate-400');
+      }
 
       const titles = {
         chat: 'Brain Chat',
         library: 'Wissensarchiv',
+        graph: 'Wissensgraph (Graph RAG)',
         ingest: 'Wissen einspeisen',
         settings: 'Cloud & Server'
       };
-      document.getElementById('pageTitle').textContent = titles[tabId];
+      document.getElementById('pageTitle').textContent = titles[tabId] || 'Starpi Brain';
 
       if (tabId === 'library') loadDocuments();
+      if (tabId === 'graph') loadKnowledgeGraph();
       if (window.innerWidth < 768) toggleSidebar(false);
       lucide.createIcons();
     }
@@ -647,6 +818,52 @@
       document.getElementById('ingestContent').value = '';
     }
 
+    // Drag & Drop Handlers
+    function handleDragOver(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      document.getElementById('dropZone').classList.add('border-brand-400', 'bg-brand-500/10');
+    }
+
+    function handleDragLeave(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      document.getElementById('dropZone').classList.remove('border-brand-400', 'bg-brand-500/10');
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      document.getElementById('dropZone').classList.remove('border-brand-400', 'bg-brand-500/10');
+      const files = e.dataTransfer.files;
+      if (files && files.length > 0) {
+        processUploadedFile(files[0]);
+      }
+    }
+
+    function handleFileDropUpload(e) {
+      const files = e.target.files;
+      if (files && files.length > 0) {
+        processUploadedFile(files[0]);
+      }
+    }
+
+    function processUploadedFile(file) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const text = evt.target.result;
+        document.getElementById('ingestTitle').value = file.name.replace(/\.[^/.]+$/, "");
+        document.getElementById('ingestContent').value = text;
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (['txt', 'md'].includes(ext)) {
+          document.getElementById('ingestSourceType').value = 'file';
+        } else if (ext === 'json') {
+          document.getElementById('ingestSourceType').value = 'text';
+        }
+      };
+      reader.readAsText(file);
+    }
+
     // 5. Chat & RAG Workflow
     function handleInputKeydown(e) {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -673,6 +890,74 @@
       document.getElementById('attachedInfo').classList.add('hidden');
     }
 
+    // Voice Input via Web Speech API
+    let voiceRecognition = null;
+    let isRecordingVoice = false;
+
+    function toggleVoiceInput() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("Spracherkennung wird in diesem Browser leider nicht direkt unterstützt. Bitte nutzen Sie Chrome, Edge oder Safari.");
+        return;
+      }
+
+      const pulse = document.getElementById('voicePulse');
+      const btn = document.getElementById('voiceBtn');
+      const input = document.getElementById('chatInput');
+
+      if (isRecordingVoice) {
+        if (voiceRecognition) voiceRecognition.stop();
+        isRecordingVoice = false;
+        pulse.classList.add('hidden');
+        btn.classList.remove('text-red-400');
+        btn.classList.add('text-slate-400');
+        return;
+      }
+
+      try {
+        voiceRecognition = new SpeechRecognition();
+        voiceRecognition.lang = 'de-DE';
+        voiceRecognition.continuous = false;
+        voiceRecognition.interimResults = true;
+
+        voiceRecognition.onstart = () => {
+          isRecordingVoice = true;
+          pulse.classList.remove('hidden');
+          btn.classList.add('text-red-400');
+          btn.classList.remove('text-slate-400');
+        };
+
+        voiceRecognition.onresult = (event) => {
+          let transcript = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            transcript += event.results[i][0].transcript;
+          }
+          input.value = transcript;
+        };
+
+        voiceRecognition.onerror = (event) => {
+          console.warn('Voice error:', event.error);
+          isRecordingVoice = false;
+          pulse.classList.add('hidden');
+          btn.classList.remove('text-red-400');
+          btn.classList.add('text-slate-400');
+        };
+
+        voiceRecognition.onend = () => {
+          isRecordingVoice = false;
+          pulse.classList.add('hidden');
+          btn.classList.remove('text-red-400');
+          btn.classList.add('text-slate-400');
+        };
+
+        voiceRecognition.start();
+      } catch (err) {
+        console.error('Voice init error:', err);
+        isRecordingVoice = false;
+        pulse.classList.add('hidden');
+      }
+    }
+
     function sendQuickPrompt(text) {
       document.getElementById('chatInput').value = text;
       handleChatSubmit(new Event('submit'));
@@ -697,11 +982,14 @@
       const loadingId = appendLoading();
 
       try {
-        // 1. Query Supabase for relevant context chunks
-        const { data: docs } = await sb
-          .from('knowledge_documents')
-          .select('title, summary, raw_content, tags, knowledge_sections(heading, markdown_content)')
-          .limit(6);
+        // 1. Query Supabase for relevant context chunks & Knowledge Graph
+        const [docsRes, entRes] = await Promise.all([
+          sb.from('knowledge_documents').select('title, summary, raw_content, tags, knowledge_sections(heading, markdown_content)').limit(6),
+          sb.from('knowledge_entities').select('name, entity_type, description').limit(12)
+        ]);
+
+        const docs = docsRes.data || [];
+        const entities = entRes.data || [];
 
         let contextText = "";
         let sources = [];
@@ -715,6 +1003,15 @@
         }
 
         const lower = userText.toLowerCase().trim();
+        const relevantEntities = entities.filter(e => 
+          lower.includes(e.name.toLowerCase()) || 
+          (e.description && lower.includes(e.description.toLowerCase().slice(0, 10)))
+        );
+
+        if (relevantEntities.length > 0) {
+          contextText += `[Wissensgraph-Entitäten]:\n` + relevantEntities.map(e => `• ${e.name} (${e.entity_type}): ${e.description}`).join('\n') + `\n\n`;
+        }
+
         const isGreeting = /^(hey|hallo|hi|moin|servus|guten tag|guten morgen|guten abend|was geht|wer bist du|schreib mal hallo|hallo!|hi!)\b/.test(lower) || 
                            ['hallo', 'hey was geht', 'schreib mal hallo', 'hey', 'hi', 'moin', 'was geht?', 'hallo starpi'].includes(lower);
 
@@ -873,6 +1170,292 @@
       const llmUrl = document.getElementById('cfgLlmUrl').value.trim();
       localStorage.setItem('starpi_llm_url', llmUrl);
       alert('Einstellungen gespeichert!');
+    }
+
+    // 6. Knowledge Graph (Graph RAG Visualizer)
+    let graphData = { entities: [], relations: [] };
+    let selectedEntityId = null;
+    let nodePositions = {};
+
+    const TYPE_COLORS = {
+      project: '#38bdf8',
+      person: '#818cf8',
+      metric: '#34d399',
+      tech: '#fbbf24',
+      regulation: '#f87171'
+    };
+
+    async function loadKnowledgeGraph() {
+      const loader = document.getElementById('graphLoading');
+      if (loader) loader.classList.remove('hidden');
+
+      try {
+        const [entRes, relRes] = await Promise.all([
+          sb.from('knowledge_entities').select('*').order('name'),
+          sb.from('knowledge_relations').select('*')
+        ]);
+
+        if (entRes.error) throw entRes.error;
+        if (relRes.error) throw relRes.error;
+
+        graphData.entities = entRes.data || [];
+        graphData.relations = relRes.data || [];
+
+        renderKnowledgeGraph();
+      } catch (err) {
+        console.error('Error loading knowledge graph:', err);
+      } finally {
+        if (loader) loader.classList.add('hidden');
+      }
+    }
+
+    function renderKnowledgeGraph() {
+      const canvas = document.getElementById('graphCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      canvas.width = rect.width * (window.devicePixelRatio || 1);
+      canvas.height = rect.height * (window.devicePixelRatio || 1);
+      ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+
+      const width = rect.width;
+      const height = rect.height;
+      const centerX = width / 2;
+      const centerY = height / 2;
+
+      ctx.clearRect(0, 0, width, height);
+
+      const count = graphData.entities.length;
+      if (count === 0) {
+        ctx.fillStyle = '#64748b';
+        ctx.font = '13px Plus Jakarta Sans, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Keine Entitäten im Graph hinterlegt.', centerX, centerY);
+        return;
+      }
+
+      // Circular Layout
+      const radius = Math.min(width, height) * 0.36;
+      nodePositions = {};
+
+      graphData.entities.forEach((entity, idx) => {
+        const angle = (idx / count) * 2 * Math.PI - Math.PI / 2;
+        const x = centerX + radius * Math.cos(angle);
+        const y = centerY + radius * Math.sin(angle);
+        nodePositions[entity.id] = { x, y, entity };
+      });
+
+      // Draw Edges
+      graphData.relations.forEach(rel => {
+        const src = nodePositions[rel.source_entity_id];
+        const tgt = nodePositions[rel.target_entity_id];
+        if (!src || !tgt) return;
+
+        const isSelected = selectedEntityId === rel.source_entity_id || selectedEntityId === rel.target_entity_id;
+        ctx.strokeStyle = isSelected ? '#38bdf8' : '#212634';
+        ctx.lineWidth = isSelected ? 2.5 : 1.5;
+
+        ctx.beginPath();
+        ctx.moveTo(src.x, src.y);
+        ctx.lineTo(tgt.x, tgt.y);
+        ctx.stroke();
+
+        // Edge label
+        const midX = (src.x + tgt.x) / 2;
+        const midY = (src.y + tgt.y) / 2;
+        ctx.fillStyle = isSelected ? '#7dd3fc' : '#64748b';
+        ctx.font = '10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(rel.relation_type, midX, midY - 3);
+      });
+
+      // Draw Nodes
+      graphData.entities.forEach(entity => {
+        const pos = nodePositions[entity.id];
+        if (!pos) return;
+        const isSelected = selectedEntityId === entity.id;
+        const color = TYPE_COLORS[entity.entity_type] || '#38bdf8';
+        const nodeRadius = isSelected ? 22 : 18;
+
+        // Halo
+        if (isSelected) {
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, nodeRadius + 6, 0, 2 * Math.PI);
+          ctx.fillStyle = `${color}33`;
+          ctx.fill();
+        }
+
+        // Circle
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, nodeRadius, 0, 2 * Math.PI);
+        ctx.fillStyle = isSelected ? color : '#10131a';
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // Symbol
+        ctx.fillStyle = isSelected ? '#080a0f' : color;
+        ctx.font = 'bold 11px Plus Jakarta Sans, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const symbol = entity.name.slice(0, 2).toUpperCase();
+        ctx.fillText(symbol, pos.x, pos.y);
+
+        // Label
+        ctx.fillStyle = isSelected ? '#ffffff' : '#cbd5e1';
+        ctx.font = `${isSelected ? 'bold ' : ''}11px Plus Jakarta Sans, sans-serif`;
+        ctx.textBaseline = 'top';
+        ctx.fillText(entity.name, pos.x, pos.y + nodeRadius + 5);
+      });
+    }
+
+    // Canvas click & resize listeners
+    document.addEventListener('DOMContentLoaded', () => {
+      const canvas = document.getElementById('graphCanvas');
+      if (canvas) {
+        canvas.addEventListener('click', (e) => {
+          const rect = canvas.getBoundingClientRect();
+          const clickX = e.clientX - rect.left;
+          const clickY = e.clientY - rect.top;
+
+          for (const [id, pos] of Object.entries(nodePositions)) {
+            const dist = Math.hypot(pos.x - clickX, pos.y - clickY);
+            if (dist <= 25) {
+              selectEntity(id);
+              return;
+            }
+          }
+          selectedEntityId = null;
+          renderKnowledgeGraph();
+          showEntityDetails(null);
+        });
+      }
+
+      window.addEventListener('resize', () => {
+        if (document.getElementById('tab-graph') && !document.getElementById('tab-graph').classList.contains('hidden')) {
+          renderKnowledgeGraph();
+        }
+      });
+    });
+
+    function selectEntity(id) {
+      selectedEntityId = id;
+      renderKnowledgeGraph();
+      const entity = graphData.entities.find(e => e.id === id);
+      showEntityDetails(entity);
+    }
+
+    function showEntityDetails(entity) {
+      const container = document.getElementById('entityDetailContent');
+      const badge = document.getElementById('selectedEntityBadge');
+      if (!entity) {
+        badge.textContent = 'Info';
+        container.innerHTML = `
+          <div class="text-center py-12 text-slate-500">
+            <i data-lucide="mouse-pointer-click" class="w-8 h-8 mx-auto mb-2 opacity-40"></i>
+            <p>Klicken Sie auf einen Knoten im Wissensgraphen, um Verknüpfungen und Details anzuzeigen.</p>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      badge.textContent = entity.entity_type;
+      const outgoing = graphData.relations.filter(r => r.source_entity_id === entity.id);
+      const incoming = graphData.relations.filter(r => r.target_entity_id === entity.id);
+      const color = TYPE_COLORS[entity.entity_type] || '#38bdf8';
+
+      container.innerHTML = `
+        <div class="p-3.5 rounded-xl bg-surface-base border border-surface-border space-y-2">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full" style="background-color: ${color}"></span>
+            <h4 class="text-sm font-bold text-white">${escapeHtml(entity.name)}</h4>
+          </div>
+          <p class="text-xs text-slate-300 leading-relaxed">${escapeHtml(entity.description || 'Keine Beschreibung vorhanden.')}</p>
+        </div>
+
+        <div class="space-y-2">
+          <h5 class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+            <i data-lucide="git-fork" class="w-3.5 h-3.5 text-brand-400"></i>
+            Verbindungen (${outgoing.length + incoming.length})
+          </h5>
+          <div class="space-y-1.5">
+            ${outgoing.map(r => {
+              const target = graphData.entities.find(e => e.id === r.target_entity_id);
+              return `
+                <div class="p-2 rounded-lg bg-surface-base border border-surface-border text-xs flex items-center justify-between">
+                  <span class="text-slate-300 font-medium">→ ${escapeHtml(target ? target.name : 'Ziel')}</span>
+                  <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-400">${escapeHtml(r.relation_type)}</span>
+                </div>
+              `;
+            }).join('')}
+            ${incoming.map(r => {
+              const src = graphData.entities.find(e => e.id === r.source_entity_id);
+              return `
+                <div class="p-2 rounded-lg bg-surface-base border border-surface-border text-xs flex items-center justify-between">
+                  <span class="text-slate-300 font-medium">← ${escapeHtml(src ? src.name : 'Quelle')}</span>
+                  <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400">${escapeHtml(r.relation_type)}</span>
+                </div>
+              `;
+            }).join('')}
+            ${outgoing.length === 0 && incoming.length === 0 ? '<p class="text-slate-500 text-xs italic">Keine direkten Kanten vorhanden.</p>' : ''}
+          </div>
+        </div>
+
+        <button onclick="sendQuickPrompt('Erzähle mir alles über ${escapeHtml(entity.name)} aus dem Brain')" class="w-full text-xs font-semibold bg-surface-input hover:bg-surface-border text-brand-400 border border-brand-500/20 py-2 rounded-xl transition flex items-center justify-center gap-1.5">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+          Im Brain Chat nach ${escapeHtml(entity.name)} fragen
+        </button>
+      `;
+      lucide.createIcons();
+    }
+
+    function openNewEntityModal() {
+      document.getElementById('entityModal').classList.remove('hidden');
+    }
+
+    function closeNewEntityModal() {
+      document.getElementById('entityModal').classList.add('hidden');
+      document.getElementById('newEntityName').value = '';
+      document.getElementById('newEntityDesc').value = '';
+    }
+
+    async function saveNewEntity() {
+      const name = document.getElementById('newEntityName').value.trim();
+      const entity_type = document.getElementById('newEntityType').value;
+      const description = document.getElementById('newEntityDesc').value.trim();
+
+      if (!name) {
+        alert('Bitte Namen angeben.');
+        return;
+      }
+
+      try {
+        const { error } = await sb.from('knowledge_entities').insert([{
+          name,
+          entity_type,
+          description,
+          properties: {}
+        }]);
+
+        if (error) throw error;
+        closeNewEntityModal();
+        await loadKnowledgeGraph();
+      } catch (err) {
+        alert('Fehler beim Anlegen der Entität: ' + err.message);
+      }
+    }
+
+    // PWA Service Worker Registration
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(reg => console.log('Starpi PWA Service Worker aktiv:', reg.scope))
+          .catch(err => console.warn('PWA SW Registrierung:', err));
+      });
     }
 
     // Initialize Lucide Icons

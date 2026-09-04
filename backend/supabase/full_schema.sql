@@ -174,3 +174,105 @@ CREATE POLICY "Allow public insert sections" ON public.knowledge_sections FOR IN
 
 CREATE POLICY "Allow public all chat_history" ON public.chat_history FOR ALL USING (true);
 CREATE POLICY "Allow public read brain_settings" ON public.brain_settings FOR SELECT USING (true);
+
+-- ==============================================================================
+-- 9. Enterprise Brain 10x Expansion: Hybrid Search & Knowledge Graph
+-- ==============================================================================
+
+-- Fulltext Search Indexes (German)
+ALTER TABLE public.knowledge_documents ADD COLUMN IF NOT EXISTS fts tsvector 
+  GENERATED ALWAYS AS (to_tsvector('german', coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(raw_content, ''))) STORED;
+
+CREATE INDEX IF NOT EXISTS idx_kdocs_fts ON public.knowledge_documents USING GIN (fts);
+
+ALTER TABLE public.knowledge_sections ADD COLUMN IF NOT EXISTS fts tsvector 
+  GENERATED ALWAYS AS (to_tsvector('german', coalesce(heading, '') || ' ' || coalesce(markdown_content, ''))) STORED;
+
+CREATE INDEX IF NOT EXISTS idx_ksections_fts ON public.knowledge_sections USING GIN (fts);
+
+-- Knowledge Entities & Relations (Knowledge Graph)
+CREATE TABLE IF NOT EXISTS public.knowledge_entities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    entity_type TEXT NOT NULL, -- 'person', 'project', 'budget', 'technology', 'date', 'topic'
+    metadata JSONB DEFAULT '{}'::JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(name, entity_type)
+);
+
+CREATE TABLE IF NOT EXISTS public.knowledge_relations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_entity_id UUID REFERENCES public.knowledge_entities(id) ON DELETE CASCADE,
+    target_entity_id UUID REFERENCES public.knowledge_entities(id) ON DELETE CASCADE,
+    relation_type TEXT NOT NULL, -- 'leads', 'budgeted_at', 'launches_on', 'uses', 'deploys'
+    document_id UUID REFERENCES public.knowledge_documents(id) ON DELETE CASCADE,
+    section_id UUID REFERENCES public.knowledge_sections(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.knowledge_entities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.knowledge_relations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read entities" ON public.knowledge_entities FOR SELECT USING (true);
+CREATE POLICY "Allow public insert entities" ON public.knowledge_entities FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public read relations" ON public.knowledge_relations FOR SELECT USING (true);
+CREATE POLICY "Allow public insert relations" ON public.knowledge_relations FOR INSERT WITH CHECK (true);
+
+-- Hybrid Search RPC Function (Reciprocal Rank Fusion - BM25 + Vector)
+CREATE OR REPLACE FUNCTION public.match_knowledge_hybrid (
+    query_text TEXT,
+    query_embedding vector(1536),
+    match_count INT DEFAULT 5,
+    rrf_k INT DEFAULT 60
+)
+RETURNS TABLE (
+    id UUID,
+    document_id UUID,
+    document_title TEXT,
+    heading TEXT,
+    markdown_content TEXT,
+    tags TEXT[],
+    score FLOAT
+)
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+    RETURN QUERY
+    WITH vector_matches AS (
+        SELECT 
+            ks.id,
+            ROW_NUMBER() OVER (ORDER BY ks.embedding <=> query_embedding) as rank
+        FROM public.knowledge_sections ks
+        WHERE ks.embedding IS NOT NULL
+        LIMIT 25
+    ),
+    text_matches AS (
+        SELECT 
+            ks.id,
+            ROW_NUMBER() OVER (ORDER BY ts_rank_cd(ks.fts, websearch_to_tsquery('german', query_text)) DESC) as rank
+        FROM public.knowledge_sections ks
+        WHERE ks.fts @@ websearch_to_tsquery('german', query_text)
+        LIMIT 25
+    )
+    SELECT 
+        ks.id,
+        ks.document_id,
+        kd.title AS document_title,
+        ks.heading,
+        ks.markdown_content,
+        kd.tags,
+        (
+            COALESCE(1.0 / (rrf_k + vm.rank), 0.0) + 
+            COALESCE(1.0 / (rrf_k + tm.rank), 0.0)
+        )::FLOAT AS score
+    FROM public.knowledge_sections ks
+    JOIN public.knowledge_documents kd ON ks.document_id = kd.id
+    LEFT JOIN vector_matches vm ON ks.id = vm.id
+    LEFT JOIN text_matches tm ON ks.id = tm.id
+    WHERE vm.rank IS NOT NULL OR tm.rank IS NOT NULL
+    ORDER BY score DESC
+    LIMIT match_count;
+END;
+$$;
+
