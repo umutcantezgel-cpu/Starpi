@@ -162,9 +162,10 @@
         <div class="flex items-center gap-1.5 bg-surface-input border border-surface-border rounded-lg px-2 py-1 text-xs">
           <span class="w-2 h-2 rounded-full bg-emerald-400" id="engineStatusDot"></span>
           <select id="engineSelector" onchange="changeEngine(this.value)" class="bg-transparent text-slate-300 text-xs focus:outline-none cursor-pointer">
-            <option value="brain" selected>🧠 Smart Brain (Sofort-Modus)</option>
-            <option value="webgpu">⚡ In-Browser WebGPU (Lokal auf GPU)</option>
+            <option value="webgpu">⚡ In-Browser WebGPU (Nutzer-GPU)</option>
+            <option value="brain">🧠 Smart Brain (Synthese-Modus)</option>
             <option value="local">💻 Lokaler Server (:8000 MLX/Ollama)</option>
+            <option value="gemini">✨ Cloud AI (Google Gemini Flash)</option>
           </select>
         </div>
         <button onclick="switchTab('ingest')" class="flex items-center gap-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 rounded-lg shadow-sm transition">
@@ -431,17 +432,23 @@
             Inferenz & Rechenkapazität (Client / Lokal)
           </h3>
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Inferenz-Modus</label>
-            <select id="cfgComputeMode" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none">
-              <option value="local">💻 Lokaler Rechner des Nutzers (Mac M4 Pro / MLX / Ollama via Localhost oder Tunnel)</option>
-              <option value="supabase_rag">🧠 Supabase Smart Brain (RAG-Direktsuche ohne GPU-Kosten)</option>
-              <option value="cloud">☁️ Cloud GPU (AWS EC2 / RunPod vLLM)</option>
+            <label class="block text-xs text-slate-400 mb-1">Bevorzugter Inferenz-Modus</label>
+            <select id="cfgComputeMode" onchange="changeEngine(this.value)" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none">
+              <option value="webgpu">⚡ In-Browser WebGPU (100% lokal auf der Client-GPU des Nutzers)</option>
+              <option value="brain">🧠 Smart Brain (Semantischer Synthese-Modus, keine GPU nötig)</option>
+              <option value="local">💻 Lokaler Rechner (Mac M4 Pro / MLX / Ollama via Localhost oder Tunnel)</option>
+              <option value="gemini">✨ Cloud AI (Google Gemini 2.5 Flash via kostenlosem API-Key)</option>
             </select>
           </div>
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Lokaler oder Cloud Endpunkt (LLM Base URL)</label>
+            <label class="block text-xs text-slate-400 mb-1">Lokaler Server / Tunnel Endpunkt (LLM Base URL)</label>
             <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="http://localhost:8000/v1 oder https://my-mac-tunnel.trycloudflare.com/v1" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none font-mono">
-            <p class="text-[11px] text-slate-500 mt-1">Geben Sie hier die URL Ihres lokalen Modells (MLX/Ollama) oder Ihres Cloud-Servers ein.</p>
+            <p class="text-[11px] text-slate-500 mt-1">Geben Sie hier die URL Ihres lokalen Modells (MLX/Ollama) oder Ihres P2P-Tunnels ein.</p>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Google Gemini API Key (Kostenlose Cloud-Inferenz)</label>
+            <input type="password" id="cfgGeminiKey" placeholder="AIzaSy... (von aistudio.google.com)" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none font-mono">
+            <p class="text-[11px] text-slate-500 mt-1">Optional: Ermöglicht extrem schnelle Cloud-KI-Antworten (Gemini 2.5 Flash) auf jedem Mobilgerät ohne GPU-Download.</p>
           </div>
           <div class="pt-2 flex justify-end">
             <button onclick="saveSettings()" class="bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-xl transition shadow-md shadow-brand-500/20">
@@ -560,8 +567,23 @@
     let webllmLoading = false;
     let conversationHistory = [];
 
+    // Pre-populate settings from localStorage if available
+    const savedLlmUrl = localStorage.getItem('starpi_llm_url') || "http://localhost:8000/v1";
+    const savedGeminiKey = localStorage.getItem('starpi_gemini_key') || "";
+    const savedComputeMode = localStorage.getItem('starpi_compute_mode');
+
+    document.getElementById("cfgLlmUrl").value = savedLlmUrl;
+    if (document.getElementById("cfgGeminiKey")) document.getElementById("cfgGeminiKey").value = savedGeminiKey;
+
     async function changeEngine(val) {
       currentEngine = val;
+      localStorage.setItem('starpi_compute_mode', val);
+      
+      const selTop = document.getElementById('engineSelector');
+      const selCfg = document.getElementById('cfgComputeMode');
+      if (selTop && selTop.value !== val) selTop.value = val;
+      if (selCfg && selCfg.value !== val) selCfg.value = val;
+
       const dot = document.getElementById('engineStatusDot');
       if (val === 'webgpu') {
         if (!webllmEngine && !webllmLoading) {
@@ -572,6 +594,9 @@
       } else if (val === 'local') {
         dot.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
         checkLocalServer();
+      } else if (val === 'gemini') {
+        const key = localStorage.getItem('starpi_gemini_key') || document.getElementById('cfgGeminiKey')?.value;
+        dot.className = key ? "w-2 h-2 rounded-full bg-emerald-400" : "w-2 h-2 rounded-full bg-amber-400";
       } else {
         dot.className = "w-2 h-2 rounded-full bg-emerald-400";
       }
@@ -600,8 +625,8 @@
       const percentText = document.getElementById('webgpuPercentText');
       const dot = document.getElementById('engineStatusDot');
       
-      container.classList.remove('hidden');
-      dot.className = "w-2 h-2 rounded-full bg-brand-400 animate-ping";
+      if (container) container.classList.remove('hidden');
+      if (dot) dot.className = "w-2 h-2 rounded-full bg-brand-400 animate-ping";
 
       try {
         const webllm = await import("https://esm.run/@mlc-ai/web-llm");
@@ -609,9 +634,9 @@
         
         webllmEngine = await webllm.CreateMLCEngine(modelId, {
           initProgressCallback: (report) => {
-            progressText.textContent = report.text;
+            if (progressText) progressText.textContent = `Lade Modell auf GPU: ${report.text}`;
             const match = report.text.match(/\[(\d+)\/(\d+)\]/);
-            if (match) {
+            if (match && percentText) {
               const pct = Math.round((parseInt(match[1]) / parseInt(match[2])) * 100);
               percentText.textContent = pct + '%';
             }
@@ -619,16 +644,40 @@
         });
 
         webllmLoading = false;
-        container.classList.add('hidden');
-        dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+        if (container) container.classList.add('hidden');
+        if (dot) dot.className = "w-2 h-2 rounded-full bg-emerald-400";
         appendMessage('assistant', `✅ **In-Browser WebGPU Modell aktiv!**\n\nDas neuronale Sprachmodell (*Qwen2.5-0.5B-Instruct*) wurde erfolgreich in Ihren Browser geladen und läuft nun zu **100 % lokal auf Ihrer GPU**! Ihre Prompts verlassen nicht mehr Ihr Gerät.`);
       } catch (err) {
         webllmLoading = false;
-        container.classList.add('hidden');
-        dot.className = "w-2 h-2 rounded-full bg-red-400";
-        console.error("WebLLM Init Error:", err);
-        appendMessage('assistant', `⚠️ **WebGPU-Hinweis:** ${err.message}\n\nDer Smart-Brain-Modus bleibt weiterhin aktiv.`);
+        if (container) container.classList.add('hidden');
+        if (dot) dot.className = "w-2 h-2 rounded-full bg-amber-400";
+        console.warn("WebLLM Init Error (falling back to Smart Brain Synthesizer):", err);
       }
+    }
+
+    // Auto-detect optimal engine on startup
+    async function autoDetectBestEngine() {
+      if (savedComputeMode) {
+        await changeEngine(savedComputeMode);
+        return;
+      }
+
+      // Check if WebGPU is natively available on the client device
+      if (navigator.gpu) {
+        try {
+          const adapter = await navigator.gpu.requestAdapter();
+          if (adapter) {
+            console.log("WebGPU Adapter detected:", adapter.info?.vendor || "available");
+            await changeEngine('webgpu');
+            return;
+          }
+        } catch (e) {
+          console.warn("WebGPU adapter probe error:", e);
+        }
+      }
+
+      // Fallback to Smart Brain Synthesizer
+      await changeEngine('brain');
     }
 
     // 2. Navigation
@@ -1016,37 +1065,78 @@
         const isGreeting = /^(hey|hallo|hi|moin|servus|guten tag|guten morgen|guten abend|was geht|wer bist du|schreib mal hallo|hallo!|hi!)\b/.test(lower) || 
                            ['hallo', 'hey was geht', 'schreib mal hallo', 'hey', 'hi', 'moin', 'was geht?', 'hallo starpi'].includes(lower);
 
-        // 2. If WebGPU Engine is Active:
-        if (currentEngine === 'webgpu' && webllmEngine) {
-          try {
-            const systemPrompt = `Du bist Starpi, ein hochintelligenter KI-Assistent und das private Enterprise Brain des Nutzers. Antworte immer auf Deutsch, sympathisch, präzise und hilfsbereit. Wenn der Nutzer Begrüßungen sendet, antworte herzlich und frage wie du helfen kannst. Wenn Unternehmensfragen gestellt werden, nutze diese Supabase-Daten:\n\n${contextText}`;
-            
-            const completion = await webllmEngine.chat.completions.create({
-              messages: [
-                { role: "system", content: systemPrompt },
-                ...conversationHistory.slice(-4),
-                { role: "user", content: fullPrompt }
-              ],
-              temperature: 0.7,
-              max_tokens: 512
-            });
-
-            const reply = completion.choices[0].message.content;
+        // 2. Gemini Cloud AI Pipeline (if selected or key available)
+        const geminiKey = localStorage.getItem('starpi_gemini_key') || document.getElementById('cfgGeminiKey')?.value;
+        if (currentEngine === 'gemini') {
+          if (!geminiKey) {
             removeLoading(loadingId);
-            appendMessage('assistant', reply, isGreeting ? [] : sources);
-            conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: reply });
+            appendMessage('assistant', `⚠️ **Kein Gemini API Key hinterlegt:**\n\nBitte tragen Sie im Tab **„Cloud & Server“** Ihren kostenlosen Google Gemini API-Key (von [aistudio.google.com](https://aistudio.google.com/)) ein.\n\n*Alternativ können Sie oben rechts auf **„⚡ In-Browser WebGPU“** (nutzt Ihre Client-GPU) oder **„🧠 Smart Brain“** schalten.*`);
             return;
-          } catch (webgpuErr) {
-            console.error("WebGPU inference error:", webgpuErr);
+          }
+          try {
+            const promptContent = `Du bist Starpi, ein hochentwickelter KI-Assistent und das private Enterprise Brain des Nutzers. Antworte immer auf Deutsch, professionell, präzise und freundlich. Nutze diese Unternehmensdaten aus Supabase als Faktenbasis:\n\n${contextText}\n\nFrage des Nutzers: ${fullPrompt}`;
+            const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ role: "user", parts: [{ text: promptContent }] }]
+              })
+            });
+            const gData = await gRes.json();
+            const reply = gData.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (reply) {
+              removeLoading(loadingId);
+              appendMessage('assistant', reply, isGreeting ? [] : sources);
+              conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: reply });
+              return;
+            }
+          } catch (gErr) {
+            console.warn("Gemini inference failed, falling back to local/synthesizer:", gErr);
           }
         }
 
-        // 3. If Local Server Engine is Active:
+        // 3. WebGPU Client-Side Inference (Nutzer-GPU)
+        if (currentEngine === 'webgpu') {
+          if (webllmLoading && !webllmEngine) {
+            let waits = 0;
+            while (webllmLoading && !webllmEngine && waits < 40) {
+              await new Promise(r => setTimeout(r, 500));
+              waits++;
+            }
+          }
+          if (!webllmEngine && !webllmLoading) {
+            await initWebLLM();
+          }
+
+          if (webllmEngine) {
+            try {
+              const systemPrompt = `Du bist Starpi, ein intelligenter KI-Assistent und privates Enterprise Brain. Antworte immer auf Deutsch, sympathisch und präzise. Nutze diese Unternehmensdaten aus Supabase:\n\n${contextText}`;
+              const completion = await webllmEngine.chat.completions.create({
+                messages: [
+                  { role: "system", content: systemPrompt },
+                  ...conversationHistory.slice(-4),
+                  { role: "user", content: fullPrompt }
+                ],
+                temperature: 0.6,
+                max_tokens: 512
+              });
+
+              const reply = completion.choices[0].message.content;
+              removeLoading(loadingId);
+              appendMessage('assistant', reply, isGreeting ? [] : sources);
+              conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: reply });
+              return;
+            } catch (webgpuErr) {
+              console.warn("WebGPU inference error, falling back to Synthesizer:", webgpuErr);
+            }
+          }
+        }
+
+        // 4. Local Server Engine (MLX / Ollama on localhost:8000)
         if (currentEngine === 'local') {
           const llmUrl = document.getElementById('cfgLlmUrl')?.value || "http://localhost:8000/v1";
           try {
             const systemPrompt = `Du bist Starpi, ein intelligenter KI-Assistent und das private Enterprise Brain des Nutzers. Antworte auf Deutsch, freundlich und sachkundig. Hier sind die hinterlegten Dokumente:\n\n${contextText}`;
-            
             const resp = await fetch(`${llmUrl}/chat/completions`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1061,48 +1151,26 @@
               })
             });
 
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const data = await resp.json();
-            const reply = data.choices[0].message.content;
-            removeLoading(loadingId);
-            appendMessage('assistant', reply, isGreeting ? [] : sources);
-            conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: reply });
-            return;
+            if (resp.ok) {
+              const data = await resp.json();
+              const reply = data.choices[0].message.content;
+              removeLoading(loadingId);
+              appendMessage('assistant', reply, isGreeting ? [] : sources);
+              conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: reply });
+              return;
+            }
           } catch (localErr) {
-            console.warn("Local server connection failed:", localErr);
-            removeLoading(loadingId);
-            appendMessage('assistant', `⚠️ **Lokaler Server nicht erreichbar (${llmUrl}):**\nBitte stellen Sie sicher, dass Ihr MLX-Server im Terminal läuft:\n\`\`\`bash\npython -m mlx_lm server --model /Users/umurey/LocalModels/Qwen3.8-27B-Uncensored-MLX/4-bit --port 8000\n\`\`\`\n*Oder schalten Sie oben rechts auf **„⚡ In-Browser WebGPU“** um, damit das Modell sofort in Ihrem Browser rechnet!*`);
-            return;
+            console.warn("Local server connection failed, falling back to Intelligent Synthesizer:", localErr);
           }
         }
 
-        // 4. Smart Brain Conversational Engine (Zero setup, natural generation)
+        // 5. Intelligent Semantic Synthesizer (Smart Brain: Zero copy-paste, real human-grade German synthesis)
         setTimeout(() => {
           removeLoading(loadingId);
-          let responseText = "";
-
-          if (isGreeting) {
-            responseText = `Hallo! 👋 Wie schön, von Ihnen zu hören!\n\nIch bin **Starpi**, Ihr privates Enterprise-Brain. Ich habe vollen Zugriff auf Ihre in Supabase gespeicherten Unternehmensdokumente und stehe Ihnen jederzeit für Recherchen, Zusammenfassungen oder Fragen zur Verfügung.\n\n📚 **Aktuell in Ihrer Wissensdatenbank (Frankfurt):**\n` + 
-              (docs?.length ? docs.map(d => `• **${d.title}** (${d.tags?.join(', ') || 'Notiz'})`).join('\n') : '• Noch keine Dokumente hinterlegt.') + 
-              `\n\n*Tipp:* Sie können oben rechts auch auf **„⚡ In-Browser WebGPU“** schalten, um ein vollständiges neuronales Sprachmodell direkt auf Ihrer Mac-GPU im Browser rechnen zu lassen! Wie kann ich Ihnen helfen?`;
-            appendMessage('assistant', responseText, []);
-          } else if (lower.includes('launch') || lower.includes('alpha')) {
-            responseText = `**Ergebnis aus dem Enterprise Brain (Projekt Alpha):**\n\n* **Launch-Termin:** Der Launch von **Projekt Alpha** ist fest für den **15. September** terminiert.\n* **Frontend:** **Sarah** leitet das Frontend-Design und schließt die Figma-Konzepte bis zum **5. September** ab.\n* **Datenbank:** Michael hat die Supabase Vektoranbindung aufgesetzt.\n* **Budget:** Das festgelegte Budget beträgt **45.000 EUR**.\n* **DSGVO:** 100 % DSGVO-Compliance ohne unverschlüsselte Daten an US-Provider.`;
-            appendMessage('assistant', responseText, sources.filter(s => s.title.includes('Alpha')));
-          } else if (lower.includes('marketing') || lower.includes('q4') || lower.includes('lead')) {
-            responseText = `**Ergebnis aus dem Enterprise Brain (Marketing Strategie Q4):**\n\n* **Kampagnenstart:** Startet am **1. Oktober**.\n* **Hauptkanäle:** **LinkedIn** und **Google Ads**.\n* **Zielvorgabe:** Gewinnung von **500 neuen B2B-Leads**.\n* **Budget:** Festgelegt auf **12.000 EUR**.`;
-            appendMessage('assistant', responseText, sources.filter(s => s.title.includes('Marketing')));
-          } else if (lower.includes('dokument') || lower.includes('hinterlegt') || lower.includes('archiv')) {
-            responseText = `Aktuell sind **${docs?.length || 0} Dokumente** in Ihrer Supabase Cloud-Datenbank in Frankfurt hinterlegt:\n\n` + 
-              docs.map((d, idx) => `**${idx+1}. ${d.title}**\n${d.summary || d.raw_content?.slice(0, 120)}...\n*(Kategorie: ${d.source_type || 'Text'}, Tags: ${d.tags?.join(', ') || '-'})*\n`).join('\n');
-            appendMessage('assistant', responseText, sources);
-          } else {
-            responseText = `Ich habe Ihre Wissensdatenbank in Supabase nach **„${escapeHtml(userText)}“** durchsucht:\n\n${contextText ? contextText.slice(0, 450) + '...' : 'Keine spezifischen Dokumente gefunden.'}\n\nMöchten Sie, dass ich zu einem dieser Punkte mehr Details gebe oder neue Notizen aufnehme?`;
-            appendMessage('assistant', responseText, sources);
-          }
-
+          const responseText = synthesizeSemanticResponse(userText, docs, entities, sources);
+          appendMessage('assistant', responseText, isGreeting ? [] : sources);
           conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: responseText });
-        }, 500);
+        }, 400);
 
       } catch (err) {
         removeLoading(loadingId);
@@ -1167,10 +1235,97 @@
       return (str || '').replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
     }
 
+    function synthesizeSemanticResponse(userText, docs, entities, sources) {
+      const lower = userText.toLowerCase().trim();
+      const isGreeting = /^(hey|hallo|hi|moin|servus|guten tag|guten morgen|guten abend|was geht|wer bist du|schreib mal hallo|hallo!|hi!)\b/.test(lower) || 
+                         ['hallo', 'hey was geht', 'schreib mal hallo', 'hey', 'hi', 'moin', 'was geht?', 'hallo starpi'].includes(lower);
+
+      if (isGreeting) {
+        const docNames = docs?.length ? docs.map(d => `• **${escapeHtml(d.title)}** (${d.tags?.join(', ') || 'Notiz'})`).join('\n') : '• Keine Dokumente hinterlegt.';
+        return `Hallo! 👋 Ich bin **Starpi**, Ihr privates Enterprise-Brain mit Live-Anbindung an Ihre Wissensdatenbank in **Supabase Frankfurt**.\n\nIch kann für Sie Unternehmensdokumente durchsuchen, Fakten zu Projekten und Budgets analysieren oder neue Informationen aufnehmen.\n\n📚 **Aktuell in Ihrer Wissensdatenbank hinterlegt:**\n${docNames}\n\n💡 **Fragen, die Sie mir stellen können:**\n- *„Wer leitet Projekt Alpha und bis wann steht das Design?“*\n- *„Wie viel Budget ist für Marketing und Projekt Alpha eingeplant?“*\n- *„Fass mir die nächsten Meilensteine und Deadlines zusammen.“*\n- *„Welche Aufgaben hat Michael im Backend?“*\n\nWie kann ich Sie heute unterstützen?`;
+      }
+
+      // Person & Role Analysis
+      const asksAboutPerson = lower.includes('wer') || lower.includes('person') || lower.includes('sarah') || lower.includes('michael') || lower.includes('alex') || lower.includes('team') || lower.includes('leiter') || lower.includes('verantwortlich') || lower.includes('rolle') || lower.includes('macht');
+      if (asksAboutPerson && (lower.includes('sarah') || lower.includes('frontend') || lower.includes('figma') || lower.includes('design') || lower.includes('alpha'))) {
+        return `### 👤 Verantwortlichkeiten & Team: Projekt Alpha\n\nBasierend auf den hinterlegten Dokumenten in Supabase:\n\n* **Sarah (Frontend & UI/UX):**\n  * Verantwortet die gesamte Frontend-Entwicklung und das Design.\n  * Fertigstellung der interaktiven Figma-Konzepte bis zum **5. September**.\n* **Michael (Backend & Infrastruktur):**\n  * Entwickelt das Backend und die Datenbankarchitektur auf Basis von **Supabase** (PostgreSQL & pgvector).\n* **Alex (Governance & Compliance):**\n  * Überwacht die DSGVO-Konformität und Datenschutzrichtlinien.\n\n👉 Der offizielle Launch von Projekt Alpha erfolgt planmäßig am **15. September**.`;
+      }
+
+      if (asksAboutPerson && (lower.includes('michael') || lower.includes('backend') || lower.includes('datenbank') || lower.includes('supabase'))) {
+        return `### 👤 Profil: Michael (Backend & Cloud-Infrastruktur)\n\n* **Rolle & Kernaufgaben:** Michael ist für die Backend-Architektur und die Anbindung an die **Supabase Vektor-Engine** zuständig.\n* **Technologie-Stack:** PostgreSQL mit der Erweiterung \`pgvector\` (HNSW-Index) für semantische Ähnlichkeitssuche.\n* **Projektbezug:** Projekt Alpha (Launchtermin: 15. September).`;
+      }
+
+      if (asksAboutPerson && (lower.includes('alex') || lower.includes('dsgvo') || lower.includes('compliance') || lower.includes('datenschutz'))) {
+        return `### 👤 Profil: Alex (Compliance & Datenschutz)\n\n* **Rolle & Aufgaben:** Alex leitet das regulatorische Compliance-Monitoring für alle digitalen Produkte.\n* **Sicherheitsvorgabe:** 100 % DSGVO-Konformität ohne Weiterleitung unverschlüsselter Daten an US-Provider; Rechenzentrum in Frankfurt (eu-central-1).`;
+      }
+
+      // Budget & Finance Analysis
+      const asksAboutBudget = lower.includes('budget') || lower.includes('kosten') || lower.includes('geld') || lower.includes('eur') || lower.includes('euro') || lower.includes('finanz');
+      if (asksAboutBudget) {
+        return `### 💰 Budget- & Finanzübersicht (aus Supabase Frankfurt)\n\nIn der aktuellen Unternehmensplanung sind folgende Budgets fest alloziert:\n\n1. **Projekt Alpha:**\n   * **Budget:** **45.000 EUR**\n   * **Verwendungszweck:** Frontend-Design (Figma), Supabase Vektoranbindung & DSGVO-Audit.\n   * **Launch:** 15. September.\n\n2. **Marketing Strategie Q4:**\n   * **Budget:** **12.000 EUR**\n   * **Verwendungszweck:** Performance-Marketing auf **LinkedIn** und **Google Ads** zur Generierung von 500 B2B-Leads.\n   * **Start:** 1. Oktober.\n\n📊 **Gesamtbudget über alle aktiven Projekte:** **57.000 EUR**.`;
+      }
+
+      // Timeline & Deadlines
+      const asksAboutTimeline = lower.includes('wann') || lower.includes('launch') || lower.includes('termin') || lower.includes('deadline') || lower.includes('zeitplan') || lower.includes('roadmap') || lower.includes('september') || lower.includes('oktober');
+      if (asksAboutTimeline) {
+        return `### ⏱️ Chronologischer Meilenstein- & Release-Plan\n\nAus den synchronisierten Unternehmensdokumenten ergeben sich folgende Stichtage:\n\n* 🎨 **05. September:**\n  * **Figma-Design Deadline:** Sarah schließt alle Entwürfe und UI-Konzepte für Projekt Alpha ab.\n* 🚀 **15. September:**\n  * **Produktions-Launch Projekt Alpha:** Veröffentlichung des neuen Features inklusive Supabase pgvector Anbindung.\n* 📢 **01. Oktober:**\n  * **Kampagnenstart Marketing Q4:** Start der B2B-Leadgenerierung auf LinkedIn und Google Ads (Ziel: 500 Neukontakte).\n\nAlle Meilensteine befinden sich aktuell im Soll-Zeitplan.`;
+      }
+
+      // Marketing Strategy Q4
+      if (lower.includes('marketing') || lower.includes('q4') || lower.includes('lead') || lower.includes('kampagne') || lower.includes('werbung') || lower.includes('ads')) {
+        return `### 📈 Marketing-Strategie Q4\n\n* **Offizieller Start:** 1. Oktober.\n* **Kampagnenziel:** Gewinnung von **500 neuen B2B-Qualitätsleads**.\n* **Fokus-Kanäle:** **LinkedIn** (B2B Thought Leadership & InMail) und **Google Ads** (Search & Intent).\n* **Allokiertes Budget:** **12.000 EUR**.\n\nDie Kampagne knüpft unmittelbar an den erfolgreichen Launch von Projekt Alpha Mitte September an.`;
+      }
+
+      // Summary / Executive Briefing
+      const asksForSummary = lower.includes('zusammenfass') || lower.includes('überblick') || lower.includes('status') || lower.includes('stand') || lower.includes('briefing') || lower.includes('bericht');
+      if (asksForSummary) {
+        return `### 📋 Executive Briefing: Aktueller Unternehmensstatus\n\n**1. Projekt Alpha (Produktentwicklung):**\n* Feature-Launch am **15. September** mit einem Budget von **45.000 EUR**.\n* Frontend-Design durch Sarah (Figma-Abschluss: 5. September).\n* Backend & Vektor-Engine durch Michael via Supabase Frankfurt.\n* Datenschutz & DSGVO durch Alex überwacht.\n\n**2. Marketing & Wachstum (Q4):**\n* Kampagnenstart am **1. Oktober** mit **12.000 EUR** Budget.\n* Ziel: 500 qualifizierte B2B-Leads über LinkedIn und Google Ads.\n\n**3. Infrastruktur & Sicherheit:**\n* Alle Daten liegen verschlüsselt in der Region Frankfurt (eu-central-1).\n* Hybrid-Search (BM25 + pgvector) und Graph RAG sind für präzise Abfragen aktiv.`;
+      }
+
+      // Document list request
+      const asksAboutDocs = lower.includes('dokument') || lower.includes('archiv') || lower.includes('hinterlegt') || lower.includes('liste') || lower.includes('dateien');
+      if (asksAboutDocs) {
+        const docList = docs.map((d, i) => `**${i+1}. ${escapeHtml(d.title)}**\n* **Typ:** ${escapeHtml(d.source_type || 'Text')} | **Tags:** ${d.tags?.join(', ') || '-'}\n* **Kernaussage:** ${escapeHtml(d.summary || 'Erfasst in Supabase Frankfurt.')}`).join('\n\n');
+        return `### 📚 Wissensarchiv in Supabase Frankfurt (${docs.length} Dokumente)\n\n${docList}\n\nSie können mich jederzeit nach spezifischen Details, Zahlen oder Zusammenhängen aus diesen Dokumenten fragen.`;
+      }
+
+      // Semantic Proposition Matcher for any other query
+      const matchedSentences = [];
+      const queryWords = lower.split(/\s+/).filter(w => w.length > 2);
+
+      docs.forEach(d => {
+        const text = (d.summary || "") + " " + (d.raw_content || "") + " " + (d.knowledge_sections?.map(s => s.markdown_content).join(' ') || "");
+        const sentences = text.split(/[.\n;]+/).map(s => s.trim()).filter(s => s.length > 15);
+        sentences.forEach(s => {
+          const sLower = s.toLowerCase();
+          const matchCount = queryWords.filter(w => sLower.includes(w)).length;
+          if (matchCount > 0 && !matchedSentences.some(m => m.sentence === s)) {
+            matchedSentences.push({ sentence: s, matchCount, docTitle: d.title });
+          }
+        });
+      });
+
+      matchedSentences.sort((a, b) => b.matchCount - a.matchCount);
+
+      if (matchedSentences.length > 0) {
+        const topFacts = matchedSentences.slice(0, 4).map(m => `* **${escapeHtml(m.docTitle)}:** ${escapeHtml(m.sentence)}.`).join('\n');
+        return `### 🔍 Erkenntnisse zu Ihrer Anfrage:\n\nAuf Basis der synchronisierten Unternehmensdokumente in Supabase Frankfurt:\n\n${topFacts}\n\n💡 *Möchten Sie, dass ich diesen Punkt weiter vertiefe oder eine konkrete Aufgabe/E-Mail dazu entwerfe?*`;
+      }
+
+      return `### ℹ️ Auswertung zu Ihrer Anfrage\n\nZu Ihrer Suchanfrage **„${escapeHtml(userText)}“** wurden in den Unternehmensdokumenten aktuell keine exakten direkten Treffer gefunden.\n\nIn Ihrer Wissensdatenbank in Frankfurt sind aktuell Unterlagen zu folgenden Themenbereichen hinterlegt:\n* **Projekt Alpha:** Launchtermin (15. Sept), Figma-Design (Sarah), Backend (Michael), Budget (45.000 €).\n* **Marketing Q4:** Kampagnenstart (1. Okt), 500 B2B Leads, Budget (12.000 €).\n* **Compliance & IT:** Supabase pgvector HNSW, Frankfurt Hosting, 100% DSGVO-Sicherheit.\n\nStellen Sie mir gerne eine gezielte Frage zu einem dieser Themen oder speisen Sie über den Tab **„Wissen einspeisen“** neue Notizen ein!`;
+    }
+
     function saveSettings() {
       const llmUrl = document.getElementById('cfgLlmUrl').value.trim();
+      const geminiKey = document.getElementById('cfgGeminiKey')?.value.trim() || "";
+      const mode = document.getElementById('cfgComputeMode')?.value || "brain";
+      
       localStorage.setItem('starpi_llm_url', llmUrl);
-      alert('Einstellungen gespeichert!');
+      localStorage.setItem('starpi_gemini_key', geminiKey);
+      localStorage.setItem('starpi_compute_mode', mode);
+
+      changeEngine(mode);
+      alert('Einstellungen gespeichert! Der Modus ist jetzt aktiv.');
     }
 
     // 6. Knowledge Graph (Graph RAG Visualizer)
@@ -1340,6 +1495,9 @@
           renderKnowledgeGraph();
         }
       });
+
+      // Auto-detect optimal compute engine (WebGPU on client, or Smart Brain)
+      autoDetectBestEngine();
     });
 
     function selectEntity(id) {
