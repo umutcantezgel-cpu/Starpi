@@ -467,13 +467,13 @@
               <span class="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center text-[10px]">1</span>
               Auf dem Mac MLX-Server starten:
             </p>
-            <pre class="text-[11px] text-emerald-400 font-mono bg-black/40 p-2 rounded border border-surface-border overflow-x-auto">python -m mlx_lm.server --model /Users/umurey/LocalModels/Qwen3.8-27B-Uncensored-MLX/4-bit --port 8000</pre>
+            <pre class="text-[11px] text-emerald-400 font-mono bg-black/40 p-2 rounded border border-surface-border overflow-x-auto">python -m mlx_lm server --model /Users/umurey/LocalModels/Qwen3.8-27B-Uncensored-MLX/4-bit --port 8000</pre>
 
             <p class="text-slate-400 font-semibold flex items-center gap-1.5 pt-1">
               <span class="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center text-[10px]">2</span>
-              Kostenlosen Tunnel starten (Cloudflare / Tailscale):
+              Kostenlosen HTTPS-Tunnel starten (Cloudflare oder direkt via npx):
             </p>
-            <pre class="text-[11px] text-brand-400 font-mono bg-black/40 p-2 rounded border border-surface-border overflow-x-auto">cloudflared tunnel --url http://localhost:8000</pre>
+            <pre class="text-[11px] text-brand-400 font-mono bg-black/40 p-2 rounded border border-surface-border overflow-x-auto">npx localtunnel --port 8000  # oder: cloudflared tunnel --url http://localhost:8000</pre>
 
             <p class="text-slate-400 font-semibold flex items-center gap-1.5 pt-1">
               <span class="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center text-[10px]">3</span>
@@ -1071,7 +1071,7 @@
           } catch (localErr) {
             console.warn("Local server connection failed:", localErr);
             removeLoading(loadingId);
-            appendMessage('assistant', `⚠️ **Lokaler Server nicht erreichbar (${llmUrl}):**\nBitte stellen Sie sicher, dass Ihr MLX-Server im Terminal läuft:\n\`\`\`bash\npython -m mlx_lm.server --model /Users/umurey/LocalModels/Qwen3.8-27B-Uncensored-MLX/4-bit --port 8000\n\`\`\`\n*Oder schalten Sie oben rechts auf **„⚡ In-Browser WebGPU“** um, damit das Modell sofort in Ihrem Browser rechnet!*`);
+            appendMessage('assistant', `⚠️ **Lokaler Server nicht erreichbar (${llmUrl}):**\nBitte stellen Sie sicher, dass Ihr MLX-Server im Terminal läuft:\n\`\`\`bash\npython -m mlx_lm server --model /Users/umurey/LocalModels/Qwen3.8-27B-Uncensored-MLX/4-bit --port 8000\n\`\`\`\n*Oder schalten Sie oben rechts auf **„⚡ In-Browser WebGPU“** um, damit das Modell sofort in Ihrem Browser rechnet!*`);
             return;
           }
         }
