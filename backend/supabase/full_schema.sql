@@ -195,6 +195,7 @@ CREATE TABLE IF NOT EXISTS public.knowledge_entities (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     entity_type TEXT NOT NULL, -- 'person', 'project', 'budget', 'technology', 'date', 'topic'
+    description TEXT,
     metadata JSONB DEFAULT '{}'::JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(name, entity_type)
