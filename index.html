@@ -127,7 +127,7 @@
         </div>
         <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Live</span>
       </div>
-      <p class="text-[11px] text-slate-400 font-mono truncate" id="dbProjectLabel">behnltoogscnbjhvixmw</p>
+      <p class="text-[11px] text-slate-400 font-mono truncate" id="dbProjectLabel">dlelapwmaknujeewcssf (Frankfurt)</p>
       <div class="mt-2 text-[11px] text-slate-400 flex justify-between">
         <span>Vektor-Index:</span>
         <span class="text-slate-300 font-medium">pgvector (HNSW)</span>
@@ -291,33 +291,52 @@
           <p class="text-xs text-slate-400">Verbindungsdaten zu Ihrer Supabase-Instanz und dem Cloud-Inferenz-Server (AWS EC2 / RunPod / Mac).</p>
         </div>
 
+        <!-- BYOC Architecture Card -->
+        <div class="bg-gradient-to-r from-brand-600/20 to-indigo-600/20 border border-brand-500/30 rounded-2xl p-5 space-y-3">
+          <div class="flex items-center gap-2 text-brand-400 font-bold text-sm">
+            <i data-lucide="cpu" class="w-5 h-5"></i>
+            <span>Architektur: Vercel + Supabase Brain + Lokale Rechenpower</span>
+          </div>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            <strong>So funktioniert es:</strong> Vercel stellt das globale Web-Gateway (Frontend) bereit, Supabase dient als zentrales Gehirn (Dokumentenarchiv & pgvector), und die <strong>KI-Rechenkapazität wird direkt vom Rechner des Nutzers erbracht</strong> (z. B. Mac M4 Pro GPU). Dadurch entstehen <strong>0,00 € Cloud-Kosten</strong> für Inferenz!
+          </p>
+        </div>
+
         <div class="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-4">
           <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
             <i data-lucide="database" class="w-4 h-4 text-emerald-400"></i>
-            Supabase Cloud Datenbank
+            Dedizierte Supabase Cloud-Datenbank
           </h3>
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Supabase URL</label>
-            <input type="text" id="cfgSupabaseUrl" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-300" readonly>
+            <label class="block text-xs text-slate-400 mb-1">Supabase URL (Frankfurt eu-central-1)</label>
+            <input type="text" id="cfgSupabaseUrl" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-300 font-mono" readonly>
           </div>
           <div>
             <label class="block text-xs text-slate-400 mb-1">Supabase Anon Key</label>
-            <input type="password" id="cfgSupabaseKey" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-300" readonly>
+            <input type="password" id="cfgSupabaseKey" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-300 font-mono" readonly>
           </div>
         </div>
 
         <div class="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-4">
           <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
-            <i data-lucide="server" class="w-4 h-4 text-brand-400"></i>
-            KI-Inferenz-Server (AWS Cloud oder Lokal)
+            <i data-lucide="cpu" class="w-4 h-4 text-brand-400"></i>
+            Inferenz & Rechenkapazität (Client / Lokal)
           </h3>
           <div>
-            <label class="block text-xs text-slate-400 mb-1">LLM API Base URL</label>
-            <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="z. B. http://54.x.x.x:8000/v1 oder http://localhost:8000/v1" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none">
-            <p class="text-[11px] text-slate-500 mt-1">Hier können Sie die öffentliche IP Ihres AWS-Servers eintragen, sobald dieser über den Comet-Prompt gestartet wurde.</p>
+            <label class="block text-xs text-slate-400 mb-1">Inferenz-Modus</label>
+            <select id="cfgComputeMode" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none">
+              <option value="local">💻 Lokaler Rechner des Nutzers (Mac M4 Pro / MLX / Ollama via Localhost oder Tunnel)</option>
+              <option value="supabase_rag">🧠 Supabase Smart Brain (RAG-Direktsuche ohne GPU-Kosten)</option>
+              <option value="cloud">☁️ Cloud GPU (AWS EC2 / RunPod vLLM)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Lokaler oder Cloud Endpunkt (LLM Base URL)</label>
+            <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="http://localhost:8000/v1 oder https://my-mac-tunnel.trycloudflare.com/v1" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none font-mono">
+            <p class="text-[11px] text-slate-500 mt-1">Geben Sie hier die URL Ihres lokalen Modells (MLX/Ollama) oder Ihres Cloud-Servers ein.</p>
           </div>
           <div class="pt-2 flex justify-end">
-            <button onclick="saveSettings()" class="bg-surface-border hover:bg-slate-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition">
+            <button onclick="saveSettings()" class="bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-xl transition shadow-md shadow-brand-500/20">
               Einstellungen speichern
             </button>
           </div>
@@ -344,10 +363,10 @@
 
   <!-- Application Logic -->
   <script>
-    // 1. Supabase Initialization
+    // 1. Supabase Initialization (Dedicated Starpi-Enterprise-Brain in Frankfurt eu-central-1)
     const SUPABASE_CONFIG = {
-      url: "https://behnltoogscnbjhvixmw.supabase.co",
-      anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlaG5sdG9vZ3NjbmJqaHZpeG13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NzMwMTgsImV4cCI6MjA5NDM0OTAxOH0.NNdRrOYLzucKuQfz4bVPPWOhYvgVswDiEtvCrtphF0I"
+      url: "https://dlelapwmaknujeewcssf.supabase.co",
+      anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsZWxhcHdtYWtudWplZXdjc3NmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1NDIwMTksImV4cCI6MjEwNDExODAxOX0.QU8ZXJ96_r0M0mC9F5QtM_jOzqECKugLspApgWxjrrI"
     };
 
     const sb = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
