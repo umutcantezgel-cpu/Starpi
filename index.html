@@ -1,16 +1,16 @@
 <!DOCTYPE html>
-<html lang="de" class="dark">
+<html lang="de" class="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Starpi — Enterprise Brain & Knowledge Assistant</title>
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#020617">
+  <meta name="theme-color" content="#FFCA00">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Starpi">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✦</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2226%22 fill=%22%23ffffff%22/><text x=%2250%%22 y=%2254%%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2268%22 fill=%22%23ffca00%22>✦</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -28,22 +28,36 @@
       theme: {
         extend: {
           fontFamily: {
-            sans: ['Plus Jakarta Sans', 'sans-serif'],
+            sans: ['Plus Jakarta Sans', 'Inter', 'sans-serif'],
           },
           colors: {
             brand: {
-              50: '#f0f9ff',
-              400: '#38bdf8',
-              500: '#0ea5e9',
-              600: '#0284c7',
+              50: '#fffdf0',
+              100: '#fef9c3',
+              200: '#fef08a',
+              300: '#fde047',
+              400: '#facc15',
+              500: '#ffca00', // Signature Agency Yellow from webdesignwetzlar.de
+              600: '#e5b500',
+              700: '#b45309',
+              800: '#854d0e',
+              900: '#451a03',
             },
             surface: {
-              base: '#080a0f',
-              card: '#10131a',
-              cardHover: '#161a24',
-              border: '#212634',
-              input: '#121620'
+              base: '#f8fafc',
+              card: '#ffffff',
+              cardHover: '#fefce8',
+              border: '#e2e8f0',
+              borderHover: '#fcd34d',
+              input: '#ffffff'
             }
+          },
+          boxShadow: {
+            'subtle': '0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px 0 rgba(0, 0, 0, 0.02)',
+            'card': '0 4px 20px -2px rgba(15, 23, 42, 0.04), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
+            'card-hover': '0 12px 30px -4px rgba(255, 202, 0, 0.18), 0 4px 12px -2px rgba(15, 23, 42, 0.04)',
+            'yellow': '0 4px 14px 0 rgba(255, 202, 0, 0.38)',
+            'yellow-lg': '0 8px 24px 0 rgba(255, 202, 0, 0.45)'
           }
         }
       }
@@ -51,8 +65,8 @@
   </script>
   <style>
     body {
-      background-color: #080a0f;
-      color: #f1f5f9;
+      background-color: #f8fafc;
+      color: #1e293b;
       font-family: 'Plus Jakarta Sans', sans-serif;
     }
     .custom-scrollbar::-webkit-scrollbar {
@@ -60,108 +74,112 @@
       height: 6px;
     }
     .custom-scrollbar::-webkit-scrollbar-track {
-      background: #0d1117;
+      background: #f1f5f9;
     }
     .custom-scrollbar::-webkit-scrollbar-thumb {
-      background: #212634;
+      background: #cbd5e1;
       border-radius: 9999px;
     }
-    .prose-custom h1 { font-size: 1.4rem; font-weight: 700; margin-top: 1rem; margin-bottom: 0.5rem; color: #38bdf8; }
-    .prose-custom h2 { font-size: 1.2rem; font-weight: 600; margin-top: 0.8rem; margin-bottom: 0.4rem; color: #e2e8f0; }
-    .prose-custom h3 { font-size: 1.05rem; font-weight: 600; margin-top: 0.6rem; color: #cbd5e1; }
-    .prose-custom p { margin-bottom: 0.6rem; line-height: 1.6; }
-    .prose-custom ul { list-style-type: disc; margin-left: 1.4rem; margin-bottom: 0.6rem; }
-    .prose-custom ol { list-style-type: decimal; margin-left: 1.4rem; margin-bottom: 0.6rem; }
-    .prose-custom pre { background: #0c0e14; border: 1px solid #212634; border-radius: 0.5rem; padding: 0.8rem; margin: 0.6rem 0; overflow-x: auto; font-size: 0.85rem; }
-    .prose-custom code { background: #161a24; padding: 0.15rem 0.35rem; border-radius: 0.25rem; font-size: 0.85rem; color: #38bdf8; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+    .prose-custom h1 { font-size: 1.35rem; font-weight: 800; margin-top: 1rem; margin-bottom: 0.5rem; color: #0f172a; }
+    .prose-custom h2 { font-size: 1.15rem; font-weight: 700; margin-top: 0.8rem; margin-bottom: 0.4rem; color: #1e293b; }
+    .prose-custom h3 { font-size: 1.02rem; font-weight: 700; margin-top: 0.6rem; color: #334155; }
+    .prose-custom p { margin-bottom: 0.6rem; line-height: 1.65; color: #334155; }
+    .prose-custom ul { list-style-type: disc; margin-left: 1.4rem; margin-bottom: 0.6rem; color: #334155; }
+    .prose-custom ol { list-style-type: decimal; margin-left: 1.4rem; margin-bottom: 0.6rem; color: #334155; }
+    .prose-custom pre { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.75rem; padding: 0.85rem; margin: 0.6rem 0; overflow-x: auto; font-size: 0.82rem; color: #0f172a; }
+    .prose-custom code { background: #fef3c7; color: #78350f; padding: 0.15rem 0.35rem; border-radius: 0.3rem; font-size: 0.82rem; font-weight: 600; }
     .prose-custom table { width: 100%; border-collapse: collapse; margin: 0.8rem 0; font-size: 0.85rem; }
-    .prose-custom th, .prose-custom td { border: 1px solid #212634; padding: 0.4rem 0.6rem; text-align: left; }
-    .prose-custom th { background: #121620; font-weight: 600; color: #94a3b8; }
+    .prose-custom th, .prose-custom td { border: 1px solid #e2e8f0; padding: 0.5rem 0.7rem; text-align: left; }
+    .prose-custom th { background: #f1f5f9; font-weight: 700; color: #0f172a; }
+    .prose-custom blockquote { border-left: 3px solid #ffca00; padding-left: 0.85rem; margin: 0.6rem 0; color: #475569; background: #fffbeb; padding-top: 0.4rem; padding-bottom: 0.4rem; border-radius: 0 0.5rem 0.5rem 0; }
   </style>
 </head>
 <body class="h-screen w-screen flex overflow-hidden antialiased select-none">
 
   <!-- Mobile Menu Backdrop -->
-  <div id="mobileBackdrop" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden md:hidden" onclick="toggleSidebar()"></div>
+  <div id="mobileBackdrop" class="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40 hidden md:hidden" onclick="toggleSidebar()"></div>
 
   <!-- Sidebar -->
-  <aside id="sidebar" class="fixed md:static inset-y-0 left-0 w-72 bg-surface-card border-r border-surface-border z-50 flex flex-col transition-transform duration-300 -translate-x-full md:translate-x-0">
+  <aside id="sidebar" class="fixed md:static inset-y-0 left-0 w-72 bg-white border-r border-slate-200 z-50 flex flex-col transition-transform duration-300 -translate-x-full md:translate-x-0 shadow-sm">
     <!-- Brand Header -->
-    <div class="h-16 px-5 flex items-center justify-between border-b border-surface-border">
+    <div class="h-16 px-5 flex items-center justify-between border-b border-slate-200 bg-white">
       <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/20 text-white font-bold text-lg tracking-wider">
+        <div class="w-9 h-9 rounded-xl bg-[#FFCA00] flex items-center justify-center shadow-sm shadow-amber-500/30 text-slate-950 font-extrabold text-lg tracking-wider">
           ✦
         </div>
         <div>
-          <div class="font-bold text-base tracking-tight text-white flex items-center gap-1.5">
+          <div class="font-extrabold text-base tracking-tight text-slate-900 flex items-center gap-1.5">
             Starpi
-            <span class="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-400 border border-brand-500/20">Brain</span>
+            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">Brain</span>
           </div>
-          <p class="text-[11px] text-slate-400">Enterprise Knowledge</p>
+          <p class="text-[11px] font-medium text-slate-500">Enterprise Knowledge</p>
         </div>
       </div>
-      <button onclick="toggleSidebar()" class="md:hidden text-slate-400 hover:text-white p-1">
+      <button onclick="toggleSidebar()" class="md:hidden text-slate-400 hover:text-slate-800 p-1">
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
     </div>
 
     <!-- Navigation Tabs -->
-    <nav class="p-3 space-y-1">
-      <button onclick="switchTab('chat')" id="nav-chat" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all bg-brand-500/15 text-brand-400 border border-brand-500/30">
-        <i data-lucide="message-square" class="w-4 h-4"></i>
+    <nav class="p-3 space-y-1 bg-white">
+      <button onclick="switchTab('chat')" id="nav-chat" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all bg-amber-50 text-amber-950 border border-amber-300/80 shadow-xs">
+        <i data-lucide="message-square" class="w-4 h-4 text-amber-600"></i>
         <span>Brain Chat</span>
       </button>
-      <button onclick="switchTab('library')" id="nav-library" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-surface-cardHover">
+      <button onclick="switchTab('library')" id="nav-library" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-600 hover:text-slate-950 hover:bg-slate-100/70">
         <i data-lucide="library" class="w-4 h-4"></i>
         <span>Wissensarchiv</span>
       </button>
-      <button onclick="switchTab('graph')" id="nav-graph" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-surface-cardHover">
+      <button onclick="switchTab('graph')" id="nav-graph" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-600 hover:text-slate-950 hover:bg-slate-100/70">
         <i data-lucide="network" class="w-4 h-4"></i>
         <span>Wissensgraph</span>
       </button>
-      <button onclick="switchTab('ingest')" id="nav-ingest" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-surface-cardHover">
+      <button onclick="switchTab('ingest')" id="nav-ingest" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-600 hover:text-slate-950 hover:bg-slate-100/70">
         <i data-lucide="sparkles" class="w-4 h-4"></i>
         <span>Wissen einspeisen</span>
       </button>
-      <button onclick="switchTab('settings')" id="nav-settings" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-slate-200 hover:bg-surface-cardHover">
+      <button onclick="switchTab('settings')" id="nav-settings" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-600 hover:text-slate-950 hover:bg-slate-100/70">
         <i data-lucide="settings-2" class="w-4 h-4"></i>
         <span>Cloud & Server</span>
       </button>
     </nav>
 
     <!-- Supabase Live Status Card -->
-    <div class="mt-auto p-4 m-3 rounded-xl bg-surface-base border border-surface-border">
+    <div class="mt-auto p-4 m-3 rounded-2xl bg-gradient-to-b from-slate-50 to-white border border-slate-200 shadow-xs">
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span class="text-xs font-semibold text-slate-300">Supabase Cloud</span>
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span class="text-xs font-bold text-slate-800">Supabase Cloud</span>
         </div>
-        <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Live</span>
+        <span class="text-[10px] uppercase font-bold font-mono px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Live</span>
       </div>
-      <p class="text-[11px] text-slate-400 font-mono truncate" id="dbProjectLabel">dlelapwmaknujeewcssf (Frankfurt)</p>
-      <div class="mt-2 text-[11px] text-slate-400 flex justify-between">
+      <p class="text-[11px] text-slate-500 font-mono truncate" id="dbProjectLabel">dlelapwmaknujeewcssf (Frankfurt)</p>
+      <div class="mt-2 text-[11px] text-slate-500 flex justify-between">
         <span>Vektor-Index:</span>
-        <span class="text-slate-300 font-medium">pgvector (HNSW)</span>
+        <span class="text-slate-800 font-semibold">pgvector (HNSW)</span>
       </div>
     </div>
   </aside>
 
   <!-- Main Content Area -->
-  <main class="flex-1 flex flex-col h-full overflow-hidden bg-surface-base">
+  <main class="flex-1 flex flex-col h-full overflow-hidden bg-slate-50/50">
     <!-- Top Header Bar -->
-    <header class="h-16 px-4 md:px-6 flex items-center justify-between border-b border-surface-border bg-surface-card/60 backdrop-blur-md">
+    <header class="h-16 px-4 md:px-6 flex items-center justify-between border-b border-slate-200 bg-white/90 backdrop-blur-md shadow-xs">
       <div class="flex items-center gap-3">
-        <button onclick="toggleSidebar()" class="md:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-surface-cardHover">
+        <button onclick="toggleSidebar()" class="md:hidden p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100">
           <i data-lucide="menu" class="w-5 h-5"></i>
         </button>
-        <h1 id="pageTitle" class="text-base md:text-lg font-bold text-white tracking-tight flex items-center gap-2">
+        <h1 id="pageTitle" class="text-base md:text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
           Brain Chat
         </h1>
       </div>
       <div class="flex items-center gap-2">
-        <div class="flex items-center gap-1.5 bg-surface-input border border-surface-border rounded-lg px-2 py-1 text-xs">
-          <span class="w-2 h-2 rounded-full bg-emerald-400" id="engineStatusDot"></span>
-          <select id="engineSelector" onchange="changeEngine(this.value)" class="bg-transparent text-slate-300 text-xs focus:outline-none cursor-pointer">
+        <div class="flex items-center gap-1.5 bg-white border border-slate-200 shadow-xs rounded-xl px-2.5 py-1.5 text-xs">
+          <span class="w-2 h-2 rounded-full bg-emerald-500" id="engineStatusDot"></span>
+          <select id="engineSelector" onchange="changeEngine(this.value)" class="bg-transparent text-slate-800 font-medium text-xs focus:outline-none cursor-pointer">
             <option value="council" selected>🧠 Rat der KIs (Ultrathink / Deepthink Max · Standard)</option>
             <option value="cluster_a">⚡ Ultra-Inferenz (Primärer Hochleistungs-Cluster)</option>
             <option value="cluster_b">🌐 Redundanz-Inferenz (Sekundärer Cluster)</option>
@@ -169,7 +187,7 @@
             <option value="local">💻 Privater Rechner-Knoten (Lokal/P2P)</option>
           </select>
         </div>
-        <button onclick="switchTab('ingest')" class="flex items-center gap-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 rounded-lg shadow-sm transition">
+        <button onclick="switchTab('ingest')" class="flex items-center gap-1.5 text-xs font-bold bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 px-3.5 py-2 rounded-xl shadow-sm hover:shadow-yellow transition">
           <i data-lucide="plus" class="w-3.5 h-3.5"></i>
           <span class="hidden sm:inline">Neues Wissen</span>
         </button>
@@ -177,12 +195,12 @@
     </header>
 
     <!-- WebGPU Loading Banner -->
-    <div id="webgpuProgressContainer" class="hidden px-4 py-2.5 bg-brand-600/15 border-b border-brand-500/30 flex items-center justify-between text-xs text-brand-300">
+    <div id="webgpuProgressContainer" class="hidden px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center justify-between text-xs text-amber-900">
       <div class="flex items-center gap-2">
-        <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-brand-400"></i>
+        <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-amber-600"></i>
         <span id="webgpuProgressText">Initialisiere In-Browser WebGPU Modell auf Ihrer GPU...</span>
       </div>
-      <span id="webgpuPercentText" class="font-mono font-bold text-brand-400">0%</span>
+      <span id="webgpuPercentText" class="font-mono font-bold text-amber-700">0%</span>
     </div>
 
     <!-- ========================================== -->
@@ -190,33 +208,33 @@
     <!-- ========================================== -->
     <section id="tab-chat" class="flex-1 flex flex-col overflow-hidden">
       <!-- AI Capacity & Power Tier Control Bar (High / Medium / Low / Auto) -->
-      <div class="px-3.5 py-2.5 bg-surface-card/80 border-b border-surface-border flex flex-wrap items-center justify-between gap-2.5 text-xs select-none backdrop-blur-md">
+      <div class="px-3.5 py-2.5 bg-white/90 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2.5 text-xs select-none backdrop-blur-md shadow-xs">
         <div class="flex items-center gap-2 flex-wrap">
           <!-- Device detection indicator -->
-          <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-base border border-surface-border text-slate-300 font-mono text-[11px]" title="Automatisch erkanntes Endgerät">
-            <i data-lucide="smartphone" id="deviceTypeIcon" class="w-3.5 h-3.5 text-brand-400"></i>
+          <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 font-mono text-[11px]" title="Automatisch erkanntes Endgerät">
+            <i data-lucide="smartphone" id="deviceTypeIcon" class="w-3.5 h-3.5 text-amber-600"></i>
             <span id="detectedDeviceText">Gerät: Mobil</span>
           </div>
 
-          <div class="h-4 w-px bg-surface-border hidden sm:block"></div>
+          <div class="h-4 w-px bg-slate-200 hidden sm:block"></div>
 
           <!-- Tier Segment Control -->
-          <div class="flex items-center gap-1 bg-surface-base p-1 rounded-xl border border-surface-border">
-            <span class="text-[11px] text-slate-400 font-medium px-1.5 hidden md:inline">KI-Kapazität:</span>
-            <button type="button" onclick="selectTier('auto')" id="tierBtn-auto" class="tier-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-brand-500 text-white shadow-sm transition flex items-center gap-1" title="Erkennt automatisch das optimale Modell">
-              <i data-lucide="sparkles" class="w-3 h-3 text-amber-300"></i>
+          <div class="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200">
+            <span class="text-[11px] text-slate-500 font-medium px-1.5 hidden md:inline">KI-Kapazität:</span>
+            <button type="button" onclick="selectTier('auto')" id="tierBtn-auto" class="tier-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-[#FFCA00] text-slate-950 shadow-xs transition flex items-center gap-1" title="Erkennt automatisch das optimale Modell">
+              <i data-lucide="sparkles" class="w-3 h-3 text-amber-900"></i>
               <span>Auto</span>
             </button>
-            <button type="button" onclick="selectTier('low')" id="tierBtn-low" class="tier-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 transition flex items-center gap-1" title="Low: Ultraschnell & minimaler RAM-Bedarf (Kompakt-Inferenz)">
-              <i data-lucide="zap" class="w-3 h-3 text-emerald-400"></i>
+            <button type="button" onclick="selectTier('low')" id="tierBtn-low" class="tier-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white/80 transition flex items-center gap-1" title="Low: Ultraschnell & minimaler RAM-Bedarf (Kompakt-Inferenz)">
+              <i data-lucide="zap" class="w-3 h-3 text-emerald-600"></i>
               <span>Low (Eco)</span>
             </button>
-            <button type="button" onclick="selectTier('medium')" id="tierBtn-medium" class="tier-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 transition flex items-center gap-1" title="Medium: Ausgewogene Leistung & hohe Präzision">
-              <i data-lucide="scale" class="w-3 h-3 text-sky-400"></i>
+            <button type="button" onclick="selectTier('medium')" id="tierBtn-medium" class="tier-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white/80 transition flex items-center gap-1" title="Medium: Ausgewogene Leistung & hohe Präzision">
+              <i data-lucide="scale" class="w-3 h-3 text-sky-600"></i>
               <span>Medium</span>
             </button>
-            <button type="button" onclick="selectTier('high')" id="tierBtn-high" class="tier-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 transition flex items-center gap-1" title="High: Maximale Intelligenz & Deepthink Reasoning">
-              <i data-lucide="brain-circuit" class="w-3 h-3 text-indigo-400"></i>
+            <button type="button" onclick="selectTier('high')" id="tierBtn-high" class="tier-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white/80 transition flex items-center gap-1" title="High: Maximale Intelligenz & Deepthink Reasoning">
+              <i data-lucide="brain-circuit" class="w-3 h-3 text-indigo-600"></i>
               <span>High (Max)</span>
             </button>
           </div>
@@ -224,11 +242,11 @@
 
         <!-- Right: Memory / VRAM Monitor & Unload Button -->
         <div class="flex items-center gap-2">
-          <div id="vramStatusBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-base border border-surface-border text-[11px] text-slate-400 font-mono">
-            <span class="w-1.5 h-1.5 rounded-full bg-slate-500" id="vramStatusDot"></span>
+          <div id="vramStatusBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-mono">
+            <span class="w-1.5 h-1.5 rounded-full bg-slate-400" id="vramStatusDot"></span>
             <span id="vramStatusText">VRAM: 0 MB belegt</span>
           </div>
-          <button type="button" onclick="unloadCurrentWebGPU(true)" id="btnUnloadWebgpu" class="hidden text-[11px] font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 px-2.5 py-1 rounded-lg transition flex items-center gap-1" title="Gibt 100% des Grafikkarten- und Arbeitsspeichers sofort frei">
+          <button type="button" onclick="unloadCurrentWebGPU(true)" id="btnUnloadWebgpu" class="hidden text-[11px] font-medium text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1 rounded-lg transition flex items-center gap-1" title="Gibt 100% des Grafikkarten- und Arbeitsspeichers sofort frei">
             <i data-lucide="trash-2" class="w-3 h-3"></i>
             <span>RAM leeren</span>
           </button>
@@ -236,21 +254,21 @@
       </div>
 
       <!-- Message List -->
-      <div id="chatMessages" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar select-text">
+      <div id="chatMessages" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar select-text bg-gradient-to-b from-white via-slate-50/40 to-amber-50/15">
         <!-- Assistant Welcome Message -->
         <div class="flex items-start gap-3 max-w-3xl">
-          <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-600 to-indigo-500 flex-shrink-0 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-brand-500/20">
+          <div class="w-8 h-8 rounded-xl bg-[#FFCA00] flex-shrink-0 flex items-center justify-center text-slate-950 text-sm font-extrabold shadow-sm shadow-amber-500/20">
             ✦
           </div>
-          <div class="flex-1 bg-surface-card border border-surface-border rounded-2xl p-4 text-slate-200 text-sm leading-relaxed shadow-sm">
-            <p class="font-semibold text-white mb-1">Willkommen bei Starpi — Ihrem privaten Enterprise-Brain!</p>
-            <p>Ich habe Zugriff auf Ihre in Supabase gespeicherten Unternehmensdokumente und Notizen. Stellen Sie mir Fragen zu Ihren Projekten, Deadlines, Budgets oder bitten Sie mich, neue Informationen aufzunehmen.</p>
+          <div class="flex-1 bg-white border border-slate-200 rounded-2xl p-5 text-slate-700 text-sm leading-relaxed shadow-card">
+            <p class="font-extrabold text-slate-950 text-base mb-1">Willkommen bei Starpi — Ihrem privaten Enterprise-Brain!</p>
+            <p class="text-slate-600">Ich habe Zugriff auf Ihre in Supabase gespeicherten Unternehmensdokumente und Notizen. Stellen Sie mir Fragen zu Ihren Projekten, Deadlines, Budgets oder bitten Sie mich, neue Informationen aufzunehmen.</p>
             
             <div class="mt-4 flex flex-wrap gap-2">
-              <button onclick="sendQuickPrompt('Wann ist der Launch von Projekt Alpha und wer leitet die Frontend-Entwicklung?')" class="text-xs bg-surface-input hover:bg-surface-border border border-surface-border text-brand-400 px-3 py-1.5 rounded-lg transition text-left">
+              <button onclick="sendQuickPrompt('Wann ist der Launch von Projekt Alpha und wer leitet die Frontend-Entwicklung?')" class="text-xs bg-amber-50/70 hover:bg-amber-100/90 border border-amber-200/90 text-amber-950 font-semibold px-3.5 py-2 rounded-xl transition text-left shadow-xs">
                 🔍 "Launch & Aufgaben für Projekt Alpha?"
               </button>
-              <button onclick="sendQuickPrompt('Welche Dokumente und Richtlinien sind aktuell im Brain hinterlegt?')" class="text-xs bg-surface-input hover:bg-surface-border border border-surface-border text-brand-400 px-3 py-1.5 rounded-lg transition text-left">
+              <button onclick="sendQuickPrompt('Welche Dokumente und Richtlinien sind aktuell im Brain hinterlegt?')" class="text-xs bg-amber-50/70 hover:bg-amber-100/90 border border-amber-200/90 text-amber-950 font-semibold px-3.5 py-2 rounded-xl transition text-left shadow-xs">
                 📚 "Welche Dokumente sind im Brain hinterlegt?"
               </button>
             </div>
@@ -259,28 +277,28 @@
       </div>
 
       <!-- Input Bar -->
-      <div class="p-3 md:p-4 border-t border-surface-border bg-surface-card/40 backdrop-blur-md">
-        <form onsubmit="handleChatSubmit(event)" class="max-w-4xl mx-auto flex flex-col bg-surface-input border border-surface-border focus-within:border-brand-500/60 rounded-2xl p-2 transition shadow-lg">
-          <div id="attachedInfo" class="hidden px-2 py-1 text-xs text-brand-400 flex items-center justify-between border-b border-surface-border mb-1">
-            <span id="attachedFileName">Datei angehängt</span>
-            <button type="button" onclick="removeAttachment()" class="hover:text-red-400"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+      <div class="p-3 md:p-4 border-t border-slate-200 bg-white/90 backdrop-blur-md">
+        <form onsubmit="handleChatSubmit(event)" class="max-w-4xl mx-auto flex flex-col bg-white border-2 border-slate-200 focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-200/40 rounded-2xl p-2 transition shadow-card">
+          <div id="attachedInfo" class="hidden px-2 py-1 text-xs text-amber-800 bg-amber-50 rounded-lg flex items-center justify-between border border-amber-200 mb-1">
+            <span id="attachedFileName" class="font-medium">Datei angehängt</span>
+            <button type="button" onclick="removeAttachment()" class="hover:text-red-600"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
           </div>
           <div class="flex items-center gap-2">
-            <label class="cursor-pointer text-slate-400 hover:text-slate-200 p-2 rounded-xl hover:bg-surface-cardHover transition" title="Datei anhängen">
+            <label class="cursor-pointer text-slate-500 hover:text-slate-800 p-2 rounded-xl hover:bg-slate-100 transition" title="Datei anhängen">
               <i data-lucide="paperclip" class="w-5 h-5"></i>
               <input type="file" id="chatFileInput" class="hidden" onchange="handleFileAttach(event)">
             </label>
-            <button type="button" id="voiceBtn" onclick="toggleVoiceInput()" class="relative text-slate-400 hover:text-brand-400 p-2 rounded-xl hover:bg-surface-cardHover transition" title="Spracheingabe aktivieren">
+            <button type="button" id="voiceBtn" onclick="toggleVoiceInput()" class="relative text-slate-500 hover:text-amber-600 p-2 rounded-xl hover:bg-slate-100 transition" title="Spracheingabe aktivieren">
               <i data-lucide="mic" class="w-5 h-5"></i>
               <span id="voicePulse" class="hidden absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
             </button>
-            <textarea id="chatInput" rows="1" placeholder="Fragen Sie das Enterprise Brain oder geben Sie Notizen ein..." class="flex-1 bg-transparent border-0 focus:ring-0 text-slate-100 text-sm placeholder-slate-500 resize-none py-2 px-1 focus:outline-none" onkeydown="handleInputKeydown(event)"></textarea>
-            <button type="submit" id="sendBtn" class="bg-brand-500 hover:bg-brand-600 disabled:opacity-40 text-white p-2 rounded-xl transition shadow-md shadow-brand-500/20">
+            <textarea id="chatInput" rows="1" placeholder="Fragen Sie das Enterprise Brain oder geben Sie Notizen ein..." class="flex-1 bg-transparent border-0 focus:ring-0 text-slate-900 text-sm placeholder-slate-400 resize-none py-2 px-1 focus:outline-none" onkeydown="handleInputKeydown(event)"></textarea>
+            <button type="submit" id="sendBtn" class="bg-[#FFCA00] hover:bg-[#E5B500] disabled:opacity-40 text-slate-950 font-bold p-2.5 rounded-xl transition shadow-yellow hover:shadow-yellow-lg">
               <i data-lucide="arrow-up" class="w-5 h-5"></i>
             </button>
           </div>
         </form>
-        <p class="text-[11px] text-center text-slate-500 mt-2">100 % private Inferenz & Supabase pgvector Cloud-Speicher</p>
+        <p class="text-[11px] text-center text-slate-500 mt-2 font-medium">100 % private Inferenz & Supabase pgvector Cloud-Speicher</p>
       </div>
     </section>
 
@@ -291,11 +309,11 @@
       <div class="max-w-5xl mx-auto w-full flex-1 flex flex-col overflow-hidden">
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
           <div>
-            <h2 class="text-lg font-bold text-white">Gespeicherte Dokumente</h2>
-            <p class="text-xs text-slate-400">Automatisch formatierte Markdown-Wissensbestände in Supabase</p>
+            <h2 class="text-xl font-extrabold text-slate-950 tracking-tight">Gespeicherte Dokumente</h2>
+            <p class="text-xs text-slate-500">Automatisch formatierte Markdown-Wissensbestände in Supabase</p>
           </div>
           <div class="flex items-center gap-2 w-full sm:w-auto">
-            <button onclick="loadDocuments()" class="p-2 rounded-lg bg-surface-card hover:bg-surface-cardHover border border-surface-border text-slate-300 transition" title="Aktualisieren">
+            <button onclick="loadDocuments()" class="p-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 shadow-xs transition" title="Aktualisieren">
               <i data-lucide="refresh-cw" class="w-4 h-4"></i>
             </button>
           </div>
@@ -303,7 +321,7 @@
 
         <!-- Document Grid -->
         <div id="docsList" class="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4 custom-scrollbar pb-6">
-          <div class="p-8 text-center text-slate-500 col-span-2">Lade Dokumente aus Supabase...</div>
+          <div class="p-8 text-center text-slate-500 col-span-2 font-medium">Lade Dokumente aus Supabase...</div>
         </div>
       </div>
     </section>
@@ -316,16 +334,16 @@
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
           <div>
             <div class="flex items-center gap-2">
-              <h2 class="text-lg font-bold text-white">Interaktiver Wissensgraph</h2>
-              <span class="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-brand-500/10 text-brand-400 border border-brand-500/20">Graph RAG</span>
+              <h2 class="text-xl font-extrabold text-slate-950 tracking-tight">Interaktiver Wissensgraph</h2>
+              <span class="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-300">Graph RAG</span>
             </div>
-            <p class="text-xs text-slate-400">Verknüpfte Entitäten (Personen, Projekte, Budgets, Technologien & Richtlinien) aus Supabase</p>
+            <p class="text-xs text-slate-500">Verknüpfte Entitäten (Personen, Projekte, Budgets, Technologien & Richtlinien) aus Supabase</p>
           </div>
           <div class="flex items-center gap-2">
-            <button onclick="loadKnowledgeGraph()" class="p-2 rounded-lg bg-surface-card hover:bg-surface-cardHover border border-surface-border text-slate-300 transition" title="Graph neu laden">
+            <button onclick="loadKnowledgeGraph()" class="p-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 shadow-xs transition" title="Graph neu laden">
               <i data-lucide="refresh-cw" class="w-4 h-4"></i>
             </button>
-            <button onclick="openNewEntityModal()" class="flex items-center gap-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white px-3 py-2 rounded-lg shadow-sm transition">
+            <button onclick="openNewEntityModal()" class="flex items-center gap-1.5 text-xs font-bold bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 px-3.5 py-2 rounded-xl shadow-xs hover:shadow-yellow transition">
               <i data-lucide="plus" class="w-3.5 h-3.5"></i>
               <span>Neue Entität</span>
             </button>
@@ -335,38 +353,38 @@
         <!-- Graph Visualization & Entity Details Grid -->
         <div class="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0 overflow-hidden">
           <!-- Graph Canvas Container -->
-          <div class="lg:col-span-2 bg-surface-card border border-surface-border rounded-2xl p-4 flex flex-col relative overflow-hidden">
-            <div class="flex flex-wrap items-center justify-between gap-2 mb-2 z-10">
-              <div class="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-sky-400 inline-block"></span> Projekt</span>
-                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-indigo-400 inline-block"></span> Person</span>
-                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block"></span> Metrik</span>
-                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span> Tech</span>
-                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-rose-400 inline-block"></span> Richtlinie</span>
+          <div class="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 flex flex-col relative overflow-hidden shadow-card">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3 z-10">
+              <div class="flex flex-wrap items-center gap-2.5 text-[11px] text-slate-700 font-medium">
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-[#FFCA00] inline-block shadow-xs"></span> Projekt</span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block shadow-xs"></span> Person</span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block shadow-xs"></span> Metrik</span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block shadow-xs"></span> Tech</span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block shadow-xs"></span> Richtlinie</span>
               </div>
               <span class="text-[10px] text-slate-500 font-mono">Interaktive Knoten</span>
             </div>
             <div class="flex-1 relative w-full h-full min-h-[350px]">
-              <canvas id="graphCanvas" class="w-full h-full rounded-xl bg-surface-base border border-surface-border cursor-pointer"></canvas>
-              <div id="graphLoading" class="absolute inset-0 bg-surface-base/80 backdrop-blur-sm flex items-center justify-center text-xs text-slate-400">
-                <i data-lucide="loader-2" class="w-5 h-5 animate-spin mr-2 text-brand-400"></i> Lade Graph aus Supabase...
+              <canvas id="graphCanvas" class="w-full h-full rounded-xl bg-slate-50/70 border border-slate-200 cursor-pointer"></canvas>
+              <div id="graphLoading" class="absolute inset-0 bg-white/80 backdrop-blur-xs flex items-center justify-center text-xs text-slate-600 font-medium">
+                <i data-lucide="loader-2" class="w-5 h-5 animate-spin mr-2 text-amber-600"></i> Lade Graph aus Supabase...
               </div>
             </div>
           </div>
 
           <!-- Entity & Relation Details Panel -->
-          <div class="bg-surface-card border border-surface-border rounded-2xl p-4 flex flex-col overflow-hidden">
-            <div class="flex items-center justify-between pb-3 border-b border-surface-border">
-              <h3 class="text-sm font-bold text-white flex items-center gap-2">
-                <i data-lucide="info" class="w-4 h-4 text-brand-400"></i>
+          <div class="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col overflow-hidden shadow-card">
+            <div class="flex items-center justify-between pb-3.5 border-b border-slate-200">
+              <h3 class="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                <i data-lucide="info" class="w-4 h-4 text-amber-600"></i>
                 <span>Entitäts-Details</span>
               </h3>
-              <span id="selectedEntityBadge" class="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-surface-input text-slate-400 border border-surface-border">Info</span>
+              <span id="selectedEntityBadge" class="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 font-bold">Info</span>
             </div>
-            <div id="entityDetailContent" class="flex-1 overflow-y-auto custom-scrollbar pt-3 text-xs space-y-4">
-              <div class="text-center py-12 text-slate-500">
-                <i data-lucide="mouse-pointer-click" class="w-8 h-8 mx-auto mb-2 opacity-40"></i>
-                <p>Klicken Sie auf einen Knoten im Wissensgraphen, um Verknüpfungen und Fakten anzuzeigen.</p>
+            <div id="entityDetailContent" class="flex-1 overflow-y-auto custom-scrollbar pt-3.5 text-xs space-y-4">
+              <div class="text-center py-12 text-slate-400">
+                <i data-lucide="mouse-pointer-click" class="w-8 h-8 mx-auto mb-2 text-slate-300"></i>
+                <p class="font-medium text-slate-500">Klicken Sie auf einen Knoten im Wissensgraphen, um Verknüpfungen und Fakten anzuzeigen.</p>
               </div>
             </div>
           </div>
@@ -380,32 +398,32 @@
     <section id="tab-ingest" class="flex-1 flex flex-col overflow-y-auto hidden p-4 md:p-6 custom-scrollbar select-text">
       <div class="max-w-3xl mx-auto w-full space-y-6">
         <div>
-          <h2 class="text-lg font-bold text-white">Informationen ins Brain einspeisen</h2>
-          <p class="text-xs text-slate-400">Unformatierte Texte, Meeting-Transkripte oder Notizen werden automatisch in sauberes Markdown gegliedert, vektorisiert und in Supabase gespeichert.</p>
+          <h2 class="text-xl font-extrabold text-slate-950 tracking-tight">Informationen ins Brain einspeisen</h2>
+          <p class="text-xs text-slate-500">Unformatierte Texte, Meeting-Transkripte oder Notizen werden automatisch in sauberes Markdown gegliedert, vektorisiert und in Supabase gespeichert.</p>
         </div>
 
         <!-- Drag & Drop Zone -->
-        <div id="dropZone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)" class="border-2 border-dashed border-surface-border hover:border-brand-500/60 rounded-2xl p-6 text-center transition cursor-pointer bg-surface-card/60 backdrop-blur-sm group">
-          <div class="w-12 h-12 rounded-xl bg-brand-500/10 text-brand-400 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
-            <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+        <div id="dropZone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)" class="border-2 border-dashed border-amber-300 hover:border-amber-500 rounded-2xl p-8 text-center transition cursor-pointer bg-amber-50/25 hover:bg-amber-50/60 group shadow-xs">
+          <div class="w-14 h-14 rounded-2xl bg-amber-100 text-amber-900 flex items-center justify-center mx-auto mb-3 group-hover:scale-105 transition-transform shadow-xs">
+            <i data-lucide="upload-cloud" class="w-7 h-7"></i>
           </div>
-          <p class="text-sm font-semibold text-white">Dateien per Drag & Drop hier ablegen</p>
-          <p class="text-xs text-slate-400 mt-1">Unterstützt .txt, .md, .json, .csv (Automatisches Auslesen & Vorbefüllen)</p>
+          <p class="text-sm font-bold text-slate-900">Dateien per Drag & Drop hier ablegen</p>
+          <p class="text-xs text-slate-500 mt-1">Unterstützt .txt, .md, .json, .csv (Automatisches Auslesen & Vorbefüllen)</p>
           <input type="file" id="ingestFileInput" class="hidden" accept=".txt,.md,.json,.csv,.log" onchange="handleFileDropUpload(event)">
-          <button type="button" onclick="document.getElementById('ingestFileInput').click()" class="mt-3 text-xs bg-surface-input hover:bg-surface-card border border-surface-border text-slate-300 px-3.5 py-1.5 rounded-lg transition font-medium">
+          <button type="button" onclick="document.getElementById('ingestFileInput').click()" class="mt-3.5 text-xs bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 px-4 py-2 rounded-xl transition font-semibold shadow-xs">
             Datei vom Gerät wählen
           </button>
         </div>
 
-        <div class="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-4">
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-card">
           <div>
-            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Titel / Quelldatei</label>
-            <input type="text" id="ingestTitle" placeholder="z. B. Q3 Marketing Strategie oder Meeting_28Aug.txt" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-brand-500">
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Titel / Quelldatei</label>
+            <input type="text" id="ingestTitle" placeholder="z. B. Q3 Marketing Strategie oder Meeting_28Aug.txt" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40 transition">
           </div>
 
           <div>
-            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Kategorie / Quelle</label>
-            <select id="ingestSourceType" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-brand-500">
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Kategorie / Quelle</label>
+            <select id="ingestSourceType" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40 transition">
               <option value="meeting_notes">Meeting Notizen / Protokoll</option>
               <option value="file">Dokument / Bericht</option>
               <option value="chat">Chat / Konversation</option>
@@ -414,25 +432,25 @@
           </div>
 
           <div>
-            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Unstrukturierter Text / Rohdaten</label>
-            <textarea id="ingestContent" rows="8" placeholder="Fügen Sie hier Ihren unformatierten Text, Besprechungsnotizen oder Absprachen ein..." class="w-full bg-surface-input border border-surface-border rounded-xl p-3 text-sm text-slate-200 focus:outline-none focus:border-brand-500 custom-scrollbar"></textarea>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Unstrukturierter Text / Rohdaten</label>
+            <textarea id="ingestContent" rows="8" placeholder="Fügen Sie hier Ihren unformatierten Text, Besprechungsnotizen oder Absprachen ein..." class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl p-3.5 text-sm text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40 custom-scrollbar transition"></textarea>
           </div>
 
           <div class="flex items-center justify-end gap-3 pt-2">
-            <button onclick="clearIngestForm()" class="px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-200">Zurücksetzen</button>
-            <button onclick="handleIngestSubmit()" id="ingestBtn" class="flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold px-5 py-2.5 rounded-xl shadow-md shadow-brand-500/20 transition">
+            <button onclick="clearIngestForm()" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 transition">Zurücksetzen</button>
+            <button onclick="handleIngestSubmit()" id="ingestBtn" class="flex items-center gap-2 bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 text-xs font-bold px-6 py-2.5 rounded-xl shadow-yellow hover:shadow-yellow-lg transition">
               <i data-lucide="sparkles" class="w-4 h-4"></i>
               <span>In Markdown strukturieren & speichern</span>
             </button>
           </div>
         </div>
 
-        <div id="ingestResultCard" class="hidden bg-surface-card border border-brand-500/30 rounded-2xl p-5 space-y-3">
-          <div class="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
-            <i data-lucide="check-circle" class="w-5 h-5"></i>
+        <div id="ingestResultCard" class="hidden bg-emerald-50 border border-emerald-200 rounded-2xl p-5 space-y-3 shadow-xs">
+          <div class="flex items-center gap-2 text-emerald-800 text-sm font-bold">
+            <i data-lucide="check-circle" class="w-5 h-5 text-emerald-600"></i>
             <span>Erfolgreich in Supabase gespeichert!</span>
           </div>
-          <div id="ingestResultPreview" class="prose-custom text-xs text-slate-300 bg-surface-base p-4 rounded-xl border border-surface-border overflow-x-auto"></div>
+          <div id="ingestResultPreview" class="prose-custom text-xs text-slate-800 bg-white p-4 rounded-xl border border-emerald-100 overflow-x-auto shadow-subtle"></div>
         </div>
       </div>
     </section>
@@ -443,44 +461,44 @@
     <section id="tab-settings" class="flex-1 flex flex-col overflow-y-auto hidden p-4 md:p-6 custom-scrollbar select-text">
       <div class="max-w-2xl mx-auto w-full space-y-6">
         <div>
-          <h2 class="text-lg font-bold text-white">Cloud- & Backend-Konfiguration</h2>
-          <p class="text-xs text-slate-400">Verbindungsdaten zu Ihrer Supabase-Instanz und dem Cloud-Inferenz-Server (AWS EC2 / RunPod / Mac).</p>
+          <h2 class="text-xl font-extrabold text-slate-950 tracking-tight">Cloud- & Backend-Konfiguration</h2>
+          <p class="text-xs text-slate-500">Verbindungsdaten zu Ihrer Supabase-Instanz und dem Cloud-Inferenz-Server (AWS EC2 / RunPod / Mac).</p>
         </div>
 
         <!-- BYOC Architecture Card -->
-        <div class="bg-gradient-to-r from-brand-600/20 to-indigo-600/20 border border-brand-500/30 rounded-2xl p-5 space-y-3">
-          <div class="flex items-center gap-2 text-brand-400 font-bold text-sm">
-            <i data-lucide="cpu" class="w-5 h-5"></i>
+        <div class="bg-gradient-to-r from-amber-50 via-amber-100/40 to-white border border-amber-200 rounded-2xl p-6 space-y-3 shadow-xs">
+          <div class="flex items-center gap-2 text-amber-950 font-extrabold text-sm">
+            <i data-lucide="cpu" class="w-5 h-5 text-amber-600"></i>
             <span>Architektur: Vercel + Supabase Brain + Lokale Rechenpower</span>
           </div>
-          <p class="text-xs text-slate-300 leading-relaxed">
+          <p class="text-xs text-slate-700 leading-relaxed">
             <strong>So funktioniert es:</strong> Vercel stellt das globale Web-Gateway (Frontend) bereit, Supabase dient als zentrales Gehirn (Dokumentenarchiv & pgvector), und die <strong>KI-Rechenkapazität wird direkt vom Rechner des Nutzers erbracht</strong> (z. B. Mac M4 Pro GPU). Dadurch entstehen <strong>0,00 € Cloud-Kosten</strong> für Inferenz!
           </p>
         </div>
 
-        <div class="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-4">
-          <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
-            <i data-lucide="database" class="w-4 h-4 text-emerald-400"></i>
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-card">
+          <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <i data-lucide="database" class="w-4 h-4 text-emerald-600"></i>
             Dedizierte Supabase Cloud-Datenbank
           </h3>
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Supabase URL (Frankfurt eu-central-1)</label>
-            <input type="text" id="cfgSupabaseUrl" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-300 font-mono" readonly>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Supabase URL (Frankfurt eu-central-1)</label>
+            <input type="text" id="cfgSupabaseUrl" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-700 font-mono" readonly>
           </div>
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Supabase Anon Key</label>
-            <input type="password" id="cfgSupabaseKey" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-300 font-mono" readonly>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Supabase Anon Key</label>
+            <input type="password" id="cfgSupabaseKey" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-700 font-mono" readonly>
           </div>
         </div>
 
-        <div class="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-4">
-          <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
-            <i data-lucide="cpu" class="w-4 h-4 text-brand-400"></i>
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-card">
+          <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <i data-lucide="cpu" class="w-4 h-4 text-amber-600"></i>
             Inferenz & Rechenkapazität (Client / Lokal)
           </h3>
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Bevorzugter Inferenz-Modus</label>
-            <select id="cfgComputeMode" onchange="changeEngine(this.value)" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none">
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Bevorzugter Inferenz-Modus</label>
+            <select id="cfgComputeMode" onchange="changeEngine(this.value)" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:border-amber-400 focus:outline-none">
               <option value="council" selected>🧠 Rat der KIs (Ultrathink / Deepthink Max · Standard)</option>
               <option value="cluster_a">⚡ Ultra-Inferenz (Primärer Hochleistungs-Cluster)</option>
               <option value="cluster_b">🌐 Redundanz-Inferenz (Sekundärer Cluster)</option>
@@ -489,8 +507,8 @@
             </select>
           </div>
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Standard KI-Kapazität (Power-Stufe)</label>
-            <select id="cfgAiTier" onchange="selectTier(this.value)" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none">
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Standard KI-Kapazität (Power-Stufe)</label>
+            <select id="cfgAiTier" onchange="selectTier(this.value)" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:border-amber-400 focus:outline-none">
               <option value="auto">✨ Smart Auto (Automatische Endgeräte-Erkennung)</option>
               <option value="low">⚡ Low (Eco & Speed · 705 MB · Minimaler RAM-Bedarf)</option>
               <option value="medium">⚖️ Medium (Balanced · 980 MB · Hohe Wissensdichte)</option>
@@ -499,8 +517,8 @@
             <p class="text-[11px] text-slate-500 mt-1">Steuert die Modellgröße und Rechenleistung. Auf Smartphones wird der Speicher automatisch geschützt.</p>
           </div>
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Spezifisches Inferenz-Profil (Optional für Experten)</label>
-            <select id="cfgWebgpuModel" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none">
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Spezifisches Inferenz-Profil (Optional für Experten)</label>
+            <select id="cfgWebgpuModel" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:border-amber-400 focus:outline-none">
               <option value="auto">⚡ Automatisch (Hardware-Erkennung & adaptive Skalierung)</option>
               <option value="llama-1b">📱 Ultra-Kompakt Inferenz (705 MB · Mobil optimiert, 0% Crash-Risiko)</option>
               <option value="qwen-1.5b">🧠 Allrounder Inferenz (980 MB · Hohe Präzision)</option>
@@ -513,119 +531,119 @@
             <p class="text-[11px] text-slate-500 mt-1">Lädt Inferenzgewichte direkt in den lokalen Browser-Cache (IndexedDB). 0 € Serverkosten.</p>
           </div>
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Lokaler Server / Tunnel Endpunkt (LLM Base URL)</label>
-            <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="http://localhost:8000/v1 oder https://my-mac-tunnel.trycloudflare.com/v1" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none font-mono">
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Lokaler Server / Tunnel Endpunkt (LLM Base URL)</label>
+            <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="http://localhost:8000/v1 oder https://my-mac-tunnel.trycloudflare.com/v1" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
             <p class="text-[11px] text-slate-500 mt-1">Geben Sie hier die URL Ihres lokalen Modells (MLX/Ollama) oder Ihres P2P-Tunnels ein.</p>
           </div>
           <div class="pt-2 flex justify-end">
-            <button onclick="saveSettings()" class="bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-xl transition shadow-md shadow-brand-500/20">
+            <button onclick="saveSettings()" class="bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 text-xs font-bold px-5 py-2.5 rounded-xl transition shadow-yellow hover:shadow-yellow-lg">
               Einstellungen speichern
             </button>
           </div>
         </div>
 
         <!-- Multi-Key Inferenz-Cluster Dashboard (10 Knoten Pool) -->
-        <div class="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-5">
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-5 shadow-card">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-brand-500/20">
-                <i data-lucide="layers" class="w-4 h-4"></i>
+              <div class="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center text-amber-950 text-sm font-bold shadow-xs">
+                <i data-lucide="layers" class="w-4 h-4 text-amber-800"></i>
               </div>
               <div>
-                <h3 class="text-sm font-bold text-slate-200">Rats-Infrastruktur: Multi-Knoten Cluster (10x Inferenz-Pool)</h3>
-                <p class="text-[11px] text-slate-400">Verteilte Rechenknoten für den Rat der KIs mit automatischem Lastabgleich und Failover</p>
+                <h3 class="text-sm font-extrabold text-slate-900">Rats-Infrastruktur: Multi-Knoten Cluster (10x Inferenz-Pool)</h3>
+                <p class="text-[11px] text-slate-500">Verteilte Rechenknoten für den Rat der KIs mit automatischem Lastabgleich und Failover</p>
               </div>
             </div>
-            <span class="text-[10px] font-mono px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-[10px] font-mono font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
               10/10 Knoten Aktiv
             </span>
           </div>
 
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <!-- Primärer Hochleistungs-Cluster Card -->
-            <div class="bg-surface-base border border-surface-border rounded-xl p-4 space-y-3">
+            <div class="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-3 shadow-subtle">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                  <span class="text-xs font-bold text-slate-200">🧠 Primärer Hochleistungs-Cluster</span>
-                  <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-300">5 Knoten</span>
+                  <span class="text-xs font-bold text-slate-900">🧠 Primärer Hochleistungs-Cluster</span>
+                  <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-300">5 Knoten</span>
                 </div>
-                <button onclick="testPrimaryCluster()" id="btnTestPrimary" class="text-[11px] font-medium text-brand-400 hover:text-brand-300 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/30 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+                <button onclick="testPrimaryCluster()" id="btnTestPrimary" class="text-[11px] font-bold text-amber-950 bg-[#FFCA00]/40 hover:bg-[#FFCA00]/70 border border-amber-300 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
                   <i data-lucide="zap" class="w-3 h-3"></i> Cluster testen
                 </button>
               </div>
-              <p class="text-[11px] text-slate-400">Hochgeschwindigkeits-Inferenz für Chain of Thought Ratsdebatten mit automatischer Knoten-Rotation.</p>
+              <p class="text-[11px] text-slate-600">Hochgeschwindigkeits-Inferenz für Chain of Thought Ratsdebatten mit automatischer Knoten-Rotation.</p>
               
               <div class="space-y-1.5 font-mono text-[11px]">
-                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Inferenz-Knoten #1: AIzaSy...9Mstg</span>
-                  <span class="text-[10px] text-emerald-400 font-sans">Aktiv</span>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Inferenz-Knoten #1: AIzaSy...9Mstg</span>
+                  <span class="text-[10px] text-emerald-700 font-sans font-bold">Aktiv</span>
                 </div>
-                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Inferenz-Knoten #2: AIzaSy...rqQA</span>
-                  <span class="text-[10px] text-emerald-400 font-sans">Aktiv</span>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Inferenz-Knoten #2: AIzaSy...rqQA</span>
+                  <span class="text-[10px] text-emerald-700 font-sans font-bold">Aktiv</span>
                 </div>
-                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Inferenz-Knoten #3: AIzaSy...5Z0QI</span>
-                  <span class="text-[10px] text-emerald-400 font-sans">Aktiv</span>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Inferenz-Knoten #3: AIzaSy...5Z0QI</span>
+                  <span class="text-[10px] text-emerald-700 font-sans font-bold">Aktiv</span>
                 </div>
-                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Inferenz-Knoten #4: AIzaSy...zt3I</span>
-                  <span class="text-[10px] text-emerald-400 font-sans">Aktiv</span>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Inferenz-Knoten #4: AIzaSy...zt3I</span>
+                  <span class="text-[10px] text-emerald-700 font-sans font-bold">Aktiv</span>
                 </div>
-                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Inferenz-Knoten #5: AIzaSy...TCEY</span>
-                  <span class="text-[10px] text-emerald-400 font-sans">Aktiv</span>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Inferenz-Knoten #5: AIzaSy...TCEY</span>
+                  <span class="text-[10px] text-emerald-700 font-sans font-bold">Aktiv</span>
                 </div>
               </div>
 
               <div>
-                <label class="block text-[11px] text-slate-400 mb-1">Zusätzlicher primärer API-Schlüssel (optional)</label>
-                <input type="password" id="cfgGeminiKey" placeholder="Eigener Schlüssel (wird als primärer Knoten priorisiert)" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none font-mono">
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Zusätzlicher primärer API-Schlüssel (optional)</label>
+                <input type="password" id="cfgGeminiKey" placeholder="Eigener Schlüssel (wird als primärer Knoten priorisiert)" class="w-full bg-white border border-slate-200 focus:border-amber-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none font-mono">
               </div>
 
               <div id="primaryTestStatus" class="hidden text-xs p-2.5 rounded-lg border"></div>
             </div>
 
             <!-- Sekundärer Redundanz-Cluster Card -->
-            <div class="bg-surface-base border border-surface-border rounded-xl p-4 space-y-3">
+            <div class="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-3 shadow-subtle">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                  <span class="text-xs font-bold text-slate-200">🌐 Sekundärer Redundanz-Cluster</span>
-                  <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">5 Knoten</span>
+                  <span class="text-xs font-bold text-slate-900">🌐 Sekundärer Redundanz-Cluster</span>
+                  <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-300">5 Knoten</span>
                 </div>
-                <button onclick="testSecondaryCluster()" id="btnTestSecondary" class="text-[11px] font-medium text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+                <button onclick="testSecondaryCluster()" id="btnTestSecondary" class="text-[11px] font-bold text-slate-800 bg-slate-200/60 hover:bg-slate-200 border border-slate-300 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
                   <i data-lucide="zap" class="w-3 h-3"></i> Cluster testen
                 </button>
               </div>
-              <p class="text-[11px] text-slate-400">Redundante Inferenz-Knoten zur Ausfallsicherung und dialektischen Prüfung der Ratsbeschlüsse.</p>
+              <p class="text-[11px] text-slate-600">Redundante Inferenz-Knoten zur Ausfallsicherung und dialektischen Prüfung der Ratsbeschlüsse.</p>
               
               <div class="space-y-1.5 font-mono text-[11px]">
-                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> Inferenz-Knoten #1: sk-or-v1...8667</span>
-                  <span class="text-[10px] text-indigo-400 font-sans">Aktiv</span>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> Inferenz-Knoten #1: sk-or-v1...8667</span>
+                  <span class="text-[10px] text-indigo-700 font-sans font-bold">Aktiv</span>
                 </div>
-                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> Inferenz-Knoten #2: sk-or-v1...364f</span>
-                  <span class="text-[10px] text-indigo-400 font-sans">Aktiv</span>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> Inferenz-Knoten #2: sk-or-v1...364f</span>
+                  <span class="text-[10px] text-indigo-700 font-sans font-bold">Aktiv</span>
                 </div>
-                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> Inferenz-Knoten #3: sk-or-v1...f7d6</span>
-                  <span class="text-[10px] text-indigo-400 font-sans">Aktiv</span>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> Inferenz-Knoten #3: sk-or-v1...f7d6</span>
+                  <span class="text-[10px] text-indigo-700 font-sans font-bold">Aktiv</span>
                 </div>
-                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> Inferenz-Knoten #4: sk-or-v1...5782</span>
-                  <span class="text-[10px] text-indigo-400 font-sans">Aktiv</span>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> Inferenz-Knoten #4: sk-or-v1...5782</span>
+                  <span class="text-[10px] text-indigo-700 font-sans font-bold">Aktiv</span>
                 </div>
-                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> Inferenz-Knoten #5: sk-or-v1...6f36</span>
-                  <span class="text-[10px] text-indigo-400 font-sans">Aktiv</span>
+                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> Inferenz-Knoten #5: sk-or-v1...6f36</span>
+                  <span class="text-[10px] text-indigo-700 font-sans font-bold">Aktiv</span>
                 </div>
               </div>
 
               <div>
-                <label class="block text-[11px] text-slate-400 mb-1">Zusätzlicher sekundärer API-Schlüssel (optional)</label>
-                <input type="password" id="cfgOpenrouterKey" placeholder="Eigener Schlüssel (wird als primärer Knoten priorisiert)" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none font-mono">
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Zusätzlicher sekundärer API-Schlüssel (optional)</label>
+                <input type="password" id="cfgOpenrouterKey" placeholder="Eigener Schlüssel (wird als primärer Knoten priorisiert)" class="w-full bg-white border border-slate-200 focus:border-amber-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none font-mono">
               </div>
 
               <div id="secondaryTestStatus" class="hidden text-xs p-2.5 rounded-lg border"></div>
@@ -634,35 +652,35 @@
         </div>
 
         <!-- Mobile & Multi-Device BYOC Compute Card -->
-        <div class="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-4">
+        <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-card">
           <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
-              <i data-lucide="smartphone" class="w-4 h-4 text-emerald-400"></i>
+            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="smartphone" class="w-4 h-4 text-emerald-600"></i>
               Mobile Client-Inferenz (0 € Server-Kosten)
             </h3>
-            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Client Hardware</span>
+            <span class="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Client Hardware</span>
           </div>
-          <div class="p-3.5 rounded-xl bg-surface-base border border-emerald-500/20 text-xs space-y-2">
-            <p class="text-slate-200 font-semibold flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <div class="p-4 rounded-xl bg-emerald-50/50 border border-emerald-200 text-xs space-y-2">
+            <p class="text-emerald-950 font-bold flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               Nativ auf Smartphones ohne externen Server:
             </p>
-            <p class="text-slate-300 leading-relaxed">
-              Dank dem optimierten <strong>Ultra-Kompakt Inferenzmodell (705 MB)</strong> und schnellen Chunks (<code class="text-emerald-300">prefill_chunk_size: 128</code>) rechnet Ihr Endgerät direkt im mobilen Browser (iOS Safari / Android Chrome) mit <strong>22–35 Token/s</strong>. Das Modell bleibt sicher unter dem Speicherlimit und schützt 100 % Ihrer Privatsphäre.
+            <p class="text-slate-700 leading-relaxed">
+              Dank dem optimierten <strong>Ultra-Kompakt Inferenzmodell (705 MB)</strong> und schnellen Chunks (<code class="bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">prefill_chunk_size: 128</code>) rechnet Ihr Endgerät direkt im mobilen Browser (iOS Safari / Android Chrome) mit <strong>22–35 Token/s</strong>. Das Modell bleibt sicher unter dem Speicherlimit und schützt 100 % Ihrer Privatsphäre.
             </p>
           </div>
 
-          <div class="space-y-2 bg-surface-base p-3.5 rounded-xl border border-surface-border text-xs">
-            <p class="text-slate-400 font-semibold flex items-center gap-1.5">
-              <i data-lucide="server" class="w-3.5 h-3.5 text-brand-400"></i>
+          <div class="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+            <p class="text-slate-700 font-bold flex items-center gap-1.5">
+              <i data-lucide="server" class="w-3.5 h-3.5 text-amber-600"></i>
               Optional: Lokaler Rechner-Knoten (z. B. für große Modelle ab 27B / 70B):
             </p>
-            <p class="text-slate-400 text-[11px]">
+            <p class="text-slate-600 text-[11px]">
               Falls Sie für Spezialaufgaben auf das lokale Modell Ihres Rechners von unterwegs zugreifen möchten:
             </p>
-            <pre class="text-[11px] text-emerald-400 font-mono bg-black/40 p-2 rounded border border-surface-border overflow-x-auto">python -m mlx_lm server --model /Users/umurey/LocalModels/Qwen3.8-27B-Uncensored-MLX/4-bit --port 8000</pre>
-            <pre class="text-[11px] text-brand-400 font-mono bg-black/40 p-2 rounded border border-surface-border overflow-x-auto">npx localtunnel --port 8000  # oder: cloudflared tunnel --url http://localhost:8000</pre>
-            <p class="text-[11px] text-slate-400 italic">Generierte HTTPS-URL in das Feld oben bei <strong>Lokaler Server</strong> eintragen.</p>
+            <pre class="text-[11px] text-amber-950 font-mono bg-amber-50 p-2.5 rounded-xl border border-amber-200 overflow-x-auto">python -m mlx_lm server --model /Users/umurey/LocalModels/Qwen3.8-27B-Uncensored-MLX/4-bit --port 8000</pre>
+            <pre class="text-[11px] text-slate-800 font-mono bg-white p-2.5 rounded-xl border border-slate-200 overflow-x-auto">npx localtunnel --port 8000  # oder: cloudflared tunnel --url http://localhost:8000</pre>
+            <p class="text-[11px] text-slate-500 italic">Generierte HTTPS-URL in das Feld oben bei <strong>Lokaler Server</strong> eintragen.</p>
           </div>
         </div>
       </div>
@@ -670,40 +688,40 @@
   </main>
 
   <!-- Document View Modal -->
-  <div id="docModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-surface-card border border-surface-border rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl select-text">
-      <div class="p-4 border-b border-surface-border flex items-center justify-between">
+  <div id="docModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl select-text">
+      <div class="p-5 border-b border-slate-200 flex items-center justify-between">
         <div>
-          <h3 id="modalDocTitle" class="font-bold text-white text-base">Dokument</h3>
-          <p id="modalDocMeta" class="text-xs text-slate-400 mt-0.5"></p>
+          <h3 id="modalDocTitle" class="font-extrabold text-slate-950 text-base">Dokument</h3>
+          <p id="modalDocMeta" class="text-xs text-slate-500 mt-0.5 font-medium"></p>
         </div>
-        <button onclick="closeDocModal()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+        <button onclick="closeDocModal()" class="text-slate-400 hover:text-slate-800 p-1.5 rounded-xl hover:bg-slate-100 transition">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
-      <div id="modalDocContent" class="p-5 overflow-y-auto custom-scrollbar prose-custom text-slate-300 text-sm leading-relaxed"></div>
+      <div id="modalDocContent" class="p-6 overflow-y-auto custom-scrollbar prose-custom text-slate-800 text-sm leading-relaxed"></div>
     </div>
   </div>
 
   <!-- Entity Creation Modal -->
-  <div id="entityModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-surface-card border border-surface-border rounded-2xl w-full max-w-lg p-5 shadow-2xl space-y-4">
-      <div class="flex items-center justify-between border-b border-surface-border pb-3">
-        <h3 class="font-bold text-white text-sm flex items-center gap-2">
-          <i data-lucide="plus-circle" class="w-4 h-4 text-brand-400"></i>
+  <div id="entityModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3.5">
+        <h3 class="font-extrabold text-slate-950 text-sm flex items-center gap-2">
+          <i data-lucide="plus-circle" class="w-4 h-4 text-amber-600"></i>
           Neue Wissensgraph-Entität anlegen
         </h3>
-        <button onclick="closeNewEntityModal()" class="text-slate-400 hover:text-white">
+        <button onclick="closeNewEntityModal()" class="text-slate-400 hover:text-slate-800 p-1 rounded-lg">
           <i data-lucide="x" class="w-4 h-4"></i>
         </button>
       </div>
       <div>
-        <label class="block text-xs text-slate-300 font-semibold mb-1">Name der Entität</label>
-        <input type="text" id="newEntityName" placeholder="z. B. Projekt Beta oder Anna Müller" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Name der Entität</label>
+        <input type="text" id="newEntityName" placeholder="z. B. Projekt Beta oder Anna Müller" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40">
       </div>
       <div>
-        <label class="block text-xs text-slate-300 font-semibold mb-1">Typ</label>
-        <select id="newEntityType" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Typ</label>
+        <select id="newEntityType" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40">
           <option value="project">Projekt (project)</option>
           <option value="person">Person (person)</option>
           <option value="metric">Metrik / Budget (metric)</option>
@@ -712,12 +730,12 @@
         </select>
       </div>
       <div>
-        <label class="block text-xs text-slate-300 font-semibold mb-1">Beschreibung</label>
-        <textarea id="newEntityDesc" rows="3" placeholder="Kurzbeschreibung oder Relevanz im Unternehmen..." class="w-full bg-surface-input border border-surface-border rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-brand-500"></textarea>
+        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Beschreibung</label>
+        <textarea id="newEntityDesc" rows="3" placeholder="Kurzbeschreibung oder Relevanz im Unternehmen..." class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl p-3.5 text-xs text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40"></textarea>
       </div>
       <div class="flex items-center justify-end gap-2 pt-2">
-        <button onclick="closeNewEntityModal()" class="px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200">Abbrechen</button>
-        <button onclick="saveNewEntity()" class="bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-xl transition shadow-md shadow-brand-500/20">Speichern</button>
+        <button onclick="closeNewEntityModal()" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 transition">Abbrechen</button>
+        <button onclick="saveNewEntity()" class="bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 text-xs font-bold px-5 py-2.5 rounded-xl transition shadow-yellow hover:shadow-yellow-lg">Speichern</button>
       </div>
     </div>
   </div>
@@ -1009,9 +1027,9 @@
         const btn = document.getElementById(`tierBtn-${t}`);
         if (btn) {
           if (t === tierKey) {
-            btn.className = "tier-btn px-2.5 py-1 rounded-lg text-xs font-semibold bg-brand-500 text-white shadow-sm transition flex items-center gap-1";
+            btn.className = "tier-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-[#FFCA00] text-slate-950 shadow-xs transition flex items-center gap-1";
           } else {
-            btn.className = "tier-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 transition flex items-center gap-1";
+            btn.className = "tier-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 transition flex items-center gap-1";
           }
         }
       });
@@ -1370,8 +1388,8 @@
         if (tabEl) tabEl.classList.add('hidden');
         const navBtn = document.getElementById(`nav-${t}`);
         if (navBtn) {
-          navBtn.classList.remove('bg-brand-500/15', 'text-brand-400', 'border', 'border-brand-500/30');
-          navBtn.classList.add('text-slate-400');
+          navBtn.classList.remove('bg-amber-50', 'text-amber-950', 'border', 'border-amber-300/80', 'font-bold', 'shadow-xs');
+          navBtn.classList.add('text-slate-600', 'hover:text-slate-950', 'hover:bg-slate-100/70', 'font-medium');
         }
       });
 
@@ -1379,8 +1397,8 @@
       if (activeTab) activeTab.classList.remove('hidden');
       const activeNav = document.getElementById(`nav-${tabId}`);
       if (activeNav) {
-        activeNav.classList.add('bg-brand-500/15', 'text-brand-400', 'border', 'border-brand-500/30');
-        activeNav.classList.remove('text-slate-400');
+        activeNav.classList.add('bg-amber-50', 'text-amber-950', 'border', 'border-amber-300/80', 'font-bold', 'shadow-xs');
+        activeNav.classList.remove('text-slate-600', 'hover:text-slate-950', 'hover:bg-slate-100/70', 'font-medium');
       }
 
       const titles = {
@@ -1427,27 +1445,27 @@
         if (error) throw error;
         if (!data || data.length === 0) {
           container.innerHTML = `
-            <div class="p-12 text-center col-span-2 border border-dashed border-surface-border rounded-2xl">
-              <i data-lucide="folder-open" class="w-10 h-10 text-slate-600 mx-auto mb-2"></i>
-              <p class="text-sm text-slate-400">Noch keine Dokumente gespeichert.</p>
-              <button onclick="switchTab('ingest')" class="mt-3 text-xs bg-brand-500 text-white px-3 py-1.5 rounded-lg">Jetzt Wissen einspeisen</button>
+            <div class="p-12 text-center col-span-2 border border-dashed border-slate-300 bg-white rounded-2xl shadow-xs">
+              <i data-lucide="folder-open" class="w-10 h-10 text-slate-400 mx-auto mb-2"></i>
+              <p class="text-sm font-semibold text-slate-700">Noch keine Dokumente gespeichert.</p>
+              <button onclick="switchTab('ingest')" class="mt-3.5 text-xs bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 font-bold px-4 py-2 rounded-xl shadow-yellow transition">Jetzt Wissen einspeisen</button>
             </div>`;
           lucide.createIcons();
           return;
         }
 
         container.innerHTML = data.map(doc => `
-          <div class="bg-surface-card hover:bg-surface-cardHover border border-surface-border rounded-xl p-4 flex flex-col justify-between transition cursor-pointer" onclick="viewDocDetails('${doc.id}')">
+          <div class="bg-white hover:bg-amber-50/25 border border-slate-200 hover:border-amber-300 rounded-2xl p-5 flex flex-col justify-between transition-all duration-200 cursor-pointer shadow-card hover:shadow-card-hover" onclick="viewDocDetails('${doc.id}')">
             <div>
-              <div class="flex items-start justify-between gap-2 mb-2">
-                <h3 class="font-bold text-white text-sm truncate">${escapeHtml(doc.title)}</h3>
-                <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-surface-input border border-surface-border text-slate-400">${escapeHtml(doc.source_type || 'text')}</span>
+              <div class="flex items-start justify-between gap-2 mb-2.5">
+                <h3 class="font-extrabold text-slate-950 text-sm truncate">${escapeHtml(doc.title)}</h3>
+                <span class="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-600">${escapeHtml(doc.source_type || 'text')}</span>
               </div>
-              <p class="text-xs text-slate-400 line-clamp-3 mb-3">${escapeHtml(doc.summary || doc.raw_content?.slice(0, 150) || 'Keine Zusammenfassung vorhanden.')}</p>
+              <p class="text-xs text-slate-600 line-clamp-3 mb-3.5 leading-relaxed">${escapeHtml(doc.summary || doc.raw_content?.slice(0, 150) || 'Keine Zusammenfassung vorhanden.')}</p>
             </div>
-            <div class="flex items-center justify-between pt-2 border-t border-surface-border/50 text-[11px] text-slate-500">
-              <div class="flex flex-wrap gap-1">
-                ${(doc.tags || []).slice(0, 2).map(t => `<span class="bg-brand-500/10 text-brand-400 px-1.5 py-0.5 rounded text-[10px]">${escapeHtml(t)}</span>`).join('')}
+            <div class="flex items-center justify-between pt-3 border-t border-slate-100 text-[11px] text-slate-500 font-medium">
+              <div class="flex flex-wrap gap-1.5">
+                ${(doc.tags || []).slice(0, 3).map(t => `<span class="bg-amber-50 text-amber-950 border border-amber-200/80 px-2 py-0.5 rounded-full text-[10px] font-bold">${escapeHtml(t)}</span>`).join('')}
               </div>
               <span>${new Date(doc.created_at).toLocaleDateString('de-DE')}</span>
             </div>
@@ -2032,15 +2050,15 @@ Nutzeranfrage: ${fullPrompt}`;
         const role = phaseRoles[idx] || "Ratsinstanz";
         const bodyText = p.content.join('\n');
         return `
-          <div class="rounded-lg bg-surface-card/80 border border-surface-border/70 p-3 space-y-1.5 shadow-sm">
+          <div class="rounded-lg bg-amber-50/50 border border-amber-200/80 p-3 space-y-1.5 shadow-xs">
             <div class="flex items-center justify-between gap-2">
-              <span class="font-semibold text-slate-200 flex items-center gap-1.5 text-xs">
+              <span class="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
                 <span>${icon}</span>
                 <span>${escapeHtml(p.title.replace(/^#+\s*/, ''))}</span>
               </span>
-              <span class="text-[10px] text-brand-300/80 font-mono bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/20">${role}</span>
+              <span class="text-[10px] text-amber-950 font-bold bg-amber-100/90 px-2 py-0.5 rounded border border-amber-300/70">${role}</span>
             </div>
-            <div class="text-[11.5px] text-slate-300 pl-4 border-l-2 border-brand-500/30 font-sans leading-relaxed">
+            <div class="text-[12px] text-slate-700 pl-4 border-l-2 border-[#FFCA00] font-sans leading-relaxed">
               ${marked.parse(sanitizeModelNames(bodyText) || 'Analysephase erfolgreich abgeschlossen.')}
             </div>
           </div>
@@ -2053,19 +2071,19 @@ Nutzeranfrage: ${fullPrompt}`;
       const msgDiv = document.createElement('div');
       msgDiv.className = 'flex items-start gap-3 max-w-3xl';
       
-      const avatar = `<div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-md shadow-brand-500/20">✦</div>`;
+      const avatar = `<div class="w-8 h-8 rounded-lg bg-[#FFCA00] border border-amber-400/40 flex items-center justify-center text-slate-950 text-sm font-black flex-shrink-0 shadow-xs">✦</div>`;
       
       const badgeHtml = engineBadge
-        ? `<div class="mt-2.5 pt-2 border-t border-surface-border flex items-center gap-1.5 text-[10px] text-slate-400 font-mono">
-             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        ? `<div class="mt-2.5 pt-2 border-t border-slate-200 flex items-center gap-1.5 text-[10px] text-slate-500 font-mono">
+             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
              <span>${escapeHtml(sanitizeModelNames(engineBadge))}</span>
            </div>`
         : '';
 
       msgDiv.innerHTML = `
         ${avatar}
-        <div class="flex-1 bg-surface-card border border-surface-border rounded-2xl p-4 text-slate-200 text-sm leading-relaxed shadow-sm">
-          <div class="prose-custom streaming-content"><span class="inline-block w-1.5 h-3.5 bg-brand-400 animate-pulse"></span></div>
+        <div class="flex-1 bg-white border border-slate-200/90 rounded-2xl p-4 text-slate-800 text-sm leading-relaxed shadow-xs">
+          <div class="prose-custom streaming-content"><span class="inline-block w-1.5 h-3.5 bg-[#FFCA00] animate-pulse"></span></div>
           <div class="streaming-sources"></div>
           ${badgeHtml}
         </div>
@@ -2087,9 +2105,9 @@ Nutzeranfrage: ${fullPrompt}`;
         finalize(sources = []) {
           if (sources.length > 0 && sourcesEl) {
             sourcesEl.innerHTML = `
-              <div class="mt-2.5 pt-2 border-t border-surface-border flex flex-wrap gap-1.5">
+              <div class="mt-2.5 pt-2 border-t border-slate-200 flex flex-wrap gap-1.5">
                 <span class="text-[10px] text-slate-500 mr-1 flex items-center gap-1"><i data-lucide="book-open" class="w-3 h-3"></i> Quellen:</span>
-                ${sources.map(s => `<span class="bg-brand-500/10 text-brand-400 border border-brand-500/20 text-[10px] px-2 py-0.5 rounded-full font-medium">${escapeHtml(s.title)}</span>`).join('')}
+                ${sources.map(s => `<span class="bg-amber-50 text-amber-950 border border-amber-200 text-[10px] px-2 py-0.5 rounded-full font-bold">${escapeHtml(s.title)}</span>`).join('')}
               </div>`;
             lucide.createIcons();
           }
@@ -2104,8 +2122,8 @@ Nutzeranfrage: ${fullPrompt}`;
       msgDiv.className = `flex items-start gap-3 max-w-3xl ${isUser ? 'ml-auto flex-row-reverse' : ''}`;
 
       const avatar = isUser
-        ? `<div class="w-8 h-8 rounded-lg bg-surface-card border border-surface-border flex items-center justify-center text-slate-300 text-xs font-bold flex-shrink-0">U</div>`
-        : `<div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-md shadow-brand-500/20">✦</div>`;
+        ? `<div class="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-xs">U</div>`
+        : `<div class="w-8 h-8 rounded-lg bg-[#FFCA00] border border-amber-400/40 flex items-center justify-center text-slate-950 text-sm font-black flex-shrink-0 shadow-xs">✦</div>`;
 
       let mainText = text;
       let thoughtProcess = thoughts;
@@ -2121,25 +2139,25 @@ Nutzeranfrage: ${fullPrompt}`;
       if (!isUser && thoughtProcess) {
         const durStr = durationMs ? `${(durationMs / 1000).toFixed(1)}s` : '1.1s';
         thoughtHtml = `
-          <div class="thought-container mb-3.5 rounded-xl border border-brand-500/30 bg-surface-base/90 overflow-hidden shadow-sm">
-            <button type="button" onclick="toggleThought(this)" class="w-full px-3.5 py-2.5 flex items-center justify-between text-left text-slate-300 hover:text-white bg-brand-500/10 hover:bg-brand-500/15 transition select-none">
+          <div class="thought-container mb-3.5 rounded-xl border border-amber-200 bg-amber-50/40 overflow-hidden shadow-xs">
+            <button type="button" onclick="toggleThought(this)" class="w-full px-3.5 py-2.5 flex items-center justify-between text-left text-slate-700 hover:text-slate-950 bg-amber-100/50 hover:bg-amber-100/80 transition select-none">
               <div class="flex items-center gap-2">
                 <span class="relative flex h-2 w-2">
-                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
-                  <span class="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-[#FFCA00]"></span>
                 </span>
-                <span class="text-xs font-semibold text-brand-300 flex items-center gap-1.5">
+                <span class="text-xs font-bold text-amber-950 flex items-center gap-1.5">
                   🧠 Rat der KIs · Denkschritte (Ultrathink / Deepthink Max)
                 </span>
               </div>
-              <div class="flex items-center gap-2 text-[11px] text-slate-400 font-mono">
-                <span class="bg-brand-500/20 text-brand-300 px-2 py-0.5 rounded border border-brand-500/30 text-[10px] font-sans">3 Phasen</span>
+              <div class="flex items-center gap-2 text-[11px] text-slate-500 font-mono">
+                <span class="bg-amber-200/70 text-amber-950 px-2 py-0.5 rounded border border-amber-300 text-[10px] font-sans font-bold">3 Phasen</span>
                 <span class="text-slate-500">${durStr}</span>
-                <span class="thought-status-text text-[10px] text-brand-400 font-sans hover:underline">Einklappen</span>
-                <i data-lucide="chevron-down" class="thought-chevron w-3.5 h-3.5 transform rotate-180 transition-transform duration-200 text-brand-400"></i>
+                <span class="thought-status-text text-[10px] text-amber-800 font-sans font-semibold hover:underline">Einklappen</span>
+                <i data-lucide="chevron-down" class="thought-chevron w-3.5 h-3.5 transform rotate-180 transition-transform duration-200 text-amber-700"></i>
               </div>
             </button>
-            <div class="thought-body p-3.5 space-y-2.5 text-slate-300 text-xs border-t border-brand-500/15 bg-black/35 leading-relaxed">
+            <div class="thought-body p-3.5 space-y-2.5 text-slate-700 text-xs border-t border-amber-200/80 bg-white leading-relaxed">
               ${formatThoughtSteps(thoughtProcess)}
             </div>
           </div>
@@ -2147,24 +2165,24 @@ Nutzeranfrage: ${fullPrompt}`;
       }
 
       const badgeHtml = (!isUser && engineBadge)
-        ? `<div class="mt-2.5 pt-2 border-t border-surface-border flex items-center gap-1.5 text-[10px] text-slate-400 font-mono">
-             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        ? `<div class="mt-2.5 pt-2 border-t border-slate-200 flex items-center gap-1.5 text-[10px] text-slate-500 font-mono">
+             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
              <span>${escapeHtml(sanitizeModelNames(engineBadge))}</span>
            </div>`
         : '';
 
       const sourcesPills = sources.length > 0
-        ? `<div class="mt-2.5 pt-2 border-t border-surface-border flex flex-wrap gap-1.5">
+        ? `<div class="mt-2.5 pt-2 border-t border-slate-200 flex flex-wrap gap-1.5">
             <span class="text-[10px] text-slate-500 mr-1 flex items-center gap-1"><i data-lucide="book-open" class="w-3 h-3"></i> Quellen:</span>
-            ${sources.map(s => `<span class="bg-brand-500/10 text-brand-400 border border-brand-500/20 text-[10px] px-2 py-0.5 rounded-full font-medium">${escapeHtml(s.title)}</span>`).join('')}
+            ${sources.map(s => `<span class="bg-amber-50 text-amber-950 border border-amber-200 text-[10px] px-2 py-0.5 rounded-full font-bold">${escapeHtml(s.title)}</span>`).join('')}
           </div>`
         : '';
 
       msgDiv.innerHTML = `
         ${avatar}
-        <div class="flex-1 ${isUser ? 'bg-brand-600/20 border border-brand-500/30' : 'bg-surface-card border border-surface-border'} rounded-2xl p-4 text-slate-200 text-sm leading-relaxed shadow-sm">
+        <div class="flex-1 ${isUser ? 'bg-slate-900 text-white shadow-xs' : 'bg-white border border-slate-200/90 text-slate-800 shadow-xs'} rounded-2xl p-4 text-sm leading-relaxed">
           ${thoughtHtml}
-          <div class="prose-custom">${isUser ? escapeHtml(text).replace(/\n/g, '<br>') : marked.parse(sanitizeModelNames(mainText))}</div>
+          <div class="${isUser ? 'text-white' : 'prose-custom'}">${isUser ? escapeHtml(text).replace(/\n/g, '<br>') : marked.parse(sanitizeModelNames(mainText))}</div>
           ${sourcesPills}
           ${badgeHtml}
         </div>
@@ -2182,15 +2200,15 @@ Nutzeranfrage: ${fullPrompt}`;
       div.id = id;
       div.className = 'flex items-start gap-3 max-w-3xl';
       div.innerHTML = `
-        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-md">✦</div>
-        <div class="bg-surface-card border border-surface-border rounded-2xl p-3 text-slate-300 text-xs flex items-center gap-2.5 shadow-sm">
+        <div class="w-8 h-8 rounded-lg bg-[#FFCA00] border border-amber-400/40 flex items-center justify-center text-slate-950 text-sm font-black flex-shrink-0 shadow-xs">✦</div>
+        <div class="bg-white border border-amber-200 rounded-2xl p-3 text-slate-800 text-xs flex items-center gap-2.5 shadow-xs">
           <span class="relative flex h-2.5 w-2.5">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand-500"></span>
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#FFCA00]"></span>
           </span>
           <div class="flex flex-col sm:flex-row sm:items-center gap-1">
-            <span class="font-semibold text-brand-300">Rat der KIs berät sich...</span>
-            <span class="text-slate-400 text-[11px]">(Ultrathink / Deepthink Max · Chain of Thought)</span>
+            <span class="font-bold text-slate-900">Rat der KIs berät sich...</span>
+            <span class="text-slate-500 text-[11px]">(Ultrathink / Deepthink Max · Chain of Thought)</span>
           </div>
         </div>
       `;
@@ -2325,11 +2343,11 @@ Nutzeranfrage: ${fullPrompt}`;
     let nodePositions = {};
 
     const TYPE_COLORS = {
-      project: '#38bdf8',
-      person: '#818cf8',
-      metric: '#34d399',
-      tech: '#fbbf24',
-      regulation: '#f87171'
+      project: '#0284c7',
+      person: '#7c3aed',
+      metric: '#059669',
+      tech: '#d97706',
+      regulation: '#dc2626'
     };
 
     async function loadKnowledgeGraph() {
@@ -2401,7 +2419,7 @@ Nutzeranfrage: ${fullPrompt}`;
         if (!src || !tgt) return;
 
         const isSelected = selectedEntityId === rel.source_entity_id || selectedEntityId === rel.target_entity_id;
-        ctx.strokeStyle = isSelected ? '#38bdf8' : '#212634';
+        ctx.strokeStyle = isSelected ? '#d97706' : '#e2e8f0';
         ctx.lineWidth = isSelected ? 2.5 : 1.5;
 
         ctx.beginPath();
@@ -2412,7 +2430,7 @@ Nutzeranfrage: ${fullPrompt}`;
         // Edge label
         const midX = (src.x + tgt.x) / 2;
         const midY = (src.y + tgt.y) / 2;
-        ctx.fillStyle = isSelected ? '#7dd3fc' : '#64748b';
+        ctx.fillStyle = isSelected ? '#b45309' : '#64748b';
         ctx.font = '10px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(rel.relation_type, midX, midY - 3);
@@ -2423,28 +2441,28 @@ Nutzeranfrage: ${fullPrompt}`;
         const pos = nodePositions[entity.id];
         if (!pos) return;
         const isSelected = selectedEntityId === entity.id;
-        const color = TYPE_COLORS[entity.entity_type] || '#38bdf8';
+        const color = TYPE_COLORS[entity.entity_type] || '#0284c7';
         const nodeRadius = isSelected ? 22 : 18;
 
         // Halo
         if (isSelected) {
           ctx.beginPath();
           ctx.arc(pos.x, pos.y, nodeRadius + 6, 0, 2 * Math.PI);
-          ctx.fillStyle = `${color}33`;
+          ctx.fillStyle = `${color}25`;
           ctx.fill();
         }
 
         // Circle
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, nodeRadius, 0, 2 * Math.PI);
-        ctx.fillStyle = isSelected ? color : '#10131a';
+        ctx.fillStyle = isSelected ? '#FFCA00' : '#ffffff';
         ctx.fill();
-        ctx.strokeStyle = color;
+        ctx.strokeStyle = isSelected ? '#d97706' : color;
         ctx.lineWidth = 2.5;
         ctx.stroke();
 
         // Symbol
-        ctx.fillStyle = isSelected ? '#080a0f' : color;
+        ctx.fillStyle = isSelected ? '#0f172a' : color;
         ctx.font = 'bold 11px Plus Jakarta Sans, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -2452,8 +2470,8 @@ Nutzeranfrage: ${fullPrompt}`;
         ctx.fillText(symbol, pos.x, pos.y);
 
         // Label
-        ctx.fillStyle = isSelected ? '#ffffff' : '#cbd5e1';
-        ctx.font = `${isSelected ? 'bold ' : ''}11px Plus Jakarta Sans, sans-serif`;
+        ctx.fillStyle = isSelected ? '#0f172a' : '#334155';
+        ctx.font = `${isSelected ? 'bold ' : '600 '}11px Plus Jakarta Sans, sans-serif`;
         ctx.textBaseline = 'top';
         ctx.fillText(entity.name, pos.x, pos.y + nodeRadius + 5);
       });
@@ -2516,38 +2534,38 @@ Nutzeranfrage: ${fullPrompt}`;
       badge.textContent = entity.entity_type;
       const outgoing = graphData.relations.filter(r => r.source_entity_id === entity.id);
       const incoming = graphData.relations.filter(r => r.target_entity_id === entity.id);
-      const color = TYPE_COLORS[entity.entity_type] || '#38bdf8';
+      const color = TYPE_COLORS[entity.entity_type] || '#0284c7';
 
       container.innerHTML = `
-        <div class="p-3.5 rounded-xl bg-surface-base border border-surface-border space-y-2">
+        <div class="p-3.5 rounded-xl bg-white border border-slate-200 space-y-2 shadow-xs">
           <div class="flex items-center gap-2">
             <span class="w-3 h-3 rounded-full" style="background-color: ${color}"></span>
-            <h4 class="text-sm font-bold text-white">${escapeHtml(entity.name)}</h4>
+            <h4 class="text-sm font-bold text-slate-900">${escapeHtml(entity.name)}</h4>
           </div>
-          <p class="text-xs text-slate-300 leading-relaxed">${escapeHtml(entity.description || 'Keine Beschreibung vorhanden.')}</p>
+          <p class="text-xs text-slate-600 leading-relaxed">${escapeHtml(entity.description || 'Keine Beschreibung vorhanden.')}</p>
         </div>
 
         <div class="space-y-2">
-          <h5 class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-            <i data-lucide="git-fork" class="w-3.5 h-3.5 text-brand-400"></i>
+          <h5 class="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+            <i data-lucide="git-fork" class="w-3.5 h-3.5 text-amber-600"></i>
             Verbindungen (${outgoing.length + incoming.length})
           </h5>
           <div class="space-y-1.5">
             ${outgoing.map(r => {
               const target = graphData.entities.find(e => e.id === r.target_entity_id);
               return `
-                <div class="p-2 rounded-lg bg-surface-base border border-surface-border text-xs flex items-center justify-between">
-                  <span class="text-slate-300 font-medium">→ ${escapeHtml(target ? target.name : 'Ziel')}</span>
-                  <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-400">${escapeHtml(r.relation_type)}</span>
+                <div class="p-2.5 rounded-lg bg-white border border-slate-200 text-xs flex items-center justify-between shadow-xs">
+                  <span class="text-slate-800 font-medium">→ ${escapeHtml(target ? target.name : 'Ziel')}</span>
+                  <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-50 text-amber-950 font-bold border border-amber-200">${escapeHtml(r.relation_type)}</span>
                 </div>
               `;
             }).join('')}
             ${incoming.map(r => {
               const src = graphData.entities.find(e => e.id === r.source_entity_id);
               return `
-                <div class="p-2 rounded-lg bg-surface-base border border-surface-border text-xs flex items-center justify-between">
-                  <span class="text-slate-300 font-medium">← ${escapeHtml(src ? src.name : 'Quelle')}</span>
-                  <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400">${escapeHtml(r.relation_type)}</span>
+                <div class="p-2.5 rounded-lg bg-white border border-slate-200 text-xs flex items-center justify-between shadow-xs">
+                  <span class="text-slate-800 font-medium">← ${escapeHtml(src ? src.name : 'Quelle')}</span>
+                  <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-50 text-amber-950 font-bold border border-amber-200">${escapeHtml(r.relation_type)}</span>
                 </div>
               `;
             }).join('')}
@@ -2555,7 +2573,7 @@ Nutzeranfrage: ${fullPrompt}`;
           </div>
         </div>
 
-        <button onclick="sendQuickPrompt('Erzähle mir alles über ${escapeHtml(entity.name)} aus dem Brain')" class="w-full text-xs font-semibold bg-surface-input hover:bg-surface-border text-brand-400 border border-brand-500/20 py-2 rounded-xl transition flex items-center justify-center gap-1.5">
+        <button onclick="sendQuickPrompt('Erzähle mir alles über ${escapeHtml(entity.name)} aus dem Brain')" class="w-full text-xs font-bold bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 border border-amber-400/30 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm">
           <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
           Im Brain Chat nach ${escapeHtml(entity.name)} fragen
         </button>

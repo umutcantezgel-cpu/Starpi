@@ -1,5 +1,5 @@
-// Starpi Service Worker v1.4.0 - Council CoT & Deepthink Max
-const CACHE_NAME = 'starpi-cache-v6';
+// Starpi Service Worker v1.5.0 - Creative Bright & Yellow Design
+const CACHE_NAME = 'starpi-cache-v7';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

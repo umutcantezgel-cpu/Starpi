@@ -4,18 +4,18 @@
   "description": "Ihr privates Enterprise Brain mit lokaler Inferenz, Wissensarchiv und Supabase pgvector.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#020617",
-  "theme_color": "#020617",
+  "background_color": "#ffffff",
+  "theme_color": "#FFCA00",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='40' fill='%230f172a'/><path d='M96 32L112 80L160 96L112 112L96 160L80 112L32 96L80 80Z' fill='%2338bdf8'/></svg>",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='40' fill='%23ffffff'/><path d='M96 28L114 78L164 96L114 114L96 164L78 114L28 96L78 78Z' fill='%23ffca00'/><circle cx='96' cy='96' r='14' fill='%230f172a'/></svg>",
       "sizes": "192x192",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     },
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='100' fill='%230f172a'/><path d='M256 80L298 214L432 256L298 298L256 432L214 298L80 256L214 214Z' fill='%2338bdf8'/></svg>",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='100' fill='%23ffffff'/><path d='M256 74L304 208L438 256L304 304L256 438L208 304L74 256L208 208Z' fill='%23ffca00'/><circle cx='256' cy='256' r='38' fill='%230f172a'/></svg>",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
