@@ -1,5 +1,5 @@
-// Starpi Service Worker v1.2.0
-const CACHE_NAME = 'starpi-cache-v4';
+// Starpi Service Worker v1.3.0 - Dual-Tier WebGPU BYOC
+const CACHE_NAME = 'starpi-cache-v5';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

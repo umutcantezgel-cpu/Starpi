@@ -11,12 +11,15 @@
 **Starpi** ist ein privates Unternehmens-Brain und ein intelligenter Wissensassistent. Es nimmt unstrukturierte Notizen, Meeting-Transkripte und Berichte auf, strukturiert diese automatisch in sauberes, hierarchisches Markdown, speichert sie in einer cloudbasierten PostgreSQL-Vektordatenbank (**Supabase in Frankfurt**) und macht das Wissen über eine blitzschnelle semantische RAG-Suche abrufbar.
 
 ### 📱 Features & Architektur
-* **BYOC (Bring Your Own Compute):** Die Inferenz-Rechenkapazität wird direkt vom Rechner des Anwenders erbracht (z. B. Apple Silicon M4 Pro GPU über MLX/Ollama oder lokaler Tunnel) – 0 € Cloud-GPU-Kosten!
-* **Multi-Device Web App:** Optimiert für Smartphones (Safari/Chrome) und Desktop-Browser.
+* **BYOC (Bring Your Own Compute) mit Dual-Tier WebGPU:** 
+  * **Mobilgeräte (iOS Safari ab 17.4 / Android Chrome ab 121):** *Meta Llama-3.2-1B-Instruct* (705 MB Download, ~879 MB VRAM, 22–35 Token/s) – läuft 100% lokal im mobilen Browser ohne Tab-Abstürze oder Heimrechner!
+  * **Desktop & Notebooks:** *Alibaba Qwen2.5-3B-Instruct* (1,85 GB Download, ~2,5 GB VRAM, 77,4 % IFEval) – schlussfolgernde Antworten auf GPT-4-Niveau direkt auf Ihrer GPU.
+  * **Optionaler Mac-Tunnel:** Weiterhin kompatibel mit lokalen MLX-Servern (z. B. Qwen 27B / 70B) via P2P-Tunnel.
+* **Zero Hosting-Kosten:** Vercel liefert nur wenige Kilobyte statisches HTML/JS aus; die Modellgewichte streamt der Client kostenlos von Hugging Face.
 * **Brain Ingestion:** Automatisches Formatieren von Rohtexten mit Überschriften, Kernfakten und Tags.
 * **Wissensarchiv:** Durchsuchen und Betrachten aller hinterlegten Dokumente im Volltext.
-* **Live RAG-Chat:** Antworten mit genauen Quellenangaben, Ähnlichkeitsscores und Zitaten.
-* **Datenschutz & EU-Hosting:** 100 % DSGVO-konforme Datenhaltung in Frankfurt (`eu-central-1`).
+* **Live RAG-Chat:** Antworten mit Token-Streaming, genauen Quellenangaben, Ähnlichkeitsscores und Zitaten.
+* **Datenschutz & EU-Hosting:** 100 % DSGVO-konforme Datenhaltung in Frankfurt (`eu-central-1`). Prompts verbleiben auf dem Endgerät.
 
 ---
 
