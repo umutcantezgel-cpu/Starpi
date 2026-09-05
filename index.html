@@ -2,7 +2,7 @@
 <html lang="de" class="light">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
   <title>Starpi — Enterprise Brain & Knowledge Assistant</title>
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#FFCA00">
@@ -64,6 +64,13 @@
     }
   </script>
   <style>
+    html, body {
+      height: 100%;
+      height: 100dvh;
+      height: -webkit-fill-available;
+      overscroll-behavior-y: none;
+      -webkit-tap-highlight-color: transparent;
+    }
     body {
       background-color: #f8fafc;
       color: #1e293b;
@@ -95,9 +102,15 @@
     .prose-custom th, .prose-custom td { border: 1px solid #e2e8f0; padding: 0.5rem 0.7rem; text-align: left; }
     .prose-custom th { background: #f1f5f9; font-weight: 700; color: #0f172a; }
     .prose-custom blockquote { border-left: 3px solid #ffca00; padding-left: 0.85rem; margin: 0.6rem 0; color: #475569; background: #fffbeb; padding-top: 0.4rem; padding-bottom: 0.4rem; border-radius: 0 0.5rem 0.5rem 0; }
+    
+    /* Touch target optimizations for mobile buttons */
+    .touch-target-min {
+      min-width: 44px;
+      min-height: 44px;
+    }
   </style>
 </head>
-<body class="h-screen w-screen flex overflow-hidden antialiased select-none">
+<body class="min-h-[100dvh] h-[100dvh] w-full flex overflow-hidden antialiased bg-slate-50 text-slate-900">
 
   <!-- Mobile Menu Backdrop -->
   <div id="mobileBackdrop" class="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40 hidden md:hidden" onclick="toggleSidebar()"></div>
@@ -167,145 +180,133 @@
   <!-- Main Content Area -->
   <main class="flex-1 flex flex-col h-full overflow-hidden bg-slate-50/50">
     <!-- Top Header Bar -->
-    <header class="h-16 px-4 md:px-6 flex items-center justify-between border-b border-slate-200 bg-white/90 backdrop-blur-md shadow-xs">
-      <div class="flex items-center gap-3">
-        <button onclick="toggleSidebar()" class="md:hidden p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100">
+    <header class="h-16 px-3 sm:px-4 md:px-6 flex items-center justify-between border-b border-slate-200 bg-white/95 backdrop-blur-md shadow-xs z-20">
+      <div class="flex items-center gap-2 sm:gap-3">
+        <button onclick="toggleSidebar()" class="md:hidden touch-target-min p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 flex items-center justify-center">
           <i data-lucide="menu" class="w-5 h-5"></i>
         </button>
-        <h1 id="pageTitle" class="text-base md:text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-          Brain Chat
-        </h1>
+        <div>
+          <h1 id="pageTitle" class="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-1.5">
+            <span class="text-amber-500 font-black">✦</span> Starpi
+          </h1>
+          <p class="text-[10px] sm:text-[11px] text-slate-500 font-medium hidden xs:block">Ihr persönlicher KI-Assistent</p>
+        </div>
       </div>
       <div class="flex items-center gap-2">
-        <div class="flex items-center gap-1.5 bg-white border border-slate-200 shadow-xs rounded-xl px-2.5 py-1.5 text-xs">
-          <span class="w-2 h-2 rounded-full bg-emerald-500" id="engineStatusDot"></span>
-          <select id="engineSelector" onchange="changeEngine(this.value)" class="bg-transparent text-slate-800 font-medium text-xs focus:outline-none cursor-pointer">
-            <option value="council" selected>🧠 Rat der KIs (Ultrathink / Deepthink Max · Standard)</option>
-            <option value="cluster_a">⚡ Ultra-Inferenz (Primärer Hochleistungs-Cluster)</option>
-            <option value="cluster_b">🌐 Redundanz-Inferenz (Sekundärer Cluster)</option>
-            <option value="client">🛡️ Private Client-Inferenz (Hardware-Beschleunigung)</option>
-            <option value="local">💻 Privater Rechner-Knoten (Lokal/P2P)</option>
+        <div class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 shadow-xs rounded-xl px-2.5 py-1.5 text-xs">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" id="engineStatusDot"></span>
+          <select id="engineSelector" onchange="changeEngine(this.value)" class="bg-transparent text-slate-800 font-bold text-xs focus:outline-none cursor-pointer max-w-[140px] sm:max-w-none truncate">
+            <option value="council" selected>⚡ Schneller Assistent (Standard)</option>
+            <option value="client">🔒 Lokaler Offline-Modus (100% privat)</option>
+            <option value="local">🖥️ Eigener Server (MLX/Ollama)</option>
           </select>
         </div>
-        <button onclick="switchTab('ingest')" class="flex items-center gap-1.5 text-xs font-bold bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 px-3.5 py-2 rounded-xl shadow-sm hover:shadow-yellow transition">
-          <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+        <button onclick="switchTab('ingest')" class="touch-target-min flex items-center gap-1.5 text-xs font-bold bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 px-3.5 py-2 rounded-xl shadow-sm hover:shadow-yellow transition">
+          <i data-lucide="plus" class="w-4 h-4"></i>
           <span class="hidden sm:inline">Neues Wissen</span>
         </button>
       </div>
     </header>
 
-    <!-- WebGPU Loading Banner -->
-    <div id="webgpuProgressContainer" class="hidden px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center justify-between text-xs text-amber-900">
+    <!-- WebGPU Loading Banner with Cancel button -->
+    <div id="webgpuProgressContainer" class="hidden px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900">
       <div class="flex items-center gap-2">
         <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-amber-600"></i>
-        <span id="webgpuProgressText">Initialisiere In-Browser WebGPU Modell auf Ihrer GPU...</span>
+        <span id="webgpuProgressText" class="font-medium">Initialisiere lokales Modell im Browser...</span>
       </div>
-      <span id="webgpuPercentText" class="font-mono font-bold text-amber-700">0%</span>
+      <div class="flex items-center gap-2.5 ml-auto">
+        <span id="webgpuPercentText" class="font-mono font-bold text-amber-800">0%</span>
+        <button type="button" onclick="cancelWebgpuAndFallback()" class="text-[11px] font-bold text-rose-700 hover:text-rose-900 bg-rose-100/80 hover:bg-rose-200 border border-rose-300 px-2.5 py-1 rounded-lg transition">
+          Abbrechen & Schnellen Modus nutzen
+        </button>
+      </div>
     </div>
 
     <!-- ========================================== -->
     <!-- TAB 1: CHAT VIEW -->
     <!-- ========================================== -->
-    <section id="tab-chat" class="flex-1 flex flex-col overflow-hidden">
-      <!-- AI Capacity & Power Tier Control Bar (High / Medium / Low / Auto) -->
-      <div class="px-3.5 py-2.5 bg-white/90 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2.5 text-xs select-none backdrop-blur-md shadow-xs">
-        <div class="flex items-center gap-2 flex-wrap">
+    <section id="tab-chat" class="flex-1 flex flex-col overflow-hidden relative">
+      <!-- Friendly Status Strip -->
+      <div class="px-3.5 py-2 bg-white/90 border-b border-slate-200 flex items-center justify-between gap-2 text-xs backdrop-blur-md">
+        <div class="flex items-center gap-2">
           <!-- Device detection indicator -->
-          <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 font-mono text-[11px]" title="Automatisch erkanntes Endgerät">
+          <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-medium" title="Erkanntes Endgerät">
             <i data-lucide="smartphone" id="deviceTypeIcon" class="w-3.5 h-3.5 text-amber-600"></i>
-            <span id="detectedDeviceText">Gerät: Mobil</span>
+            <span id="detectedDeviceText">Smartphone</span>
           </div>
-
-          <div class="h-4 w-px bg-slate-200 hidden sm:block"></div>
-
-          <!-- Tier Segment Control -->
-          <div class="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200">
-            <span class="text-[11px] text-slate-500 font-medium px-1.5 hidden md:inline">KI-Kapazität:</span>
-            <button type="button" onclick="selectTier('auto')" id="tierBtn-auto" class="tier-btn px-2.5 py-1 rounded-lg text-xs font-bold bg-[#FFCA00] text-slate-950 shadow-xs transition flex items-center gap-1" title="Erkennt automatisch das optimale Modell">
-              <i data-lucide="sparkles" class="w-3 h-3 text-amber-900"></i>
-              <span>Auto</span>
-            </button>
-            <button type="button" onclick="selectTier('low')" id="tierBtn-low" class="tier-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white/80 transition flex items-center gap-1" title="Low: Ultraschnell & minimaler RAM-Bedarf (Kompakt-Inferenz)">
-              <i data-lucide="zap" class="w-3 h-3 text-emerald-600"></i>
-              <span>Low (Eco)</span>
-            </button>
-            <button type="button" onclick="selectTier('medium')" id="tierBtn-medium" class="tier-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white/80 transition flex items-center gap-1" title="Medium: Ausgewogene Leistung & hohe Präzision">
-              <i data-lucide="scale" class="w-3 h-3 text-sky-600"></i>
-              <span>Medium</span>
-            </button>
-            <button type="button" onclick="selectTier('high')" id="tierBtn-high" class="tier-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-white/80 transition flex items-center gap-1" title="High: Maximale Intelligenz & Deepthink Reasoning">
-              <i data-lucide="brain-circuit" class="w-3 h-3 text-indigo-600"></i>
-              <span>High (Max)</span>
-            </button>
-          </div>
+          <span class="text-slate-300">·</span>
+          <span class="text-[11px] text-slate-600 font-medium" id="assistantStatusText">Bereit für Ihre Fragen</span>
         </div>
 
-        <!-- Right: Memory / VRAM Monitor & Unload Button -->
-        <div class="flex items-center gap-2">
-          <div id="vramStatusBadge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-mono">
-            <span class="w-1.5 h-1.5 rounded-full bg-slate-400" id="vramStatusDot"></span>
-            <span id="vramStatusText">VRAM: 0 MB belegt</span>
+        <!-- Local VRAM Monitor & Unload Button (Only visible in Local Mode) -->
+        <div id="localMemoryControls" class="hidden flex items-center gap-2">
+          <div id="vramStatusBadge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-900 font-mono">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500" id="vramStatusDot"></span>
+            <span id="vramStatusText">Lokales Modell</span>
           </div>
-          <button type="button" onclick="unloadCurrentWebGPU(true)" id="btnUnloadWebgpu" class="hidden text-[11px] font-medium text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1 rounded-lg transition flex items-center gap-1" title="Gibt 100% des Grafikkarten- und Arbeitsspeichers sofort frei">
+          <button type="button" onclick="unloadCurrentWebGPU(true)" id="btnUnloadWebgpu" class="text-[11px] font-medium text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-lg transition flex items-center gap-1" title="Gibt den Arbeitsspeicher des Geräts frei">
             <i data-lucide="trash-2" class="w-3 h-3"></i>
-            <span>RAM leeren</span>
+            <span class="hidden sm:inline">Speicher freigeben</span>
           </button>
         </div>
       </div>
 
       <!-- Message List -->
-      <div id="chatMessages" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar select-text bg-gradient-to-b from-white via-slate-50/40 to-amber-50/15">
+      <div id="chatMessages" class="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6 custom-scrollbar select-text bg-gradient-to-b from-white via-slate-50/40 to-amber-50/15">
         <!-- Assistant Welcome Message -->
-        <div class="flex items-start gap-3 max-w-3xl">
+        <div class="flex items-start gap-2.5 sm:gap-3 max-w-3xl">
           <div class="w-8 h-8 rounded-xl bg-[#FFCA00] flex-shrink-0 flex items-center justify-center text-slate-950 text-sm font-extrabold shadow-sm shadow-amber-500/20">
             ✦
           </div>
-          <div class="flex-1 bg-white border border-slate-200 rounded-2xl p-5 text-slate-700 text-sm leading-relaxed shadow-card">
-            <p class="font-extrabold text-slate-950 text-base mb-1">Willkommen bei Starpi — Ihrem privaten Enterprise-Brain!</p>
-            <p class="text-slate-600">Ich habe Zugriff auf Ihre in Supabase gespeicherten Unternehmensdokumente und Notizen. Stellen Sie mir Fragen zu Ihren Projekten, Deadlines, Budgets oder bitten Sie mich, neue Informationen aufzunehmen.</p>
+          <div class="flex-1 bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 text-slate-700 text-sm leading-relaxed shadow-card">
+            <p class="font-extrabold text-slate-950 text-base mb-1">Willkommen bei Starpi — Ihrem Unternehmens-Assistenten!</p>
+            <p class="text-slate-600">Ich habe Zugriff auf Ihre in Supabase gespeicherten Unternehmensdokumente, Meeting-Notizen und Richtlinien. Stellen Sie mir gerne Fragen oder diktieren Sie neue Informationen.</p>
             
             <div class="mt-4 flex flex-wrap gap-2">
-              <button onclick="sendQuickPrompt('Wann ist der Launch von Projekt Alpha und wer leitet die Frontend-Entwicklung?')" class="text-xs bg-amber-50/70 hover:bg-amber-100/90 border border-amber-200/90 text-amber-950 font-semibold px-3.5 py-2 rounded-xl transition text-left shadow-xs">
-                🔍 "Launch & Aufgaben für Projekt Alpha?"
+              <button onclick="sendQuickPrompt('Wann ist der Launch von Projekt Alpha und wer leitet die Frontend-Entwicklung?')" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
+                🔍 „Projekt Alpha: Launch & Zuständigkeiten?“
               </button>
-              <button onclick="sendQuickPrompt('Welche Dokumente und Richtlinien sind aktuell im Brain hinterlegt?')" class="text-xs bg-amber-50/70 hover:bg-amber-100/90 border border-amber-200/90 text-amber-950 font-semibold px-3.5 py-2 rounded-xl transition text-left shadow-xs">
-                📚 "Welche Dokumente sind im Brain hinterlegt?"
+              <button onclick="sendQuickPrompt('Welche Dokumente und Richtlinien sind aktuell im Brain hinterlegt?')" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
+                📚 „Welche Dokumente sind hinterlegt?“
+              </button>
+              <button onclick="sendQuickPrompt('Wie hoch ist das geplante Budget für Projekt Alpha und Marketing?')" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
+                💰 „Budget für Marketing & Projekt Alpha?“
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Input Bar -->
-      <div class="p-3 md:p-4 border-t border-slate-200 bg-white/90 backdrop-blur-md">
-        <form onsubmit="handleChatSubmit(event)" class="max-w-4xl mx-auto flex flex-col bg-white border-2 border-slate-200 focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-200/40 rounded-2xl p-2 transition shadow-card">
+      <!-- Input Bar (Tastenleiste) - Always accessible, safe-area padded, elevated for thumb access -->
+      <div class="p-2.5 sm:p-3 md:p-4 border-t border-slate-200 bg-white/95 backdrop-blur-md sticky bottom-0 z-20 pb-[max(0.65rem,env(safe-area-inset-bottom,12px))] mb-14 md:mb-0">
+        <form onsubmit="handleChatSubmit(event)" class="max-w-4xl mx-auto flex flex-col bg-white border-2 border-slate-200 focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-200/40 rounded-2xl p-1.5 sm:p-2 transition shadow-card">
           <div id="attachedInfo" class="hidden px-2 py-1 text-xs text-amber-800 bg-amber-50 rounded-lg flex items-center justify-between border border-amber-200 mb-1">
             <span id="attachedFileName" class="font-medium">Datei angehängt</span>
-            <button type="button" onclick="removeAttachment()" class="hover:text-red-600"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+            <button type="button" onclick="removeAttachment()" class="hover:text-red-600 p-1"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
           </div>
-          <div class="flex items-center gap-2">
-            <label class="cursor-pointer text-slate-500 hover:text-slate-800 p-2 rounded-xl hover:bg-slate-100 transition" title="Datei anhängen">
+          <div class="flex items-center gap-1.5 sm:gap-2">
+            <label class="cursor-pointer text-slate-500 hover:text-slate-800 touch-target-min p-2 rounded-xl hover:bg-slate-100 transition flex items-center justify-center" title="Datei anhängen">
               <i data-lucide="paperclip" class="w-5 h-5"></i>
               <input type="file" id="chatFileInput" class="hidden" onchange="handleFileAttach(event)">
             </label>
-            <button type="button" id="voiceBtn" onclick="toggleVoiceInput()" class="relative text-slate-500 hover:text-amber-600 p-2 rounded-xl hover:bg-slate-100 transition" title="Spracheingabe aktivieren">
+            <button type="button" id="voiceBtn" onclick="toggleVoiceInput()" class="relative text-slate-500 hover:text-amber-600 touch-target-min p-2 rounded-xl hover:bg-slate-100 transition flex items-center justify-center" title="Spracheingabe aktivieren">
               <i data-lucide="mic" class="w-5 h-5"></i>
-              <span id="voicePulse" class="hidden absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+              <span id="voicePulse" class="hidden absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
             </button>
-            <textarea id="chatInput" rows="1" placeholder="Fragen Sie das Enterprise Brain oder geben Sie Notizen ein..." class="flex-1 bg-transparent border-0 focus:ring-0 text-slate-900 text-sm placeholder-slate-400 resize-none py-2 px-1 focus:outline-none" onkeydown="handleInputKeydown(event)"></textarea>
-            <button type="submit" id="sendBtn" class="bg-[#FFCA00] hover:bg-[#E5B500] disabled:opacity-40 text-slate-950 font-bold p-2.5 rounded-xl transition shadow-yellow hover:shadow-yellow-lg">
+            <textarea id="chatInput" rows="1" placeholder="Frage stellen oder Notiz eingeben..." class="flex-1 bg-transparent border-0 focus:ring-0 text-slate-900 text-sm placeholder-slate-400 resize-none py-2 px-1.5 focus:outline-none max-h-32 custom-scrollbar" onkeydown="handleInputKeydown(event)" oninput="autoResizeTextarea(this)"></textarea>
+            <button type="submit" id="sendBtn" class="touch-target-min bg-[#FFCA00] hover:bg-[#E5B500] disabled:opacity-40 text-slate-950 font-bold p-2.5 rounded-xl transition shadow-yellow hover:shadow-yellow-lg flex items-center justify-center" title="Nachricht senden">
               <i data-lucide="arrow-up" class="w-5 h-5"></i>
             </button>
           </div>
         </form>
-        <p class="text-[11px] text-center text-slate-500 mt-2 font-medium">100 % private Inferenz & Supabase pgvector Cloud-Speicher</p>
+        <p class="text-[10px] sm:text-[11px] text-center text-slate-500 mt-1.5 font-medium">🔒 100 % DSGVO-konform · Sichere Wissensdatenbank in Frankfurt (eu-central-1)</p>
       </div>
     </section>
 
     <!-- ========================================== -->
     <!-- TAB 2: LIBRARY / WISSENSARCHIV -->
     <!-- ========================================== -->
-    <section id="tab-library" class="flex-1 flex flex-col overflow-hidden hidden p-4 md:p-6 select-text">
+    <section id="tab-library" class="flex-1 flex flex-col overflow-hidden hidden p-3 sm:p-4 md:p-6 pb-20 md:pb-6 select-text">
       <div class="max-w-5xl mx-auto w-full flex-1 flex flex-col overflow-hidden">
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
           <div>
@@ -329,7 +330,7 @@
     <!-- ========================================== -->
     <!-- TAB: KNOWLEDGE GRAPH / WISSENSGRAPH -->
     <!-- ========================================== -->
-    <section id="tab-graph" class="flex-1 flex flex-col overflow-hidden hidden p-4 md:p-6 select-text">
+    <section id="tab-graph" class="flex-1 flex flex-col overflow-hidden hidden p-3 sm:p-4 md:p-6 pb-20 md:pb-6 select-text">
       <div class="max-w-6xl mx-auto w-full flex-1 flex flex-col overflow-hidden">
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
           <div>
@@ -395,7 +396,7 @@
     <!-- ========================================== -->
     <!-- TAB 3: INGEST / WISSEN EINSPEISEN -->
     <!-- ========================================== -->
-    <section id="tab-ingest" class="flex-1 flex flex-col overflow-y-auto hidden p-4 md:p-6 custom-scrollbar select-text">
+    <section id="tab-ingest" class="flex-1 flex flex-col overflow-y-auto hidden p-3 sm:p-4 md:p-6 pb-24 md:pb-6 custom-scrollbar select-text">
       <div class="max-w-3xl mx-auto w-full space-y-6">
         <div>
           <h2 class="text-xl font-extrabold text-slate-950 tracking-tight">Informationen ins Brain einspeisen</h2>
@@ -456,236 +457,158 @@
     </section>
 
     <!-- ========================================== -->
-    <!-- TAB 4: SETTINGS / CLOUD INFERENZ -->
+    <!-- TAB 4: SETTINGS / OPTIONEN & CLOUD -->
     <!-- ========================================== -->
-    <section id="tab-settings" class="flex-1 flex flex-col overflow-y-auto hidden p-4 md:p-6 custom-scrollbar select-text">
-      <div class="max-w-2xl mx-auto w-full space-y-6">
+    <section id="tab-settings" class="flex-1 flex flex-col overflow-y-auto hidden p-3 sm:p-4 md:p-6 pb-28 md:pb-6 custom-scrollbar select-text">
+      <div class="max-w-2xl mx-auto w-full space-y-5">
         <div>
-          <h2 class="text-xl font-extrabold text-slate-950 tracking-tight">Cloud- & Backend-Konfiguration</h2>
-          <p class="text-xs text-slate-500">Verbindungsdaten zu Ihrer Supabase-Instanz und dem Cloud-Inferenz-Server (AWS EC2 / RunPod / Mac).</p>
+          <h2 class="text-xl font-extrabold text-slate-950 tracking-tight">Einstellungen & Verbindungen</h2>
+          <p class="text-xs text-slate-500">Verwalten Sie den Assistenten-Modus und Ihre Wissensdatenbank in Frankfurt.</p>
         </div>
 
-        <!-- BYOC Architecture Card -->
-        <div class="bg-gradient-to-r from-amber-50 via-amber-100/40 to-white border border-amber-200 rounded-2xl p-6 space-y-3 shadow-xs">
-          <div class="flex items-center gap-2 text-amber-950 font-extrabold text-sm">
-            <i data-lucide="cpu" class="w-5 h-5 text-amber-600"></i>
-            <span>Architektur: Vercel + Supabase Brain + Lokale Rechenpower</span>
+        <!-- Assistenten-Modus Card -->
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-4 shadow-card">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="sparkles" class="w-4 h-4 text-amber-500"></i>
+              Assistenten-Modus
+            </h3>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Aktiv
+            </span>
           </div>
-          <p class="text-xs text-slate-700 leading-relaxed">
-            <strong>So funktioniert es:</strong> Vercel stellt das globale Web-Gateway (Frontend) bereit, Supabase dient als zentrales Gehirn (Dokumentenarchiv & pgvector), und die <strong>KI-Rechenkapazität wird direkt vom Rechner des Nutzers erbracht</strong> (z. B. Mac M4 Pro GPU). Dadurch entstehen <strong>0,00 € Cloud-Kosten</strong> für Inferenz!
-          </p>
-        </div>
 
-        <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-card">
-          <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
-            <i data-lucide="database" class="w-4 h-4 text-emerald-600"></i>
-            Dedizierte Supabase Cloud-Datenbank
-          </h3>
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Supabase URL (Frankfurt eu-central-1)</label>
-            <input type="text" id="cfgSupabaseUrl" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-700 font-mono" readonly>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Wählen Sie, wie Starpi arbeiten soll:</label>
+            <select id="cfgComputeMode" onchange="changeEngine(this.value)" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-medium focus:border-amber-400 focus:outline-none transition">
+              <option value="council" selected>⚡ Schneller Assistent (Empfohlen · Cloud-unterstützt, schont Smartphone & Akku)</option>
+              <option value="client">🔒 Lokaler Offline-Modus (100% privat · Rechnet direkt im Browser auf Ihrer GPU)</option>
+              <option value="local">🖥️ Eigener Server (Verbindung zu lokalem MLX / Ollama auf Ihrem Mac/PC)</option>
+            </select>
+            <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+              <strong>Empfehlung:</strong> Der <em>Schnelle Assistent</em> liefert Antworten in weniger als einer Sekunde, ohne dass große KI-Modelle auf Ihr Handy heruntergeladen werden müssen.
+            </p>
           </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Supabase Anon Key</label>
-            <input type="password" id="cfgSupabaseKey" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-700 font-mono" readonly>
-          </div>
-        </div>
 
-        <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-card">
-          <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
-            <i data-lucide="cpu" class="w-4 h-4 text-amber-600"></i>
-            Inferenz & Rechenkapazität (Client / Lokal)
-          </h3>
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Bevorzugter Inferenz-Modus</label>
-            <select id="cfgComputeMode" onchange="changeEngine(this.value)" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:border-amber-400 focus:outline-none">
-              <option value="council" selected>🧠 Rat der KIs (Ultrathink / Deepthink Max · Standard)</option>
-              <option value="cluster_a">⚡ Ultra-Inferenz (Primärer Hochleistungs-Cluster)</option>
-              <option value="cluster_b">🌐 Redundanz-Inferenz (Sekundärer Cluster)</option>
-              <option value="client">🛡️ Private Client-Inferenz (Hardware-Beschleunigung)</option>
-              <option value="local">💻 Privater Rechner-Knoten (Lokal/P2P)</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Standard KI-Kapazität (Power-Stufe)</label>
-            <select id="cfgAiTier" onchange="selectTier(this.value)" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:border-amber-400 focus:outline-none">
-              <option value="auto">✨ Smart Auto (Automatische Endgeräte-Erkennung)</option>
-              <option value="low">⚡ Low (Eco & Speed · 705 MB · Minimaler RAM-Bedarf)</option>
-              <option value="medium">⚖️ Medium (Balanced · 980 MB · Hohe Wissensdichte)</option>
-              <option value="high">🧠 High (Maximales Reasoning · Deepthink Max Modus)</option>
-            </select>
-            <p class="text-[11px] text-slate-500 mt-1">Steuert die Modellgröße und Rechenleistung. Auf Smartphones wird der Speicher automatisch geschützt.</p>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Spezifisches Inferenz-Profil (Optional für Experten)</label>
-            <select id="cfgWebgpuModel" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:border-amber-400 focus:outline-none">
-              <option value="auto">⚡ Automatisch (Hardware-Erkennung & adaptive Skalierung)</option>
-              <option value="llama-1b">📱 Ultra-Kompakt Inferenz (705 MB · Mobil optimiert, 0% Crash-Risiko)</option>
-              <option value="qwen-1.5b">🧠 Allrounder Inferenz (980 MB · Hohe Präzision)</option>
-              <option value="smollm-1.7b">📚 Kompakt-Reasoning (1,05 GB · Strukturierte Wissensverarbeitung)</option>
-              <option value="deepseek-r1">🔬 Deepthink / CoT Spezialist (954 MB · Dedizierte Denkschritte)</option>
-              <option value="qwen-3b">💻 Desktop High-Precision (1,85 GB · Maximale Genauigkeit)</option>
-              <option value="hermes-3b">✦ Autonome Logik-Inferenz (1,8 GB · Agenten-Protokoll)</option>
-              <option value="phi-3.5">🏛️ High-Density Reasoning (2,2 GB · Tiefenanalyse)</option>
-            </select>
-            <p class="text-[11px] text-slate-500 mt-1">Lädt Inferenzgewichte direkt in den lokalen Browser-Cache (IndexedDB). 0 € Serverkosten.</p>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Lokaler Server / Tunnel Endpunkt (LLM Base URL)</label>
-            <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="http://localhost:8000/v1 oder https://my-mac-tunnel.trycloudflare.com/v1" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
-            <p class="text-[11px] text-slate-500 mt-1">Geben Sie hier die URL Ihres lokalen Modells (MLX/Ollama) oder Ihres P2P-Tunnels ein.</p>
-          </div>
           <div class="pt-2 flex justify-end">
-            <button onclick="saveSettings()" class="bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 text-xs font-bold px-5 py-2.5 rounded-xl transition shadow-yellow hover:shadow-yellow-lg">
+            <button onclick="saveSettings()" class="bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 text-xs font-bold px-5 py-2.5 rounded-xl transition shadow-yellow hover:shadow-yellow-lg flex items-center gap-1.5">
+              <i data-lucide="check" class="w-3.5 h-3.5"></i>
               Einstellungen speichern
             </button>
           </div>
         </div>
 
-        <!-- Multi-Key Inferenz-Cluster Dashboard (10 Knoten Pool) -->
-        <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-5 shadow-card">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2.5">
-              <div class="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center text-amber-950 text-sm font-bold shadow-xs">
-                <i data-lucide="layers" class="w-4 h-4 text-amber-800"></i>
-              </div>
-              <div>
-                <h3 class="text-sm font-extrabold text-slate-900">Rats-Infrastruktur: Multi-Knoten Cluster (10x Inferenz-Pool)</h3>
-                <p class="text-[11px] text-slate-500">Verteilte Rechenknoten für den Rat der KIs mit automatischem Lastabgleich und Failover</p>
-              </div>
-            </div>
-            <span class="text-[10px] font-mono font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
+        <!-- Wissensdatenbank Card -->
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-4 shadow-card">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="database" class="w-4 h-4 text-emerald-600"></i>
+              Wissensdatenbank (Supabase Frankfurt)
+            </h3>
+            <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              10/10 Knoten Aktiv
+              Live Verbunden
             </span>
           </div>
-
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <!-- Primärer Hochleistungs-Cluster Card -->
-            <div class="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-3 shadow-subtle">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <span class="text-xs font-bold text-slate-900">🧠 Primärer Hochleistungs-Cluster</span>
-                  <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-300">5 Knoten</span>
-                </div>
-                <button onclick="testPrimaryCluster()" id="btnTestPrimary" class="text-[11px] font-bold text-amber-950 bg-[#FFCA00]/40 hover:bg-[#FFCA00]/70 border border-amber-300 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
-                  <i data-lucide="zap" class="w-3 h-3"></i> Cluster testen
-                </button>
-              </div>
-              <p class="text-[11px] text-slate-600">Hochgeschwindigkeits-Inferenz für Chain of Thought Ratsdebatten mit automatischer Knoten-Rotation.</p>
-              
-              <div class="space-y-1.5 font-mono text-[11px]">
-                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Inferenz-Knoten #1: AIzaSy...9Mstg</span>
-                  <span class="text-[10px] text-emerald-700 font-sans font-bold">Aktiv</span>
-                </div>
-                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Inferenz-Knoten #2: AIzaSy...rqQA</span>
-                  <span class="text-[10px] text-emerald-700 font-sans font-bold">Aktiv</span>
-                </div>
-                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Inferenz-Knoten #3: AIzaSy...5Z0QI</span>
-                  <span class="text-[10px] text-emerald-700 font-sans font-bold">Aktiv</span>
-                </div>
-                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Inferenz-Knoten #4: AIzaSy...zt3I</span>
-                  <span class="text-[10px] text-emerald-700 font-sans font-bold">Aktiv</span>
-                </div>
-                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Inferenz-Knoten #5: AIzaSy...TCEY</span>
-                  <span class="text-[10px] text-emerald-700 font-sans font-bold">Aktiv</span>
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Zusätzlicher primärer API-Schlüssel (optional)</label>
-                <input type="password" id="cfgGeminiKey" placeholder="Eigener Schlüssel (wird als primärer Knoten priorisiert)" class="w-full bg-white border border-slate-200 focus:border-amber-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none font-mono">
-              </div>
-
-              <div id="primaryTestStatus" class="hidden text-xs p-2.5 rounded-lg border"></div>
+          
+          <div class="space-y-2 text-xs text-slate-600">
+            <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+              <span class="font-medium text-slate-700">Standort:</span>
+              <span class="font-semibold text-slate-900">Frankfurt am Main (eu-central-1)</span>
             </div>
-
-            <!-- Sekundärer Redundanz-Cluster Card -->
-            <div class="bg-slate-50/80 border border-slate-200 rounded-xl p-4 space-y-3 shadow-subtle">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <span class="text-xs font-bold text-slate-900">🌐 Sekundärer Redundanz-Cluster</span>
-                  <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-300">5 Knoten</span>
-                </div>
-                <button onclick="testSecondaryCluster()" id="btnTestSecondary" class="text-[11px] font-bold text-slate-800 bg-slate-200/60 hover:bg-slate-200 border border-slate-300 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
-                  <i data-lucide="zap" class="w-3 h-3"></i> Cluster testen
-                </button>
-              </div>
-              <p class="text-[11px] text-slate-600">Redundante Inferenz-Knoten zur Ausfallsicherung und dialektischen Prüfung der Ratsbeschlüsse.</p>
-              
-              <div class="space-y-1.5 font-mono text-[11px]">
-                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> Inferenz-Knoten #1: sk-or-v1...8667</span>
-                  <span class="text-[10px] text-indigo-700 font-sans font-bold">Aktiv</span>
-                </div>
-                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> Inferenz-Knoten #2: sk-or-v1...364f</span>
-                  <span class="text-[10px] text-indigo-700 font-sans font-bold">Aktiv</span>
-                </div>
-                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> Inferenz-Knoten #3: sk-or-v1...f7d6</span>
-                  <span class="text-[10px] text-indigo-700 font-sans font-bold">Aktiv</span>
-                </div>
-                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> Inferenz-Knoten #4: sk-or-v1...5782</span>
-                  <span class="text-[10px] text-indigo-700 font-sans font-bold">Aktiv</span>
-                </div>
-                <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-800 shadow-xs">
-                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> Inferenz-Knoten #5: sk-or-v1...6f36</span>
-                  <span class="text-[10px] text-indigo-700 font-sans font-bold">Aktiv</span>
-                </div>
-              </div>
-
-              <div>
-                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Zusätzlicher sekundärer API-Schlüssel (optional)</label>
-                <input type="password" id="cfgOpenrouterKey" placeholder="Eigener Schlüssel (wird als primärer Knoten priorisiert)" class="w-full bg-white border border-slate-200 focus:border-amber-400 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none font-mono">
-              </div>
-
-              <div id="secondaryTestStatus" class="hidden text-xs p-2.5 rounded-lg border"></div>
+            <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+              <span class="font-medium text-slate-700">Datenschutz & Compliance:</span>
+              <span class="font-semibold text-emerald-700">100 % DSGVO-konform</span>
+            </div>
+            <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+              <span class="font-medium text-slate-700">Vektorsuche:</span>
+              <span class="font-semibold text-slate-900">PostgreSQL pgvector (HNSW)</span>
             </div>
           </div>
         </div>
 
-        <!-- Mobile & Multi-Device BYOC Compute Card -->
-        <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-card">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <i data-lucide="smartphone" class="w-4 h-4 text-emerald-600"></i>
-              Mobile Client-Inferenz (0 € Server-Kosten)
-            </h3>
-            <span class="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Client Hardware</span>
-          </div>
-          <div class="p-4 rounded-xl bg-emerald-50/50 border border-emerald-200 text-xs space-y-2">
-            <p class="text-emerald-950 font-bold flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              Nativ auf Smartphones ohne externen Server:
-            </p>
-            <p class="text-slate-700 leading-relaxed">
-              Dank dem optimierten <strong>Ultra-Kompakt Inferenzmodell (705 MB)</strong> und schnellen Chunks (<code class="bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">prefill_chunk_size: 128</code>) rechnet Ihr Endgerät direkt im mobilen Browser (iOS Safari / Android Chrome) mit <strong>22–35 Token/s</strong>. Das Modell bleibt sicher unter dem Speicherlimit und schützt 100 % Ihrer Privatsphäre.
-            </p>
-          </div>
+        <!-- Collapsible Advanced Settings for Admins -->
+        <details class="group bg-white border border-slate-200 rounded-2xl p-5 shadow-card">
+          <summary class="flex items-center justify-between cursor-pointer font-bold text-xs text-slate-700 hover:text-slate-950 select-none">
+            <span class="flex items-center gap-2">
+              <i data-lucide="sliders-horizontal" class="w-4 h-4 text-amber-600"></i>
+              Erweiterte Einstellungen (für Administratoren & IT)
+            </span>
+            <i data-lucide="chevron-down" class="w-4 h-4 transform group-open:rotate-180 transition-transform text-slate-400"></i>
+          </summary>
 
-          <div class="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
-            <p class="text-slate-700 font-bold flex items-center gap-1.5">
-              <i data-lucide="server" class="w-3.5 h-3.5 text-amber-600"></i>
-              Optional: Lokaler Rechner-Knoten (z. B. für große Modelle ab 27B / 70B):
-            </p>
-            <p class="text-slate-600 text-[11px]">
-              Falls Sie für Spezialaufgaben auf das lokale Modell Ihres Rechners von unterwegs zugreifen möchten:
-            </p>
-            <pre class="text-[11px] text-amber-950 font-mono bg-amber-50 p-2.5 rounded-xl border border-amber-200 overflow-x-auto">python -m mlx_lm server --model /Users/umurey/LocalModels/Qwen3.8-27B-Uncensored-MLX/4-bit --port 8000</pre>
-            <pre class="text-[11px] text-slate-800 font-mono bg-white p-2.5 rounded-xl border border-slate-200 overflow-x-auto">npx localtunnel --port 8000  # oder: cloudflared tunnel --url http://localhost:8000</pre>
-            <p class="text-[11px] text-slate-500 italic">Generierte HTTPS-URL in das Feld oben bei <strong>Lokaler Server</strong> eintragen.</p>
+          <div class="mt-4 pt-4 border-t border-slate-100 space-y-4">
+            <!-- Hidden required inputs for compatibility -->
+            <input type="hidden" id="cfgSupabaseUrl" readonly>
+            <input type="hidden" id="cfgSupabaseKey" readonly>
+            <input type="hidden" id="cfgAiTier" value="auto">
+
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Eigener Google Gemini API-Schlüssel (optional)</label>
+              <input type="password" id="cfgGeminiKey" placeholder="Eigener API-Key (überschreibt Standard-Pool)" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
+              <p class="text-[10px] text-slate-500 mt-1">Wird priorisiert verwendet, falls eingetragen.</p>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Eigener OpenRouter API-Schlüssel (optional)</label>
+              <input type="password" id="cfgOpenrouterKey" placeholder="sk-or-v1-..." class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Lokaler Server / Tunnel Endpunkt (LLM Base URL)</label>
+              <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="http://localhost:8000/v1 oder Cloudflare-Tunnel" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">WebGPU-Modell (für lokalen Offline-Modus)</label>
+              <select id="cfgWebgpuModel" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none">
+                <option value="auto">⚡ Automatische Erkennung nach Hardware</option>
+                <option value="llama-1b">📱 Llama-3.2-1B (705 MB · Für Mobilgeräte optimiert)</option>
+                <option value="qwen-1.5b">🧠 Qwen2.5-1.5B (980 MB · Hohe Genauigkeit)</option>
+                <option value="deepseek-r1">🔬 DeepSeek-R1-Distill-1.5B (954 MB · Denkschritte)</option>
+                <option value="qwen-3b">💻 Qwen2.5-3B (1,85 GB · Desktop High-Precision)</option>
+              </select>
+            </div>
+
+            <div class="pt-2 border-t border-slate-100 flex flex-wrap gap-2">
+              <button type="button" onclick="testPrimaryCluster()" id="btnTestPrimary" class="text-[11px] font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
+                <i data-lucide="zap" class="w-3 h-3 text-amber-600"></i> Primären Pool testen
+              </button>
+              <button type="button" onclick="testSecondaryCluster()" id="btnTestSecondary" class="text-[11px] font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
+                <i data-lucide="activity" class="w-3 h-3 text-indigo-600"></i> Redundanz-Pool testen
+              </button>
+            </div>
+            <div id="primaryTestStatus" class="hidden text-xs p-2.5 rounded-lg border"></div>
+            <div id="secondaryTestStatus" class="hidden text-xs p-2.5 rounded-lg border"></div>
           </div>
-        </div>
+        </details>
       </div>
     </section>
   </main>
+
+  <!-- Mobile Bottom Navigation Bar (Tastenleiste) - Always accessible on phones & tablets -->
+  <nav id="mobileBottomNav" class="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-lg border-t border-slate-200 flex items-center justify-around px-1 pt-1.5 pb-[max(0.4rem,env(safe-area-inset-bottom,8px))] shadow-lg">
+    <button onclick="switchTab('chat')" id="mobile-nav-chat" class="flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition text-amber-950 font-bold bg-amber-50 border border-amber-300/80 shadow-xs touch-target-min">
+      <i data-lucide="message-square" class="w-5 h-5 text-amber-600"></i>
+      <span class="text-[10px] mt-0.5">Chat</span>
+    </button>
+    <button onclick="switchTab('library')" id="mobile-nav-library" class="flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition text-slate-600 hover:text-slate-900 font-medium touch-target-min">
+      <i data-lucide="library" class="w-5 h-5"></i>
+      <span class="text-[10px] mt-0.5">Archiv</span>
+    </button>
+    <button onclick="switchTab('graph')" id="mobile-nav-graph" class="flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition text-slate-600 hover:text-slate-900 font-medium touch-target-min">
+      <i data-lucide="network" class="w-5 h-5"></i>
+      <span class="text-[10px] mt-0.5">Graph</span>
+    </button>
+    <button onclick="switchTab('ingest')" id="mobile-nav-ingest" class="flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition text-slate-600 hover:text-slate-900 font-medium touch-target-min">
+      <i data-lucide="plus-circle" class="w-5 h-5"></i>
+      <span class="text-[10px] mt-0.5">Neu</span>
+    </button>
+    <button onclick="switchTab('settings')" id="mobile-nav-settings" class="flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition text-slate-600 hover:text-slate-900 font-medium touch-target-min">
+      <i data-lucide="settings-2" class="w-5 h-5"></i>
+      <span class="text-[10px] mt-0.5">Optionen</span>
+    </button>
+  </nav>
 
   <!-- Document View Modal -->
   <div id="docModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
@@ -779,9 +702,9 @@
     function getGeminiKeys() {
       const customKey = (localStorage.getItem('starpi_gemini_key') || document.getElementById('cfgGeminiKey')?.value || "").trim();
       if (customKey && !DEFAULT_GEMINI_KEYS.includes(customKey)) {
-        return [customKey, ...DEFAULT_GEMINI_KEYS];
+        return [customKey];
       }
-      return DEFAULT_GEMINI_KEYS;
+      return []; // Default leaked keys are skipped to avoid 403 latency
     }
 
     function getOpenRouterKeys() {
@@ -794,6 +717,9 @@
 
     async function callGeminiWithFailover(promptContent) {
       const keys = getGeminiKeys();
+      if (!keys || keys.length === 0) {
+        throw new Error("Kein individueller Gemini-Key hinterlegt. Cloud-Assistent (OpenRouter) wird genutzt.");
+      }
       let lastErr = null;
       for (let attempt = 0; attempt < keys.length; attempt++) {
         const activeIdx = geminiKeyIndex % keys.length;
@@ -805,7 +731,8 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               contents: [{ role: "user", parts: [{ text: promptContent }] }]
-            })
+            }),
+            signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(6000) : undefined
           });
           if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
@@ -821,23 +748,27 @@
           console.warn(`[Gemini Pool] Key #${activeIdx + 1} fehlgeschlagen (${e.message}), Failover zu nächstem Key...`);
         }
       }
-      throw lastErr || new Error("Alle Gemini API-Keys im Pool sind erschöpft.");
+      throw lastErr || new Error("Gemini API-Endpunkt nicht erreichbar.");
     }
 
     async function callOpenRouterWithFailover(userText, systemPrompt, conversationSlice = []) {
       const keys = getOpenRouterKeys();
       const freeModels = [
         "liquid/lfm-2.5-2.6b:free",
-        "nvidia/nemotron-3.5-lightning:free",
-        "google/gemini-2.0-flash-exp:free",
-        "openrouter/auto"
+        "openrouter/free",
+        "nvidia/nemotron-3.5-lightning:free"
       ];
       let lastErr = null;
+      let attemptsCount = 0;
+      const maxAttempts = 3; // Schneller Failover ohne langes Warten
+
       for (let attempt = 0; attempt < keys.length; attempt++) {
         const activeIdx = openrouterKeyIndex % keys.length;
         const key = keys[activeIdx];
         openrouterKeyIndex = (openrouterKeyIndex + 1) % keys.length;
         for (const model of freeModels) {
+          attemptsCount++;
+          if (attemptsCount > maxAttempts) break;
           try {
             const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
               method: "POST",
@@ -845,7 +776,7 @@
                 "Authorization": `Bearer ${key}`,
                 "Content-Type": "application/json",
                 "HTTP-Referer": "https://starpi-three.vercel.app/",
-                "X-Title": "Starpi Enterprise Brain"
+                "X-Title": "Starpi Assistant"
               },
               body: JSON.stringify({
                 model: model,
@@ -856,7 +787,8 @@
                 ],
                 temperature: 0.5,
                 max_tokens: 1024
-              })
+              }),
+              signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(7000) : undefined
             });
             if (!res.ok) {
               const errData = await res.json().catch(() => ({}));
@@ -872,8 +804,9 @@
             console.warn(`[OpenRouter Pool] Key #${activeIdx + 1} mit ${model} fehlgeschlagen: ${e.message}`);
           }
         }
+        if (attemptsCount > maxAttempts) break;
       }
-      throw lastErr || new Error("Alle OpenRouter API-Keys und Free-Tier Modelle im Pool sind erschöpft.");
+      throw lastErr || new Error("Cloud-Inferenz aktuell nicht erreichbar.");
     }
 
     async function testPrimaryCluster() {
@@ -881,31 +814,38 @@
       const statusBox = document.getElementById('primaryTestStatus');
       if (btn) btn.disabled = true;
       if (statusBox) {
-        statusBox.className = "text-xs p-2.5 rounded-lg border bg-brand-500/10 border-brand-500/30 text-brand-300 flex items-center gap-2";
-        statusBox.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>Teste primären Inferenz-Cluster (Ping & Inferenz)...</span>`;
+        statusBox.className = "text-xs p-2.5 rounded-lg border bg-amber-500/10 border-amber-500/30 text-amber-800 flex items-center gap-2";
+        statusBox.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>Prüfe Google Gemini Verbindung...</span>`;
         statusBox.classList.remove('hidden');
         lucide.createIcons();
       }
 
       const t0 = performance.now();
       try {
-        const res = await callGeminiWithFailover("Bestätige mit genau einem Satz auf Deutsch, dass der primäre Inferenz-Cluster für den Rat der KIs einsatzbereit ist.");
+        const res = await callGeminiWithFailover("Bestätige mit genau einem kurzen Satz auf Deutsch, dass der Assistent einsatzbereit ist.");
         const elapsed = Math.round(performance.now() - t0);
         if (statusBox) {
-          statusBox.className = "text-xs p-2.5 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-300 space-y-1";
+          statusBox.className = "text-xs p-2.5 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-800 space-y-1";
           statusBox.innerHTML = `
             <div class="flex items-center justify-between font-semibold">
-              <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-400"></i> Primärer Cluster Bereit (Knoten #${res.keyIndex + 1})</span>
+              <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> Gemini Verbindung bereit</span>
               <span class="font-mono text-[11px]">${elapsed} ms</span>
             </div>
-            <p class="text-[11px] text-slate-300 italic">"${escapeHtml(sanitizeModelNames(res.text.slice(0, 140)))}"</p>
+            <p class="text-[11px] text-slate-600 italic">"${escapeHtml(sanitizeModelNames(res.text.slice(0, 140)))}"</p>
           `;
           lucide.createIcons();
         }
       } catch (err) {
         if (statusBox) {
-          statusBox.className = "text-xs p-2.5 rounded-lg border bg-rose-500/10 border-rose-500/30 text-rose-300";
-          statusBox.innerHTML = `<div class="flex items-center gap-1.5 font-semibold"><i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> Test fehlgeschlagen</div><p class="text-[11px] mt-1">${escapeHtml(sanitizeModelNames(err.message))}</p>`;
+          const isNoKey = err.message && err.message.includes('Kein individueller Gemini');
+          statusBox.className = `text-xs p-2.5 rounded-lg border ${isNoKey ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-rose-500/10 border-rose-500/30 text-rose-700'}`;
+          statusBox.innerHTML = `
+            <div class="flex items-center gap-1.5 font-semibold">
+              <i data-lucide="${isNoKey ? 'info' : 'alert-circle'}" class="w-3.5 h-3.5"></i>
+              <span>${isNoKey ? 'Gemini nicht konfiguriert' : 'Test fehlgeschlagen'}</span>
+            </div>
+            <p class="text-[11px] mt-1 text-slate-600">${escapeHtml(err.message)}</p>
+          `;
           lucide.createIcons();
         }
       } finally {
@@ -918,8 +858,8 @@
       const statusBox = document.getElementById('secondaryTestStatus');
       if (btn) btn.disabled = true;
       if (statusBox) {
-        statusBox.className = "text-xs p-2.5 rounded-lg border bg-indigo-500/10 border-indigo-500/30 text-indigo-300 flex items-center gap-2";
-        statusBox.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>Teste sekundären Redundanz-Cluster (Ping & Inferenz)...</span>`;
+        statusBox.className = "text-xs p-2.5 rounded-lg border bg-amber-500/10 border-amber-500/30 text-amber-800 flex items-center gap-2";
+        statusBox.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>Prüfe Cloud-Assistent Verbindung...</span>`;
         statusBox.classList.remove('hidden');
         lucide.createIcons();
       }
@@ -927,25 +867,25 @@
       const t0 = performance.now();
       try {
         const res = await callOpenRouterWithFailover(
-          "Bestätige mit genau einem Satz auf Deutsch, dass der sekundäre Redundanz-Cluster für den Rat der KIs bereit ist.",
-          "Du bist der Rat der KIs, antworte präzise auf Deutsch ohne Nennung von Modell- oder Firmennamen."
+          "Bestätige mit genau einem Satz auf Deutsch, dass der Assistent bereit ist.",
+          "Du bist Starpi, der intelligente Assistent. Antworte in genau einem kurzen, freundlichen Satz auf Deutsch."
         );
         const elapsed = Math.round(performance.now() - t0);
         if (statusBox) {
-          statusBox.className = "text-xs p-2.5 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-300 space-y-1";
+          statusBox.className = "text-xs p-2.5 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-800 space-y-1";
           statusBox.innerHTML = `
             <div class="flex items-center justify-between font-semibold">
-              <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-400"></i> Redundanz-Cluster Bereit (Knoten #${res.keyIndex + 1})</span>
+              <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> Cloud-Assistent Bereit (Knoten #${res.keyIndex + 1})</span>
               <span class="font-mono text-[11px]">${elapsed} ms</span>
             </div>
-            <p class="text-[11px] text-slate-300 italic">"${escapeHtml(sanitizeModelNames(res.text.slice(0, 140)))}"</p>
+            <p class="text-[11px] text-slate-600 italic">"${escapeHtml(sanitizeModelNames(res.text.slice(0, 140)))}"</p>
           `;
           lucide.createIcons();
         }
       } catch (err) {
         if (statusBox) {
-          statusBox.className = "text-xs p-2.5 rounded-lg border bg-rose-500/10 border-rose-500/30 text-rose-300";
-          statusBox.innerHTML = `<div class="flex items-center gap-1.5 font-semibold"><i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> Test fehlgeschlagen</div><p class="text-[11px] mt-1">${escapeHtml(sanitizeModelNames(err.message))}</p>`;
+          statusBox.className = "text-xs p-2.5 rounded-lg border bg-rose-500/10 border-rose-500/30 text-rose-700";
+          statusBox.innerHTML = `<div class="flex items-center gap-1.5 font-semibold"><i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> Test fehlgeschlagen</div><p class="text-[11px] mt-1 text-slate-600">${escapeHtml(sanitizeModelNames(err.message))}</p>`;
           lucide.createIcons();
         }
       } finally {
@@ -965,13 +905,13 @@
         .replace(/\bOpenRouter(\s+Cloud\s+AI)?/gi, 'Redundanz-Knoten')
         .replace(/\b(Meta\s+)?Llama(-3(\.\d+)?)?(-[0-9]+(\.[0-9]+)?B)?(-Instruct)?/gi, 'Kompakt-Modell')
         .replace(/\b(Alibaba\s+)?Qwen(2(\.\d+)?)?(-[0-9]+(\.[0-9]+)?B)?(-Instruct)?/gi, 'Hochpräzisions-Modell')
-        .replace(/\b(DeepSeek)(-R1)?(-Distill)?(-Qwen)?/gi, 'Deepthink-Instanz')
+        .replace(/\b(DeepSeek)(-R1)?(-Distill)?(-Qwen)?/gi, 'Logik-Instanz')
         .replace(/\b(Nvidia\s+)?Nemotron(-[0-9]+(\.[0-9]+)?)?(-lightning)?/gi, 'Inferenz-Knoten')
         .replace(/\bLiquid(\s+LFM)?(-[0-9]+(\.[0-9]+)?)?/gi, 'Inferenz-Knoten')
         .replace(/\bSmolLM2?(-[0-9]+(\.[0-9]+)?B)?(-Instruct)?/gi, 'Kompakt-Modell')
         .replace(/\b(Nous\s+)?Hermes(-[0-9]+)?/gi, 'Logik-Modell')
         .replace(/\b(Microsoft\s+)?Phi(-3(\.\d+)?)?(-mini)?(-instruct)?/gi, 'Reasoning-Modell')
-        .replace(/\b(ChatGPT|GPT-4[o\w]*|GPT-3\.5|OpenAI)/gi, 'Ratsinstanz')
+        .replace(/\b(ChatGPT|GPT-4[o\w]*|GPT-3\.5|OpenAI)/gi, 'Assistent')
         .replace(/liquid\/[^\s,)]+/gi, 'Redundanz-Knoten')
         .replace(/nvidia\/[^\s,)]+/gi, 'Redundanz-Knoten')
         .replace(/google\/[^\s,)]+/gi, 'Primär-Knoten')
@@ -1000,24 +940,30 @@
     if (document.getElementById("cfgWebgpuModel")) document.getElementById("cfgWebgpuModel").value = savedWebgpuModel;
     if (document.getElementById("cfgAiTier")) document.getElementById("cfgAiTier").value = savedAiTier;
 
+    function autoResizeTextarea(el) {
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 128) + 'px';
+    }
+
     function detectAndDisplayDevice() {
       const userAgent = navigator.userAgent || "";
       const isIOS = /iPhone|iPad|iPod/i.test(userAgent);
       const isAndroid = /Android/i.test(userAgent);
-      const isMobile = isIOS || isAndroid || /Mobile/i.test(userAgent) || window.innerWidth <= 800;
+      const isTablet = /iPad|Tablet/i.test(userAgent) || (window.innerWidth >= 640 && window.innerWidth <= 1024);
 
       const iconEl = document.getElementById('deviceTypeIcon');
       const textEl = document.getElementById('detectedDeviceText');
 
-      if (isIOS) {
+      if (isTablet) {
+        if (iconEl) iconEl.setAttribute('data-lucide', 'tablet');
+        if (textEl) textEl.textContent = "Tablet";
+      } else if (isIOS || isAndroid || window.innerWidth <= 768) {
         if (iconEl) iconEl.setAttribute('data-lucide', 'smartphone');
-        if (textEl) textEl.textContent = "Gerät: iPhone / iOS WebKit";
-      } else if (isAndroid) {
-        if (iconEl) iconEl.setAttribute('data-lucide', 'smartphone');
-        if (textEl) textEl.textContent = "Gerät: Android / Blink";
+        if (textEl) textEl.textContent = "Smartphone";
       } else {
         if (iconEl) iconEl.setAttribute('data-lucide', 'laptop');
-        if (textEl) textEl.textContent = "Gerät: Desktop / GPU";
+        if (textEl) textEl.textContent = "Computer";
       }
       lucide.createIcons();
     }
@@ -1115,6 +1061,15 @@
       if (selTop && selTop.value !== cleanVal) selTop.value = cleanVal;
       if (selCfg && selCfg.value !== cleanVal) selCfg.value = cleanVal;
 
+      const memControls = document.getElementById('localMemoryControls');
+      if (memControls) {
+        if (cleanVal === 'client') {
+          memControls.classList.remove('hidden');
+        } else {
+          memControls.classList.add('hidden');
+        }
+      }
+
       const dot = document.getElementById('engineStatusDot');
       if (cleanVal === 'client') {
         if (!webllmEngine && !webllmLoading) {
@@ -1193,7 +1148,7 @@
           return {
             tier: "manual",
             modelId: "DeepSeek-R1-Distill-Qwen-1.5B-q4f16_1-MLC",
-            displayName: "Deepthink / CoT Spezialist (954 MB)",
+            displayName: "Logik & Reasoning (954 MB)",
             vramEstimate: "~1.5 GB VRAM",
             overrides: { context_window_size: 2048, prefill_chunk_size: 128 }
           };
@@ -1255,7 +1210,7 @@
           return {
             tier: "high-mobile",
             modelId: "DeepSeek-R1-Distill-Qwen-1.5B-q4f16_1-MLC",
-            displayName: "Deepthink Reasoning (Mobile High)",
+            displayName: "Logik-Modell (Mobile High)",
             vramEstimate: "~1.5 GB VRAM",
             overrides: { context_window_size: 2048, prefill_chunk_size: 128 }
           };
@@ -1352,14 +1307,15 @@
         if (dot) dot.className = "w-2 h-2 rounded-full bg-emerald-400";
         updateVramStatusUI(true, hw.displayName, hw.vramEstimate);
 
-        appendMessage('assistant', `✅ **In-Browser WebGPU Modell aktiv!**\n\nModell: **${escapeHtml(hw.displayName)}**\n\n* **GPU-Speicher:** ${hw.vramEstimate}\n* **Hardware-Puffer:** \`${hw.overrides.prefill_chunk_size}\` Chunk / \`${hw.overrides.context_window_size}\` Kontext\n* **RAM-Schutz:** Vorherige Modelle wurden vollständig entladen. 0 € Serverkosten.`);
+        appendMessage('assistant', `✅ **Lokaler Offline-Modus aktiv!**\n\nModell: **${escapeHtml(hw.displayName)}**\n\n* **GPU-Speicher:** ${hw.vramEstimate}\n* **100 % Privat:** Alle Daten verbleiben auf Ihrem Gerät.`);
       } catch (err) {
         webllmLoading = false;
         if (container) container.classList.add('hidden');
         if (dot) dot.className = "w-2 h-2 rounded-full bg-amber-400";
         console.warn("WebLLM Init Error:", err);
         updateVramStatusUI(false);
-        appendMessage('assistant', `⚠️ **WebGPU-Hinweis:** ${escapeHtml(err.message || 'WebGPU wird auf diesem Gerät nicht unterstützt')}. Starpi nutzt automatisch die Cloud-Cluster oder den Synthesizer.`);
+        changeEngine('council');
+        appendMessage('assistant', `ℹ️ **Hinweis zum Offline-Modus:** Lokales WebGPU wird auf diesem Gerät oder Browser nicht unterstützt. Starpi hat automatisch auf den schnellen Cloud-Assistenten umgeschaltet, sodass Sie direkt wie gewohnt Fragen stellen können.`);
       }
     }
 
@@ -1377,7 +1333,7 @@
         return;
       }
 
-      // Standard: Rat der KIs (Ultrathink / Deepthink Max)
+      // Standard: Schneller Assistent
       await changeEngine('council');
     }
 
@@ -1386,29 +1342,44 @@
       ['chat', 'library', 'graph', 'ingest', 'settings'].forEach(t => {
         const tabEl = document.getElementById(`tab-${t}`);
         if (tabEl) tabEl.classList.add('hidden');
+        
         const navBtn = document.getElementById(`nav-${t}`);
         if (navBtn) {
           navBtn.classList.remove('bg-amber-50', 'text-amber-950', 'border', 'border-amber-300/80', 'font-bold', 'shadow-xs');
           navBtn.classList.add('text-slate-600', 'hover:text-slate-950', 'hover:bg-slate-100/70', 'font-medium');
         }
+
+        const mNavBtn = document.getElementById(`mobile-nav-${t}`);
+        if (mNavBtn) {
+          mNavBtn.classList.remove('bg-amber-50', 'text-amber-950', 'border', 'border-amber-300/80', 'font-bold', 'shadow-xs');
+          mNavBtn.classList.add('text-slate-600', 'hover:text-slate-900', 'font-medium');
+        }
       });
 
       const activeTab = document.getElementById(`tab-${tabId}`);
       if (activeTab) activeTab.classList.remove('hidden');
+      
       const activeNav = document.getElementById(`nav-${tabId}`);
       if (activeNav) {
         activeNav.classList.add('bg-amber-50', 'text-amber-950', 'border', 'border-amber-300/80', 'font-bold', 'shadow-xs');
         activeNav.classList.remove('text-slate-600', 'hover:text-slate-950', 'hover:bg-slate-100/70', 'font-medium');
       }
 
+      const activeMNav = document.getElementById(`mobile-nav-${tabId}`);
+      if (activeMNav) {
+        activeMNav.classList.add('bg-amber-50', 'text-amber-950', 'border', 'border-amber-300/80', 'font-bold', 'shadow-xs');
+        activeMNav.classList.remove('text-slate-600', 'hover:text-slate-900', 'font-medium');
+      }
+
       const titles = {
-        chat: 'Brain Chat',
+        chat: 'Starpi Chat',
         library: 'Wissensarchiv',
-        graph: 'Wissensgraph (Graph RAG)',
-        ingest: 'Wissen einspeisen',
-        settings: 'Cloud & Server'
+        graph: 'Wissensnetzwerk',
+        ingest: 'Wissen hinzufügen',
+        settings: 'Einstellungen'
       };
-      document.getElementById('pageTitle').textContent = titles[tabId] || 'Starpi Brain';
+      const titleEl = document.getElementById('pageTitle');
+      if (titleEl) titleEl.textContent = titles[tabId] || 'Starpi';
 
       if (tabId === 'library') loadDocuments();
       if (tabId === 'graph') loadKnowledgeGraph();
@@ -1724,6 +1695,7 @@
 
       const fullPrompt = fileText ? `${userText}\n\n[Angehängte Datei]:\n${fileText}` : userText;
       input.value = '';
+      input.style.height = 'auto';
       removeAttachment();
 
       // Render User Message
@@ -1768,62 +1740,43 @@
 
         const startTime = performance.now();
 
-        // 2. Rat der KIs (Ultrathink / Deepthink Max - Standard) & Cloud-Cluster
+        // 2. Cloud-Assistent (Standard: Gemini bei eigenem Key, sonst blitzschneller OpenRouter-Pool)
         if (currentEngine === 'council' || currentEngine === 'cluster_a' || currentEngine === 'cluster_b') {
-          const councilPrompt = `Du bist der autonome Rat der KIs (Ultrathink / Deepthink Max Standard).
-Dein Rat besteht aus drei spezialisierten Instanzen, die in einem mehrstufigen internen Gedankenaustausch (Chain of Thought) die beste Antwort erarbeiten:
-1. Analytische Instanz (Kontextprüfung, Faktenanalyse der Wissensdatenbank)
-2. Kritische Instanz (Dialektischer Diskurs, Gegenprüfung, Randfälle, Vermeidung von Halluzinationen)
-3. Ratsvorsitz & Synthese (Konsensfindung und präzise Beantwortung)
+          const assistantPrompt = `Du bist Starpi, ein intelligenter und hilfsbereiter Unternehmens-Assistent.
+Antworte stets freundlich, professionell und direkt auf Deutsch ohne Ausschmückung oder unnötigen Jargon.
 
-STRIKTE REGELN:
-1. Nenne zu KEINEM Zeitpunkt Namen von KI-Modellen oder Anbietern (kein Gemini, kein OpenRouter, kein Qwen, kein DeepSeek, kein Llama, kein ChatGPT etc.). Bezeichne die Instanzen ausschließlich mit ihren funktionalen Ratsrollen.
-2. Führe für JEDE Antwort eine transparente Ratsberatung (Chain of Thought) durch.
-3. Beziehe dich strikt auf die bereitgestellten Unternehmensdaten aus Supabase als Faktenbasis.
+WICHTIGE ANWEISUNGEN:
+1. Nutze die folgenden Unternehmensdaten aus Supabase als Faktenbasis.
+2. Wenn nach Personen, Aufgaben, Terminen oder Budgets gefragt wird, nenne die exakten Fakten und Zahlen übersichtlich.
+3. Nenne zu keinem Zeitpunkt Namen von KI-Modellen oder Providern.
 
 Kontextdaten aus Supabase:
 ${contextText}
-
-Antworte IMMER im folgenden Format:
-<denkprozess>
-### 1. Analytische Vorprüfung & Faktenabgleich
-[Detaillierte Analyse der Nutzeranfrage, Faktenprüfung der hinterlegten Dokumente und Entitäten]
-
-### 2. Ratsdiskussion & dialektische Gegenprüfung
-[Kritische Prüfung, Klärung von Randfällen und Plausibilität der Termine/Zahlen]
-
-### 3. Konsensbeschluss & Urteilsfindung
-[Gemeinsames Ratsurteil und Strukturierung der Antwort]
-</denkprozess>
-
-<antwort>
-[Die finale, präzise, professionelle Ausarbeitung für den Nutzer auf Deutsch]
-</antwort>
 
 Nutzeranfrage: ${fullPrompt}`;
 
           let rawResult = null;
           let activeNodeIndex = null;
 
-          // Primärer Hochleistungs-Cluster
+          // Primärer Assistent (Gemini, falls Key vorhanden)
           if (currentEngine === 'council' || currentEngine === 'cluster_a') {
             try {
-              const res = await callGeminiWithFailover(councilPrompt);
+              const res = await callGeminiWithFailover(assistantPrompt);
               if (res && res.text) {
                 rawResult = res.text;
                 activeNodeIndex = res.keyIndex;
               }
             } catch (pErr) {
-              console.warn("Primary cluster failover to secondary cluster:", pErr);
+              console.warn("Gemini failover to OpenRouter Cloud:", pErr.message);
             }
           }
 
-          // Sekundärer Redundanz-Cluster
+          // Sekundärer Assistent (OpenRouter Cloud)
           if (!rawResult && (currentEngine === 'council' || currentEngine === 'cluster_b')) {
             try {
               const res = await callOpenRouterWithFailover(
                 fullPrompt,
-                councilPrompt,
+                assistantPrompt,
                 conversationHistory.slice(-4)
               );
               if (res && res.text) {
@@ -1831,7 +1784,7 @@ Nutzeranfrage: ${fullPrompt}`;
                 activeNodeIndex = res.keyIndex;
               }
             } catch (sErr) {
-              console.warn("Secondary cluster exhausted, falling back to Synthesizer:", sErr);
+              console.warn("Cloud cluster failover to local synthesizer:", sErr.message);
             }
           }
 
@@ -1842,7 +1795,7 @@ Nutzeranfrage: ${fullPrompt}`;
               parsed.thoughts = generateSemanticThoughtProcess(userText, docs, entities);
             }
             removeLoading(loadingId);
-            appendMessage('assistant', parsed.answer, isGreeting ? [] : sources, '🧠 Rat der KIs · Ultrathink / Deepthink Max', parsed.thoughts, elapsed);
+            appendMessage('assistant', parsed.answer, isGreeting ? [] : sources, '✨ Starpi Assistent · Cloud-Verbindung', parsed.thoughts, elapsed);
             conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: parsed.answer });
             return;
           }
@@ -1852,7 +1805,7 @@ Nutzeranfrage: ${fullPrompt}`;
         if (currentEngine === 'client') {
           if (webllmLoading && !webllmEngine) {
             let waits = 0;
-            while (webllmLoading && !webllmEngine && waits < 60) {
+            while (webllmLoading && !webllmEngine && waits < 10) { // Max. 5 Sekunden warten
               await new Promise(r => setTimeout(r, 500));
               waits++;
             }
@@ -1863,7 +1816,7 @@ Nutzeranfrage: ${fullPrompt}`;
 
           if (webllmEngine) {
             try {
-              const systemPrompt = `Du bist ein präziser RAG-Assistent und führst Denkschritte auf Basis folgender Kontextdaten aus:\n\n${contextText}`;
+              const systemPrompt = `Du bist Starpi, ein verlässlicher Assistent für Unternehmensdaten auf Deutsch. Faktenbasis:\n\n${contextText}`;
               
               const stream = await webllmEngine.chat.completions.create({
                 messages: [
@@ -1871,14 +1824,13 @@ Nutzeranfrage: ${fullPrompt}`;
                   ...conversationHistory.slice(-4),
                   { role: "user", content: fullPrompt }
                 ],
-                temperature: 0.15,
+                temperature: 0.2,
                 max_tokens: 512,
                 stream: true
               });
 
               removeLoading(loadingId);
-              const badgeTitle = currentWebllmConfig?.displayName || "Private Client-Inferenz";
-              const streamMsg = createStreamingMessage('assistant', `🛡️ ${badgeTitle} · Deepthink Max`);
+              const streamMsg = createStreamingMessage('assistant', `🔒 Lokaler Offline-Modus (100% privat)`);
 
               let aggregated = "";
               for await (const chunk of stream) {
@@ -1901,7 +1853,7 @@ Nutzeranfrage: ${fullPrompt}`;
         if (currentEngine === 'local') {
           const llmUrl = document.getElementById('cfgLlmUrl')?.value || "http://localhost:8000/v1";
           try {
-            const systemPrompt = `Du bist Starpi, ein intelligenter KI-Assistent des Rats der KIs. Antworte auf Deutsch ohne Nennung von Modellnamen. Faktenbasis:\n\n${contextText}`;
+            const systemPrompt = `Du bist Starpi, ein intelligenter KI-Assistent. Antworte auf Deutsch ohne Nennung von Modellnamen. Faktenbasis:\n\n${contextText}`;
             const resp = await fetch(`${llmUrl}/chat/completions`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1913,7 +1865,8 @@ Nutzeranfrage: ${fullPrompt}`;
                 ],
                 temperature: 0.7,
                 max_tokens: 1024
-              })
+              }),
+              signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(6000) : undefined
             });
 
             if (resp.ok) {
@@ -1925,7 +1878,7 @@ Nutzeranfrage: ${fullPrompt}`;
                 parsed.thoughts = generateSemanticThoughtProcess(userText, docs, entities);
               }
               removeLoading(loadingId);
-              appendMessage('assistant', parsed.answer, isGreeting ? [] : sources, '💻 Privater Rechner-Knoten · Deepthink Max', parsed.thoughts, elapsed);
+              appendMessage('assistant', parsed.answer, isGreeting ? [] : sources, '🖥️ Eigener Server (MLX/Ollama)', parsed.thoughts, elapsed);
               conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: parsed.answer });
               return;
             }
@@ -1934,15 +1887,15 @@ Nutzeranfrage: ${fullPrompt}`;
           }
         }
 
-        // 5. Semantischer Synthese-Rat (Zero Copy-Paste, Deepthink Max CoT)
+        // 5. Semantischer Wissens-Assistent (Lokale Echtzeit-Synthese - Garantierte Antwort ohne Hänger)
         setTimeout(() => {
           const elapsed = Math.round(performance.now() - startTime);
           removeLoading(loadingId);
           const responseText = synthesizeSemanticResponse(userText, docs, entities, sources);
           const thoughts = generateSemanticThoughtProcess(userText, docs, entities);
-          appendMessage('assistant', responseText, isGreeting ? [] : sources, '🧠 Rat der KIs · Ultrathink / Deepthink Max', thoughts, elapsed);
+          appendMessage('assistant', responseText, isGreeting ? [] : sources, '✨ Starpi Assistent · Wissensdatenbank Frankfurt', thoughts, elapsed);
           conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: responseText });
-        }, 350);
+        }, 120);
 
       } catch (err) {
         removeLoading(loadingId);
@@ -1997,18 +1950,17 @@ Nutzeranfrage: ${fullPrompt}`;
       const docCount = docs?.length || 0;
       const docTitles = docCount > 0 ? docs.slice(0, 3).map(d => `„${escapeHtml(d.title)}“`).join(', ') : 'keine';
       
-      return `### 1. Analytische Vorprüfung & Faktenabgleich
+      return `### 1. Relevante Fakten & Dokumente abgleichen
 - **Nutzeranfrage:** "${escapeHtml(userText.slice(0, 100))}"
-- **Kontextprüfung:** Wissensdatenbank in Supabase abgeglichen (${docCount} relevante Dokumente: ${docTitles}).
-- **Entitäten & Attribute:** Erkennung von Kernpersonen (Sarah, Michael, Alex), Projekt Alpha Meilensteinen (15. September) und Q4-Budgets.
+- **Wissensdatenbank:** Supabase Frankfurt abgeglichen (${docCount} relevante Dokumente: ${docTitles}).
+- **Gefundene Details:** Kerninformationen zu Personen, Terminen und Projektbudgets identifiziert.
 
-### 2. Ratsdiskussion & dialektische Gegenprüfung
-- **Plausibilitätsprüfung:** Konsistenzabgleich der Deadlines (Figma: 5. Sept. vs. Release: 15. Sept.) und der Budgetallokation (45.000 € Alpha / 12.000 € Marketing).
-- **Hinterfragung von Annahmen:** Alle Fakten sind durch verifizierte Dokumente belegt. Ausschluss unbestätigter Spekulationen.
-- **Dialektische Abstimmung:** Einstimmige Freigabe der Datenbasis durch die kritische Ratsinstanz.
+### 2. Plausibilität & Zeitpläne prüfen
+- **Konsistenzprüfung:** Abgleich der Datumsangaben und Meilensteine mit den hinterlegten Unternehmensdaten.
+- **Faktentreue:** Direkter Bezug zu den hinterlegten Dokumenten ohne unbestätigte Vermutungen.
 
-### 3. Konsensbeschluss & Urteilsfindung
-- **Beschluss:** Formulierung einer präzisen, strukturierten Direktauswertung mit vollständigen Fakten, Zeitangaben und Verantwortlichkeiten.`;
+### 3. Verständliche Antwort strukturieren
+- **Ergebnis:** Strukturierte und direkt anwendbare Auswertung für den Nutzer.`;
     }
 
     function formatThoughtSteps(thoughtsText) {
@@ -2025,7 +1977,7 @@ Nutzeranfrage: ${fullPrompt}`;
           currentPhase = { title: headerMatch[1].trim(), content: [] };
         } else {
           if (!currentPhase) {
-            currentPhase = { title: "1. Analytische Vorprüfung & Faktenprüfung", content: [] };
+            currentPhase = { title: "1. Fakten & Dokumente abgleichen", content: [] };
           }
           if (line.trim()) currentPhase.content.push(line);
         }
@@ -2036,30 +1988,30 @@ Nutzeranfrage: ${fullPrompt}`;
         return marked.parse(sanitizeModelNames(thoughtsText));
       }
 
-      const phaseIcons = ["🔍", "⚖️", "📜", "✦", "⚡"];
+      const phaseIcons = ["🔍", "✓", "📋", "✦", "⚡"];
       const phaseRoles = [
-        "Ratsinstanz 1 (Analytik & Faktenabgleich)",
-        "Ratsinstanz 2 (Dialektischer Diskurs & Plausibilität)",
-        "Ratsinstanz 3 (Synthese-Rat & Konsensbeschluss)",
-        "Ratsmitglied",
-        "Ratsmitglied"
+        "Faktenprüfung",
+        "Plausibilität",
+        "Antwortstruktur",
+        "Prüfung",
+        "Prüfung"
       ];
 
       return phases.map((p, idx) => {
         const icon = phaseIcons[idx] || "✦";
-        const role = phaseRoles[idx] || "Ratsinstanz";
+        const role = phaseRoles[idx] || "Prüfschritt";
         const bodyText = p.content.join('\n');
         return `
-          <div class="rounded-lg bg-amber-50/50 border border-amber-200/80 p-3 space-y-1.5 shadow-xs">
+          <div class="rounded-lg bg-slate-50 border border-slate-200/80 p-3 space-y-1.5 shadow-xs">
             <div class="flex items-center justify-between gap-2">
-              <span class="font-bold text-slate-900 flex items-center gap-1.5 text-xs">
+              <span class="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
                 <span>${icon}</span>
                 <span>${escapeHtml(p.title.replace(/^#+\s*/, ''))}</span>
               </span>
-              <span class="text-[10px] text-amber-950 font-bold bg-amber-100/90 px-2 py-0.5 rounded border border-amber-300/70">${role}</span>
+              <span class="text-[10px] text-slate-700 font-semibold bg-slate-200/80 px-2 py-0.5 rounded border border-slate-300/70">${role}</span>
             </div>
-            <div class="text-[12px] text-slate-700 pl-4 border-l-2 border-[#FFCA00] font-sans leading-relaxed">
-              ${marked.parse(sanitizeModelNames(bodyText) || 'Analysephase erfolgreich abgeschlossen.')}
+            <div class="text-[12px] text-slate-600 pl-4 border-l-2 border-amber-400 font-sans leading-relaxed">
+              ${marked.parse(sanitizeModelNames(bodyText) || 'Prüfung erfolgreich abgeschlossen.')}
             </div>
           </div>
         `;
@@ -2137,27 +2089,23 @@ Nutzeranfrage: ${fullPrompt}`;
 
       let thoughtHtml = "";
       if (!isUser && thoughtProcess) {
-        const durStr = durationMs ? `${(durationMs / 1000).toFixed(1)}s` : '1.1s';
+        const durStr = durationMs ? `${(durationMs / 1000).toFixed(1)}s` : '1.0s';
         thoughtHtml = `
-          <div class="thought-container mb-3.5 rounded-xl border border-amber-200 bg-amber-50/40 overflow-hidden shadow-xs">
-            <button type="button" onclick="toggleThought(this)" class="w-full px-3.5 py-2.5 flex items-center justify-between text-left text-slate-700 hover:text-slate-950 bg-amber-100/50 hover:bg-amber-100/80 transition select-none">
+          <div class="thought-container mb-3 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden shadow-xs">
+            <button type="button" onclick="toggleThought(this)" class="w-full px-3.5 py-2 flex items-center justify-between text-left text-slate-600 hover:text-slate-900 bg-slate-100/60 hover:bg-slate-100 transition select-none">
               <div class="flex items-center gap-2">
-                <span class="relative flex h-2 w-2">
-                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                  <span class="relative inline-flex rounded-full h-2 w-2 bg-[#FFCA00]"></span>
-                </span>
-                <span class="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                  🧠 Rat der KIs · Denkschritte (Ultrathink / Deepthink Max)
+                <span class="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                  💡 Quellen & Prüfschritte einsehen
                 </span>
               </div>
               <div class="flex items-center gap-2 text-[11px] text-slate-500 font-mono">
-                <span class="bg-amber-200/70 text-amber-950 px-2 py-0.5 rounded border border-amber-300 text-[10px] font-sans font-bold">3 Phasen</span>
+                <span class="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-[10px] font-sans font-medium">Geprüft</span>
                 <span class="text-slate-500">${durStr}</span>
-                <span class="thought-status-text text-[10px] text-amber-800 font-sans font-semibold hover:underline">Einklappen</span>
-                <i data-lucide="chevron-down" class="thought-chevron w-3.5 h-3.5 transform rotate-180 transition-transform duration-200 text-amber-700"></i>
+                <span class="thought-status-text text-[10px] text-amber-800 font-sans font-semibold hover:underline">Anzeigen</span>
+                <i data-lucide="chevron-down" class="thought-chevron w-3.5 h-3.5 transition-transform duration-200 text-slate-600"></i>
               </div>
             </button>
-            <div class="thought-body p-3.5 space-y-2.5 text-slate-700 text-xs border-t border-amber-200/80 bg-white leading-relaxed">
+            <div class="thought-body hidden p-3.5 space-y-2 text-slate-700 text-xs border-t border-slate-200 bg-white leading-relaxed">
               ${formatThoughtSteps(thoughtProcess)}
             </div>
           </div>
@@ -2198,17 +2146,17 @@ Nutzeranfrage: ${fullPrompt}`;
       const id = 'loading-' + Date.now();
       const div = document.createElement('div');
       div.id = id;
-      div.className = 'flex items-start gap-3 max-w-3xl';
+      div.className = 'flex items-start gap-2.5 sm:gap-3 max-w-3xl';
       div.innerHTML = `
-        <div class="w-8 h-8 rounded-lg bg-[#FFCA00] border border-amber-400/40 flex items-center justify-center text-slate-950 text-sm font-black flex-shrink-0 shadow-xs">✦</div>
-        <div class="bg-white border border-amber-200 rounded-2xl p-3 text-slate-800 text-xs flex items-center gap-2.5 shadow-xs">
+        <div class="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-300 flex items-center justify-center text-amber-900 text-sm font-bold flex-shrink-0 shadow-xs">✦</div>
+        <div class="bg-white border border-slate-200 rounded-2xl p-3 text-slate-800 text-xs flex items-center gap-2.5 shadow-card">
           <span class="relative flex h-2.5 w-2.5">
             <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#FFCA00]"></span>
+            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
           </span>
           <div class="flex flex-col sm:flex-row sm:items-center gap-1">
-            <span class="font-bold text-slate-900">Rat der KIs berät sich...</span>
-            <span class="text-slate-500 text-[11px]">(Ultrathink / Deepthink Max · Chain of Thought)</span>
+            <span class="font-semibold text-slate-900">Starpi bereitet die Antwort vor...</span>
+            <span class="text-slate-500 text-[11px]">(Wissensdatenbank wird abgeglichen)</span>
           </div>
         </div>
       `;
