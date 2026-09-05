@@ -46,9 +46,29 @@ def query_brain(user_query: str) -> Dict[str, Any]:
     else:
         context_text = "Keine spezifischen Dokumente in der Datenbank gefunden."
 
-    # 4. Generate Answer via Private LLM
+    # 4. Generate Answer via Private LLM or Cloud AI Multi-Key Pools
     system_prompt = RAG_SYSTEM_PROMPT.format(context=context_text)
-    
+    full_prompt = f"{system_prompt}\n\nBenutzerfrage: {user_query}"
+
+    # Try Gemini Multi-Key Pool first if available
+    gemini_answer = _call_gemini_pool(full_prompt)
+    if gemini_answer:
+        return {
+            "answer": gemini_answer,
+            "sources": matching_sections,
+            "provider": "gemini_pool"
+        }
+
+    # Try OpenRouter Multi-Key Pool next
+    openrouter_answer = _call_openrouter_pool(system_prompt, user_query)
+    if openrouter_answer:
+        return {
+            "answer": openrouter_answer,
+            "sources": matching_sections,
+            "provider": "openrouter_pool"
+        }
+
+    # Fallback to local LLM endpoint (MLX/vLLM)
     payload = {
         "model": config.llm_model,
         "messages": [
@@ -73,7 +93,8 @@ def query_brain(user_query: str) -> Dict[str, Any]:
             
             return {
                 "answer": answer,
-                "sources": matching_sections
+                "sources": matching_sections,
+                "provider": "local_llm"
             }
     except Exception as e:
         return {
@@ -81,3 +102,72 @@ def query_brain(user_query: str) -> Dict[str, Any]:
             "sources": matching_sections,
             "error": str(e)
         }
+
+_gemini_idx = 0
+def _call_gemini_pool(prompt: str) -> str:
+    global _gemini_idx
+    keys = config.gemini_keys
+    if not keys:
+        return ""
+    
+    for _ in range(len(keys)):
+        key = keys[_gemini_idx % len(keys)]
+        _gemini_idx += 1
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}"
+        try:
+            with httpx.Client(timeout=25.0) as client:
+                res = client.post(
+                    url,
+                    json={"contents": [{"role": "user", "parts": [{"text": prompt}]}]},
+                    headers={"Content-Type": "application/json"}
+                )
+                if res.status_code == 200:
+                    data = res.json()
+                    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                    if parts and "text" in parts[0]:
+                        return parts[0]["text"].strip()
+        except Exception:
+            continue
+    return ""
+
+_openrouter_idx = 0
+def _call_openrouter_pool(system_prompt: str, user_query: str) -> str:
+    global _openrouter_idx
+    keys = config.openrouter_keys
+    if not keys:
+        return ""
+    
+    models = ["liquid/lfm-2.5-2.6b:free", "nvidia/nemotron-3.5-lightning:free", "google/gemini-2.0-flash-exp:free", "openrouter/auto"]
+    
+    for _ in range(len(keys)):
+        key = keys[_openrouter_idx % len(keys)]
+        _openrouter_idx += 1
+        for model in models:
+            try:
+                with httpx.Client(timeout=25.0) as client:
+                    res = client.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {key}",
+                            "Content-Type": "application/json",
+                            "HTTP-Referer": "https://starpi-three.vercel.app/",
+                            "X-Title": "Starpi Enterprise Brain"
+                        },
+                        json={
+                            "model": model,
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_query}
+                            ],
+                            "temperature": 0.5,
+                            "max_tokens": 1024
+                        }
+                    )
+                    if res.status_code == 200:
+                        data = res.json()
+                        choices = data.get("choices", [])
+                        if choices and "message" in choices[0]:
+                            return choices[0]["message"].get("content", "").strip()
+            except Exception:
+                continue
+    return ""

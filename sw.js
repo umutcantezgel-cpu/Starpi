@@ -1,5 +1,5 @@
-// Starpi Service Worker v1.1.0
-const CACHE_NAME = 'starpi-cache-v3';
+// Starpi Service Worker v1.2.0
+const CACHE_NAME = 'starpi-cache-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -37,7 +37,8 @@ self.addEventListener('fetch', (event) => {
     event.request.url.includes('supabase.co') ||
     event.request.url.includes(':8000') ||
     event.request.url.includes('chat/completions') ||
-    event.request.url.includes('googleapis.com')
+    event.request.url.includes('googleapis.com') ||
+    event.request.url.includes('openrouter.ai')
   ) {
     event.respondWith(
       fetch(event.request)

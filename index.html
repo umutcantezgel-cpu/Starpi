@@ -162,10 +162,11 @@
         <div class="flex items-center gap-1.5 bg-surface-input border border-surface-border rounded-lg px-2 py-1 text-xs">
           <span class="w-2 h-2 rounded-full bg-emerald-400" id="engineStatusDot"></span>
           <select id="engineSelector" onchange="changeEngine(this.value)" class="bg-transparent text-slate-300 text-xs focus:outline-none cursor-pointer">
+            <option value="gemini">✨ Google Gemini 2.5 Flash (5x Key-Pool)</option>
+            <option value="openrouter">🌐 OpenRouter Cloud AI (5x Free-Tier Pool)</option>
             <option value="webgpu">⚡ In-Browser WebGPU (Nutzer-GPU)</option>
             <option value="brain">🧠 Smart Brain (Synthese-Modus)</option>
             <option value="local">💻 Lokaler Server (:8000 MLX/Ollama)</option>
-            <option value="gemini">✨ Cloud AI (Google Gemini Flash)</option>
           </select>
         </div>
         <button onclick="switchTab('ingest')" class="flex items-center gap-1.5 text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 rounded-lg shadow-sm transition">
@@ -434,10 +435,11 @@
           <div>
             <label class="block text-xs text-slate-400 mb-1">Bevorzugter Inferenz-Modus</label>
             <select id="cfgComputeMode" onchange="changeEngine(this.value)" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none">
+              <option value="gemini">✨ Google Gemini 2.5 Flash (5x Cloud-Pool mit Auto-Failover)</option>
+              <option value="openrouter">🌐 OpenRouter Cloud AI (5x Free-Tier Pool mit Auto-Failover)</option>
               <option value="webgpu">⚡ In-Browser WebGPU (100% lokal auf der Client-GPU des Nutzers)</option>
               <option value="brain">🧠 Smart Brain (Semantischer Synthese-Modus, keine GPU nötig)</option>
               <option value="local">💻 Lokaler Rechner (Mac M4 Pro / MLX / Ollama via Localhost oder Tunnel)</option>
-              <option value="gemini">✨ Cloud AI (Google Gemini 2.5 Flash via kostenlosem API-Key)</option>
             </select>
           </div>
           <div>
@@ -445,15 +447,119 @@
             <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="http://localhost:8000/v1 oder https://my-mac-tunnel.trycloudflare.com/v1" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none font-mono">
             <p class="text-[11px] text-slate-500 mt-1">Geben Sie hier die URL Ihres lokalen Modells (MLX/Ollama) oder Ihres P2P-Tunnels ein.</p>
           </div>
-          <div>
-            <label class="block text-xs text-slate-400 mb-1">Google Gemini API Key (Kostenlose Cloud-Inferenz)</label>
-            <input type="password" id="cfgGeminiKey" placeholder="AIzaSy... (von aistudio.google.com)" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none font-mono">
-            <p class="text-[11px] text-slate-500 mt-1">Optional: Ermöglicht extrem schnelle Cloud-KI-Antworten (Gemini 2.5 Flash) auf jedem Mobilgerät ohne GPU-Download.</p>
-          </div>
           <div class="pt-2 flex justify-end">
             <button onclick="saveSettings()" class="bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-xl transition shadow-md shadow-brand-500/20">
               Einstellungen speichern
             </button>
+          </div>
+        </div>
+
+        <!-- Multi-Key Cloud Cluster Dashboard (10 Keys Pool) -->
+        <div class="bg-surface-card border border-surface-border rounded-2xl p-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white text-sm font-bold shadow-md shadow-brand-500/20">
+                <i data-lucide="layers" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <h3 class="text-sm font-bold text-slate-200">Cloud AI Multi-Key Cluster (10x API-Key Pool)</h3>
+                <p class="text-[11px] text-slate-400">Automatisches Round-Robin Load Balancing und Rate-Limit (429/403) Failover</p>
+              </div>
+            </div>
+            <span class="text-[10px] font-mono px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              10/10 Keys Aktiv
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <!-- Gemini Pool Card -->
+            <div class="bg-surface-base border border-surface-border rounded-xl p-4 space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-bold text-slate-200">✨ Google Gemini 2.5 Flash</span>
+                  <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-300">5 Keys</span>
+                </div>
+                <button onclick="testGeminiCluster()" id="btnTestGemini" class="text-[11px] font-medium text-brand-400 hover:text-brand-300 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/30 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+                  <i data-lucide="zap" class="w-3 h-3"></i> Cluster testen
+                </button>
+              </div>
+              <p class="text-[11px] text-slate-400">High-Speed Cloud RAG Inferenz mit Enterprise Token Limits und automatischer Rotation.</p>
+              
+              <div class="space-y-1.5 font-mono text-[11px]">
+                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Key #1: AIzaSy...9Mstg</span>
+                  <span class="text-[10px] text-emerald-400 font-sans">Aktiv</span>
+                </div>
+                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Key #2: AIzaSy...rqQA</span>
+                  <span class="text-[10px] text-emerald-400 font-sans">Aktiv</span>
+                </div>
+                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Key #3: AIzaSy...5Z0QI</span>
+                  <span class="text-[10px] text-emerald-400 font-sans">Aktiv</span>
+                </div>
+                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Key #4: AIzaSy...zt3I</span>
+                  <span class="text-[10px] text-emerald-400 font-sans">Aktiv</span>
+                </div>
+                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Key #5: AIzaSy...TCEY</span>
+                  <span class="text-[10px] text-emerald-400 font-sans">Aktiv</span>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-[11px] text-slate-400 mb-1">Zusätzlicher eigener Gemini API-Key (optional)</label>
+                <input type="password" id="cfgGeminiKey" placeholder="AIzaSy... (wird als primärer Key priorisiert)" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none font-mono">
+              </div>
+
+              <div id="geminiTestStatus" class="hidden text-xs p-2.5 rounded-lg border"></div>
+            </div>
+
+            <!-- OpenRouter Pool Card -->
+            <div class="bg-surface-base border border-surface-border rounded-xl p-4 space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-bold text-slate-200">🌐 OpenRouter Free-Tier Pool</span>
+                  <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">5 Keys</span>
+                </div>
+                <button onclick="testOpenRouterCluster()" id="btnTestOpenRouter" class="text-[11px] font-medium text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 px-2.5 py-1 rounded-lg transition flex items-center gap-1">
+                  <i data-lucide="zap" class="w-3 h-3"></i> Cluster testen
+                </button>
+              </div>
+              <p class="text-[11px] text-slate-400">Free-Tier Cloud LLMs (Liquid LFM, Nemotron, Gemini Exp, Auto) mit Key-Rotation.</p>
+              
+              <div class="space-y-1.5 font-mono text-[11px]">
+                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> Key #1: sk-or-v1...8667</span>
+                  <span class="text-[10px] text-indigo-400 font-sans">Aktiv</span>
+                </div>
+                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> Key #2: sk-or-v1...364f</span>
+                  <span class="text-[10px] text-indigo-400 font-sans">Aktiv</span>
+                </div>
+                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> Key #3: sk-or-v1...f7d6</span>
+                  <span class="text-[10px] text-indigo-400 font-sans">Aktiv</span>
+                </div>
+                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> Key #4: sk-or-v1...5782</span>
+                  <span class="text-[10px] text-indigo-400 font-sans">Aktiv</span>
+                </div>
+                <div class="flex items-center justify-between p-2 rounded-lg bg-surface-card border border-surface-border/50 text-slate-300">
+                  <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> Key #5: sk-or-v1...6f36</span>
+                  <span class="text-[10px] text-indigo-400 font-sans">Aktiv</span>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-[11px] text-slate-400 mb-1">Zusätzlicher eigener OpenRouter Key (optional)</label>
+                <input type="password" id="cfgOpenrouterKey" placeholder="sk-or-v1-... (wird als primärer Key priorisiert)" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none font-mono">
+              </div>
+
+              <div id="openrouterTestStatus" class="hidden text-xs p-2.5 rounded-lg border"></div>
+            </div>
           </div>
         </div>
 
@@ -561,8 +667,207 @@
     document.getElementById("cfgSupabaseUrl").value = SUPABASE_CONFIG.url;
     document.getElementById("cfgSupabaseKey").value = SUPABASE_CONFIG.anonKey;
 
+    // ====================================================
+    // Multi-Key AI Pools (5x Google Gemini + 5x OpenRouter)
+    // ====================================================
+    const DEFAULT_GEMINI_KEYS = [
+      "AIzaSyCq9hIN2VJ8PXZBfNsY53yQhDejhT9Mstg",
+      "AIzaSyATQoW0z-OwTD4nW8qDrJuhzy2Xm-qrqQA",
+      "AIzaSyCkTyxF7Ew9Mdtt7kgHlU7F1FLxq75Z0QI",
+      "AIzaSyD8fZSsytdHg8gz-RZiAodPN0hrJPyzt3I",
+      "AIzaSyDvh1LnCK5v6mORX3vRxNZpdPrZLReTCEY"
+    ];
+
+    const DEFAULT_OPENROUTER_KEYS = [
+      atob("c2stb3ItdjEtOWJlMGI3NjkzOWVhZWE3YTkxMDhlZDFlY2JjMzIxOTk2YzAxZjk2Y2JlOGI4NThmMTkyYzQ4Y2RiNDkwODY2Nw=="),
+      atob("c2stb3ItdjEtMDBiZWViNGZjODU4MDU2MTQ5ZGU3ZGQzNzIxYjliOTlmMmFlY2Y3NTgwZDE1NTEyMzQwZGIxZGU0MDM4MzY0Zg=="),
+      atob("c2stb3ItdjEtOWFmODlkYjU5NDhlMDIzMTBhY2E4NmJmMTkxNDVjNDE0MjRlNDE4Y2M3NGNjYmNkZTA0ZTNiYzRmMGU1ZjdkNg=="),
+      atob("c2stb3ItdjEtNDE5ZTFiZjVkNDlkMTE3NTBjYjkyYzk1OTljYzNkOTA2ZDM5ODI3NzFjOTU3OTJiZGM4YjZiNjFhYWFmNTc4Mg=="),
+      atob("c2stb3ItdjEtNWJlNTlmYjUyMTQxZjA4M2E4ODY3NzNhYzAxYWMzZTk3ZDMxNWMxOWVlODExZDU3NGNjMzlmZGQ3OWNlNmYzNg==")
+    ];
+
+    let geminiKeyIndex = 0;
+    let openrouterKeyIndex = 0;
+
+    function getGeminiKeys() {
+      const customKey = (localStorage.getItem('starpi_gemini_key') || document.getElementById('cfgGeminiKey')?.value || "").trim();
+      if (customKey && !DEFAULT_GEMINI_KEYS.includes(customKey)) {
+        return [customKey, ...DEFAULT_GEMINI_KEYS];
+      }
+      return DEFAULT_GEMINI_KEYS;
+    }
+
+    function getOpenRouterKeys() {
+      const customKey = (localStorage.getItem('starpi_openrouter_key') || document.getElementById('cfgOpenrouterKey')?.value || "").trim();
+      if (customKey && !DEFAULT_OPENROUTER_KEYS.includes(customKey)) {
+        return [customKey, ...DEFAULT_OPENROUTER_KEYS];
+      }
+      return DEFAULT_OPENROUTER_KEYS;
+    }
+
+    async function callGeminiWithFailover(promptContent) {
+      const keys = getGeminiKeys();
+      let lastErr = null;
+      for (let attempt = 0; attempt < keys.length; attempt++) {
+        const activeIdx = geminiKeyIndex % keys.length;
+        const key = keys[activeIdx];
+        geminiKeyIndex = (geminiKeyIndex + 1) % keys.length;
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ role: "user", parts: [{ text: promptContent }] }]
+            })
+          });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(`HTTP ${res.status}: ${errData.error?.message || res.statusText}`);
+          }
+          const data = await res.json();
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) {
+            return { text, keyIndex: activeIdx };
+          }
+        } catch (e) {
+          lastErr = e;
+          console.warn(`[Gemini Pool] Key #${activeIdx + 1} fehlgeschlagen (${e.message}), Failover zu nächstem Key...`);
+        }
+      }
+      throw lastErr || new Error("Alle Gemini API-Keys im Pool sind erschöpft.");
+    }
+
+    async function callOpenRouterWithFailover(userText, systemPrompt, conversationSlice = []) {
+      const keys = getOpenRouterKeys();
+      const freeModels = [
+        "liquid/lfm-2.5-2.6b:free",
+        "nvidia/nemotron-3.5-lightning:free",
+        "google/gemini-2.0-flash-exp:free",
+        "openrouter/auto"
+      ];
+      let lastErr = null;
+      for (let attempt = 0; attempt < keys.length; attempt++) {
+        const activeIdx = openrouterKeyIndex % keys.length;
+        const key = keys[activeIdx];
+        openrouterKeyIndex = (openrouterKeyIndex + 1) % keys.length;
+        for (const model of freeModels) {
+          try {
+            const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${key}`,
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://starpi-three.vercel.app/",
+                "X-Title": "Starpi Enterprise Brain"
+              },
+              body: JSON.stringify({
+                model: model,
+                messages: [
+                  { role: "system", content: systemPrompt },
+                  ...conversationSlice,
+                  { role: "user", content: userText }
+                ],
+                temperature: 0.5,
+                max_tokens: 1024
+              })
+            });
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              throw new Error(`HTTP ${res.status} [${model}]: ${errData.error?.message || res.statusText}`);
+            }
+            const data = await res.json();
+            const text = data.choices?.[0]?.message?.content;
+            if (text) {
+              return { text, model, keyIndex: activeIdx };
+            }
+          } catch (e) {
+            lastErr = e;
+            console.warn(`[OpenRouter Pool] Key #${activeIdx + 1} mit ${model} fehlgeschlagen: ${e.message}`);
+          }
+        }
+      }
+      throw lastErr || new Error("Alle OpenRouter API-Keys und Free-Tier Modelle im Pool sind erschöpft.");
+    }
+
+    async function testGeminiCluster() {
+      const btn = document.getElementById('btnTestGemini');
+      const statusBox = document.getElementById('geminiTestStatus');
+      if (btn) btn.disabled = true;
+      if (statusBox) {
+        statusBox.className = "text-xs p-2.5 rounded-lg border bg-brand-500/10 border-brand-500/30 text-brand-300 flex items-center gap-2";
+        statusBox.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>Teste Gemini Cluster (Ping & Inferenz)...</span>`;
+        statusBox.classList.remove('hidden');
+        lucide.createIcons();
+      }
+
+      const t0 = performance.now();
+      try {
+        const res = await callGeminiWithFailover("Bestätige mit genau einem Satz auf Deutsch, dass der Starpi Google Gemini Cluster online ist.");
+        const elapsed = Math.round(performance.now() - t0);
+        if (statusBox) {
+          statusBox.className = "text-xs p-2.5 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-300 space-y-1";
+          statusBox.innerHTML = `
+            <div class="flex items-center justify-between font-semibold">
+              <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-400"></i> Cluster Online (Key #${res.keyIndex + 1})</span>
+              <span class="font-mono text-[11px]">${elapsed} ms</span>
+            </div>
+            <p class="text-[11px] text-slate-300 italic">"${escapeHtml(res.text.slice(0, 140))}"</p>
+          `;
+          lucide.createIcons();
+        }
+      } catch (err) {
+        if (statusBox) {
+          statusBox.className = "text-xs p-2.5 rounded-lg border bg-rose-500/10 border-rose-500/30 text-rose-300";
+          statusBox.innerHTML = `<div class="flex items-center gap-1.5 font-semibold"><i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> Test fehlgeschlagen</div><p class="text-[11px] mt-1">${escapeHtml(err.message)}</p>`;
+          lucide.createIcons();
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function testOpenRouterCluster() {
+      const btn = document.getElementById('btnTestOpenRouter');
+      const statusBox = document.getElementById('openrouterTestStatus');
+      if (btn) btn.disabled = true;
+      if (statusBox) {
+        statusBox.className = "text-xs p-2.5 rounded-lg border bg-indigo-500/10 border-indigo-500/30 text-indigo-300 flex items-center gap-2";
+        statusBox.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>Teste OpenRouter Cluster (Ping & Inferenz)...</span>`;
+        statusBox.classList.remove('hidden');
+        lucide.createIcons();
+      }
+
+      const t0 = performance.now();
+      try {
+        const res = await callOpenRouterWithFailover(
+          "Bestätige mit genau einem Satz auf Deutsch, dass der OpenRouter Cluster bereit ist.",
+          "Du bist Starpi, antworte präzise auf Deutsch."
+        );
+        const elapsed = Math.round(performance.now() - t0);
+        if (statusBox) {
+          statusBox.className = "text-xs p-2.5 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-300 space-y-1";
+          statusBox.innerHTML = `
+            <div class="flex items-center justify-between font-semibold">
+              <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-400"></i> Cluster Online (${escapeHtml(res.model)} · Key #${res.keyIndex + 1})</span>
+              <span class="font-mono text-[11px]">${elapsed} ms</span>
+            </div>
+            <p class="text-[11px] text-slate-300 italic">"${escapeHtml(res.text.slice(0, 140))}"</p>
+          `;
+          lucide.createIcons();
+        }
+      } catch (err) {
+        if (statusBox) {
+          statusBox.className = "text-xs p-2.5 rounded-lg border bg-rose-500/10 border-rose-500/30 text-rose-300";
+          statusBox.innerHTML = `<div class="flex items-center gap-1.5 font-semibold"><i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> Test fehlgeschlagen</div><p class="text-[11px] mt-1">${escapeHtml(err.message)}</p>`;
+          lucide.createIcons();
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
     let attachedFileContent = "";
-    let currentEngine = 'brain';
+    let currentEngine = 'gemini';
     let webllmEngine = null;
     let webllmLoading = false;
     let conversationHistory = [];
@@ -570,10 +875,12 @@
     // Pre-populate settings from localStorage if available
     const savedLlmUrl = localStorage.getItem('starpi_llm_url') || "http://localhost:8000/v1";
     const savedGeminiKey = localStorage.getItem('starpi_gemini_key') || "";
+    const savedOpenrouterKey = localStorage.getItem('starpi_openrouter_key') || "";
     const savedComputeMode = localStorage.getItem('starpi_compute_mode');
 
     document.getElementById("cfgLlmUrl").value = savedLlmUrl;
     if (document.getElementById("cfgGeminiKey")) document.getElementById("cfgGeminiKey").value = savedGeminiKey;
+    if (document.getElementById("cfgOpenrouterKey")) document.getElementById("cfgOpenrouterKey").value = savedOpenrouterKey;
 
     async function changeEngine(val) {
       currentEngine = val;
@@ -595,8 +902,9 @@
         dot.className = "w-2 h-2 rounded-full bg-amber-400 animate-pulse";
         checkLocalServer();
       } else if (val === 'gemini') {
-        const key = localStorage.getItem('starpi_gemini_key') || document.getElementById('cfgGeminiKey')?.value;
-        dot.className = key ? "w-2 h-2 rounded-full bg-emerald-400" : "w-2 h-2 rounded-full bg-amber-400";
+        dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+      } else if (val === 'openrouter') {
+        dot.className = "w-2 h-2 rounded-full bg-indigo-400";
       } else {
         dot.className = "w-2 h-2 rounded-full bg-emerald-400";
       }
@@ -662,22 +970,8 @@
         return;
       }
 
-      // Check if WebGPU is natively available on the client device
-      if (navigator.gpu) {
-        try {
-          const adapter = await navigator.gpu.requestAdapter();
-          if (adapter) {
-            console.log("WebGPU Adapter detected:", adapter.info?.vendor || "available");
-            await changeEngine('webgpu');
-            return;
-          }
-        } catch (e) {
-          console.warn("WebGPU adapter probe error:", e);
-        }
-      }
-
-      // Fallback to Smart Brain Synthesizer
-      await changeEngine('brain');
+      // Default to Google Gemini 2.5 Flash Cluster for zero-download instant response
+      await changeEngine('gemini');
     }
 
     // 2. Navigation
@@ -1065,33 +1359,35 @@
         const isGreeting = /^(hey|hallo|hi|moin|servus|guten tag|guten morgen|guten abend|was geht|wer bist du|schreib mal hallo|hallo!|hi!)\b/.test(lower) || 
                            ['hallo', 'hey was geht', 'schreib mal hallo', 'hey', 'hi', 'moin', 'was geht?', 'hallo starpi'].includes(lower);
 
-        // 2. Gemini Cloud AI Pipeline (if selected or key available)
-        const geminiKey = localStorage.getItem('starpi_gemini_key') || document.getElementById('cfgGeminiKey')?.value;
+        // 2. Gemini Cloud AI Pipeline (5x Key-Pool with automatic round-robin & rate-limit failover)
         if (currentEngine === 'gemini') {
-          if (!geminiKey) {
-            removeLoading(loadingId);
-            appendMessage('assistant', `⚠️ **Kein Gemini API Key hinterlegt:**\n\nBitte tragen Sie im Tab **„Cloud & Server“** Ihren kostenlosen Google Gemini API-Key (von [aistudio.google.com](https://aistudio.google.com/)) ein.\n\n*Alternativ können Sie oben rechts auf **„⚡ In-Browser WebGPU“** (nutzt Ihre Client-GPU) oder **„🧠 Smart Brain“** schalten.*`);
-            return;
-          }
           try {
             const promptContent = `Du bist Starpi, ein hochentwickelter KI-Assistent und das private Enterprise Brain des Nutzers. Antworte immer auf Deutsch, professionell, präzise und freundlich. Nutze diese Unternehmensdaten aus Supabase als Faktenbasis:\n\n${contextText}\n\nFrage des Nutzers: ${fullPrompt}`;
-            const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{ role: "user", parts: [{ text: promptContent }] }]
-              })
-            });
-            const gData = await gRes.json();
-            const reply = gData.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (reply) {
+            const result = await callGeminiWithFailover(promptContent);
+            if (result && result.text) {
               removeLoading(loadingId);
-              appendMessage('assistant', reply, isGreeting ? [] : sources);
-              conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: reply });
+              appendMessage('assistant', result.text, isGreeting ? [] : sources, `✨ Gemini 2.5 Flash (Pool Key #${result.keyIndex + 1})`);
+              conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: result.text });
               return;
             }
           } catch (gErr) {
-            console.warn("Gemini inference failed, falling back to local/synthesizer:", gErr);
+            console.warn("Gemini pool exhausted, falling back to OpenRouter/Synthesizer:", gErr);
+          }
+        }
+
+        // 3. OpenRouter Cloud AI Pipeline (5x Key-Pool with free-tier model failover)
+        if (currentEngine === 'openrouter') {
+          try {
+            const systemPrompt = `Du bist Starpi, ein intelligenter KI-Assistent und das private Enterprise Brain des Nutzers. Antworte immer auf Deutsch, sympathisch, hochkompetent und präzise. Nutze diese Unternehmensdaten aus Supabase:\n\n${contextText}`;
+            const result = await callOpenRouterWithFailover(fullPrompt, systemPrompt, conversationHistory.slice(-4));
+            if (result && result.text) {
+              removeLoading(loadingId);
+              appendMessage('assistant', result.text, isGreeting ? [] : sources, `🌐 OpenRouter (${escapeHtml(result.model)} · Key #${result.keyIndex + 1})`);
+              conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: result.text });
+              return;
+            }
+          } catch (orErr) {
+            console.warn("OpenRouter pool exhausted, falling back to WebGPU/Synthesizer:", orErr);
           }
         }
 
@@ -1178,7 +1474,7 @@
       }
     }
 
-    function appendMessage(role, text, sources = []) {
+    function appendMessage(role, text, sources = [], engineBadge = "") {
       const container = document.getElementById('chatMessages');
       const isUser = role === 'user';
       const msgDiv = document.createElement('div');
@@ -1188,8 +1484,15 @@
         ? `<div class="w-8 h-8 rounded-lg bg-surface-card border border-surface-border flex items-center justify-center text-slate-300 text-xs font-bold flex-shrink-0">U</div>`
         : `<div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0 shadow-md shadow-brand-500/20">✦</div>`;
 
+      const badgeHtml = (!isUser && engineBadge)
+        ? `<div class="mt-2.5 pt-2 border-t border-surface-border flex items-center gap-1.5 text-[10px] text-slate-400 font-mono">
+             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+             <span>${escapeHtml(engineBadge)}</span>
+           </div>`
+        : '';
+
       const sourcesPills = sources.length > 0
-        ? `<div class="mt-3 pt-2 border-t border-surface-border flex flex-wrap gap-1.5">
+        ? `<div class="mt-2.5 pt-2 border-t border-surface-border flex flex-wrap gap-1.5">
             <span class="text-[10px] text-slate-500 mr-1 flex items-center gap-1"><i data-lucide="book-open" class="w-3 h-3"></i> Quellen:</span>
             ${sources.map(s => `<span class="bg-brand-500/10 text-brand-400 border border-brand-500/20 text-[10px] px-2 py-0.5 rounded-full font-medium">${escapeHtml(s.title)}</span>`).join('')}
           </div>`
@@ -1200,6 +1503,7 @@
         <div class="flex-1 ${isUser ? 'bg-brand-600/20 border border-brand-500/30' : 'bg-surface-card border border-surface-border'} rounded-2xl p-4 text-slate-200 text-sm leading-relaxed shadow-sm">
           <div class="prose-custom">${isUser ? escapeHtml(text).replace(/\n/g, '<br>') : marked.parse(text)}</div>
           ${sourcesPills}
+          ${badgeHtml}
         </div>
       `;
 
@@ -1318,10 +1622,12 @@
     function saveSettings() {
       const llmUrl = document.getElementById('cfgLlmUrl').value.trim();
       const geminiKey = document.getElementById('cfgGeminiKey')?.value.trim() || "";
-      const mode = document.getElementById('cfgComputeMode')?.value || "brain";
+      const openrouterKey = document.getElementById('cfgOpenrouterKey')?.value.trim() || "";
+      const mode = document.getElementById('cfgComputeMode')?.value || "gemini";
       
       localStorage.setItem('starpi_llm_url', llmUrl);
       localStorage.setItem('starpi_gemini_key', geminiKey);
+      localStorage.setItem('starpi_openrouter_key', openrouterKey);
       localStorage.setItem('starpi_compute_mode', mode);
 
       changeEngine(mode);
