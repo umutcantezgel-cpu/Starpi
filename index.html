@@ -238,16 +238,24 @@
           <span class="text-[11px] text-slate-600 font-medium" id="assistantStatusText">Bereit für Ihre Fragen</span>
         </div>
 
-        <!-- Local VRAM Monitor & Unload Button (Only visible in Local Mode) -->
-        <div id="localMemoryControls" class="hidden flex items-center gap-2">
-          <div id="vramStatusBadge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-900 font-mono">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500" id="vramStatusDot"></span>
-            <span id="vramStatusText">Lokales Modell</span>
-          </div>
-          <button type="button" onclick="unloadCurrentWebGPU(true)" id="btnUnloadWebgpu" class="text-[11px] font-medium text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-lg transition flex items-center gap-1" title="Gibt den Arbeitsspeicher des Geräts frei">
-            <i data-lucide="trash-2" class="w-3 h-3"></i>
-            <span class="hidden sm:inline">Speicher freigeben</span>
+        <div class="flex items-center gap-2">
+          <!-- Neuer Chat Button -->
+          <button type="button" onclick="startNewChatSession()" class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 hover:text-slate-950 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 px-2.5 py-1 rounded-lg transition shadow-xs" title="Neuen Chat starten">
+            <i data-lucide="plus-circle" class="w-3.5 h-3.5 text-amber-600"></i>
+            <span>Neuer Chat</span>
           </button>
+
+          <!-- Local VRAM Monitor & Unload Button (Only visible in Local Mode) -->
+          <div id="localMemoryControls" class="hidden flex items-center gap-2">
+            <div id="vramStatusBadge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-900 font-mono">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500" id="vramStatusDot"></span>
+              <span id="vramStatusText">Lokales Modell</span>
+            </div>
+            <button type="button" onclick="unloadCurrentWebGPU(true)" id="btnUnloadWebgpu" class="text-[11px] font-medium text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-lg transition flex items-center gap-1" title="Gibt den Arbeitsspeicher des Geräts frei">
+              <i data-lucide="trash-2" class="w-3 h-3"></i>
+              <span class="hidden sm:inline">Speicher freigeben</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -523,6 +531,13 @@
             <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
               <span class="font-medium text-slate-700">Vektorsuche:</span>
               <span class="font-semibold text-slate-900">PostgreSQL pgvector (HNSW)</span>
+            </div>
+            <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+              <span class="font-medium text-slate-700">Chat-Synchronisation:</span>
+              <span class="font-semibold text-emerald-700 flex items-center gap-1.5">
+                <i data-lucide="cloud" class="w-3.5 h-3.5 text-emerald-600"></i>
+                <span id="chatSyncStatusText">Live in Supabase gespeichert</span>
+              </span>
             </div>
           </div>
         </div>
@@ -924,6 +939,132 @@
     let webllmLoading = false;
     let currentWebllmConfig = null;
     let conversationHistory = [];
+
+    // Session-ID für die Speicherung in Supabase Frankfurt (public.chat_history)
+    function getOrCreateSessionId() {
+      let sid = localStorage.getItem('starpi_chat_session_id');
+      if (!sid) {
+        sid = 'starpi_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+        localStorage.setItem('starpi_chat_session_id', sid);
+      }
+      return sid;
+    }
+    let currentSessionId = getOrCreateSessionId();
+
+    async function persistChatMessage(role, content, sources = [], metadata = {}) {
+      if (!currentSessionId || !content) return;
+      try {
+        const cleanSources = (sources || []).map(s => typeof s === 'string' ? { title: s } : { title: s.title || '', similarity: s.similarity || '' });
+        const { error } = await sb.from('chat_history').insert([{
+          session_id: currentSessionId,
+          role: role,
+          content: content,
+          sources: cleanSources,
+          metadata: metadata || {}
+        }]);
+        if (error) {
+          console.warn("[Supabase] chat_history speichern fehlgeschlagen:", error.message);
+        } else {
+          console.log(`[Supabase] Chat-Nachricht (${role}) in Supabase Frankfurt gespeichert.`);
+          updateChatSyncStatus();
+        }
+      } catch (err) {
+        console.warn("[Supabase] Ausnahme beim Speichern der Nachricht:", err);
+      }
+    }
+
+    async function updateChatSyncStatus() {
+      const syncEl = document.getElementById('chatSyncStatusText');
+      if (!syncEl) return;
+      try {
+        const { count, error } = await sb
+          .from('chat_history')
+          .select('*', { count: 'exact', head: true });
+        if (!error && count !== null) {
+          syncEl.textContent = `Aktiv (${count} Nachrichten in Frankfurt)`;
+        }
+      } catch (e) {}
+    }
+
+    function getWelcomeMessageHtml() {
+      return `
+        <!-- Assistant Welcome Message -->
+        <div class="flex items-start gap-2.5 sm:gap-3 max-w-3xl">
+          <div class="w-8 h-8 rounded-xl bg-[#FFCA00] flex-shrink-0 flex items-center justify-center text-slate-950 text-sm font-extrabold shadow-sm shadow-amber-500/20">
+            ✦
+          </div>
+          <div class="flex-1 bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 text-slate-700 text-sm leading-relaxed shadow-card">
+            <p class="font-extrabold text-slate-950 text-base mb-1">Willkommen bei Starpi — Ihrem Unternehmens-Assistenten!</p>
+            <p class="text-slate-600">Ich habe Zugriff auf Ihre in Supabase gespeicherten Unternehmensdokumente, Meeting-Notizen und Richtlinien. Stellen Sie mir gerne Fragen oder diktieren Sie neue Informationen.</p>
+            
+            <div class="mt-4 flex flex-wrap gap-2">
+              <button onclick="sendQuickPrompt('Wann ist der Launch von Projekt Alpha und wer leitet die Frontend-Entwicklung?')" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
+                🔍 „Projekt Alpha: Launch & Zuständigkeiten?“
+              </button>
+              <button onclick="sendQuickPrompt('Welche Dokumente und Richtlinien sind aktuell im Brain hinterlegt?')" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
+                📚 „Welche Dokumente sind hinterlegt?“
+              </button>
+              <button onclick="sendQuickPrompt('Wie hoch ist das geplante Budget für Projekt Alpha und Marketing?')" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
+                💰 „Budget für Marketing & Projekt Alpha?“
+              </button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function startNewChatSession() {
+      const newSid = 'starpi_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+      localStorage.setItem('starpi_chat_session_id', newSid);
+      currentSessionId = newSid;
+      conversationHistory = [];
+      const container = document.getElementById('chatMessages');
+      if (container) {
+        container.innerHTML = getWelcomeMessageHtml();
+        container.scrollTop = 0;
+      }
+      lucide.createIcons();
+    }
+
+    async function loadChatHistory() {
+      if (!currentSessionId) return;
+      try {
+        const { data, error } = await sb
+          .from('chat_history')
+          .select('*')
+          .eq('session_id', currentSessionId)
+          .order('created_at', { ascending: true });
+
+        if (error) {
+          console.warn('[Supabase] Fehler beim Laden des Chat-Verlaufs:', error.message);
+          return;
+        }
+
+        if (data && data.length > 0) {
+          const container = document.getElementById('chatMessages');
+          if (container) {
+            container.innerHTML = getWelcomeMessageHtml();
+          }
+          conversationHistory = [];
+
+          const engineLabels = {
+            'cloud': '✨ Starpi Assistent · Cloud-Verbindung',
+            'client': '🔒 Lokaler Offline-Modus (100% privat)',
+            'local': '🖥️ Eigener Server (MLX/Ollama)',
+            'synthesizer': '✨ Starpi Assistent · Wissensdatenbank Frankfurt'
+          };
+
+          for (const msg of data) {
+            conversationHistory.push({ role: msg.role, content: msg.content });
+            const meta = msg.metadata || {};
+            const badge = msg.role === 'assistant' ? (engineLabels[meta.engine] || '✨ Starpi Assistent · Gespeichert') : '';
+            appendMessage(msg.role, msg.content, msg.sources || [], badge, meta.thoughts || null, meta.duration_ms || null);
+          }
+          lucide.createIcons();
+        }
+      } catch (err) {
+        console.warn('[Supabase] Ausnahme beim Laden des Chat-Verlaufs:', err);
+      }
+    }
 
     // Pre-populate settings from localStorage if available
     const savedLlmUrl = localStorage.getItem('starpi_llm_url') || "http://localhost:8000/v1";
@@ -1700,6 +1841,7 @@
 
       // Render User Message
       appendMessage('user', userText);
+      persistChatMessage('user', userText, [], {});
 
       // Show Assistant Loading Indicator
       const loadingId = appendLoading();
@@ -1797,6 +1939,7 @@ Nutzeranfrage: ${fullPrompt}`;
             removeLoading(loadingId);
             appendMessage('assistant', parsed.answer, isGreeting ? [] : sources, '✨ Starpi Assistent · Cloud-Verbindung', parsed.thoughts, elapsed);
             conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: parsed.answer });
+            persistChatMessage('assistant', parsed.answer, isGreeting ? [] : sources, { engine: 'cloud', thoughts: parsed.thoughts || null, duration_ms: elapsed });
             return;
           }
         }
@@ -1842,6 +1985,7 @@ Nutzeranfrage: ${fullPrompt}`;
               }
               streamMsg.finalize(isGreeting ? [] : sources);
               conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: aggregated });
+              persistChatMessage('assistant', aggregated, isGreeting ? [] : sources, { engine: 'client', duration_ms: Math.round(performance.now() - startTime) });
               return;
             } catch (webgpuErr) {
               console.warn("Client inference error, falling back to Synthesizer:", webgpuErr);
@@ -1880,6 +2024,7 @@ Nutzeranfrage: ${fullPrompt}`;
               removeLoading(loadingId);
               appendMessage('assistant', parsed.answer, isGreeting ? [] : sources, '🖥️ Eigener Server (MLX/Ollama)', parsed.thoughts, elapsed);
               conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: parsed.answer });
+              persistChatMessage('assistant', parsed.answer, isGreeting ? [] : sources, { engine: 'local', thoughts: parsed.thoughts || null, duration_ms: elapsed });
               return;
             }
           } catch (localErr) {
@@ -1895,6 +2040,7 @@ Nutzeranfrage: ${fullPrompt}`;
           const thoughts = generateSemanticThoughtProcess(userText, docs, entities);
           appendMessage('assistant', responseText, isGreeting ? [] : sources, '✨ Starpi Assistent · Wissensdatenbank Frankfurt', thoughts, elapsed);
           conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: responseText });
+          persistChatMessage('assistant', responseText, isGreeting ? [] : sources, { engine: 'synthesizer', thoughts: thoughts || null, duration_ms: elapsed });
         }, 120);
 
       } catch (err) {
@@ -2455,6 +2601,10 @@ Nutzeranfrage: ${fullPrompt}`;
 
       // Auto-detect optimal compute engine (WebGPU on client, or Smart Brain)
       autoDetectBestEngine();
+
+      // Chat-Verlauf aus Supabase Frankfurt laden & Synchronisationsstatus initialisieren
+      loadChatHistory();
+      updateChatSyncStatus();
     });
 
     function selectEntity(id) {
