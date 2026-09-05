@@ -1,5 +1,5 @@
-// Starpi Service Worker v1.3.0 - Dual-Tier WebGPU BYOC
-const CACHE_NAME = 'starpi-cache-v5';
+// Starpi Service Worker v1.4.0 - Council CoT & Deepthink Max
+const CACHE_NAME = 'starpi-cache-v6';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
