@@ -1048,7 +1048,7 @@
         currentWebllmConfig = null;
         updateVramStatusUI(false);
         const dot = document.getElementById('engineStatusDot');
-        if (currentEngine === 'webgpu' && dot) dot.className = "w-2 h-2 rounded-full bg-slate-400";
+        if ((currentEngine === 'client' || currentEngine === 'webgpu') && dot) dot.className = "w-2 h-2 rounded-full bg-slate-400";
         if (manualNotice) {
           appendMessage('assistant', `🧹 **Arbeitsspeicher freigegeben:** Das Modell (*${escapeHtml(oldName)}*) wurde vollständig aus dem VRAM entladen. Ihr Speicher ist wieder zu 100 % frei.`);
         }
@@ -1060,14 +1060,26 @@
       localStorage.setItem('starpi_ai_tier', tierKey);
       updateTierUI(tierKey);
 
+      // Falls noch nicht auf Client-Inferenz gestellt, automatisch umschalten
+      if (currentEngine !== 'client') {
+        currentEngine = 'client';
+        localStorage.setItem('starpi_compute_mode', 'client');
+        const selTop = document.getElementById('engineSelector');
+        const selCfg = document.getElementById('cfgComputeMode');
+        if (selTop) selTop.value = 'client';
+        if (selCfg) selCfg.value = 'client';
+      }
+
       const hw = await resolveHardwareTier();
       
-      // If a model is currently loaded in memory, check if it matches the new tier's target
-      if (webllmEngine) {
-        if (currentWebllmConfig && currentWebllmConfig.modelId !== hw.modelId) {
-          appendMessage('assistant', `🔄 **KI-Kapazität auf [${tierKey.toUpperCase()}] umgeschaltet:**\n\nDas vorherige Modell wurde aus dem Arbeitsspeicher entladen, um VRAM zu sparen. **${escapeHtml(hw.displayName)}** wird geladen, sobald Sie Ihre nächste Frage stellen.`);
-          await unloadCurrentWebGPU(false);
-        }
+      // Auf und Ab / Aus und An: Strikte VRAM-Hygiene
+      // Wenn bereits ein anderes Modell im VRAM liegt, altes Modell restlos entladen bevor das neue geladen wird
+      if (webllmEngine && currentWebllmConfig && currentWebllmConfig.modelId !== hw.modelId) {
+        appendMessage('assistant', `🔄 **KI-Kapazität auf [${tierKey.toUpperCase()}] umgeschaltet:**\n\nAltes Modell wird aus dem VRAM entladen. Lade **${escapeHtml(hw.displayName)}**...`);
+        await unloadCurrentWebGPU(false);
+        await initWebLLM();
+      } else if (!webllmEngine && !webllmLoading) {
+        await initWebLLM();
       }
     }
 
@@ -1335,6 +1347,9 @@
 
     // Auto-detect optimal engine on startup
     async function autoDetectBestEngine() {
+      detectAndDisplayDevice();
+      updateTierUI(currentAiTier);
+
       if (savedComputeMode) {
         let clean = savedComputeMode;
         if (clean === 'gemini' || clean === 'brain') clean = 'council';
@@ -2273,28 +2288,34 @@ Nutzeranfrage: ${fullPrompt}`;
       return `### ℹ️ Auswertung zu Ihrer Anfrage\n\nZu Ihrer Suchanfrage **„${escapeHtml(userText)}“** wurden in den Unternehmensdokumenten aktuell keine exakten direkten Treffer gefunden.\n\nIn Ihrer Wissensdatenbank in Frankfurt sind aktuell Unterlagen zu folgenden Themenbereichen hinterlegt:\n* **Projekt Alpha:** Launchtermin (15. Sept), Figma-Design (Sarah), Backend (Michael), Budget (45.000 €).\n* **Marketing Q4:** Kampagnenstart (1. Okt), 500 B2B Leads, Budget (12.000 €).\n* **Compliance & IT:** Supabase pgvector HNSW, Frankfurt Hosting, 100% DSGVO-Sicherheit.\n\nStellen Sie mir gerne eine gezielte Frage zu einem dieser Themen oder speisen Sie über den Tab **„Wissen einspeisen“** neue Notizen ein!`;
     }
 
-    function saveSettings() {
+    async function saveSettings() {
       const llmUrl = document.getElementById('cfgLlmUrl').value.trim();
       const geminiKey = document.getElementById('cfgGeminiKey')?.value.trim() || "";
       const openrouterKey = document.getElementById('cfgOpenrouterKey')?.value.trim() || "";
       const mode = document.getElementById('cfgComputeMode')?.value || "council";
+      const aiTier = document.getElementById('cfgAiTier')?.value || "auto";
       const webgpuModel = document.getElementById('cfgWebgpuModel')?.value || "auto";
       const previousWebgpuModel = localStorage.getItem('starpi_webgpu_model') || "auto";
+      const previousAiTier = localStorage.getItem('starpi_ai_tier') || "auto";
       
       localStorage.setItem('starpi_llm_url', llmUrl);
       localStorage.setItem('starpi_gemini_key', geminiKey);
       localStorage.setItem('starpi_openrouter_key', openrouterKey);
       localStorage.setItem('starpi_compute_mode', mode);
+      localStorage.setItem('starpi_ai_tier', aiTier);
       localStorage.setItem('starpi_webgpu_model', webgpuModel);
 
-      if (webllmEngine && webgpuModel !== previousWebgpuModel) {
-        webllmEngine = null;
+      currentAiTier = aiTier;
+      updateTierUI(aiTier);
+
+      if (webllmEngine && (webgpuModel !== previousWebgpuModel || aiTier !== previousAiTier)) {
+        await unloadCurrentWebGPU(false);
         if (mode === 'client') {
-          initWebLLM();
+          await initWebLLM();
         }
       }
 
-      changeEngine(mode);
+      await changeEngine(mode);
       alert('Einstellungen gespeichert! Der Modus ist jetzt aktiv.');
     }
 
