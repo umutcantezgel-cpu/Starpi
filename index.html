@@ -446,10 +446,13 @@
             <label class="block text-xs text-slate-400 mb-1">WebGPU Modell-Profil (BYOC Hugging Face)</label>
             <select id="cfgWebgpuModel" class="w-full bg-surface-input border border-surface-border rounded-xl px-3 py-2 text-xs text-slate-200 focus:border-brand-500 focus:outline-none">
               <option value="auto">⚡ Automatisch (Mobil: Llama-3.2-1B [705 MB] / Desktop: Qwen2.5-3B [1,85 GB])</option>
-              <option value="llama-1b">📱 Meta Llama-3.2-1B-Instruct (705 MB · Ultra-Highspeed, 0% Crash-Risiko auf iOS/Android)</option>
-              <option value="qwen-3b">💻 Alibaba Qwen2.5-3B-Instruct (1,85 GB · Desktop GPT-4 Niveau, 77.4% IFEval)</option>
-              <option value="qwen-1.5b">🧠 Alibaba Qwen2.5-1.5B-Instruct (980 MB · 18T Token Allgemeinwissen)</option>
-              <option value="deepseek-r1">🔬 DeepSeek-R1-Distill-Qwen-1.5B (954 MB · Chain-of-Thought Reasoning)</option>
+              <option value="llama-1b">📱 Meta Llama-3.2-1B-Instruct (705 MB · Rang #1 Mobil, 0% Crash-Risiko auf iOS/Android)</option>
+              <option value="qwen-1.5b">🧠 Alibaba Qwen2.5-1.5B-Instruct (980 MB · Rang #2 Allrounder, 18T Token)</option>
+              <option value="smollm-1.7b">📚 Hugging Face SmolLM2-1.7B-Instruct (1,05 GB · Rang #3 FineWeb-Edu)</option>
+              <option value="deepseek-r1">🔬 DeepSeek-R1-Distill-Qwen-1.5B (954 MB · Rang #4 Chain-of-Thought Reasoning)</option>
+              <option value="qwen-3b">💻 Alibaba Qwen2.5-3B-Instruct (1,85 GB · Rang #5 Desktop GPT-4-Niveau, 77.4% IFEval)</option>
+              <option value="hermes-3b">✦ Nous Hermes-3-Llama-3.2-3B (1,8 GB · Agentic & Unzensiert, System-Prompts)</option>
+              <option value="phi-3.5">🏛️ Microsoft Phi-3.5-mini-Instruct (2,2 GB · 3.8B High-Density Reasoning)</option>
             </select>
             <p class="text-[11px] text-slate-500 mt-1">Lädt Gewichte direkt von Hugging Face in den lokalen Browser-Cache (IndexedDB). 0 € Serverkosten.</p>
           </div>
@@ -983,6 +986,30 @@
           modelId: "DeepSeek-R1-Distill-Qwen-1.5B-q4f16_1-MLC",
           displayName: "DeepSeek-R1-Distill-Qwen-1.5B (954 MB)",
           overrides: { context_window_size: 2048, prefill_chunk_size: 128 }
+        };
+      }
+      if (userPref === 'smollm-1.7b') {
+        return {
+          tier: "smollm",
+          modelId: "SmolLM2-1.7B-Instruct-q4f16_1-MLC",
+          displayName: "Hugging Face SmolLM2-1.7B-Instruct (1,05 GB)",
+          overrides: { context_window_size: 2048, prefill_chunk_size: 128 }
+        };
+      }
+      if (userPref === 'hermes-3b') {
+        return {
+          tier: "hermes-agent",
+          modelId: "Hermes-3-Llama-3.2-3B-q4f16_1-MLC",
+          displayName: "Nous Hermes-3-Llama-3.2-3B (1,8 GB)",
+          overrides: { context_window_size: 4096, prefill_chunk_size: isMobileDevice ? 128 : 512 }
+        };
+      }
+      if (userPref === 'phi-3.5') {
+        return {
+          tier: "microsoft-phi",
+          modelId: "Phi-3.5-mini-instruct-q4f16_1-MLC",
+          displayName: "Microsoft Phi-3.5-mini-Instruct (2,2 GB)",
+          overrides: { context_window_size: 4096, prefill_chunk_size: isMobileDevice ? 128 : 512 }
         };
       }
 
