@@ -12,11 +12,11 @@ A concise explanation of the proposed capability.
 ### Technical Motivation
 Why should this capability be added to Starpi? What limitations does it resolve?
 
-### Proposed Architecture & Implementation
+### Proposed Architecture and Implementation
 Detail how the feature will be integrated:
-- Changes to WebGPU shaders / pipeline
-- Changes to hardware profiling or weight streaming
-- Memory footprint considerations and VRAM budget impacts
+* Changes to WebGPU shaders or pipeline
+* Changes to hardware profiling or weight streaming
+* Memory footprint considerations and VRAM budget impacts
 
 ### Alternatives Considered
 Describe any alternative solutions or workarounds evaluated.

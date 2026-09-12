@@ -1,5 +1,5 @@
 {
-  "name": "Starpi — Enterprise AI Brain",
+  "name": "Starpi Enterprise AI Brain",
   "short_name": "Starpi",
   "description": "Ihr privates Enterprise Brain mit lokaler Inferenz, Wissensarchiv und Supabase pgvector.",
   "start_url": "/",

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
-  <title>Starpi — Enterprise Brain & Knowledge Assistant</title>
+  <title>Starpi Enterprise Brain & Knowledge Assistant</title>
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#FFCA00">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -171,7 +171,7 @@
       </div>
       <p class="text-[11px] text-slate-500 font-mono truncate" id="dbProjectLabel">dlelapwmaknujeewcssf (Frankfurt)</p>
       <div class="mt-2 text-[11px] text-slate-500 flex justify-between">
-        <span>Vektor-Index:</span>
+        <span>Vektorindex:</span>
         <span class="text-slate-800 font-semibold">pgvector (HNSW)</span>
       </div>
     </div>
@@ -189,7 +189,7 @@
           <h1 id="pageTitle" class="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-1.5">
             <span class="text-amber-500 font-black">✦</span> Starpi
           </h1>
-          <p class="text-[10px] sm:text-[11px] text-slate-500 font-medium hidden xs:block">Ihr persönlicher KI-Assistent</p>
+          <p class="text-[10px] sm:text-[11px] text-slate-500 font-medium hidden xs:block">Ihr persönlicher KI Assistent</p>
         </div>
       </div>
       <div class="flex items-center gap-2">
@@ -197,7 +197,7 @@
           <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" id="engineStatusDot"></span>
           <select id="engineSelector" onchange="changeEngine(this.value)" class="bg-transparent text-slate-800 font-bold text-xs focus:outline-none cursor-pointer max-w-[140px] sm:max-w-none truncate">
             <option value="council" selected>⚡ Schneller Assistent (Standard)</option>
-            <option value="client">🔒 Lokaler Offline-Modus (100% privat)</option>
+            <option value="client">🔒 Lokaler Offline Modus (100% privat)</option>
             <option value="local">🖥️ Eigener Server (MLX/Ollama)</option>
           </select>
         </div>
@@ -267,11 +267,11 @@
             ✦
           </div>
           <div class="flex-1 bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 text-slate-700 text-sm leading-relaxed shadow-card">
-            <p class="font-extrabold text-slate-950 text-base mb-1">Willkommen bei Starpi — Ihrem Unternehmens-Assistenten!</p>
-            <p class="text-slate-600">Ich habe Zugriff auf Ihre in Supabase gespeicherten Unternehmensdokumente, Meeting-Notizen und Richtlinien. Stellen Sie mir gerne Fragen oder diktieren Sie neue Informationen.</p>
+            <p class="font-extrabold text-slate-950 text-base mb-1">Willkommen bei Starpi, Ihrem Unternehmensassistenten!</p>
+            <p class="text-slate-600">Ich habe Zugriff auf Ihre in Supabase gespeicherten Unternehmensdokumente, Meetingnotizen und Richtlinien. Stellen Sie mir gerne Fragen oder diktieren Sie neue Informationen.</p>
             
             <div class="mt-4 flex flex-wrap gap-2">
-              <button onclick="sendQuickPrompt('Wann ist der Launch von Projekt Alpha und wer leitet die Frontend-Entwicklung?')" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
+              <button onclick="sendQuickPrompt('Wann ist der Launch von Projekt Alpha und wer leitet die Frontend Entwicklung?')" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
                 🔍 „Projekt Alpha: Launch & Zuständigkeiten?“
               </button>
               <button onclick="sendQuickPrompt('Welche Dokumente und Richtlinien sind aktuell im Brain hinterlegt?')" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
@@ -307,7 +307,7 @@
             </button>
           </div>
         </form>
-        <p class="text-[10px] sm:text-[11px] text-center text-slate-500 mt-1.5 font-medium">🔒 100 % DSGVO-konform · Sichere Wissensdatenbank in Frankfurt (eu-central-1)</p>
+        <p class="text-[10px] sm:text-[11px] text-center text-slate-500 mt-1.5 font-medium">🔒 100 % DSGVO konform · Sichere Wissensdatenbank in Frankfurt (eu central 1)</p>
       </div>
     </section>
 
@@ -319,7 +319,7 @@
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
           <div>
             <h2 class="text-xl font-extrabold text-slate-950 tracking-tight">Gespeicherte Dokumente</h2>
-            <p class="text-xs text-slate-500">Automatisch formatierte Markdown-Wissensbestände in Supabase</p>
+            <p class="text-xs text-slate-500">Automatisch formatierte Markdown Wissensbestände in Supabase</p>
           </div>
           <div class="flex items-center gap-2 w-full sm:w-auto">
             <button onclick="loadDocuments()" class="p-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 shadow-xs transition" title="Aktualisieren">
@@ -386,7 +386,7 @@
             <div class="flex items-center justify-between pb-3.5 border-b border-slate-200">
               <h3 class="text-sm font-extrabold text-slate-900 flex items-center gap-2">
                 <i data-lucide="info" class="w-4 h-4 text-amber-600"></i>
-                <span>Entitäts-Details</span>
+                <span>Entitätsdetails</span>
               </h3>
               <span id="selectedEntityBadge" class="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 font-bold">Info</span>
             </div>
@@ -408,7 +408,7 @@
       <div class="max-w-3xl mx-auto w-full space-y-6">
         <div>
           <h2 class="text-xl font-extrabold text-slate-950 tracking-tight">Informationen ins Brain einspeisen</h2>
-          <p class="text-xs text-slate-500">Unformatierte Texte, Meeting-Transkripte oder Notizen werden automatisch in sauberes Markdown gegliedert, vektorisiert und in Supabase gespeichert.</p>
+          <p class="text-xs text-slate-500">Unformatierte Texte, Meetingtranskripte oder Notizen werden automatisch in sauberes Markdown gegliedert, vektorisiert und in Supabase gespeichert.</p>
         </div>
 
         <!-- Drag & Drop Zone -->
@@ -471,7 +471,7 @@
       <div class="max-w-2xl mx-auto w-full space-y-5">
         <div>
           <h2 class="text-xl font-extrabold text-slate-950 tracking-tight">Einstellungen & Verbindungen</h2>
-          <p class="text-xs text-slate-500">Verwalten Sie den Assistenten-Modus und Ihre Wissensdatenbank in Frankfurt.</p>
+          <p class="text-xs text-slate-500">Verwalten Sie den Assistenten Modus und Ihre Wissensdatenbank in Frankfurt.</p>
         </div>
 
         <!-- Assistenten-Modus Card -->
@@ -479,7 +479,7 @@
           <div class="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
               <i data-lucide="sparkles" class="w-4 h-4 text-amber-500"></i>
-              Assistenten-Modus
+              Assistenten Modus
             </h3>
             <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Aktiv
@@ -489,12 +489,12 @@
           <div>
             <label class="block text-xs font-semibold text-slate-700 mb-1.5">Wählen Sie, wie Starpi arbeiten soll:</label>
             <select id="cfgComputeMode" onchange="changeEngine(this.value)" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-medium focus:border-amber-400 focus:outline-none transition">
-              <option value="council" selected>⚡ Schneller Assistent (Empfohlen · Cloud-unterstützt, schont Smartphone & Akku)</option>
-              <option value="client">🔒 Lokaler Offline-Modus (100% privat · Rechnet direkt im Browser auf Ihrer GPU)</option>
+              <option value="council" selected>⚡ Schneller Assistent (Empfohlen · Cloud unterstützt, schont Smartphone & Akku)</option>
+              <option value="client">🔒 Lokaler Offline Modus (100% privat · Rechnet direkt im Browser auf Ihrer GPU)</option>
               <option value="local">🖥️ Eigener Server (Verbindung zu lokalem MLX / Ollama auf Ihrem Mac/PC)</option>
             </select>
             <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
-              <strong>Empfehlung:</strong> Der <em>Schnelle Assistent</em> liefert Antworten in weniger als einer Sekunde, ohne dass große KI-Modelle auf Ihr Handy heruntergeladen werden müssen.
+              <strong>Empfehlung:</strong> Der <em>Schnelle Assistent</em> liefert Antworten in weniger als einer Sekunde, ohne dass große KI Modelle auf Ihr Handy heruntergeladen werden müssen.
             </p>
           </div>
 
@@ -522,18 +522,18 @@
           <div class="space-y-2 text-xs text-slate-600">
             <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
               <span class="font-medium text-slate-700">Standort:</span>
-              <span class="font-semibold text-slate-900">Frankfurt am Main (eu-central-1)</span>
+              <span class="font-semibold text-slate-900">Frankfurt am Main (eu central 1)</span>
             </div>
             <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
               <span class="font-medium text-slate-700">Datenschutz & Compliance:</span>
-              <span class="font-semibold text-emerald-700">100 % DSGVO-konform</span>
+              <span class="font-semibold text-emerald-700">100 % DSGVO konform</span>
             </div>
             <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
               <span class="font-medium text-slate-700">Vektorsuche:</span>
               <span class="font-semibold text-slate-900">PostgreSQL pgvector (HNSW)</span>
             </div>
             <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
-              <span class="font-medium text-slate-700">Chat-Synchronisation:</span>
+              <span class="font-medium text-slate-700">Chatsynchronisation:</span>
               <span class="font-semibold text-emerald-700 flex items-center gap-1.5">
                 <i data-lucide="cloud" class="w-3.5 h-3.5 text-emerald-600"></i>
                 <span id="chatSyncStatusText">Live in Supabase gespeichert</span>
@@ -559,29 +559,29 @@
             <input type="hidden" id="cfgAiTier" value="auto">
 
             <div>
-              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Eigener Google Gemini API-Schlüssel (optional)</label>
-              <input type="password" id="cfgGeminiKey" placeholder="Eigener API-Key (überschreibt Standard-Pool)" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Eigener Google Gemini API Schlüssel (optional)</label>
+              <input type="password" id="cfgGeminiKey" placeholder="Eigener API Key (überschreibt Standardpool)" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
               <p class="text-[10px] text-slate-500 mt-1">Wird priorisiert verwendet, falls eingetragen.</p>
             </div>
 
             <div>
-              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Eigener OpenRouter API-Schlüssel (optional)</label>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Eigener OpenRouter API Schlüssel (optional)</label>
               <input type="password" id="cfgOpenrouterKey" placeholder="sk-or-v1-..." class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
             </div>
 
             <div>
               <label class="block text-[11px] font-semibold text-slate-600 mb-1">Lokaler Server / Tunnel Endpunkt (LLM Base URL)</label>
-              <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="http://localhost:8000/v1 oder Cloudflare-Tunnel" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
+              <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="http://localhost:8000/v1 oder Cloudflare Tunnel" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
             </div>
 
             <div>
-              <label class="block text-[11px] font-semibold text-slate-600 mb-1">WebGPU-Modell (für lokalen Offline-Modus)</label>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-1">WebGPU Modell (für lokalen Offline Modus)</label>
               <select id="cfgWebgpuModel" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none">
                 <option value="auto">⚡ Automatische Erkennung nach Hardware</option>
-                <option value="llama-1b">📱 Llama-3.2-1B (705 MB · Für Mobilgeräte optimiert)</option>
-                <option value="qwen-1.5b">🧠 Qwen2.5-1.5B (980 MB · Hohe Genauigkeit)</option>
-                <option value="deepseek-r1">🔬 DeepSeek-R1-Distill-1.5B (954 MB · Denkschritte)</option>
-                <option value="qwen-3b">💻 Qwen2.5-3B (1,85 GB · Desktop High-Precision)</option>
+                <option value="llama-1b">📱 Llama 3.2 1B (705 MB · Für Mobilgeräte optimiert)</option>
+                <option value="qwen-1.5b">🧠 Qwen 2.5 1.5B (980 MB · Hohe Genauigkeit)</option>
+                <option value="deepseek-r1">🔬 DeepSeek R1 Distill 1.5B (954 MB · Denkschritte)</option>
+                <option value="qwen-3b">💻 Qwen 2.5 3B (1,85 GB · Desktop High Precision)</option>
               </select>
             </div>
 
@@ -590,7 +590,7 @@
                 <i data-lucide="zap" class="w-3 h-3 text-amber-600"></i> Primären Pool testen
               </button>
               <button type="button" onclick="testSecondaryCluster()" id="btnTestSecondary" class="text-[11px] font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
-                <i data-lucide="activity" class="w-3 h-3 text-indigo-600"></i> Redundanz-Pool testen
+                <i data-lucide="activity" class="w-3 h-3 text-indigo-600"></i> Redundanzpool testen
               </button>
             </div>
             <div id="primaryTestStatus" class="hidden text-xs p-2.5 rounded-lg border"></div>
@@ -647,7 +647,7 @@
       <div class="flex items-center justify-between border-b border-slate-200 pb-3.5">
         <h3 class="font-extrabold text-slate-950 text-sm flex items-center gap-2">
           <i data-lucide="plus-circle" class="w-4 h-4 text-amber-600"></i>
-          Neue Wissensgraph-Entität anlegen
+          Neue Wissensgraphentität anlegen
         </h3>
         <button onclick="closeNewEntityModal()" class="text-slate-400 hover:text-slate-800 p-1 rounded-lg">
           <i data-lucide="x" class="w-4 h-4"></i>
@@ -733,7 +733,7 @@
     async function callGeminiWithFailover(promptContent) {
       const keys = getGeminiKeys();
       if (!keys || keys.length === 0) {
-        throw new Error("Kein individueller Gemini-Key hinterlegt. Cloud-Assistent (OpenRouter) wird genutzt.");
+        throw new Error("Kein individueller Gemini Schlüssel hinterlegt. Cloud Assistent (OpenRouter) wird genutzt.");
       }
       let lastErr = null;
       for (let attempt = 0; attempt < keys.length; attempt++) {
@@ -763,7 +763,7 @@
           console.warn(`[Gemini Pool] Key #${activeIdx + 1} fehlgeschlagen (${e.message}), Failover zu nächstem Key...`);
         }
       }
-      throw lastErr || new Error("Gemini API-Endpunkt nicht erreichbar.");
+      throw lastErr || new Error("Gemini API Endpunkt nicht erreichbar.");
     }
 
     async function callOpenRouterWithFailover(userText, systemPrompt, conversationSlice = []) {
@@ -821,7 +821,7 @@
         }
         if (attemptsCount > maxAttempts) break;
       }
-      throw lastErr || new Error("Cloud-Inferenz aktuell nicht erreichbar.");
+      throw lastErr || new Error("Cloud Inferenz aktuell nicht erreichbar.");
     }
 
     async function testPrimaryCluster() {
@@ -874,7 +874,7 @@
       if (btn) btn.disabled = true;
       if (statusBox) {
         statusBox.className = "text-xs p-2.5 rounded-lg border bg-amber-500/10 border-amber-500/30 text-amber-800 flex items-center gap-2";
-        statusBox.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>Prüfe Cloud-Assistent Verbindung...</span>`;
+        statusBox.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>Prüfe Cloud Assistent Verbindung...</span>`;
         statusBox.classList.remove('hidden');
         lucide.createIcons();
       }
@@ -890,7 +890,7 @@
           statusBox.className = "text-xs p-2.5 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-800 space-y-1";
           statusBox.innerHTML = `
             <div class="flex items-center justify-between font-semibold">
-              <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> Cloud-Assistent Bereit (Knoten #${res.keyIndex + 1})</span>
+              <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> Cloud Assistent Bereit (Knoten #${res.keyIndex + 1})</span>
               <span class="font-mono text-[11px]">${elapsed} ms</span>
             </div>
             <p class="text-[11px] text-slate-600 italic">"${escapeHtml(sanitizeModelNames(res.text.slice(0, 140)))}"</p>
@@ -916,21 +916,21 @@
     function sanitizeModelNames(str) {
       if (!str) return '';
       return String(str)
-        .replace(/\b(Google\s+)?Gemini(\s+2\.\d+)?(\s+Flash|\s+Pro|\s+Exp)?/gi, 'Inferenz-Instanz')
-        .replace(/\bOpenRouter(\s+Cloud\s+AI)?/gi, 'Redundanz-Knoten')
-        .replace(/\b(Meta\s+)?Llama(-3(\.\d+)?)?(-[0-9]+(\.[0-9]+)?B)?(-Instruct)?/gi, 'Kompakt-Modell')
-        .replace(/\b(Alibaba\s+)?Qwen(2(\.\d+)?)?(-[0-9]+(\.[0-9]+)?B)?(-Instruct)?/gi, 'Hochpräzisions-Modell')
-        .replace(/\b(DeepSeek)(-R1)?(-Distill)?(-Qwen)?/gi, 'Logik-Instanz')
-        .replace(/\b(Nvidia\s+)?Nemotron(-[0-9]+(\.[0-9]+)?)?(-lightning)?/gi, 'Inferenz-Knoten')
-        .replace(/\bLiquid(\s+LFM)?(-[0-9]+(\.[0-9]+)?)?/gi, 'Inferenz-Knoten')
-        .replace(/\bSmolLM2?(-[0-9]+(\.[0-9]+)?B)?(-Instruct)?/gi, 'Kompakt-Modell')
-        .replace(/\b(Nous\s+)?Hermes(-[0-9]+)?/gi, 'Logik-Modell')
-        .replace(/\b(Microsoft\s+)?Phi(-3(\.\d+)?)?(-mini)?(-instruct)?/gi, 'Reasoning-Modell')
+        .replace(/\b(Google\s+)?Gemini(\s+2\.\d+)?(\s+Flash|\s+Pro|\s+Exp)?/gi, 'Inferenzinstanz')
+        .replace(/\bOpenRouter(\s+Cloud\s+AI)?/gi, 'Redundanzknoten')
+        .replace(/\b(Meta\s+)?Llama(-3(\.\d+)?)?(-[0-9]+(\.[0-9]+)?B)?(-Instruct)?/gi, 'Kompaktmodell')
+        .replace(/\b(Alibaba\s+)?Qwen(2(\.\d+)?)?(-[0-9]+(\.[0-9]+)?B)?(-Instruct)?/gi, 'Hochpräzisionsmodell')
+        .replace(/\b(DeepSeek)(-R1)?(-Distill)?(-Qwen)?/gi, 'Logikinstanz')
+        .replace(/\b(Nvidia\s+)?Nemotron(-[0-9]+(\.[0-9]+)?)?(-lightning)?/gi, 'Inferenzknoten')
+        .replace(/\bLiquid(\s+LFM)?(-[0-9]+(\.[0-9]+)?)?/gi, 'Inferenzknoten')
+        .replace(/\bSmolLM2?(-[0-9]+(\.[0-9]+)?B)?(-Instruct)?/gi, 'Kompaktmodell')
+        .replace(/\b(Nous\s+)?Hermes(-[0-9]+)?/gi, 'Logikmodell')
+        .replace(/\b(Microsoft\s+)?Phi(-3(\.\d+)?)?(-mini)?(-instruct)?/gi, 'Reasoningmodell')
         .replace(/\b(ChatGPT|GPT-4[o\w]*|GPT-3\.5|OpenAI)/gi, 'Assistent')
-        .replace(/liquid\/[^\s,)]+/gi, 'Redundanz-Knoten')
-        .replace(/nvidia\/[^\s,)]+/gi, 'Redundanz-Knoten')
-        .replace(/google\/[^\s,)]+/gi, 'Primär-Knoten')
-        .replace(/openrouter\/[^\s,)]+/gi, 'Auto-Knoten');
+        .replace(/liquid\/[^\s,)]+/gi, 'Redundanzknoten')
+        .replace(/nvidia\/[^\s,)]+/gi, 'Redundanzknoten')
+        .replace(/google\/[^\s,)]+/gi, 'Primärknoten')
+        .replace(/openrouter\/[^\s,)]+/gi, 'Autoknoten');
     }
 
     let attachedFileContent = "";
@@ -965,7 +965,7 @@
         if (error) {
           console.warn("[Supabase] chat_history speichern fehlgeschlagen:", error.message);
         } else {
-          console.log(`[Supabase] Chat-Nachricht (${role}) in Supabase Frankfurt gespeichert.`);
+          console.log(`[Supabase] Chatnachricht (${role}) in Supabase Frankfurt gespeichert.`);
           updateChatSyncStatus();
         }
       } catch (err) {
@@ -994,11 +994,11 @@
             ✦
           </div>
           <div class="flex-1 bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 text-slate-700 text-sm leading-relaxed shadow-card">
-            <p class="font-extrabold text-slate-950 text-base mb-1">Willkommen bei Starpi — Ihrem Unternehmens-Assistenten!</p>
-            <p class="text-slate-600">Ich habe Zugriff auf Ihre in Supabase gespeicherten Unternehmensdokumente, Meeting-Notizen und Richtlinien. Stellen Sie mir gerne Fragen oder diktieren Sie neue Informationen.</p>
+            <p class="font-extrabold text-slate-950 text-base mb-1">Willkommen bei Starpi, Ihrem Unternehmensassistenten!</p>
+            <p class="text-slate-600">Ich habe Zugriff auf Ihre in Supabase gespeicherten Unternehmensdokumente, Meetingnotizen und Richtlinien. Stellen Sie mir gerne Fragen oder diktieren Sie neue Informationen.</p>
             
             <div class="mt-4 flex flex-wrap gap-2">
-              <button onclick="sendQuickPrompt('Wann ist der Launch von Projekt Alpha und wer leitet die Frontend-Entwicklung?')" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
+              <button onclick="sendQuickPrompt('Wann ist der Launch von Projekt Alpha und wer leitet die Frontend Entwicklung?')" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
                 🔍 „Projekt Alpha: Launch & Zuständigkeiten?“
               </button>
               <button onclick="sendQuickPrompt('Welche Dokumente und Richtlinien sind aktuell im Brain hinterlegt?')" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
@@ -1035,7 +1035,7 @@
           .order('created_at', { ascending: true });
 
         if (error) {
-          console.warn('[Supabase] Fehler beim Laden des Chat-Verlaufs:', error.message);
+          console.warn('[Supabase] Fehler beim Laden des Chatverlaufs:', error.message);
           return;
         }
 
@@ -1047,8 +1047,8 @@
           conversationHistory = [];
 
           const engineLabels = {
-            'cloud': '✨ Starpi Assistent · Cloud-Verbindung',
-            'client': '🔒 Lokaler Offline-Modus (100% privat)',
+            'cloud': '✨ Starpi Assistent · Cloud Verbindung',
+            'client': '🔒 Lokaler Offline Modus (100% privat)',
             'local': '🖥️ Eigener Server (MLX/Ollama)',
             'synthesizer': '✨ Starpi Assistent · Wissensdatenbank Frankfurt'
           };
@@ -1062,7 +1062,7 @@
           lucide.createIcons();
         }
       } catch (err) {
-        console.warn('[Supabase] Ausnahme beim Laden des Chat-Verlaufs:', err);
+        console.warn('[Supabase] Ausnahme beim Laden des Chatverlaufs:', err);
       }
     }
 
@@ -1177,10 +1177,10 @@
 
       const hw = await resolveHardwareTier();
       
-      // Auf und Ab / Aus und An: Strikte VRAM-Hygiene
+      // Auf und Ab / Aus und An: Strikte VRAM Hygiene
       // Wenn bereits ein anderes Modell im VRAM liegt, altes Modell restlos entladen bevor das neue geladen wird
       if (webllmEngine && currentWebllmConfig && currentWebllmConfig.modelId !== hw.modelId) {
-        appendMessage('assistant', `🔄 **KI-Kapazität auf [${tierKey.toUpperCase()}] umgeschaltet:**\n\nAltes Modell wird aus dem VRAM entladen. Lade **${escapeHtml(hw.displayName)}**...`);
+        appendMessage('assistant', `🔄 **KI Kapazität auf [${tierKey.toUpperCase()}] umgeschaltet:**\n\nAltes Modell wird aus dem VRAM entladen. Lade **${escapeHtml(hw.displayName)}**...`);
         await unloadCurrentWebGPU(false);
         await initWebLLM();
       } else if (!webllmEngine && !webllmLoading) {
@@ -1247,7 +1247,7 @@
       }
       const adapter = await navigator.gpu.requestAdapter();
       if (!adapter) {
-        throw new Error("Kein kompatibler WebGPU-Adapter initialisierbar.");
+        throw new Error("Kein kompatibler WebGPU Adapter initialisierbar.");
       }
       const userAgent = navigator.userAgent || "";
       const isMobileDevice = /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) || window.innerWidth <= 800;
@@ -1256,13 +1256,13 @@
 
       const manualOverride = localStorage.getItem('starpi_webgpu_model') || 'auto';
 
-      // 1. Manuelle Modell-Erzwingung durch Nutzer (falls in Einstellungen abweichend von 'auto' gewählt)
+      // 1. Manuelle Modellerzwingung durch Nutzer (falls in Einstellungen abweichend von 'auto' gewählt)
       if (manualOverride !== 'auto') {
         if (manualOverride === 'llama-1b') {
           return {
             tier: "manual",
             modelId: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
-            displayName: "Ultra-Kompakt Inferenz (705 MB · Mobil)",
+            displayName: "Ultra Kompakt Inferenz (705 MB · Mobil)",
             vramEstimate: "~879 MB VRAM",
             overrides: { context_window_size: 2048, prefill_chunk_size: 128 }
           };
@@ -1280,7 +1280,7 @@
           return {
             tier: "manual",
             modelId: "SmolLM2-1.7B-Instruct-q4f16_1-MLC",
-            displayName: "Kompakt-Reasoning (1,05 GB)",
+            displayName: "Kompakt Reasoning (1,05 GB)",
             vramEstimate: "~1.7 GB VRAM",
             overrides: { context_window_size: 2048, prefill_chunk_size: 128 }
           };
@@ -1298,7 +1298,7 @@
           return {
             tier: "manual",
             modelId: "Qwen2.5-3B-Instruct-q4f16_1-MLC",
-            displayName: "Desktop High-Precision (1,85 GB)",
+            displayName: "Desktop High Precision (1,85 GB)",
             vramEstimate: "~2.5 GB VRAM",
             overrides: { context_window_size: 4096, prefill_chunk_size: isMobileDevice ? 128 : 512 }
           };
@@ -1307,7 +1307,7 @@
           return {
             tier: "manual",
             modelId: "Hermes-3-Llama-3.2-3B-q4f16_1-MLC",
-            displayName: "Autonome Logik-Inferenz (1,8 GB)",
+            displayName: "Autonome Logik Inferenz (1,8 GB)",
             vramEstimate: "~2.4 GB VRAM",
             overrides: { context_window_size: 4096, prefill_chunk_size: isMobileDevice ? 128 : 512 }
           };
@@ -1316,7 +1316,7 @@
           return {
             tier: "manual",
             modelId: "Phi-3.5-mini-instruct-q4f16_1-MLC",
-            displayName: "High-Density Reasoning (2,2 GB)",
+            displayName: "High Density Reasoning (2,2 GB)",
             vramEstimate: "~2.9 GB VRAM",
             overrides: { context_window_size: 4096, prefill_chunk_size: isMobileDevice ? 128 : 512 }
           };
@@ -1330,7 +1330,7 @@
         return {
           tier: "low",
           modelId: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
-          displayName: "Ultra-Kompakt Inferenz (Low · 705 MB)",
+          displayName: "Ultra Kompakt Inferenz (Low · 705 MB)",
           vramEstimate: "~879 MB VRAM",
           overrides: { context_window_size: 2048, prefill_chunk_size: 128 }
         };
@@ -1351,7 +1351,7 @@
           return {
             tier: "high-mobile",
             modelId: "DeepSeek-R1-Distill-Qwen-1.5B-q4f16_1-MLC",
-            displayName: "Logik-Modell (Mobile High)",
+            displayName: "Logikmodell (Mobile High)",
             vramEstimate: "~1.5 GB VRAM",
             overrides: { context_window_size: 2048, prefill_chunk_size: 128 }
           };
@@ -1359,7 +1359,7 @@
           return {
             tier: "high-desktop",
             modelId: "Qwen2.5-3B-Instruct-q4f16_1-MLC",
-            displayName: "Desktop High-Precision Inferenz (High)",
+            displayName: "Desktop High Precision Inferenz (High)",
             vramEstimate: "~2.5 GB VRAM",
             overrides: { context_window_size: 4096, prefill_chunk_size: 512 }
           };
@@ -1371,7 +1371,7 @@
         return {
           tier: "auto-desktop",
           modelId: "Qwen2.5-3B-Instruct-q4f16_1-MLC",
-          displayName: "Desktop High-Precision Inferenz (Auto)",
+          displayName: "Desktop High Precision Inferenz (Auto)",
           vramEstimate: "~2.5 GB VRAM",
           overrides: { context_window_size: 4096, prefill_chunk_size: 512 }
         };
@@ -1379,7 +1379,7 @@
         return {
           tier: "auto-mobile",
           modelId: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
-          displayName: "Ultra-Kompakt Inferenz (Mobil Auto)",
+          displayName: "Ultra Kompakt Inferenz (Mobil Auto)",
           vramEstimate: "~879 MB VRAM",
           overrides: { context_window_size: 2048, prefill_chunk_size: 128 }
         };
@@ -1448,7 +1448,7 @@
         if (dot) dot.className = "w-2 h-2 rounded-full bg-emerald-400";
         updateVramStatusUI(true, hw.displayName, hw.vramEstimate);
 
-        appendMessage('assistant', `✅ **Lokaler Offline-Modus aktiv!**\n\nModell: **${escapeHtml(hw.displayName)}**\n\n* **GPU-Speicher:** ${hw.vramEstimate}\n* **100 % Privat:** Alle Daten verbleiben auf Ihrem Gerät.`);
+        appendMessage('assistant', `✅ **Lokaler Offline Modus aktiv!**\n\nModell: **${escapeHtml(hw.displayName)}**\n\n* **GPU Speicher:** ${hw.vramEstimate}\n* **100 % Privat:** Alle Daten verbleiben auf Ihrem Gerät.`);
       } catch (err) {
         webllmLoading = false;
         if (container) container.classList.add('hidden');
@@ -1456,7 +1456,7 @@
         console.warn("WebLLM Init Error:", err);
         updateVramStatusUI(false);
         changeEngine('council');
-        appendMessage('assistant', `ℹ️ **Hinweis zum Offline-Modus:** Lokales WebGPU wird auf diesem Gerät oder Browser nicht unterstützt. Starpi hat automatisch auf den schnellen Cloud-Assistenten umgeschaltet, sodass Sie direkt wie gewohnt Fragen stellen können.`);
+        appendMessage('assistant', `ℹ️ **Hinweis zum Offline Modus:** Lokales WebGPU wird auf diesem Gerät oder Browser nicht unterstützt. Starpi hat automatisch auf den schnellen Cloud Assistenten umgeschaltet, sodass Sie direkt wie gewohnt Fragen stellen können.`);
       }
     }
 
@@ -1874,7 +1874,7 @@
         );
 
         if (relevantEntities.length > 0) {
-          contextText += `[Wissensgraph-Entitäten]:\n` + relevantEntities.map(e => `• ${e.name} (${e.entity_type}): ${e.description}`).join('\n') + `\n\n`;
+          contextText += `[Wissensgraph Entitäten]:\n` + relevantEntities.map(e => `• ${e.name} (${e.entity_type}): ${e.description}`).join('\n') + `\n\n`;
         }
 
         const isGreeting = /^(hey|hallo|hi|moin|servus|guten tag|guten morgen|guten abend|was geht|wer bist du|schreib mal hallo|hallo!|hi!)\b/.test(lower) || 
@@ -1882,15 +1882,15 @@
 
         const startTime = performance.now();
 
-        // 2. Cloud-Assistent (Standard: Gemini bei eigenem Key, sonst blitzschneller OpenRouter-Pool)
+        // 2. Cloud Assistent (Standard: Gemini bei eigenem Key, sonst blitzschneller OpenRouter Pool)
         if (currentEngine === 'council' || currentEngine === 'cluster_a' || currentEngine === 'cluster_b') {
-          const assistantPrompt = `Du bist Starpi, ein intelligenter und hilfsbereiter Unternehmens-Assistent.
+          const assistantPrompt = `Du bist Starpi, ein intelligenter und hilfsbereiter Unternehmensassistent.
 Antworte stets freundlich, professionell und direkt auf Deutsch ohne Ausschmückung oder unnötigen Jargon.
 
 WICHTIGE ANWEISUNGEN:
 1. Nutze die folgenden Unternehmensdaten aus Supabase als Faktenbasis.
 2. Wenn nach Personen, Aufgaben, Terminen oder Budgets gefragt wird, nenne die exakten Fakten und Zahlen übersichtlich.
-3. Nenne zu keinem Zeitpunkt Namen von KI-Modellen oder Providern.
+3. Nenne zu keinem Zeitpunkt Namen von KI Modellen oder Providern.
 
 Kontextdaten aus Supabase:
 ${contextText}
@@ -1937,7 +1937,7 @@ Nutzeranfrage: ${fullPrompt}`;
               parsed.thoughts = generateSemanticThoughtProcess(userText, docs, entities);
             }
             removeLoading(loadingId);
-            appendMessage('assistant', parsed.answer, isGreeting ? [] : sources, '✨ Starpi Assistent · Cloud-Verbindung', parsed.thoughts, elapsed);
+            appendMessage('assistant', parsed.answer, isGreeting ? [] : sources, '✨ Starpi Assistent · Cloud Verbindung', parsed.thoughts, elapsed);
             conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: parsed.answer });
             persistChatMessage('assistant', parsed.answer, isGreeting ? [] : sources, { engine: 'cloud', thoughts: parsed.thoughts || null, duration_ms: elapsed });
             return;
@@ -1973,7 +1973,7 @@ Nutzeranfrage: ${fullPrompt}`;
               });
 
               removeLoading(loadingId);
-              const streamMsg = createStreamingMessage('assistant', `🔒 Lokaler Offline-Modus (100% privat)`);
+              const streamMsg = createStreamingMessage('assistant', `🔒 Lokaler Offline Modus (100% privat)`);
 
               let aggregated = "";
               for await (const chunk of stream) {
@@ -1997,7 +1997,7 @@ Nutzeranfrage: ${fullPrompt}`;
         if (currentEngine === 'local') {
           const llmUrl = document.getElementById('cfgLlmUrl')?.value || "http://localhost:8000/v1";
           try {
-            const systemPrompt = `Du bist Starpi, ein intelligenter KI-Assistent. Antworte auf Deutsch ohne Nennung von Modellnamen. Faktenbasis:\n\n${contextText}`;
+            const systemPrompt = `Du bist Starpi, ein intelligenter KI Assistent. Antworte auf Deutsch ohne Nennung von Modellnamen. Faktenbasis:\n\n${contextText}`;
             const resp = await fetch(`${llmUrl}/chat/completions`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -2097,16 +2097,16 @@ Nutzeranfrage: ${fullPrompt}`;
       const docTitles = docCount > 0 ? docs.slice(0, 3).map(d => `„${escapeHtml(d.title)}“`).join(', ') : 'keine';
       
       return `### 1. Relevante Fakten & Dokumente abgleichen
-- **Nutzeranfrage:** "${escapeHtml(userText.slice(0, 100))}"
-- **Wissensdatenbank:** Supabase Frankfurt abgeglichen (${docCount} relevante Dokumente: ${docTitles}).
-- **Gefundene Details:** Kerninformationen zu Personen, Terminen und Projektbudgets identifiziert.
+• **Nutzeranfrage:** "${escapeHtml(userText.slice(0, 100))}"
+• **Wissensdatenbank:** Supabase Frankfurt abgeglichen (${docCount} relevante Dokumente: ${docTitles}).
+• **Gefundene Details:** Kerninformationen zu Personen, Terminen und Projektbudgets identifiziert.
 
 ### 2. Plausibilität & Zeitpläne prüfen
-- **Konsistenzprüfung:** Abgleich der Datumsangaben und Meilensteine mit den hinterlegten Unternehmensdaten.
-- **Faktentreue:** Direkter Bezug zu den hinterlegten Dokumenten ohne unbestätigte Vermutungen.
+• **Konsistenzprüfung:** Abgleich der Datumsangaben und Meilensteine mit den hinterlegten Unternehmensdaten.
+• **Faktentreue:** Direkter Bezug zu den hinterlegten Dokumenten ohne unbestätigte Vermutungen.
 
 ### 3. Verständliche Antwort strukturieren
-- **Ergebnis:** Strukturierte und direkt anwendbare Auswertung für den Nutzer.`;
+• **Ergebnis:** Strukturierte und direkt anwendbare Auswertung für den Nutzer.`;
     }
 
     function formatThoughtSteps(thoughtsText) {
@@ -2327,50 +2327,50 @@ Nutzeranfrage: ${fullPrompt}`;
 
       if (isGreeting) {
         const docNames = docs?.length ? docs.map(d => `• **${escapeHtml(d.title)}** (${d.tags?.join(', ') || 'Notiz'})`).join('\n') : '• Keine Dokumente hinterlegt.';
-        return `Hallo! 👋 Ich bin **Starpi**, Ihr privates Enterprise-Brain mit Live-Anbindung an Ihre Wissensdatenbank in **Supabase Frankfurt**.\n\nIch kann für Sie Unternehmensdokumente durchsuchen, Fakten zu Projekten und Budgets analysieren oder neue Informationen aufnehmen.\n\n📚 **Aktuell in Ihrer Wissensdatenbank hinterlegt:**\n${docNames}\n\n💡 **Fragen, die Sie mir stellen können:**\n- *„Wer leitet Projekt Alpha und bis wann steht das Design?“*\n- *„Wie viel Budget ist für Marketing und Projekt Alpha eingeplant?“*\n- *„Fass mir die nächsten Meilensteine und Deadlines zusammen.“*\n- *„Welche Aufgaben hat Michael im Backend?“*\n\nWie kann ich Sie heute unterstützen?`;
+        return `Hallo! 👋 Ich bin **Starpi**, Ihr privates Enterprise Brain mit Live Anbindung an Ihre Wissensdatenbank in **Supabase Frankfurt**.\n\nIch kann für Sie Unternehmensdokumente durchsuchen, Fakten zu Projekten und Budgets analysieren oder neue Informationen aufnehmen.\n\n📚 **Aktuell in Ihrer Wissensdatenbank hinterlegt:**\n${docNames}\n\n💡 **Fragen, die Sie mir stellen können:**\n• *„Wer leitet Projekt Alpha und bis wann steht das Design?“*\n• *„Wie viel Budget ist für Marketing und Projekt Alpha eingeplant?“*\n• *„Fass mir die nächsten Meilensteine und Deadlines zusammen.“*\n• *„Welche Aufgaben hat Michael im Backend?“*\n\nWie kann ich Sie heute unterstützen?`;
       }
 
       // Person & Role Analysis
       const asksAboutPerson = lower.includes('wer') || lower.includes('person') || lower.includes('sarah') || lower.includes('michael') || lower.includes('alex') || lower.includes('team') || lower.includes('leiter') || lower.includes('verantwortlich') || lower.includes('rolle') || lower.includes('macht');
       if (asksAboutPerson && (lower.includes('sarah') || lower.includes('frontend') || lower.includes('figma') || lower.includes('design') || lower.includes('alpha'))) {
-        return `### 👤 Verantwortlichkeiten & Team: Projekt Alpha\n\nBasierend auf den hinterlegten Dokumenten in Supabase:\n\n* **Sarah (Frontend & UI/UX):**\n  * Verantwortet die gesamte Frontend-Entwicklung und das Design.\n  * Fertigstellung der interaktiven Figma-Konzepte bis zum **5. September**.\n* **Michael (Backend & Infrastruktur):**\n  * Entwickelt das Backend und die Datenbankarchitektur auf Basis von **Supabase** (PostgreSQL & pgvector).\n* **Alex (Governance & Compliance):**\n  * Überwacht die DSGVO-Konformität und Datenschutzrichtlinien.\n\n👉 Der offizielle Launch von Projekt Alpha erfolgt planmäßig am **15. September**.`;
+        return `### 👤 Verantwortlichkeiten & Team: Projekt Alpha\n\nBasierend auf den hinterlegten Dokumenten in Supabase:\n\n* **Sarah (Frontend & UI/UX):**\n  * Verantwortet die gesamte Frontend Entwicklung und das Design.\n  * Fertigstellung der interaktiven Figma Konzepte bis zum **5. September**.\n* **Michael (Backend & Infrastruktur):**\n  * Entwickelt das Backend und die Datenbankarchitektur auf Basis von **Supabase** (PostgreSQL & pgvector).\n* **Alex (Governance & Compliance):**\n  * Überwacht die DSGVO Konformität und Datenschutzrichtlinien.\n\n👉 Der offizielle Launch von Projekt Alpha erfolgt planmäßig am **15. September**.`;
       }
 
       if (asksAboutPerson && (lower.includes('michael') || lower.includes('backend') || lower.includes('datenbank') || lower.includes('supabase'))) {
-        return `### 👤 Profil: Michael (Backend & Cloud-Infrastruktur)\n\n* **Rolle & Kernaufgaben:** Michael ist für die Backend-Architektur und die Anbindung an die **Supabase Vektor-Engine** zuständig.\n* **Technologie-Stack:** PostgreSQL mit der Erweiterung \`pgvector\` (HNSW-Index) für semantische Ähnlichkeitssuche.\n* **Projektbezug:** Projekt Alpha (Launchtermin: 15. September).`;
+        return `### 👤 Profil: Michael (Backend & Cloud Infrastruktur)\n\n* **Rolle & Kernaufgaben:** Michael ist für die Backend Architektur und die Anbindung an die **Supabase Vektorengine** zuständig.\n* **Technologiestack:** PostgreSQL mit der Erweiterung \`pgvector\` (HNSW Index) für semantische Ähnlichkeitssuche.\n* **Projektbezug:** Projekt Alpha (Launchtermin: 15. September).`;
       }
 
       if (asksAboutPerson && (lower.includes('alex') || lower.includes('dsgvo') || lower.includes('compliance') || lower.includes('datenschutz'))) {
-        return `### 👤 Profil: Alex (Compliance & Datenschutz)\n\n* **Rolle & Aufgaben:** Alex leitet das regulatorische Compliance-Monitoring für alle digitalen Produkte.\n* **Sicherheitsvorgabe:** 100 % DSGVO-Konformität ohne Weiterleitung unverschlüsselter Daten an US-Provider; Rechenzentrum in Frankfurt (eu-central-1).`;
+        return `### 👤 Profil: Alex (Compliance & Datenschutz)\n\n* **Rolle & Aufgaben:** Alex leitet das regulatorische Compliance Monitoring für alle digitalen Produkte.\n* **Sicherheitsvorgabe:** 100 % DSGVO Konformität ohne Weiterleitung unverschlüsselter Daten an US Provider; Rechenzentrum in Frankfurt (eu central 1).`;
       }
 
       // Budget & Finance Analysis
       const asksAboutBudget = lower.includes('budget') || lower.includes('kosten') || lower.includes('geld') || lower.includes('eur') || lower.includes('euro') || lower.includes('finanz');
       if (asksAboutBudget) {
-        return `### 💰 Budget- & Finanzübersicht (aus Supabase Frankfurt)\n\nIn der aktuellen Unternehmensplanung sind folgende Budgets fest alloziert:\n\n1. **Projekt Alpha:**\n   * **Budget:** **45.000 EUR**\n   * **Verwendungszweck:** Frontend-Design (Figma), Supabase Vektoranbindung & DSGVO-Audit.\n   * **Launch:** 15. September.\n\n2. **Marketing Strategie Q4:**\n   * **Budget:** **12.000 EUR**\n   * **Verwendungszweck:** Performance-Marketing auf **LinkedIn** und **Google Ads** zur Generierung von 500 B2B-Leads.\n   * **Start:** 1. Oktober.\n\n📊 **Gesamtbudget über alle aktiven Projekte:** **57.000 EUR**.`;
+        return `### 💰 Budget und Finanzübersicht (aus Supabase Frankfurt)\n\nIn der aktuellen Unternehmensplanung sind folgende Budgets fest alloziert:\n\n1. **Projekt Alpha:**\n   * **Budget:** **45.000 EUR**\n   * **Verwendungszweck:** Frontend Design (Figma), Supabase Vektoranbindung & DSGVO Audit.\n   * **Launch:** 15. September.\n\n2. **Marketing Strategie Q4:**\n   * **Budget:** **12.000 EUR**\n   * **Verwendungszweck:** Performance Marketing auf **LinkedIn** und **Google Ads** zur Generierung von 500 B2B Leads.\n   * **Start:** 1. Oktober.\n\n📊 **Gesamtbudget über alle aktiven Projekte:** **57.000 EUR**.`;
       }
 
       // Timeline & Deadlines
       const asksAboutTimeline = lower.includes('wann') || lower.includes('launch') || lower.includes('termin') || lower.includes('deadline') || lower.includes('zeitplan') || lower.includes('roadmap') || lower.includes('september') || lower.includes('oktober');
       if (asksAboutTimeline) {
-        return `### ⏱️ Chronologischer Meilenstein- & Release-Plan\n\nAus den synchronisierten Unternehmensdokumenten ergeben sich folgende Stichtage:\n\n* 🎨 **05. September:**\n  * **Figma-Design Deadline:** Sarah schließt alle Entwürfe und UI-Konzepte für Projekt Alpha ab.\n* 🚀 **15. September:**\n  * **Produktions-Launch Projekt Alpha:** Veröffentlichung des neuen Features inklusive Supabase pgvector Anbindung.\n* 📢 **01. Oktober:**\n  * **Kampagnenstart Marketing Q4:** Start der B2B-Leadgenerierung auf LinkedIn und Google Ads (Ziel: 500 Neukontakte).\n\nAlle Meilensteine befinden sich aktuell im Soll-Zeitplan.`;
+        return `### ⏱️ Chronologischer Meilenstein und Releaseplan\n\nAus den synchronisierten Unternehmensdokumenten ergeben sich folgende Stichtage:\n\n* 🎨 **05. September:**\n  * **Figma Design Deadline:** Sarah schließt alle Entwürfe und UI Konzepte für Projekt Alpha ab.\n* 🚀 **15. September:**\n  * **Produktionslaunch Projekt Alpha:** Veröffentlichung des neuen Features inklusive Supabase pgvector Anbindung.\n* 📢 **01. Oktober:**\n  * **Kampagnenstart Marketing Q4:** Start der B2B Leadgenerierung auf LinkedIn und Google Ads (Ziel: 500 Neukontakte).\n\nAlle Meilensteine befinden sich aktuell im Sollzeitplan.`;
       }
 
       // Marketing Strategy Q4
       if (lower.includes('marketing') || lower.includes('q4') || lower.includes('lead') || lower.includes('kampagne') || lower.includes('werbung') || lower.includes('ads')) {
-        return `### 📈 Marketing-Strategie Q4\n\n* **Offizieller Start:** 1. Oktober.\n* **Kampagnenziel:** Gewinnung von **500 neuen B2B-Qualitätsleads**.\n* **Fokus-Kanäle:** **LinkedIn** (B2B Thought Leadership & InMail) und **Google Ads** (Search & Intent).\n* **Allokiertes Budget:** **12.000 EUR**.\n\nDie Kampagne knüpft unmittelbar an den erfolgreichen Launch von Projekt Alpha Mitte September an.`;
+        return `### 📈 Marketingstrategie Q4\n\n* **Offizieller Start:** 1. Oktober.\n* **Kampagnenziel:** Gewinnung von **500 neuen B2B Qualitätsleads**.\n* **Fokuskanäle:** **LinkedIn** (B2B Thought Leadership & InMail) und **Google Ads** (Search & Intent).\n* **Allokiertes Budget:** **12.000 EUR**.\n\nDie Kampagne knüpft unmittelbar an den erfolgreichen Launch von Projekt Alpha Mitte September an.`;
       }
 
       // Summary / Executive Briefing
       const asksForSummary = lower.includes('zusammenfass') || lower.includes('überblick') || lower.includes('status') || lower.includes('stand') || lower.includes('briefing') || lower.includes('bericht');
       if (asksForSummary) {
-        return `### 📋 Executive Briefing: Aktueller Unternehmensstatus\n\n**1. Projekt Alpha (Produktentwicklung):**\n* Feature-Launch am **15. September** mit einem Budget von **45.000 EUR**.\n* Frontend-Design durch Sarah (Figma-Abschluss: 5. September).\n* Backend & Vektor-Engine durch Michael via Supabase Frankfurt.\n* Datenschutz & DSGVO durch Alex überwacht.\n\n**2. Marketing & Wachstum (Q4):**\n* Kampagnenstart am **1. Oktober** mit **12.000 EUR** Budget.\n* Ziel: 500 qualifizierte B2B-Leads über LinkedIn und Google Ads.\n\n**3. Infrastruktur & Sicherheit:**\n* Alle Daten liegen verschlüsselt in der Region Frankfurt (eu-central-1).\n* Hybrid-Search (BM25 + pgvector) und Graph RAG sind für präzise Abfragen aktiv.`;
+        return `### 📋 Executive Briefing: Aktueller Unternehmensstatus\n\n**1. Projekt Alpha (Produktentwicklung):**\n* Feature Launch am **15. September** mit einem Budget von **45.000 EUR**.\n* Frontend Design durch Sarah (Figma Abschluss: 5. September).\n* Backend & Vektorengine durch Michael via Supabase Frankfurt.\n* Datenschutz & DSGVO durch Alex überwacht.\n\n**2. Marketing & Wachstum (Q4):**\n* Kampagnenstart am **1. Oktober** mit **12.000 EUR** Budget.\n* Ziel: 500 qualifizierte B2B Leads über LinkedIn und Google Ads.\n\n**3. Infrastruktur & Sicherheit:**\n* Alle Daten liegen verschlüsselt in der Region Frankfurt (eu central 1).\n* Hybrid Search (BM25 + pgvector) und Graph RAG sind für präzise Abfragen aktiv.`;
       }
 
       // Document list request
       const asksAboutDocs = lower.includes('dokument') || lower.includes('archiv') || lower.includes('hinterlegt') || lower.includes('liste') || lower.includes('dateien');
       if (asksAboutDocs) {
-        const docList = docs.map((d, i) => `**${i+1}. ${escapeHtml(d.title)}**\n* **Typ:** ${escapeHtml(d.source_type || 'Text')} | **Tags:** ${d.tags?.join(', ') || '-'}\n* **Kernaussage:** ${escapeHtml(d.summary || 'Erfasst in Supabase Frankfurt.')}`).join('\n\n');
+        const docList = docs.map((d, i) => `**${i+1}. ${escapeHtml(d.title)}**\n* **Typ:** ${escapeHtml(d.source_type || 'Text')} | **Tags:** ${d.tags?.join(', ') || 'Keine'}\n* **Kernaussage:** ${escapeHtml(d.summary || 'Erfasst in Supabase Frankfurt.')}`).join('\n\n');
         return `### 📚 Wissensarchiv in Supabase Frankfurt (${docs.length} Dokumente)\n\n${docList}\n\nSie können mich jederzeit nach spezifischen Details, Zahlen oder Zusammenhängen aus diesen Dokumenten fragen.`;
       }
 
@@ -2394,10 +2394,10 @@ Nutzeranfrage: ${fullPrompt}`;
 
       if (matchedSentences.length > 0) {
         const topFacts = matchedSentences.slice(0, 4).map(m => `* **${escapeHtml(m.docTitle)}:** ${escapeHtml(m.sentence)}.`).join('\n');
-        return `### 🔍 Erkenntnisse zu Ihrer Anfrage:\n\nAuf Basis der synchronisierten Unternehmensdokumente in Supabase Frankfurt:\n\n${topFacts}\n\n💡 *Möchten Sie, dass ich diesen Punkt weiter vertiefe oder eine konkrete Aufgabe/E-Mail dazu entwerfe?*`;
+        return `### 🔍 Erkenntnisse zu Ihrer Anfrage:\n\nAuf Basis der synchronisierten Unternehmensdokumente in Supabase Frankfurt:\n\n${topFacts}\n\n💡 *Möchten Sie, dass ich diesen Punkt weiter vertiefe oder eine konkrete Aufgabe oder Nachricht dazu entwerfe?*`;
       }
 
-      return `### ℹ️ Auswertung zu Ihrer Anfrage\n\nZu Ihrer Suchanfrage **„${escapeHtml(userText)}“** wurden in den Unternehmensdokumenten aktuell keine exakten direkten Treffer gefunden.\n\nIn Ihrer Wissensdatenbank in Frankfurt sind aktuell Unterlagen zu folgenden Themenbereichen hinterlegt:\n* **Projekt Alpha:** Launchtermin (15. Sept), Figma-Design (Sarah), Backend (Michael), Budget (45.000 €).\n* **Marketing Q4:** Kampagnenstart (1. Okt), 500 B2B Leads, Budget (12.000 €).\n* **Compliance & IT:** Supabase pgvector HNSW, Frankfurt Hosting, 100% DSGVO-Sicherheit.\n\nStellen Sie mir gerne eine gezielte Frage zu einem dieser Themen oder speisen Sie über den Tab **„Wissen einspeisen“** neue Notizen ein!`;
+      return `### ℹ️ Auswertung zu Ihrer Anfrage\n\nZu Ihrer Suchanfrage **„${escapeHtml(userText)}“** wurden in den Unternehmensdokumenten aktuell keine exakten direkten Treffer gefunden.\n\nIn Ihrer Wissensdatenbank in Frankfurt sind aktuell Unterlagen zu folgenden Themenbereichen hinterlegt:\n* **Projekt Alpha:** Launchtermin (15. Sept), Figma Design (Sarah), Backend (Michael), Budget (45.000 €).\n* **Marketing Q4:** Kampagnenstart (1. Okt), 500 B2B Leads, Budget (12.000 €).\n* **Compliance & IT:** Supabase pgvector HNSW, Frankfurt Hosting, 100% DSGVO Sicherheit.\n\nStellen Sie mir gerne eine gezielte Frage zu einem dieser Themen oder speisen Sie über den Tab **„Wissen einspeisen“** neue Notizen ein!`;
     }
 
     async function saveSettings() {
@@ -2602,7 +2602,7 @@ Nutzeranfrage: ${fullPrompt}`;
       // Auto-detect optimal compute engine (WebGPU on client, or Smart Brain)
       autoDetectBestEngine();
 
-      // Chat-Verlauf aus Supabase Frankfurt laden & Synchronisationsstatus initialisieren
+      // Chatverlauf aus Supabase Frankfurt laden & Synchronisationsstatus initialisieren
       loadChatHistory();
       updateChatSyncStatus();
     });

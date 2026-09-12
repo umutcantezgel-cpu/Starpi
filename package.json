@@ -1,7 +1,7 @@
 {
   "name": "starpi",
   "version": "1.0.0",
-  "description": "Browser-native serverless AI inference engine and private semantic retrieval platform with adaptive WebGPU hardware profiling and on-device execution.",
+  "description": "Browser native serverless AI inference engine and private semantic retrieval platform with adaptive WebGPU hardware profiling and on device execution.",
   "main": "index.html",
   "repository": {
     "type": "git",
