@@ -1,19 +1,36 @@
 {
   "name": "starpi",
   "version": "1.0.0",
-  "description": "Starpi: Private Enterprise AI Brain & Cloud Knowledge Base Web App",
-  "private": true,
+  "description": "Browser-native serverless AI inference engine and private semantic retrieval platform with adaptive WebGPU hardware profiling and on-device execution.",
+  "main": "index.html",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/umutcantezgel-cpu/Starpi.git"
+  },
+  "bugs": {
+    "url": "https://github.com/umutcantezgel-cpu/Starpi/issues"
+  },
+  "homepage": "https://github.com/umutcantezgel-cpu/Starpi#readme",
   "scripts": {
-    "dev": "npx serve .",
-    "start": "npx serve ."
+    "dev": "npx serve . -p 3000",
+    "start": "npx serve . -p 3000",
+    "validate": "node -e 'const fs=require(\"fs\"); const m=JSON.parse(fs.readFileSync(\"./manifest.json\",\"utf-8\")); if(!m.name) process.exit(1); console.log(\"Manifest validated:\", m.name);'",
+    "test": "npm run validate"
   },
   "keywords": [
-    "starpi",
-    "enterprise-brain",
-    "supabase",
-    "rag",
+    "webgpu",
+    "webllm",
+    "browser-inference",
+    "hardware-profiling",
+    "weight-streaming",
+    "indexeddb",
+    "serverless-ai",
+    "wasm",
     "pgvector",
-    "gemini"
+    "supabase",
+    "retrieval-augmented-generation",
+    "privacy-preserving-ai",
+    "open-weights"
   ],
   "author": "umutcantezgel-cpu",
   "license": "MIT"

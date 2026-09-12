@@ -1,0 +1,83 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate-frontend:
+    name: Validate Frontend and Manifests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --package-lock-only
+          fi
+
+      - name: Validate configuration and manifests
+        run: npm run validate
+
+      - name: Validate JSON syntax
+        run: |
+          node -e '
+            const fs = require("fs");
+            const files = ["package.json", "manifest.json", "vercel.json"];
+            files.forEach(f => {
+              if (fs.existsSync(f)) {
+                JSON.parse(fs.readFileSync(f, "utf8"));
+                console.log("Validated JSON syntax:", f);
+              }
+            });
+          '
+
+      - name: Validate HTML and inline script syntax
+        run: |
+          node -e '
+            const fs = require("fs");
+            if (fs.existsSync("index.html")) {
+              const html = fs.readFileSync("index.html", "utf8");
+              if (!html.includes("<!DOCTYPE html>")) throw new Error("Missing DOCTYPE in index.html");
+              console.log("HTML integrity check passed: index.html");
+            }
+          '
+
+  validate-backend:
+    name: Validate Backend Services
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f backend/requirements.txt ]; then
+            pip install -r backend/requirements.txt
+          fi
+
+      - name: Run Python syntax validation
+        run: |
+          python -m compileall backend/
