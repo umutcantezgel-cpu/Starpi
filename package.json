@@ -10,7 +10,7 @@
   "bugs": {
     "url": "https://github.com/umutcantezgel-cpu/Starpi/issues"
   },
-  "homepage": "https://github.com/umutcantezgel-cpu/Starpi#readme",
+  "homepage": "https://www.starpi.app",
   "scripts": {
     "dev": "npx serve . -p 3000",
     "start": "npx serve . -p 3000",

@@ -2,6 +2,8 @@
 
 Browser native, serverless artificial intelligence runtime and private semantic retrieval platform with adaptive WebGPU hardware profiling and on device execution.
 
+**Official Deployment**: [https://www.starpi.app/](https://www.starpi.app/)
+
 ## Overview
 
 Starpi is an open source client side inference engine and semantic knowledge repository designed to execute quantized large language models directly within standard web browsers without requiring centralized cloud GPU infrastructure. The system couples client side WebGPU acceleration with vector based Retrieval Augmented Generation (RAG) backed by PostgreSQL and pgvector.
