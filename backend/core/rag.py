@@ -150,7 +150,7 @@ def _call_openrouter_pool(system_prompt: str, user_query: str) -> str:
                         headers={
                             "Authorization": f"Bearer {key}",
                             "Content-Type": "application/json",
-                            "HTTP-Referer": "https://starpi-three.vercel.app/",
+                            "HTTP-Referer": "https://www.starpi.app/",
                             "X-Title": "Starpi Enterprise Brain"
                         },
                         json={

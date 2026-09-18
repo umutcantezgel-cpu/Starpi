@@ -3,3 +3,7 @@ backend/
 *.pyc
 requirements.txt
 __pycache__/
+.env*
+.git*
+.github*
+

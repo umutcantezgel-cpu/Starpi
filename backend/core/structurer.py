@@ -60,13 +60,19 @@ def structure_raw_content(raw_text: str, source_name: str = "") -> Dict[str, Any
             data = response.json()
             content = data["choices"][0]["message"]["content"].strip()
             
-            # Extract JSON block if surrounded by markdown fences
+            # Extract JSON block resilient to nested markdown fences
+            json_str = content
             if "```json" in content:
-                content = content.split("```json", 1)[1].split("```", 1)[0].strip()
-            elif "```" in content:
-                content = content.split("```", 1)[1].split("```", 1)[0].strip()
+                start_fence = content.find("```json") + len("```json")
+                end_fence = content.rfind("```")
+                if end_fence > start_fence:
+                    json_str = content[start_fence:end_fence].strip()
+            first_brace = json_str.find("{")
+            last_brace = json_str.rfind("}")
+            if first_brace != -1 and last_brace > first_brace:
+                json_str = json_str[first_brace:last_brace + 1]
             
-            structured = json.loads(content)
+            structured = json.loads(json_str)
             return {
                 "title": structured.get("title", source_name or "Unbenanntes Dokument"),
                 "summary": structured.get("summary", ""),

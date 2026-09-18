@@ -30,6 +30,11 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Only handle GET requests for caching; bypass non GET methods
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
   // Network-first for navigation/HTML requests, Supabase API calls, and LLM endpoints
   if (
     event.request.mode === 'navigate' ||

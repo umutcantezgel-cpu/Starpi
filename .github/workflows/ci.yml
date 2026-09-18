@@ -72,3 +72,7 @@ jobs:
       - name: Run Python syntax validation
         run: |
           python -m compileall backend/
+
+      - name: Run Backend Unit Tests
+        run: |
+          python -m unittest discover -s backend -p 'test_*.py' -v

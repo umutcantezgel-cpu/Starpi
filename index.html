@@ -694,41 +694,22 @@
     document.getElementById("cfgSupabaseKey").value = SUPABASE_CONFIG.anonKey;
 
     // ====================================================
-    // Multi-Key AI Pools (5x Google Gemini + 5x OpenRouter)
+    // Multi-Key AI Pools (Google Gemini & OpenRouter)
     // ====================================================
-    const DEFAULT_GEMINI_KEYS = [
-      "AIzaSyCq9hIN2VJ8PXZBfNsY53yQhDejhT9Mstg",
-      "AIzaSyATQoW0z-OwTD4nW8qDrJuhzy2Xm-qrqQA",
-      "AIzaSyCkTyxF7Ew9Mdtt7kgHlU7F1FLxq75Z0QI",
-      "AIzaSyD8fZSsytdHg8gz-RZiAodPN0hrJPyzt3I",
-      "AIzaSyDvh1LnCK5v6mORX3vRxNZpdPrZLReTCEY"
-    ];
-
-    const DEFAULT_OPENROUTER_KEYS = [
-      atob("c2stb3ItdjEtOWJlMGI3NjkzOWVhZWE3YTkxMDhlZDFlY2JjMzIxOTk2YzAxZjk2Y2JlOGI4NThmMTkyYzQ4Y2RiNDkwODY2Nw=="),
-      atob("c2stb3ItdjEtMDBiZWViNGZjODU4MDU2MTQ5ZGU3ZGQzNzIxYjliOTlmMmFlY2Y3NTgwZDE1NTEyMzQwZGIxZGU0MDM4MzY0Zg=="),
-      atob("c2stb3ItdjEtOWFmODlkYjU5NDhlMDIzMTBhY2E4NmJmMTkxNDVjNDE0MjRlNDE4Y2M3NGNjYmNkZTA0ZTNiYzRmMGU1ZjdkNg=="),
-      atob("c2stb3ItdjEtNDE5ZTFiZjVkNDlkMTE3NTBjYjkyYzk1OTljYzNkOTA2ZDM5ODI3NzFjOTU3OTJiZGM4YjZiNjFhYWFmNTc4Mg=="),
-      atob("c2stb3ItdjEtNWJlNTlmYjUyMTQxZjA4M2E4ODY3NzNhYzAxYWMzZTk3ZDMxNWMxOWVlODExZDU3NGNjMzlmZGQ3OWNlNmYzNg==")
-    ];
+    const DEFAULT_GEMINI_KEYS = [];
+    const DEFAULT_OPENROUTER_KEYS = [];
 
     let geminiKeyIndex = 0;
     let openrouterKeyIndex = 0;
 
     function getGeminiKeys() {
       const customKey = (localStorage.getItem('starpi_gemini_key') || document.getElementById('cfgGeminiKey')?.value || "").trim();
-      if (customKey && !DEFAULT_GEMINI_KEYS.includes(customKey)) {
-        return [customKey];
-      }
-      return []; // Default leaked keys are skipped to avoid 403 latency
+      return customKey ? [customKey] : [];
     }
 
     function getOpenRouterKeys() {
       const customKey = (localStorage.getItem('starpi_openrouter_key') || document.getElementById('cfgOpenrouterKey')?.value || "").trim();
-      if (customKey && !DEFAULT_OPENROUTER_KEYS.includes(customKey)) {
-        return [customKey, ...DEFAULT_OPENROUTER_KEYS];
-      }
-      return DEFAULT_OPENROUTER_KEYS;
+      return customKey ? [customKey] : [];
     }
 
     async function callGeminiWithFailover(promptContent) {
@@ -769,6 +750,9 @@
 
     async function callOpenRouterWithFailover(userText, systemPrompt, conversationSlice = []) {
       const keys = getOpenRouterKeys();
+      if (!keys || keys.length === 0) {
+        throw new Error("Kein individueller OpenRouter Schlüssel hinterlegt. Bitte tragen Sie einen API Schlüssel in den Einstellungen ein.");
+      }
       const freeModels = [
         "liquid/lfm-2.5-2.6b:free",
         "openrouter/free",
@@ -791,7 +775,7 @@
               headers: {
                 "Authorization": `Bearer ${key}`,
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://starpi-three.vercel.app/",
+                "HTTP-Referer": "https://www.starpi.app/",
                 "X-Title": "Starpi Assistant"
               },
               body: JSON.stringify({
@@ -900,8 +884,15 @@
         }
       } catch (err) {
         if (statusBox) {
-          statusBox.className = "text-xs p-2.5 rounded-lg border bg-rose-500/10 border-rose-500/30 text-rose-700";
-          statusBox.innerHTML = `<div class="flex items-center gap-1.5 font-semibold"><i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> Test fehlgeschlagen</div><p class="text-[11px] mt-1 text-slate-600">${escapeHtml(sanitizeModelNames(err.message))}</p>`;
+          const isNoKey = err.message && err.message.includes('Kein individueller');
+          statusBox.className = `text-xs p-2.5 rounded-lg border ${isNoKey ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-rose-500/10 border-rose-500/30 text-rose-700'}`;
+          statusBox.innerHTML = `
+            <div class="flex items-center gap-1.5 font-semibold">
+              <i data-lucide="${isNoKey ? 'info' : 'alert-circle'}" class="w-3.5 h-3.5"></i>
+              <span>${isNoKey ? 'OpenRouter nicht konfiguriert' : 'Test fehlgeschlagen'}</span>
+            </div>
+            <p class="text-[11px] mt-1 text-slate-600">${escapeHtml(sanitizeModelNames(err.message))}</p>
+          `;
           lucide.createIcons();
         }
       } finally {
@@ -1974,22 +1965,30 @@ Nutzeranfrage: ${fullPrompt}`;
               });
 
               removeLoading(loadingId);
-              const streamMsg = createStreamingMessage('assistant', `🔒 Lokaler Offline Modus (100% privat)`);
+              let streamMsg = null;
+              try {
+                streamMsg = createStreamingMessage('assistant', `🔒 Lokaler Offline Modus (100% privat)`);
 
-              let aggregated = "";
-              for await (const chunk of stream) {
-                const delta = chunk.choices[0]?.delta?.content || "";
-                if (delta) {
-                  aggregated += delta;
-                  streamMsg.update(aggregated);
+                let aggregated = "";
+                for await (const chunk of stream) {
+                  const delta = chunk.choices[0]?.delta?.content || "";
+                  if (delta) {
+                    aggregated += delta;
+                    streamMsg.update(aggregated);
+                  }
+                }
+                streamMsg.finalize(isGreeting ? [] : sources);
+                conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: aggregated });
+                persistChatMessage('assistant', aggregated, isGreeting ? [] : sources, { engine: 'client', duration_ms: Math.round(performance.now() - startTime) });
+                return;
+              } catch (webgpuErr) {
+                console.warn("Client Inferenzfehler, bereinige Stream:", webgpuErr);
+                if (streamMsg && streamMsg.element) {
+                  streamMsg.element.remove();
                 }
               }
-              streamMsg.finalize(isGreeting ? [] : sources);
-              conversationHistory.push({ role: 'user', content: userText }, { role: 'assistant', content: aggregated });
-              persistChatMessage('assistant', aggregated, isGreeting ? [] : sources, { engine: 'client', duration_ms: Math.round(performance.now() - startTime) });
-              return;
-            } catch (webgpuErr) {
-              console.warn("Client inference error, falling back to Synthesizer:", webgpuErr);
+            } catch (createErr) {
+              console.warn("WebLLM Completion Init Error, falling back to Synthesizer:", createErr);
             }
           }
         }

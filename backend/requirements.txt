@@ -1,2 +1,4 @@
 httpx>=0.25.0
 requests>=2.31.0
+pytest>=8.0.0
+
