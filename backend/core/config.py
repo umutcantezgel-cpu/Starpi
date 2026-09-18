@@ -17,11 +17,11 @@ if env_path.exists():
 
 @dataclass
 class BrainConfig:
-    # Supabase Connection (Dedicated Starpi-Enterprise-Brain Frankfurt eu-central-1)
-    supabase_url: str = os.getenv("SUPABASE_URL", "https://dlelapwmaknujeewcssf.supabase.co")
+    # Supabase Connection (Dedicated Starpi Enterprise Brain Frankfurt eu-central-1)
+    supabase_url: str = os.getenv("SUPABASE_URL", "https://behnltoogscnbjhvixmw.supabase.co")
     supabase_key: str = os.getenv(
         "SUPABASE_SERVICE_ROLE_KEY", 
-        os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsZWxhcHdtYWtudWplZXdjc3NmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1NDIwMTksImV4cCI6MjEwNDExODAxOX0.QU8ZXJ96_r0M0mC9F5QtM_jOzqECKugLspApgWxjrrI")
+        os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlaG5sdG9vZ3NjbmJqaHZpeG13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NzMwMTgsImV4cCI6MjA5NDM0OTAxOH0.NNdRrOYLzucKuQfz4bVPPWOhYvgVswDiEtvCrtphF0I")
     )
     
     # LLM Ingestion & RAG Ingestion Engine (Local or Cloud vLLM / RunPod / MLX)
