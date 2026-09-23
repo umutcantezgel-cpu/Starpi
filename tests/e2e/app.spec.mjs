@@ -19,6 +19,15 @@ test.describe('migration pending, anonymous sign-ins disabled', () => {
     const calls = await mockSupabase(page, { hardened: false, anonymousAuth: false });
     const response = await page.goto('/');
     expect(response?.headers()['content-security-policy']).toContain("script-src 'self' 'wasm-unsafe-eval'");
+    // Every response carries the production headers (workers enforce the CSP of their own script),
+    // and hashed assets are immutable.
+    const script = await page.locator('script[src]').first().getAttribute('src');
+    for (const url of ['/index.html', '/sw.js', '/manifest.webmanifest', script ?? '']) {
+      const headers = (await page.request.get(url)).headers();
+      expect(headers['content-security-policy'], url).toContain("default-src 'self'");
+      expect(headers['x-content-type-options'], url).toBe('nosniff');
+    }
+    expect((await page.request.get(script ?? '')).headers()['cache-control']).toBe('public, max-age=31536000, immutable');
 
     await expect(page.locator('#dbStatusBadge')).toHaveText('Migration pending');
     await ask(page, 'Wann ist der Launch von Projekt Beta?');

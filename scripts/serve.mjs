@@ -32,9 +32,16 @@ const MIME = /** @type {Record<string, string>} */ ({
   '.txt': 'text/plain; charset=utf-8',
 });
 
-/** Converts the vercel.json source patterns used here ("/(.*)", "/assets/(.*)", "/sw.js") to RegExps. */
+/**
+ * Converts the vercel.json source patterns used here ("/(.*)", "/assets/(.*)", "/sw.js") to RegExps:
+ * "(.*)" is the only wildcard, everything else matches literally.
+ * @param {string} source
+ */
 function toRegExp(source) {
-  const escaped = source.replace(/[.+?^${}|[\]\\]/g, '\\$&').replace(/\\?\(\.\*\)/g, '(.*)');
+  const escaped = source
+    .split('(.*)')
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('(.*)');
   return new RegExp(`^${escaped}$`);
 }
 
