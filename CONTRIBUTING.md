@@ -96,7 +96,7 @@ flowchart LR
 
     subgraph jobE2e["Job e2e, needs frontend"]
         dl["download artifact dist,<br/>npx playwright install --with-deps chromium"]
-        pw["npm run test:e2e<br/>app.spec.mjs, 15 tests on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs on desktop only, mermaid 11.17.2"]
+        pw["npm run test:e2e<br/>app.spec.mjs, 15 tests on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs on desktop only, mermaid 12.0.0"]
         rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
     end
 

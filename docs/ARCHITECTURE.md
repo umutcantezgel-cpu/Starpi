@@ -4662,7 +4662,7 @@ flowchart LR
 
     subgraph jobE2e["Job e2e, needs frontend"]
         dl["download artifact dist,<br/>npx playwright install --with-deps chromium"]
-        pw["npm run test:e2e<br/>app.spec.mjs, 15 tests on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs on desktop only, mermaid 11.17.2"]
+        pw["npm run test:e2e<br/>app.spec.mjs, 15 tests on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs on desktop only, mermaid 12.0.0"]
         rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
     end
 
@@ -4754,7 +4754,7 @@ flowchart LR
 
 ### End-to-end tests with mocked Supabase and diagnostics
 
-Playwright serves the built dist/ through scripts/serve.mjs, which applies the vercel.json headers to every path, and runs the 15 app.spec.mjs tests on a desktop and a mobile Chromium project. mockSupabase answers every *.supabase.co request, either as a pre-migration project without anonymous sign-ins or as a hardened one, and seeds a document with hostile markup; the diagnostics fixture fails a test on any CSP violation, page error, unexpected console error or request to a host other than 127.0.0.1 and the mocked Supabase. The workspace tests prove that a question answered from workspace files or about an attached file stays in localStorage with its answer while chats sync, and that a citation made before Clear workspace never opens a file added afterwards. Two settings tests check that the save dialog confirms only what the browser stored, an offline-start test checks that the app reconnects on the online event and then syncs chats, and docs-diagrams.spec.mjs renders every Mermaid block in the repository Markdown once on desktop with mermaid 11.17.2.
+Playwright serves the built dist/ through scripts/serve.mjs, which applies the vercel.json headers to every path, and runs the 15 app.spec.mjs tests on a desktop and a mobile Chromium project. mockSupabase answers every *.supabase.co request, either as a pre-migration project without anonymous sign-ins or as a hardened one, and seeds a document with hostile markup; the diagnostics fixture fails a test on any CSP violation, page error, unexpected console error or request to a host other than 127.0.0.1 and the mocked Supabase. The workspace tests prove that a question answered from workspace files or about an attached file stays in localStorage with its answer while chats sync, and that a citation made before Clear workspace never opens a file added afterwards. Two settings tests check that the save dialog confirms only what the browser stored, an offline-start test checks that the app reconnects on the online event and then syncs chats, and docs-diagrams.spec.mjs renders every Mermaid block in the repository Markdown once on desktop with mermaid 12.0.0.
 
 <!-- diagram: test-strategy-e2e -->
 ```mermaid
@@ -4791,7 +4791,7 @@ flowchart TD
         s11["Unsupported photo.png rejected with a clear message"]
     end
 
-    docs["docs-diagrams.spec.mjs, desktop-chromium only<br/>every mermaid block in repository Markdown parses and renders<br/>with the pinned mermaid 11.17.2, securityLevel strict,<br/>in a blank page: no app server, no diagnostics fixture"]
+    docs["docs-diagrams.spec.mjs, desktop-chromium only<br/>every mermaid block in repository Markdown parses and renders<br/>with the pinned mermaid 12.0.0, securityLevel strict,<br/>in a blank page: no app server, no diagnostics fixture"]
 
     serve --> app
     desk --> app
@@ -4844,7 +4844,7 @@ flowchart TD
 
 ### Frontend and end-to-end jobs
 
-The frontend job installs from the lockfile without install scripts, then runs lint, typecheck, unit tests, the production build and verify:dist, and uploads dist (kept 3 days, and the upload errors if there are no files); any failing step fails the job and skips e2e. e2e downloads that same dist, installs Chromium and runs Playwright against scripts/serve.mjs on port 4173 with service workers blocked, test.only forbidden on CI and no retries. Its specs exercise the app under the production headers (every response, workers included, carries the CSP) with a mocked Supabase, and parse and render every Mermaid block in the Markdown files with mermaid 11.17.2 on desktop only. If any e2e step fails, playwright-report and test-results are uploaded for 7 days.
+The frontend job installs from the lockfile without install scripts, then runs lint, typecheck, unit tests, the production build and verify:dist, and uploads dist (kept 3 days, and the upload errors if there are no files); any failing step fails the job and skips e2e. e2e downloads that same dist, installs Chromium and runs Playwright against scripts/serve.mjs on port 4173 with service workers blocked, test.only forbidden on CI and no retries. Its specs exercise the app under the production headers (every response, workers included, carries the CSP) with a mocked Supabase, and parse and render every Mermaid block in the Markdown files with mermaid 12.0.0 on desktop only. If any e2e step fails, playwright-report and test-results are uploaded for 7 days.
 
 <!-- diagram: ci-frontend-e2e -->
 ```mermaid
@@ -4872,7 +4872,7 @@ flowchart TD
     end
     PWC["playwright.config.mjs: testDir tests/e2e,<br/>webServer node scripts/serve.mjs --port 4173,<br/>projects desktop-chromium and mobile-chromium,<br/>serviceWorkers block, forbidOnly on CI, retries 0,<br/>list + html reporter on CI, trace retain-on-failure"]
     G4 -.- PWC
-    SPECS["app.spec.mjs: the app under the production CSP,<br/>with a mocked Supabase<br/>docs-diagrams.spec.mjs: every mermaid block in the<br/>Markdown files parses and renders with mermaid 11.17.2,<br/>desktop-chromium only"]
+    SPECS["app.spec.mjs: the app under the production CSP,<br/>with a mocked Supabase<br/>docs-diagrams.spec.mjs: every mermaid block in the<br/>Markdown files parses and renders with mermaid 12.0.0,<br/>desktop-chromium only"]
     G4 -.- SPECS
     G4 -->|"all tests passed"| EOK(["e2e passes"])
     sg_e2e -->|"any step fails"| G5["if failure(): upload-artifact playwright-report<br/>with playwright-report/ and test-results/, kept 7 days"]

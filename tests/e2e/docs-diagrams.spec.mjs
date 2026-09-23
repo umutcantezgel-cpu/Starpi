@@ -1,6 +1,5 @@
 // Every Mermaid code block (``` or ~~~ fenced) in the repository's Markdown must parse and render
-// with the pinned Mermaid release (the major GitHub uses), so documentation diagrams cannot silently
-// break.
+// with the pinned Mermaid release (package.json), so documentation diagrams cannot silently break.
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { markdownFiles, mermaidBlocks, ROOT } from '../../scripts/markdown.mjs';
