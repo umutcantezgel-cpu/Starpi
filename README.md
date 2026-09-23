@@ -5,7 +5,9 @@ document search with verifiable citations, retrieval over a Supabase Postgres kn
 protected by Row Level Security, and an optional Python ingestion backend with pgvector
 embeddings. The interface is in English by default and switches to German with one click.
 
-**Deployment:** [https://www.starpi.app](https://www.starpi.app)
+**Deployment:** [https://www.starpi.app](https://www.starpi.app) · **New here?** Start with the
+[walkthrough](docs/WALKTHROUGH.md), then the [architecture atlas](docs/ARCHITECTURE.md) ·
+[Changelog](CHANGELOG.md)
 
 ## Overview
 
@@ -581,7 +583,8 @@ Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md), the [walkthrough](docs/WALKTHROUGH.md) for a tour of the code
+and the [Code of Conduct](CODE_OF_CONDUCT.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

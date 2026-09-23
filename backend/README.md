@@ -25,7 +25,8 @@ which is enough for development and for the tests.
 ## Configuration
 
 Values come from the process environment, then from `backend/.env` (or `.env` in the repository
-root); the environment always wins. [`.env.example`](.env.example) documents every variable.
+root); the environment always wins, and within the file the last assignment of a key wins.
+[`.env.example`](.env.example) documents every variable.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
