@@ -19,6 +19,8 @@ response within 7 days. Coordinated disclosure timelines are agreed per report.
 In scope:
 
 - Cross-site scripting, HTML or Markdown injection, CSP bypasses in the web application
+- Files added to the on-device workspace that execute code, escape the ingestion worker or make
+  citations point at text the answer was not given
 - Row Level Security or privilege problems in `backend/supabase` (reading or modifying another
   user's chats or private knowledge entries, bypassing `is_public`, calling privileged functions)
 - Credential exposure (provider API keys, Supabase `service_role` key)

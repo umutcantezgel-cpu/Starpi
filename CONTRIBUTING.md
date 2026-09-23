@@ -48,8 +48,17 @@ check against live endpoints and is not part of the automated suite.
   strict mode and `any` is not accepted.
 - **Tailwind** is pinned to v3 to keep the current design; class names must be complete strings
   so the compiler can find them.
-- **User-facing text** is German, and code, comments and docs are English. Do not claim
-  capabilities the code does not have (privacy, locality, hosting region).
+- **User-facing text** lives in `src/locales/en.json` (default) and `src/locales/de.json`, never
+  inline. Use `data-i18n` / `data-i18n-placeholder` / `data-i18n-title` / `data-i18n-aria` in
+  markup and `t()` or `setText()` (which re-translates on a language switch) in code. Add every
+  key to both files with the same `{placeholders}`; `npm test` fails on missing keys. Code,
+  comments and docs are English. Do not claim capabilities the code does not have (privacy,
+  locality, hosting region).
+- **Icons** are Lucide icons registered in `src/js/icons.js` (esbuild bundles only those
+  imports); the tests fail on unregistered or unused icons and on emoji anywhere in `src/`.
+  Icon-only buttons need an `aria-label` with a `data-i18n-aria` key.
+- **Styling** uses the component classes in `src/styles/app.css` (`card`, `btn-*`, `badge-*`,
+  `field`) before adding new one-off class combinations.
 
 ## WebGPU and WebLLM
 
