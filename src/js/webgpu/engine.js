@@ -281,7 +281,7 @@ export function loadModel(options) {
     const cached = await webllm.hasModelInCache(choice.modelId).catch(() => false);
     if (!cached) {
       if (options.onlyIfCached) {
-        setState({ status: 'idle', progress: null });
+        if (current()) setState({ status: 'idle', progress: null });
         return false;
       }
       await prepareStorage(Math.max(choice.approxDownloadMB, 1));
