@@ -1,8 +1,40 @@
+"""Retrieval augmented answering over the knowledge base.
+
+Order of answer providers: Gemini key pool, OpenRouter key pool, then the configured
+OpenAI-compatible endpoint. If none answers, the retrieved context is returned as-is.
+"""
+
+from __future__ import annotations
+
+import itertools
+import logging
+from typing import Any
+
 import httpx
-from typing import Dict, Any, List
+
 from .config import config
-from .embeddings import get_embedding
+from .embeddings import get_embedding_with_source
+from .http_utils import bearer_headers, describe_error, http_timeout
 from .supabase_client import db
+
+logger = logging.getLogger(__name__)
+
+LLM_TIMEOUT_SECONDS = 60.0
+CLOUD_POOL_TIMEOUT_SECONDS = 25.0
+CONNECT_TIMEOUT_SECONDS = 3.0
+
+MATCH_THRESHOLD = 0.15
+MATCH_COUNT = 5
+
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODELS = (
+    "liquid/lfm-2.5-2.6b:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "google/gemini-2.0-flash-exp:free",
+    "openrouter/auto",
+)
 
 RAG_SYSTEM_PROMPT = """Du bist das private Unternehmens-Brain ("Enterprise Knowledge Assistant").
 Du hast Zugriff auf vertrauliche, interne Unternehmensdokumente und strukturiertes Wissen.
@@ -18,156 +50,156 @@ WISSENSKONTEXT AUS DEM ENTERPRISE BRAIN:
 ---
 """
 
-def query_brain(user_query: str) -> Dict[str, Any]:
+# Round-robin start positions; itertools.count is safe to advance from several threads.
+_gemini_counter = itertools.count()
+_openrouter_counter = itertools.count()
+
+
+def retrieve_sections(user_query: str) -> list[dict[str, Any]]:
+    """Embeds the query and returns matching sections.
+
+    Remote vector search is skipped when only a hash fallback vector is available, because it
+    cannot be compared with the stored embeddings.
     """
-    Executes RAG retrieval against Supabase and synthesizes response using private LLM.
-    """
+    query_vector, is_real = get_embedding_with_source(user_query)
+    if query_vector is None:
+        return []
+    if db.is_live and not is_real:
+        logger.warning("Embedding endpoint unavailable; answering without retrieved context")
+        return []
+    return db.search_similar_sections(query_vector, threshold=MATCH_THRESHOLD, limit=MATCH_COUNT)
+
+
+def _format_context(sections: list[dict[str, Any]]) -> str:
+    if not sections:
+        return "Keine spezifischen Dokumente in der Datenbank gefunden."
+    parts = []
+    for i, match in enumerate(sections, 1):
+        doc_title = match.get("document_title", "Dokument")
+        heading = match.get("heading", "")
+        content = match.get("markdown_content", "")
+        parts.append(f"[{i}] Dokument: {doc_title} | Abschnitt: {heading}\n{content}\n")
+    return "\n".join(parts)
+
+
+def query_brain(user_query: str) -> dict[str, Any]:
+    """Answers ``user_query`` from the knowledge base; returns ``answer``, ``sources`` and ``provider``."""
     if not user_query or not user_query.strip():
-        return {
-            "answer": "Bitte stellen Sie eine Frage.",
-            "sources": []
-        }
+        return {"answer": "Bitte stellen Sie eine Frage.", "sources": []}
 
-    # 1. Embed query
-    query_vector = get_embedding(user_query)
-
-    # 2. Retrieve top matching sections from Supabase
-    matching_sections = db.search_similar_sections(query_vector, threshold=0.15, limit=5)
-
-    # 3. Format Context
-    if matching_sections:
-        context_parts = []
-        for i, match in enumerate(matching_sections, 1):
-            doc_title = match.get("document_title", "Dokument")
-            heading = match.get("heading", "")
-            content = match.get("markdown_content", "")
-            context_parts.append(f"[{i}] Dokument: {doc_title} | Abschnitt: {heading}\n{content}\n")
-        context_text = "\n".join(context_parts)
-    else:
-        context_text = "Keine spezifischen Dokumente in der Datenbank gefunden."
-
-    # 4. Generate Answer via Private LLM or Cloud AI Multi-Key Pools
+    matching_sections = retrieve_sections(user_query)
+    context_text = _format_context(matching_sections)
     system_prompt = RAG_SYSTEM_PROMPT.format(context=context_text)
-    full_prompt = f"{system_prompt}\n\nBenutzerfrage: {user_query}"
 
-    # Try Gemini Multi-Key Pool first if available
-    gemini_answer = _call_gemini_pool(full_prompt)
+    gemini_answer = _call_gemini_pool(f"{system_prompt}\n\nBenutzerfrage: {user_query}")
     if gemini_answer:
-        return {
-            "answer": gemini_answer,
-            "sources": matching_sections,
-            "provider": "gemini_pool"
-        }
+        return {"answer": gemini_answer, "sources": matching_sections, "provider": "gemini_pool"}
 
-    # Try OpenRouter Multi-Key Pool next
     openrouter_answer = _call_openrouter_pool(system_prompt, user_query)
     if openrouter_answer:
-        return {
-            "answer": openrouter_answer,
-            "sources": matching_sections,
-            "provider": "openrouter_pool"
-        }
+        return {"answer": openrouter_answer, "sources": matching_sections, "provider": "openrouter_pool"}
 
-    # Fallback to local LLM endpoint (MLX/vLLM)
+    local_answer = _call_local_llm(system_prompt, user_query)
+    if local_answer:
+        return {"answer": local_answer, "sources": matching_sections, "provider": "local_llm"}
+
+    return {
+        "answer": (
+            f"**Hinweis aus dem lokalen Brain-Speicher:**\n\nBasierend auf den gefundenen Dokumenten:\n\n{context_text}"
+        ),
+        "sources": matching_sections,
+        "provider": "none",
+        "error": "llm_unavailable",
+    }
+
+
+def _call_local_llm(system_prompt: str, user_query: str) -> str:
     payload = {
         "model": config.llm_model,
         "messages": [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_query}
+            {"role": "user", "content": user_query},
         ],
         "temperature": 0.3,
-        "max_tokens": 2048
+        "max_tokens": 2048,
     }
-
     try:
-        with httpx.Client(timeout=60.0) as client:
-            headers = {"Authorization": f"Bearer {config.llm_api_key}"} if config.llm_api_key != "EMPTY" else {}
+        with httpx.Client(timeout=http_timeout(LLM_TIMEOUT_SECONDS, CONNECT_TIMEOUT_SECONDS)) as client:
             resp = client.post(
                 f"{config.llm_base_url.rstrip('/')}/chat/completions",
                 json=payload,
-                headers=headers
+                headers=bearer_headers(config.llm_api_key),
             )
             resp.raise_for_status()
-            data = resp.json()
-            answer = data["choices"][0]["message"]["content"].strip()
-            
-            return {
-                "answer": answer,
-                "sources": matching_sections,
-                "provider": "local_llm"
-            }
-    except Exception as e:
-        return {
-            "answer": f"**Hinweis aus dem lokalen Brain-Speicher:**\n\nBasierend auf den gefundenen Dokumenten:\n\n{context_text}",
-            "sources": matching_sections,
-            "error": str(e)
-        }
+            return str(resp.json()["choices"][0]["message"]["content"]).strip()
+    except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
+        logger.warning("Local LLM endpoint failed: %s", describe_error(exc))
+        return ""
 
-_gemini_idx = 0
+
 def _call_gemini_pool(prompt: str) -> str:
-    global _gemini_idx
     keys = config.gemini_keys
     if not keys:
         return ""
-    
-    for _ in range(len(keys)):
-        key = keys[_gemini_idx % len(keys)]
-        _gemini_idx += 1
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}"
+    start = next(_gemini_counter)
+    for offset in range(len(keys)):
+        key = keys[(start + offset) % len(keys)]
         try:
-            with httpx.Client(timeout=25.0) as client:
+            with httpx.Client(timeout=http_timeout(CLOUD_POOL_TIMEOUT_SECONDS, CONNECT_TIMEOUT_SECONDS)) as client:
+                # The key goes in a header, not the query string, so it never appears in URLs or logs.
                 res = client.post(
-                    url,
+                    GEMINI_URL,
                     json={"contents": [{"role": "user", "parts": [{"text": prompt}]}]},
-                    headers={"Content-Type": "application/json"}
+                    headers={"Content-Type": "application/json", "x-goog-api-key": key},
                 )
-                if res.status_code == 200:
-                    data = res.json()
-                    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-                    if parts and "text" in parts[0]:
-                        return parts[0]["text"].strip()
-        except Exception:
-            continue
+                res.raise_for_status()
+                data = res.json()
+            parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+            if parts and "text" in parts[0]:
+                return str(parts[0]["text"]).strip()
+            logger.warning("Gemini key #%d returned no text", (start + offset) % len(keys))
+        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+            logger.warning("Gemini key #%d failed: %s", (start + offset) % len(keys), describe_error(exc))
     return ""
 
-_openrouter_idx = 0
+
 def _call_openrouter_pool(system_prompt: str, user_query: str) -> str:
-    global _openrouter_idx
     keys = config.openrouter_keys
     if not keys:
         return ""
-    
-    models = ["liquid/lfm-2.5-2.6b:free", "nvidia/nemotron-3.5-lightning:free", "google/gemini-2.0-flash-exp:free", "openrouter/auto"]
-    
-    for _ in range(len(keys)):
-        key = keys[_openrouter_idx % len(keys)]
-        _openrouter_idx += 1
-        for model in models:
+    start = next(_openrouter_counter)
+    for offset in range(len(keys)):
+        key_index = (start + offset) % len(keys)
+        key = keys[key_index]
+        for model in OPENROUTER_MODELS:
             try:
-                with httpx.Client(timeout=25.0) as client:
+                with httpx.Client(timeout=http_timeout(CLOUD_POOL_TIMEOUT_SECONDS, CONNECT_TIMEOUT_SECONDS)) as client:
                     res = client.post(
-                        "https://openrouter.ai/api/v1/chat/completions",
+                        OPENROUTER_URL,
                         headers={
                             "Authorization": f"Bearer {key}",
                             "Content-Type": "application/json",
                             "HTTP-Referer": "https://www.starpi.app/",
-                            "X-Title": "Starpi Enterprise Brain"
+                            "X-Title": "Starpi Enterprise Brain",
                         },
                         json={
                             "model": model,
                             "messages": [
                                 {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": user_query}
+                                {"role": "user", "content": user_query},
                             ],
                             "temperature": 0.5,
-                            "max_tokens": 1024
-                        }
+                            "max_tokens": 1024,
+                        },
                     )
-                    if res.status_code == 200:
-                        data = res.json()
-                        choices = data.get("choices", [])
-                        if choices and "message" in choices[0]:
-                            return choices[0]["message"].get("content", "").strip()
-            except Exception:
-                continue
+                    res.raise_for_status()
+                    data = res.json()
+                choices = data.get("choices", [])
+                if choices and "message" in choices[0]:
+                    content = str(choices[0]["message"].get("content") or "").strip()
+                    if content:
+                        return content
+                logger.warning("OpenRouter key #%d model %s returned no text", key_index, model)
+            except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
+                logger.warning("OpenRouter key #%d model %s failed: %s", key_index, model, describe_error(exc))
     return ""

@@ -1,0 +1,26 @@
+# Tooling configuration for the Python backend. The backend is run from this directory
+# (python server.py) and is not packaged, so there is no [project] table.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "F",  # pyflakes
+    "W",  # pycodestyle warnings
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "UP", # pyupgrade
+    "S",  # flake8-bandit
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use throwaway credentials (S105/S106), bind checks against 0.0.0.0 (S104) and plain
+# asserts in helpers (S101).
+"test_*.py" = ["S101", "S104", "S105", "S106"]
+"tests/**" = ["S101", "S104", "S105", "S106"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "server"]

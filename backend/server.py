@@ -1,102 +1,436 @@
-import json
-import sys
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+"""HTTP API of the brain backend (standard library only).
 
-from core.config import config
+Endpoints:
+    GET  /api/health            liveness probe; never requires a token
+    GET  /api/brain/documents   newest documents
+    POST /api/brain/ingest      {"text": str, "source_name"?: str, "source_type"?: str}
+    POST /api/brain/query       {"query": str}
+
+The server binds to 127.0.0.1 by default and refuses any other address unless BRAIN_API_TOKEN is
+set. With a token, /api/brain/* requires ``Authorization: Bearer <token>``; without one, only
+loopback Host headers are accepted (DNS rebinding guard). TLS is expected to be terminated by a
+reverse proxy in front of this process.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hmac
+import ipaddress
+import json
+import logging
+import os
+import signal
+import socket
+import socketserver
+import threading
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
+
+from core.config import BrainConfig, config
 from core.ingestion_pipeline import ingest_raw_information
 from core.rag import query_brain
 from core.supabase_client import db
 
+logger = logging.getLogger("server")
+
+MAX_TEXT_CHARS = 200_000
+MAX_QUERY_CHARS = 4_000
+MAX_SOURCE_NAME_CHARS = 256
+MAX_SOURCE_TYPE_CHARS = 64
+
+# Socket timeout for reading a request; bounds slow or stalled clients.
+REQUEST_TIMEOUT_SECONDS = 30
+# Unread request bodies up to this size are drained before an error response so the client gets a
+# clean close instead of a TCP reset.
+MAX_DRAIN_BYTES = 65_536
+DRAIN_TIMEOUT_SECONDS = 1.0
+
+MIN_RECOMMENDED_TOKEN_LENGTH = 32
+PREFLIGHT_MAX_AGE_SECONDS = 600
+ALLOWED_REQUEST_HEADERS = "Authorization, Content-Type"
+PROTECTED_PREFIX = "/api/brain/"
+
+# path -> {method -> handler method name}
+ROUTES: dict[str, dict[str, str]] = {
+    "/api/health": {"GET": "_handle_health"},
+    "/api/brain/documents": {"GET": "_handle_documents"},
+    "/api/brain/ingest": {"POST": "_handle_ingest"},
+    "/api/brain/query": {"POST": "_handle_query"},
+}
+
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Cache-Control": "no-store",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+}
+
+
+class ApiError(Exception):
+    """An expected client error that becomes a JSON error response."""
+
+    def __init__(self, status: HTTPStatus, error: str, headers: dict[str, str] | None = None, **details: Any) -> None:
+        super().__init__(error)
+        self.status = status
+        self.payload: dict[str, Any] = {"error": error, **details}
+        self.headers = headers or {}
+
+
+def is_loopback_host(host: str) -> bool:
+    """True for ``localhost`` and loopback IP literals (IPv4 or IPv6, brackets allowed)."""
+    candidate = host.strip().strip("[]")
+    if candidate.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(candidate).is_loopback
+    except ValueError:
+        return False
+
+
+def _hostname_from_host_header(value: str) -> str:
+    value = value.strip()
+    if value.startswith("["):
+        return value[1 : value.find("]")] if "]" in value else value
+    return value.rsplit(":", 1)[0] if value.count(":") == 1 else value
+
+
+def _string_field(
+    data: dict[str, Any],
+    name: str,
+    *,
+    max_chars: int,
+    required: bool = False,
+    default: str = "",
+) -> str:
+    value = data.get(name)
+    if value is None:
+        if required:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_field", field=name, detail="required")
+        return default
+    if not isinstance(value, str):
+        raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_field", field=name, detail="must be a string")
+    if len(value) > max_chars:
+        raise ApiError(
+            HTTPStatus.BAD_REQUEST, "invalid_field", field=name, detail=f"must be at most {max_chars} characters"
+        )
+    if not value.strip():
+        if required:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_field", field=name, detail="must not be empty")
+        return default
+    return value
+
+
 class BrainAPIHandler(BaseHTTPRequestHandler):
-    def _set_cors_headers(self, status_code: int = 200, content_type: str = "application/json"):
-        self.send_response(status_code)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.send_header("Content-Type", content_type)
+    server_version = "StarpiBrain"
+    sys_version = ""
+    timeout = REQUEST_TIMEOUT_SECONDS
+
+    _response_started = False
+    _body_consumed = False
+
+    # ------------------------------------------------------------------ plumbing
+
+    @property
+    def settings(self) -> BrainConfig:
+        return getattr(self.server, "settings", config)
+
+    def _request_path(self) -> str:
+        return getattr(self, "path", "").split("?", 1)[0].split("#", 1)[0]
+
+    def _header(self, name: str) -> str | None:
+        headers = getattr(self, "headers", None)
+        return headers.get(name) if headers is not None else None
+
+    def _allowed_origin(self) -> str | None:
+        origin = self._header("Origin")
+        if origin and origin in self.settings.allowed_origins:
+            return origin
+        return None
+
+    def _send(self, status: int, payload: Any | None = None, headers: dict[str, str] | None = None) -> None:
+        # Serialise first so a failure here can still become a 500 response.
+        body = b"" if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        if payload is not None:
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+        if status != HTTPStatus.NO_CONTENT:
+            self.send_header("Content-Length", str(len(body)))
+        for name, value in SECURITY_HEADERS.items():
+            self.send_header(name, value)
+        self.send_header("Vary", "Origin")
+        allowed_origin = self._allowed_origin()
+        if allowed_origin:
+            self.send_header("Access-Control-Allow-Origin", allowed_origin)
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
+        self._response_started = True
+        if body and self.command != "HEAD":
+            self.wfile.write(body)
 
-    def do_OPTIONS(self):
-        self._set_cors_headers(200)
-
-    def do_GET(self):
-        parsed_path = urlparse(self.path)
-        
-        if parsed_path.path == "/api/health":
-            self._set_cors_headers(200)
-            res = {
-                "status": "healthy",
-                "service": "Enterprise Brain Core API",
-                "supabase_live": db.is_live,
-                "llm_endpoint": config.llm_base_url,
-                "model": config.llm_model
-            }
-            self.wfile.write(json.dumps(res, ensure_ascii=False, indent=2).encode("utf-8"))
-            
-        elif parsed_path.path == "/api/brain/documents":
-            self._set_cors_headers(200)
-            docs = db.list_documents()
-            self.wfile.write(json.dumps({"documents": docs, "count": len(docs)}, ensure_ascii=False).encode("utf-8"))
-            
-        else:
-            self._set_cors_headers(404)
-            self.wfile.write(json.dumps({"error": "Endpoint not found"}).encode("utf-8"))
-
-    def do_POST(self):
-        parsed_path = urlparse(self.path)
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else "{}"
-        
+    def send_error(self, code: int, message: str | None = None, explain: str | None = None) -> None:
+        """JSON variant of the stdlib error page (malformed requests, unsupported methods)."""
+        self.close_connection = True
+        self._discard_unread_body()
         try:
-            data = json.loads(body)
+            phrase = HTTPStatus(code).phrase
+        except ValueError:
+            phrase = "error"
+        self._send(code, {"error": phrase.lower().replace(" ", "_").replace("-", "_")})
+
+    def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+        # Method, path without query string and status only; headers are never logged.
+        status = code.value if isinstance(code, HTTPStatus) else code
+        logger.info("%s %s %r -> %s", self.address_string(), self.command or "-", self._request_path(), status)
+
+    def log_message(self, format: str, *args: Any) -> None:
+        logger.info("%s %s", self.address_string(), format % args)
+
+    def _discard_unread_body(self) -> None:
+        if self._body_consumed:
+            return
+        self._body_consumed = True
+        raw_length = (self._header("Content-Length") or "").strip()
+        if not (raw_length.isascii() and raw_length.isdigit()):
+            return
+        remaining = int(raw_length)
+        if remaining == 0 or remaining > MAX_DRAIN_BYTES:
+            return
+        try:
+            self.connection.settimeout(DRAIN_TIMEOUT_SECONDS)
+            while remaining > 0:
+                chunk = self.rfile.read(min(remaining, 16_384))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        except OSError as exc:
+            logger.debug("Could not drain request body: %s", type(exc).__name__)
+
+    # ------------------------------------------------------------------ dispatch
+
+    def do_GET(self) -> None:
+        self._dispatch("GET")
+
+    def do_POST(self) -> None:
+        self._dispatch("POST")
+
+    def do_OPTIONS(self) -> None:
+        self._dispatch("OPTIONS")
+
+    def _dispatch(self, method: str) -> None:
+        self._response_started = False
+        self._body_consumed = False
+        try:
+            self._route(method)
+        except ApiError as exc:
+            self._discard_unread_body()
+            self._send(exc.status, exc.payload, exc.headers)
+        except (BrokenPipeError, ConnectionResetError):
+            logger.info("Client disconnected during %s %r", method, self._request_path())
+            self.close_connection = True
         except Exception:
-            data = {}
+            logger.exception("Unhandled error during %s %r", method, self._request_path())
+            self.close_connection = True
+            if not self._response_started:
+                try:
+                    self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "internal_error"})
+                except OSError:
+                    logger.info("Client disconnected before the error response was sent")
 
-        if parsed_path.path == "/api/brain/ingest":
-            raw_text = data.get("text", "")
-            source_name = data.get("source_name", "Web-Upload")
-            source_type = data.get("source_type", "text")
-            
-            result = ingest_raw_information(
-                raw_text=raw_text,
-                source_name=source_name,
-                source_type=source_type
+    def _route(self, method: str) -> None:
+        if self._header("Origin") is not None and self._allowed_origin() is None:
+            raise ApiError(HTTPStatus.FORBIDDEN, "origin_not_allowed")
+        self._check_host()
+
+        path = self._request_path()
+        methods = ROUTES.get(path)
+        if methods is None:
+            raise ApiError(HTTPStatus.NOT_FOUND, "not_found")
+        allow = ", ".join([*methods, "OPTIONS"])
+        if method == "OPTIONS":
+            self._handle_preflight(allow)
+            return
+        if method not in methods:
+            raise ApiError(HTTPStatus.METHOD_NOT_ALLOWED, "method_not_allowed", headers={"Allow": allow})
+        if path.startswith(PROTECTED_PREFIX):
+            self._check_auth()
+        getattr(self, methods[method])()
+
+    def _check_host(self) -> None:
+        # Without a token the API is only meant for local use. Rejecting foreign Host headers
+        # blocks DNS rebinding from web pages the local user visits.
+        if self.settings.api_token:
+            return
+        host_header = self._header("Host")
+        if host_header and not is_loopback_host(_hostname_from_host_header(host_header)):
+            raise ApiError(HTTPStatus.FORBIDDEN, "host_not_allowed")
+
+    def _check_auth(self) -> None:
+        token = self.settings.api_token
+        if not token:
+            return
+        scheme, _, supplied = (self._header("Authorization") or "").partition(" ")
+        valid = scheme.lower() == "bearer" and hmac.compare_digest(
+            supplied.strip().encode("utf-8"), token.encode("utf-8")
+        )
+        if not valid:
+            raise ApiError(
+                HTTPStatus.UNAUTHORIZED, "unauthorized", headers={"WWW-Authenticate": 'Bearer realm="starpi-brain"'}
             )
-            
-            self._set_cors_headers(200)
-            self.wfile.write(json.dumps(result, ensure_ascii=False).encode("utf-8"))
-            
-        elif parsed_path.path == "/api/brain/query":
-            user_query = data.get("query", "")
-            result = query_brain(user_query=user_query)
-            
-            self._set_cors_headers(200)
-            self.wfile.write(json.dumps(result, ensure_ascii=False).encode("utf-8"))
-            
-        else:
-            self._set_cors_headers(404)
-            self.wfile.write(json.dumps({"error": "Endpoint not found"}).encode("utf-8"))
 
-def run_server(port: int = 9200, host: str = "0.0.0.0"):
-    server_address = (host, port)
-    httpd = HTTPServer(server_address, BrainAPIHandler)
-    print(f"==================================================")
-    print(f"   🧠 Enterprise Brain API Server Running         ")
-    print(f"   🌐 Listening on: http://localhost:{port}       ")
-    print(f"   🗄️ Supabase Live: {db.is_live}                 ")
-    print(f"==================================================")
+    def _read_json_object(self) -> dict[str, Any]:
+        if self._header("Transfer-Encoding") is not None:
+            raise ApiError(HTTPStatus.LENGTH_REQUIRED, "length_required")
+        lengths = self.headers.get_all("Content-Length") or []
+        if not lengths:
+            raise ApiError(HTTPStatus.LENGTH_REQUIRED, "length_required")
+        raw_length = lengths[0].strip()
+        if len(lengths) > 1 or not (raw_length.isascii() and raw_length.isdigit()):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_content_length")
+        length = int(raw_length)
+        if length > self.settings.max_body_bytes:
+            raise ApiError(
+                HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "payload_too_large", max_bytes=self.settings.max_body_bytes
+            )
+        media_type = (self._header("Content-Type") or "").split(";", 1)[0].strip().lower()
+        if media_type != "application/json":
+            raise ApiError(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type")
+
+        body = self.rfile.read(length) if length else b""
+        self._body_consumed = True
+        if len(body) < length:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "incomplete_body")
+        try:
+            data = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError, RecursionError):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_json") from None
+        if not isinstance(data, dict):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "json_body_must_be_object")
+        return data
+
+    # ------------------------------------------------------------------ handlers
+
+    def _handle_preflight(self, allow: str) -> None:
+        if self._allowed_origin() is None:
+            # Not a CORS preflight (no Origin header): answer like a plain OPTIONS request.
+            self._send(HTTPStatus.NO_CONTENT, headers={"Allow": allow})
+            return
+        self._send(
+            HTTPStatus.NO_CONTENT,
+            headers={
+                "Access-Control-Allow-Methods": allow,
+                "Access-Control-Allow-Headers": ALLOWED_REQUEST_HEADERS,
+                "Access-Control-Max-Age": str(PREFLIGHT_MAX_AGE_SECONDS),
+            },
+        )
+
+    def _handle_health(self) -> None:
+        self._send(HTTPStatus.OK, {"status": "healthy", "supabase_live": bool(db.is_live)})
+
+    def _handle_documents(self) -> None:
+        docs = db.list_documents()
+        self._send(HTTPStatus.OK, {"documents": docs, "count": len(docs)})
+
+    def _handle_ingest(self) -> None:
+        data = self._read_json_object()
+        text = _string_field(data, "text", max_chars=MAX_TEXT_CHARS, required=True)
+        source_name = _string_field(data, "source_name", max_chars=MAX_SOURCE_NAME_CHARS, default="Web-Upload")
+        source_type = _string_field(data, "source_type", max_chars=MAX_SOURCE_TYPE_CHARS, default="text")
+        result = ingest_raw_information(raw_text=text, source_name=source_name, source_type=source_type)
+        self._send(HTTPStatus.OK, result)
+
+    def _handle_query(self) -> None:
+        data = self._read_json_object()
+        user_query = _string_field(data, "query", max_chars=MAX_QUERY_CHARS, required=True)
+        self._send(HTTPStatus.OK, query_brain(user_query=user_query))
+
+
+class BrainHTTPServer(ThreadingHTTPServer):
+    """Threaded server that carries its settings for the request handlers."""
+
+    daemon_threads = True
+
+    def __init__(self, server_address: tuple[str, int], settings: BrainConfig) -> None:
+        self.settings = settings
+        if ":" in server_address[0]:
+            self.address_family = socket.AF_INET6
+        super().__init__(server_address, BrainAPIHandler)
+
+    def server_bind(self) -> None:
+        # HTTPServer.server_bind does a reverse DNS lookup of the bind address; skip it.
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = int(port)
+
+
+def create_server(host: str, port: int, settings: BrainConfig | None = None) -> BrainHTTPServer:
+    return BrainHTTPServer((host, port), settings or config)
+
+
+def run_server(port: int | None = None, host: str | None = None, settings: BrainConfig | None = None) -> None:
+    """Starts the API and blocks until interrupted.
+
+    Raises SystemExit(2) when asked to bind to a non-loopback address without BRAIN_API_TOKEN.
+    """
+    settings = settings or config
+    host = settings.server_host if host is None else host
+    port = settings.server_port if port is None else port
+
+    if not is_loopback_host(host) and not settings.api_token:
+        logger.error(
+            "Refusing to listen on %s without BRAIN_API_TOKEN. Set a token or bind to 127.0.0.1 "
+            "and put a TLS reverse proxy in front.",
+            host,
+        )
+        raise SystemExit(2)
+    if settings.api_token and len(settings.api_token) < MIN_RECOMMENDED_TOKEN_LENGTH:
+        logger.warning("BRAIN_API_TOKEN is shorter than %d characters", MIN_RECOMMENDED_TOKEN_LENGTH)
+
+    httpd = create_server(host, port, settings)
+    if threading.current_thread() is threading.main_thread():
+        # systemd stops services with SIGTERM; shut down cleanly instead of dying mid-request.
+        def _on_sigterm(signum: int, frame: object) -> None:
+            logger.info("Received SIGTERM, shutting down")
+            threading.Thread(target=httpd.shutdown, daemon=True).start()
+
+        signal.signal(signal.SIGTERM, _on_sigterm)
+
+    bound_host, bound_port = httpd.server_address[:2]
+    logger.info(
+        "Brain API listening on %s:%s (supabase_live=%s, token_auth=%s)",
+        bound_host,
+        bound_port,
+        db.is_live,
+        bool(settings.api_token),
+    )
+    if not db.is_live:
+        logger.warning("Supabase is not configured; documents are kept in memory only")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\n[Enterprise Brain] Shutting down cleanly...")
+        logger.info("Shutting down")
+    finally:
         httpd.server_close()
 
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Starpi brain HTTP API")
+    parser.add_argument("port", nargs="?", type=int, help="port (default: BRAIN_SERVER_PORT or 9200)")
+    parser.add_argument("--host", help="bind address (default: BRAIN_SERVER_HOST or 127.0.0.1)")
+    parser.add_argument(
+        "--log-level",
+        type=str.upper,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default=os.environ.get("BRAIN_LOG_LEVEL", "INFO").upper(),
+    )
+    args = parser.parse_args(argv)
+    logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    run_server(port=args.port, host=args.host)
+    return 0
+
+
 if __name__ == "__main__":
-    port = config.server_port
-    if len(sys.argv) > 1:
-        try:
-            port = int(sys.argv[1])
-        except ValueError:
-            pass
-    run_server(port=port)
+    raise SystemExit(main())

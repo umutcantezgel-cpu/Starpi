@@ -1,7 +1,12 @@
-import re
-from typing import List, Dict, Any
+"""Splits structured Markdown into heading-based sections for embedding."""
 
-def chunk_markdown(markdown_text: str, max_chunk_chars: int = 1500) -> List[Dict[str, Any]]:
+from __future__ import annotations
+
+import re
+from typing import Any
+
+
+def chunk_markdown(markdown_text: str, max_chunk_chars: int = 1500) -> list[dict[str, Any]]:
     """
     Splits structured Markdown text by section headers (## or ###) into logical semantic chunks.
     Ensures that headers and sub-contexts are preserved.
@@ -10,54 +15,60 @@ def chunk_markdown(markdown_text: str, max_chunk_chars: int = 1500) -> List[Dict
         return []
 
     # Match markdown headers starting with #, ##, ###, ####
-    header_pattern = re.compile(r'^(#{1,4}\s+.+)$', re.MULTILINE)
-    
-    sections: List[Dict[str, Any]] = []
+    header_pattern = re.compile(r"^(#{1,4}\s+.+)$", re.MULTILINE)
+
+    sections: list[dict[str, Any]] = []
     lines = markdown_text.split("\n")
-    
+
     current_heading = "Allgemein"
-    current_lines = []
+    current_lines: list[str] = []
     section_index = 0
-    
+
     for line in lines:
         if header_pattern.match(line):
             # If we already have accumulated lines, flush current section
             if current_lines:
                 chunk_text = "\n".join(current_lines).strip()
                 if chunk_text:
-                    sections.append({
-                        "section_index": section_index,
-                        "heading": current_heading,
-                        "markdown_content": chunk_text,
-                        "token_count": len(chunk_text.split())
-                    })
+                    sections.append(
+                        {
+                            "section_index": section_index,
+                            "heading": current_heading,
+                            "markdown_content": chunk_text,
+                            "token_count": len(chunk_text.split()),
+                        }
+                    )
                     section_index += 1
                 current_lines = []
             current_heading = line.strip()
             current_lines.append(line)
         else:
             current_lines.append(line)
-            
+
             # If a single section without headers becomes too long, split it cleanly
             if len("\n".join(current_lines)) > max_chunk_chars:
                 chunk_text = "\n".join(current_lines).strip()
-                sections.append({
-                    "section_index": section_index,
-                    "heading": current_heading,
-                    "markdown_content": chunk_text,
-                    "token_count": len(chunk_text.split())
-                })
+                sections.append(
+                    {
+                        "section_index": section_index,
+                        "heading": current_heading,
+                        "markdown_content": chunk_text,
+                        "token_count": len(chunk_text.split()),
+                    }
+                )
                 section_index += 1
                 current_lines = []
-                
+
     if current_lines:
         chunk_text = "\n".join(current_lines).strip()
         if chunk_text:
-            sections.append({
-                "section_index": section_index,
-                "heading": current_heading,
-                "markdown_content": chunk_text,
-                "token_count": len(chunk_text.split())
-            })
-            
+            sections.append(
+                {
+                    "section_index": section_index,
+                    "heading": current_heading,
+                    "markdown_content": chunk_text,
+                    "token_count": len(chunk_text.split()),
+                }
+            )
+
     return sections

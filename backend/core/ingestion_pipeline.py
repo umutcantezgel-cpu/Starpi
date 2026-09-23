@@ -1,44 +1,64 @@
-from typing import Dict, Any
-from .structurer import structure_raw_content
+"""Ingestion: raw text -> structured Markdown -> sections -> embeddings -> storage."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
 from .chunker import chunk_markdown
-from .embeddings import get_embedding
+from .embeddings import get_embedding_with_source
+from .structurer import structure_raw_content
 from .supabase_client import db
+
+logger = logging.getLogger(__name__)
+
 
 def ingest_raw_information(
     raw_text: str,
     source_name: str = "Notiz",
-    source_type: str = "text"
-) -> Dict[str, Any]:
+    source_type: str = "text",
+) -> dict[str, Any]:
+    """Runs the full ingestion pipeline.
+
+    1. Structures the raw text into Markdown plus metadata via the LLM.
+    2. Splits the Markdown into sections.
+    3. Embeds each section. Only vectors from the embedding endpoint are persisted; when it is
+       unavailable the section is stored with a NULL embedding (the hash fallback is kept for the
+       in-memory store only).
+    4. Saves the document and sections.
     """
-    Complete ingestion pipeline:
-    1. Re-formats raw text into clean, standardized Markdown + metadata via LLM.
-    2. Chunks the Markdown into semantic section blocks.
-    3. Computes vector embeddings for each chunk.
-    4. Saves to Supabase (knowledge_documents & knowledge_sections).
-    """
-    # 1. Structure raw content
     structured = structure_raw_content(raw_text, source_name=source_name)
     title = structured.get("title", source_name)
     summary = structured.get("summary", "")
     tags = structured.get("tags", [])
     markdown_content = structured.get("markdown", raw_text)
 
-    # 2. Chunk Markdown
     chunks = chunk_markdown(markdown_content)
-    
-    # 3. Compute Embeddings for each chunk
-    sections_to_save = []
-    for chunk in chunks:
-        vector = get_embedding(f"{title} - {chunk['heading']}\n{chunk['markdown_content']}")
-        sections_to_save.append({
-            "section_index": chunk["section_index"],
-            "heading": chunk["heading"],
-            "markdown_content": chunk["markdown_content"],
-            "token_count": chunk["token_count"],
-            "embedding": vector
-        })
 
-    # 4. Save into Supabase Database
+    sections_to_save: list[dict[str, Any]] = []
+    embedded_count = 0
+    for chunk in chunks:
+        vector, is_real = get_embedding_with_source(f"{title} - {chunk['heading']}\n{chunk['markdown_content']}")
+        if is_real:
+            embedded_count += 1
+        sections_to_save.append(
+            {
+                "section_index": chunk["section_index"],
+                "heading": chunk["heading"],
+                "markdown_content": chunk["markdown_content"],
+                "token_count": chunk["token_count"],
+                "embedding": vector if is_real else None,
+                "fallback_embedding": None if is_real else vector,
+            }
+        )
+
+    if embedded_count < len(sections_to_save):
+        logger.warning(
+            "%d of %d sections have no embedding and will not be found by vector search",
+            len(sections_to_save) - embedded_count,
+            len(sections_to_save),
+        )
+
     doc_record = db.save_document(
         title=title,
         summary=summary,
@@ -46,7 +66,7 @@ def ingest_raw_information(
         source_type=source_type,
         source_name=source_name,
         raw_content=raw_text,
-        sections=sections_to_save
+        sections=sections_to_save,
     )
 
     return {
@@ -56,5 +76,7 @@ def ingest_raw_information(
         "tags": tags,
         "markdown": markdown_content,
         "sections_count": len(sections_to_save),
-        "status": "success"
+        "embedded_sections_count": embedded_count,
+        "storage": doc_record.get("storage", "unknown"),
+        "status": "success",
     }
