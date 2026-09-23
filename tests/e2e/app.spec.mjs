@@ -269,6 +269,35 @@ test.describe('on-device workspace', () => {
     expect(diagnostics).toEqual([]);
   });
 
+  test('an earlier citation never opens a file added after the workspace was cleared', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await page.goto('/');
+    await openTab(page, 'ingest');
+    await page.setInputFiles('#workspaceFileInput', { name: 'alpha.md', mimeType: 'text/markdown', buffer: Buffer.from('# Alpha\n\nThe Alpha budget is 120000 EUR.') });
+    await expect(page.locator('#workspaceList li')).toHaveCount(1);
+
+    await openTab(page, 'chat');
+    await ask(page, 'What is the Alpha budget?');
+    const citation = page.locator('#chatMessages > div').last().locator('.message-content [data-action="open-citation"]').first();
+    await expect(citation).toContainText('alpha.md');
+
+    // Clearing replaces the worker; the next file must not inherit the cited file's id.
+    await openTab(page, 'ingest');
+    page.once('dialog', (dialog) => void dialog.accept());
+    await page.click('[data-action="workspace-clear"]');
+    await expect(page.locator('#workspaceList li')).toHaveCount(0);
+    await page.setInputFiles('#workspaceFileInput', { name: 'beta.md', mimeType: 'text/markdown', buffer: Buffer.from('# Beta\n\nThe Beta launch is planned for May.') });
+    await expect(page.locator('#workspaceList li')).toHaveCount(1);
+
+    await openTab(page, 'chat');
+    await citation.click();
+    const drawer = page.locator('#citationModal');
+    await expect(drawer.locator('#citationModalNote')).toHaveText(/no longer in the workspace/);
+    await expect(drawer).toContainText('120000 EUR');
+    await expect(drawer).not.toContainText('Beta launch');
+    expect(diagnostics).toEqual([]);
+  });
+
   test('rejects unsupported files with a clear message', async ({ page, diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await page.goto('/');

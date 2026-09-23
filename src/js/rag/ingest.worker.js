@@ -22,6 +22,9 @@ import { extractText, ParseError } from './parser.js';
 const index = new BM25Index();
 /** @type {Map<string, DocumentInfo & { text: string }>} */
 const documents = new Map();
+// Document ids must stay unique across worker instances: Clear workspace and a crash replace the
+// worker, and an earlier citation must never resolve to a file added afterwards.
+const instanceId = crypto.randomUUID();
 let nextId = 1;
 
 /**
@@ -45,7 +48,7 @@ async function ingest(id, payload) {
   const { text, kind, pages } = await extractText(file, (page, total) => progress(id, 'parsing', page, total));
   progress(id, 'chunking', 0, 1);
   const chunks = chunkText(text, { chunkSize: payload.chunkSize, chunkOverlap: payload.chunkOverlap });
-  const docId = `ws-${nextId++}`;
+  const docId = `ws-${instanceId}-${nextId++}`;
   progress(id, 'indexing', 0, chunks.length);
   index.add(chunks.map((c) => ({ docId, docName: file.name, chunkIndex: c.index, start: c.start, end: c.end, text: c.text })));
   const info = { docId, name: file.name, kind, chars: text.length, chunks: chunks.length, pages };
