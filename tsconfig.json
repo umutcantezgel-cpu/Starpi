@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker.ImportScripts"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": []
+  },
+  "include": [
+    "src/js/globals.d.ts",
+    "src/js/config.js",
+    "src/js/storage.js",
+    "src/js/signals.js",
+    "src/js/render.js",
+    "src/js/supabase.js",
+    "src/js/providers.js",
+    "src/js/retrieval.js",
+    "src/js/synthesizer.js",
+    "src/js/chat-store.js",
+    "src/js/state.js",
+    "src/js/webgpu/models.js",
+    "src/js/webgpu/engine.js"
+  ]
+}

@@ -1,0 +1,198 @@
+// @ts-check
+// Navigation, sidebar, device indicator and connection/status indicators.
+import { SUPABASE_PROJECT_REF } from './config.js';
+import { byId } from './dom.js';
+import { refreshIcons } from './icons.js';
+
+const TABS = ['chat', 'library', 'graph', 'ingest', 'settings'];
+const TITLES = /** @type {Record<string, string>} */ ({
+  chat: 'Starpi Chat',
+  library: 'Wissensarchiv',
+  graph: 'Wissensnetzwerk',
+  ingest: 'Wissen hinzufügen',
+  settings: 'Einstellungen',
+});
+
+const ACTIVE_NAV = ['bg-amber-50', 'text-amber-950', 'border', 'border-amber-300/80', 'font-bold', 'shadow-xs'];
+
+/** @type {Map<string, () => void>} */
+const tabOpenHooks = new Map();
+
+/**
+ * @param {string} tab
+ * @param {() => void} hook
+ */
+export function onTabOpen(tab, hook) {
+  tabOpenHooks.set(tab, hook);
+}
+
+/** @param {string} tabId */
+export function switchTab(tabId) {
+  const target = TABS.includes(tabId) ? tabId : 'chat';
+  for (const t of TABS) {
+    byId(`tab-${t}`)?.classList.add('hidden');
+    const nav = byId(`nav-${t}`);
+    if (nav) {
+      nav.classList.remove(...ACTIVE_NAV);
+      nav.classList.add('text-slate-600', 'hover:text-slate-950', 'hover:bg-slate-100/70', 'font-medium');
+    }
+    const mNav = byId(`mobile-nav-${t}`);
+    if (mNav) {
+      mNav.classList.remove(...ACTIVE_NAV);
+      mNav.classList.add('text-slate-600', 'hover:text-slate-900', 'font-medium');
+    }
+  }
+
+  byId(`tab-${target}`)?.classList.remove('hidden');
+  const activeNav = byId(`nav-${target}`);
+  if (activeNav) {
+    activeNav.classList.add(...ACTIVE_NAV);
+    activeNav.classList.remove('text-slate-600', 'hover:text-slate-950', 'hover:bg-slate-100/70', 'font-medium');
+  }
+  const activeMNav = byId(`mobile-nav-${target}`);
+  if (activeMNav) {
+    activeMNav.classList.add(...ACTIVE_NAV);
+    activeMNav.classList.remove('text-slate-600', 'hover:text-slate-900', 'font-medium');
+  }
+
+  const titleEl = byId('pageTitle');
+  if (titleEl) titleEl.textContent = TITLES[target] ?? 'Starpi';
+
+  tabOpenHooks.get(target)?.();
+  if (window.innerWidth < 768) toggleSidebar(false);
+}
+
+/** @param {boolean} [forcedState] */
+export function toggleSidebar(forcedState) {
+  const sidebar = byId('sidebar');
+  const backdrop = byId('mobileBackdrop');
+  if (!sidebar || !backdrop) return;
+  const isVisible = !sidebar.classList.contains('-translate-x-full');
+  const shouldOpen = forcedState ?? !isVisible;
+  sidebar.classList.toggle('-translate-x-full', !shouldOpen);
+  backdrop.classList.toggle('hidden', !shouldOpen);
+}
+
+export function detectAndDisplayDevice() {
+  const userAgent = navigator.userAgent || '';
+  const isIOS = /iPhone|iPad|iPod/i.test(userAgent);
+  const isAndroid = /Android/i.test(userAgent);
+  const isTablet = /iPad|Tablet/i.test(userAgent) || (window.innerWidth >= 640 && window.innerWidth <= 1024);
+
+  const iconEl = byId('deviceTypeIcon');
+  const textEl = byId('detectedDeviceText');
+  let icon = 'laptop';
+  let label = 'Computer';
+  if (isTablet) {
+    icon = 'tablet';
+    label = 'Tablet';
+  } else if (isIOS || isAndroid || window.innerWidth <= 768) {
+    icon = 'smartphone';
+    label = 'Smartphone';
+  }
+  if (iconEl) {
+    // lucide replaces <i> with <svg>; recreate the placeholder so the icon can change.
+    const placeholder = document.createElement('i');
+    placeholder.id = 'deviceTypeIcon';
+    placeholder.className = 'w-3.5 h-3.5 text-amber-600';
+    placeholder.setAttribute('data-lucide', icon);
+    iconEl.replaceWith(placeholder);
+    refreshIcons(placeholder.parentElement ?? document);
+  }
+  if (textEl) textEl.textContent = label;
+}
+
+/**
+ * @param {'ok' | 'warn' | 'off' | 'busy'} tone
+ */
+function dotClass(tone) {
+  switch (tone) {
+    case 'ok':
+      return 'bg-emerald-500';
+    case 'warn':
+      return 'bg-amber-400';
+    case 'busy':
+      return 'bg-amber-400 animate-pulse';
+    default:
+      return 'bg-slate-400';
+  }
+}
+
+/**
+ * @param {'ok' | 'warn' | 'off' | 'busy'} tone
+ */
+export function setEngineDot(tone) {
+  const dot = byId('engineStatusDot');
+  if (dot) dot.className = `w-2 h-2 rounded-full flex-shrink-0 ${dotClass(tone)}`;
+}
+
+/**
+ * @param {string} text
+ */
+export function setAssistantStatus(text) {
+  const el = byId('assistantStatusText');
+  if (el) el.textContent = text;
+}
+
+/**
+ * @param {import('./supabase.js').ConnectionState} c
+ */
+export function renderConnection(c) {
+  /** @type {'ok' | 'warn' | 'off' | 'busy'} */
+  let tone = 'busy';
+  let badge = 'Verbinde';
+  let auth = 'Row Level Security';
+  if (c.status === 'offline') {
+    tone = 'off';
+    badge = 'Offline';
+    auth = 'Keine Verbindung';
+  } else if (c.status === 'ready') {
+    if (c.hardened && c.signedIn) {
+      tone = 'ok';
+      badge = 'Live';
+      auth = 'RLS · anonyme Sitzung';
+    } else if (c.hardened) {
+      tone = 'warn';
+      badge = 'Nur lesen';
+      auth = c.authError?.kind === 'auth_disabled' ? 'Anonyme Anmeldung deaktiviert' : 'Keine Sitzung';
+    } else if (c.probeError?.kind === 'missing_schema') {
+      tone = 'warn';
+      badge = 'Migration offen';
+      auth = 'Datenbank Migration ausstehend';
+    } else {
+      tone = 'warn';
+      badge = 'Eingeschränkt';
+      auth = `Datenbank meldet einen Fehler (${c.probeError?.code || c.probeError?.kind || 'unbekannt'})`;
+    }
+  }
+
+  const colors = {
+    ok: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    warn: 'bg-amber-50 text-amber-800 border-amber-200',
+    off: 'bg-slate-50 text-slate-600 border-slate-200',
+    busy: 'bg-slate-50 text-slate-600 border-slate-200',
+  };
+
+  const dot = byId('dbStatusDot');
+  if (dot) dot.className = `w-2 h-2 rounded-full ${dotClass(tone)}`;
+  const badgeEl = byId('dbStatusBadge');
+  if (badgeEl) {
+    badgeEl.textContent = badge;
+    badgeEl.className = `text-[10px] uppercase font-bold font-mono px-2 py-0.5 rounded-full border ${colors[tone]}`;
+  }
+  const label = byId('dbProjectLabel');
+  if (label) label.textContent = SUPABASE_PROJECT_REF;
+
+  const settingsBadge = byId('settingsDbBadge');
+  if (settingsBadge) {
+    settingsBadge.className = `text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${colors[tone]}`;
+    settingsBadge.replaceChildren();
+    const sDot = document.createElement('span');
+    sDot.className = `w-1.5 h-1.5 rounded-full ${dotClass(tone)}`;
+    settingsBadge.append(sDot, document.createTextNode(badge));
+  }
+  const project = byId('settingsDbProject');
+  if (project) project.textContent = SUPABASE_PROJECT_REF;
+  const authEl = byId('settingsDbAuth');
+  if (authEl) authEl.textContent = auth;
+}

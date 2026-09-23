@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  height: 100%;
+  height: 100dvh;
+  height: -webkit-fill-available;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: #f8fafc;
+  color: #1e293b;
+  font-family: 'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', sans-serif;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.prose-custom h1 { font-size: 1.35rem; font-weight: 800; margin-top: 1rem; margin-bottom: 0.5rem; color: #0f172a; }
+.prose-custom h2 { font-size: 1.15rem; font-weight: 700; margin-top: 0.8rem; margin-bottom: 0.4rem; color: #1e293b; }
+.prose-custom h3 { font-size: 1.02rem; font-weight: 700; margin-top: 0.6rem; color: #334155; }
+.prose-custom p { margin-bottom: 0.6rem; line-height: 1.65; color: #334155; }
+.prose-custom ul { list-style-type: disc; margin-left: 1.4rem; margin-bottom: 0.6rem; color: #334155; }
+.prose-custom ol { list-style-type: decimal; margin-left: 1.4rem; margin-bottom: 0.6rem; color: #334155; }
+.prose-custom pre { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.75rem; padding: 0.85rem; margin: 0.6rem 0; overflow-x: auto; font-size: 0.82rem; color: #0f172a; }
+.prose-custom code { background: #fef3c7; color: #78350f; padding: 0.15rem 0.35rem; border-radius: 0.3rem; font-size: 0.82rem; font-weight: 600; }
+.prose-custom table { width: 100%; border-collapse: collapse; margin: 0.8rem 0; font-size: 0.85rem; }
+.prose-custom th, .prose-custom td { border: 1px solid #e2e8f0; padding: 0.5rem 0.7rem; text-align: left; }
+.prose-custom th { background: #f1f5f9; font-weight: 700; color: #0f172a; }
+.prose-custom blockquote { border-left: 3px solid #ffca00; padding-left: 0.85rem; margin: 0.6rem 0; color: #475569; background: #fffbeb; padding-top: 0.4rem; padding-bottom: 0.4rem; border-radius: 0 0.5rem 0.5rem 0; }
+.prose-custom a { color: #b45309; text-decoration: underline; text-underline-offset: 2px; }
+
+/* Touch target optimizations for mobile buttons */
+.touch-target-min {
+  min-width: 44px;
+  min-height: 44px;
+}
