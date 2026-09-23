@@ -129,6 +129,10 @@ let connection = { status: 'pending', signedIn: false, hardened: false, authErro
 const connectionListeners = new Set();
 /** @type {Promise<ConnectionState> | null} */
 let connectPromise = null;
+/** Offline attempts so far; spaces the automatic retries (30 s, 60 s, … up to 5 min). */
+let offlineAttempts = 0;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let retryTimer = null;
 
 export function getConnection() {
   return connection;
@@ -161,7 +165,9 @@ async function ensureSession() {
 
 /**
  * Establishes the anonymous session and detects whether the hardened schema is installed.
- * Safe to call repeatedly; concurrent callers share one attempt.
+ * Safe to call repeatedly; concurrent callers share one attempt. When Supabase is unreachable the
+ * attempt is repeated as soon as the browser reports a connection again (the `online` event) and
+ * otherwise after a growing delay; connection listeners re-render the state on every attempt.
  */
 export function connect() {
   if (!connectPromise) {
@@ -176,11 +182,27 @@ export function connect() {
         hardened: probe.ok,
         probeError: probe.ok ? null : probe.error,
       });
-      if (offline) connectPromise = null; // allow a later retry
+      if (offline) scheduleReconnect();
+      else offlineAttempts = 0;
       return connection;
     })();
   }
   return connectPromise;
+}
+
+function scheduleReconnect() {
+  connectPromise = null;
+  if (retryTimer !== null) return;
+  const delay = Math.min(30_000 * 2 ** offlineAttempts, 300_000);
+  offlineAttempts += 1;
+  const retry = () => {
+    if (retryTimer !== null) clearTimeout(retryTimer);
+    retryTimer = null;
+    globalThis.removeEventListener?.('online', retry);
+    void connect();
+  };
+  retryTimer = setTimeout(retry, delay);
+  globalThis.addEventListener?.('online', retry);
 }
 
 /** Chats may be stored in Supabase only when a session exists and RLS isolates them per user. */

@@ -156,6 +156,32 @@ test.describe('hardened schema with anonymous session', () => {
   });
 });
 
+test.describe('offline start', () => {
+  test('reconnects when the browser is back online and then syncs chats', async ({ page, diagnostics }) => {
+    const calls = await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const supabase = /\.supabase\.co\//;
+    /** @param {import('@playwright/test').Route} route */
+    const unreachable = (route) => route.abort('internetdisconnected');
+    await page.route(supabase, unreachable);
+    await page.goto('/');
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Offline');
+
+    await page.unroute(supabase, unreachable);
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
+
+    await ask(page, 'Wann ist der Launch?');
+    await expect(page.locator('#chatMessages')).toContainText('3. März geplant');
+    await expect.poll(() => calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history')).length).toBe(2);
+
+    // The browser logs the requests that failed while Supabase was unreachable; nothing else may be logged.
+    const expected = (/** @type {string} */ p) => /^console\.error: Failed to load resource: net::ERR_INTERNET_DISCONNECTED$/.test(p);
+    expect(diagnostics.some(expected)).toBe(true);
+    diagnostics.splice(0, diagnostics.length, ...diagnostics.filter((p) => !expected(p)));
+    expect(diagnostics).toEqual([]);
+  });
+});
+
 test.describe('local mode without WebGPU', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
