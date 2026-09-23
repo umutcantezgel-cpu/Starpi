@@ -1,6 +1,7 @@
 // @ts-check
 // Voice input through the Web Speech API (Chrome, Edge, Safari).
 import { byId, onAction } from './dom.js';
+import { getIntlLocale, t } from './i18n/index.js';
 
 /**
  * @typedef {{ lang: string, continuous: boolean, interimResults: boolean, start(): void, stop(): void,
@@ -27,7 +28,7 @@ function toggleVoiceInput() {
   );
   const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
   if (!Ctor) {
-    window.alert('Spracherkennung wird in diesem Browser leider nicht direkt unterstützt. Bitte nutzen Sie Chrome, Edge oder Safari.');
+    window.alert(t('chat.voice_unsupported'));
     return;
   }
   if (recording) {
@@ -38,7 +39,7 @@ function toggleVoiceInput() {
   const input = /** @type {HTMLTextAreaElement | null} */ (byId('chatInput'));
   try {
     recognition = new Ctor();
-    recognition.lang = 'de-DE';
+    recognition.lang = getIntlLocale();
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.onstart = () => setRecording(true);

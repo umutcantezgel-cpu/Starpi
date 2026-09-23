@@ -31,19 +31,19 @@
 /** @type {Readonly<Record<ModelKey, ModelSpec>>} */
 export const MODEL_CATALOG = Object.freeze({
   'llama-1b': {
-    label: 'Ultra Kompakt (Llama 3.2 1B)',
+    label: 'Llama 3.2 1B',
     f16: 'Llama-3.2-1B-Instruct-q4f16_1-MLC',
     f32: 'Llama-3.2-1B-Instruct-q4f32_1-MLC',
     approxDownloadMB: 700,
   },
   'qwen-1.5b': {
-    label: 'Allrounder (Qwen 2.5 1.5B)',
+    label: 'Qwen 2.5 1.5B',
     f16: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
     f32: 'Qwen2.5-1.5B-Instruct-q4f32_1-MLC',
     approxDownloadMB: 1_000,
   },
   'qwen-3b': {
-    label: 'Desktop High Precision (Qwen 2.5 3B)',
+    label: 'Qwen 2.5 3B',
     f16: 'Qwen2.5-3B-Instruct-q4f16_1-MLC',
     f32: 'Qwen2.5-3B-Instruct-q4f32_1-MLC',
     approxDownloadMB: 1_900,

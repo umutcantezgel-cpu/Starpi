@@ -1,184 +1,206 @@
 // @ts-check
-// Lightweight, zero-dependency client-side translation module.
-// English ('en') is the default locale for all incoming users.
-// Persisted under 'starpi_locale' in localStorage with reactive runtime toggle without page reload.
-
-import deDict from '../../locales/de.json' with { type: 'json' };
-import enDict from '../../locales/en.json' with { type: 'json' };
+// Zero-dependency runtime localization. English is the default; German is one click away and the
+// choice is kept in localStorage. Switching never reloads the page: static markup is re-translated
+// through data-i18n* attributes and dynamic views subscribe to onLocaleChange().
+//
+// Markup contract (applied by applyTranslations()):
+//   data-i18n="ns.key"               -> textContent
+//   data-i18n-placeholder="ns.key"   -> placeholder attribute
+//   data-i18n-title="ns.key"         -> title attribute
+//   data-i18n-aria="ns.key"          -> aria-label attribute
+//   data-i18n-params='{"n":3}'       -> interpolation values for any of the above
+// Only textContent and attributes are written, never HTML.
+import de from '../../locales/de.json' with { type: 'json' };
+import en from '../../locales/en.json' with { type: 'json' };
 
 /** @typedef {'en' | 'de'} Locale */
+/** @typedef {Record<string, string | number>} Params */
+/** @typedef {{ [key: string]: string | Dictionary }} Dictionary */
 
-const STORAGE_KEY = 'starpi_locale';
-const DEFAULT_LOCALE = 'en';
+export const LOCALES = /** @type {readonly Locale[]} */ (Object.freeze(['en', 'de']));
+export const DEFAULT_LOCALE = /** @type {Locale} */ ('en');
+export const STORAGE_KEY = 'starpi_locale';
 
-/** @type {Record<Locale, Record<string, any>>} */
-const DICTIONARIES = {
-  en: enDict,
-  de: deDict,
-};
+/** @type {Record<Locale, Dictionary>} */
+const DICTIONARIES = { en, de };
+const INTL_LOCALES = /** @type {Record<Locale, string>} */ ({ en: 'en-US', de: 'de-DE' });
 
-/** @type {Set<(locale: Locale) => void>} */
-const changeListeners = new Set();
+/** @param {unknown} value @returns {value is Locale} */
+function isLocale(value) {
+  return value === 'en' || value === 'de';
+}
 
-/**
- * Returns the currently active locale.
- * @returns {Locale}
- */
-export function getLocale() {
+function readStoredLocale() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === 'de' || saved === 'en') return saved;
+    const saved = globalThis.localStorage?.getItem(STORAGE_KEY);
+    if (isLocale(saved)) return saved;
   } catch {
-    // localStorage might be unavailable or restricted.
+    // Storage can be unavailable (private mode, blocked site data).
   }
   return DEFAULT_LOCALE;
 }
 
+/** @type {Locale} */
+let current = readStoredLocale();
+/** @type {Set<(locale: Locale) => void>} */
+const listeners = new Set();
+
+/** @returns {Locale} */
+export function getLocale() {
+  return current;
+}
+
+/** BCP 47 tag for Intl formatting and speech recognition. */
+export function getIntlLocale() {
+  return INTL_LOCALES[current];
+}
+
 /**
- * Looks up a dotted translation key in dictionary.
- * @param {Record<string, any>} dict
- * @param {string} path
+ * @param {Dictionary} dict
+ * @param {string} key
  * @returns {string | undefined}
  */
-function lookup(dict, path) {
-  const parts = path.split('.');
-  let current = dict;
-  for (const part of parts) {
-    if (!current || typeof current !== 'object') return undefined;
-    current = current[part];
+function lookup(dict, key) {
+  /** @type {string | Dictionary | undefined} */
+  let node = dict;
+  for (const part of key.split('.')) {
+    if (!node || typeof node !== 'object') return undefined;
+    node = node[part];
   }
-  return typeof current === 'string' ? current : undefined;
+  return typeof node === 'string' ? node : undefined;
 }
 
 /**
- * Translates a key for the current locale with optional string interpolation.
- * Falls back to English if the key is missing in the active locale.
- *
  * @param {string} key
- * @param {Record<string, string | number>} [params]
- * @returns {string}
+ * @param {Locale} [locale]
  */
-export function t(key, params) {
-  const currentLocale = getLocale();
-  let str = lookup(DICTIONARIES[currentLocale], key);
-  if (str === undefined && currentLocale !== 'en') {
-    str = lookup(DICTIONARIES.en, key);
-  }
-  if (str === undefined) {
-    return key;
-  }
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      str = str.replaceAll(`{${k}}`, String(v));
-    }
-  }
-  return str;
+export function hasKey(key, locale = current) {
+  return lookup(DICTIONARIES[locale], key) !== undefined;
 }
 
 /**
- * Sets the active locale, persists it, updates DOM attributes, and notifies listeners.
- * @param {Locale} newLocale
+ * Translates a key. Falls back to English, then to the key itself, so a missing entry is visible
+ * instead of silently empty. `{name}` placeholders are replaced from params.
+ * @param {string} key
+ * @param {Params} [params]
+ * @param {Locale} [locale]
  */
-export function setLocale(newLocale) {
-  const target = newLocale === 'de' ? 'de' : 'en';
+export function t(key, params, locale = current) {
+  const template = lookup(DICTIONARIES[locale], key) ?? lookup(DICTIONARIES[DEFAULT_LOCALE], key) ?? key;
+  if (!params) return template;
+  return template.replace(/\{(\w+)\}/g, (match, name) => (name in params ? String(params[name]) : match));
+}
+
+/**
+ * @param {number} value
+ * @param {Intl.NumberFormatOptions} [options]
+ */
+export function formatNumber(value, options) {
+  return new Intl.NumberFormat(getIntlLocale(), options).format(value);
+}
+
+/**
+ * @param {Date} value
+ * @param {Intl.DateTimeFormatOptions} [options]
+ */
+export function formatDate(value, options = { dateStyle: 'medium' }) {
+  return Number.isNaN(value.getTime()) ? '–' : new Intl.DateTimeFormat(getIntlLocale(), options).format(value);
+}
+
+/** @param {Element} el */
+function paramsOf(el) {
+  const raw = el.getAttribute('data-i18n-params');
+  if (!raw) return undefined;
   try {
-    localStorage.setItem(STORAGE_KEY, target);
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? /** @type {Params} */ (parsed) : undefined;
   } catch {
-    // ignore storage quota/permission errors
-  }
-
-  document.documentElement.lang = target;
-  applyTranslations();
-
-  for (const listener of changeListeners) {
-    try {
-      listener(target);
-    } catch (err) {
-      console.error('[i18n] listener failed', err);
-    }
+    return undefined;
   }
 }
 
-/**
- * Subscribes to locale change events.
- * @param {(locale: Locale) => void} fn
- * @returns {() => void} Unsubscribe function
- */
-export function onLocaleChange(fn) {
-  changeListeners.add(fn);
-  return () => changeListeners.delete(fn);
-}
+const ATTRIBUTE_BINDINGS = /** @type {const} */ ([
+  ['data-i18n-placeholder', 'placeholder'],
+  ['data-i18n-title', 'title'],
+  ['data-i18n-aria', 'aria-label'],
+]);
+
+const ANNOTATED = '[data-i18n],[data-i18n-placeholder],[data-i18n-title],[data-i18n-aria]';
 
 /**
- * Scans elements inside root (default: document) with data-i18n attributes
- * and updates their text content, placeholder, title, and aria-labels.
+ * Translates every annotated element under root (and root itself).
  * @param {Element | Document} [root]
  */
 export function applyTranslations(root = document) {
-  const currentLocale = getLocale();
-  document.documentElement.lang = currentLocale;
-
-  // 1. Text content
-  const textElements = root.querySelectorAll('[data-i18n]');
-  for (const el of textElements) {
-    const key = el.getAttribute('data-i18n');
-    if (!key) continue;
-    const translation = t(key);
-    if (translation && translation !== key) {
-      el.textContent = translation;
+  /** @type {Element[]} */
+  const elements = [...root.querySelectorAll(ANNOTATED)];
+  if (root instanceof Element && root.matches(ANNOTATED)) elements.unshift(root);
+  for (const el of elements) {
+    const params = paramsOf(el);
+    const textKey = el.getAttribute('data-i18n');
+    if (textKey) el.textContent = t(textKey, params);
+    for (const [source, target] of ATTRIBUTE_BINDINGS) {
+      const key = el.getAttribute(source);
+      if (key) el.setAttribute(target, t(key, params));
     }
   }
+  for (const btn of document.querySelectorAll('[data-action="set-locale"]')) {
+    btn.setAttribute('aria-pressed', String(btn.getAttribute('data-arg') === current));
+  }
+}
 
-  // 2. Placeholders
-  const placeholderElements = root.querySelectorAll('[data-i18n-placeholder]');
-  for (const el of placeholderElements) {
-    const key = el.getAttribute('data-i18n-placeholder');
-    if (!key) continue;
-    const translation = t(key);
-    if (translation && translation !== key) {
-      el.setAttribute('placeholder', translation);
+/**
+ * Sets translated text on an element and remembers the key, so a later language switch
+ * re-translates it without the caller re-rendering.
+ * @param {Element | null} el
+ * @param {string} key
+ * @param {Params} [params]
+ */
+export function setText(el, key, params) {
+  if (!el) return;
+  el.setAttribute('data-i18n', key);
+  if (params) el.setAttribute('data-i18n-params', JSON.stringify(params));
+  else el.removeAttribute('data-i18n-params');
+  el.textContent = t(key, params);
+}
+
+/**
+ * Switches the language at runtime, persists it and notifies subscribers.
+ * @param {string} next
+ */
+export function setLocale(next) {
+  const locale = isLocale(next) ? next : DEFAULT_LOCALE;
+  current = locale;
+  try {
+    globalThis.localStorage?.setItem(STORAGE_KEY, locale);
+  } catch {
+    // Not persisted; the switch still applies to this page.
+  }
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = locale;
+    applyTranslations(document);
+  }
+  for (const fn of listeners) {
+    try {
+      fn(locale);
+    } catch (err) {
+      console.error('[starpi] locale listener failed', err);
     }
   }
+}
 
-  // 3. Titles / Tooltips
-  const titleElements = root.querySelectorAll('[data-i18n-title]');
-  for (const el of titleElements) {
-    const key = el.getAttribute('data-i18n-title');
-    if (!key) continue;
-    const translation = t(key);
-    if (translation && translation !== key) {
-      el.setAttribute('title', translation);
-    }
-  }
+/**
+ * @param {(locale: Locale) => void} fn
+ * @returns {() => void}
+ */
+export function onLocaleChange(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
 
-  // 4. Aria labels
-  const ariaElements = root.querySelectorAll('[data-i18n-aria]');
-  for (const el of ariaElements) {
-    const key = el.getAttribute('data-i18n-aria');
-    if (!key) continue;
-    const translation = t(key);
-    if (translation && translation !== key) {
-      el.setAttribute('aria-label', translation);
-    }
-  }
-
-  // 5. Update language toggle active button styles if present
-  const toggleEn = root.querySelector('[data-action="set-locale"][data-arg="en"]');
-  const toggleDe = root.querySelector('[data-action="set-locale"][data-arg="de"]');
-  if (toggleEn && toggleDe) {
-    const activeClasses = ['bg-white', 'text-slate-950', 'shadow-xs', 'font-bold'];
-    const inactiveClasses = ['text-slate-500', 'hover:text-slate-900', 'font-medium'];
-
-    if (currentLocale === 'en') {
-      toggleEn.classList.add(...activeClasses);
-      toggleEn.classList.remove(...inactiveClasses);
-      toggleDe.classList.remove(...activeClasses);
-      toggleDe.classList.add(...inactiveClasses);
-    } else {
-      toggleDe.classList.add(...activeClasses);
-      toggleDe.classList.remove(...inactiveClasses);
-      toggleEn.classList.remove(...activeClasses);
-      toggleEn.classList.add(...inactiveClasses);
-    }
-  }
+/** Applies the stored (or default) language to the document once at boot. */
+export function initI18n() {
+  current = readStoredLocale();
+  document.documentElement.lang = current;
+  applyTranslations(document);
 }

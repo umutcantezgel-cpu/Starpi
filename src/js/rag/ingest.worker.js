@@ -1,104 +1,137 @@
 // @ts-check
-// Dedicated Ingestion Web Worker for Starpi.
-// Handles file parsing, sliding-window chunking, and Okapi BM25 retrieval in background thread.
-// Keeps the UI responsive at 60 FPS.
-
+/// <reference lib="webworker" />
+// Ingestion worker: parsing, chunking and BM25 search run here so the UI thread stays responsive.
+// All documents live in this worker's memory only; terminating the worker discards them.
+//
+// Protocol (main -> worker): { id, type, payload }
+//   ingest   { file: File, chunkSize?, chunkOverlap? }  -> DocumentInfo       (progress events on the way)
+//   search   { query, topK? }                             -> SearchResult[]
+//   context  { docId, start, end, pad? }                  -> { before, match, after, start, end, length }
+//   head     { docId, count? }                            -> SearchResult[] (first chunks, score 0)
+//   text     { docId }                                    -> { name, text }
+//   remove   { docId }                                    -> { removed }
+//   clear    {}                                           -> { cleared: true }
+// Replies: { id, ok: true, result } | { id, ok: false, error: { code, message, details } }
+// Progress: { id, progress: { stage: 'reading' | 'parsing' | 'chunking' | 'indexing', done, total } }
 import { BM25Index } from './bm25.js';
 import { chunkText } from './chunker.js';
-import { parseJsonDocument, parsePdfBuffer } from './parser.js';
+import { extractText, ParseError } from './parser.js';
 
-const bm25 = new BM25Index();
+/** @typedef {{ docId: string, name: string, kind: string, chars: number, chunks: number, pages: number | null }} DocumentInfo */
 
-self.onmessage = async (event) => {
-  const { id, type, payload } = event.data || {};
+const index = new BM25Index();
+/** @type {Map<string, DocumentInfo & { text: string }>} */
+const documents = new Map();
+let nextId = 1;
 
-  try {
-    switch (type) {
-      case 'PARSE_AND_CHUNK': {
-        const { fileName, buffer, textContent, options } = payload;
-        const ext = (fileName || '').split('.').pop()?.toLowerCase() ?? '';
-        let rawText = '';
+/**
+ * @param {number} id
+ * @param {string} stage
+ * @param {number} done
+ * @param {number} total
+ */
+function progress(id, stage, done, total) {
+  self.postMessage({ id, progress: { stage, done, total } });
+}
 
-        if (buffer instanceof ArrayBuffer) {
-          if (ext === 'pdf') {
-            rawText = await parsePdfBuffer(buffer);
-          } else if (ext === 'json') {
-            const decoded = new TextDecoder('utf-8').decode(buffer);
-            rawText = parseJsonDocument(decoded);
-          } else {
-            rawText = new TextDecoder('utf-8').decode(buffer);
-          }
-        } else if (typeof textContent === 'string') {
-          rawText = ext === 'json' ? parseJsonDocument(textContent) : textContent;
-        }
+/**
+ * @param {number} id
+ * @param {{ file: File, chunkSize?: number, chunkOverlap?: number }} payload
+ * @returns {Promise<DocumentInfo>}
+ */
+async function ingest(id, payload) {
+  const { file } = payload;
+  progress(id, 'parsing', 0, 1);
+  const { text, kind, pages } = await extractText(file, (page, total) => progress(id, 'parsing', page, total));
+  progress(id, 'chunking', 0, 1);
+  const chunks = chunkText(text, { chunkSize: payload.chunkSize, chunkOverlap: payload.chunkOverlap });
+  const docId = `ws-${nextId++}`;
+  progress(id, 'indexing', 0, chunks.length);
+  index.add(chunks.map((c) => ({ docId, docName: file.name, chunkIndex: c.index, start: c.start, end: c.end, text: c.text })));
+  const info = { docId, name: file.name, kind, chars: text.length, chunks: chunks.length, pages };
+  documents.set(docId, { ...info, text });
+  progress(id, 'indexing', chunks.length, chunks.length);
+  return info;
+}
 
-        const chunks = chunkText(rawText, options);
-        self.postMessage({
-          id,
-          type: 'PARSE_AND_CHUNK_SUCCESS',
-          payload: {
-            fileName,
-            rawText,
-            chunks,
-            totalChars: rawText.length,
-            chunkCount: chunks.length,
-          },
-        });
-        break;
-      }
+/** @param {string} docId */
+function requireDoc(docId) {
+  const doc = documents.get(docId);
+  if (!doc) throw new ParseError('empty', 'Document is no longer in the workspace');
+  return doc;
+}
 
-      case 'INDEX_CHUNKS': {
-        const { chunks } = payload;
-        if (Array.isArray(chunks)) {
-          bm25.addDocuments(chunks);
-        }
-        self.postMessage({
-          id,
-          type: 'INDEX_CHUNKS_SUCCESS',
-          payload: {
-            totalIndexedDocs: bm25.docs.length,
-            avgDocLength: bm25.avgDocLength,
-          },
-        });
-        break;
-      }
-
-      case 'SEARCH_BM25': {
-        const { query, topK, minScore } = payload;
-        const results = bm25.search(query, topK ?? 5, minScore ?? 0.01);
-        self.postMessage({
-          id,
-          type: 'SEARCH_BM25_SUCCESS',
-          payload: {
-            query,
-            results,
-          },
-        });
-        break;
-      }
-
-      case 'CLEAR_INDEX': {
-        bm25.clear();
-        self.postMessage({
-          id,
-          type: 'CLEAR_INDEX_SUCCESS',
-          payload: { success: true },
-        });
-        break;
-      }
-
-      default:
-        self.postMessage({
-          id,
-          type: 'ERROR',
-          error: `Unknown message type: ${type}`,
-        });
+/**
+ * @param {string} type
+ * @param {any} payload
+ * @param {number} id
+ */
+async function handle(type, payload, id) {
+  switch (type) {
+    case 'ingest':
+      return ingest(id, payload);
+    case 'search': {
+      const topK = Math.min(Math.max(Number(payload.topK) || 5, 1), 50);
+      return index.search(String(payload.query ?? ''), topK).map((hit) => ({
+        docId: hit.chunk.docId,
+        docName: hit.chunk.docName,
+        chunkIndex: hit.chunk.chunkIndex,
+        start: hit.chunk.start,
+        end: hit.chunk.end,
+        text: hit.chunk.text,
+        score: hit.score,
+        matchedTerms: hit.matchedTerms,
+      }));
     }
-  } catch (err) {
-    self.postMessage({
-      id,
-      type: 'ERROR',
-      error: err instanceof Error ? err.message : String(err),
-    });
+    case 'context': {
+      const doc = requireDoc(payload.docId);
+      const start = Math.max(0, Math.min(Number(payload.start) || 0, doc.text.length));
+      const end = Math.max(start, Math.min(Number(payload.end) || 0, doc.text.length));
+      const pad = Math.min(Math.max(Number(payload.pad) || 300, 0), 2_000);
+      const from = Math.max(0, start - pad);
+      const to = Math.min(doc.text.length, end + pad);
+      return {
+        before: doc.text.slice(from, start),
+        match: doc.text.slice(start, end),
+        after: doc.text.slice(end, to),
+        start,
+        end,
+        length: doc.text.length,
+      };
+    }
+    case 'head': {
+      const count = Math.min(Math.max(Number(payload.count) || 3, 1), 10);
+      return index.entries
+        .filter((e) => e.docId === payload.docId)
+        .slice(0, count)
+        .map((e) => ({ docId: e.docId, docName: e.docName, chunkIndex: e.chunkIndex, start: e.start, end: e.end, text: e.text, score: 0, matchedTerms: [] }));
+    }
+    case 'text': {
+      const doc = requireDoc(payload.docId);
+      return { name: doc.name, text: doc.text };
+    }
+    case 'remove': {
+      const removed = index.remove(payload.docId);
+      documents.delete(payload.docId);
+      return { removed };
+    }
+    case 'clear':
+      index.clear();
+      documents.clear();
+      return { cleared: true };
+    default:
+      throw new ParseError('unsupported_type', `Unknown request: ${type}`);
   }
-};
+}
+
+self.addEventListener('message', (event) => {
+  const { id, type, payload } = /** @type {{ id: number, type: string, payload: any }} */ (event.data ?? {});
+  handle(type, payload ?? {}, id).then(
+    (result) => self.postMessage({ id, ok: true, result }),
+    (err) => {
+      const code = err instanceof ParseError ? err.code : 'internal';
+      const details = err instanceof ParseError ? err.details : {};
+      self.postMessage({ id, ok: false, error: { code, message: err instanceof Error ? err.message : String(err), details } });
+    },
+  );
+});

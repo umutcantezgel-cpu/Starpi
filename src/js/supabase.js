@@ -20,6 +20,7 @@ import { withTimeoutSignal } from './signals.js';
  * @property {string} content
  * @property {string[]} tags
  * @property {number | null} rank
+ * @property {{ docId: string, chunkIndex: number, start: number, end: number }} [workspace] set for chunks from the on-device workspace
  */
 
 /**
@@ -212,7 +213,7 @@ export async function getDocument(id) {
     run(sb.from('knowledge_sections').select('heading, markdown_content').eq('document_id', id).order('section_index', { ascending: true })),
   ]);
   if (!doc.ok) return doc;
-  if (!doc.data) return { ok: false, error: { kind: 'forbidden', message: 'Dokument nicht gefunden oder nicht freigegeben.' } };
+  if (!doc.data) return { ok: false, error: { kind: 'forbidden', message: 'Document not found or not shared.' } };
   const sectionRows = sections.ok ? /** @type {Array<{ heading: string | null, markdown_content: string | null }>} */ (sections.data ?? []) : [];
   return { ok: true, data: { doc: /** @type {DocumentRow} */ (doc.data), sections: sectionRows } };
 }

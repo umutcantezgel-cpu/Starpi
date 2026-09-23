@@ -2,6 +2,7 @@
 // Knowledge graph: entities/relations from Supabase drawn on a canvas (text via fillText only).
 import { submitChat } from './chat.js';
 import { byId, onAction, setHidden, setHtml } from './dom.js';
+import { hasKey, onLocaleChange, setText, t } from './i18n/index.js';
 import { describeDataError } from './library.js';
 import { escapeHtml } from './render.js';
 import { insertEntity, listEntities, listRelations } from './supabase.js';
@@ -21,7 +22,7 @@ const ENTITY_TYPES = new Set(Object.keys(TYPE_COLORS));
 
 /** @type {{ entities: Entity[], relations: Relation[] }} */
 let graph = { entities: [], relations: [] };
-/** @type {string | null} */
+/** @type {(() => string) | null} */
 let emptyMessage = null;
 /** @type {string | null} */
 let selectedId = null;
@@ -35,10 +36,11 @@ export async function loadKnowledgeGraph() {
     const [entRes, relRes] = await Promise.all([listEntities(), listRelations()]);
     if (!entRes.ok) {
       graph = { entities: [], relations: [] };
-      emptyMessage = describeDataError(entRes.error);
+      const error = entRes.error;
+      emptyMessage = () => describeDataError(error);
     } else {
       graph = { entities: entRes.data ?? [], relations: relRes.ok ? (relRes.data ?? []) : [] };
-      emptyMessage = graph.entities.length === 0 ? 'Noch keine Entitäten im Graph hinterlegt.' : null;
+      emptyMessage = graph.entities.length === 0 ? () => t('graph.empty') : null;
     }
     selectedId = null;
     showEntityDetails(null);
@@ -94,7 +96,7 @@ export function renderGraph() {
     ctx.font = '13px "Plus Jakarta Sans Variable", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const lines = wrapLines(ctx, emptyMessage ?? 'Keine Entitäten im Graph hinterlegt.', Math.max(160, width - 48));
+    const lines = wrapLines(ctx, emptyMessage ? emptyMessage() : t('graph.empty'), Math.max(160, width - 48));
     lines.forEach((l, i) => ctx.fillText(l, cx, cy + (i - (lines.length - 1) / 2) * 18));
     return;
   }
@@ -162,25 +164,34 @@ function showEntityDetails(entity) {
   const badge = byId('selectedEntityBadge');
   if (!box || !badge) return;
   if (!entity) {
-    badge.textContent = 'Info';
+    setText(badge, 'graph.details_badge');
     setHtml(
       box,
       `<div class="text-center py-12 text-slate-500">
         <i data-lucide="mouse-pointer-click" class="w-8 h-8 mx-auto mb-2 opacity-40"></i>
-        <p>Klicken Sie auf einen Knoten im Wissensgraphen, um Verknüpfungen und Details anzuzeigen.</p>
+        <p data-i18n="graph.details_empty">${escapeHtml(t('graph.details_empty'))}</p>
       </div>`,
     );
     return;
   }
 
-  badge.textContent = entity.entity_type;
+  const typeKey = `graph.type_${entity.entity_type}`;
+  if (hasKey(typeKey)) setText(badge, typeKey);
+  else {
+    badge.removeAttribute('data-i18n');
+    badge.textContent = entity.entity_type;
+  }
   const outgoing = graph.relations.filter((r) => r.source_entity_id === entity.id);
   const incoming = graph.relations.filter((r) => r.target_entity_id === entity.id);
   const nameOf = (/** @type {string} */ id, /** @type {string} */ fallback) => graph.entities.find((e) => e.id === id)?.name ?? fallback;
-  const edge = (/** @type {string} */ arrow, /** @type {string} */ name, /** @type {string} */ type) => `
-    <div class="p-2.5 rounded-lg bg-white border border-slate-200 text-xs flex items-center justify-between shadow-xs">
-      <span class="text-slate-800 font-medium">${arrow} ${escapeHtml(name)}</span>
-      <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-50 text-amber-950 font-bold border border-amber-200">${escapeHtml(type)}</span>
+  const edge = (/** @type {'outgoing' | 'incoming'} */ dir, /** @type {string} */ name, /** @type {string} */ type) => `
+    <div class="p-2.5 rounded-lg bg-white border border-slate-200 text-xs flex items-center justify-between gap-2">
+      <span class="text-slate-800 font-medium flex items-center gap-1.5 min-w-0">
+        <i data-lucide="${dir === 'outgoing' ? 'arrow-right' : 'arrow-left'}" class="w-3.5 h-3.5 flex-shrink-0 text-slate-400"></i>
+        <span class="sr-only" data-i18n="graph.${dir}">${escapeHtml(t(`graph.${dir}`))}</span>
+        <span class="truncate">${escapeHtml(name)}</span>
+      </span>
+      <span class="badge badge-brand">${escapeHtml(type)}</span>
     </div>`;
 
   setHtml(
@@ -190,22 +201,22 @@ function showEntityDetails(entity) {
         <span class="entity-swatch w-3 h-3 rounded-full"></span>
         <h4 class="text-sm font-bold text-slate-900">${escapeHtml(entity.name)}</h4>
       </div>
-      <p class="text-xs text-slate-600 leading-relaxed">${escapeHtml(entity.description || 'Keine Beschreibung vorhanden.')}</p>
+      <p class="text-xs text-slate-600 leading-relaxed">${entity.description ? escapeHtml(entity.description) : `<span data-i18n="graph.no_description">${escapeHtml(t('graph.no_description'))}</span>`}</p>
     </div>
     <div class="space-y-2">
       <h5 class="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
         <i data-lucide="git-fork" class="w-3.5 h-3.5 text-amber-600"></i>
-        Verbindungen (${outgoing.length + incoming.length})
+        <span data-i18n="graph.connections" data-i18n-params="${escapeHtml(JSON.stringify({ n: outgoing.length + incoming.length }))}">${escapeHtml(t('graph.connections', { n: outgoing.length + incoming.length }))}</span>
       </h5>
       <div class="space-y-1.5">
-        ${outgoing.map((r) => edge('→', nameOf(r.target_entity_id, 'Ziel'), r.relation_type)).join('')}
-        ${incoming.map((r) => edge('←', nameOf(r.source_entity_id, 'Quelle'), r.relation_type)).join('')}
-        ${outgoing.length === 0 && incoming.length === 0 ? '<p class="text-slate-500 text-xs italic">Keine direkten Kanten vorhanden.</p>' : ''}
+        ${outgoing.map((r) => edge('outgoing', nameOf(r.target_entity_id, t('graph.unknown_entity')), r.relation_type)).join('')}
+        ${incoming.map((r) => edge('incoming', nameOf(r.source_entity_id, t('graph.unknown_entity')), r.relation_type)).join('')}
+        ${outgoing.length === 0 && incoming.length === 0 ? `<p class="text-slate-500 text-xs italic" data-i18n="graph.no_edges">${escapeHtml(t('graph.no_edges'))}</p>` : ''}
       </div>
     </div>
-    <button type="button" data-action="ask-entity" data-arg="${escapeHtml(entity.name)}" class="w-full text-xs font-bold bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 border border-amber-400/30 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm">
+    <button type="button" data-action="ask-entity" data-arg="${escapeHtml(entity.name)}" class="btn btn-primary w-full justify-center">
       <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-      Im Brain Chat nach ${escapeHtml(entity.name)} fragen
+      <span data-i18n="graph.ask" data-i18n-params="${escapeHtml(JSON.stringify({ name: entity.name }))}">${escapeHtml(t('graph.ask', { name: entity.name }))}</span>
     </button>`,
   );
   const swatch = /** @type {HTMLElement | null} */ (box.querySelector('.entity-swatch'));
@@ -232,12 +243,12 @@ async function saveEntity() {
   const typeValue = /** @type {HTMLSelectElement | null} */ (byId('newEntityType'))?.value ?? 'project';
   const description = /** @type {HTMLTextAreaElement | null} */ (byId('newEntityDesc'))?.value.trim().slice(0, 2_000) ?? '';
   if (!name) {
-    window.alert('Bitte Namen angeben.');
+    window.alert(t('graph.name_required'));
     return;
   }
   const res = await insertEntity({ name, entityType: ENTITY_TYPES.has(typeValue) ? typeValue : 'project', description });
   if (!res.ok) {
-    window.alert(`Fehler beim Anlegen der Entität. ${describeDataError(res.error)}`);
+    window.alert(`${t('graph.save_failed')} ${describeDataError(res.error)}`);
     return;
   }
   closeEntityModal();
@@ -251,7 +262,7 @@ export function initGraph() {
   onAction('save-entity', () => saveEntity());
   onAction('ask-entity', (el) => {
     switchTab('chat');
-    return submitChat(`Erzähle mir alles über ${el.dataset.arg ?? ''} aus dem Brain`);
+    return submitChat(t('graph.ask_prompt', { name: el.dataset.arg ?? '' }));
   });
 
   const canvas = byId('graphCanvas');
@@ -270,6 +281,9 @@ export function initGraph() {
     showEntityDetails(null);
   });
 
+  onLocaleChange(() => {
+    if (!byId('tab-graph')?.classList.contains('hidden')) renderGraph();
+  });
   window.addEventListener('resize', () => {
     if (!byId('tab-graph')?.classList.contains('hidden')) renderGraph();
   });

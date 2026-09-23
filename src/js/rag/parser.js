@@ -1,222 +1,187 @@
 // @ts-check
-// 100% client-side document parser using Web Streams & ArrayBuffers.
-// Extracts plain text from .txt, .md, .json, .csv, and .pdf files without server communication.
+// Text extraction for the on-device workspace. Runs inside the ingestion worker; nothing is uploaded.
+// Plain text is decoded from a Web Stream, JSON is flattened into "path: value" lines, and PDFs are
+// read with pdf.js (loaded on first use, in-thread, without eval or font loading).
 
-/**
- * Extracts raw text from an ArrayBuffer of a PDF document without any external server.
- * Uses native DecompressionStream to decompress FlateDecode streams, then parses
- * BT ... ET text blocks, Tj, and TJ operators.
- *
- * @param {ArrayBuffer} buffer
- * @returns {Promise<string>}
- */
-export async function parsePdfBuffer(buffer) {
-  const bytes = new Uint8Array(buffer);
-  const textDecoder = new TextDecoder('latin1');
-  const rawString = textDecoder.decode(bytes);
+export const MAX_FILE_BYTES = 25 * 1024 * 1024;
+export const MAX_TEXT_CHARS = 5_000_000;
+export const MAX_PDF_PAGES = 2_000;
 
-  /** @type {string[]} */
-  const extractedPages = [];
+export const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'csv', 'log']);
+export const SUPPORTED_EXTENSIONS = new Set([...TEXT_EXTENSIONS, 'json', 'pdf']);
 
-  // Match stream ... endstream blocks in PDF
-  const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g;
-  let match;
+/** @typedef {'unsupported_type' | 'too_large' | 'empty' | 'invalid_json' | 'invalid_pdf' | 'encrypted_pdf'} ParseErrorCode */
 
-  while ((match = streamRegex.exec(rawString)) !== null) {
-    const streamContent = match[1];
-    const streamStart = match.index;
-    const streamEnd = match.index + match[0].length;
-
-    // Look at dictionary preceding the stream
-    const headerSlice = rawString.slice(Math.max(0, streamStart - 400), streamStart);
-    const isFlate = /\/Filter\s*\/FlateDecode/i.test(headerSlice);
-
-    let decodedStream = '';
-
-    if (isFlate) {
-      try {
-        // Find exact binary offsets for stream
-        const binaryStreamStart = rawString.indexOf('\n', streamStart) + 1;
-        const binaryStreamEnd = rawString.lastIndexOf('endstream', streamEnd) - 1;
-
-        if (binaryStreamEnd > binaryStreamStart) {
-          const streamBytes = bytes.subarray(binaryStreamStart, binaryStreamEnd);
-          // Try decompressing with Web Stream DecompressionStream
-          if (typeof DecompressionStream !== 'undefined') {
-            try {
-              const ds = new DecompressionStream('deflate');
-              const writer = ds.writable.getWriter();
-              writer.write(streamBytes);
-              writer.close();
-              const response = new Response(ds.readable);
-              const decompressedBuffer = await response.arrayBuffer();
-              decodedStream = new TextDecoder('latin1').decode(decompressedBuffer);
-            } catch {
-              // Try raw deflate format if standard zlib header fails
-              try {
-                const dsRaw = new DecompressionStream('deflate-raw');
-                const writer = dsRaw.writable.getWriter();
-                // Skip 2-byte zlib header if present
-                const rawSlice = streamBytes.length > 2 && streamBytes[0] === 0x78 ? streamBytes.subarray(2) : streamBytes;
-                writer.write(rawSlice);
-                writer.close();
-                const response = new Response(dsRaw.readable);
-                const decompressedBuffer = await response.arrayBuffer();
-                decodedStream = new TextDecoder('latin1').decode(decompressedBuffer);
-              } catch {
-                decodedStream = streamContent;
-              }
-            }
-          } else {
-            decodedStream = streamContent;
-          }
-        }
-      } catch {
-        decodedStream = streamContent;
-      }
-    } else {
-      decodedStream = streamContent;
-    }
-
-    if (decodedStream) {
-      const pageText = extractPdfTextOperators(decodedStream);
-      if (pageText.trim()) {
-        extractedPages.push(pageText.trim());
-      }
-    }
+export class ParseError extends Error {
+  /**
+   * @param {ParseErrorCode} code
+   * @param {string} message
+   * @param {Record<string, string | number>} [details]
+   */
+  constructor(code, message, details) {
+    super(message);
+    this.name = 'ParseError';
+    this.code = code;
+    this.details = details ?? {};
   }
+}
 
-  // If streams didn't yield text (e.g. unusual encoding), fallback to scanning raw string for text blocks
-  if (extractedPages.length === 0) {
-    const rawFallback = extractPdfTextOperators(rawString);
-    if (rawFallback.trim()) {
-      return rawFallback.trim();
-    }
-  }
-
-  return extractedPages.join('\n\n');
+/** @param {string} name */
+export function extensionOf(name) {
+  const match = /\.([a-z0-9]+)$/i.exec(name.trim());
+  return match ? match[1].toLowerCase() : '';
 }
 
 /**
- * Extracts text from PDF text operators within BT ... ET blocks.
- * Handles Tj, TJ, ', and " operators with octal and escape sequence unescaping.
- *
- * @param {string} content
- * @returns {string}
+ * Normalizes extracted text: strips a BOM, unifies line breaks and removes NUL/control characters
+ * that would only add noise to the index. Tabs and newlines are kept.
+ * @param {string} text
  */
-export function extractPdfTextOperators(content) {
-  /** @type {string[]} */
-  const textSegments = [];
-  const btRegex = /BT([\s\S]*?)ET/g;
-  let btMatch;
+export function normalizeText(text) {
+  return text
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n?/g, '\n')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+}
 
-  while ((btMatch = btRegex.exec(content)) !== null) {
-    const block = btMatch[1];
-    let blockText = '';
-
-    // 1. Matches TJ array: [(text) 20 (more text)] TJ
-    const tjArrayRegex = /\[((?:[^\]\\]|\\.)*)\]\s*TJ/g;
-    let arrayMatch;
-    while ((arrayMatch = tjArrayRegex.exec(block)) !== null) {
-      const inner = arrayMatch[1];
-      const stringRegex = /\(((?:[^)\\]|\\.)*)\)/g;
-      let strMatch;
-      while ((strMatch = stringRegex.exec(inner)) !== null) {
-        blockText += decodePdfString(strMatch[1]) + ' ';
-      }
-    }
-
-    // 2. Matches single string operators: (text) Tj or (text) '
-    const tjSingleRegex = /\(((?:[^)\\]|\\.)*)\)\s*(?:Tj|'|")/g;
-    let singleMatch;
-    while ((singleMatch = tjSingleRegex.exec(block)) !== null) {
-      blockText += decodePdfString(singleMatch[1]) + '\n';
-    }
-
-    if (blockText.trim()) {
-      textSegments.push(blockText.trim());
-    }
+/**
+ * Flattens JSON into one "path: value" line per scalar, in document order.
+ * @param {unknown} value
+ * @param {string} [path]
+ * @param {string[]} [out]
+ * @returns {string[]}
+ */
+export function flattenJson(value, path = '', out = []) {
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => flattenJson(item, `${path}[${i}]`, out));
+  } else if (value && typeof value === 'object') {
+    for (const [key, child] of Object.entries(value)) flattenJson(child, path ? `${path}.${key}` : key, out);
+  } else if (value !== null && value !== undefined && value !== '') {
+    out.push(path ? `${path}: ${String(value)}` : String(value));
   }
-
-  return textSegments.join('\n');
+  return out;
 }
 
-/**
- * Decodes PDF string escape sequences (e.g. \n, \r, \t, \(, \), \\, \ddd octal).
- * @param {string} str
- * @returns {string}
- */
-export function decodePdfString(str) {
-  return str
-    .replace(/\\([0-7]{1,3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)))
-    .replace(/\\n/g, '\n')
-    .replace(/\\r/g, '\r')
-    .replace(/\\t/g, '\t')
-    .replace(/\\b/g, '\b')
-    .replace(/\\f/g, '\f')
-    .replace(/\\\(/g, '(')
-    .replace(/\\\)/g, ')')
-    .replace(/\\\\/g, '\\');
-}
-
-/**
- * Parses JSON content into a readable structured text document.
- * @param {string} jsonText
- * @returns {string}
- */
-export function parseJsonDocument(jsonText) {
+/** @param {string} raw */
+export function jsonToText(raw) {
+  let data;
   try {
-    const data = JSON.parse(jsonText);
-    if (typeof data !== 'object' || data === null) {
-      return String(data);
+    data = JSON.parse(raw.replace(/^\uFEFF/, ''));
+  } catch (err) {
+    throw new ParseError('invalid_json', err instanceof Error ? err.message : 'Invalid JSON');
+  }
+  return flattenJson(data).join('\n');
+}
+
+/**
+ * Decodes a UTF-8 byte stream incrementally (large files never exist as one byte array in JS).
+ * @param {ReadableStream<Uint8Array>} stream
+ */
+export async function streamToText(stream) {
+  const reader = stream.pipeThrough(new TextDecoderStream('utf-8')).getReader();
+  let text = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text += value;
+    if (text.length > MAX_TEXT_CHARS) {
+      await reader.cancel();
+      throw new ParseError('too_large', 'Extracted text is too long', { max: MAX_TEXT_CHARS });
     }
-    if (Array.isArray(data)) {
-      return data
-        .map((item, idx) => `Item ${idx + 1}:\n${typeof item === 'object' ? JSON.stringify(item, null, 2) : item}`)
-        .join('\n\n');
+  }
+  return text;
+}
+
+/** @type {Promise<typeof import('pdfjs-dist')> | null} */
+let pdfjsPromise = null;
+
+function loadPdfjs() {
+  // The legacy build carries polyfills for the newest built-ins pdf.js uses (Map.getOrInsertComputed,
+  // Math.sumPrecise, Promise.try, ...), so PDFs also parse in browsers older than the latest release;
+  // the polyfills only exist in this worker. Importing the worker module first registers
+  // globalThis.pdfjsWorker, so pdf.js parses in this thread instead of spawning another worker.
+  pdfjsPromise ??= import('pdfjs-dist/legacy/build/pdf.worker.mjs').then(() => import('pdfjs-dist/legacy/build/pdf.mjs'));
+  return pdfjsPromise;
+}
+
+/**
+ * @param {ArrayBuffer} buffer
+ * @param {(page: number, pages: number) => void} [onPage]
+ */
+export async function pdfToText(buffer, onPage) {
+  const pdfjs = await loadPdfjs();
+  const task = pdfjs.getDocument({
+    data: new Uint8Array(buffer),
+    disableFontFace: true,
+    useSystemFonts: false,
+    isOffscreenCanvasSupported: false,
+    stopAtErrors: false,
+    verbosity: pdfjs.VerbosityLevel.ERRORS,
+  });
+  let doc;
+  try {
+    doc = await task.promise;
+  } catch (err) {
+    const name = err instanceof Error ? err.name : '';
+    if (name === 'PasswordException') throw new ParseError('encrypted_pdf', 'The PDF is password protected');
+    throw new ParseError('invalid_pdf', err instanceof Error ? err.message : 'Invalid PDF');
+  }
+  try {
+    const pages = Math.min(doc.numPages, MAX_PDF_PAGES);
+    /** @type {string[]} */
+    const out = [];
+    let length = 0;
+    for (let i = 1; i <= pages; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      let pageText = '';
+      for (const item of content.items) {
+        if (!('str' in item)) continue;
+        pageText += item.str;
+        if (item.hasEOL) pageText += '\n';
+        else if (item.str && !/\s$/.test(item.str)) pageText += ' ';
+      }
+      page.cleanup();
+      pageText = pageText.replace(/[ \t]+\n/g, '\n').trim();
+      if (pageText) {
+        out.push(pageText);
+        length += pageText.length;
+      }
+      if (length > MAX_TEXT_CHARS) throw new ParseError('too_large', 'Extracted text is too long', { max: MAX_TEXT_CHARS });
+      onPage?.(i, pages);
     }
-    return Object.entries(data)
-      .map(([k, v]) => `${k}:\n${typeof v === 'object' ? JSON.stringify(v, null, 2) : v}`)
-      .join('\n\n');
-  } catch {
-    return jsonText;
+    return { text: out.join('\n\n'), pages };
+  } finally {
+    await task.destroy();
   }
 }
 
 /**
- * Parses an uploaded file into plain text using client-side ArrayBuffer / Streams.
- *
- * @param {File | { name: string, arrayBuffer: () => Promise<ArrayBuffer>, text: () => Promise<string> }} file
- * @returns {Promise<{ title: string, text: string, type: string }>}
+ * Extracts plain text from a file.
+ * @param {Blob & { name: string }} file
+ * @param {(page: number, pages: number) => void} [onPage]
+ * @returns {Promise<{ text: string, kind: string, pages: number | null }>}
  */
-export async function parseDocumentFile(file) {
-  const name = file.name || 'document';
-  const ext = name.split('.').pop()?.toLowerCase() ?? '';
-  /** @type {string} */
-  let text;
-  let type = 'file';
-
-  if (ext === 'pdf') {
-    type = 'file';
-    const buffer = await file.arrayBuffer();
-    text = await parsePdfBuffer(buffer);
-  } else if (ext === 'json') {
-    type = 'text';
-    const raw = await file.text();
-    text = parseJsonDocument(raw);
-  } else if (ext === 'md' || ext === 'txt' || ext === 'csv' || ext === 'log') {
-    type = ext === 'csv' ? 'text' : 'file';
-    text = await file.text();
-  } else {
-    // Default fallback
-    try {
-      text = await file.text();
-    } catch {
-      const buffer = await file.arrayBuffer();
-      text = new TextDecoder('utf-8').decode(buffer);
-    }
+export async function extractText(file, onPage) {
+  const ext = extensionOf(file.name);
+  if (!SUPPORTED_EXTENSIONS.has(ext)) throw new ParseError('unsupported_type', 'Unsupported file type', { ext: ext || '?' });
+  if (file.size > MAX_FILE_BYTES) {
+    throw new ParseError('too_large', 'File is too large', { max: Math.round(MAX_FILE_BYTES / (1024 * 1024)) });
   }
 
-  const title = name.replace(/\.[^/.]+$/, '').trim() || 'Untitled';
-  return { title, text: text.trim(), type };
+  let text;
+  let pages = null;
+  if (ext === 'pdf') {
+    const result = await pdfToText(await file.arrayBuffer(), onPage);
+    text = result.text;
+    pages = result.pages;
+  } else if (ext === 'json') {
+    text = jsonToText(await streamToText(file.stream()));
+  } else {
+    text = await streamToText(file.stream());
+  }
+  text = normalizeText(text);
+  if (!text.trim()) throw new ParseError('empty', 'No extractable text');
+  return { text, kind: ext === 'markdown' ? 'md' : ext, pages };
 }

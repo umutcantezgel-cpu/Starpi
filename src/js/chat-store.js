@@ -2,6 +2,7 @@
 // Chat persistence. Messages go to Supabase only when an anonymous session exists AND the hardened
 // RLS schema is installed (rows are owner-scoped). In local mode, or when either is missing, the
 // history stays in this browser's localStorage.
+import { formatNumber, setText } from './i18n/index.js';
 import { LIMITS, STORAGE_KEYS } from './config.js';
 import { byId } from './dom.js';
 import { readLocal, readLocalJson, writeLocal, writeLocalJson } from './storage.js';
@@ -98,13 +99,14 @@ export async function refreshSyncStatus() {
   if (!el) return;
   const c = getConnection();
   if (c.status !== 'ready') {
-    el.textContent = 'Nur auf diesem Gerät (keine Verbindung)';
+    setText(el, 'sync.device_offline');
     return;
   }
   if (!canSyncChats()) {
-    el.textContent = c.hardened ? 'Nur auf diesem Gerät (keine Sitzung)' : 'Nur auf diesem Gerät (Migration ausstehend)';
+    setText(el, c.hardened ? 'sync.device_no_session' : 'sync.device_migration');
     return;
   }
   const res = await countChatMessages();
-  el.textContent = res.ok ? `Synchronisiert (${res.data} eigene Nachrichten)` : 'Synchronisiert';
+  if (res.ok) setText(el, 'sync.synced_count', { n: formatNumber(res.data ?? 0) });
+  else setText(el, 'sync.synced');
 }

@@ -1,34 +1,50 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { formatBytes, queryHardwareProfile, runStandardBenchmark } from '../../src/js/bench/diagnostics.js';
+import { BYTE_LIMITS, computeBenchmarkMetrics, formatBytes } from '../../src/js/bench/diagnostics.js';
 
-describe('hardware diagnostics', () => {
-  it('formats byte numbers into human-readable strings', () => {
+const run = (overrides = {}) => ({
+  modelId: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
+  f16: true,
+  promptTokens: 64,
+  completionTokens: 128,
+  startedAt: 1_000,
+  firstTokenAt: 1_250,
+  finishedAt: 3_790,
+  engineStats: { prefill_tokens_per_s: 256.4, decode_tokens_per_s: 50.1 },
+  ...overrides,
+});
+
+describe('computeBenchmarkMetrics', () => {
+  it('measures time to first token and decode throughput from real timestamps', () => {
+    const m = computeBenchmarkMetrics(run());
+    assert.equal(m.ttftMs, 250);
+    // 127 tokens after the first one in 2.54 s
+    assert.ok(Math.abs(m.decodeTokensPerSec - 127 / 2.54) < 1e-9);
+    assert.equal(m.totalMs, 2_790);
+    assert.equal(m.promptTokens, 64);
+    assert.equal(m.completionTokens, 128);
+    assert.equal(m.prefillTokensPerSec, 256.4);
+  });
+
+  it('never reports throughput it did not measure', () => {
+    const one = computeBenchmarkMetrics(run({ completionTokens: 1, finishedAt: 1_250 }));
+    assert.equal(one.decodeTokensPerSec, 0);
+    assert.equal(computeBenchmarkMetrics(run({ engineStats: null })).prefillTokensPerSec, null);
+    assert.equal(computeBenchmarkMetrics(run({ engineStats: { prefill_tokens_per_s: Number.NaN } })).prefillTokensPerSec, null);
+  });
+});
+
+describe('formatBytes', () => {
+  it('formats sizes with binary units', () => {
+    assert.equal(formatBytes(0), '0 B');
     assert.equal(formatBytes(500), '500 B');
     assert.equal(formatBytes(2048), '2 KB');
-    assert.equal(formatBytes(1048576 * 10), '10.0 MB');
-    assert.equal(formatBytes(1073741824 * 4), '4.0 GB');
+    assert.equal(formatBytes(10 * 1024 * 1024), '10 MB');
+    assert.equal(formatBytes(4.5 * 1024 ** 3), '4.5 GB');
   });
 
-  it('queries hardware profile without crashing in test environments', async () => {
-    const profile = await queryHardwareProfile();
-    assert.ok(profile !== null);
-    assert.equal(typeof profile.webgpuAvailable, 'boolean');
-    assert.equal(typeof profile.vendor, 'string');
-    assert.equal(typeof profile.hasF16, 'boolean');
-  });
-
-  it('runs standardized benchmark pass and returns valid performance metrics', async () => {
-    let progressCalls = 0;
-    const res = await runStandardBenchmark((p) => {
-      progressCalls++;
-      assert.ok(p.percent >= 0 && p.percent <= 100);
-    });
-
-    assert.ok(res.ttftMs >= 0, 'TTFT must be non-negative');
-    assert.ok(res.tokensPerSec > 0, 'Throughput must be positive');
-    assert.ok(res.totalLatencyMs >= res.ttftMs, 'Total latency must be at least TTFT');
-    assert.equal(res.outputTokens, 128);
-    assert.ok(progressCalls > 0);
+  it('knows which adapter limits are byte sizes', () => {
+    assert.ok(BYTE_LIMITS.has('maxBufferSize'));
+    assert.ok(!BYTE_LIMITS.has('maxComputeInvocationsPerWorkgroup'));
   });
 });

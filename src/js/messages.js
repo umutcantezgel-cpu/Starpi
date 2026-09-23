@@ -1,9 +1,13 @@
 // @ts-check
-// Chat message rendering with sanitized Markdown, verifiable citations, and Lucide icons.
+// Chat message rendering. User text is escaped; assistant/model/database text is rendered through
+// renderMarkdown() (marked + DOMPurify). UI chrome inside messages carries data-i18n keys, so a
+// language switch re-labels it; message content itself stays as written. No inline handlers:
+// toggles and citations use data-action delegation.
 import { byId, onAction } from './dom.js';
 import { refreshIcons } from './icons.js';
-import { t } from './i18n/index.js';
-import { escapeHtml, renderMarkdown, sanitizeModelNames } from './render.js';
+import { applyTranslations, formatNumber, setText, t } from './i18n/index.js';
+import { citationSources, linkifyCitations } from './rag/citations.js';
+import { escapeHtml, renderMarkdown } from './render.js';
 
 /** @typedef {{ title: string, rank?: number | null }} Source */
 
@@ -31,6 +35,7 @@ export function initMessages() {
 export function resetMessages() {
   const el = container();
   el.replaceChildren(...(welcomeTemplate ? [welcomeTemplate.cloneNode(true)] : []));
+  applyTranslations(el);
   refreshIcons(el);
   el.scrollTop = 0;
 }
@@ -51,11 +56,11 @@ export function splitReasoning(rawText) {
   return { thoughts: '', answer: text.replace(/<\/?antwort>/gi, '').trim() };
 }
 
-const PHASE_ICONS = ['search', 'message-square', 'file-text', 'zap'];
-const PHASE_ROLES = ['Search', 'Response', 'Details', 'Details'];
+const PHASE_ICONS = ['search', 'sparkles', 'clipboard-list', 'zap'];
+const PHASE_ROLES = ['trace.role_retrieval', 'trace.role_answer', 'trace.role_details', 'trace.role_details'];
 
 /**
- * Renders a details/trace text as a list of step cards.
+ * Renders a details/trace text (Markdown with ### headings) as a list of step cards.
  * @param {string} text
  */
 export function formatThoughtSteps(text) {
@@ -70,28 +75,28 @@ export function formatThoughtSteps(text) {
       if (current) phases.push(current);
       current = { title: header[1].trim(), content: [] };
     } else {
-      current ??= { title: 'Details', content: [] };
+      current ??= { title: '', content: [] };
       if (line.trim()) current.content.push(line);
     }
   }
   if (current) phases.push(current);
-  if (phases.length === 0) return renderMarkdown(sanitizeModelNames(text));
+  if (phases.length === 0) return renderMarkdown(text);
 
   return phases
     .map((p, idx) => {
       const body = p.content.join('\n');
-      const iconName = PHASE_ICONS[idx % PHASE_ICONS.length];
+      const role = PHASE_ROLES[idx] ?? 'trace.role_details';
       return `
-        <div class="rounded-lg bg-slate-50 border border-slate-200/80 p-3 space-y-1.5 shadow-xs">
+        <div class="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-1.5">
           <div class="flex items-center justify-between gap-2">
-            <span class="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
-              <i data-lucide="${iconName}" class="w-3.5 h-3.5 text-amber-600"></i>
-              <span>${escapeHtml(p.title.replace(/^#+\s*/, ''))}</span>
+            <span class="font-semibold text-slate-800 flex items-center gap-1.5 text-xs">
+              <i data-lucide="${PHASE_ICONS[idx % PHASE_ICONS.length]}" class="w-3.5 h-3.5 text-amber-600"></i>
+              <span>${escapeHtml(p.title.replace(/^#+\s*/, '')) || escapeHtml(t(role))}</span>
             </span>
-            <span class="text-[10px] text-slate-700 font-semibold bg-slate-200/80 px-2 py-0.5 rounded border border-slate-300/70">${PHASE_ROLES[idx] ?? 'Details'}</span>
+            <span class="badge badge-muted" data-i18n="${role}">${escapeHtml(t(role))}</span>
           </div>
-          <div class="text-[12px] text-slate-600 pl-4 border-l-2 border-amber-400 font-sans leading-relaxed">
-            ${renderMarkdown(sanitizeModelNames(body) || '–')}
+          <div class="text-[12px] text-slate-600 pl-3 border-l-2 border-amber-400 leading-relaxed">
+            ${renderMarkdown(body || '–')}
           </div>
         </div>`;
     })
@@ -109,7 +114,7 @@ function toggleThought(btn) {
   const open = body.classList.contains('hidden');
   body.classList.toggle('hidden', !open);
   chevron?.classList.toggle('rotate-180', open);
-  if (statusText) statusText.textContent = open ? 'Hide' : 'Details';
+  setText(statusText, open ? 'trace.hide' : 'trace.show');
   btn.setAttribute('aria-expanded', String(open));
 }
 
@@ -118,109 +123,73 @@ function toggleThought(btn) {
  * @param {number | null} durationMs
  */
 function thoughtBlock(trace, durationMs) {
-  const dur = durationMs ? `${(durationMs / 1000).toFixed(1)}s` : '';
+  const dur = durationMs ? `${formatNumber(durationMs / 1000, { maximumFractionDigits: 1 })} s` : '';
   return `
-    <div class="thought-container mb-3 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden shadow-xs">
+    <div class="thought-container mb-3 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden">
       <button type="button" data-action="toggle-thought" aria-expanded="false" class="w-full px-3.5 py-2 flex items-center justify-between text-left text-slate-600 hover:text-slate-900 bg-slate-100/60 hover:bg-slate-100 transition select-none">
-        <div class="flex items-center gap-2">
-          <i data-lucide="info" class="w-3.5 h-3.5 text-amber-600"></i>
-          <span class="text-xs font-semibold text-slate-800">Processing & Retrieval Trace</span>
-        </div>
-        <div class="flex items-center gap-2 text-[11px] text-slate-500 font-mono">
-          <span class="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-[10px] font-sans font-medium">Trace</span>
-          ${dur ? `<span class="text-slate-500">${dur}</span>` : ''}
-          <span class="thought-status-text text-[10px] text-amber-800 font-sans font-semibold hover:underline">Details</span>
+        <span class="flex items-center gap-2 text-xs font-semibold text-slate-800">
+          <i data-lucide="lightbulb" class="w-3.5 h-3.5 text-amber-600"></i>
+          <span data-i18n="trace.title">${escapeHtml(t('trace.title'))}</span>
+        </span>
+        <span class="flex items-center gap-2 text-[11px] text-slate-500">
+          ${dur ? `<span class="font-mono">${escapeHtml(dur)}</span>` : ''}
+          <span class="thought-status-text text-[11px] text-amber-800 font-semibold" data-i18n="trace.show">${escapeHtml(t('trace.show'))}</span>
           <i data-lucide="chevron-down" class="thought-chevron w-3.5 h-3.5 transition-transform duration-200 text-slate-600"></i>
-        </div>
+        </span>
       </button>
-      <div class="thought-body hidden p-3.5 space-y-2 text-slate-700 text-xs border-t border-slate-200 bg-white leading-relaxed">
+      <div class="thought-body hidden p-3 border-t border-slate-200 space-y-2 bg-white">
         ${formatThoughtSteps(trace)}
       </div>
     </div>`;
 }
 
 /**
- * Transforms [Doc: filename.ext, Chunk: X] strings in an element into interactive citation badges.
- * @param {HTMLElement} root
- */
-function injectCitationBadges(root) {
-  const citationRegex = /\[Doc:\s*([^,\]]+),\s*Chunk:\s*(\d+)\]/g;
-  const walkers = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  /** @type {Text[]} */
-  const textNodes = [];
-  let n;
-  while ((n = walkers.nextNode())) {
-    if (citationRegex.test(n.nodeValue || '')) {
-      textNodes.push(/** @type {Text} */ (n));
-    }
-  }
-
-  for (const node of textNodes) {
-    const val = node.nodeValue || '';
-    const parent = node.parentNode;
-    if (!parent) continue;
-
-    const frag = document.createDocumentFragment();
-    let lastIdx = 0;
-    citationRegex.lastIndex = 0;
-    let match;
-
-    while ((match = citationRegex.exec(val)) !== null) {
-      if (match.index > lastIdx) {
-        frag.appendChild(document.createTextNode(val.slice(lastIdx, match.index)));
-      }
-      const docName = match[1].trim();
-      const chunkIdx = match[2].trim();
-
-      const wrapper = document.createElement('span');
-      wrapper.innerHTML = `<button type="button" data-action="open-citation" data-arg="${escapeHtml(`${docName}:${chunkIdx}`)}" class="inline-flex items-center gap-1 px-1.5 py-0.5 mx-1 rounded text-[10px] font-mono font-bold bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 transition shadow-xs align-middle"><i data-lucide="bookmark" class="w-3 h-3 text-amber-600"></i><span>${escapeHtml(docName)} #${chunkIdx}</span></button>`;
-      const btn = wrapper.firstElementChild;
-      if (btn) frag.appendChild(btn);
-      lastIdx = match.index + match[0].length;
-    }
-
-    if (lastIdx < val.length) {
-      frag.appendChild(document.createTextNode(val.slice(lastIdx)));
-    }
-    parent.replaceChild(frag, node);
-  }
-}
-
-/**
- * @param {string} badge
+ * @param {string} badgeKey
  * @param {boolean} pulse
  */
-function badgeBlock(badge, pulse) {
-  if (!badge) return '';
-  return `<div class="mt-2.5 pt-2 border-t border-slate-200 flex items-center gap-1.5 text-[10px] text-slate-500 font-mono">
+function badgeBlock(badgeKey, pulse) {
+  if (!badgeKey) return '';
+  return `<div class="mt-2.5 pt-2 border-t border-slate-200 flex items-center gap-1.5 text-[11px] text-slate-500">
       <span class="w-1.5 h-1.5 rounded-full bg-emerald-500${pulse ? ' animate-pulse' : ''}"></span>
-      <span>${escapeHtml(sanitizeModelNames(badge))}</span>
+      <span data-i18n="${escapeHtml(badgeKey)}">${escapeHtml(t(badgeKey))}</span>
     </div>`;
 }
 
-/** @param {Source[]} sources */
+/**
+ * Title-only source list, used for answers restored from history (their excerpts are not kept).
+ * @param {Source[]} sources
+ */
 function sourcesBlock(sources) {
   if (!sources.length) return '';
-  return `<div class="mt-2.5 pt-2 border-t border-slate-200 flex flex-wrap gap-1.5">
-      <span class="text-[10px] text-slate-500 mr-1 flex items-center gap-1"><i data-lucide="book-open" class="w-3 h-3"></i> Sources:</span>
-      ${sources
-        .map((s) => `<span class="bg-amber-50 text-amber-950 border border-amber-200 text-[10px] px-2 py-0.5 rounded-full font-bold">${escapeHtml(s.title)}</span>`)
-        .join('')}
+  return `<div class="mt-3 pt-2.5 border-t border-slate-200 flex flex-wrap items-center gap-1.5">
+      <span class="text-[11px] font-medium text-slate-500 mr-1" data-i18n="chat.sources">${escapeHtml(t('chat.sources'))}</span>
+      ${sources.map((s) => `<span class="badge badge-brand">${escapeHtml(s.title)}</span>`).join('')}
     </div>`;
 }
 
 const ASSISTANT_AVATAR =
-  '<div class="w-8 h-8 rounded-xl bg-[#FFCA00] border border-amber-400/40 flex items-center justify-center text-slate-950 text-sm font-black flex-shrink-0 shadow-xs">S</div>';
+  '<div class="w-8 h-8 rounded-lg bg-[#FFCA00] flex items-center justify-center text-slate-950 text-sm font-extrabold flex-shrink-0" aria-hidden="true">S</div>';
 const USER_AVATAR =
-  '<div class="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-xs">U</div>';
+  '<div class="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white flex-shrink-0" aria-hidden="true"><i data-lucide="user" class="w-4 h-4"></i></div>';
 
 /**
  * @typedef {object} MessageOptions
- * @property {Source[]} [sources]
- * @property {string} [badge]
+ * @property {Source[]} [sources]       title-only sources (restored history)
+ * @property {string | null} [citations] citation scope id from registerCitations()
+ * @property {string} [badge]           i18n key of the engine label
  * @property {string | null} [trace]
  * @property {number | null} [durationMs]
  */
+
+/**
+ * @param {HTMLElement} bubble
+ * @param {MessageOptions} opts
+ */
+function attachSources(bubble, opts) {
+  const row = citationSources(opts.citations ?? null);
+  if (row) bubble.querySelector('.message-sources')?.replaceChildren(row);
+  else if (opts.sources?.length) bubble.querySelector('.message-sources')?.insertAdjacentHTML('beforeend', sourcesBlock(opts.sources));
+}
 
 /**
  * @param {'user' | 'assistant'} role
@@ -240,21 +209,21 @@ export function appendMessage(role, text, opts = {}) {
     if (split.thoughts) trace = trace ? `${split.thoughts}\n\n${trace}` : split.thoughts;
   }
 
-  const bodyHtml = isUser
-    ? escapeHtml(text).replace(/\n/g, '<br>')
-    : renderMarkdown(sanitizeModelNames(mainText));
+  const bodyHtml = isUser ? escapeHtml(text).replace(/\n/g, '<br>') : renderMarkdown(mainText);
 
   msgDiv.innerHTML = `
     ${isUser ? USER_AVATAR : ASSISTANT_AVATAR}
-    <div class="flex-1 min-w-0 ${isUser ? 'bg-slate-900 text-white shadow-xs' : 'bg-white border border-slate-200/90 text-slate-800 shadow-xs'} rounded-2xl p-4 text-sm leading-relaxed">
+    <div class="flex-1 min-w-0 ${isUser ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-800'} rounded-2xl p-4 text-sm leading-relaxed shadow-xs">
       ${!isUser && trace ? thoughtBlock(trace, opts.durationMs ?? null) : ''}
-      <div class="${isUser ? 'text-white break-words' : 'prose-custom break-words'}">${bodyHtml}</div>
-      ${isUser ? '' : sourcesBlock(opts.sources ?? [])}
+      <div class="message-content ${isUser ? 'text-white break-words' : 'prose-custom break-words'}">${bodyHtml}</div>
+      ${isUser ? '' : '<div class="message-sources"></div>'}
       ${isUser ? '' : badgeBlock(opts.badge ?? '', false)}
     </div>`;
 
   if (!isUser) {
-    injectCitationBadges(msgDiv);
+    const content = /** @type {HTMLElement} */ (msgDiv.querySelector('.message-content'));
+    linkifyCitations(content, opts.citations ?? null);
+    attachSources(msgDiv, opts);
   }
 
   container().appendChild(msgDiv);
@@ -264,34 +233,65 @@ export function appendMessage(role, text, opts = {}) {
 }
 
 /**
- * A message bubble that re-renders at most once per animation frame while tokens stream in.
- * @param {string} badge
+ * A system notice (engine state, download confirmation results, errors). Plain text only; both
+ * lines carry i18n keys so they follow the language switch.
+ * @param {{ icon: string, tone: 'info' | 'success' | 'warn', title: string, body?: string, params?: Record<string, string | number> }} notice
  */
-export function createStreamingMessage(badge) {
+export function appendNotice(notice) {
+  const tones = {
+    info: 'bg-sky-50 border-sky-200 text-sky-950',
+    success: 'bg-emerald-50 border-emerald-200 text-emerald-950',
+    warn: 'bg-amber-50 border-amber-200 text-amber-950',
+  };
+  const iconTones = { info: 'text-sky-600', success: 'text-emerald-600', warn: 'text-amber-600' };
+  const div = document.createElement('div');
+  div.className = 'flex items-start gap-3 max-w-3xl';
+  div.setAttribute('role', 'status');
+  div.innerHTML = `
+    ${ASSISTANT_AVATAR}
+    <div class="flex-1 min-w-0 border rounded-2xl p-3.5 text-sm leading-relaxed flex gap-2.5 ${tones[notice.tone]}">
+      <i data-lucide="${escapeHtml(notice.icon)}" class="w-4 h-4 mt-0.5 flex-shrink-0 ${iconTones[notice.tone]}"></i>
+      <div class="space-y-1">
+        <p class="notice-title font-semibold"></p>
+        <p class="notice-body text-[13px] opacity-90"></p>
+      </div>
+    </div>`;
+  setText(div.querySelector('.notice-title'), notice.title, notice.params);
+  const body = div.querySelector('.notice-body');
+  if (notice.body) setText(body, notice.body, notice.params);
+  else body?.remove();
+  container().appendChild(div);
+  refreshIcons(div);
+  scrollToBottom();
+  return div;
+}
+
+/**
+ * A message bubble that re-renders at most once per animation frame while tokens stream in.
+ * @param {string} badgeKey i18n key of the engine label
+ */
+export function createStreamingMessage(badgeKey) {
   const msgDiv = document.createElement('div');
   msgDiv.className = 'flex items-start gap-3 max-w-3xl';
   msgDiv.innerHTML = `
     ${ASSISTANT_AVATAR}
-    <div class="flex-1 min-w-0 bg-white border border-slate-200/90 rounded-2xl p-4 text-slate-800 text-sm leading-relaxed shadow-xs">
+    <div class="flex-1 min-w-0 bg-white border border-slate-200 rounded-2xl p-4 text-slate-800 text-sm leading-relaxed shadow-xs">
       <div class="streaming-trace"></div>
-      <div class="prose-custom break-words streaming-content"><span class="inline-block w-1.5 h-3.5 bg-[#FFCA00] animate-pulse"></span></div>
-      <div class="streaming-sources"></div>
-      ${badgeBlock(badge, true)}
+      <div class="message-content prose-custom break-words"><span class="inline-block w-1.5 h-3.5 bg-[#FFCA00] animate-pulse"></span></div>
+      <div class="message-sources"></div>
+      ${badgeBlock(badgeKey, true)}
     </div>`;
   container().appendChild(msgDiv);
   scrollToBottom();
 
-  const proseEl = /** @type {HTMLElement} */ (msgDiv.querySelector('.streaming-content'));
-  const sourcesEl = /** @type {HTMLElement} */ (msgDiv.querySelector('.streaming-sources'));
+  const proseEl = /** @type {HTMLElement} */ (msgDiv.querySelector('.message-content'));
   const traceEl = /** @type {HTMLElement} */ (msgDiv.querySelector('.streaming-trace'));
   let pending = '';
   let frame = 0;
 
   const flush = () => {
     frame = 0;
-    proseEl.innerHTML = renderMarkdown(sanitizeModelNames(splitReasoning(pending).answer || pending));
-    injectCitationBadges(proseEl);
-    refreshIcons(proseEl);
+    proseEl.innerHTML = renderMarkdown(splitReasoning(pending).answer || pending);
     scrollToBottom();
   };
 
@@ -304,18 +304,17 @@ export function createStreamingMessage(badge) {
     },
     /**
      * @param {string} finalText
-     * @param {Source[]} sources
-     * @param {string | null} trace
-     * @param {number | null} durationMs
+     * @param {{ citations: string | null, trace: string | null, durationMs: number | null }} meta
      */
-    finalize(finalText, sources, trace, durationMs) {
+    finalize(finalText, meta) {
       if (frame) cancelAnimationFrame(frame);
       pending = finalText;
       flush();
+      linkifyCitations(proseEl, meta.citations);
       const split = splitReasoning(finalText);
-      const fullTrace = [split.thoughts, trace].filter(Boolean).join('\n\n');
-      if (fullTrace) traceEl.innerHTML = thoughtBlock(fullTrace, durationMs);
-      sourcesEl.innerHTML = sourcesBlock(sources);
+      const fullTrace = [split.thoughts, meta.trace].filter(Boolean).join('\n\n');
+      if (fullTrace) traceEl.innerHTML = thoughtBlock(fullTrace, meta.durationMs);
+      attachSources(msgDiv, { citations: meta.citations });
       msgDiv.querySelector('.animate-pulse')?.classList.remove('animate-pulse');
       refreshIcons(msgDiv);
     },
@@ -329,24 +328,18 @@ export function createStreamingMessage(badge) {
 /** @returns {() => void} removes the indicator */
 export function appendLoading() {
   const div = document.createElement('div');
-  div.className = 'flex items-start gap-2.5 sm:gap-3 max-w-3xl';
+  div.className = 'flex items-start gap-3 max-w-3xl';
   div.setAttribute('role', 'status');
   div.innerHTML = `
-    <div class="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-300 flex items-center justify-center text-amber-900 text-sm font-bold flex-shrink-0 shadow-xs">
-      <i data-lucide="sparkles" class="w-4 h-4 text-amber-600"></i>
-    </div>
-    <div class="bg-white border border-slate-200 rounded-2xl p-3 text-slate-800 text-xs flex items-center gap-2.5 shadow-card">
-      <span class="relative flex h-2.5 w-2.5">
+    ${ASSISTANT_AVATAR}
+    <div class="bg-white border border-slate-200 rounded-2xl px-3.5 py-3 text-slate-800 text-xs flex items-center gap-2.5 shadow-xs">
+      <span class="relative flex h-2.5 w-2.5" aria-hidden="true">
         <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
         <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
       </span>
-      <div class="flex flex-col sm:flex-row sm:items-center gap-1">
-        <span class="font-semibold text-slate-900">${escapeHtml(t('status.ready'))}</span>
-        <span class="text-slate-500 text-[11px]">(${escapeHtml(t('status.privacy_cloud'))})</span>
-      </div>
+      <span class="font-medium text-slate-700" data-i18n="chat.thinking">${escapeHtml(t('chat.thinking'))}</span>
     </div>`;
   container().appendChild(div);
-  refreshIcons(div);
   scrollToBottom();
   return () => div.remove();
 }

@@ -1,6 +1,7 @@
 // @ts-check
 // Remote inference providers: Google Gemini and OpenRouter (bring-your-own key) and a user-operated
-// OpenAI-compatible server (MLX, Ollama, vLLM). Keys never leave the browser except to their provider.
+// Chat Completions-compatible server (/v1/chat/completions: MLX, Ollama, vLLM). Keys never leave the browser except to their provider.
+import { t } from './i18n/index.js';
 import { STORAGE_KEYS, TIMEOUTS_MS } from './config.js';
 import { withTimeoutSignal } from './signals.js';
 import { readSecret } from './storage.js';
@@ -53,7 +54,7 @@ async function httpError(res, label) {
  */
 export async function callGemini(prompt, opts = {}) {
   const key = readSecret(STORAGE_KEYS.geminiKey).trim();
-  if (!key) throw new ProviderError('Kein eigener Gemini Schlüssel hinterlegt.', { notConfigured: true });
+  if (!key) throw new ProviderError(t('provider.no_gemini_key'), { notConfigured: true });
   const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
@@ -64,7 +65,7 @@ export async function callGemini(prompt, opts = {}) {
   /** @type {{ candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }} */
   const data = await res.json();
   const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
-  if (!text) throw new ProviderError('Leere Antwort vom Anbieter.');
+  if (!text) throw new ProviderError(t('provider.empty_answer'));
   return { text };
 }
 
@@ -80,9 +81,7 @@ const OPENROUTER_MAX_ATTEMPTS = 3;
 export async function callOpenRouter(messages, opts = {}) {
   const key = readSecret(STORAGE_KEYS.openrouterKey).trim();
   if (!key) {
-    throw new ProviderError('Kein eigener OpenRouter Schlüssel hinterlegt. Bitte tragen Sie einen Schlüssel in den Einstellungen ein.', {
-      notConfigured: true,
-    });
+    throw new ProviderError(t('provider.no_openrouter_key'), { notConfigured: true });
   }
   /** @type {unknown} */
   let lastErr = null;
@@ -105,7 +104,7 @@ export async function callOpenRouter(messages, opts = {}) {
       const data = await res.json();
       const text = data.choices?.[0]?.message?.content ?? '';
       if (text) return { text, model };
-      lastErr = new ProviderError(`Leere Antwort [${model}]`);
+      lastErr = new ProviderError(`${t('provider.empty_answer')} [${model}]`);
     } catch (err) {
       if (opts.signal?.aborted) throw err;
       lastErr = err;
@@ -114,13 +113,13 @@ export async function callOpenRouter(messages, opts = {}) {
       console.warn('[starpi] OpenRouter attempt failed:', err instanceof Error ? err.message : err);
     }
   }
-  throw lastErr instanceof Error ? lastErr : new ProviderError('Cloud Inferenz aktuell nicht erreichbar.');
+  throw lastErr instanceof Error ? lastErr : new ProviderError(t('provider.cloud_unreachable'));
 }
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 /**
- * Validates a user-supplied OpenAI-compatible base URL: https anywhere, plain http only on loopback.
+ * Validates a user-supplied Chat Completions base URL: https anywhere, plain http only on loopback.
  * @param {string} value
  * @returns {string} normalized URL without trailing slash
  */
@@ -129,13 +128,13 @@ export function normalizeServerUrl(value) {
   try {
     url = new URL(value.trim());
   } catch {
-    throw new ProviderError('Ungültige Server Adresse.');
+    throw new ProviderError(t('provider.invalid_url'));
   }
   const loopback = LOOPBACK_HOSTS.has(url.hostname);
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
-    throw new ProviderError('Nur https:// Adressen oder http://localhost bzw. http://127.0.0.1 sind erlaubt.');
+    throw new ProviderError(t('provider.insecure_url'));
   }
-  if (url.username || url.password) throw new ProviderError('Zugangsdaten gehören nicht in die Server Adresse.');
+  if (url.username || url.password) throw new ProviderError(t('provider.credentials_in_url'));
   url.hash = '';
   url.search = '';
   return url.toString().replace(/\/+$/, '');
@@ -174,6 +173,6 @@ export async function callLocalServer(baseUrl, messages, opts = {}) {
   /** @type {{ choices?: Array<{ message?: { content?: string } }> }} */
   const data = await res.json();
   const text = data.choices?.[0]?.message?.content ?? '';
-  if (!text) throw new ProviderError('Leere Antwort vom eigenen Server.');
+  if (!text) throw new ProviderError(t('provider.empty_server_answer'));
   return { text };
 }

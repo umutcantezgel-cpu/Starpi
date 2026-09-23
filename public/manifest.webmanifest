@@ -1,9 +1,9 @@
 {
   "id": "/",
-  "name": "Starpi Enterprise AI Brain",
+  "name": "Starpi Knowledge Assistant",
   "short_name": "Starpi",
-  "description": "Wissensassistent mit lokaler WebGPU Inferenz im Browser und einer Supabase Wissensdatenbank.",
-  "lang": "de",
+  "description": "Knowledge assistant with on-device WebGPU inference, private on-device document search with citations and a Supabase knowledge base.",
+  "lang": "en",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

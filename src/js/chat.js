@@ -1,16 +1,18 @@
 // @ts-check
-// Chat flow: retrieval (BM25 + Postgres) -> answer (cloud provider / on-device model / own server / extractive
-// synthesizer) -> render -> persist.
+// Chat flow: retrieval (on-device workspace BM25 + knowledge base) -> answer (cloud provider /
+// on-device model / own server / extractive synthesizer) -> render with verifiable citations -> persist.
 import { currentSessionId, loadCurrentSession, persistMessage, refreshSyncStatus, startNewSession } from './chat-store.js';
 import { LIMITS } from './config.js';
 import { byId, onAction, onChange, setHidden } from './dom.js';
 import { startLocalEngine } from './engine-ui.js';
-import { t } from './i18n/index.js';
-import { appendLoading, appendMessage, createStreamingMessage, resetMessages, splitReasoning } from './messages.js';
+import { getLocale, hasKey, setText, t } from './i18n/index.js';
+import { appendLoading, appendMessage, appendNotice, createStreamingMessage, resetMessages, splitReasoning } from './messages.js';
+import { buildInstructions, buildSystemPrompt, contextSection } from './prompts.js';
 import { callGemini, callLocalServer, callOpenRouter, hasGeminiKey, hasOpenRouterKey } from './providers.js';
-import { searchLocalBM25 } from './rag/ingestion-service.js';
+import { registerCitations } from './rag/citations.js';
+import { addToWorkspace, firstChunks, searchWorkspace } from './rag/workspace.js';
 import { sanitizeModelNames } from './render.js';
-import { buildContext, CONTEXT_RULES, distinctSources, rankHitsLocally } from './retrieval.js';
+import { assignCitations, buildContext, distinctSources, rankHitsLocally } from './retrieval.js';
 import { isUserAbort } from './signals.js';
 import { getLlmUrl, getMode } from './state.js';
 import { listDocuments, recentKnowledge, searchKnowledge } from './supabase.js';
@@ -20,13 +22,15 @@ import * as engine from './webgpu/engine.js';
 import { budgetPrompt } from './webgpu/models.js';
 
 /** @typedef {import('./supabase.js').KnowledgeHit} KnowledgeHit */
+/** @typedef {import('./rag/workspace.js').WorkspaceHit} WorkspaceHit */
 /** @typedef {{ role: 'user' | 'assistant', content: string }} Turn */
 
+/** i18n keys of the engine that produced an answer (stored with the message as `engine`). */
 const ENGINE_LABELS = /** @type {Record<string, string>} */ ({
-  cloud: 'Starpi Cloud Assistant',
-  client: 'Local In-Browser WebGPU',
-  local: 'Custom Server (MLX/Ollama)',
-  synthesizer: 'Knowledge Base Direct',
+  cloud: 'engine.label_cloud',
+  client: 'engine.label_client',
+  local: 'engine.label_server',
+  synthesizer: 'engine.label_synthesizer',
 });
 
 /** @type {Turn[]} */
@@ -34,13 +38,17 @@ let conversation = [];
 let busy = false;
 /** @type {AbortController | null} */
 let activeAbort = null;
-/** @type {{ name: string, content: string } | null} */
+/** @type {{ docId: string, name: string } | null} */
 let attachment = null;
 /** @type {{ at: number, titles: string[] } | null} */
 let titlesCache = null;
 
 export function invalidateKnownTitles() {
   titlesCache = null;
+}
+
+export function isChatBusy() {
+  return busy;
 }
 
 async function knownTitles() {
@@ -52,63 +60,70 @@ async function knownTitles() {
 }
 
 /**
+ * @param {WorkspaceHit} h
+ * @returns {KnowledgeHit}
+ */
+function workspaceHit(h) {
+  return {
+    documentId: h.docId,
+    documentTitle: h.docName,
+    heading: '',
+    content: h.text,
+    tags: [],
+    rank: h.score,
+    workspace: { docId: h.docId, chunkIndex: h.chunkIndex, start: h.start, end: h.end },
+  };
+}
+
+/**
+ * Workspace chunks for the question; a just-attached file always contributes (its best chunks, or
+ * its first chunks when nothing in it matches, e.g. "summarize this file").
+ * @param {string} query
+ * @param {string | null} focusDocId
+ * @returns {Promise<KnowledgeHit[]>}
+ */
+async function retrieveWorkspace(query, focusDocId) {
+  try {
+    let hits = await searchWorkspace(query, LIMITS.retrievalRows);
+    if (focusDocId && !hits.some((h) => h.docId === focusDocId)) hits = [...(await firstChunks(focusDocId, 3)), ...hits];
+    return hits.map(workspaceHit);
+  } catch (err) {
+    console.warn('[starpi] workspace search failed', err);
+    return [];
+  }
+}
+
+/**
  * @param {string} query
  * @param {import('./config.js').ComputeMode} mode
+ * @param {string | null} focusDocId
  * @returns {Promise<{ hits: KnowledgeHit[], method: string }>}
  */
-async function retrieve(query, mode) {
-  // 1. Query client-side BM25 index (for documents parsed and indexed in-browser)
-  /** @type {KnowledgeHit[]} */
-  let bm25Hits = [];
-  try {
-    const scored = await searchLocalBM25(query, LIMITS.retrievalRows);
-    bm25Hits = scored.map((s) => ({
-      documentId: s.chunk.documentId,
-      documentTitle: s.chunk.documentTitle,
-      heading: `Chunk #${s.chunk.chunkIndex}`,
-      content: s.chunk.content,
-      rank: s.score,
-    }));
-  } catch (err) {
-    console.warn('[starpi] BM25 local search error', err);
-  }
+async function retrieve(query, mode, focusDocId) {
+  const local = await retrieveWorkspace(query, focusDocId);
+  const localPart = local.length ? t('retrieval.workspace', { n: local.length }) : '';
+  const join = (/** @type {string} */ remote) => [localPart, remote].filter(Boolean).join(' + ');
+  const limit = LIMITS.retrievalRows + (focusDocId ? 3 : 0);
 
   if (mode !== 'client') {
     const search = await searchKnowledge(query);
     if (search.ok && search.data.length > 0) {
-      const merged = [...bm25Hits, ...search.data];
-      return { hits: merged.slice(0, LIMITS.retrievalRows), method: 'Postgres & BM25 Search' };
+      return { hits: [...local, ...search.data].slice(0, limit), method: join(t('retrieval.fts')) };
     }
     const recent = await recentKnowledge(30);
-    const why = search.ok
-      ? 'no full-text matches'
-      : search.error.kind === 'missing_function'
-        ? 'search function not installed'
-        : 'full-text search unavailable';
-    if (!recent.ok) return { hits: bm25Hits, method: bm25Hits.length ? 'BM25 Client Index' : `Knowledge base unreachable (${recent.error.kind})` };
-    const localRanked = rankHitsLocally(query, recent.data, LIMITS.retrievalRows);
-    const merged = [...bm25Hits, ...localRanked];
-    return { hits: merged.slice(0, LIMITS.retrievalRows), method: `Keyword & BM25 Search (${why})` };
+    const why = search.ok ? 'retrieval.why_no_match' : search.error.kind === 'missing_function' ? 'retrieval.why_missing' : 'retrieval.why_unavailable';
+    if (!recent.ok) {
+      return { hits: local, method: join(t('retrieval.unreachable', { kind: recent.error.kind })) };
+    }
+    const ranked = rankHitsLocally(query, recent.data, LIMITS.retrievalRows);
+    return { hits: [...local, ...ranked].slice(0, limit), method: join(t('retrieval.keyword', { why: t(why) })) };
   }
 
-  // Local mode: client-side BM25 + candidates ranked in browser without sending question anywhere
+  // Local mode: candidates are fetched without the question and ranked in the browser.
   const recent = await recentKnowledge(30);
-  const localRanked = recent.ok ? rankHitsLocally(query, recent.data, LIMITS.retrievalRows) : [];
-  const merged = [...bm25Hits, ...localRanked];
-  return {
-    hits: merged.slice(0, LIMITS.retrievalRows),
-    method: 'Local BM25 & Browser Search (zero data leaves device)',
-  };
+  const ranked = recent.ok ? rankHitsLocally(query, recent.data, LIMITS.retrievalRows) : [];
+  return { hits: [...local, ...ranked].slice(0, limit), method: join(t('retrieval.local')) };
 }
-
-const SYSTEM_PROMPT = `You are Starpi, an enterprise AI knowledge assistant.
-Answer professionally, factually, and concisely.
-
-INSTRUCTIONS:
-1. Use the provided excerpts from the knowledge base as facts and never fabricate facts.
-2. When asked about responsibilities, dates, or budgets, provide exact numbers and facts.
-3. Never mention internal model or provider names.
-4. ${CONTEXT_RULES}`;
 
 /**
  * @typedef {object} Answer
@@ -123,10 +138,10 @@ INSTRUCTIONS:
  * @returns {Promise<Answer | null>}
  */
 async function answerWithCloud(req) {
-  const context = req.context || 'No relevant excerpts found.';
+  const system = buildSystemPrompt({ locale: getLocale(), target: 'cloud', context: req.context });
   if (hasGeminiKey()) {
     try {
-      const r = await callGemini(`${SYSTEM_PROMPT}\n\nKnowledge Base:\n${context}\n\nUser Query: ${req.prompt}`, { signal: req.signal });
+      const r = await callGemini(`${system}\n\n${t('prompt.user_question')}\n${req.prompt}`, { signal: req.signal });
       return { text: r.text, engine: 'cloud' };
     } catch (err) {
       if (req.signal.aborted) throw err;
@@ -135,25 +150,21 @@ async function answerWithCloud(req) {
   }
   if (hasOpenRouterKey()) {
     try {
-      const r = await callOpenRouter(
-        [{ role: 'system', content: `${SYSTEM_PROMPT}\n\nKnowledge Base:\n${context}` }, ...req.history.slice(-4), { role: 'user', content: req.prompt }],
-        { signal: req.signal },
-      );
+      const r = await callOpenRouter([{ role: 'system', content: system }, ...req.history.slice(-4), { role: 'user', content: req.prompt }], {
+        signal: req.signal,
+      });
       return { text: r.text, engine: 'cloud' };
     } catch (err) {
       if (req.signal.aborted) throw err;
-      return {
-        text: '',
-        engine: 'synthesizer',
-        note: `Cloud provider unavailable (${sanitizeModelNames(err instanceof Error ? err.message : String(err)).slice(0, 160)})`,
-      };
+      const reason = sanitizeModelNames(err instanceof Error ? err.message : String(err)).slice(0, 160);
+      return { text: '', engine: 'synthesizer', note: t('chat.note_cloud_failed', { reason }) };
     }
   }
   return null;
 }
 
 /**
- * @param {{ prompt: string, context: string, history: Turn[], signal: AbortSignal, sources: Array<{ title: string, rank: number | null }>, query: string, method: string, hits: KnowledgeHit[], started: number, removeLoading: () => void }} req
+ * @param {{ prompt: string, context: string, history: Turn[], signal: AbortSignal, citations: string | null, query: string, method: string, hits: KnowledgeHit[], started: number, removeLoading: () => void }} req
  * @returns {Promise<Answer | null>}
  */
 async function answerWithLocalModel(req) {
@@ -161,10 +172,11 @@ async function answerWithLocalModel(req) {
   const model = engine.getEngineState().model;
   if (!ready || !model || req.signal.aborted) return null;
 
+  const locale = getLocale();
   const budget = budgetPrompt({
     contextWindow: model.chatOptions.context_window_size,
     maxOutputTokens: 512,
-    system: `You are Starpi, a reliable enterprise assistant. Answer accurately based on context. Do not invent facts. ${CONTEXT_RULES}`,
+    system: buildInstructions(locale, 'local'),
     context: req.context,
     history: req.history.slice(-4),
     user: req.prompt,
@@ -177,26 +189,26 @@ async function answerWithLocalModel(req) {
   try {
     const text = await engine.generate({
       messages: [
-        { role: 'system', content: budget.context ? `${budget.system}\n\nKnowledge Base:\n${budget.context}` : budget.system },
+        { role: 'system', content: `${budget.system}\n\n${contextSection(locale, budget.context)}` },
         ...budget.history,
         { role: 'user', content: budget.user },
       ],
       maxTokens: 512,
       temperature: 0.2,
-      onDelta: (t) => stream.update(t),
+      onDelta: (delta) => stream.update(delta),
     });
     if (!text.trim()) {
       stream.remove();
       return null;
     }
     const durationMs = Math.round(performance.now() - req.started);
-    const trace = describeTrace({ query: req.query, method: req.method, hits: req.hits, engineLabel: 'Local WebGPU Browser Model', durationMs });
-    stream.finalize(text, req.sources, trace, durationMs);
+    const trace = describeTrace({ query: req.query, method: req.method, hits: req.hits, engineLabel: t(ENGINE_LABELS.client), durationMs });
+    stream.finalize(text, { citations: req.citations, trace, durationMs });
     return { text, engine: 'client', rendered: true };
   } catch (err) {
     stream.remove();
     const message = err instanceof Error ? err.message : String(err);
-    return { text: '', engine: 'synthesizer', note: `Local model: ${message}` };
+    return { text: '', engine: 'synthesizer', note: t('chat.note_local_failed', { reason: message }) };
   } finally {
     req.signal.removeEventListener('abort', onAbort);
   }
@@ -211,7 +223,7 @@ async function answerWithOwnServer(req) {
     const r = await callLocalServer(
       getLlmUrl(),
       [
-        { role: 'system', content: `${SYSTEM_PROMPT}\n\nKnowledge Base:\n${req.context || 'No matching excerpts found.'}` },
+        { role: 'system', content: buildSystemPrompt({ locale: getLocale(), target: 'server', context: req.context }) },
         ...req.history.slice(-4),
         { role: 'user', content: req.prompt },
       ],
@@ -220,7 +232,7 @@ async function answerWithOwnServer(req) {
     return { text: r.text, engine: 'local' };
   } catch (err) {
     if (req.signal.aborted) throw err;
-    return { text: '', engine: 'synthesizer', note: `Custom server unavailable (${err instanceof Error ? err.message : String(err)})` };
+    return { text: '', engine: 'synthesizer', note: t('chat.note_server_failed', { reason: err instanceof Error ? err.message : String(err) }) };
   }
 }
 
@@ -230,13 +242,13 @@ function setBusy(on) {
   setHidden(byId('stopBtn'), !on);
   const send = /** @type {HTMLButtonElement | null} */ (byId('sendBtn'));
   if (send) send.disabled = on;
-  setAssistantStatus(on ? 'Generating response…' : t('status.ready'));
+  setAssistantStatus(on ? 'status.generating' : 'status.ready');
 }
 
 /** @param {string} rawText */
 export async function submitChat(rawText) {
   if (busy) {
-    setAssistantStatus('Please wait, previous response is still generating.');
+    setAssistantStatus('status.busy');
     return;
   }
   const userText = rawText.trim().slice(0, LIMITS.chatInputChars);
@@ -254,9 +266,8 @@ export async function submitChat(rawText) {
   const history = conversation.slice();
   const mode = getMode();
   const localOnly = mode === 'client';
-  const shownText = userText || `[File: ${file?.name ?? 'Document'}]`;
-  const prompt = file ? `${userText}\n\n[Attached File: ${file.name}]\n${file.content}` : userText;
-  const query = userText || file?.name || '';
+  const prompt = userText || t('chat.summarize_file', { name: file?.name ?? '' });
+  const shownText = file ? `${prompt}\n\n[${file.name}]` : prompt;
 
   appendMessage('user', shownText);
   void persistMessage(sid, { role: 'user', content: shownText, sources: [], metadata: {} }, { localOnly });
@@ -268,23 +279,26 @@ export async function submitChat(rawText) {
   const started = performance.now();
 
   try {
-    const { hits, method } = await retrieve(query, mode);
-    const greeting = isGreeting(userText);
-    const sources = greeting ? [] : distinctSources(hits);
-    const context = greeting ? '' : buildContext(hits, { maxChars: LIMITS.contextCharsCloud, excerptChars: LIMITS.excerptChars });
+    const { hits, method } = await retrieve(prompt, mode, file?.docId ?? null);
+    const greeting = !file && isGreeting(userText);
+    const used = greeting ? [] : hits;
+    const citationList = assignCitations(used, { excerptChars: LIMITS.excerptChars });
+    const citations = registerCitations(citationList);
+    const sources = distinctSources(used);
+    const context = buildContext(citationList, { maxChars: LIMITS.contextCharsCloud });
 
     /** @type {Answer | null} */
     let answer = null;
     const common = { prompt, context, history, signal: controller.signal };
     if (mode === 'council') answer = await answerWithCloud(common);
-    else if (mode === 'client') answer = await answerWithLocalModel({ ...common, sources, query, method, hits, started, removeLoading });
+    else if (mode === 'client') answer = await answerWithLocalModel({ ...common, citations, query: prompt, method, hits: used, started, removeLoading });
     else answer = await answerWithOwnServer(common);
 
     const note = answer?.note;
     if (!answer || !answer.text) {
       const modelAvailable = mode !== 'council' || hasGeminiKey() || hasOpenRouterKey();
       answer = {
-        text: synthesizeAnswer({ query: userText || query, hits, knownTitles: await knownTitles(), modelAvailable }),
+        text: synthesizeAnswer({ query: prompt, hits: used, citations: citationList, knownTitles: await knownTitles(), modelAvailable }),
         engine: 'synthesizer',
       };
     }
@@ -292,31 +306,27 @@ export async function submitChat(rawText) {
 
     const durationMs = Math.round(performance.now() - started);
     const answerText = splitReasoning(answer.text).answer || answer.text;
-    const trace = describeTrace({
-      query,
-      method,
-      hits,
-      engineLabel: ENGINE_LABELS[answer.engine],
-      durationMs,
-      note,
-    });
+    const trace = describeTrace({ query: prompt, method, hits: used, engineLabel: t(ENGINE_LABELS[answer.engine]), durationMs, note });
     const metadata = { engine: answer.engine, thoughts: trace, duration_ms: durationMs };
 
     if (sid === currentSessionId()) {
       if (!answer.rendered) {
         removeLoading();
-        appendMessage('assistant', answer.text, { sources, badge: ENGINE_LABELS[answer.engine], trace, durationMs });
+        appendMessage('assistant', answer.text, { citations, badge: ENGINE_LABELS[answer.engine], trace, durationMs });
       }
       conversation.push({ role: 'user', content: prompt.slice(0, 4_000) }, { role: 'assistant', content: answerText });
     }
 
-    void persistMessage(sid, { role: 'assistant', content: answerText, sources, metadata }, { localOnly });
+    // Answers quoting the on-device workspace stay on this device, even when chats are synced.
+    const usesWorkspace = used.some((h) => h.workspace);
+    void persistMessage(sid, { role: 'assistant', content: answerText, sources, metadata }, { localOnly: localOnly || usesWorkspace });
   } catch (err) {
     removeLoading();
     if (!isUserAbort(err)) {
-      appendMessage('assistant', `Error processing request: ${err instanceof Error ? err.message : String(err)}`);
+      appendNotice({ icon: 'triangle-alert', tone: 'warn', title: 'chat.error_title', body: 'chat.error_body', params: { reason: err instanceof Error ? err.message : String(err) } });
     }
   } finally {
+    removeLoading();
     setBusy(false);
     activeAbort = null;
   }
@@ -324,20 +334,44 @@ export async function submitChat(rawText) {
 
 function removeAttachment() {
   attachment = null;
-  const info = byId('attachedInfo');
-  if (info) setHidden(info, true);
+  setHidden(byId('attachedInfo'), true);
   const input = /** @type {HTMLInputElement | null} */ (byId('chatFileInput'));
   if (input) input.value = '';
 }
 
+/** @param {File} file */
+async function attachFile(file) {
+  const info = byId('attachedInfo');
+  const nameEl = byId('attachedFileName');
+  setHidden(info, false);
+  setText(nameEl, 'chat.attaching', { name: file.name });
+  try {
+    const doc = await addToWorkspace(file);
+    attachment = { docId: doc.docId, name: doc.name };
+    setText(nameEl, 'chat.attached', { name: doc.name, chunks: doc.chunks });
+  } catch (err) {
+    removeAttachment();
+    const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : 'internal';
+    appendNotice({ icon: 'triangle-alert', tone: 'warn', title: 'workspace.error_title', body: `workspace.error_${hasKey(`workspace.error_${code}`) ? code : 'internal'}`, params: { name: file.name } });
+  }
+}
+
 export async function restoreHistory() {
   const messages = await loadCurrentSession();
+  // Notices or answers shown while the history was loading (e.g. "on-device mode not available")
+  // stay visible after the restored messages.
+  const container = byId('chatMessages');
+  const shownSinceBoot = container ? [...container.children].slice(1) : [];
+  const live = conversation;
   conversation = [];
   resetMessages();
   for (const m of messages) {
-    appendMessage(m.role, m.content, { sources: m.sources, badge: m.metadata?.engine ? ENGINE_LABELS[m.metadata.engine] : undefined });
+    const engineKey = typeof m.metadata?.engine === 'string' ? ENGINE_LABELS[m.metadata.engine] : undefined;
+    appendMessage(m.role, m.content, { sources: m.sources, badge: engineKey });
     conversation.push({ role: m.role, content: m.content });
   }
+  container?.append(...shownSinceBoot);
+  conversation.push(...live);
 }
 
 export function initChat() {
@@ -349,7 +383,7 @@ export function initChat() {
   });
 
   input?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       void submitChat(input.value);
     }
@@ -359,7 +393,7 @@ export function initChat() {
     startNewSession();
     conversation = [];
     resetMessages();
-    setAssistantStatus(t('status.ready'));
+    setAssistantStatus('status.ready');
     void refreshSyncStatus();
   });
 
@@ -370,25 +404,16 @@ export function initChat() {
 
   onAction('remove-attachment', () => removeAttachment());
 
+  // Quick prompts carry an i18n key, so the question is asked in the active language.
   onAction('quick-prompt', (el) => {
-    const arg = el.dataset.arg ?? '';
-    if (arg) void submitChat(arg);
+    const key = el.dataset.arg ?? '';
+    if (key) void submitChat(hasKey(key) ? t(key) : key);
   });
 
-  onChange('attach-file', async (el) => {
+  onChange('attach-file', (el) => {
     const fileInput = /** @type {HTMLInputElement} */ (el);
     const file = fileInput.files?.[0];
-    if (!file) return;
-    if (file.size > LIMITS.ingestFileBytes) {
-      window.alert(t('ingest.file_too_large'));
-      fileInput.value = '';
-      return;
-    }
-    const text = await file.text().catch(() => '');
-    attachment = { name: file.name, content: text.slice(0, LIMITS.attachmentChars) };
-    const info = byId('attachedInfo');
-    const nameEl = byId('attachedFileName');
-    if (nameEl) nameEl.textContent = file.name;
-    if (info) setHidden(info, false);
+    fileInput.value = '';
+    return file ? attachFile(file) : undefined;
   });
 }

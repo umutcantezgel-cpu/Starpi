@@ -45,7 +45,8 @@
     "@supabase/supabase-js": "2.117.0",
     "dompurify": "3.4.15",
     "lucide": "1.47.0",
-    "marked": "18.0.14"
+    "marked": "18.0.14",
+    "pdfjs-dist": "6.3.289"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

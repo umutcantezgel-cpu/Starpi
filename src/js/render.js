@@ -3,6 +3,7 @@
 // (database content, model output, chat history) must go through renderMarkdown().
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
+import { t } from './i18n/index.js';
 
 /** @type {Record<string, string>} */
 const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
@@ -72,25 +73,18 @@ export function renderMarkdown(markdown) {
 }
 
 /**
- * Replaces model and provider names in user-facing text with neutral labels.
+ * Replaces provider and model identifiers in status and error messages (connection tests, provider
+ * failures) with a neutral label. Only whole words are replaced. Never applied to answers: they may
+ * quote documents verbatim, and citations must match the source text exactly.
  * @param {unknown} str
  */
 export function sanitizeModelNames(str) {
   if (!str) return '';
+  const label = t('app.model_generic');
   return String(str)
-    .replace(/\b(Google\s+)?Gemini(\s+2\.\d+)?(\s+Flash|\s+Pro|\s+Exp)?/gi, 'Inferenzinstanz')
-    .replace(/\bOpenRouter(\s+Cloud\s+AI)?/gi, 'Redundanzknoten')
-    .replace(/\b(Meta\s+)?Llama(-3(\.\d+)?)?(-[0-9]+(\.[0-9]+)?B)?(-Instruct)?/gi, 'Kompaktmodell')
-    .replace(/\b(Alibaba\s+)?Qwen(2(\.\d+)?)?(-[0-9]+(\.[0-9]+)?B)?(-Instruct)?/gi, 'Hochpräzisionsmodell')
-    .replace(/\b(DeepSeek)(-R1)?(-Distill)?(-Qwen)?/gi, 'Logikinstanz')
-    .replace(/\b(Nvidia\s+)?Nemotron(-[0-9]+(\.[0-9]+)?)?(-lightning)?/gi, 'Inferenzknoten')
-    .replace(/\bLiquid(\s+LFM)?(-[0-9]+(\.[0-9]+)?)?/gi, 'Inferenzknoten')
-    .replace(/\bSmolLM2?(-[0-9]+(\.[0-9]+)?B)?(-Instruct)?/gi, 'Kompaktmodell')
-    .replace(/\b(Nous\s+)?Hermes(-[0-9]+)?/gi, 'Logikmodell')
-    .replace(/\b(Microsoft\s+)?Phi(-3(\.\d+)?)?(-mini)?(-instruct)?/gi, 'Reasoningmodell')
-    .replace(/\b(ChatGPT|GPT-4[o\w]*|GPT-3\.5|OpenAI)/gi, 'Assistent')
-    .replace(/liquid\/[^\s,)]+/gi, 'Redundanzknoten')
-    .replace(/nvidia\/[^\s,)]+/gi, 'Redundanzknoten')
-    .replace(/google\/[^\s,)]+/gi, 'Primärknoten')
-    .replace(/openrouter\/[^\s,)]+/gi, 'Autoknoten');
+    .replace(/\b(?:google|nvidia|liquid|openrouter|meta-llama|qwen|microsoft|deepseek)\/[^\s,)\]]+/gi, label)
+    .replace(
+      /\b(?:(?:Google\s+)?Gemini(?:[\s-]\d+(?:\.\d+)?)?(?:[\s-](?:Flash|Pro|Exp))?|OpenRouter|(?:Meta\s+)?Llama(?:[\s-]?\d+(?:\.\d+)?)?(?:-\d+(?:\.\d+)?B)?(?:-Instruct)?|Qwen\d*(?:\.\d+)?(?:-\d+(?:\.\d+)?B)?(?:-Instruct)?|DeepSeek(?:-R1)?|Nemotron|SmolLM2?|ChatGPT|GPT-[34][.\w-]*)\b/gi,
+      label,
+    );
 }

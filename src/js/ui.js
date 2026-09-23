@@ -3,11 +3,9 @@
 import { SUPABASE_PROJECT_REF } from './config.js';
 import { byId } from './dom.js';
 import { refreshIcons } from './icons.js';
-import { t } from './i18n/index.js';
+import { setText } from './i18n/index.js';
 
 const TABS = ['chat', 'library', 'graph', 'ingest', 'bench', 'settings'];
-
-const ACTIVE_NAV = ['bg-amber-50', 'text-amber-950', 'border', 'border-amber-300/80', 'font-bold', 'shadow-xs'];
 
 /** @type {Map<string, () => void>} */
 const tabOpenHooks = new Map();
@@ -23,37 +21,16 @@ export function onTabOpen(tab, hook) {
 /** @param {string} tabId */
 export function switchTab(tabId) {
   const target = TABS.includes(tabId) ? tabId : 'chat';
-  for (const tName of TABS) {
-    byId(`tab-${tName}`)?.classList.add('hidden');
-    const nav = byId(`nav-${tName}`);
-    if (nav) {
-      nav.classList.remove(...ACTIVE_NAV);
-      nav.classList.add('text-slate-600', 'hover:text-slate-950', 'hover:bg-slate-100/70', 'font-medium');
-    }
-    const mNav = byId(`mobile-nav-${tName}`);
-    if (mNav) {
-      mNav.classList.remove(...ACTIVE_NAV);
-      mNav.classList.add('text-slate-600', 'hover:text-slate-900', 'font-medium');
+  for (const name of TABS) {
+    byId(`tab-${name}`)?.classList.toggle('hidden', name !== target);
+    for (const id of [`nav-${name}`, `mobile-nav-${name}`]) {
+      const nav = byId(id);
+      if (!nav) continue;
+      if (name === target) nav.setAttribute('aria-current', 'page');
+      else nav.removeAttribute('aria-current');
     }
   }
-
-  byId(`tab-${target}`)?.classList.remove('hidden');
-  const activeNav = byId(`nav-${target}`);
-  if (activeNav) {
-    activeNav.classList.add(...ACTIVE_NAV);
-    activeNav.classList.remove('text-slate-600', 'hover:text-slate-950', 'hover:bg-slate-100/70', 'font-medium');
-  }
-  const activeMNav = byId(`mobile-nav-${target}`);
-  if (activeMNav) {
-    activeMNav.classList.add(...ACTIVE_NAV);
-    activeMNav.classList.remove('text-slate-600', 'hover:text-slate-900', 'font-medium');
-  }
-
-  const titleEl = byId('pageTitleText');
-  if (titleEl) {
-    titleEl.textContent = t(`nav.${target}`) || 'Starpi';
-  }
-
+  setText(byId('pageTitleText'), `nav.${target}`);
   tabOpenHooks.get(target)?.();
   if (window.innerWidth < 768) toggleSidebar(false);
 }
@@ -94,7 +71,7 @@ export function detectAndDisplayDevice() {
     iconEl.replaceWith(placeholder);
     refreshIcons(placeholder.parentElement ?? document);
   }
-  if (textEl) textEl.textContent = t(labelKey);
+  setText(textEl, labelKey);
 }
 
 /**
@@ -122,11 +99,11 @@ export function setEngineDot(tone) {
 }
 
 /**
- * @param {string} text
+ * @param {string} key i18n key
+ * @param {Record<string, string | number>} [params]
  */
-export function setAssistantStatus(text) {
-  const el = byId('assistantStatusText');
-  if (el) el.textContent = text;
+export function setAssistantStatus(key, params) {
+  setText(byId('assistantStatusText'), key, params);
 }
 
 /**
@@ -135,60 +112,58 @@ export function setAssistantStatus(text) {
 export function renderConnection(c) {
   /** @type {'ok' | 'warn' | 'off' | 'busy'} */
   let tone = 'busy';
-  let badge = t('status.connecting');
-  let auth = t('status.rls_session');
+  let badge = 'status.connecting';
+  let auth = 'status.rls_session';
+  /** @type {Record<string, string> | undefined} */
+  let authParams;
 
   if (c.status === 'offline') {
     tone = 'off';
-    badge = t('status.offline');
-    auth = t('status.no_session');
+    badge = 'status.offline';
+    auth = 'status.no_session';
   } else if (c.status === 'ready') {
     if (c.hardened && c.signedIn) {
       tone = 'ok';
-      badge = t('status.live');
-      auth = t('status.rls_session');
+      badge = 'status.live';
+      auth = 'status.rls_session';
     } else if (c.hardened) {
       tone = 'warn';
-      badge = t('status.read_only');
-      auth = c.authError?.kind === 'auth_disabled' ? t('status.rls_disabled') : t('status.no_session');
+      badge = 'status.read_only';
+      auth = c.authError?.kind === 'auth_disabled' ? 'status.rls_disabled' : 'status.no_session';
     } else if (c.probeError?.kind === 'missing_schema') {
       tone = 'warn';
-      badge = t('status.migration_pending');
-      auth = t('status.migration_needed');
+      badge = 'status.migration_pending';
+      auth = 'status.migration_needed';
     } else {
       tone = 'warn';
-      badge = t('status.restricted');
-      auth = `Error (${c.probeError?.code || c.probeError?.kind || 'unknown'})`;
+      badge = 'status.restricted';
+      auth = 'status.probe_error';
+      authParams = { code: c.probeError?.code || c.probeError?.kind || 'unknown' };
     }
   }
 
-  const colors = {
-    ok: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    warn: 'bg-amber-50 text-amber-800 border-amber-200',
-    off: 'bg-slate-50 text-slate-600 border-slate-200',
-    busy: 'bg-slate-50 text-slate-600 border-slate-200',
-  };
+  const colors = { ok: 'badge-ok', warn: 'badge-warn', off: 'badge-muted', busy: 'badge-muted' };
 
   const dot = byId('dbStatusDot');
   if (dot) dot.className = `w-2 h-2 rounded-full ${dotClass(tone)}`;
   const badgeEl = byId('dbStatusBadge');
   if (badgeEl) {
-    badgeEl.textContent = badge;
-    badgeEl.className = `text-[10px] uppercase font-bold font-mono px-2 py-0.5 rounded-full border ${colors[tone]}`;
+    setText(badgeEl, badge);
+    badgeEl.className = `badge ${colors[tone]}`;
   }
   const label = byId('dbProjectLabel');
   if (label) label.textContent = SUPABASE_PROJECT_REF;
 
   const settingsBadge = byId('settingsDbBadge');
   if (settingsBadge) {
-    settingsBadge.className = `text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${colors[tone]}`;
-    settingsBadge.replaceChildren();
+    settingsBadge.className = `badge ${colors[tone]}`;
     const sDot = document.createElement('span');
     sDot.className = `w-1.5 h-1.5 rounded-full ${dotClass(tone)}`;
-    settingsBadge.append(sDot, document.createTextNode(badge));
+    const sText = document.createElement('span');
+    setText(sText, badge);
+    settingsBadge.replaceChildren(sDot, sText);
   }
   const project = byId('settingsDbProject');
   if (project) project.textContent = SUPABASE_PROJECT_REF;
-  const authEl = byId('settingsDbAuth');
-  if (authEl) authEl.textContent = auth;
+  setText(byId('settingsDbAuth'), auth, authParams);
 }

@@ -1,14 +1,18 @@
 // @ts-check
-// Extractive answers built from retrieved knowledge-base text and BM25 chunks.
-// Appends verifiable citations [Doc: filename, Chunk: X] for inspection.
-import { t } from './i18n/index.js';
+// Extractive answers built only from retrieved text. Used when no model is available (or it fails):
+// it quotes matching sentences verbatim and cites each with the label of the excerpt it came from,
+// so every statement can be checked in the citation drawer. It never generates new content.
+import { formatNumber, t } from './i18n/index.js';
 import { escapeMarkdown } from './render.js';
 import { tokenize } from './retrieval.js';
 
 /** @typedef {import('./supabase.js').KnowledgeHit} KnowledgeHit */
+/** @typedef {import('./retrieval.js').Citation} Citation */
 
-const GREETING = /^(hey|hallo|hi|moin|servus|guten (tag|morgen|abend)|was geht|wer bist du|hallo starpi|hello|good (morning|afternoon|evening))\b/i;
-const DOC_LIST_REQUEST = /dokument|archiv|hinterlegt|liste|dateien|gespeichert|document|archive|list|files|records/i;
+const GREETING =
+  /^(hey|hallo|hi|hello|moin|servus|grüß gott|guten (tag|morgen|abend)|good (morning|afternoon|evening)|was geht|wer bist du|who are you|what can you do|hallo starpi|hi starpi)\b/i;
+const DOC_LIST_REQUEST =
+  /\b(welche|which|what|list|liste|zeige?|show)\b.*\b(dokumente?n?|documents?|dateien|files|archiv|archive|records|einträge|indexed|indexiert|hinterlegt|gespeichert|stored)\b/i;
 
 /** @param {string} text */
 export function isGreeting(text) {
@@ -50,86 +54,79 @@ export function splitSentences(text) {
 }
 
 /**
- * Extracts relevant sentences matching query terms.
+ * Sentences from the hits that share terms with the query, best first. `hit` is the index into
+ * `hits`, so the caller can cite the excerpt the sentence came from.
  * @param {string} query
  * @param {KnowledgeHit[]} hits
  * @param {number} limit
  */
 export function extractSentences(query, hits, limit) {
   const terms = new Set(tokenize(query));
-  /** @type {Array<{ sentence: string, title: string, score: number, chunkIndex: number }>} */
+  /** @type {Array<{ sentence: string, title: string, score: number, hit: number }>} */
   const found = [];
-  for (let hitIdx = 0; hitIdx < hits.length; hitIdx++) {
-    const h = hits[hitIdx];
+  hits.forEach((h, hit) => {
     const sentences = splitSentences(h.content.replace(/[#>*_`]/g, ' ')).filter((s) => s.length > 15 && s.length < 400);
     for (const sentence of sentences) {
       const words = new Set(tokenize(sentence));
       let score = 0;
-      for (const t of terms) if (words.has(t)) score += 1;
-      if (score > 0 && !found.some((f) => f.sentence === sentence)) {
-        found.push({
-          sentence,
-          title: h.documentTitle,
-          score,
-          chunkIndex: hitIdx,
-        });
-      }
+      for (const term of terms) if (words.has(term)) score += 1;
+      if (score > 0 && !found.some((f) => f.sentence === sentence)) found.push({ sentence, title: h.documentTitle, score, hit });
     }
-  }
+  });
   return found.sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
 /**
- * @param {{ query: string, hits: KnowledgeHit[], knownTitles: string[], modelAvailable: boolean }} input
+ * @param {{ query: string, hits: KnowledgeHit[], citations: Citation[], knownTitles: string[], modelAvailable: boolean }} input
  * @returns {string} Markdown
  */
 export function synthesizeAnswer(input) {
   const query = input.query.trim();
   const allTitles = [...new Set([...titles(input.hits), ...input.knownTitles])].slice(0, 8);
-  const titleList = allTitles.length
-    ? allTitles.map((t) => `* ${escapeMarkdown(t)}`).join('\n')
-    : `* ${t('library.empty')}`;
-  const footer = input.modelAvailable
-    ? ''
-    : `\n\n_${t('chat.fallback_note')}_`;
+  const titleList = allTitles.length ? allTitles.map((title) => `* ${escapeMarkdown(title)}`).join('\n') : `* ${t('synth.no_documents')}`;
+  const footer = input.modelAvailable ? '' : `\n\n_${t('synth.footer_no_model')}_`;
 
   if (isGreeting(query)) {
-    return `${t('chat.welcome_title')}\n\n**${t('chat.source_docs')}:**\n${titleList}\n\n${t('chat.welcome_desc')}${footer}`;
+    return `${t('synth.greeting')}\n\n**${t('synth.available_documents')}**\n${titleList}${footer}`;
   }
 
-  if (DOC_LIST_REQUEST.test(query.toLowerCase())) {
-    return `### ${t('chat.available_docs')} (${allTitles.length})\n\n${titleList}${footer}`;
+  if (DOC_LIST_REQUEST.test(query)) {
+    return `### ${t('synth.documents_heading', { count: formatNumber(allTitles.length) })}\n\n${titleList}${footer}`;
   }
 
   const facts = extractSentences(query, input.hits, 4);
   if (facts.length > 0) {
     const lines = facts
-      .map((f) => `* **${escapeMarkdown(f.title)}:** ${escapeMarkdown(f.sentence)} [Doc: ${escapeMarkdown(f.title)}, Chunk: ${f.chunkIndex}]`)
+      .map((f) => {
+        const label = input.citations[f.hit]?.label;
+        return `* **${escapeMarkdown(f.title)}:** ${escapeMarkdown(f.sentence)}${label ? ` ${escapeMarkdown(label)}` : ''}`;
+      })
       .join('\n');
-    return `### ${t('chat.source_docs')}\n\n${lines}${footer}`;
+    return `### ${t('synth.facts_heading')}\n\n${lines}${footer}`;
   }
 
-  return `### ${t('chat.no_hits_title')}\n\n${t('chat.no_hits_desc')}\n\n**${t('chat.available_docs')}:**\n${titleList}${footer}`;
+  return `### ${t('synth.no_hits_heading')}\n\n${t('synth.no_hits_body')}\n\n**${t('synth.available_documents')}**\n${titleList}${footer}`;
 }
 
 /**
- * A factual trace of how the answer was produced.
+ * A factual trace of how the answer was produced (stored with the message, so it is written in the
+ * language active at that time).
  * @param {{ query: string, method: string, hits: KnowledgeHit[], engineLabel: string, durationMs: number | null, note?: string }} input
  */
 export function describeTrace(input) {
   const docTitles = titles(input.hits);
-  const docs = docTitles.length ? docTitles.slice(0, 5).map((t) => `„${escapeMarkdown(t)}“`).join(', ') : '–';
-  const duration = input.durationMs !== null ? `${(input.durationMs / 1000).toFixed(1)} s` : '–';
+  const docs = docTitles.length ? docTitles.slice(0, 5).map((title) => `"${escapeMarkdown(title)}"`).join(', ') : '–';
+  const duration = input.durationMs !== null ? `${formatNumber(input.durationMs / 1000, { maximumFractionDigits: 1 })} s` : '–';
   return [
-    `### 1. Retrieval Pass`,
-    `• **Query:** ${escapeMarkdown(input.query.slice(0, 120))}`,
-    `• **Method:** ${input.method}`,
-    `• **Matches:** ${input.hits.length} segments from ${docTitles.length} documents (${docs})`,
+    `### ${t('trace.retrieval_heading')}`,
+    `* **${t('trace.query')}:** ${escapeMarkdown(input.query.slice(0, 120))}`,
+    `* **${t('trace.method')}:** ${escapeMarkdown(input.method)}`,
+    `* **${t('trace.matches')}:** ${t('trace.matches_value', { hits: input.hits.length, docs: docTitles.length, titles: docs })}`,
     '',
-    `### 2. Answer Generation`,
-    `• **Engine:** ${input.engineLabel}`,
-    `• **Duration:** ${duration}`,
-    input.note ? `• **Note:** ${input.note}` : '',
+    `### ${t('trace.answer_heading')}`,
+    `* **${t('trace.engine')}:** ${escapeMarkdown(input.engineLabel)}`,
+    `* **${t('trace.duration')}:** ${duration}`,
+    input.note ? `* **${t('trace.note')}:** ${escapeMarkdown(input.note)}` : '',
   ]
     .filter((l) => l !== '')
     .join('\n');

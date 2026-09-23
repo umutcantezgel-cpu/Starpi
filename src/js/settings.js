@@ -4,7 +4,9 @@
 import { STORAGE_KEYS } from './config.js';
 import { byId, onAction, onChange, setHidden, setHtml } from './dom.js';
 import { renderEngineState, startLocalEngine } from './engine-ui.js';
-import { t } from './i18n/index.js';
+import { refreshIcons } from './icons.js';
+import { formatNumber, getLocale, setText, t } from './i18n/index.js';
+import { readinessPrompt } from './prompts.js';
 import { callGemini, callOpenRouter, hasGeminiKey, hasOpenRouterKey, normalizeServerUrl, probeLocalServer } from './providers.js';
 import { escapeHtml, sanitizeModelNames } from './render.js';
 import { getLlmUrl, getMode, getModelPreference, setLlmUrl, setMode, setModelPreference } from './state.js';
@@ -18,37 +20,53 @@ function rememberKeys() {
   return readLocal(STORAGE_KEYS.rememberKeys) === '1';
 }
 
-/** @param {string} value */
-function maskKey(value) {
-  return value ? `Saved (••••${value.slice(-4)})` : t('settings.openrouter_hint');
+/**
+ * @param {HTMLElement | null} el
+ * @param {string} value
+ */
+function renderKeyHint(el, value) {
+  if (value) setText(el, 'settings.key_saved', { last4: value.slice(-4) });
+  else setText(el, 'settings.key_none');
 }
 
 function renderKeyHints() {
-  const gemini = byId('cfgGeminiKeyHint');
-  const openrouter = byId('cfgOpenrouterKeyHint');
-  if (gemini) gemini.textContent = maskKey(readSecret(STORAGE_KEYS.geminiKey));
-  if (openrouter) openrouter.textContent = maskKey(readSecret(STORAGE_KEYS.openrouterKey));
+  renderKeyHint(byId('cfgGeminiKeyHint'), readSecret(STORAGE_KEYS.geminiKey));
+  renderKeyHint(byId('cfgOpenrouterKeyHint'), readSecret(STORAGE_KEYS.openrouterKey));
 }
 
+/** Footer under the chat input: where the question goes in the current mode. */
 export function renderPrivacyNotice() {
   const el = byId('privacyNotice');
   if (!el) return;
   const mode = getMode();
+  let icon = 'library';
+  let key = 'privacy.extractive';
+  /** @type {Record<string, string> | undefined} */
+  let params;
   if (mode === 'client') {
-    el.textContent = t('status.privacy_local');
+    icon = 'lock';
+    key = 'privacy.local';
   } else if (mode === 'local') {
-    let host = 'Local Server';
+    icon = 'server';
+    key = 'privacy.server';
+    let host = '';
     try {
       host = new URL(getLlmUrl()).host;
     } catch {
-      // keep generic label
+      // keep empty host
     }
-    el.textContent = `${t('status.privacy_own_server')} (${host}).`;
+    params = { host: host || '–' };
   } else if (hasGeminiKey() || hasOpenRouterKey()) {
-    el.textContent = t('status.privacy_cloud');
-  } else {
-    el.textContent = t('chat.fallback_note');
+    icon = 'cloud';
+    key = 'privacy.cloud';
   }
+  const iconEl = document.createElement('i');
+  iconEl.dataset.lucide = icon;
+  iconEl.className = 'w-3.5 h-3.5 flex-shrink-0';
+  const text = document.createElement('span');
+  setText(text, key, params);
+  el.replaceChildren(iconEl, text);
+  refreshIcons(el);
 }
 
 /** @param {ComputeMode} mode */
@@ -100,7 +118,7 @@ async function saveSettings() {
   try {
     url = normalizeServerUrl(urlInput?.value ?? '');
   } catch (err) {
-    window.alert(err instanceof Error ? err.message : 'Invalid server address.');
+    window.alert(err instanceof Error ? err.message : t('provider.invalid_url'));
     urlInput?.focus();
     return;
   }
@@ -137,7 +155,7 @@ function clearKeys() {
   removeSecret(STORAGE_KEYS.openrouterKey);
   renderKeyHints();
   renderPrivacyNotice();
-  window.alert('Stored API keys removed from this device.');
+  window.alert(t('settings.keys_cleared'));
 }
 
 /**
@@ -150,26 +168,22 @@ async function testProvider(provider) {
   if (!box) return;
   if (btn) btn.disabled = true;
   box.className = 'text-xs p-2.5 rounded-lg border bg-amber-500/10 border-amber-500/30 text-amber-800 flex items-center gap-2';
-  setHtml(box, `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>${isGemini ? 'Testing Gemini connection...' : 'Testing Cloud Assistant...'}</span>`);
+  setHtml(box, `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>${escapeHtml(t(isGemini ? 'settings.test_running_primary' : 'settings.test_running_secondary'))}</span>`);
   setHidden(box, false);
 
   const t0 = performance.now();
   try {
+    const prompt = readinessPrompt(getLocale());
     const text = isGemini
-      ? (await callGemini('Confirm in one short sentence that the assistant is ready.')).text
-      : (
-          await callOpenRouter([
-            { role: 'system', content: 'You are Starpi. Confirm in one short sentence that the assistant is ready.' },
-            { role: 'user', content: 'Confirm readiness.' },
-          ])
-        ).text;
+      ? (await callGemini(prompt)).text
+      : (await callOpenRouter([{ role: 'user', content: prompt }])).text;
     const elapsed = Math.round(performance.now() - t0);
     box.className = 'text-xs p-2.5 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-800 space-y-1';
     setHtml(
       box,
       `<div class="flex items-center justify-between font-semibold">
-        <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> ${isGemini ? 'Gemini connection ready' : 'Cloud Assistant ready'}</span>
-        <span class="font-mono text-[11px]">${elapsed} ms</span>
+        <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> ${escapeHtml(t(isGemini ? 'settings.test_ok_primary' : 'settings.test_ok_secondary'))}</span>
+        <span class="font-mono text-[11px]">${escapeHtml(formatNumber(elapsed))} ms</span>
       </div>
       <p class="text-[11px] text-slate-600 italic">"${escapeHtml(sanitizeModelNames(text.slice(0, 140)))}"</p>`,
     );
@@ -180,7 +194,7 @@ async function testProvider(provider) {
       box,
       `<div class="flex items-center gap-1.5 font-semibold">
         <i data-lucide="${notConfigured ? 'info' : 'alert-circle'}" class="w-3.5 h-3.5"></i>
-        <span>${notConfigured ? `${isGemini ? 'Gemini' : 'OpenRouter'} not configured` : 'Test failed'}</span>
+        <span>${escapeHtml(notConfigured ? t('settings.test_not_configured', { provider: isGemini ? 'Gemini' : 'OpenRouter' }) : t('settings.test_failed'))}</span>
       </div>
       <p class="text-[11px] mt-1 text-slate-600">${escapeHtml(sanitizeModelNames(err instanceof Error ? err.message : String(err)))}</p>`,
     );
@@ -190,14 +204,12 @@ async function testProvider(provider) {
 }
 
 async function deleteModelCache() {
-  if (!window.confirm('Delete all downloaded model weights from browser storage?')) {
-    return;
-  }
+  if (!window.confirm(t('settings.delete_models_confirm'))) return;
   try {
     await engine.deleteCachedModels();
-    window.alert('Model weights deleted.');
+    window.alert(t('settings.delete_models_done'));
   } catch (err) {
-    window.alert(`Deletion failed: ${err instanceof Error ? err.message : String(err)}`);
+    window.alert(t('settings.delete_models_failed', { reason: err instanceof Error ? err.message : String(err) }));
   }
 }
 

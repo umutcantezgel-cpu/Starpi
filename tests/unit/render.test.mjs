@@ -69,8 +69,14 @@ describe('escapeMarkdown', () => {
 });
 
 describe('sanitizeModelNames', () => {
-  it('replaces provider and model names', () => {
-    assert.equal(render.sanitizeModelNames('Antwort von Google Gemini 2.5 Flash'), 'Antwort von Inferenzinstanz');
+  it('replaces provider and model identifiers with a neutral label', () => {
+    assert.equal(render.sanitizeModelNames('HTTP 429 from Google Gemini 2.5 Flash'), 'HTTP 429 from AI model');
+    assert.equal(render.sanitizeModelNames('[nvidia/nemotron-3.5-lightning:free] empty'), '[AI model] empty');
     assert.equal(render.sanitizeModelNames(''), '');
+  });
+
+  it('only replaces whole words', () => {
+    const text = 'Philosophy, liquidity and llamas stay untouched.';
+    assert.equal(render.sanitizeModelNames(text), text);
   });
 });

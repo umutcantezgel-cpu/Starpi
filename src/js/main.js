@@ -6,15 +6,15 @@ import { initChat, restoreHistory } from './chat.js';
 import { byId, installDelegation, onAction, reportUnexpected, setHidden } from './dom.js';
 import { initEngineUi } from './engine-ui.js';
 import { initGraph, loadKnowledgeGraph } from './graph.js';
+import { initI18n, setLocale } from './i18n/index.js';
 import { refreshIcons } from './icons.js';
-import { applyTranslations, onLocaleChange, setLocale } from './i18n/index.js';
 import { initIngest } from './ingest.js';
 import { initLibrary, loadDocuments } from './library.js';
 import { initMessages } from './messages.js';
-import { initCitationUi } from './rag/citation-ui.js';
+import { initCitations } from './rag/citations.js';
 import { changeEngine, initSettings, renderPrivacyNotice } from './settings.js';
 import { getMode } from './state.js';
-import { connect, getConnection, onConnectionChange } from './supabase.js';
+import { connect, onConnectionChange } from './supabase.js';
 import { detectAndDisplayDevice, onTabOpen, renderConnection, switchTab, toggleSidebar } from './ui.js';
 import { initVoice } from './voice.js';
 
@@ -55,17 +55,16 @@ function registerServiceWorker() {
 }
 
 async function boot() {
+  // English by default; a stored choice wins. Applied before any module renders text.
+  initI18n();
   installDelegation();
   onAction('switch-tab', (el) => switchTab(el.dataset.arg ?? 'chat'));
   onAction('toggle-sidebar', () => toggleSidebar());
-  onAction('set-locale', (el) => setLocale(el.dataset.arg === 'de' ? 'de' : 'en'));
+  onAction('set-locale', (el) => setLocale(el.dataset.arg ?? 'en'));
 
   onTabOpen('library', () => void loadDocuments());
   onTabOpen('graph', () => void loadKnowledgeGraph());
   onTabOpen('bench', () => void refreshDiagnostics());
-
-  // Apply default English or saved locale
-  applyTranslations();
 
   initMessages();
   initSettings();
@@ -76,18 +75,11 @@ async function boot() {
   initGraph();
   initVoice();
   initBenchUi();
-  initCitationUi();
+  initCitations();
 
   refreshIcons();
   detectAndDisplayDevice();
   registerServiceWorker();
-
-  onLocaleChange(() => {
-    renderConnection(getConnection());
-    renderPrivacyNotice();
-    detectAndDisplayDevice();
-    refreshIcons();
-  });
 
   onConnectionChange((state) => {
     renderConnection(state);

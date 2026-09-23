@@ -29,6 +29,12 @@
     "src/js/chat-store.js",
     "src/js/state.js",
     "src/js/webgpu/models.js",
-    "src/js/webgpu/engine.js"
+    "src/js/webgpu/engine.js",
+    "src/js/i18n/index.js",
+    "src/js/prompts.js",
+    "src/js/rag/bm25.js",
+    "src/js/rag/chunker.js",
+    "src/js/rag/workspace.js",
+    "src/js/bench/diagnostics.js"
   ]
 }
