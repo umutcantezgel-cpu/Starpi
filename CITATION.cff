@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use Starpi in your work, please cite it as below."
+type: software
+title: "Starpi"
+abstract: "Local-first knowledge assistant: in-browser retrieval-augmented generation with verifiable citations, WebGPU inference in a Web Worker, and a Supabase knowledge base protected by row level security."
+authors:
+  - family-names: Tezgel
+    given-names: Umutcan
+    alias: umutcantezgel-cpu
+version: 1.1.0
+date-released: "2026-09-24"
+license: MIT
+repository-code: "https://github.com/umutcantezgel-cpu/Starpi"
+url: "https://www.starpi.app"
+keywords:
+  - webgpu
+  - rag
+  - bm25
+  - webllm
+  - citations
+  - pwa
+  - supabase

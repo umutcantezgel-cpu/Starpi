@@ -3,6 +3,8 @@ Explain what changes and why. Link related issues.
 
 ## Architectural Area
 * [ ] Frontend UI and rendering (`src/js`, `src/index.html`)
+* [ ] On-device workspace and citations (`src/js/rag`)
+* [ ] Languages (`src/locales`, `src/js/i18n`)
 * [ ] WebGPU runtime and model selection (`src/js/webgpu`)
 * [ ] Retrieval and Supabase access (`src/js/supabase.js`, `src/js/retrieval.js`)
 * [ ] Database schema, migrations and RLS (`backend/supabase`)
@@ -28,4 +30,6 @@ Explain what changes and why. Link related issues.
 * [ ] Untrusted content rendered only through `escapeHtml()` / `renderMarkdown()`
 * [ ] New tables and functions have RLS policies, explicit grants and tests
 * [ ] Documentation updated where behaviour changed
+* [ ] Diagrams updated in `docs/ARCHITECTURE.md` and copies synced (`npm run docs:sync`)
+* [ ] `CHANGELOG.md` updated under `[Unreleased]`
 * [ ] Commits follow Conventional Commits

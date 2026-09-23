@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/umutcantezgel-cpu/Starpi/security/advisories/new
+    about: Please report vulnerabilities privately, as described in SECURITY.md.
+  - name: Tour of the code
+    url: https://github.com/umutcantezgel-cpu/Starpi/blob/main/docs/WALKTHROUGH.md
+    about: How Starpi works, where each part lives and how to run it locally.
