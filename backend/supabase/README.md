@@ -130,6 +130,101 @@ changed functions and privileges immediately.
   (`full_schema.sql` adds the same constraints `NOT VALID` as well, so fresh and
   upgraded schemas stay identical.)
 
+## Schema
+
+Knowledge base and knowledge graph (columns of the canonical `full_schema.sql`; databases
+upgraded from the older schema may keep additional legacy columns):
+
+<!-- diagram: db-schema-er -->
+```mermaid
+erDiagram
+    auth_users {
+        uuid id PK "Supabase auth.users"
+    }
+    knowledge_documents {
+        uuid id PK "default gen_random_uuid()"
+        text title "not null, max 500 chars"
+        text source_type "not null, default text, max 64 chars"
+        text source_name "file name or source URI, max 500 chars"
+        text raw_content "max 200000 chars"
+        text summary "max 5000 chars"
+        text_array tags "default empty, max 50 tags and 16 KiB, GIN index"
+        jsonb metadata "default empty object, max 64 KiB"
+        int total_sections "default 0"
+        timestamptz created_at "not null, default now(), index desc"
+        timestamptz updated_at "not null, default now()"
+        uuid owner_id FK "default auth.uid(), null for service role rows, index"
+        bool is_public "not null, default false"
+        tsvector fts "generated stored, german title summary raw_content, GIN"
+    }
+    knowledge_sections {
+        uuid id PK "default gen_random_uuid()"
+        uuid document_id FK "not null, index"
+        int section_index "not null, default 0"
+        text heading "max 1000 chars"
+        text markdown_content "not null, max 210000 chars"
+        int token_count "default 0"
+        vector embedding "vector(1536), nullable, HNSW cosine m 16 ef_construction 64"
+        timestamptz created_at "not null, default now()"
+        tsvector fts "generated stored, german heading markdown_content, GIN"
+    }
+    knowledge_entities {
+        uuid id PK "default gen_random_uuid()"
+        text name "not null, max 500 chars, no unique constraint"
+        text entity_type "not null, max 64 chars"
+        text description "max 5000 chars"
+        jsonb properties "default empty object, max 64 KiB"
+        uuid owner_id FK "default auth.uid(), index"
+        bool is_public "not null, default false"
+        timestamptz created_at "not null, default now()"
+    }
+    knowledge_relations {
+        uuid id PK "default gen_random_uuid()"
+        uuid source_entity_id FK "nullable, index"
+        uuid target_entity_id FK "nullable, index"
+        text relation_type "not null, max 64 chars"
+        jsonb properties "default empty object, max 64 KiB"
+        uuid owner_id FK "default auth.uid(), index"
+        bool is_public "not null, default false"
+        timestamptz created_at "not null, default now()"
+    }
+
+    knowledge_documents ||--o{ knowledge_sections : "document_id, on delete cascade"
+    auth_users |o--o{ knowledge_documents : "owner_id, on delete set null"
+    auth_users |o--o{ knowledge_entities : "owner_id, on delete set null"
+    auth_users |o--o{ knowledge_relations : "owner_id, on delete set null"
+    knowledge_entities |o--o{ knowledge_relations : "source_entity_id, on delete cascade"
+    knowledge_entities |o--o{ knowledge_relations : "target_entity_id, on delete cascade"
+```
+
+Chat history and settings:
+
+<!-- diagram: db-schema-chat-settings -->
+```mermaid
+erDiagram
+    auth_users {
+        uuid id PK "Supabase auth.users"
+    }
+    chat_history {
+        uuid id PK "default gen_random_uuid()"
+        text session_id "not null, 1 to 128 chars"
+        text role "not null, user, assistant or system"
+        text content "not null, max 20000 chars, older validated bound 100000"
+        jsonb sources "not null, default empty array, max 64 KiB"
+        jsonb metadata "not null, default empty object, max 64 KiB"
+        timestamptz created_at "not null, default now()"
+        uuid owner_id FK "not null, default auth.uid(), index with session_id, created_at"
+    }
+    brain_settings {
+        text key PK "seeded llm_config and rag_config"
+        jsonb value "not null"
+        text description
+        timestamptz updated_at "not null, default now()"
+    }
+
+    auth_users ||--o{ chat_history : "owner_id, on delete cascade"
+```
+
 ## Security model
 
 Roles: `anon` = browser before sign-in (anon key), `authenticated` = browser
@@ -159,6 +254,152 @@ role may publish (`is_public = true`), and published rows are read-only for
 every browser role. No policy is unconditional. Deleting a user from `auth.users`
 deletes their chat history and leaves their knowledge rows private without an
 owner (`on delete set null`), i.e. visible only to the service role.
+
+How a browser request is decided, per table and for the functions and size limits:
+
+<!-- diagram: rls-access-knowledge-rows -->
+```mermaid
+flowchart TD
+    req["Request on knowledge_documents,<br/>knowledge_entities or knowledge_relations"]
+    role{"Database role?"}
+    req --> role
+    role -->|"service_role, backend key"| svc["RLS bypassed, select, insert, update, delete<br/>on every row, only role that can publish<br/>or unpublish (is_public), size CHECKs still apply"]
+    role -->|"anon, no session"| anonOp{"Operation?"}
+    role -->|"authenticated, anonymous sign-in"| authOp{"Operation?"}
+
+    anonOp -->|"insert, update, delete"| noGrant["Error 42501<br/>anon only has the SELECT grant"]
+    anonOp -->|"select"| anonVis{"select_public_or_own<br/>is_public? auth.uid() is null for anon"}
+    anonVis -->|"yes, public row"| shown["Row returned"]
+    anonVis -->|"no, any private row"| filtered["Row filtered out, no error"]
+
+    authOp -->|"select"| authVis{"select_public_or_own<br/>is_public or owner_id = auth.uid()?"}
+    authVis -->|"yes, public, own private<br/>or own published"| shown
+    authVis -->|"no, other user or<br/>ownerless private"| filtered
+
+    authOp -->|"insert"| insChk{"insert_own WITH CHECK<br/>owner_id = auth.uid() and is_public = false?<br/>the column defaults satisfy both"}
+    insChk -->|"no, foreign owner_id<br/>or is_public true"| rlsErr["Error 42501<br/>row violates row-level security policy"]
+    insChk -->|"yes"| isRel{"knowledge_relations?"}
+    isRel -->|"no"| sizeChk{"Size CHECK constraints pass?"}
+    isRel -->|"yes"| endpoints{"source and target entity each exist<br/>with is_public or owner_id = auth.uid()?"}
+    endpoints -->|"yes"| sizeChk
+    endpoints -->|"no, private entity of another user<br/>or ownerless, null or unknown id"| rlsErr
+    sizeChk -->|"yes"| applied["Write applied"]
+    sizeChk -->|"no, e.g. title over 500 chars"| sizeErr["Error 23514<br/>check constraint violated"]
+
+    authOp -->|"update, delete"| usingChk{"update_own, delete_own USING<br/>owner_id = auth.uid() and not is_public?"}
+    usingChk -->|"no, own published, public,<br/>other user or ownerless row"| zeroRows["0 rows affected, no error"]
+    usingChk -->|"yes, own private row"| opKind{"Operation?"}
+    opKind -->|"delete"| deleted["Row deleted, a document<br/>takes its sections along (cascade)"]
+    opKind -->|"update"| updChk{"update_own WITH CHECK on new row<br/>owner_id = auth.uid() and is_public = false?"}
+    updChk -->|"no, publish or hand to other owner"| rlsErr
+    updChk -->|"yes"| isRel
+
+    names["Policy names are the table name plus<br/>_select_public_or_own, _insert_own,<br/>_update_own and _delete_own"]
+    lock["Published-row lock, 20260924000000_lock_published_rows<br/>added and not is_public to the update and delete USING,<br/>before that owners could still change published rows.<br/>Re-running 20260923000000 alone restores the old policies"]
+    names -.- role
+    lock -.- usingChk
+```
+
+<!-- diagram: rls-access-sections-chat-settings -->
+```mermaid
+flowchart TD
+    subgraph sg_settings["brain_settings, service role only"]
+        bReq["Settings request"]
+        bRole{"Role?"}
+        bReq --> bRole
+        bRole -->|"service_role"| bSvc["RLS bypassed,<br/>select, insert, update, delete"]
+        bRole -->|"anon, authenticated"| bDeny["Error 42501 on read and write, no table grant<br/>(full_schema.sql never grants it, 20260924000000<br/>revokes it), RLS on with no policy"]
+    end
+
+    subgraph sg_chat["chat_history, owner only"]
+        cReq["Chat row request"]
+        cRole{"Role?"}
+        cReq --> cRole
+        cRole -->|"service_role"| cSvc["RLS bypassed, all rows,<br/>select, insert, update, delete"]
+        cRole -->|"anon"| cAnon["Error 42501 for every operation<br/>no grant and no policy"]
+        cRole -->|"authenticated"| cOp{"Operation?"}
+        cOp -->|"update"| cUpd["Error 42501<br/>no UPDATE grant or policy"]
+        cOp -->|"select, delete"| cOwn{"chat_history_select_own, chat_history_delete_own<br/>owner_id = auth.uid()?"}
+        cOwn -->|"yes"| cMine["Only own rows, even when another<br/>user writes the same session_id"]
+        cOwn -->|"no"| cOther["Invisible, delete affects 0 rows"]
+        cOp -->|"insert"| cIns{"chat_history_insert_own WITH CHECK<br/>owner_id = auth.uid()?<br/>owner_id defaults to auth.uid()"}
+        cIns -->|"no, owner_id of another user"| cErr["Error 42501"]
+        cIns -->|"yes"| cChk{"CHECKs pass? role user, assistant or system,<br/>session_id 1 to 128 chars, content max 20000,<br/>sources and metadata max 64 KiB"}
+        cChk -->|"yes"| cStored["Row stored"]
+        cChk -->|"no"| cSize["Error 23514"]
+    end
+
+    subgraph sg_sections["knowledge_sections, access follows parent knowledge_documents row d"]
+        sReq["Section request"]
+        sRole{"Role?"}
+        sReq --> sRole
+        sRole -->|"service_role"| sSvc["RLS bypassed, all rows, all DML"]
+        sRole -->|"anon"| sAnonOp{"Operation?"}
+        sAnonOp -->|"insert, update, delete"| sNoGrant["Error 42501, no grant"]
+        sAnonOp -->|"select"| sAnonVis{"knowledge_sections_select_visible_document<br/>d.is_public?"}
+        sAnonVis -->|"yes"| sShown["Section returned"]
+        sAnonVis -->|"no"| sHidden["Section filtered out"]
+        sRole -->|"authenticated"| sParent{"State of parent d?"}
+        sParent -->|"own private"| sRW["select, insert, update, delete allowed<br/>policies _insert, _update and _delete_own_document<br/>need EXISTS d with owner_id = auth.uid()<br/>and not d.is_public"]
+        sParent -->|"public, including own published"| sRO["select only, insert or moving a section<br/>into it fails 42501,<br/>update and delete affect 0 rows"]
+        sParent -->|"other user or ownerless private"| sNone["invisible, insert or moving a section<br/>into it fails 42501,<br/>update and delete affect 0 rows"]
+        sRW -->|"insert, update"| sChk{"heading max 1000 chars,<br/>markdown_content max 210000?"}
+        sChk -->|"yes"| sDone["Section written"]
+        sChk -->|"no"| sSize["Error 23514"]
+    end
+    sg_settings ~~~ sg_chat
+    sg_chat ~~~ sg_sections
+```
+
+<!-- diagram: rls-access-functions-limits -->
+```mermaid
+flowchart TD
+    anon["anon"]
+    authn["authenticated"]
+    svc["service_role"]
+
+    subgraph sg_fns["RPCs, SECURITY INVOKER, search_path empty, arrows are EXECUTE grants"]
+        sk["search_knowledge<br/>(query_text, match_count default 6)<br/>German full text on sections, else document hit,<br/>1 to 20 rows, blank or null query returns none"]
+        mks["match_knowledge_sections<br/>(query_embedding, match_threshold default 0.25,<br/>match_count default 5)<br/>vector search, 1 to 50 rows"]
+        mkh["match_knowledge_hybrid<br/>(query_text, query_embedding,<br/>match_count default 5, rrf_k default 60)<br/>RRF of top 25 vector and top 25 full-text ranks,<br/>1 to 50 rows"]
+        ing["ingest_document_atomic<br/>(doc_title, doc_summary, doc_tags,<br/>doc_source_type, doc_source_name,<br/>doc_raw_content, sections_data)<br/>new document is private, owner_id null,<br/>22023 if sections_data is not a JSON array"]
+    end
+
+    anon --> sk
+    authn --> sk
+    authn --> mks
+    authn --> mkh
+    svc --> sk
+    svc --> mks
+    svc --> mkh
+    svc --> ing
+
+    invoker["Runs as the caller, so table RLS<br/>limits rows to what the caller can see,<br/>service_role bypasses RLS.<br/>Every overload is dropped before create,<br/>so no older SECURITY DEFINER variant stays"]
+    sk -.- invoker
+    mks -.- invoker
+    mkh -.- invoker
+    ing -.- invoker
+    denied["EXECUTE revoked from PUBLIC,<br/>so every call without a grant fails with 42501"]
+    anon -.->|"match_knowledge_sections,<br/>match_knowledge_hybrid,<br/>ingest_document_atomic"| denied
+    authn -.->|"ingest_document_atomic"| denied
+
+    subgraph sg_checks["Size CHECK constraints added NOT VALID, a violation is SQLSTATE 23514"]
+        ckNote["New and updated rows are checked<br/>for every role, existing rows<br/>are not scanned"]
+        ckDocs["knowledge_documents<br/>title 500, source_type 64,<br/>source_name 500, summary 5000,<br/>raw_content 200000 chars,<br/>tags at most 50 and 16384 bytes,<br/>metadata 65536 bytes"]
+        ckSec["knowledge_sections<br/>heading 1000,<br/>markdown_content 210000 chars"]
+        ckEnt["knowledge_entities<br/>name 500, entity_type 64,<br/>description 5000 chars,<br/>properties 65536 bytes"]
+        ckRel["knowledge_relations<br/>relation_type 64 chars,<br/>properties 65536 bytes"]
+        ckChat["chat_history<br/>content 20000 chars"]
+        ckNote --- ckDocs
+        ckNote --- ckSec
+        ckNote --- ckEnt
+        ckNote --- ckRel
+        ckNote --- ckChat
+    end
+    ckOld["Validated chat_history checks, inline in full_schema.sql<br/>and added by 20260923000000: role user, assistant or system,<br/>session_id 1 to 128 chars, content 100000 chars,<br/>sources and metadata 65536 bytes"]
+    ckChat -.- ckOld
+    invoker ~~~ sg_checks
+```
 
 Advisor note: *extension_in_public* (vector) is expected. The extension stays
 in `public` because existing columns and indexes use `public.vector`.
@@ -253,6 +494,76 @@ only), loads a small Supabase stand-in (`tests/stub_supabase.sql`: roles,
 
 The runner applies every file in `migrations/` in file-name order, so a new
 migration is picked up without changing the script.
+
+<!-- diagram: migrations-tests-rls-harness -->
+```mermaid
+flowchart TD
+    setup{"initdb, pg_ctl, postgres, psql, pg_dump, pg_config in PG_BIN,<br/>pgvector installed, at least one migrations/*.sql,<br/>PGTEST_DIR not existing yet, and as root: PGTEST_OS_USER<br/>exists and can write the work dir?"}
+    setupErr(["exit 2: setup error"])
+    cluster["Throwaway cluster: initdb --auth=trust, pg_ctl start<br/>Unix socket in the work dir only, listen_addresses empty, port 55432<br/>as root the server runs as PGTEST_OS_USER, default postgres"]
+    setup -->|"no"| setupErr
+    setup -->|"yes"| cluster
+    clusterErr(["exit 2: initdb failed or could not start PostgreSQL"])
+    cluster -->|"fails"| clusterErr
+    scen["run_scenario NAME: create database starpi_NAME, run the steps in order<br/>every scenario starts with stub_supabase.sql: roles anon, authenticated, service_role,<br/>auth.users, auth.uid(), Supabase default grants, sentinel objects of the other app<br/>first failing step: FAIL, log tail printed, next scenario"]
+    cluster --> scen
+
+    subgraph sg_upgrade["Upgrade paths"]
+        live["live: live_shape.sql + legacy_seed.sql,<br/>migrations twice, rls_test.sql legacy=true,<br/>migrations again, post_rerun_check.sql"]
+        v2["legacy_v2: legacy_full_schema_v2.sql + legacy_seed.sql,<br/>migrations twice, rls_test.sql legacy=true"]
+        v1["legacy_v1: legacy_schema_v1.sql + legacy_seed.sql,<br/>migrations twice, rls_test.sql legacy=true"]
+    end
+    subgraph sg_fresh["Fresh installs"]
+        fresh["fresh: full_schema.sql through apply_migration.py<br/>psql when python3 is missing, then migrations, rls_test.sql"]
+        rerunS["fresh_rerun: schema.sql, a psql include of full_schema.sql,<br/>then full_schema.sql again, rls_test.sql"]
+    end
+    subgraph sg_guard["Guards, expect-fail steps"]
+        guard["guard: live_shape.sql,<br/>then full_schema.sql must fail"]
+        guardOrder["guard_order: live_shape.sql,<br/>then 20260924000000_lock_published_rows.sql must fail"]
+    end
+    scen --> live
+    scen --> v2
+    scen --> v1
+    scen --> fresh
+    scen --> rerunS
+    scen --> guard
+    scen --> guardOrder
+
+    aIdem["Second migrations run succeeds on the upgraded schema:<br/>idempotent on the live shape and both earlier schema versions"]
+    aRls["rls_test.sql: 184 checks, 191 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits, RPCs"]
+    aPost["post_rerun_check.sql, 13 checks: a further migrations run keeps<br/>ownership, visibility, chat rows, the published-row lock,<br/>size limits and brain_settings closed to A and anon"]
+    aGuard["Step passes only when psql exits non-zero:<br/>pre-hardening database refused, order enforced"]
+    aFreshRerun["full_schema.sql re-runs cleanly on a database it created"]
+    live --> aIdem
+    v2 --> aIdem
+    v1 --> aIdem
+    live --> aPost
+    live --> aRls
+    v2 --> aRls
+    v1 --> aRls
+    fresh --> aRls
+    rerunS --> aRls
+    rerunS --> aFreshRerun
+    guard --> aGuard
+    guardOrder --> aGuard
+
+    parity{"pg_dump --schema-only --schema=public of starpi_live,<br/>starpi_fresh, starpi_fresh_rerun, restrict lines removed:<br/>diff -u live vs fresh and fresh vs fresh_rerun empty?"}
+    live --> parity
+    fresh --> parity
+    rerunS --> parity
+    parity -->|"yes"| parityOk["PASS schema parity"]
+    parity -->|"no"| parityFail["FAIL schema parity, failures + 1"]
+
+    result{"Any failed scenario or parity check?"}
+    parityOk --> result
+    parityFail --> result
+    result -->|"yes"| exit1(["exit 1: N check group(s) failed"])
+    result -->|"no"| exit0(["exit 0: all checks passed"])
+    cleanup["trap cleanup on exit: pg_ctl stop -m fast,<br/>remove the work dir unless PGTEST_KEEP=1"]
+    exit1 -.-> cleanup
+    exit0 -.-> cleanup
+    clusterErr -.-> cleanup
+```
 
 ```bash
 # Debian / Ubuntu: apt-get install postgresql-16 postgresql-16-pgvector

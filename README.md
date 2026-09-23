@@ -66,41 +66,309 @@ check that every key used by the UI exists.
 
 ## Architecture
 
+The [architecture atlas](docs/ARCHITECTURE.md) documents every subsystem with diagrams checked
+against the code: boot, chat, retrieval and citations, the WebGPU engine, storage, the service
+worker, the database and its policies, the backend, build, tests and deployment. The overview below
+shows where each part runs and which trust boundary it sits behind; dashed nodes are services
+outside Starpi's control.
+
+<!-- diagram: system-context-overview -->
 ```mermaid
 flowchart LR
-    subgraph Browser["Browser (static PWA, strict CSP)"]
-        UI["UI modules<br/>src/js/*"]
-        SW["Service worker<br/>same-origin app shell only"]
-        subgraph Worker["Web Worker"]
-            LLM["WebLLM MLCEngine<br/>WebGPU kernels"]
+    subgraph device["User device: browser tab on www.starpi.app, CSP enforced"]
+        subgraph mainThread["Main thread, src/js"]
+            boot["main.js boot()<br/>chat.js, settings.js, UI modules"]
+            sbClient["supabase.js createClient<br/>anon key compiled in, build refuses other roles<br/>fetchWithTimeout 12 s"]
+            provJs["providers.js<br/>callGemini, callOpenRouter,<br/>callLocalServer, probeLocalServer"]
+            engineJs["webgpu/engine.js<br/>loadModel, generate, unloadModel"]
+            wsJs["rag/workspace.js<br/>request(type, payload)"]
         end
-        subgraph Ingest["Ingestion worker"]
-            RAG["Parsing (pdf.js), chunking,<br/>BM25 index (memory only)"]
+        subgraph llmWorker["Web Worker starpi-webllm"]
+            mlc["webgpu/worker.js<br/>WebWorkerMLCEngineHandler<br/>inference on WebGPU"]
         end
-        Cache[("Cache API / IndexedDB<br/>model weights, managed by WebLLM")]
+        subgraph ingestWorker["Web Worker starpi-ingest"]
+            ingest["rag/ingest.worker.js<br/>extractText with pdf.js, chunkText,<br/>BM25Index in worker memory only"]
+        end
+        sw["sw.js service worker<br/>same-origin GET only,<br/>cross-origin requests bypass it"]
+        subgraph browserStores["Per-origin browser storage"]
+            ls[("localStorage<br/>starpi_local_chats_v1, starpi_chat_session_id,<br/>starpi_compute_mode, starpi_webgpu_model,<br/>starpi_llm_url, starpi_remember_keys,<br/>starpi_locale, starpi-auth session")]
+            ss[("sessionStorage<br/>Gemini and OpenRouter keys for this tab,<br/>in localStorage instead if remember is on")]
+            swCache[("CacheStorage<br/>starpi-shell-VERSION, starpi-assets-VERSION")]
+            modelCache[("Cache API owned by WebLLM<br/>webllm/model, webllm/config, webllm/wasm")]
+        end
     end
 
-    subgraph Supabase["Supabase (Postgres)"]
-        Auth["Auth<br/>anonymous sign-ins"]
-        RLS["Tables with RLS<br/>documents, sections, entities,<br/>relations, chat_history"]
-        FTS["search_knowledge()<br/>Postgres full-text search"]
-        Vec["match_knowledge_sections()<br/>pgvector HNSW"]
+    subgraph vercel["Vercel static hosting"]
+        host["dist/: index.html, hashed /assets/*, sw.js<br/>vercel.json headers on every path:<br/>CSP script-src self and wasm-unsafe-eval,<br/>connect-src self, data:, https:, wss://*.supabase.co,<br/>http://localhost:* and http://127.0.0.1:*<br/>HSTS, COOP same-origin, X-Frame-Options DENY,<br/>nosniff, Referrer-Policy, Permissions-Policy"]
     end
 
-    Backend["Optional Python backend<br/>ingestion + embeddings<br/>(service role)"]
-    HF["Hugging Face<br/>model artifacts"]
-    Providers["Gemini / OpenRouter /<br/>own Chat Completions server"]
+    subgraph supabase["Supabase project: access decided by roles and RLS"]
+        auth["Auth<br/>anonymous sign-in, session JWT"]
+        rest["PostgREST<br/>/rest/v1 tables and /rest/v1/rpc"]
+        subgraph pg["Postgres, RLS enabled on every table"]
+            tables[("knowledge_documents, knowledge_entities,<br/>knowledge_relations: read is_public or owner_id = auth.uid(),<br/>knowledge_sections: visible with their document,<br/>writes only to own private rows<br/>chat_history: owner only, no anon grant<br/>brain_settings: no policy, service_role only")]
+            rpcFns["SECURITY INVOKER functions<br/>search_knowledge: anon, authenticated, service_role<br/>match_knowledge_sections, match_knowledge_hybrid:<br/>authenticated, service_role<br/>ingest_document_atomic: service_role only"]
+        end
+    end
 
-    UI -- "postMessage" --> LLM
-    UI -- "files, queries" --> RAG
-    LLM <--> Cache
-    Cache -. "first download" .-> HF
-    UI -- "anon JWT + user session" --> Auth
-    UI -- "REST (RLS enforced)" --> RLS
-    UI -- "RPC" --> FTS
-    UI -- "BYO key (cloud mode only)" --> Providers
-    Backend -- "service_role" --> RLS
-    Backend --> Vec
+    subgraph backendHost["Optional backend host, operator-controlled"]
+        caller["HTTP client of /api/brain/*"]
+        brain["backend/server.py<br/>default bind 127.0.0.1:9200<br/>not called by the browser bundle"]
+    end
+
+    subgraph thirdParty["Third-party services outside Starpi control"]
+        gemini["Google Gemini<br/>gemini-2.5-flash:generateContent"]
+        openrouter["OpenRouter<br/>/api/v1/chat/completions"]
+        ownServer["Own Chat Completions server<br/>https anywhere, http only on<br/>localhost or 127.0.0.1"]
+        hf["Hugging Face<br/>huggingface.co/mlc-ai weights"]
+        ghLibs["raw.githubusercontent.com<br/>binary-mlc-llm-libs wasm"]
+        backendApis["Backend upstreams<br/>LLM_BASE_URL, EMBEDDING_BASE_URL,<br/>GEMINI_API_KEYS, OPENROUTER_API_KEYS"]
+    end
+
+    host -->|"app shell and hashed assets<br/>with security headers"| sw
+    sw -->|"navigations network-first,<br/>/assets/* and precache cache-first"| boot
+    sw -->|"precache, put if cacheable()"| swCache
+    boot -->|"register /sw.js, SKIP_WAITING"| sw
+    boot -->|"settings, locale, chat fallback"| ls
+    provJs -->|"readSecret"| ss
+    sbClient -->|"persistSession, storageKey starpi-auth"| ls
+    engineJs -->|"CreateWebWorkerMLCEngine,<br/>messages in, stream deltas out"| mlc
+    engineJs -->|"hasModelInCache,<br/>deleteModelAllInfoInCache"| modelCache
+    mlc -->|"read and write shards"| modelCache
+    mlc -->|"GET weights if not cached,<br/>interactive loads only, after confirmDownload"| hf
+    mlc -->|"GET model_lib wasm"| ghLibs
+    wsJs -->|"postMessage ingest, search, head,<br/>context, text, remove,<br/>File structured-cloned"| ingest
+    sbClient -->|"getSession, signInAnonymously"| auth
+    sbClient -->|"apikey anon, Bearer session JWT:<br/>select, insert, delete, rpc search_knowledge"| rest
+    rest -->|"SQL as anon or authenticated"| tables
+    rest -->|"rpc"| rpcFns
+    rpcFns -->|"run as the caller role"| tables
+    provJs -->|"x-goog-api-key header,<br/>prompt with retrieved excerpts"| gemini
+    provJs -->|"Bearer key, messages,<br/>failover over free models"| openrouter
+    provJs -->|"messages, no key sent,<br/>GET /models probe"| ownServer
+    caller -->|"Bearer BRAIN_API_TOKEN when set,<br/>else loopback Host only"| brain
+    brain -->|"service_role key bypasses RLS:<br/>knowledge_documents, knowledge_sections,<br/>rpc match_knowledge_sections"| rest
+    brain -->|"chat/completions, embeddings,<br/>generateContent"| backendApis
+
+    classDef external stroke-dasharray: 5 5
+    class gemini,openrouter,ownServer,hf,ghLibs,backendApis external
+```
+
+### Key flows
+
+**One chat turn**, from the input to the persisted answer
+([details](docs/ARCHITECTURE.md#3-answering-a-question)):
+
+<!-- diagram: chat-request-lifecycle -->
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Chat as chat.js submitChat
+    participant Msg as messages.js
+    participant Store as chat-store.js
+    participant WS as rag/workspace.js worker
+    participant SB as supabase.js
+    participant Ret as retrieval.js
+    participant Cit as rag/citations.js
+    participant Eng as providers.js or WebGPU engine
+    participant Syn as synthesizer.js
+
+    User->>Chat: chatForm submit, Enter, quick-prompt or graph ask-entity
+    opt busy is true
+        Chat-->>User: setAssistantStatus status.busy, return
+    end
+    opt no text and no attachment
+        Chat-->>User: return without a message
+    end
+    Note over Chat: trim to 8000 chars, clear input, removeAttachment.<br/>Captures sid, history, mode and localOnly = mode is client.<br/>A file without text asks chat.summarize_file
+    Chat->>Msg: appendMessage user shownText
+    Chat->>Store: void persistMessage user, localOnly or file attached
+    Note over Chat,Store: a question about an attached file names the file,<br/>so it stays in localStorage like its answer
+    Note over Chat: new AbortController, setBusy(true) shows Stop and status.generating
+    Chat->>Msg: appendLoading()
+    Chat->>WS: searchWorkspace(prompt, 6), any error gives no workspace hits
+    opt attached docId not among the hits
+        Chat->>WS: firstChunks(docId, 3) prepended
+    end
+    alt mode council or local
+        Chat->>SB: searchKnowledge(prompt), rpc search_knowledge
+        opt RPC error or zero rows
+            Chat->>SB: recentKnowledge(30), on failure workspace hits only
+            Chat->>Ret: rankHitsLocally(prompt, rows, 6)
+        end
+    else mode client
+        Chat->>SB: recentKnowledge(30), question is not sent
+        Chat->>Ret: rankHitsLocally(prompt, rows, 6), none if the fetch failed
+    end
+    Note over Chat: used is empty for a greeting without a file, else all hits
+    Chat->>Ret: assignCitations(used, excerptChars 1600)
+    Chat->>Cit: registerCitations gives scope id or null
+    Chat->>Ret: distinctSources and buildContext(maxChars 9000)
+    alt mode council
+        Chat->>Eng: answerWithCloud, Gemini then OpenRouter
+    else mode client
+        Chat->>Eng: answerWithLocalModel, removes loading, streams its own bubble
+    else mode local
+        Chat->>Eng: answerWithOwnServer, callLocalServer(getLlmUrl())
+    end
+    Eng-->>Chat: Answer, empty text with note, or null
+    opt answer is null or its text is empty
+        Chat->>SB: knownTitles(), listDocuments unless cached under 60 s
+        Chat->>Syn: synthesizeAnswer, extractive with citation labels
+    end
+    alt signal aborted and answer not rendered
+        Note over Chat,Msg: throw AbortError, catch removes loading, isUserAbort so no notice
+    else a call threw, e.g. a council or local error rethrown after abort
+        Chat->>Msg: removeLoading, appendNotice chat.error_title unless isUserAbort
+    else answer ready
+        Chat->>Syn: describeTrace(prompt, method, used, engine label, note)
+        opt sid is still currentSessionId()
+            Chat->>Msg: removeLoading, appendMessage assistant unless already streamed
+            Msg->>Cit: linkifyCitations and citationSources row
+            Chat->>Chat: conversation.push user and assistant turns
+        end
+        Chat->>Store: void persistMessage assistant, localOnly or usesWorkspace
+        alt localOnly or not canSyncChats()
+            Store->>Store: appendLocal to localStorage
+        else chat sync available
+            Store->>SB: insertChatMessage into chat_history
+            Note over Store,SB: on error console.warn and appendLocal,<br/>on success refreshSyncStatus
+        end
+    end
+    Note over Chat: finally removeLoading, setBusy(false), activeAbort = null
+```
+
+**What leaves the device** in each mode:
+
+<!-- diagram: modes-privacy-data-egress -->
+```mermaid
+flowchart TD
+    Ask(["submitChat: question trimmed to 8000 chars<br/>mode = getMode(), stored in starpi_compute_mode"])
+    UserTurn{"persist the user turn first:<br/>client mode or a file attached?"}
+    RetMode{"retrieve(): mode is client?"}
+    Ctx["assignCitations + buildContext<br/>workspace hits first, at most 6 hits, 9 with an attachment<br/>excerpt max 1600 chars, context max 9000 chars<br/>a greeting uses no excerpts"]
+    Dispatch{"answer path by mode"}
+    CKeys{"hasGeminiKey()?<br/>else hasOpenRouterKey()?"}
+    Abort(["Stop pressed before a rendered answer:<br/>AbortError, answer not shown or persisted"])
+    Persist{"answer localOnly?<br/>client mode, or any used excerpt<br/>came from the workspace"}
+    Sync{"not localOnly: canSyncChats()?<br/>signed in and hardened schema"}
+
+    subgraph dev["Stays in this browser"]
+        WsSearch["retrieveWorkspace: BM25 in the ingest worker, every mode<br/>an unmatched attached file adds its first 3 chunks<br/>worker error: no workspace hits"]
+        Keys[("provider keys<br/>readSecret: sessionStorage, then localStorage")]
+        LGen["client: WebLLM worker on WebGPU<br/>budgeted excerpts + last 4 history messages<br/>+ question stay in the browser"]
+        Synth["synthesizeAnswer: extractive quotes<br/>with citation labels, no model"]
+        LS[("localStorage<br/>starpi_local_chats_v1")]
+    end
+
+    subgraph net["Sent over the network"]
+        FTS["Supabase rpc search_knowledge<br/>question as query_text, first 1000 chars<br/>match_count 6"]
+        Recent["Supabase recentKnowledge(30)<br/>30 newest documents, question not sent<br/>rankHitsLocally in the browser"]
+        Gem["council: Gemini gemini-2.5-flash generateContent<br/>one user part: system + excerpts incl. workspace<br/>+ question, no chat history"]
+        OR["council: OpenRouter chat/completions<br/>system + excerpts incl. workspace<br/>+ last 4 history messages + question"]
+        Srv["local: own server getLlmUrl()/chat/completions<br/>system + excerpts incl. workspace<br/>+ last 4 history messages + question, no key"]
+        HF["WebLLM model files: huggingface.co weights,<br/>raw.githubusercontent.com wasm<br/>only when not cached, after a confirm, no user text"]
+        Titles["Supabase listDocuments, no question sent<br/>only titles used, cached 60 s"]
+        CH[("Supabase chat_history insert")]
+    end
+
+    Ask --> UserTurn
+    UserTurn -->|"yes"| LS
+    UserTurn -->|"no"| Sync
+    Ask --> WsSearch --> RetMode
+    RetMode -->|"no, council or local"| FTS
+    RetMode -->|"yes"| Recent
+    FTS -->|"rows found"| Ctx
+    FTS -.->|"zero rows or error"| Recent
+    Recent -->|"ranked hits, none if it fails"| Ctx
+    WsSearch -->|"workspace excerpts"| Ctx
+    Ctx --> Dispatch
+    Dispatch -->|"council"| CKeys
+    Dispatch -->|"client"| LGen
+    Dispatch -->|"local"| Srv
+    CKeys -->|"Gemini key"| Gem
+    CKeys -->|"only OpenRouter key"| OR
+    CKeys -->|"no key"| Synth
+    Gem -.->|"fails, OpenRouter key set"| OR
+    Gem -.->|"fails, no OpenRouter key"| Synth
+    OR -.->|"all attempts fail,<br/>or HTTP 401 or 403"| Synth
+    HF -.->|"first load only"| LGen
+    LGen -.->|"not loaded, declined,<br/>empty or throws"| Synth
+    Srv -.->|"throws, not aborted"| Synth
+    Keys -.->|"Gemini key only,<br/>x-goog-api-key header"| Gem
+    Keys -.->|"OpenRouter key only,<br/>Authorization Bearer"| OR
+    Synth -.->|"known titles"| Titles
+    Dispatch -.->|"user abort"| Abort
+    Gem --> Persist
+    OR --> Persist
+    LGen --> Persist
+    Srv --> Persist
+    Synth --> Persist
+    Persist -->|"yes"| LS
+    Persist -->|"no"| Sync
+    Sync -->|"yes"| CH
+    Sync -->|"no"| LS
+    CH -.->|"insert fails"| LS
+```
+
+**From a retrieved chunk to a verified citation**
+([details](docs/ARCHITECTURE.md#4-on-device-workspace-and-citations)):
+
+<!-- diagram: citations-answer-to-drawer -->
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Chat as chat.js submitChat
+    participant Ret as retrieval.js
+    participant Cit as rag/citations.js
+    participant Gen as model or synthesizer.js
+    participant Msg as messages.js
+    participant WS as rag/workspace.js
+    participant W as ingest.worker.js
+
+    Note over Chat: used = the retrieved hits, or none for a greeting without an attached file
+    Chat->>Ret: assignCitations(used, excerptChars 1600)
+    Ret-->>Chat: citations with label, doc, chunk, source, heading, text, score, span
+    Chat->>Cit: registerCitations(citations)
+    Cit-->>Chat: scope id, or null when there are none
+    Chat->>Ret: buildContext(citations, maxChars 9000)
+    Ret-->>Chat: fenced EXCERPT blocks, each header carries its label
+    alt a model answers (cloud, own server or on-device)
+        Chat->>Gen: system prompt with the citation rules and the context
+        Gen-->>Chat: answer text that cites labels
+    else no model, a failed model or empty text
+        Chat->>Gen: synthesizeAnswer with used hits and the citation list
+        Gen-->>Chat: up to 4 quoted sentences, each followed by its excerpt label
+    end
+    Chat->>Msg: appendMessage(text, citations scope), only if the chat session is unchanged
+    Note over Chat,Msg: a streamed on-device answer is finished by<br/>stream.finalize(text, citations scope) with the same steps
+    Msg->>Cit: linkifyCitations(content rendered by renderMarkdown, scope), then citationSources(scope)
+    Cit-->>Msg: open-citation buttons for registered labels only, Sources badge row
+    User->>Cit: click open-citation, data-arg is scope and index
+    alt scope evicted or index unknown
+        Cit-->>User: nothing opens
+    else citation found
+        Cit-->>User: citationModal with doc, source, chunk, score, offsets, the excerpt in a mark
+        alt source knowledge, span null
+            Cit-->>User: note citation.note_knowledge, no worker request
+        else source workspace, span set
+            Cit-->>User: note citation.loading_context
+            Cit->>WS: getChunkContext(span.docId, span.start, span.end)
+            WS->>W: context, pad 400, a new worker is started if none runs
+            alt the worker has a document with that docId
+                W-->>WS: before, match, after, start, end, length
+                WS-->>Cit: context
+                Cit-->>User: before, match in a mark, after, ellipsis where cut, note citation.note_workspace
+            else no such docId
+                W-->>WS: ok false, code empty
+                WS-->>Cit: reject WorkspaceError, also on a worker crash
+                Cit-->>User: excerpt stays, note citation.note_missing
+            end
+        end
+    end
+    Note over WS,W: ids are ws-instanceId-n with a random instanceId<br/>per worker, so after Clear workspace or a crash<br/>an old span never matches a newer file
 ```
 
 ### Frontend modules (`src/js`)
@@ -127,6 +395,49 @@ flowchart LR
 
 Model ids are validated against the pinned WebLLM prebuilt catalog in the unit tests. On
 adapters without the `shader-f16` feature the `q4f32_1` variant is selected automatically.
+
+The engine's states, including cancelled and superseded loads and device loss:
+
+<!-- diagram: webgpu-lifecycle-states -->
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    state "error (EngineError kept in state.error)" as error_state
+    idle --> loading : loadModel, probe ok, chooseModel, teardown, seq still current
+    error_state --> loading : loadModel retry, probe ok, teardown
+    ready --> loading : loadModel for a different modelId (teardown first)
+    ready --> ready : loadModel for the same modelId, engine reused, resolves true
+    idle --> error_state : loadModel, probeWebGPU unsupported or no-adapter (never enters loading)
+    error_state --> error_state : loadModel again, probe still fails
+    loading --> idle : onlyIfCached and hasModelInCache false
+    loading --> idle : confirmDownload declined, seq current
+    loading --> idle : unloadModel cancels (loadSeq+1, abortPending cancelled, teardown)
+    loading --> ready : CreateWebWorkerMLCEngine resolved and seq current
+    loading --> error_state : run threw with seq current, teardown, classifyEngineError
+    ready --> error_state : generate or runBenchmark failed with device-lost or out-of-memory (loadSeq+1, teardown)
+    ready --> idle : unloadModel (unload button, changed model preference, deleteCachedModels)
+    error_state --> idle : unloadModel
+    note right of loading
+        A run whose seq is no longer loadSeq resolves false without setState
+        (only the onlyIfCached branch sets idle without this check)
+        and terminates a worker it created.
+        Concurrent loadModel calls share one loadPromise.
+    end note
+    note right of ready
+        generate and runBenchmark throw not-loaded unless ready,
+        and busy while the generating flag is set.
+        Other generation errors are rethrown, status stays ready.
+        chat.js, bench-ui.js and changeEngine check isReady first,
+        so no caller runs loadModel from ready today.
+    end note
+    note left of error_state
+        EngineErrors from the probe (unsupported, no-adapter),
+        prepareStorage (quota) and the model lookup (unknown) pass through.
+        Other failures are classified as quota, device-lost,
+        out-of-memory, network, unsupported or unknown.
+        cancelled never lands here.
+    end note
+```
 
 | Preset | WebLLM model (f16 / f32 fallback) | Approx. download | VRAM (f16 / f32) | Context window |
 | --- | --- | --- | --- | --- |
@@ -217,6 +528,9 @@ python -m pip install -r requirements.txt
 cp .env.example .env   # fill in SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, LLM and embedding endpoints
 python server.py
 ```
+
+Endpoints, configuration, request guards and pipelines are described in
+[backend/README.md](backend/README.md).
 
 ## Security model
 
