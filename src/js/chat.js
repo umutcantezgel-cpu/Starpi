@@ -270,8 +270,15 @@ export async function submitChat(rawText) {
   const shownText = file ? `${prompt}\n\n[${file.name}]` : prompt;
 
   appendMessage('user', shownText);
-  // A question about an attached workspace file names that file: keep it on the device like its answer.
-  void persistMessage(sid, { role: 'user', content: shownText, sources: [], metadata: {} }, { localOnly: localOnly || Boolean(file) });
+  // The question follows its answer's storage rule, so it is stored once retrieval shows whether
+  // workspace excerpts are involved: a question about the workspace (or naming an attached file)
+  // stays on this device like its answer.
+  let questionStored = false;
+  const storeQuestion = (/** @type {boolean} */ usesWorkspace) => {
+    if (questionStored) return;
+    questionStored = true;
+    void persistMessage(sid, { role: 'user', content: shownText, sources: [], metadata: {} }, { localOnly: localOnly || Boolean(file) || usesWorkspace });
+  };
 
   const controller = new AbortController();
   activeAbort = controller;
@@ -283,6 +290,8 @@ export async function submitChat(rawText) {
     const { hits, method } = await retrieve(prompt, mode, file?.docId ?? null);
     const greeting = !file && isGreeting(userText);
     const used = greeting ? [] : hits;
+    const usesWorkspace = used.some((h) => h.workspace);
+    storeQuestion(usesWorkspace);
     const citationList = assignCitations(used, { excerptChars: LIMITS.excerptChars });
     const citations = registerCitations(citationList);
     const sources = distinctSources(used);
@@ -319,9 +328,9 @@ export async function submitChat(rawText) {
     }
 
     // Answers quoting the on-device workspace stay on this device, even when chats are synced.
-    const usesWorkspace = used.some((h) => h.workspace);
     void persistMessage(sid, { role: 'assistant', content: answerText, sources, metadata }, { localOnly: localOnly || usesWorkspace });
   } catch (err) {
+    storeQuestion(false);
     removeLoading();
     if (!isUserAbort(err)) {
       appendNotice({ icon: 'triangle-alert', tone: 'warn', title: 'chat.error_title', body: 'chat.error_body', params: { reason: err instanceof Error ? err.message : String(err) } });

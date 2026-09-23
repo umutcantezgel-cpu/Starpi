@@ -309,9 +309,14 @@ test.describe('on-device workspace', () => {
     await page.keyboard.press('Escape');
     await expect(drawer).toBeHidden();
 
-    // File contents never leave the device.
+    // File contents never leave the device, and neither does a chat turn answered from them: the
+    // question and the answer are both kept locally although chats sync.
     const leaked = calls.filter((c) => /steering group|480000/.test(`${c.url} ${c.body ?? ''}`));
     expect(leaked).toEqual([]);
+    expect(calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history'))).toEqual([]);
+    const stored = await page.evaluate(() => localStorage.getItem('starpi_local_chats_v1') ?? '');
+    expect(stored).toContain('What is the approved budget for Project Nebula?');
+    expect(stored).toContain('480000 EUR');
     expect(diagnostics).toEqual([]);
   });
 

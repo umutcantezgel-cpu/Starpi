@@ -23,8 +23,8 @@ of four ways:
 
 Chat history is synchronised to Supabase only when the browser has an anonymous session **and**
 the hardened RLS schema is installed, so every row is visible to its owner only. Otherwise it
-stays on the device. Answers that quote the on-device workspace, and questions sent with an attached
-workspace file, are never synchronised.
+stays on the device. A chat turn that uses the on-device workspace (the question and its answer)
+is never synchronised.
 
 System prompts follow the interface language: the on-device model is told *"You are Starpi, a
 high-performance on-device AI assistant. Respond in English unless the user explicitly prompts in
