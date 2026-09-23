@@ -331,11 +331,10 @@ function removeAttachment() {
 }
 
 export async function restoreHistory() {
-  const session = await loadCurrentSession();
+  const messages = await loadCurrentSession();
   conversation = [];
   resetMessages();
-  if (!session || !session.messages.length) return;
-  for (const m of session.messages) {
+  for (const m of messages) {
     appendMessage(m.role, m.content, { sources: m.sources, badge: m.metadata?.engine ? ENGINE_LABELS[m.metadata.engine] : undefined });
     conversation.push({ role: m.role, content: m.content });
   }

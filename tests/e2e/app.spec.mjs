@@ -60,7 +60,7 @@ test.describe('migration pending, anonymous sign-ins disabled', () => {
     await mockSupabase(page, { hardened: false, anonymousAuth: false });
     await page.goto('/');
     await openTab(page, 'settings');
-    await page.click('summary');
+    await page.locator('details:has(#cfgLlmUrl) > summary').click();
     await page.fill('#cfgLlmUrl', 'http://evil.example/v1');
     /** @type {string[]} */
     const messages = [];
@@ -107,7 +107,7 @@ test.describe('local mode without WebGPU', () => {
     await page.goto('/');
     await page.selectOption('#engineSelector', 'client');
     await expect(page.locator('#chatMessages')).toContainText(/(Lokaler Modus nicht verfügbar|Local mode unavailable|not supported|unavailable)/i);
-    await expect(page.locator('#privacyNotice')).toContainText(/(Lokaler Modus|Local Mode)/);
+    await expect(page.locator('#privacyNotice')).toContainText('question remains on your device');
 
     await page.fill('#chatInput', 'Wann ist der Launch von Projekt Beta?');
     await page.press('#chatInput', 'Enter');
@@ -125,15 +125,22 @@ test.describe('internationalization (i18n)', () => {
     await page.goto('/');
 
     // Defaults to English
-    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Ask your knowledge base...');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Ask a question or enter notes...');
 
-    // Switch to German
+    // Switches to German without a reload
     await page.click('[data-action="set-locale"][data-arg="de"]');
-    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Frage an die Wissensbasis...');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'de');
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Frage stellen oder Notiz eingeben...');
 
-    // Switch back to English
+    // The choice survives a reload
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'de');
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Frage stellen oder Notiz eingeben...');
+
+    // And switches back
     await page.click('[data-action="set-locale"][data-arg="en"]');
-    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Ask your knowledge base...');
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Ask a question or enter notes...');
 
     expect(diagnostics).toEqual([]);
   });
