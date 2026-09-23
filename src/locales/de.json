@@ -54,7 +54,7 @@
     "local": "Lokaler Modus: Ihre Frage und das Modell bleiben auf diesem Gerät.",
     "server": "Eigener Server: Ihre Frage geht an {host} und an die Wissensdatenbank-Suche.",
     "cloud": "Cloud-Assistent: Ihre Frage geht an die Wissensdatenbank-Suche und mit passenden Auszügen an Ihren Anbieter.",
-    "extractive": "Kein Modell eingerichtet: Antworten zitieren direkt aus der Wissensdatenbank."
+    "extractive": "Kein Modell eingerichtet: Ihre Frage geht an die Wissensdatenbank-Suche, Antworten zitieren direkt daraus."
   },
   "engine": {
     "mode_cloud": "Cloud-Assistent",

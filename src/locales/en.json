@@ -54,7 +54,7 @@
     "local": "On-device mode: your question and the model stay on this device.",
     "server": "Own server: your question goes to {host} and to the knowledge-base search.",
     "cloud": "Cloud assistant: your question goes to the knowledge-base search, and with matching excerpts to your provider.",
-    "extractive": "No model configured: answers quote the knowledge base directly."
+    "extractive": "No model configured: your question goes to the knowledge-base search, and answers quote it directly."
   },
   "engine": {
     "mode_cloud": "Cloud assistant",
