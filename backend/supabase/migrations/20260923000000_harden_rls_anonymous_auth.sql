@@ -1,44 +1,61 @@
 -- ==============================================================================
--- Starpi: full Supabase schema (fresh install)
+-- Starpi migration 20260923000000: harden RLS for anonymous sign-ins
 -- ==============================================================================
 --
--- Canonical schema for a new Supabase project: knowledge base (documents,
--- sections with 1536-dim pgvector embeddings and an HNSW index, German
--- full-text search), knowledge graph, chat history, settings and the RPCs
--- used by the browser and the backend.
+-- Replaces the open policies of the first schema versions with owner-based
+-- row level security. The browser signs in with Supabase anonymous sign-ins
+-- (role "authenticated", is_anonymous = true in the JWT) and may only touch
+-- its own rows; the backend keeps using the service role, which bypasses RLS.
 --
--- Existing databases are upgraded with the files in migrations/ instead; this
--- file refuses to run on a pre-hardening schema. After a fresh install the
--- migrations are no-ops, and the resulting schema is identical to an
--- upgraded one (backend/supabase/tests/run_rls_tests.sh checks this; column
--- order therefore follows the upgrade path).
+-- Prerequisite: Authentication > Sign In / Providers > Anonymous sign-ins
+-- enabled, otherwise the browser stays on the anon role and can only read
+-- public knowledge.
 --
--- Security model (details in README.md):
---   * The browser uses the anon key and Supabase anonymous sign-ins. Signed-in
---     clients have the role "authenticated" and only reach their own rows.
---   * The backend uses the service role, which bypasses RLS.
---   * Knowledge rows are public (is_public, set by the service role) or
---     private to owner_id. chat_history is always private to its owner.
+-- What it does (details in README.md):
+--   * chat_history: owner_id NOT NULL (default auth.uid()), owner-only
+--     SELECT / INSERT / DELETE, nothing for anon. Existing rows are deleted
+--     because their owner is unknown (see step 4).
+--   * knowledge_documents / knowledge_entities / knowledge_relations:
+--     owner_id + is_public. Rows that exist before this migration were world
+--     readable and are kept public (is_public = true); new rows default to
+--     private. Browser writes are limited to own, private rows.
+--   * knowledge_sections: visibility and write access follow the parent
+--     document.
+--   * knowledge_entities / knowledge_relations are created when missing.
+--   * German full-text columns (fts) + GIN indexes and the RPC
+--     search_knowledge(query_text, match_count) for the browser.
+--   * RPCs run as SECURITY INVOKER with an empty search_path, so RLS applies
+--     to the caller. ingest_document_atomic is service_role only,
+--     match_knowledge_sections / match_knowledge_hybrid are not callable by
+--     anon.
+--   * Explicit table and function privileges for anon, authenticated and
+--     service_role.
 --
--- Prerequisite: Authentication > Sign In / Providers > Anonymous sign-ins.
+-- Safe to run more than once, on the live shape (first full_schema.sql
+-- without the knowledge graph tables) and on installs from any earlier
+-- schema.sql / full_schema.sql. Runs in a single transaction.
 --
--- Known advisor warning: "extension_in_public" for vector. The extension is
--- kept in schema public so this schema matches existing installs.
+-- Scope: only the Starpi objects listed above. Other objects in this
+-- database (for example leads, bookings, conversion_events,
+-- prune_conversion_events) are not touched.
 --
--- Safe to re-run on a database created by this file. Runs in one transaction.
+-- Known advisor warning: "extension_in_public" for vector. The extension
+-- stays in schema public because existing columns and indexes use
+-- public.vector; moving it would break them.
 -- ==============================================================================
 
 begin;
 
+set local lock_timeout = '15s';
+
 -- ------------------------------------------------------------------------------
--- 0. Extensions and preconditions
+-- 0. Preconditions
 -- ------------------------------------------------------------------------------
 create extension if not exists vector with schema public;
 
 do $$
 declare
     vector_schema name;
-    tbl text;
 begin
     select n.nspname into vector_schema
     from pg_extension e
@@ -50,82 +67,19 @@ begin
     end if;
 
     if to_regclass('auth.users') is null or to_regprocedure('auth.uid()') is null then
-        raise exception 'auth.users / auth.uid() not found: run this schema on a Supabase database';
+        raise exception 'auth.users / auth.uid() not found: run this migration on a Supabase database';
     end if;
 
-    foreach tbl in array array['knowledge_documents', 'knowledge_entities', 'knowledge_relations', 'chat_history'] loop
-        if to_regclass('public.' || tbl) is not null and not exists (
-            select 1 from information_schema.columns
-            where table_schema = 'public' and table_name = tbl and column_name = 'owner_id'
-        ) then
-            raise exception 'public.% comes from an older Starpi schema: apply migrations/20260923000000_harden_rls_anonymous_auth.sql instead of full_schema.sql', tbl;
-        end if;
-    end loop;
+    if to_regclass('public.knowledge_documents') is null
+       or to_regclass('public.knowledge_sections') is null
+       or to_regclass('public.chat_history') is null then
+        raise exception 'Starpi tables not found: use full_schema.sql for a fresh install';
+    end if;
 end
 $$;
 
 -- ------------------------------------------------------------------------------
--- 1. Knowledge documents
--- ------------------------------------------------------------------------------
-create table if not exists public.knowledge_documents (
-    id uuid primary key default gen_random_uuid(),
-    title text not null,
-    source_type text not null default 'text',   -- 'text', 'file', 'meeting_notes', 'web', 'chat'
-    source_name text,                            -- file name or source URI
-    raw_content text,                            -- original unstructured input
-    summary text,
-    tags text[] default '{}'::text[],
-    metadata jsonb default '{}'::jsonb,
-    total_sections integer default 0,
-    created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now(),
-    -- null for rows written by the service role (backend)
-    owner_id uuid default auth.uid() references auth.users (id) on delete set null,
-    -- public rows are readable by everyone; only the service role can publish
-    is_public boolean not null default false,
-    fts tsvector generated always as (
-        to_tsvector('german', coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(raw_content, ''))
-    ) stored
-);
-
--- ------------------------------------------------------------------------------
--- 2. Knowledge sections (markdown chunks + embeddings)
--- ------------------------------------------------------------------------------
-create table if not exists public.knowledge_sections (
-    id uuid primary key default gen_random_uuid(),
-    document_id uuid not null references public.knowledge_documents (id) on delete cascade,
-    section_index integer not null default 0,
-    heading text,
-    markdown_content text not null,
-    token_count integer default 0,
-    embedding public.vector(1536),               -- null until an embedding is computed
-    created_at timestamptz not null default now(),
-    fts tsvector generated always as (
-        to_tsvector('german', coalesce(heading, '') || ' ' || coalesce(markdown_content, ''))
-    ) stored
-);
-
--- ------------------------------------------------------------------------------
--- 3. Chat history (private to the signed-in user)
--- ------------------------------------------------------------------------------
-create table if not exists public.chat_history (
-    id uuid primary key default gen_random_uuid(),
-    session_id text not null,
-    role text not null,
-    content text not null,
-    sources jsonb not null default '[]'::jsonb,
-    metadata jsonb not null default '{}'::jsonb,
-    created_at timestamptz not null default now(),
-    owner_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
-    constraint chat_history_role_check check (role in ('user', 'assistant', 'system')),
-    constraint chat_history_session_id_length check (char_length(session_id) between 1 and 128),
-    constraint chat_history_content_length check (char_length(content) <= 100000),
-    constraint chat_history_sources_size check (octet_length(sources::text) <= 65536),
-    constraint chat_history_metadata_size check (octet_length(metadata::text) <= 65536)
-);
-
--- ------------------------------------------------------------------------------
--- 4. Settings
+-- 1. Tables that older installs may lack
 -- ------------------------------------------------------------------------------
 create table if not exists public.brain_settings (
     key text primary key,
@@ -140,13 +94,10 @@ values
     ('rag_config', '{"match_threshold": 0.2, "match_count": 5, "chunk_size": 1200}'::jsonb, 'RAG retrieval parameters')
 on conflict (key) do nothing;
 
--- ------------------------------------------------------------------------------
--- 5. Knowledge graph
--- ------------------------------------------------------------------------------
 create table if not exists public.knowledge_entities (
     id uuid primary key default gen_random_uuid(),
     name text not null,
-    entity_type text not null,                   -- 'person', 'project', 'metric', 'tech', ...
+    entity_type text not null,
     description text,
     properties jsonb default '{}'::jsonb,
     owner_id uuid default auth.uid() references auth.users (id) on delete set null,
@@ -158,7 +109,7 @@ create table if not exists public.knowledge_relations (
     id uuid primary key default gen_random_uuid(),
     source_entity_id uuid references public.knowledge_entities (id) on delete cascade,
     target_entity_id uuid references public.knowledge_entities (id) on delete cascade,
-    relation_type text not null,                 -- 'leads', 'budgeted_at', 'uses', ...
+    relation_type text not null,
     properties jsonb default '{}'::jsonb,
     owner_id uuid default auth.uid() references auth.users (id) on delete set null,
     is_public boolean not null default false,
@@ -166,8 +117,185 @@ create table if not exists public.knowledge_relations (
 );
 
 -- ------------------------------------------------------------------------------
+-- 2. Columns: total_sections (schema.sql era), knowledge graph columns from
+--    the first full_schema.sql, owner_id and is_public
+-- ------------------------------------------------------------------------------
+alter table public.knowledge_documents
+    add column if not exists total_sections integer default 0;
+
+alter table public.knowledge_entities
+    add column if not exists description text;
+
+do $$
+begin
+    -- The first full_schema.sql stored entity attributes in "metadata".
+    if not exists (
+        select 1 from information_schema.columns
+        where table_schema = 'public' and table_name = 'knowledge_entities' and column_name = 'properties'
+    ) then
+        alter table public.knowledge_entities add column properties jsonb default '{}'::jsonb;
+        if exists (
+            select 1 from information_schema.columns
+            where table_schema = 'public' and table_name = 'knowledge_entities' and column_name = 'metadata'
+        ) then
+            update public.knowledge_entities set properties = coalesce(metadata, '{}'::jsonb);
+        end if;
+    end if;
+end
+$$;
+
+alter table public.knowledge_relations
+    add column if not exists properties jsonb default '{}'::jsonb;
+
+update public.knowledge_entities set created_at = now() where created_at is null;
+update public.knowledge_relations set created_at = now() where created_at is null;
+alter table public.knowledge_entities
+    alter column created_at set default now(),
+    alter column created_at set not null;
+alter table public.knowledge_relations
+    alter column created_at set default now(),
+    alter column created_at set not null;
+
+-- A global UNIQUE (name, entity_type) lets one user block names for everyone
+-- and reveals whether a private entity with that name exists.
+alter table public.knowledge_entities
+    drop constraint if exists knowledge_entities_name_entity_type_key;
+
+-- owner_id: null for rows written by the service role (backend).
+alter table public.knowledge_documents add column if not exists owner_id uuid;
+alter table public.knowledge_entities add column if not exists owner_id uuid;
+alter table public.knowledge_relations add column if not exists owner_id uuid;
+
+alter table public.knowledge_documents alter column owner_id set default auth.uid();
+alter table public.knowledge_entities alter column owner_id set default auth.uid();
+alter table public.knowledge_relations alter column owner_id set default auth.uid();
+
+-- is_public: rows that already exist were readable by anyone holding the anon
+-- key, so they stay public. Only runs when the column is added, so re-running
+-- never publishes rows created after the first run.
+do $$
+declare
+    tbl text;
+begin
+    foreach tbl in array array['knowledge_documents', 'knowledge_entities', 'knowledge_relations'] loop
+        if not exists (
+            select 1 from information_schema.columns
+            where table_schema = 'public' and table_name = tbl and column_name = 'is_public'
+        ) then
+            execute format('alter table public.%I add column is_public boolean not null default true', tbl);
+        end if;
+        execute format('alter table public.%I alter column is_public set default false', tbl);
+    end loop;
+end
+$$;
+
+-- ------------------------------------------------------------------------------
+-- 3. German full-text search columns
+-- ------------------------------------------------------------------------------
+alter table public.knowledge_documents
+    add column if not exists fts tsvector generated always as (
+        to_tsvector('german', coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(raw_content, ''))
+    ) stored;
+
+alter table public.knowledge_sections
+    add column if not exists fts tsvector generated always as (
+        to_tsvector('german', coalesce(heading, '') || ' ' || coalesce(markdown_content, ''))
+    ) stored;
+
+-- ------------------------------------------------------------------------------
+-- 4. chat_history ownership
+-- ------------------------------------------------------------------------------
+alter table public.chat_history add column if not exists owner_id uuid;
+
+-- Rows written before this migration have no owner and were readable and
+-- deletable by anyone holding the anon key. They cannot be assigned to a
+-- user, so they are removed (the live table is empty). No-op on re-runs:
+-- owner_id is NOT NULL from then on.
+do $$
+declare
+    removed bigint;
+begin
+    delete from public.chat_history where owner_id is null;
+    get diagnostics removed = row_count;
+    if removed > 0 then
+        raise notice 'chat_history: removed % rows without owner', removed;
+    end if;
+end
+$$;
+
+update public.chat_history set sources = '[]'::jsonb where sources is null;
+update public.chat_history set metadata = '{}'::jsonb where metadata is null;
+
+alter table public.chat_history
+    alter column owner_id set default auth.uid(),
+    alter column owner_id set not null,
+    alter column sources set not null,
+    alter column metadata set not null;
+
+alter table public.chat_history drop constraint if exists chat_history_role_check;
+alter table public.chat_history drop constraint if exists chat_history_session_id_length;
+alter table public.chat_history drop constraint if exists chat_history_content_length;
+alter table public.chat_history drop constraint if exists chat_history_sources_size;
+alter table public.chat_history drop constraint if exists chat_history_metadata_size;
+
+alter table public.chat_history
+    add constraint chat_history_role_check check (role in ('user', 'assistant', 'system')),
+    add constraint chat_history_session_id_length check (char_length(session_id) between 1 and 128),
+    add constraint chat_history_content_length check (char_length(content) <= 100000),
+    add constraint chat_history_sources_size check (octet_length(sources::text) <= 65536),
+    add constraint chat_history_metadata_size check (octet_length(metadata::text) <= 65536);
+
+-- ------------------------------------------------------------------------------
+-- 5. Foreign keys to auth.users
+-- ------------------------------------------------------------------------------
+alter table public.chat_history drop constraint if exists chat_history_owner_id_fkey;
+alter table public.chat_history
+    add constraint chat_history_owner_id_fkey
+    foreign key (owner_id) references auth.users (id) on delete cascade;
+
+alter table public.knowledge_documents drop constraint if exists knowledge_documents_owner_id_fkey;
+alter table public.knowledge_documents
+    add constraint knowledge_documents_owner_id_fkey
+    foreign key (owner_id) references auth.users (id) on delete set null;
+
+alter table public.knowledge_entities drop constraint if exists knowledge_entities_owner_id_fkey;
+alter table public.knowledge_entities
+    add constraint knowledge_entities_owner_id_fkey
+    foreign key (owner_id) references auth.users (id) on delete set null;
+
+alter table public.knowledge_relations drop constraint if exists knowledge_relations_owner_id_fkey;
+alter table public.knowledge_relations
+    add constraint knowledge_relations_owner_id_fkey
+    foreign key (owner_id) references auth.users (id) on delete set null;
+
+-- ------------------------------------------------------------------------------
 -- 6. Indexes
 -- ------------------------------------------------------------------------------
+-- The old schema.sql used different index names; keep one index per purpose.
+do $$
+declare
+    pair text[];
+begin
+    foreach pair slice 1 in array array[
+        array['knowledge_sections_embedding_hnsw_idx', 'idx_ksections_embedding_hnsw'],
+        array['knowledge_sections_doc_id_idx', 'idx_ksections_doc_id'],
+        array['knowledge_documents_tags_idx', 'idx_kdocs_tags']
+    ] loop
+        if to_regclass('public.' || pair[1]) is not null then
+            if to_regclass('public.' || pair[2]) is null then
+                execute format('alter index public.%I rename to %I', pair[1], pair[2]);
+            else
+                execute format('drop index public.%I', pair[1]);
+            end if;
+        end if;
+    end loop;
+end
+$$;
+
+-- Replaced by idx_chathistory_owner_session (every query is scoped to the owner).
+drop index if exists public.chat_history_session_idx;
+drop index if exists public.idx_chathistory_session;
+
 create index if not exists idx_kdocs_created_at on public.knowledge_documents (created_at desc);
 create index if not exists idx_kdocs_tags on public.knowledge_documents using gin (tags);
 create index if not exists idx_kdocs_owner_id on public.knowledge_documents (owner_id);
@@ -195,8 +323,20 @@ alter table public.knowledge_relations enable row level security;
 alter table public.chat_history enable row level security;
 alter table public.brain_settings enable row level security;
 
--- Re-run: drop the policies created below, then anything else on these
--- tables (an extra permissive policy would be OR-ed with them).
+-- Policies of earlier schema versions.
+drop policy if exists "Allow public read documents" on public.knowledge_documents;
+drop policy if exists "Allow public insert documents" on public.knowledge_documents;
+drop policy if exists "Allow public update documents" on public.knowledge_documents;
+drop policy if exists "Allow public read sections" on public.knowledge_sections;
+drop policy if exists "Allow public insert sections" on public.knowledge_sections;
+drop policy if exists "Allow public all chat_history" on public.chat_history;
+drop policy if exists "Allow public read brain_settings" on public.brain_settings;
+drop policy if exists "Allow public read entities" on public.knowledge_entities;
+drop policy if exists "Allow public insert entities" on public.knowledge_entities;
+drop policy if exists "Allow public read relations" on public.knowledge_relations;
+drop policy if exists "Allow public insert relations" on public.knowledge_relations;
+
+-- Policies created below (re-run).
 drop policy if exists knowledge_documents_select_public_or_own on public.knowledge_documents;
 drop policy if exists knowledge_documents_insert_own on public.knowledge_documents;
 drop policy if exists knowledge_documents_update_own on public.knowledge_documents;
@@ -218,6 +358,8 @@ drop policy if exists chat_history_insert_own on public.chat_history;
 drop policy if exists chat_history_delete_own on public.chat_history;
 drop policy if exists brain_settings_select_all on public.brain_settings;
 
+-- Any other policy on these tables (for example one added in the dashboard)
+-- would be OR-ed with the policies below and could reopen access.
 do $$
 declare
     pol record;
@@ -376,7 +518,7 @@ create policy brain_settings_select_all on public.brain_settings
 -- ------------------------------------------------------------------------------
 -- 8. Functions
 -- ------------------------------------------------------------------------------
--- Re-run: drop every overload before creating the current definitions.
+-- Drop every overload so no older SECURITY DEFINER variant stays callable.
 do $$
 declare
     fn regprocedure;
@@ -678,7 +820,7 @@ revoke all on function public.ingest_document_atomic(text, text, text[], text, t
 grant execute on function public.ingest_document_atomic(text, text, text[], text, text, text, jsonb)
     to service_role;
 
--- Let PostgREST pick up the new functions and privileges.
+-- Let PostgREST pick up the changed functions and privileges.
 notify pgrst, 'reload schema';
 
 commit;
