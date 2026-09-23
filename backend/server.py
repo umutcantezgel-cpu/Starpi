@@ -7,9 +7,12 @@ Endpoints:
     POST /api/brain/query       {"query": str}
 
 The server binds to 127.0.0.1 by default and refuses any other address unless BRAIN_API_TOKEN is
-set. With a token, /api/brain/* requires ``Authorization: Bearer <token>``; without one, only
-loopback Host headers are accepted (DNS rebinding guard). TLS is expected to be terminated by a
-reverse proxy in front of this process.
+set. With a token, /api/brain/* requires ``Authorization: Bearer <token>``. Without one the API is
+for local use only: only loopback Host headers are accepted (DNS rebinding guard), and requests
+that carry reverse proxy headers (Forwarded, X-Forwarded-*, X-Real-IP) are refused with 401,
+because a proxy on the same host makes every request look like it comes from loopback. That check
+is a safety net only (nginx, for example, adds none of these headers by default): always set a
+token when a proxy is in front. TLS is expected to be terminated by that reverse proxy.
 """
 
 from __future__ import annotations
@@ -19,7 +22,6 @@ import hmac
 import ipaddress
 import json
 import logging
-import os
 import signal
 import socket
 import socketserver
@@ -28,7 +30,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from core.config import BrainConfig, config
+from core.config import LOG_LEVELS, BrainConfig, config
 from core.ingestion_pipeline import ingest_raw_information
 from core.rag import query_brain
 from core.supabase_client import db
@@ -40,8 +42,12 @@ MAX_QUERY_CHARS = 4_000
 MAX_SOURCE_NAME_CHARS = 256
 MAX_SOURCE_TYPE_CHARS = 64
 
-# Socket timeout for reading a request; bounds slow or stalled clients.
+# Per-connection socket timeout (applied by StreamRequestHandler.setup via ``timeout``); bounds
+# slow or stalled clients. A body that stalls longer than this is answered with 408.
 REQUEST_TIMEOUT_SECONDS = 30
+# Longest Content-Length value accepted for parsing, in significant digits. Anything longer is far
+# above any body limit; bounding it keeps int() away from huge digit strings.
+MAX_CONTENT_LENGTH_DIGITS = 18
 # Unread request bodies up to this size are drained before an error response so the client gets a
 # clean close instead of a TCP reset.
 MAX_DRAIN_BYTES = 65_536
@@ -51,6 +57,9 @@ MIN_RECOMMENDED_TOKEN_LENGTH = 32
 PREFLIGHT_MAX_AGE_SECONDS = 600
 ALLOWED_REQUEST_HEADERS = "Authorization, Content-Type"
 PROTECTED_PREFIX = "/api/brain/"
+# Headers set by reverse proxies. Without an API token, requests carrying any of them are refused.
+PROXY_HEADERS = ("Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-IP")
+UNAUTHORIZED_HEADERS = {"WWW-Authenticate": 'Bearer realm="starpi-brain"'}
 
 # path -> {method -> handler method name}
 ROUTES: dict[str, dict[str, str]] = {
@@ -87,6 +96,22 @@ def is_loopback_host(host: str) -> bool:
         return ipaddress.ip_address(candidate).is_loopback
     except ValueError:
         return False
+
+
+def parse_content_length(value: str) -> int | None:
+    """Value of a Content-Length header, or None unless it is a plain decimal number.
+
+    Leading zeros are allowed. Numbers with more than ``MAX_CONTENT_LENGTH_DIGITS`` significant
+    digits are not converted; they are clamped to ``10 ** MAX_CONTENT_LENGTH_DIGITS``, which is
+    above every body limit.
+    """
+    value = value.strip()
+    if not (value.isascii() and value.isdigit()):
+        return None
+    significant = value.lstrip("0")
+    if len(significant) > MAX_CONTENT_LENGTH_DIGITS:
+        return 10**MAX_CONTENT_LENGTH_DIGITS
+    return int(significant or "0")
 
 
 def _hostname_from_host_header(value: str) -> str:
@@ -192,11 +217,8 @@ class BrainAPIHandler(BaseHTTPRequestHandler):
         if self._body_consumed:
             return
         self._body_consumed = True
-        raw_length = (self._header("Content-Length") or "").strip()
-        if not (raw_length.isascii() and raw_length.isdigit()):
-            return
-        remaining = int(raw_length)
-        if remaining == 0 or remaining > MAX_DRAIN_BYTES:
+        remaining = parse_content_length(self._header("Content-Length") or "")
+        if not remaining or remaining > MAX_DRAIN_BYTES:
             return
         try:
             self.connection.settimeout(DRAIN_TIMEOUT_SECONDS)
@@ -240,6 +262,7 @@ class BrainAPIHandler(BaseHTTPRequestHandler):
                     logger.info("Client disconnected before the error response was sent")
 
     def _route(self, method: str) -> None:
+        self._check_proxy_headers()
         if self._header("Origin") is not None and self._allowed_origin() is None:
             raise ApiError(HTTPStatus.FORBIDDEN, "origin_not_allowed")
         self._check_host()
@@ -257,6 +280,16 @@ class BrainAPIHandler(BaseHTTPRequestHandler):
         if path.startswith(PROTECTED_PREFIX):
             self._check_auth()
         getattr(self, methods[method])()
+
+    def _check_proxy_headers(self) -> None:
+        # Fail closed: a reverse proxy on this host forwards remote clients from 127.0.0.1 with a
+        # loopback Host header, so without a token those requests would pass every local check.
+        if self.settings.api_token:
+            return
+        if any(self._header(name) is not None for name in PROXY_HEADERS):
+            raise ApiError(
+                HTTPStatus.UNAUTHORIZED, "api_token_required_behind_proxy", headers=dict(UNAUTHORIZED_HEADERS)
+            )
 
     def _check_host(self) -> None:
         # Without a token the API is only meant for local use. Rejecting foreign Host headers
@@ -276,9 +309,7 @@ class BrainAPIHandler(BaseHTTPRequestHandler):
             supplied.strip().encode("utf-8"), token.encode("utf-8")
         )
         if not valid:
-            raise ApiError(
-                HTTPStatus.UNAUTHORIZED, "unauthorized", headers={"WWW-Authenticate": 'Bearer realm="starpi-brain"'}
-            )
+            raise ApiError(HTTPStatus.UNAUTHORIZED, "unauthorized", headers=dict(UNAUTHORIZED_HEADERS))
 
     def _read_json_object(self) -> dict[str, Any]:
         if self._header("Transfer-Encoding") is not None:
@@ -286,10 +317,9 @@ class BrainAPIHandler(BaseHTTPRequestHandler):
         lengths = self.headers.get_all("Content-Length") or []
         if not lengths:
             raise ApiError(HTTPStatus.LENGTH_REQUIRED, "length_required")
-        raw_length = lengths[0].strip()
-        if len(lengths) > 1 or not (raw_length.isascii() and raw_length.isdigit()):
+        length = parse_content_length(lengths[0])
+        if len(lengths) > 1 or length is None:
             raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_content_length")
-        length = int(raw_length)
         if length > self.settings.max_body_bytes:
             raise ApiError(
                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "payload_too_large", max_bytes=self.settings.max_body_bytes
@@ -298,7 +328,14 @@ class BrainAPIHandler(BaseHTTPRequestHandler):
         if media_type != "application/json":
             raise ApiError(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type")
 
-        body = self.rfile.read(length) if length else b""
+        try:
+            body = self.rfile.read(length) if length else b""
+        except TimeoutError:
+            # The socket timeout fired while the client was still sending the body. The reader
+            # may hold a partial body, so this connection cannot be reused.
+            self._body_consumed = True
+            self.close_connection = True
+            raise ApiError(HTTPStatus.REQUEST_TIMEOUT, "request_timeout", headers={"Connection": "close"}) from None
         self._body_consumed = True
         if len(body) < length:
             raise ApiError(HTTPStatus.BAD_REQUEST, "incomplete_body")
@@ -423,8 +460,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--log-level",
         type=str.upper,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        default=os.environ.get("BRAIN_LOG_LEVEL", "INFO").upper(),
+        choices=LOG_LEVELS,
+        # BRAIN_LOG_LEVEL, validated by the config (unknown values fall back to INFO).
+        default=config.log_level,
     )
     args = parser.parse_args(argv)
     logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")

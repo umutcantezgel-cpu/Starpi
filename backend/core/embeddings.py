@@ -1,4 +1,4 @@
-"""Text embeddings via an OpenAI-compatible ``/embeddings`` endpoint.
+"""Text embeddings via a ``/v1/embeddings`` endpoint (same API family as ``/v1/chat/completions``).
 
 When the endpoint is unavailable, a deterministic word-hash vector is produced instead. That
 vector only supports the in-memory offline store; it has no semantic meaning and must never be
@@ -23,6 +23,11 @@ EMBEDDING_TIMEOUT_SECONDS = 20.0
 EMBEDDING_CONNECT_TIMEOUT_SECONDS = 2.0
 
 
+def is_finite_vector(values: list[float]) -> bool:
+    """True when no value is NaN or +/-Infinity (JSON parsers accept both as literals)."""
+    return all(math.isfinite(v) for v in values)
+
+
 def fetch_remote_embedding(text: str) -> list[float] | None:
     """Returns the endpoint's embedding for ``text`` or None when it is unavailable or invalid."""
     if not text:
@@ -43,10 +48,15 @@ def fetch_remote_embedding(text: str) -> list[float] | None:
         logger.warning("Embedding endpoint returned %s values, expected %d; ignoring it", size, EMBEDDING_DIM)
         return None
     try:
-        return [float(v) for v in vector]
+        floats = [float(v) for v in vector]
     except (TypeError, ValueError):
         logger.warning("Embedding endpoint returned non-numeric values; ignoring it")
         return None
+    if not is_finite_vector(floats):
+        # NaN / Infinity would poison cosine similarity and cannot be stored in pgvector.
+        logger.warning("Embedding endpoint returned NaN or infinite values; ignoring it")
+        return None
+    return floats
 
 
 def hash_embedding(text: str) -> list[float]:

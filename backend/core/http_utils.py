@@ -17,7 +17,7 @@ def http_timeout(total_seconds: float, connect_seconds: float = DEFAULT_CONNECT_
 
 
 def bearer_headers(api_key: str) -> dict[str, str]:
-    """Authorization header for OpenAI-compatible endpoints, or nothing when no key is set."""
+    """Authorization header for Chat Completions-compatible endpoints, or nothing when no key is set."""
     if not api_key or api_key == NO_API_KEY:
         return {}
     return {"Authorization": f"Bearer {api_key}"}

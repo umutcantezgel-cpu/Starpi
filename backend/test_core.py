@@ -16,7 +16,7 @@ from unittest import mock
 
 import httpx
 
-from core import embeddings, rag, structurer
+from core import embeddings, rag, structurer, supabase_client
 from core.chunker import chunk_markdown
 from core.config import DEFAULT_MAX_BODY_BYTES, BrainConfig, load_env_file, parse_env_line
 from core.embeddings import (
@@ -28,7 +28,8 @@ from core.embeddings import (
 )
 from core.ingestion_pipeline import ingest_raw_information
 from core.structurer import structure_raw_content
-from core.supabase_client import SupabaseBrainClient
+from core.supabase_client import SupabaseBrainClient, is_real_vector, section_payload
+from core.supabase_service import SupabaseService
 
 REAL_VECTOR = [0.5] * EMBEDDING_DIM
 
@@ -119,6 +120,26 @@ class EmbeddingTests(unittest.TestCase):
         self.assertFalse(is_real)
         self.assertEqual(len(vector), EMBEDDING_DIM)
 
+    def test_non_finite_values_are_rejected(self) -> None:
+        # Python's json module parses these literals; httpx cannot encode them, so send raw JSON.
+        for bad in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(value=bad):
+                values = ["0.1"] * EMBEDDING_DIM
+                values[7] = bad
+                body = ('{"data": [{"embedding": [' + ", ".join(values) + "]}]}").encode("ascii")
+                raw = httpx.Response(
+                    200,
+                    content=body,
+                    headers={"Content-Type": "application/json"},
+                    request=httpx.Request("POST", "http://test.invalid/"),
+                )
+                self.patch_client(post=[raw])
+                with self.assertLogs("core.embeddings", "WARNING") as logs:
+                    result, is_real = get_embedding_with_source("hello")
+                self.assertFalse(is_real)
+                self.assertTrue(all(math.isfinite(v) for v in result))
+                self.assertIn("NaN or infinite", "\n".join(logs.output))
+
     def test_http_error_status_falls_back(self) -> None:
         self.patch_client(post=[response(500, {"error": "boom"})])
         with self.assertLogs("core.embeddings", "WARNING") as logs:
@@ -194,6 +215,23 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfg.max_body_bytes, 2048)
         self.assertEqual(cfg.api_token, "token-value")
         self.assertEqual(cfg.gemini_keys, ["k1", "k2"])
+
+    def test_log_level_is_validated(self) -> None:
+        cases = {"": "INFO", "debug": "DEBUG", " Warning ": "WARNING", "ERROR": "ERROR"}
+        for value, expected in cases.items():
+            with self.subTest(value=value), mock.patch.dict(os.environ, {"BRAIN_LOG_LEVEL": value}, clear=True):
+                self.assertEqual(BrainConfig().log_level, expected)
+
+    def test_unknown_log_level_falls_back_to_info_with_warning(self) -> None:
+        for value in ("verbose", "TRACE", "20", "CRITICAL"):
+            with (
+                self.subTest(value=value),
+                mock.patch.dict(os.environ, {"BRAIN_LOG_LEVEL": value}, clear=True),
+                self.assertLogs("core.config", "WARNING") as logs,
+            ):
+                self.assertEqual(BrainConfig().log_level, "INFO")
+            self.assertIn("BRAIN_LOG_LEVEL", "\n".join(logs.output))
+            self.assertNotIn(value, "\n".join(logs.output))
 
     def test_invalid_integer_falls_back_to_default(self) -> None:
         with (
@@ -356,6 +394,91 @@ class SupabaseClientTests(unittest.TestCase):
             record = client.save_document(title="Doc", summary="", tags=[], sections=[{"markdown_content": "A"}])
         self.assertEqual(http.delete.call_args.kwargs["params"], {"id": "eq.doc-1"})
         self.assertEqual(record["storage"], "memory")
+
+    def test_rollback_runs_for_any_exception(self) -> None:
+        # Not only httpx errors: a serialisation error or a bug during the section insert must
+        # also remove the half-written document.
+        for error in (ValueError("Out of range float values are not JSON compliant"), RuntimeError("bug")):
+            with self.subTest(error=type(error).__name__):
+                http = self.patch_client(
+                    post=[response(201, [{"id": "doc-1"}]), error],
+                    delete=[response(204, None, method="DELETE")],
+                )
+                client = SupabaseBrainClient(url="https://x.supabase.co", key="service-key")
+                if isinstance(error, ValueError):
+                    with self.assertLogs("core.supabase_client", "WARNING"):
+                        record = client.save_document(title="Doc", summary="", tags=[], sections=[{}])
+                    self.assertEqual(record["storage"], "memory")
+                else:
+                    with self.assertRaises(RuntimeError):
+                        client.save_document(title="Doc", summary="", tags=[], sections=[{}])
+                self.assertEqual(http.delete.call_args.kwargs["params"], {"id": "eq.doc-1"})
+
+    def test_failed_rollback_is_logged_and_keeps_the_original_error(self) -> None:
+        http = self.patch_client(
+            post=[response(201, [{"id": "doc-1"}]), response(400, {"message": "bad"})],
+            delete=RuntimeError("delete failed"),
+        )
+        client = SupabaseBrainClient(url="https://x.supabase.co", key="service-key")
+        with self.assertLogs("core.supabase_client", "WARNING") as logs:
+            record = client.save_document(title="Doc", summary="", tags=[], sections=[{"markdown_content": "A"}])
+        http.delete.assert_called_once()
+        output = "\n".join(logs.output)
+        self.assertIn("Could not roll back document doc-1", output)
+        self.assertIn("HTTPStatusError", output)
+        self.assertEqual(record["storage"], "memory")
+
+    def test_non_finite_embeddings_are_never_persisted(self) -> None:
+        for bad in (math.nan, math.inf, -math.inf):
+            vector = [0.5] * EMBEDDING_DIM
+            vector[0] = bad
+            with self.subTest(value=bad):
+                self.assertFalse(is_real_vector(vector))
+                self.assertIsNone(section_payload({"embedding": vector})["embedding"])
+        self.assertFalse(is_real_vector(["0.5"] * EMBEDDING_DIM))
+        self.assertTrue(is_real_vector(REAL_VECTOR))
+
+    def test_generated_fields_are_clipped_to_database_limits(self) -> None:
+        http = self.patch_client(post=[response(201, [{"id": "doc-1"}]), response(201, None)])
+        client = SupabaseBrainClient(url="https://x.supabase.co", key="service-key")
+        with self.assertLogs("core.supabase_client", "INFO"):
+            client.save_document(
+                title="T" * 600,
+                summary="S" * 6000,
+                tags=["x" * 300] * 80,
+                source_type="t" * 100,
+                source_name="n" * 700,
+                raw_content="raw",
+                sections=[{"heading": "H" * 1200, "markdown_content": "M" * 220_000}],
+            )
+        doc = http.post.call_args_list[0].kwargs["json"]
+        self.assertEqual(len(doc["title"]), supabase_client.MAX_TITLE_CHARS)
+        self.assertEqual(len(doc["summary"]), supabase_client.MAX_SUMMARY_CHARS)
+        self.assertEqual(len(doc["source_type"]), supabase_client.MAX_SOURCE_TYPE_CHARS)
+        self.assertEqual(len(doc["source_name"]), supabase_client.MAX_SOURCE_NAME_CHARS)
+        self.assertEqual(len(doc["tags"]), supabase_client.MAX_TAGS)
+        self.assertTrue(all(len(tag) == supabase_client.MAX_TAG_CHARS for tag in doc["tags"]))
+        self.assertEqual(doc["raw_content"], "raw")
+        section = http.post.call_args_list[1].kwargs["json"][0]
+        self.assertEqual(len(section["heading"]), supabase_client.MAX_HEADING_CHARS)
+        self.assertEqual(len(section["markdown_content"]), supabase_client.MAX_SECTION_CHARS)
+
+    def test_rpc_ingest_payload_is_clipped(self) -> None:
+        factory, http = fake_http_client(post=[response(200, "doc-1")])
+        service = SupabaseService(url="https://x.supabase.co", key="service-key")
+        with mock.patch("core.supabase_service.httpx.Client", factory):
+            result = service.ingest_document(
+                title="T" * 600,
+                summary="S",
+                tags=["a"],
+                markdown_content="",
+                sections=[{"heading": "H" * 1200, "markdown_content": "M", "embedding": [math.nan] * EMBEDDING_DIM}],
+            )
+        self.assertEqual(result["storage"], "supabase_cloud")
+        payload = http.post.call_args.kwargs["json"]
+        self.assertEqual(len(payload["doc_title"]), supabase_client.MAX_TITLE_CHARS)
+        self.assertEqual(len(payload["sections_data"][0]["heading"]), supabase_client.MAX_HEADING_CHARS)
+        self.assertIsNone(payload["sections_data"][0]["embedding"])
 
 
 class IngestionPipelineTests(unittest.TestCase):

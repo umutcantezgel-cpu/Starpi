@@ -19,7 +19,7 @@ from typing import Any
 import httpx
 
 from .config import config
-from .embeddings import EMBEDDING_DIM
+from .embeddings import EMBEDDING_DIM, is_finite_vector
 from .http_utils import describe_error, http_timeout
 
 logger = logging.getLogger(__name__)
@@ -31,23 +31,65 @@ SUPABASE_CONNECT_TIMEOUT_SECONDS = 5.0
 DOCUMENT_LIST_COLUMNS = ("id", "title", "summary", "tags", "source_type", "source_name", "total_sections", "created_at")
 DOCUMENT_LIST_LIMIT = 200
 
+# Size limits of the CHECK constraints in supabase/migrations/20260924000000_lock_published_rows.sql.
+# Model-generated fields are clipped to them, so a long title or heading cannot make an insert fail.
+# raw_content is not clipped: server.MAX_TEXT_CHARS rejects longer input before it gets here.
+MAX_TITLE_CHARS = 500
+MAX_SOURCE_TYPE_CHARS = 64
+MAX_SOURCE_NAME_CHARS = 500
+MAX_SUMMARY_CHARS = 5_000
+MAX_TAGS = 50
+MAX_TAG_CHARS = 100
+MAX_HEADING_CHARS = 1_000
+MAX_SECTION_CHARS = 210_000
+
 
 def supabase_timeout() -> httpx.Timeout:
     return http_timeout(SUPABASE_TIMEOUT_SECONDS, SUPABASE_CONNECT_TIMEOUT_SECONDS)
 
 
 def is_real_vector(value: Any) -> bool:
-    """True for a list with the dimension of the ``knowledge_sections.embedding`` column."""
-    return isinstance(value, list) and len(value) == EMBEDDING_DIM
+    """True for a list of finite numbers with the dimension of the ``knowledge_sections.embedding`` column."""
+    if not isinstance(value, list) or len(value) != EMBEDDING_DIM:
+        return False
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value):
+        return False
+    return is_finite_vector(value)
+
+
+def clip_text(value: Any, max_chars: int) -> Any:
+    """Cuts strings to ``max_chars`` characters; other values (e.g. None) are returned unchanged."""
+    return value[:max_chars] if isinstance(value, str) else value
+
+
+def clip_tags(tags: Any) -> Any:
+    """Keeps at most ``MAX_TAGS`` tags of at most ``MAX_TAG_CHARS`` characters; non-lists are unchanged."""
+    if not isinstance(tags, (list, tuple)):
+        return tags
+    return [clip_text(tag, MAX_TAG_CHARS) for tag in list(tags)[:MAX_TAGS]]
+
+
+def document_fields(title: Any, summary: Any, tags: Any, source_type: Any, source_name: Any) -> dict[str, Any]:
+    """Document metadata clipped to the database limits."""
+    return {
+        "title": clip_text(title, MAX_TITLE_CHARS),
+        "summary": clip_text(summary, MAX_SUMMARY_CHARS),
+        "tags": clip_tags(tags),
+        "source_type": clip_text(source_type, MAX_SOURCE_TYPE_CHARS),
+        "source_name": clip_text(source_name, MAX_SOURCE_NAME_CHARS),
+    }
 
 
 def section_payload(sec: dict[str, Any]) -> dict[str, Any]:
-    """Section fields as stored in Supabase. Missing or malformed embeddings become None (SQL NULL)."""
+    """Section fields as stored in Supabase, clipped to the database limits.
+
+    Missing, malformed or non-finite embeddings become None (SQL NULL).
+    """
     embedding = sec.get("embedding")
     return {
         "section_index": int(sec.get("section_index", 0) or 0),
-        "heading": str(sec.get("heading", "") or ""),
-        "markdown_content": str(sec.get("markdown_content", "") or ""),
+        "heading": clip_text(str(sec.get("heading", "") or ""), MAX_HEADING_CHARS),
+        "markdown_content": clip_text(str(sec.get("markdown_content", "") or ""), MAX_SECTION_CHARS),
         "token_count": int(sec.get("token_count", 0) or 0),
         "embedding": embedding if is_real_vector(embedding) else None,
     }
@@ -128,11 +170,7 @@ class SupabaseBrainClient:
         sections = sections or []
         doc_record: dict[str, Any] = {
             "id": str(uuid.uuid4()),
-            "title": title,
-            "summary": summary,
-            "tags": tags,
-            "source_type": source_type,
-            "source_name": source_name,
+            **document_fields(title, summary, tags, source_type, source_name),
             "raw_content": raw_content,
             "total_sections": len(sections),
         }
@@ -166,8 +204,9 @@ class SupabaseBrainClient:
                         json=[{"document_id": doc_id, **payload} for payload in payloads],
                     )
                     sec_resp.raise_for_status()
-                except httpx.HTTPError:
-                    # Do not leave a document without its sections behind.
+                except Exception:
+                    # Whatever failed (HTTP, serialisation, a bug), do not leave a document without
+                    # its sections behind.
                     self._delete_remote_document(client, doc_id)
                     raise
 
@@ -183,7 +222,8 @@ class SupabaseBrainClient:
                 headers=self._headers(prefer="return=minimal"),
             )
             resp.raise_for_status()
-        except httpx.HTTPError as exc:
+        except Exception as exc:
+            # Never let a failed rollback hide the original error, which the caller re-raises.
             logger.error(
                 "Could not roll back document %s after a failed section insert (%s)", doc_id, describe_error(exc)
             )

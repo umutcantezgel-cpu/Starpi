@@ -1,7 +1,8 @@
 """Retrieval augmented answering over the knowledge base.
 
 Order of answer providers: Gemini key pool, OpenRouter key pool, then the configured
-OpenAI-compatible endpoint. If none answers, the retrieved context is returned as-is.
+Chat Completions-compatible endpoint (``/v1/chat/completions``). If none answers, the retrieved
+context is returned as-is.
 """
 
 from __future__ import annotations

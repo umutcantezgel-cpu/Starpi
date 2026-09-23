@@ -15,7 +15,13 @@ import httpx
 
 from .config import config
 from .http_utils import describe_error, http_timeout
-from .supabase_client import DOCUMENT_LIST_COLUMNS, local_vector, rank_local_sections, section_payload
+from .supabase_client import (
+    DOCUMENT_LIST_COLUMNS,
+    document_fields,
+    local_vector,
+    rank_local_sections,
+    section_payload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,12 +104,13 @@ class SupabaseService:
         Falls back to in-memory storage when the RPC is unavailable.
         """
         if self.is_configured:
+            fields = document_fields(title, summary, tags, source_type, source_name)
             rpc_payload = {
-                "doc_title": title,
-                "doc_summary": summary,
-                "doc_tags": tags,
-                "doc_source_type": source_type,
-                "doc_source_name": source_name,
+                "doc_title": fields["title"],
+                "doc_summary": fields["summary"],
+                "doc_tags": fields["tags"],
+                "doc_source_type": fields["source_type"],
+                "doc_source_name": fields["source_name"],
                 "doc_raw_content": raw_content,
                 "sections_data": [section_payload(sec) for sec in sections],
             }

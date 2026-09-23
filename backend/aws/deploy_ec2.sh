@@ -8,11 +8,14 @@
 # Result:
 #   - virtualenv in <backend>/.venv with requirements.txt installed
 #   - <backend>/.env (created from .env.example on first run, mode 600)
+#   - BRAIN_API_TOKEN in that .env, generated with openssl when it is missing or
+#     empty (never printed)
 #   - starpi-brain.service running server.py as $SERVICE_USER (default: ubuntu),
 #     bound to 127.0.0.1 only
 #
-# Nothing is exposed publicly. Put a TLS reverse proxy (Caddy or nginx) in front
-# and set BRAIN_API_TOKEN before making the API reachable from other machines.
+# Nothing is exposed publicly. A TLS reverse proxy (Caddy or nginx) on this host
+# makes every request arrive from 127.0.0.1, so the API must never run without
+# a token once one is in front; this script makes sure a token exists.
 # ==============================================================================
 
 set -euo pipefail
@@ -35,7 +38,7 @@ fi
 
 echo "[1/5] Installing system packages"
 sudo apt-get update -y
-sudo apt-get install -y python3 python3-venv curl
+sudo apt-get install -y python3 python3-venv curl openssl
 
 echo "[2/5] Creating virtualenv in ${VENV_DIR}"
 python3 -m venv "${VENV_DIR}"
@@ -43,11 +46,64 @@ python3 -m venv "${VENV_DIR}"
 "${VENV_DIR}/bin/python" -m pip install -r "${APP_DIR}/requirements.txt"
 
 echo "[3/5] Preparing ${ENV_FILE}"
+# Files created in this step (the .env, its temporary copy) are private to the owner.
+saved_umask="$(umask)"
+umask 077
 if [[ ! -f "${ENV_FILE}" ]]; then
     cp "${APP_DIR}/.env.example" "${ENV_FILE}"
     echo "      Created from .env.example. Fill in the values, then restart the service."
 fi
 chmod 600 "${ENV_FILE}"
+
+TOKEN_LINE_RE='^[[:space:]]*(export[[:space:]]+)?BRAIN_API_TOKEN[[:space:]]*='
+
+# True when the last BRAIN_API_TOKEN assignment has a value (quotes, blanks and an inline
+# comment removed).
+env_token_is_set() {
+    local line value=""
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        if [[ "${line}" =~ ${TOKEN_LINE_RE} ]]; then
+            value="${line#*=}"
+            value="${value%%[[:space:]]#*}"
+            value="${value//[\"\' $'\t\r']/}"
+        fi
+    done < "${ENV_FILE}"
+    [[ -n "${value}" ]]
+}
+
+# A reverse proxy on this host makes every request look like loopback; without a token the API
+# would serve everyone who reaches the proxy. Generate one when it is missing. The value goes from
+# openssl into the file through bash builtins only: it is never echoed, logged or put on a
+# command line.
+if ! env_token_is_set; then
+    tmp_env="$(mktemp "${ENV_FILE}.XXXXXX")"
+    trap 'rm -f "${tmp_env:-}"' EXIT
+    api_token="$(openssl rand -hex 32)"
+    if [[ ! "${api_token}" =~ ^[0-9a-f]{64}$ ]]; then
+        echo "openssl rand did not return a 64 character hex token; aborting." >&2
+        exit 1
+    fi
+    {
+        replaced=0
+        while IFS= read -r line || [[ -n "${line}" ]]; do
+            if [[ "${line}" =~ ${TOKEN_LINE_RE} ]]; then
+                # Replace the first assignment in place, drop any later ones.
+                (( replaced )) || printf 'BRAIN_API_TOKEN=%s\n' "${api_token}"
+                replaced=1
+                continue
+            fi
+            printf '%s\n' "${line}"
+        done < "${ENV_FILE}"
+        (( replaced )) || printf 'BRAIN_API_TOKEN=%s\n' "${api_token}"
+    } > "${tmp_env}"
+    unset api_token line replaced
+    chmod 600 "${tmp_env}"
+    mv -f "${tmp_env}" "${ENV_FILE}"
+    trap - EXIT
+    echo "      Generated BRAIN_API_TOKEN in ${ENV_FILE} (not shown). Clients send it as"
+    echo "      'Authorization: Bearer <token>'; read it from that file on this host."
+fi
+umask "${saved_umask}"
 
 echo "[4/5] Writing ${UNIT_FILE}"
 sudo tee "${UNIT_FILE}" > /dev/null <<EOF
@@ -103,7 +159,8 @@ Next steps
   2. The API listens on 127.0.0.1:${PORT} only. Do not open that port in the
      security group. To serve it to browsers, put a TLS reverse proxy in front,
      for example Caddy:  your.domain { reverse_proxy 127.0.0.1:${PORT} }
-  3. Before exposing it, set BRAIN_API_TOKEN (e.g. openssl rand -hex 32) and add
-     the site's origin to BRAIN_ALLOWED_ORIGINS in ${ENV_FILE}.
+  3. /api/brain/* requires the BRAIN_API_TOKEN from ${ENV_FILE} as a Bearer
+     token (keep it server side). Add the site's origin to
+     BRAIN_ALLOWED_ORIGINS there before exposing the API.
   Logs: journalctl -u ${SERVICE_NAME} -f
 EOF

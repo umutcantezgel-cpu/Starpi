@@ -9,6 +9,7 @@ from __future__ import annotations
 import dataclasses
 import http.client
 import json
+import socket
 import threading
 import unittest
 from http.server import ThreadingHTTPServer
@@ -113,6 +114,14 @@ class ServerTestCase(unittest.TestCase):
         finally:
             conn.close()
 
+    def socket_request(self, raw: bytes) -> Response:
+        """Sends ``raw`` bytes on a plain socket, keeps it open and parses the reply."""
+        with socket.create_connection(("127.0.0.1", self.port), timeout=5) as sock:
+            sock.sendall(raw)
+            resp = http.client.HTTPResponse(sock)
+            resp.begin()
+            return Response(resp.status, {k.lower(): v for k, v in resp.getheaders()}, resp.read())
+
     def post_json(self, path: str, payload: Any, headers: dict[str, str] | None = None) -> Response:
         body = json.dumps(payload).encode("utf-8")
         return self.request("POST", path, body, {"Content-Type": "application/json", **(headers or {})})
@@ -216,13 +225,41 @@ class BodyValidationTests(ServerTestCase):
     def test_content_length_is_validated(self) -> None:
         missing = self.raw_request("POST", "/api/brain/query", {"Content-Type": "application/json"})
         self.assertEqual(missing.status, 411)
-        for value in ("-1", "abc", "1_0", "+5"):
+        for value in ("-1", "abc", "1_0", "+5", "1e3", "5, 5"):
             with self.subTest(value=value):
                 resp = self.raw_request(
                     "POST", "/api/brain/query", {"Content-Type": "application/json", "Content-Length": value}
                 )
                 self.assertEqual(resp.status, 400)
                 self.assertEqual(resp.json["error"], "invalid_content_length")
+
+    def test_huge_content_length_is_413_not_500(self) -> None:
+        # 5000 digits is above Python's default int() digit limit (4300), which used to raise.
+        for value in ("9" * 5000, "1" + "0" * 30):
+            with self.subTest(digits=len(value)):
+                resp = self.raw_request(
+                    "POST", "/api/brain/query", {"Content-Type": "application/json", "Content-Length": value}
+                )
+                self.assertEqual(resp.status, 413)
+                self.assertEqual(resp.json["error"], "payload_too_large")
+        self.assertEqual(self.query_calls, [])
+
+    def test_huge_content_length_on_error_path(self) -> None:
+        # Error responses drain small unread bodies; a huge value must not break that path.
+        resp = self.raw_request("POST", "/nope", {"Content-Type": "application/json", "Content-Length": "9" * 5000})
+        self.assertEqual(resp.status, 404)
+        self.assertEqual(resp.json, {"error": "not_found"})
+
+    def test_leading_zeros_are_accepted(self) -> None:
+        body = b'{"query": "x"}'
+        resp = self.raw_request(
+            "POST",
+            "/api/brain/query",
+            {"Content-Type": "application/json", "Content-Length": "0" * 40 + str(len(body))},
+            body,
+        )
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(self.query_calls, ["x"])
 
     def test_json_content_type_is_required(self) -> None:
         resp = self.request("POST", "/api/brain/query", b'{"query": "x"}', {"Content-Type": "text/plain"})
@@ -268,6 +305,51 @@ class BodyValidationTests(ServerTestCase):
         self.assertEqual(self.ingest_calls, [])
 
 
+class TimeoutTests(ServerTestCase):
+    def test_handler_has_a_socket_timeout(self) -> None:
+        self.assertEqual(server.BrainAPIHandler.timeout, server.REQUEST_TIMEOUT_SECONDS)
+        self.assertGreater(server.REQUEST_TIMEOUT_SECONDS, 0)
+
+    def test_stalled_body_is_408(self) -> None:
+        head = (
+            b"POST /api/brain/query HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+            b"Content-Type: application/json\r\nContent-Length: 50\r\n\r\n"
+        )
+        with mock.patch.object(server.BrainAPIHandler, "timeout", 0.3):
+            resp = self.socket_request(head + b'{"query": ')
+        self.assertEqual(resp.status, 408)
+        self.assertEqual(resp.json, {"error": "request_timeout"})
+        self.assertEqual(resp.headers["connection"], "close")
+        self.assertEqual(self.query_calls, [])
+
+
+class ProxyWithoutTokenTests(ServerTestCase):
+    def test_forwarded_requests_are_refused_without_token(self) -> None:
+        for name in server.PROXY_HEADERS:
+            with self.subTest(header=name):
+                resp = self.request("GET", "/api/health", headers={name: "203.0.113.7"})
+                self.assertEqual(resp.status, 401)
+                self.assertEqual(resp.json, {"error": "api_token_required_behind_proxy"})
+                self.assertIn("Bearer", resp.headers["www-authenticate"])
+
+    def test_forwarded_brain_requests_never_reach_the_handlers(self) -> None:
+        headers = {"X-Forwarded-For": "203.0.113.7", "Host": "127.0.0.1:9200"}
+        self.assertEqual(self.post_json("/api/brain/query", {"query": "x"}, headers=headers).status, 401)
+        self.assertEqual(self.post_json("/api/brain/ingest", {"text": "x"}, headers=headers).status, 401)
+        self.assertEqual(self.request("GET", "/api/brain/documents", headers=headers).status, 401)
+        self.assertEqual(self.query_calls, [])
+        self.assertEqual(self.ingest_calls, [])
+
+    def test_header_names_are_case_insensitive_and_empty_values_count(self) -> None:
+        for headers in ({"x-real-ip": "10.0.0.1"}, {"FORWARDED": "for=10.0.0.1"}, {"X-Forwarded-For": ""}):
+            with self.subTest(headers=headers):
+                self.assertEqual(self.request("GET", "/api/health", headers=headers).status, 401)
+
+    def test_direct_local_requests_still_work(self) -> None:
+        self.assertEqual(self.request("GET", "/api/health").status, 200)
+        self.assertEqual(self.post_json("/api/brain/query", {"query": "x"}).status, 200)
+
+
 class LengthLimitTests(ServerTestCase):
     def test_text_and_query_length_limits(self) -> None:
         too_long_text = self.post_json("/api/brain/ingest", {"text": "a" * (server.MAX_TEXT_CHARS + 1)})
@@ -308,6 +390,13 @@ class AuthTests(ServerTestCase):
     def test_host_header_is_not_restricted_with_token(self) -> None:
         resp = self.request("GET", "/api/health", headers={"Host": "brain.example.com"})
         self.assertEqual(resp.status, 200)
+
+    def test_proxied_requests_work_with_token(self) -> None:
+        proxied = {"X-Forwarded-For": "203.0.113.7", "X-Forwarded-Proto": "https", "Host": "brain.example.com"}
+        self.assertEqual(self.request("GET", "/api/health", headers=proxied).status, 200)
+        self.assertEqual(self.request("GET", "/api/brain/documents", headers=proxied).status, 401)
+        auth = {**proxied, "Authorization": f"Bearer {TOKEN}"}
+        self.assertEqual(self.request("GET", "/api/brain/documents", headers=auth).status, 200)
 
 
 class CorsTests(ServerTestCase):
@@ -371,6 +460,42 @@ class StartupTests(unittest.TestCase):
     def test_server_is_threaded(self) -> None:
         self.assertTrue(issubclass(server.BrainHTTPServer, ThreadingHTTPServer))
         self.assertTrue(server.BrainHTTPServer.daemon_threads)
+
+    def test_main_uses_the_validated_log_level(self) -> None:
+        with (
+            mock.patch.object(server, "config", make_settings(log_level="WARNING")),
+            mock.patch.object(server, "run_server") as run,
+            mock.patch.object(server.logging, "basicConfig") as basic,
+        ):
+            self.assertEqual(server.main([]), 0)
+            self.assertEqual(basic.call_args.kwargs["level"], "WARNING")
+            server.main(["--log-level", "debug"])
+            self.assertEqual(basic.call_args.kwargs["level"], "DEBUG")
+        self.assertEqual(run.call_count, 2)
+
+
+class ContentLengthParsingTests(unittest.TestCase):
+    def test_parse_content_length(self) -> None:
+        cases = {
+            "0": 0,
+            "17": 17,
+            " 42 ": 42,
+            "000": 0,
+            "0" * 100 + "7": 7,
+            "9" * server.MAX_CONTENT_LENGTH_DIGITS: int("9" * server.MAX_CONTENT_LENGTH_DIGITS),
+            "1" + "0" * server.MAX_CONTENT_LENGTH_DIGITS: 10**server.MAX_CONTENT_LENGTH_DIGITS,
+            "9" * 100_000: 10**server.MAX_CONTENT_LENGTH_DIGITS,
+            "": None,
+            "-1": None,
+            "+1": None,
+            "1.0": None,
+            "0x10": None,
+            "²": None,
+            "١٢": None,
+        }
+        for value, expected in cases.items():
+            with self.subTest(value=value[:20]):
+                self.assertEqual(server.parse_content_length(value), expected)
 
 
 if __name__ == "__main__":

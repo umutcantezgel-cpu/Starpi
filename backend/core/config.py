@@ -19,6 +19,8 @@ _ENV_FILE_CANDIDATES = (_BACKEND_DIR / ".env", _BACKEND_DIR.parent / ".env")
 
 DEFAULT_ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,https://www.starpi.app,https://starpi.app"
 DEFAULT_MAX_BODY_BYTES = 1_048_576
+LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
+DEFAULT_LOG_LEVEL = "INFO"
 
 
 def parse_env_line(line: str) -> tuple[str, str] | None:
@@ -89,6 +91,21 @@ def _env_list(name: str, default: str = "") -> list[str]:
     return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
 
 
+def _env_log_level(name: str = "BRAIN_LOG_LEVEL") -> str:
+    """One of ``LOG_LEVELS`` (case-insensitive); unknown values fall back to INFO with a warning."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return DEFAULT_LOG_LEVEL
+    level = raw.upper()
+    if level not in LOG_LEVELS:
+        # The raw value is not logged: it may be a secret pasted into the wrong variable.
+        logger.warning(
+            "Ignoring unknown %s; expected one of %s, using %s", name, ", ".join(LOG_LEVELS), DEFAULT_LOG_LEVEL
+        )
+        return DEFAULT_LOG_LEVEL
+    return level
+
+
 _load_default_env_file()
 
 
@@ -104,7 +121,7 @@ class BrainConfig:
     supabase_url: str = field(default_factory=lambda: _env_str("SUPABASE_URL"))
     supabase_key: str = field(default_factory=lambda: _env_str("SUPABASE_SERVICE_ROLE_KEY"), repr=False)
 
-    # OpenAI-compatible chat completion endpoint (vLLM, MLX, llama.cpp server, ...).
+    # Chat Completions-compatible endpoint (``/v1/chat/completions``: vLLM, MLX, llama.cpp server, ...).
     llm_base_url: str = field(default_factory=lambda: _env_str("LLM_BASE_URL", "http://127.0.0.1:8000/v1"))
     llm_api_key: str = field(default_factory=lambda: _env_str("LLM_API_KEY", "EMPTY"), repr=False)
     llm_model: str = field(default_factory=lambda: _env_str("LLM_MODEL", "Qwen/Qwen2.5-7B-Instruct"))
@@ -113,7 +130,7 @@ class BrainConfig:
     gemini_keys: list[str] = field(default_factory=lambda: _env_list("GEMINI_API_KEYS"), repr=False)
     openrouter_keys: list[str] = field(default_factory=lambda: _env_list("OPENROUTER_API_KEYS"), repr=False)
 
-    # OpenAI-compatible embeddings endpoint; vectors must have 1536 dimensions.
+    # Embeddings endpoint with the same API shape (``/v1/embeddings``); vectors must have 1536 dimensions.
     embedding_base_url: str = field(default_factory=lambda: _env_str("EMBEDDING_BASE_URL", "http://127.0.0.1:8000/v1"))
     embedding_api_key: str = field(default_factory=lambda: _env_str("EMBEDDING_API_KEY", "EMPTY"), repr=False)
     embedding_model: str = field(default_factory=lambda: _env_str("EMBEDDING_MODEL", "text-embedding-3-small"))
@@ -127,6 +144,7 @@ class BrainConfig:
     )
     api_token: str = field(default_factory=lambda: _env_str("BRAIN_API_TOKEN"), repr=False)
     max_body_bytes: int = field(default_factory=lambda: _env_int("BRAIN_MAX_BODY_BYTES", DEFAULT_MAX_BODY_BYTES))
+    log_level: str = field(default_factory=_env_log_level)
 
 
 config = BrainConfig()

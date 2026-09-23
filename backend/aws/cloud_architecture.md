@@ -24,6 +24,13 @@ API client ──HTTPS──> Caddy / nginx (TLS, port 443) on EC2
 `BRAIN_API_TOKEN` is a server credential. Do not embed it in the PWA or any other code shipped to
 browsers.
 
+A reverse proxy on the same host forwards every client from `127.0.0.1`, so the API must not run
+without a token behind it. `aws/deploy_ec2.sh` generates one (`openssl rand -hex 32`, stored in
+`.env` with mode 600, never printed) whenever it is missing or empty. As a second line of defence,
+`server.py` without a token refuses every request that carries `Forwarded`, `X-Forwarded-*` or
+`X-Real-IP` headers (401). Not every proxy adds those headers (nginx does not by default), so the
+token is what actually protects the API.
+
 ## Network
 
 | Port | Exposure |
@@ -40,9 +47,10 @@ There is no separate web UI port; the PWA is hosted elsewhere.
    API; model inference needs a GPU instance or a hosted endpoint.
 2. From your machine run `backend/remote_sync.sh <host> <key.pem>`. It copies `backend/` (never the
    local `.env`) to `~/starpi-brain` and runs `aws/deploy_ec2.sh`, which creates a virtualenv,
-   installs `requirements.txt` and installs `starpi-brain.service` bound to `127.0.0.1`.
-3. On the server, fill in `~/starpi-brain/.env` (mode 600), including `BRAIN_API_TOKEN`
-   (`openssl rand -hex 32`), then `sudo systemctl restart starpi-brain`.
+   installs `requirements.txt`, generates `BRAIN_API_TOKEN` in `.env` if it is not set yet and
+   installs `starpi-brain.service` bound to `127.0.0.1`.
+3. On the server, fill in the rest of `~/starpi-brain/.env` (mode 600), then
+   `sudo systemctl restart starpi-brain`. API clients read the token from that file.
 4. Install Caddy (or nginx) and proxy your domain to the API, for example
    `api.example.com { reverse_proxy 127.0.0.1:9200 }`.
 5. Check: `curl https://api.example.com/api/health` and
