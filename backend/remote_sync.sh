@@ -1,46 +1,71 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Enterprise Brain: One-Command AWS Sync & Remote Launcher
-# Usage: ./remote_sync.sh <EC2_PUBLIC_IP> <PATH_TO_PEM_KEY>
+# Copies this backend directory to an Ubuntu server over SSH and runs
+# aws/deploy_ec2.sh there.
+#
+# Usage: ./remote_sync.sh <HOST> <PATH_TO_SSH_KEY> [REMOTE_USER]
+#   REMOTE_USER defaults to "ubuntu".
+#   REMOTE_DIR (env) defaults to "starpi-brain", relative to the remote home.
+#
+# Local .env files are never copied. Secrets live only in <REMOTE_DIR>/.env on
+# the server.
 # ==============================================================================
 
 set -euo pipefail
 
-if [ "$#" -lt 2 ]; then
-    echo "❌ Benutzung: ./remote_sync.sh <EC2_PUBLIC_IP> <PATH_TO_PEM_KEY>"
-    echo "Beispiel: ./remote_sync.sh 54.210.12.34 ~/Downloads/enterprise-brain-key.pem"
+if [[ $# -lt 2 ]]; then
+    echo "Usage: $0 <HOST> <PATH_TO_SSH_KEY> [REMOTE_USER]" >&2
+    echo "Example: $0 203.0.113.10 ~/.ssh/starpi-brain.pem" >&2
     exit 1
 fi
 
-EC2_IP="$1"
+HOST="$1"
 KEY_PATH="$2"
+REMOTE_USER="${3:-ubuntu}"
+REMOTE_DIR="${REMOTE_DIR:-starpi-brain}"
+SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET="${REMOTE_USER}@${HOST}"
 
-echo "=================================================="
-echo "   🚀 Synchronisiere Enterprise Brain zu AWS      "
-echo "   🌐 Ziel-Server: $EC2_IP                        "
-echo "=================================================="
+if [[ ! -r "${KEY_PATH}" ]]; then
+    echo "SSH key not readable: ${KEY_PATH}" >&2
+    exit 1
+fi
+if [[ "${KEY_PATH}" == *"'"* ]]; then
+    echo "SSH key path must not contain a single quote: ${KEY_PATH}" >&2
+    exit 1
+fi
 
-# 1. SSH Key Berechtigungen absichern
-chmod 400 "$KEY_PATH"
+# ssh rejects private keys that group or others can read. Warn; never change the user's file.
+KEY_MODE="$(stat -c '%a' "${KEY_PATH}" 2> /dev/null || stat -f '%Lp' "${KEY_PATH}" 2> /dev/null || true)"
+if [[ "${KEY_MODE}" =~ ^[0-7]+$ ]] && (( 8#${KEY_MODE} & 8#077 )); then
+    echo "Warning: ${KEY_PATH} has mode ${KEY_MODE}; ssh may refuse it. Fix with: chmod 600 '${KEY_PATH}'" >&2
+fi
 
-# 2. Dateien auf den AWS Server übertragen
-echo "[1/3] Übertrage Enterprise-Brain Dateien auf EC2..."
-ssh -o StrictHostKeyChecking=no -i "$KEY_PATH" ubuntu@"$EC2_IP" "mkdir -p ~/enterprise-brain"
-rsync -avz -e "ssh -o StrictHostKeyChecking=no -i $KEY_PATH" \
+SSH_OPTS=(-i "${KEY_PATH}" -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes)
+# rsync splits -e on spaces and honours single quotes.
+RSYNC_RSH="ssh -i '${KEY_PATH}' -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes"
+
+printf -v REMOTE_DIR_Q '%q' "${REMOTE_DIR}"
+
+echo "[1/2] Syncing ${SOURCE_DIR}/ to ${TARGET}:${REMOTE_DIR}/"
+ssh "${SSH_OPTS[@]}" "${TARGET}" "mkdir -p -- ${REMOTE_DIR_Q}"
+rsync -az \
+    -e "${RSYNC_RSH}" \
+    --exclude '.env' \
+    --exclude '.env.local' \
     --exclude '.venv' \
     --exclude '__pycache__' \
+    --exclude '*.pyc' \
     --exclude '*.log' \
-    /Users/umurey/LocalModels/enterprise-brain/ ubuntu@"$EC2_IP":~/enterprise-brain/
+    --exclude '.ruff_cache' \
+    "${SOURCE_DIR}/" "${TARGET}:${REMOTE_DIR}/"
 
-# 3. Remote Setup & Serverstart ausführen
-echo "[2/3] Führe Remote-Setup auf AWS aus..."
-ssh -o StrictHostKeyChecking=no -i "$KEY_PATH" ubuntu@"$EC2_IP" "bash ~/enterprise-brain/aws/deploy_ec2.sh"
+echo "[2/2] Running deploy script on ${TARGET}"
+ssh "${SSH_OPTS[@]}" "${TARGET}" "bash ${REMOTE_DIR_Q}/aws/deploy_ec2.sh"
 
-# 4. Fertigmeldung
-echo "[3/3] ✅ Erfolgreich bereitgestellt!"
-echo "=================================================="
-echo "🎉 Ihr Enterprise Brain läuft jetzt auf AWS!"
-echo "📱 Öffnen Sie im Browser auf Smartphone & Desktop:"
-echo "👉 Web-Interface: http://$EC2_IP:9119"
-echo "👉 Brain API:      http://$EC2_IP:9200/api/health"
-echo "=================================================="
+cat <<EOF
+
+Done. The API listens on 127.0.0.1 on the server and is not publicly reachable.
+  Health check: ssh -i '${KEY_PATH}' ${TARGET} curl -s http://127.0.0.1:9200/api/health
+  SSH tunnel:   ssh -i '${KEY_PATH}' -L 9200:127.0.0.1:9200 ${TARGET}
+EOF

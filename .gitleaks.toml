@@ -1,0 +1,21 @@
+# gitleaks configuration: default rules plus narrowly scoped allowlists.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Supabase anon (publishable) JWT for project behnltoogscnbjhvixmw: public by design, access is enforced by RLS. The payload prefix pins role=anon, so a service_role key is still reported."
+regexTarget = "match"
+regexes = [
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlaG5sdG9vZ3NjbmJqaHZpeG13Iiwicm9sZSI6ImFub24i[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+''',
+]
+
+[[allowlists]]
+description = "Generated or vendored output"
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)dist/''',
+  '''(^|/)\.build/''',
+  '''(^|/)test-results/''',
+  '''(^|/)playwright-report/''',
+  '''(^|/)package-lock\.json$''',
+]

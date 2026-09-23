@@ -1,60 +1,57 @@
-# AWS Cloud Architektur und Guthaben Strategie für das Enterprise Brain
+# Running the backend on AWS EC2
 
-Dieses Dokument erläutert, wie das AWS Konto (codayweb) und das Startguthaben optimal genutzt werden, um das private Enterprise Brain in der Cloud bereitzustellen, sodass der lokale Rechner vollständig entlastet wird.
+The Starpi PWA runs in the browser and talks to Supabase directly with the anon key; anonymous
+sign-ins plus owner-based row level security keep each user's rows private. The Python backend in
+`backend/` is optional. It ingests documents and answers retrieval queries with the Supabase
+**service role key**, which bypasses RLS, so it must only run on a machine you control.
 
-## 1. Strategie: Guthaben verdoppeln
-
-In der Konsole unter AWS erkunden vergibt AWS jeweils 20 Dollar Gutschrift für das Ausführen folgender fünf Standardaktivitäten:
-
-| Aktivität | Prämie | Was zu tun ist |
-| :--- | :---: | :--- |
-| **1. Einrichten eines Kostenbudgets (AWS Budgets)** | **+20 $** | Erstellen Sie ein Budget von beispielsweise 20 $ mit E Mail Alarm. Schützt vor Überraschungen und schaltet sofort 20 $ Guthaben frei! |
-| **2. Starten einer Instance mit EC2** | **+20 $** | Eine kleine Testinstanz (beispielsweise Ubuntu t3.micro) starten und stoppen. |
-| **3. Basismodell in Amazon Bedrock Playground testen** | **+20 $** | In Amazon Bedrock auf Playground gehen und eine Texteingabe abschicken. |
-| **4. Web App mit AWS Lambda erstellen** | **+20 $** | Eine einfache Lambda Beispielfunktion im Browser per Klick anlegen. |
-| **5. Aurora oder RDS Datenbank erstellen** | **+20 $** | Eine kleine PostgreSQL Testinstanz (mit pgvector) erstellen. |
-| **Gesamter Bonus** | **+100 $** | **Ihr Gesamtguthaben steigt damit auf 200,00 USD!** |
-
-## 2. Kostenschutz: Budget Alarm einrichten
-
-Um sicherzustellen, dass Sie niemals Beträge aus eigener Tasche zahlen:
-1. In der AWS Suchleiste oben nach **AWS Budgets** suchen.
-2. Auf **Create budget** klicken.
-3. **Template:** *Zero spend budget* oder *Monthly cost budget* wählen.
-4. **Amount:** `20.00 USD` eintragen.
-5. **Email recipients:** Ihre E Mail Adresse eingeben.
-6. Sobald 80 Prozent oder 100 Prozent der 20 $ erreicht werden, erhalten Sie sofort eine Warnung per elektronischer Post. Ihr Guthaben deckt diesen Betrag vollständig ab!
-
-## 3. Architektur des Enterprise Brains auf AWS
+## Architecture
 
 ```
-                     Smartphone oder Rechner
-                                │
-                                ▼ (HTTPS)
-                      [ AWS EC2 / Lightsail ]
-                      ├── Port 9119: Hermes Web UI
-                      └── Port 9200: Enterprise Brain REST API
-                                │
-                 ┌──────────────┴──────────────┐
-                 ▼                             ▼
-       [ Supabase Cloud / RDS ]       [ Private KI Inferenz ]
-       PostgreSQL mit pgvector         • Option A: EC2 G5 (vLLM GPU)
-       • Automatisches Markdown Archiv • Option B: Amazon Bedrock
-       • 1536 dimensionale Vektorsuche • Option C: Lokale GPU bei Bedarf
+API client ──HTTPS──> Caddy / nginx (TLS, port 443) on EC2
+                           │
+                           ▼
+                 127.0.0.1:9200  server.py  (starpi-brain.service)
+                   - Bearer token on /api/brain/*
+                   - CORS allow-list (BRAIN_ALLOWED_ORIGINS)
+                           │
+          ┌────────────────┼──────────────────────┐
+          ▼                ▼                      ▼
+   Supabase REST     Chat model endpoint    Embedding endpoint
+   (service role)    (vLLM, hosted pools)   (1536 dimensions)
 ```
 
-## 4. Das Agenten Toolkit für AWS
+`BRAIN_API_TOKEN` is a server credential. Do not embed it in the PWA or any other code shipped to
+browsers.
 
-Das in der AWS Konsole hervorgehobene Agenten Toolkit für AWS ist eine offizielle Erweiterung für Coding Agenten:
-* **Was es tut:** Es ermöglicht dem Assistenten, über sichere Berechtigungen direkt Ressourcen auf AWS für Sie zu verwalten, bereitzustellen und zu überwachen.
-* **Wie Sie es aktivieren:**
-  1. In der Konsole auf Eingabeaufforderung zur Einrichtung aufrufen klicken.
-  2. Den angezeigten Einrichtungscode kopieren oder einen AWS Access Key generieren.
-  3. Damit kann der Assistent automatisierte Bereitstellungen ausführen.
+## Network
 
-## 5. Sofortige Inbetriebnahme
+| Port | Exposure |
+| --- | --- |
+| 22 | SSH, restricted to your own IP in the security group |
+| 80, 443 | Reverse proxy (80 only for the ACME certificate challenge) |
+| 9200 | Loopback only. Never open it in the security group |
 
-Das Skript liegt bereit unter:
-[`enterprise-brain/aws/deploy_ec2.sh`](file:///Users/umurey/LocalModels/enterprise-brain/aws/deploy_ec2.sh)
+There is no separate web UI port; the PWA is hosted elsewhere.
 
-Sobald eine EC2 Instanz auf AWS gestartet ist, richtet dieses Skript das gesamte Enterprise Brain mit einem einzigen Befehl ein.
+## Deployment
+
+1. Launch an Ubuntu 22.04 or 24.04 instance. A small instance (e.g. `t3.small`) is enough for the
+   API; model inference needs a GPU instance or a hosted endpoint.
+2. From your machine run `backend/remote_sync.sh <host> <key.pem>`. It copies `backend/` (never the
+   local `.env`) to `~/starpi-brain` and runs `aws/deploy_ec2.sh`, which creates a virtualenv,
+   installs `requirements.txt` and installs `starpi-brain.service` bound to `127.0.0.1`.
+3. On the server, fill in `~/starpi-brain/.env` (mode 600), including `BRAIN_API_TOKEN`
+   (`openssl rand -hex 32`), then `sudo systemctl restart starpi-brain`.
+4. Install Caddy (or nginx) and proxy your domain to the API, for example
+   `api.example.com { reverse_proxy 127.0.0.1:9200 }`.
+5. Check: `curl https://api.example.com/api/health` and
+   `curl -H "Authorization: Bearer $TOKEN" https://api.example.com/api/brain/documents`.
+
+## Operations
+
+- Logs: `journalctl -u starpi-brain -f`
+- Updates: rerun `remote_sync.sh`; the deploy script restarts the service.
+- Costs: set an AWS Budgets alert on the account.
+- Secrets: if the service role key or API token leaks, rotate it in Supabase / the `.env` and
+  restart the service.

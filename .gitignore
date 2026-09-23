@@ -1,11 +1,43 @@
+# Secrets: never commit environment files (templates are the only exception)
 .env
-.env.local
-.env.*.local
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Node / frontend build output
 node_modules/
-.DS_Store
-*.log
+dist/
+.build/
+coverage/
+*.tsbuildinfo
+
+# Playwright
+playwright-report/
+test-results/
+blob-report/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Deployment / tooling state
 .vercel
+.supabase/
+supabase/.temp/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

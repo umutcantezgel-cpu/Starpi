@@ -1,9 +1,10 @@
+# Only the frontend sources are needed to build the static site on Vercel.
 backend/
-*.py
-*.pyc
-requirements.txt
-__pycache__/
+tests/
+.github/
 .env*
-.git*
-.github*
-
+node_modules/
+dist/
+.build/
+playwright-report/
+test-results/
