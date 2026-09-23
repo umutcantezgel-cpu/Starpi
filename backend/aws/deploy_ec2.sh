@@ -80,7 +80,12 @@ if ! read_env_file > /dev/null; then
     echo "Cannot read ${ENV_FILE}; aborting without changes." >&2
     exit 1
 fi
-chmod 600 "${ENV_FILE}"
+# After the first run the file belongs to the service user, which may not be the current user.
+if [[ -O "${ENV_FILE}" ]]; then
+    chmod 600 "${ENV_FILE}"
+else
+    sudo chmod 600 "${ENV_FILE}"
+fi
 
 TOKEN_LINE_RE='^[[:space:]]*(export[[:space:]]+)?BRAIN_API_TOKEN[[:space:]]*='
 
