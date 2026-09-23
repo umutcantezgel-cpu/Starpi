@@ -14,7 +14,7 @@ flowchart TD
     subgraph ec2["EC2 instance: security group opens 22 for your IP, 80 and 443"]
         proxy["Caddy or nginx, set up by hand<br/>TLS on 443, port 80 only for the ACME challenge"]
         server["server.py on 127.0.0.1:9200<br/>starpi-brain.service, User SERVICE_USER<br/>Bearer token on /api/brain/*<br/>CORS allow-list BRAIN_ALLOWED_ORIGINS"]
-        envf[("~/starpi-brain/.env, mode 600<br/>EnvironmentFile of the unit,<br/>also read by core/config.py")]
+        envf[("~/starpi-brain/.env, mode 600, owned by SERVICE_USER<br/>read by core/config.py when server.py starts,<br/>not an EnvironmentFile of the unit")]
     end
     supa["Supabase REST<br/>SUPABASE_SERVICE_ROLE_KEY, bypasses RLS"]
     llm["Chat models<br/>query answers: GEMINI_API_KEYS pool, then<br/>OPENROUTER_API_KEYS pool, then LLM_BASE_URL<br/>ingest structuring: LLM_BASE_URL only"]
@@ -22,7 +22,7 @@ flowchart TD
 
     client -->|"HTTPS"| proxy
     proxy -->|"reverse_proxy 127.0.0.1:9200"| server
-    envf -.->|"loaded at start"| server
+    envf -.->|"loaded by server.py at start"| server
     server -->|"documents, sections, RPCs"| supa
     server -->|"structuring and answers"| llm
     server -->|"section and query embeddings"| emb
@@ -78,24 +78,32 @@ flowchart TD
         User -->|"no"| Exit2["exit 1"]
         User -->|"yes"| S1["step 1 of 5: sudo apt-get update, apt-get install<br/>python3 python3-venv curl openssl"]
         S1 --> S2["step 2 of 5: python3 -m venv .venv<br/>pip install --upgrade pip, pip install -r requirements.txt"]
-        S2 --> S3["step 3 of 5: umask 077<br/>.env copied from .env.example if missing<br/>chmod 600 .env"]
-        S3 --> Tok{"last BRAIN_API_TOKEN assignment<br/>in .env has a value?"}
+        S2 --> S3["step 3 of 5: umask 077<br/>.env copied from .env.example if missing"]
+        S3 --> Rd{"read_env_file succeeds?<br/>cat .env, or sudo cat when<br/>the current user cannot read it"}
+        Rd -->|"no"| ExitR["Cannot read .env,<br/>abort without changes, exit 1"]
+        Rd -->|"yes"| Ch6["chmod 600 .env, with sudo when the<br/>current user does not own it, e.g. on a re-run<br/>after it was given to another SERVICE_USER"]
+        Ch6 --> Tok{"last BRAIN_API_TOKEN assignment<br/>in read_env_file output has a value?"}
         Tok -->|"missing or empty"| Gen{"openssl rand -hex 32<br/>is 64 lowercase hex chars?"}
         Gen -->|"no"| Exit3["abort, exit 1"]
-        Gen -->|"yes"| Write["temp file with mode 600: first assignment replaced,<br/>later ones dropped, appended if none, then mv<br/>token never printed or logged"]
-        Tok -->|"yes"| S4
-        Write --> S4["step 4 of 5: /etc/systemd/system/starpi-brain.service<br/>User SERVICE_USER, EnvironmentFile .env<br/>ExecStart .venv/bin/python server.py --host 127.0.0.1<br/>Restart on-failure, RestartSec 5<br/>NoNewPrivileges, ProtectSystem strict, ProtectHome read-only"]
+        Gen -->|"yes"| Write["temp file with mode 600 from read_env_file:<br/>first assignment replaced, later ones dropped,<br/>appended if none, then mv<br/>token never printed or logged"]
+        Tok -->|"yes"| Own
+        Write --> Own{".env owner is SERVICE_USER?"}
+        Own -->|"no"| Chown["sudo chown SERVICE_USER .env"]
+        Own -->|"yes"| S4
+        Chown --> S4["step 4 of 5: /etc/systemd/system/starpi-brain.service<br/>User SERVICE_USER, no EnvironmentFile,<br/>server.py loads .env itself<br/>ExecStart .venv/bin/python server.py --host 127.0.0.1<br/>Restart on-failure, RestartSec 5<br/>NoNewPrivileges, ProtectSystem strict, ProtectHome read-only"]
         S4 --> S5["step 5 of 5: systemctl daemon-reload,<br/>enable and restart starpi-brain"]
-        S5 --> HC{"curl http://127.0.0.1:PORT/api/health OK?<br/>PORT from BRAIN_SERVER_PORT in .env or 9200<br/>up to 10 tries, 1 s apart"}
-        HC -->|"yes"| HCok["print Health check OK"]
-        HC -->|"never"| HCno["no error, the script continues"]
-        HCok --> Status["systemctl status, 5 lines<br/>print the next steps"]
-        HCno --> Status
+        S5 --> Port["PORT = config.server_port from core.config<br/>.venv/bin/python run as SERVICE_USER,<br/>same loader and .env as the service<br/>set -e stops the script if this fails"]
+        Port --> HC{"curl http://127.0.0.1:PORT/api/health OK?<br/>up to 20 tries, 1 s apart"}
+        HC -->|"yes"| Status["systemctl status, 5 lines"]
+        HC -->|"no answer in 20 tries"| Status
+        Status --> Healthy{"health check answered?"}
+        Healthy -->|"no"| HCno["Health check failed on stderr<br/>hint: journalctl -u starpi-brain -n 50 --no-pager<br/>exit 1"]
+        Healthy -->|"yes"| HCok["print Health check OK on 127.0.0.1:PORT<br/>print the next steps"]
         S5 --> API["server.py on 127.0.0.1, port 9200 by default<br/>Bearer token on /api/brain/*<br/>port never opened in the security group"]
-        Manual["manual: fill in .env with SUPABASE_URL,<br/>SUPABASE_SERVICE_ROLE_KEY and model endpoints,<br/>add the site origin to BRAIN_ALLOWED_ORIGINS,<br/>then sudo systemctl restart starpi-brain"]
+        Manual["manual: as SERVICE_USER fill in .env with SUPABASE_URL,<br/>SUPABASE_SERVICE_ROLE_KEY and model endpoints,<br/>add the site origin to BRAIN_ALLOWED_ORIGINS,<br/>then sudo systemctl restart starpi-brain"]
         Proxy["manual: TLS reverse proxy, Caddy or nginx<br/>ports 443, and 80 for ACME<br/>not installed by the script"]
-        Status -.-> Manual
-        Status -.-> Proxy
+        HCok -.-> Manual
+        HCok -.-> Proxy
         Manual -.-> API
         Proxy -->|"reverse_proxy 127.0.0.1:9200"| API
     end

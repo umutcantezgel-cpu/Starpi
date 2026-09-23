@@ -96,14 +96,14 @@ flowchart LR
 
     subgraph jobE2e["Job e2e, needs frontend"]
         dl["download artifact dist,<br/>npx playwright install --with-deps chromium"]
-        pw["npm run test:e2e<br/>app.spec.mjs, 12 tests on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs on desktop only, mermaid 11.17.2"]
+        pw["npm run test:e2e<br/>app.spec.mjs, 15 tests on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs on desktop only, mermaid 11.17.2"]
         rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
     end
 
     subgraph jobBack["Job backend, matrix Python 3.11 and 3.12"]
         ruff["ruff check backend,<br/>ruff format --check backend"]
         comp["python -m compileall -q backend"]
-        ut["python -m unittest discover -s backend -p test_*.py<br/>test_core.py: chunker, embeddings, config, structurer,<br/>supabase_client, ingestion pipeline, rag<br/>test_server.py: routing, body validation, timeouts, proxy and<br/>token auth, length limits, CORS, startup, Content-Length parsing<br/>offline: httpx.Client mocked, fakes behind a 127.0.0.1 server"]
+        ut["python -m unittest discover -s backend -p test_*.py<br/>test_core.py: chunker, embeddings, config, structurer,<br/>supabase_client, ingestion pipeline, rag<br/>test_server.py: routing, body validation, timeouts, proxy and<br/>token auth, length limits, CORS, startup,<br/>shutdown waits for requests in flight, Content-Length parsing<br/>offline: httpx.Client mocked, fakes behind a 127.0.0.1 server"]
     end
 
     subgraph jobDb["Job database"]

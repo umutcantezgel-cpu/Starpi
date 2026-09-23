@@ -185,8 +185,7 @@ sequenceDiagram
     end
     Note over Chat: trim to 8000 chars, clear input, removeAttachment.<br/>Captures sid, history, mode and localOnly = mode is client.<br/>A file without text asks chat.summarize_file
     Chat->>Msg: appendMessage user shownText
-    Chat->>Store: void persistMessage user, localOnly or file attached
-    Note over Chat,Store: a question about an attached file names the file,<br/>so it stays in localStorage like its answer
+    Note over Chat,Store: storeQuestion is prepared, the question is not stored yet
     Note over Chat: new AbortController, setBusy(true) shows Stop and status.generating
     Chat->>Msg: appendLoading()
     Chat->>WS: searchWorkspace(prompt, 6), any error gives no workspace hits
@@ -204,6 +203,8 @@ sequenceDiagram
         Chat->>Ret: rankHitsLocally(prompt, rows, 6), none if the fetch failed
     end
     Note over Chat: used is empty for a greeting without a file, else all hits
+    Chat->>Store: storeQuestion(usesWorkspace), void persistMessage user
+    Note over Chat,Store: localOnly = mode client, a file attached or a used hit from the workspace.<br/>If retrieve() throws first, the catch calls storeQuestion(false)
     Chat->>Ret: assignCitations(used, excerptChars 1600)
     Chat->>Cit: registerCitations gives scope id or null
     Chat->>Ret: distinctSources and buildContext(maxChars 9000)
@@ -220,8 +221,9 @@ sequenceDiagram
         Chat->>Syn: synthesizeAnswer, extractive with citation labels
     end
     alt signal aborted and answer not rendered
-        Note over Chat,Msg: throw AbortError, catch removes loading, isUserAbort so no notice
+        Note over Chat,Msg: throw AbortError, the catch (storeQuestion(false) is a no-op)<br/>removes loading, isUserAbort so no notice
     else a call threw, e.g. a council or local error rethrown after abort
+        Note over Chat: the catch calls storeQuestion(false), a no-op here<br/>because the question was stored after retrieval
         Chat->>Msg: removeLoading, appendNotice chat.error_title unless isUserAbort
     else answer ready
         Chat->>Syn: describeTrace(prompt, method, used, engine label, note)
@@ -247,7 +249,7 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     Ask(["submitChat: question trimmed to 8000 chars<br/>mode = getMode(), stored in starpi_compute_mode"])
-    UserTurn{"persist the user turn first:<br/>client mode or a file attached?"}
+    UserTurn{"storeQuestion(usesWorkspace), question localOnly?<br/>client mode, a file attached,<br/>or any used excerpt from the workspace"}
     RetMode{"retrieve(): mode is client?"}
     Ctx["assignCitations + buildContext<br/>workspace hits first, at most 6 hits, 9 with an attachment<br/>excerpt max 1600 chars, context max 9000 chars<br/>a greeting uses no excerpts"]
     Dispatch{"answer path by mode"}
@@ -275,7 +277,8 @@ flowchart TD
         CH[("Supabase chat_history insert")]
     end
 
-    Ask --> UserTurn
+    Ctx -->|"after retrieval and the greeting check,<br/>before assignCitations"| UserTurn
+    Ask -.->|"turn throws before that:<br/>catch runs storeQuestion(false)"| UserTurn
     UserTurn -->|"yes"| LS
     UserTurn -->|"no"| Sync
     Ask --> WsSearch --> RetMode

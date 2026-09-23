@@ -139,7 +139,7 @@ flowchart LR
         cWorker["ingest.worker.js, Web Worker starpi-ingest<br/>parse, chunk and BM25 off the main thread,<br/>full text kept in worker memory, never uploaded or synced,<br/>failures return ParseError codes, ok false"]
         cParse["parser.js extractText<br/>extension allowlist txt, md, markdown, csv, log, json, pdf<br/>MAX_FILE_BYTES 25 MiB, MAX_TEXT_CHARS 5000000,<br/>at most MAX_PDF_PAGES 2000 read, normalizeText drops NUL and control chars"]
         cPdf["pdf.js legacy build inside the worker<br/>disableFontFace, useSystemFonts false,<br/>isOffscreenCanvasSupported false,<br/>PasswordException becomes encrypted_pdf"]
-        cLocal["chat.js persistMessage localOnly:<br/>on-device mode, answers citing the workspace<br/>and questions with an attached file stay in localStorage<br/>matching excerpts still reach the cloud provider or own server"]
+        cLocal["chat.js persistMessage localOnly:<br/>on-device mode, question and answer of a turn<br/>using workspace excerpts (question stored after retrieval)<br/>and questions with an attached file stay in localStorage<br/>matching excerpts still reach the cloud provider or own server"]
         cRls["Postgres RLS and grants<br/>visible = is_public or owner_id = auth.uid()<br/>published rows read-only for browser roles,<br/>brain_settings service role only, RPCs SECURITY INVOKER"]
         cCheck["CHECK size limits on browser-writable columns<br/>violations fail with SQLSTATE 23514"]
         cSync["canSyncChats: signedIn and hardened,<br/>otherwise chats stay in localStorage"]
@@ -172,7 +172,7 @@ flowchart LR
     cWorker --> tLeak
     cParse --> tFreeze
     cPdf --> tPdf
-    iFile -->|"attached-file questions,<br/>answers citing the workspace"| cLocal
+    iFile -->|"attached-file questions,<br/>workspace turns: question and answer"| cLocal
     cLocal --> tLeak
     iDb --> cRls
     iDb --> cCheck
@@ -214,7 +214,7 @@ flowchart LR
         cAuth["_check_auth for /api/brain/* when a token is set:<br/>Authorization Bearer checked with hmac.compare_digest, else 401"]
         cBody["_read_json_object: Transfer-Encoding or no Content-Length 411,<br/>invalid or repeated Content-Length 400, above BRAIN_MAX_BODY_BYTES<br/>default 1 MiB 413, not application/json 415, stalled body 408 after 30 s<br/>fields: text 200000, query 4000, source_name 256, source_type 64 characters"]
         cResp["Every response: nosniff, Cache-Control no-store,<br/>Referrer-Policy no-referrer, CSP default-src none,<br/>unhandled errors return a generic 500 internal_error,<br/>request log without headers or query string"]
-        cCfg["core/config.py BrainConfig: service role key only from<br/>SUPABASE_SERVICE_ROLE_KEY, never the anon key,<br/>secret fields excluded from repr"]
+        cCfg["core/config.py BrainConfig: read from the process environment,<br/>which wins over backend/.env (else the root .env)<br/>loaded at import, last assignment in the file wins,<br/>service role key only from SUPABASE_SERVICE_ROLE_KEY,<br/>never the anon key, secret fields excluded from repr"]
         cLeaks["CI job secrets: gitleaks 8.30.1, sha256 verified,<br/>scans the working tree and the commits of a pull request"]
         cSupply["CI and Vercel: permissions contents read,<br/>actions pinned to commit SHAs, persist-credentials false,<br/>npm ci --ignore-scripts"]
     end

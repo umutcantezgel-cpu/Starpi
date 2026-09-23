@@ -157,7 +157,7 @@ Start-up refuses unsafe configurations:
 <!-- diagram: backend-request-startup -->
 ```mermaid
 flowchart TD
-    Start(["python server.py [port] [--host HOST] [--log-level LEVEL]"]) --> Env["import core.config<br/>loads backend/.env, else the repo-root .env<br/>variables already in the environment win"]
+    Start(["python server.py [port] [--host HOST] [--log-level LEVEL]"]) --> Env["import core.config<br/>loads backend/.env, else the repo-root .env<br/>parse_env_line: a quoted value ends at its matching quote,<br/>an unquoted value drops a whitespace # comment<br/>last assignment of a key in the file wins<br/>variables already in the environment win"]
     Env --> Cfg["config = BrainConfig()<br/>BRAIN_SERVER_HOST default 127.0.0.1<br/>BRAIN_SERVER_PORT default 9200"]
     Cfg --> Int{"BRAIN_SERVER_PORT or BRAIN_MAX_BODY_BYTES<br/>set but not an integer?"}
     Int -->|"yes"| IntW["warning, default value used"]
@@ -179,17 +179,17 @@ flowchart TD
     Loop -->|"no"| TokLen{"token set but shorter<br/>than 32 characters?"}
     TokLen -->|"yes"| TokW["warning"]
     TokLen -->|"no"| Bind
-    TokW --> Bind["create_server: BrainHTTPServer (ThreadingHTTPServer)<br/>AF_INET6 when the host contains a colon<br/>server_bind skips the reverse DNS lookup"]
+    TokW --> Bind["create_server: BrainHTTPServer (ThreadingHTTPServer)<br/>daemon_threads False, request threads not daemonic<br/>AF_INET6 when the host contains a colon<br/>server_bind skips the reverse DNS lookup"]
     Bind -->|"OSError, e.g. address in use"| BindErr["not caught: traceback, exit status 1"]
     Bind --> Sig{"running in the main thread?"}
-    Sig -->|"yes"| SigT["install SIGTERM handler<br/>httpd.shutdown in a daemon thread"]
+    Sig -->|"yes"| SigT["install SIGTERM handler: logs Received SIGTERM,<br/>httpd.shutdown in a daemon thread"]
     Sig -->|"no"| Listen
     SigT --> Listen["log Brain API listening<br/>with supabase_live and token_auth"]
     Listen --> Live{"db.is_live?"}
     Live -->|"no"| MemW["warning: Supabase is not configured,<br/>documents are kept in memory only"]
     Live -->|"yes"| Serve
     MemW --> Serve["serve_forever"]
-    Serve -->|"SIGTERM shutdown or KeyboardInterrupt"| Close["server_close"]
+    Serve -->|"SIGTERM shutdown or KeyboardInterrupt"| Close["finally: server_close<br/>joins the non-daemon request threads,<br/>so requests in flight finish first"]
 ```
 
 ## Pipelines

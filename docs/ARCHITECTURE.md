@@ -210,20 +210,21 @@ flowchart LR
 
 ### What leaves the device: boot connection state and one chat turn
 
-At boot, connect() makes sure an anonymous session exists and probes knowledge_documents for the is_public column; the result sets signedIn and hardened, and canSyncChats() requires both before any chat_history insert. Workspace search always stays in the ingestion worker, and in client mode Supabase receives only question-free reads (recentKnowledge(30), plus listDocuments() for knownTitles when the extractive fallback runs), while council and own-server modes also send the question, cut to 1000 characters, to the search_knowledge RPC and send it with the retrieved excerpts to the provider or server. Each answer path has its own guards (provider keys, OpenRouter stopping early on 401 or 403, WebGPU, cache, quota and download-confirmation checks before any Hugging Face download, normalizeServerUrl), and every failure ends in the extractive synthesizeAnswer. A message stays in localStorage when it is local-only (client mode, a question sent with an attached workspace file, or an answer that quotes workspace chunks), when sync is not possible, or when the chat_history insert fails.
+At boot, connect() makes sure an anonymous session exists and probes knowledge_documents for the is_public column, and after an offline result scheduleReconnect() repeats it on the window online event or after 30 s, doubling up to 5 min; the result sets signedIn and hardened, and canSyncChats() requires both before any chat_history insert. Workspace search always stays in the ingestion worker, and in client mode Supabase receives only question-free reads (recentKnowledge(30), plus listDocuments() for knownTitles when the extractive fallback runs), while council and own-server modes also send the question, cut to 1000 characters, to the search_knowledge RPC and send it with the retrieved excerpts to the provider or server. Each answer path has its own guards (provider keys, OpenRouter stopping early on 401 or 403, WebGPU, cache, quota and download-confirmation checks before any Hugging Face download, normalizeServerUrl), and every failure ends in the extractive synthesizeAnswer. The question is stored only after retrieval (or by the catch if the turn throws first), and a message stays in localStorage when it is local-only (client mode, a used workspace hit, or for the question also an attached file), when sync is not possible, or when the chat_history insert fails.
 
 <!-- diagram: system-context-egress-guards -->
 ```mermaid
 flowchart TD
-    conn["connect() at boot<br/>getSession, else signInAnonymously<br/>signedIn = no authError"]
+    conn["connect() at boot, again after offline<br/>getSession, else signInAnonymously<br/>signedIn = no authError"]
     probe{"probe: select id, is_public<br/>from knowledge_documents limit 1"}
-    offline["status offline, hardened false<br/>connectPromise reset, but only<br/>boot() calls connect()"]
+    offline["status offline, hardened false<br/>scheduleReconnect: online event or<br/>30 s, doubling up to 5 min"]
     legacy["status ready, hardened false<br/>e.g. missing_schema on legacy schema"]
     hardened["status ready, hardened true"]
     conn --> probe
     probe -->|"network or timeout"| offline
     probe -->|"other error"| legacy
     probe -->|"ok"| hardened
+    offline -.->|"retry connect()"| conn
 
     submit["submitChat(): mode = getMode()"]
     wsSearch["searchWorkspace in starpi-ingest<br/>stays on the device"]
@@ -236,8 +237,10 @@ flowchart TD
     modeR -->|"no: council or local"| fts
     fts --> ftsQ
     ftsQ -->|"no rows or error"| recent
-    ftsQ -->|"yes"| modeA
-    recent -->|"hits, or workspace hits only on error"| modeA
+    qStore["storeQuestion(usesWorkspace)<br/>once retrieval is done,<br/>usesWorkspace = a used workspace hit"]
+    ftsQ -->|"yes"| qStore
+    recent -->|"hits, or workspace hits only on error"| qStore
+    qStore --> modeA
 
     modeA{"answer mode"}
     gemQ{"hasGeminiKey?"}
@@ -275,11 +278,12 @@ flowchart TD
     urlQ -->|"ProviderError"| synth
     srv -->|"HTTP error, timeout or empty"| synth
 
-    persistQ{"persistMessage localOnly?<br/>question: mode client or file attached<br/>answer: mode client or it quotes<br/>workspace chunks"}
+    persistQ{"persistMessage localOnly?<br/>question: mode client, file attached<br/>or a used workspace hit<br/>answer: mode client or a used<br/>workspace hit"}
     syncQ{"canSyncChats():<br/>signedIn and hardened?"}
     lsStore[("localStorage<br/>starpi_local_chats_v1")]
-    insert["insert into chat_history<br/>RLS: owner_id = auth.uid()<br/>then countChatMessages for the badge"]
-    submit -->|"question, before retrieval"| persistQ
+    insert["insert into chat_history<br/>RLS: owner_id = auth.uid()<br/>then refreshSyncStatus counts<br/>chat_history rows for the sync text"]
+    qStore -->|"question"| persistQ
+    submit -.->|"question via storeQuestion(false)<br/>in the catch if the turn throws first"| persistQ
     gemCall -->|"answer"| persistQ
     orCall -->|"answer"| persistQ
     gen -->|"answer"| persistQ
@@ -675,7 +679,7 @@ What happens between the first byte of `index.html` and a usable chat, and how t
 
 ### boot(): module start-up order
 
-main.js boot() runs initI18n first, so the stored starpi_locale (or en) is applied before any module renders text, then installs the delegated click/change dispatcher, registers the switch-tab, toggle-sidebar and set-locale actions and the lazy onTabOpen hooks, and runs the ten init* functions, refreshIcons, detectAndDisplayDevice and registerServiceWorker (the /sw.js registration waits for window load). It subscribes to onConnectionChange before calling connect(). changeEngine is started with void, so it is neither awaited nor covered by boot().catch, while connect() and restoreHistory() are awaited in sequence. A throw or rejection inside boot() skips the remaining steps, and reportUnexpected only logs it with console.error.
+main.js boot() runs initI18n first, so the stored starpi_locale (or en) is applied before any module renders text, then installs the delegated click/change dispatcher, registers the switch-tab, toggle-sidebar and set-locale actions and the lazy onTabOpen hooks, and runs the ten init* functions, refreshIcons, detectAndDisplayDevice and registerServiceWorker (the /sw.js registration waits for window load). It subscribes to onConnectionChange before calling connect(), so the listener also renders the later attempts that connect() schedules itself after an offline result, while restoreHistory() runs only once. changeEngine is started with void, so it is neither awaited nor covered by boot().catch, while connect() and restoreHistory() are awaited in sequence. A throw or rejection inside boot() skips the remaining steps, and reportUnexpected only logs it with console.error.
 
 <!-- diagram: boot-sequence-overview -->
 ```mermaid
@@ -712,14 +716,18 @@ sequenceDiagram
         Note over SW: a failed registration only logs console.warn
     end
     Main->>Sb: onConnectionChange(listener)
-    Note over Main,Sb: listener runs renderConnection, renderPrivacyNotice<br/>and void refreshSyncStatus on every update
+    Note over Main,Sb: listener runs renderConnection, renderPrivacyNotice<br/>and void refreshSyncStatus on every update, also on later reconnects
     Main->>Set: void changeEngine(getMode(), interactive false)
     Note over Main,Set: not awaited and not covered by boot().catch.<br/>Only an already cached model is loaded, never a download
     Main->>Sb: await connect()
+    opt probe network or timeout error, status offline
+        Sb->>Sb: scheduleReconnect(), connect() again on the online event or after 30 s, up to 5 min
+    end
     Sb-->>Main: ConnectionState
     Main->>UI: renderConnection(state)
     Main->>Chat: await restoreHistory()
     Chat-->>Main: history replayed, boot notices kept
+    Note over Main,Sb: a later reconnect only reaches the listener, restoreHistory() is not run again
     opt a boot step throws or rejects
         Main->>Dom: boot().catch(reportUnexpected)
         Note over Main,Dom: only console.error, the remaining boot steps are skipped
@@ -730,7 +738,7 @@ sequenceDiagram
 
 ### Boot-time changeEngine: cached model only, never a download
 
-At boot changeEngine applies the stored compute mode with interactive false (normalizeMode maps legacy values and falls back to council). In client mode startLocalEngine calls engine.loadModel with onlyIfCached true and no confirmDownload callback, so an uncached model makes it resolve false (status idle, engine dot off) and nothing is downloaded. Missing WebGPU or adapter, a failed WebLLM import or a failed load of a cached model rejects with an EngineError, which engine-ui turns into a chat notice (notice_unavailable_title or notice_failed_title). Local mode probes GET /models on the own server URL with a 4 s timeout, and council mode only checks whether a Gemini or OpenRouter key exists.
+At boot changeEngine applies the stored compute mode with interactive false (normalizeMode maps legacy values and falls back to council) and resolves to whether setMode could store it, which boot() discards. In client mode startLocalEngine calls engine.loadModel with onlyIfCached true and no confirmDownload callback, so an uncached model makes it resolve false (status idle, engine dot off) and nothing is downloaded. Missing WebGPU or adapter, a failed WebLLM import or a failed load of a cached model rejects with an EngineError, which engine-ui turns into a chat notice (notice_unavailable_title or notice_failed_title). Local mode probes GET /models on the own server URL with a 4 s timeout, and council mode only checks whether a Gemini or OpenRouter key exists.
 
 <!-- diagram: boot-sequence-engine-restore -->
 ```mermaid
@@ -747,7 +755,7 @@ sequenceDiagram
 
     Main->>Set: changeEngine(getMode(), interactive false)
     Set->>St: setMode(value), getMode()
-    Note over St: normalizeMode maps legacy values and falls back<br/>to council, then writes starpi_compute_mode
+    Note over St: normalizeMode maps legacy values and falls back<br/>to council, then writes starpi_compute_mode.<br/>Returns false when writeLocal could not store it
     Set->>Set: syncModeSelectors(mode), renderPrivacyNotice()
     Set->>EUI: renderEngineState(getEngineState())
     alt mode is client
@@ -796,13 +804,14 @@ sequenceDiagram
     else mode is council
         Set->>Dot: setEngineDot(ok if a Gemini or OpenRouter key, else off)
     end
+    Set-->>Main: stored flag from setMode, discarded because boot uses void
 ```
 
 <sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/state.js`](../src/js/state.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/config.js`](../src/js/config.js)</sub>
 
 ### connect(), connection subscribers and restoreHistory
 
-connect() reuses the stored session or signs in anonymously, then probes for the hardened schema by selecting id and is_public from knowledge_documents. Only a network or timeout error of that probe marks the state offline and clears connectPromise, but boot is the only caller, so nothing reconnects until a reload. updateConnection calls the single subscriber from main.js (renderConnection, renderPrivacyNotice, refreshSyncStatus) and boot then calls renderConnection again. restoreHistory reads chat_history only when canSyncChats() (signedIn and hardened), otherwise localStorage, replays the messages into the chat and the conversation with title-only sources, and re-appends every bubble shown after the welcome during boot (such as an engine notice) plus any live turns.
+connect() reuses the stored session or signs in anonymously, then probes for the hardened schema by selecting id and is_public from knowledge_documents. Only a network or timeout error of that probe marks the state offline, and scheduleReconnect() then clears connectPromise and calls connect() again on the window online event or after 30 s, doubling up to 5 min, until an attempt is no longer offline. updateConnection calls the single subscriber from main.js (renderConnection, renderPrivacyNotice, refreshSyncStatus) and boot then calls renderConnection again, while a later reconnect reaches only the subscriber and never runs restoreHistory again. restoreHistory reads chat_history only when canSyncChats() (signedIn and hardened), otherwise localStorage, replays the messages into the chat and the conversation with title-only sources, and re-appends every bubble shown after the welcome during boot (such as an engine notice) plus any live turns.
 
 <!-- diagram: boot-sequence-connect-history -->
 ```mermaid
@@ -833,9 +842,11 @@ sequenceDiagram
     L->>L: settings.js renderPrivacyNotice()
     L->>Store: void refreshSyncStatus()
     Note over Store: not ready gives sync.device_offline, no sync gives<br/>device_no_session or device_migration, else count chat_history
-    opt status offline
-        Sb->>Sb: connectPromise = null
-        Note over Sb: boot is the only connect() caller,<br/>so nothing reconnects until the page reloads
+    alt status offline
+        Sb->>Sb: scheduleReconnect() sets connectPromise = null
+        Note over Sb: unless a retry is pending, setTimeout(retry, 30 s x 2^offlineAttempts, max 5 min)<br/>and a window online listener, whichever comes first calls connect()
+    else status ready
+        Sb->>Sb: offlineAttempts = 0
     end
     Sb-->>Main: ConnectionState
     Main->>UI: renderConnection(state) a second time
@@ -861,13 +872,21 @@ sequenceDiagram
     Note over Chat,Msg: restored answers get title-only sources and no citation scope,<br/>so their Doc and Chunk labels are not clickable
     Chat->>Chat: append shownSinceBoot, push live conversation turns
     Chat-->>Main: done
+    opt later reconnect after an offline result
+        Sb->>Sb: retry() on the online event or timer, void connect(), same attempt as above
+        Sb->>L: listener(connection) with the new state
+        L->>UI: renderConnection(state), e.g. Offline to Live
+        L->>L: settings.js renderPrivacyNotice()
+        L->>Store: void refreshSyncStatus()
+        Note over Store,Chat: restoreHistory() is not called again. Messages on screen stay,<br/>new messages sync once canSyncChats() is true
+    end
 ```
 
 <sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/config.js`](../src/js/config.js)</sub>
 
 ### saveSettings: server URL, API keys, model preference
 
-saveSettings first validates the own-server URL with normalizeServerUrl and stops with an alert (and focus on the field) when it is invalid, insecure or contains credentials. The URL, the remember toggle and the model preference go to localStorage; each key is written only when a new one was typed, or re-written to the other storage when an existing key's remember setting changed, and writeSecret always deletes both copies first and then uses localStorage (remember) or sessionStorage. Inputs are cleared and only masked hints with the last four characters are shown. When the model preference changed and the engine status is not idle, the engine is unloaded before changeEngine applies the selected mode interactively; the saved alert appears only after changeEngine resolves, and storage failures are swallowed, so it appears even when nothing could be stored.
+saveSettings first validates the own-server URL with normalizeServerUrl and stops with an alert (and focus on the field) when it is invalid, insecure or contains credentials. The URL, the remember toggle and the model preference go to localStorage; each key is written only when a new one was typed, or re-written to the other storage when an existing key's remember setting changed, and writeSecret always deletes both copies first and then uses localStorage (remember) or sessionStorage. Inputs are cleared and only masked hints with the last four characters are shown. When the model preference changed and the engine status is not idle, the engine is unloaded before changeEngine applies the selected mode interactively; changeEngine resolves with whether setMode stored the mode, and saveSettings then alerts settings.saved_toast only when every write it made returned true, otherwise settings.save_failed.
 
 <!-- diagram: settings-flow-save -->
 ```mermaid
@@ -875,47 +894,52 @@ flowchart TD
     Save(["save-settings click: saveSettings()"]) --> Norm["normalizeServerUrl(cfgLlmUrl value)"]
     Norm --> UrlOk{"ProviderError thrown?"}
     UrlOk -->|"yes"| UrlAlert["window.alert: provider.invalid_url, provider.insecure_url<br/>(https, or http only on localhost and 127.0.0.1)<br/>or provider.credentials_in_url<br/>focus cfgLlmUrl, nothing is saved"]
-    UrlOk -->|"no"| SetUrl["setLlmUrl(url): localStorage starpi_llm_url<br/>field shows the URL without hash, query, trailing slash"]
+    UrlOk -->|"no"| SetUrl["stored = setLlmUrl(url): localStorage starpi_llm_url<br/>field shows the URL without hash, query, trailing slash"]
     SetUrl --> Remember["remember = cfgRememberKeys checked<br/>wasRemembered = starpi_remember_keys is 1"]
-    Remember --> Flag["writeLocal: localStorage starpi_remember_keys 1 or 0"]
+    Remember --> Flag["stored = writeLocal(starpi_remember_keys, 1 or 0) and stored<br/>localStorage"]
     Flag --> Loop["for starpi_gemini_key and starpi_openrouter_key"]
     Loop --> Typed{"new key typed<br/>in the input?"}
-    Typed -->|"yes"| WriteTyped["writeSecret(key, typed, remember)"]
+    Typed -->|"yes"| WriteTyped["stored = writeSecret(key, typed, remember) and stored"]
     Typed -->|"no"| Moved{"stored key exists and<br/>remember changed?"}
-    Moved -->|"yes"| Migrate["writeSecret(key, existing, remember)<br/>moves it to the other storage"]
+    Moved -->|"yes"| Migrate["stored = writeSecret(key, existing, remember) and stored<br/>moves it to the other storage"]
     Moved -->|"no"| Keep["stored key left as is"]
     WriteTyped --> ClearInput
     Migrate --> ClearInput
     Keep --> ClearInput["input.value cleared<br/>stored keys are never written back to inputs"]
     ClearInput -->|"next key"| Loop
     ClearInput -->|"both done"| Hints["renderKeyHints(): masked hint settings.key_saved<br/>with the last 4 chars, or settings.key_none"]
-    Hints --> Pref["previous = getModelPreference()<br/>setModelPreference(cfgWebgpuModel or auto)<br/>normalized to a catalog key or auto<br/>localStorage starpi_webgpu_model"]
+    Hints --> Pref["previous = getModelPreference()<br/>stored = setModelPreference(cfgWebgpuModel or auto) and stored<br/>normalized to a catalog key or auto<br/>localStorage starpi_webgpu_model"]
     Pref --> PrefChanged{"engine status not idle<br/>and preference changed?"}
     PrefChanged -->|"yes"| Unload["await engine.unloadModel()"]
     PrefChanged -->|"no"| Change
-    Unload --> Change["await changeEngine(cfgComputeMode or council,<br/>interactive true)"]
-    Change -->|"resolves, in client mode only after any<br/>download confirm and the model load"| Toast(["window.alert settings.saved_toast"])
+    Unload --> Change["stored = await changeEngine(cfgComputeMode or council,<br/>interactive true) and stored<br/>changeEngine resolves with the setMode result"]
+    Change -->|"resolves, in client mode only after any<br/>download confirm and the model load"| AllOk{"stored?<br/>every write returned true"}
+    AllOk -->|"yes"| Toast(["window.alert settings.saved_toast"])
+    AllOk -->|"no"| Failed(["window.alert settings.save_failed<br/>some settings could not be saved,<br/>they may be lost on reload"])
 
     subgraph sg_secret["storage.js writeSecret(key, value, remember)"]
         WS1["removeSecret: delete from<br/>localStorage and sessionStorage"] --> WS2{"remember?"}
-        WS2 -->|"yes"| WS3[("localStorage, kept on this device")]
+        WS2 -->|"yes"| WS3[("writeLocal: localStorage, kept on this device")]
         WS2 -->|"no"| WS4[("sessionStorage, this tab only")]
+        WS3 --> WS5["returns true, or false when the storage area<br/>is missing or setItem throws"]
+        WS4 --> WS5
     end
     WriteTyped -.-> WS1
     Migrate -.-> WS1
-    StoreErr["storage exceptions (private mode, blocked, quota)<br/>are caught and ignored in storage.js,<br/>so the saved alert appears anyway"] -.- sg_secret
+    StoreErr["writeLocal and writeSecret catch storage exceptions<br/>(private mode, blocked, quota) and return false,<br/>also when the storage area is missing"] -.- sg_secret
+    StoreErr -.->|"any false"| Failed
 ```
 
 <sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js)</sub>
 
 ### changeEngine, clearKeys and deleteModelCache
 
-changeEngine persists the normalized mode in localStorage, syncs both mode selectors and the privacy notice, then sets the status dot per mode: client reuses a ready engine or calls startLocalEngine (interactive loads may ask to download, non-interactive loads only use a cached model), local probes GET /models on the own server with a 4 s timeout, council is ok only when a Gemini or OpenRouter key is stored. clearKeys removes both keys from localStorage and sessionStorage and refreshes hints and privacy notice but not the engine dot. deleteModelCache asks for confirmation, unloads the engine and deletes the cached f16 and f32 variants of every catalog model, alerting done or failed.
+changeEngine stores the normalized mode in localStorage through setMode, syncs both mode selectors and the privacy notice, sets the status dot per mode and resolves with whether that write succeeded (saveSettings uses it, boot and both change-engine selects, engineSelector and cfgComputeMode, ignore it): client reuses a ready engine or calls startLocalEngine (interactive loads may ask to download, non-interactive loads only use a cached model), local probes GET /models on the own server with a 4 s timeout, council is ok only when a Gemini or OpenRouter key is stored. clearKeys removes both keys from localStorage and sessionStorage and refreshes hints and privacy notice but not the engine dot. deleteModelCache asks for confirmation, unloads the engine and deletes the cached f16 and f32 variants of every catalog model, alerting done or failed.
 
 <!-- diagram: settings-flow-engine-keys-cache -->
 ```mermaid
 flowchart TD
-    CE(["changeEngine(value, opts)<br/>saveSettings and change-engine selects: interactive true<br/>boot: interactive false"]) --> SetMode["setMode: normalizeMode (legacy aliases, unknown becomes council)<br/>localStorage starpi_compute_mode"]
+    CE(["changeEngine(value, opts)<br/>saveSettings and change-engine selects: interactive true<br/>boot: interactive false"]) --> SetMode["stored = setMode: normalizeMode (legacy aliases, unknown becomes council)<br/>writeLocal starpi_compute_mode, false when not stored"]
     SetMode --> SyncUi["syncModeSelectors (engineSelector, cfgComputeMode)<br/>renderPrivacyNotice, renderEngineState"]
     SyncUi --> Mode{"mode?"}
     Mode -->|"client"| Ready{"engine.isReady()?"}
@@ -931,6 +955,14 @@ flowchart TD
     Mode -->|"council"| HasKey{"Gemini or OpenRouter key stored?"}
     HasKey -->|"yes"| DotOk3["setEngineDot ok"]
     HasKey -->|"no"| DotOff2["setEngineDot off"]
+    Ret(["return stored<br/>saveSettings: save_failed when false<br/>boot and both change-engine selects ignore it"])
+    DotOk1 --> Ret
+    DotOff1 --> Ret
+    DotEngine --> Ret
+    DotOk2 --> Ret
+    DotWarn --> Ret
+    DotOk3 --> Ret
+    DotOff2 --> Ret
 
     Clear(["clear-keys click: clearKeys()"]) --> Remove["removeSecret starpi_gemini_key and starpi_openrouter_key<br/>(localStorage and sessionStorage)"]
     Remove --> ClearUi["renderKeyHints: settings.key_none<br/>renderPrivacyNotice<br/>engine dot is not re-evaluated"]
@@ -1003,7 +1035,7 @@ One chat turn from submit to persisted answer: retrieval, citation assignment, t
 
 ### submitChat: from input to persisted answer
 
-submitChat returns early while a request is running (status.busy) or when there is neither text nor an attachment. It shows and persists the user turn; that turn stays on the device in client mode and whenever a workspace file is attached, because it names the file. Retrieval merges on-device BM25 workspace chunks with Supabase knowledge hits, citations are assigned and registered, and the mode captured at submit picks council (Gemini then OpenRouter), client (on-device WebGPU, streamed) or local (own server); a null or empty answer falls back to the extractive synthesizer. The answer is rendered and added to the conversation only if the chat session is unchanged, and it stays in localStorage when the mode is client, a workspace excerpt was used, sync is unavailable or the insert fails.
+submitChat returns early while a request is running (status.busy) or when there is neither text nor an attachment. It shows the user turn at once but stores it only after retrieval with storeQuestion(usesWorkspace), so the question stays on the device in client mode, with an attached workspace file or when a used hit comes from the workspace, and if the turn throws before that the catch stores it with usesWorkspace false. Retrieval merges on-device BM25 workspace chunks with Supabase knowledge hits, citations are assigned and registered, and the mode captured at submit picks council (Gemini then OpenRouter), client (on-device WebGPU, streamed) or local (own server); a null or empty answer falls back to the extractive synthesizer. The answer is rendered and added to the conversation only if the chat session is unchanged, and it stays in localStorage when the mode is client, a workspace excerpt was used, sync is unavailable or the insert fails.
 
 <!-- diagram: chat-request-lifecycle -->
 ```mermaid
@@ -1029,8 +1061,7 @@ sequenceDiagram
     end
     Note over Chat: trim to 8000 chars, clear input, removeAttachment.<br/>Captures sid, history, mode and localOnly = mode is client.<br/>A file without text asks chat.summarize_file
     Chat->>Msg: appendMessage user shownText
-    Chat->>Store: void persistMessage user, localOnly or file attached
-    Note over Chat,Store: a question about an attached file names the file,<br/>so it stays in localStorage like its answer
+    Note over Chat,Store: storeQuestion is prepared, the question is not stored yet
     Note over Chat: new AbortController, setBusy(true) shows Stop and status.generating
     Chat->>Msg: appendLoading()
     Chat->>WS: searchWorkspace(prompt, 6), any error gives no workspace hits
@@ -1048,6 +1079,8 @@ sequenceDiagram
         Chat->>Ret: rankHitsLocally(prompt, rows, 6), none if the fetch failed
     end
     Note over Chat: used is empty for a greeting without a file, else all hits
+    Chat->>Store: storeQuestion(usesWorkspace), void persistMessage user
+    Note over Chat,Store: localOnly = mode client, a file attached or a used hit from the workspace.<br/>If retrieve() throws first, the catch calls storeQuestion(false)
     Chat->>Ret: assignCitations(used, excerptChars 1600)
     Chat->>Cit: registerCitations gives scope id or null
     Chat->>Ret: distinctSources and buildContext(maxChars 9000)
@@ -1064,8 +1097,9 @@ sequenceDiagram
         Chat->>Syn: synthesizeAnswer, extractive with citation labels
     end
     alt signal aborted and answer not rendered
-        Note over Chat,Msg: throw AbortError, catch removes loading, isUserAbort so no notice
+        Note over Chat,Msg: throw AbortError, the catch (storeQuestion(false) is a no-op)<br/>removes loading, isUserAbort so no notice
     else a call threw, e.g. a council or local error rethrown after abort
+        Note over Chat: the catch calls storeQuestion(false), a no-op here<br/>because the question was stored after retrieval
         Chat->>Msg: removeLoading, appendNotice chat.error_title unless isUserAbort
     else answer ready
         Chat->>Syn: describeTrace(prompt, method, used, engine label, note)
@@ -1143,12 +1177,12 @@ flowchart TD
 
 ### Answer dispatch, synthesizer fallback, rendering and persistence
 
-The mode captured at submit selects the path: council sends Gemini one prompt without history and then tries OpenRouter with the last 4 history messages, client loads the WebGPU model interactively (it may ask to download) and streams into its own bubble marked rendered, and local calls the own server at getLlmUrl(). Council and local failures become an empty-text answer with a note (or null) unless the request was aborted, in which case the error is rethrown to the submitChat catch; client failures always become a note, and a null or empty answer is replaced by synthesizeAnswer. The answer is shown and added to the conversation only if the session id is unchanged. persistMessage keeps it in localStorage when localOnly is set (client mode or any used hit from the workspace), when canSyncChats() is false, or when the chat_history insert fails.
+The mode captured at submit selects the path: council sends Gemini one prompt without history and then tries OpenRouter with the last 4 history messages, client loads the WebGPU model interactively (it may ask to download) and streams into its own bubble marked rendered, and local calls the own server at getLlmUrl(). Council and local failures become an empty-text answer with a note (or null) unless the request was aborted, in which case the error is rethrown to the submitChat catch; client failures always become a note, and a null or empty answer is replaced by synthesizeAnswer. The answer is shown and added to the conversation only if the session id is unchanged. persistMessage keeps it in localStorage when localOnly is set (client mode or any used hit from the workspace, the same usesWorkspace that storeQuestion applied to the question right after retrieval), when canSyncChats() is false, or when the chat_history insert fails.
 
 <!-- diagram: chat-request-answer-dispatch -->
 ```mermaid
 flowchart TD
-    Entry(["submitChat after buildContext<br/>prompt, context, history, signal"]) --> Mode{"mode captured<br/>at submit"}
+    Entry(["submitChat after retrieve, storeQuestion(usesWorkspace)<br/>and buildContext: prompt, context, history, signal"]) --> Mode{"mode captured<br/>at submit"}
 
     subgraph cloud["council: answerWithCloud"]
         GemKey{"hasGeminiKey()?"}
@@ -1199,7 +1233,7 @@ flowchart TD
     Check -->|"yes"| Synth["knownTitles via listDocuments, 60 s cache<br/>synthesizeAnswer: greeting, document list,<br/>cited facts or no-hits text, engine synthesizer"]
     Check -->|"no"| AbortChk{"signal aborted and<br/>not answer.rendered?"}
     Synth --> AbortChk
-    AbortChk -->|"yes"| Catch["throw AbortError, catch in submitChat<br/>removeLoading, appendNotice unless isUserAbort"]
+    AbortChk -->|"yes"| Catch["throw AbortError, catch in submitChat<br/>storeQuestion(false) is a no-op, question already stored<br/>removeLoading, appendNotice unless isUserAbort"]
     Gem -.->|"throws while aborted"| Catch
     Or -.->|"throws while aborted"| Catch
     Srv -.->|"throws while aborted"| Catch
@@ -1223,13 +1257,13 @@ flowchart TD
 
 ### Answer modes: what leaves the device
 
-Every mode first runs BM25 over the on-device workspace in the ingest worker; council and own-server mode then send the question (first 1000 chars) to the Supabase search_knowledge RPC and fall back to recentKnowledge(30) on zero rows or an error, while client mode only fetches the 30 newest documents without the question and ranks them in the browser. The excerpts, workspace excerpts included, go to Gemini (no history) or OpenRouter (last 4 history messages) in council mode and to the own server (no key) in own-server mode, client mode keeps them in the WebLLM worker and only downloads model files, and every failure except a user abort falls back to the extractive synthesizer. The user turn is persisted first and stays in localStorage in client mode or when a file is attached, the answer stays local in client mode or when any used excerpt came from the workspace, so a question that merely matches earlier workspace files is synced while its answer is not. Everything else goes to chat_history only when canSyncChats() is true and the insert succeeds, otherwise to localStorage.
+Every mode first runs BM25 over the on-device workspace in the ingest worker; council and own-server mode then send the question (first 1000 chars) to the Supabase search_knowledge RPC and fall back to recentKnowledge(30) on zero rows or an error, while client mode only fetches the 30 newest documents without the question and ranks them in the browser. The excerpts, workspace excerpts included, go to Gemini (no history) or OpenRouter (last 4 history messages) in council mode and to the own server (no key) in own-server mode, client mode keeps them in the WebLLM worker and only downloads model files, and every failure except a user abort falls back to the extractive synthesizer. The question is stored once retrieval shows whether workspace excerpts are used and stays in localStorage in client mode, with an attached file or when a used excerpt came from the workspace (a turn that fails before that stores it with the first two rules only), and the answer stays local in client mode or when a used excerpt came from the workspace, so a workspace turn never reaches chat_history. Everything else goes to chat_history only when canSyncChats() is true and the insert succeeds, otherwise to localStorage.
 
 <!-- diagram: modes-privacy-data-egress -->
 ```mermaid
 flowchart TD
     Ask(["submitChat: question trimmed to 8000 chars<br/>mode = getMode(), stored in starpi_compute_mode"])
-    UserTurn{"persist the user turn first:<br/>client mode or a file attached?"}
+    UserTurn{"storeQuestion(usesWorkspace), question localOnly?<br/>client mode, a file attached,<br/>or any used excerpt from the workspace"}
     RetMode{"retrieve(): mode is client?"}
     Ctx["assignCitations + buildContext<br/>workspace hits first, at most 6 hits, 9 with an attachment<br/>excerpt max 1600 chars, context max 9000 chars<br/>a greeting uses no excerpts"]
     Dispatch{"answer path by mode"}
@@ -1257,7 +1291,8 @@ flowchart TD
         CH[("Supabase chat_history insert")]
     end
 
-    Ask --> UserTurn
+    Ctx -->|"after retrieval and the greeting check,<br/>before assignCitations"| UserTurn
+    Ask -.->|"turn throws before that:<br/>catch runs storeQuestion(false)"| UserTurn
     UserTurn -->|"yes"| LS
     UserTurn -->|"no"| Sync
     Ask --> WsSearch --> RetMode
@@ -1367,7 +1402,7 @@ flowchart TD
 
 ### Settings: server URL rules and key storage
 
-saveSettings first validates the own-server URL with normalizeServerUrl: it must parse, use https unless it is http on localhost or 127.0.0.1 (exactly the plain-http hosts the vercel.json CSP connect-src allows, so http://[::1] is rejected), and carry no credentials; hash and query are removed and trailing slashes stripped, and any violation shows an alert and saves nothing. The remember toggle (starpi_remember_keys) decides where keys go: writeSecret deletes a key from both stores and writes it to localStorage when remembered, otherwise to sessionStorage for this tab only, flipping the toggle moves already stored keys, readSecret checks sessionStorage first and clear-keys removes both keys from both stores. A changed model preference unloads a non-idle engine before changeEngine applies the mode, and the saved toast appears only after that finishes; a stored URL is validated again on every own-server request.
+saveSettings first validates the own-server URL with normalizeServerUrl: it must parse, use https unless it is http on localhost or 127.0.0.1 (exactly the plain-http hosts the vercel.json CSP connect-src allows, so http://[::1] is rejected), and carry no credentials; hash and query are removed and trailing slashes stripped, and any violation shows an alert and saves nothing. The remember toggle (starpi_remember_keys) decides where keys go: writeSecret deletes a key from both stores and writes it to localStorage when remembered, otherwise to sessionStorage for this tab only, flipping the toggle moves already stored keys, readSecret checks sessionStorage first and clear-keys removes both keys from both stores. A changed model preference unloads a non-idle engine before changeEngine applies the mode; after that finishes, the saved toast appears only when every storage write, the mode included, returned true, otherwise settings.save_failed, and a stored URL is validated again on every own-server request.
 
 <!-- diagram: modes-privacy-settings-storage -->
 ```mermaid
@@ -1378,19 +1413,22 @@ flowchart TD
     Cred{"username or password<br/>in the URL?"}
     Clean["clear hash and search,<br/>strip trailing slashes"]
     Bad["window.alert provider.invalid_url,<br/>provider.insecure_url or provider.credentials_in_url<br/>focus the field, nothing is saved"]
-    SetUrl["setLlmUrl(url): localStorage starpi_llm_url<br/>value used when never saved: http://localhost:8000/v1"]
+    SetUrl["setLlmUrl(url): localStorage starpi_llm_url<br/>value used when never saved: http://localhost:8000/v1<br/>returns whether it was stored"]
     Remember["remember = cfgRememberKeys checked<br/>writeLocal starpi_remember_keys 1 or 0"]
     Each["for starpi_gemini_key and starpi_openrouter_key"]
     Typed{"key typed<br/>in the field?"}
     Flip{"key already stored and<br/>remember toggle changed?"}
     Keep["stored key, if any, unchanged"]
-    Write["writeSecret(key, value, remember)<br/>removeSecret from both stores first"]
+    Write["writeSecret(key, value, remember)<br/>removeSecret from both stores first<br/>false when the store is missing or refuses"]
     RemChk{"remember?"}
     LSk[("localStorage<br/>kept across browser restarts")]
     SSk[("sessionStorage<br/>this tab only")]
     Hints["after both keys: fields cleared,<br/>renderKeyHints shows only the last 4 characters"]
     Pref["setModelPreference(cfgWebgpuModel)<br/>preference changed and engine not idle: unloadModel()"]
-    Engine["await changeEngine(mode, interactive true)<br/>local mode: probeLocalServer GET url/models, 4 s<br/>client mode: may load the model first<br/>then alert settings.saved_toast"]
+    Engine["await changeEngine(mode, interactive true)<br/>local mode: probeLocalServer GET url/models, 4 s<br/>client mode: may load the model first<br/>resolves with whether setMode stored the mode"]
+    AllOk{"every write returned true?<br/>URL, remember flag, keys,<br/>model preference, mode"}
+    Saved(["alert settings.saved_toast"])
+    SaveFail(["alert settings.save_failed<br/>storage missing, blocked or full"])
     Read["readSecret: sessionStorage first,<br/>then localStorage"]
     Use["hasGeminiKey, hasOpenRouterKey,<br/>callGemini, callOpenRouter"]
     Clear(["clear-keys: removeSecret for both keys in both stores<br/>renderKeyHints, renderPrivacyNotice,<br/>alert settings.keys_cleared"])
@@ -1413,7 +1451,9 @@ flowchart TD
     Keep --> Hints
     LSk --> Hints
     SSk --> Hints
-    Hints --> Pref --> Engine
+    Hints --> Pref --> Engine --> AllOk
+    AllOk -->|"yes"| Saved
+    AllOk -->|"no"| SaveFail
     SetUrl -.-> PerCall
     LSk -.-> Read
     SSk -.-> Read
@@ -1426,12 +1466,12 @@ flowchart TD
 
 ### Privacy notice under the chat input
 
-renderPrivacyNotice chooses the footer from the mode alone, plus in council mode whether any provider key is stored, and re-renders on settings init, every changeEngine, clear-keys and every Supabase connection change. Every notice says where the question goes: nowhere in on-device mode, and to the knowledge-base search in the other three, plus the own server or the cloud provider. No notice mentions that council and own-server chats are stored in chat_history when canSyncChats() is true; the Settings tab shows the sync state.
+renderPrivacyNotice chooses the footer from the mode alone, plus in council mode whether any provider key is stored, and re-renders on settings init, every changeEngine, clear-keys and every Supabase connection update, including each automatic reconnect attempt after an offline start. Every notice says where the question goes: nowhere in on-device mode, and to the knowledge-base search in the other three, plus the own server or the cloud provider. No notice mentions that council and own-server chats are stored in chat_history when canSyncChats() is true; the Settings tab shows the sync state.
 
 <!-- diagram: modes-privacy-notice -->
 ```mermaid
 flowchart TD
-    Trig(["renderPrivacyNotice() fills the privacyNotice footer<br/>on initSettings, every changeEngine,<br/>clear-keys and every Supabase connection change"])
+    Trig(["renderPrivacyNotice() fills the privacyNotice footer<br/>on initSettings, every changeEngine, clear-keys<br/>and every Supabase connection update,<br/>also on each reconnect attempt while offline"])
     Mode{"getMode()"}
     NLocal["client: lock icon, privacy.local<br/>your question and the model<br/>stay on this device"]
     NServer["local: server icon, privacy.server<br/>your question goes to host<br/>and to the knowledge-base search<br/>host = new URL(getLlmUrl()).host, a dash if unparsable"]
@@ -1439,9 +1479,9 @@ flowchart TD
     NCloud["cloud icon, privacy.cloud<br/>your question goes to the knowledge-base search,<br/>and with matching excerpts to your provider"]
     NExt["library icon, privacy.extractive<br/>question goes to the knowledge-base search,<br/>answers quote it directly"]
     RLocal["requests: recentKnowledge(30), model files<br/>on first load, listDocuments for the synthesizer<br/>none carries the question, chats stay local"]
-    RServer["requests: search_knowledge with the question,<br/>own server with question, excerpts and history,<br/>chat_history when canSyncChats()"]
-    RCloud["requests: search_knowledge with the question,<br/>Gemini or OpenRouter with question and excerpts,<br/>chat_history when canSyncChats()"]
-    RExt["requests: search_knowledge with the question,<br/>listDocuments, chat_history when canSyncChats()"]
+    RServer["requests: search_knowledge with the question,<br/>own server with question, excerpts and history,<br/>chat_history when canSyncChats(),<br/>except turns that use workspace excerpts"]
+    RCloud["requests: search_knowledge with the question,<br/>Gemini or OpenRouter with question and excerpts,<br/>chat_history when canSyncChats(),<br/>except turns that use workspace excerpts"]
+    RExt["requests: search_knowledge with the question,<br/>listDocuments, chat_history when canSyncChats(),<br/>except turns that use workspace excerpts"]
 
     Trig --> Mode
     Mode -->|"client"| NLocal
@@ -2238,7 +2278,7 @@ sequenceDiagram
 
 ### Asking about an attached file
 
-submitChat takes the pending attachment, hides the chip and uses chat.summarize_file as the prompt when no text was typed; the user message (prompt plus [file name]) is persisted with localOnly, so with an attached file it stays in localStorage in every mode. retrieveWorkspace runs a BM25 search (top 6) and, if none of the hits comes from the attached document, prepends its first 3 chunks; knowledge-base hits follow (full-text RPC with a local-ranking fallback, or local ranking only in on-device mode). The fenced context, including the file excerpts, goes to the model of the active mode, the answer is rendered with its citation scope and, because workspace excerpts were used, persisted only locally. Opening a workspace citation reads the surrounding text from the worker with getChunkContext and falls back to citation.note_missing when the document is gone.
+submitChat takes the pending attachment, hides the chip and uses chat.summarize_file as the prompt when no text was typed; the user message (prompt plus [file name]) is stored by storeQuestion once retrieval has run (or by the catch if the turn throws first), and because a file is attached it is localOnly and stays in localStorage in every mode. retrieveWorkspace runs a BM25 search (top 6) and, if none of the hits comes from the attached document, prepends its first 3 chunks; knowledge-base hits follow (full-text RPC with a local-ranking fallback, or local ranking only in on-device mode). The fenced context, including the file excerpts, goes to the model of the active mode, the answer is rendered with its citation scope and stays local in client mode or when a used hit comes from the workspace, normally the file's own excerpts; if the workspace search fails or the file was removed from the workspace meanwhile, only the question is kept local and the answer is synced like any other when chats sync. Opening a workspace citation reads the surrounding text from the worker with getChunkContext and falls back to citation.note_missing when the document is gone.
 
 <!-- diagram: attachments-voice-ask -->
 ```mermaid
@@ -2259,9 +2299,7 @@ sequenceDiagram
     Note over User,Chat: busy with an earlier answer gives status.busy and stops<br/>no text and no attachment also stops
     Chat->>Chat: file = attachment, chatInput cleared, removeAttachment() hides the chip
     Note over Chat: prompt = text or chat.summarize_file with the name<br/>shown text = prompt plus [file name]
-    Chat->>Msg: appendMessage user
-    Chat->>Store: persistMessage user, localOnly = client mode or a file attached
-    Note over Store: with a file always localStorage starpi_local_chats_v1,<br/>never chat_history in Supabase
+    Chat->>Msg: appendMessage user, not stored yet
     Chat->>Msg: appendLoading bubble, after setBusy(true) shows stopBtn
     Chat->>WS: retrieveWorkspace calls searchWorkspace(prompt, 6)
     alt workspace empty or blank query
@@ -2285,6 +2323,8 @@ sequenceDiagram
         Chat->>KB: recentKnowledge(30) ranked by rankHitsLocally, question not sent
     end
     Note over Chat: workspace hits first, limit retrievalRows + 3 = 9<br/>the greeting shortcut is skipped when a file is attached
+    Chat->>Store: storeQuestion(usesWorkspace), persistMessage user
+    Note over Store: localOnly = client mode, a file attached or a used workspace hit,<br/>so with a file always localStorage starpi_local_chats_v1, never chat_history
     Chat->>Ret: assignCitations, workspace label [Doc: name, Chunk: chunkIndex + 1]
     Chat->>Cit: registerCitations gives the citation scope
     Chat->>Ret: buildContext fences the excerpts, max 9000 chars
@@ -2293,8 +2333,9 @@ sequenceDiagram
     alt answer ready
         Chat->>Msg: answer shown with its citation scope (same session only)
         Chat->>Store: persistMessage answer, localOnly = client mode or a used hit from the workspace
-    else exception that is not a user abort
-        Chat->>Msg: appendNotice chat.error_title, chat.error_body
+    else exception
+        Chat->>Store: storeQuestion(false), stores only if retrieval had not finished, still local with a file
+        Chat->>Msg: appendNotice chat.error_title, chat.error_body unless a user abort
     end
     User->>Cit: open-citation on a workspace label
     Cit->>WS: getChunkContext(docId, start, end)
@@ -2968,12 +3009,12 @@ flowchart TD
 
 ### localStorage, sessionStorage and the auth session
 
-All app preferences live in localStorage under the STORAGE_KEYS names from config.js; state.js normalizes and rewrites compute mode and model preference on every load and removes the legacy starpi_ai_tier key. Provider API keys go to sessionStorage by default and to localStorage only when starpi_remember_keys is 1; readSecret checks sessionStorage first, and Delete keys removes them from both. Chats go to starpi_local_chats_v1 (10 sessions, 200 messages each) in client mode, for attached files and workspace-cited answers, or whenever they cannot be synced; New chat only rotates starpi_chat_session_id, and supabase-js keeps the anonymous session under starpi-auth. No in-app action clears starpi_locale, the auth session or the local chat archive, which is only capped.
+All app preferences live in localStorage under the STORAGE_KEYS names from config.js; state.js normalizes and rewrites compute mode and model preference on every load and removes the legacy starpi_ai_tier key, and writeLocal and writeSecret return false when the storage area is missing, blocked or full, which only Save settings acts on (it alerts settings.save_failed instead of settings.saved_toast). Provider API keys go to sessionStorage by default and to localStorage only when starpi_remember_keys is 1; readSecret checks sessionStorage first, and Delete keys removes them from both. Chats go to starpi_local_chats_v1 (10 sessions, 200 messages each) in client mode, for questions with an attached file, for the question and answer of a turn that uses workspace excerpts, or whenever they cannot be synced; New chat only rotates starpi_chat_session_id, and supabase-js keeps the anonymous session under starpi-auth. No in-app action clears starpi_locale, the auth session or the local chat archive, which is only capped.
 
 <!-- diagram: client-storage-web-storage -->
 ```mermaid
 flowchart LR
-    subgraph sg_local["localStorage via storage.js (per origin, survives reload and restart, helpers never throw)"]
+    subgraph sg_local["localStorage via storage.js (per origin, survives reload and restart,<br/>helpers never throw, writes return false when not stored)"]
         k_mode[("starpi_compute_mode<br/>council, client or local")]
         k_model[("starpi_webgpu_model<br/>auto, llama-1b, qwen-1.5b or qwen-3b")]
         k_url[("starpi_llm_url<br/>own server URL, written on Save only")]
@@ -2995,14 +3036,14 @@ flowchart LR
 
     a_load(["Page load: state.js and chat-store.js"])
     a_mode(["changeEngine: boot restore or change-engine select"])
-    a_save(["Save settings"])
+    a_save(["Save settings<br/>alert settings.save_failed when any write returns false"])
     a_clear(["Delete keys (clear-keys)"])
     a_read(["readSecret in providers.js and settings.js"])
     a_locale(["EN/DE toggle"])
     a_new(["New chat"])
     a_send(["Send a message"])
-    a_restore(["restoreHistory at boot"])
-    a_connect(["connect() at boot"])
+    a_restore(["restoreHistory at boot, not repeated after a reconnect"])
+    a_connect(["connect() at boot, repeated after an offline result:<br/>online event or 30 s doubling up to 5 min"])
     a_close(["Close the tab"])
     a_site(["Browser: clear site data"])
 
@@ -3023,7 +3064,7 @@ flowchart LR
     a_read -.->|"then localStorage"| k_keys_l
     a_locale -->|"setLocale"| k_locale
     a_new -->|"startNewSession, old archive entry stays"| k_sid
-    a_send -->|"appendLocal: client mode, attached file, workspace-cited answer,<br/>canSyncChats false or insert failed"| k_chats
+    a_send -->|"appendLocal: client mode, attached file,<br/>question and answer of a workspace turn,<br/>canSyncChats false or insert failed"| k_chats
     a_restore -.->|"loadCurrentSession reads, shown after synced rows"| k_chats
     a_connect -->|"getSession, else signInAnonymously"| k_auth
     a_close -.->|"discards"| k_keys_s
@@ -3248,7 +3289,7 @@ The browser connects with the public anon key and an anonymous session; grants a
 
 ### connect(): anonymous session and schema probe
 
-The Supabase client is created once at module load with the anon key, a persisted session under storageKey starpi-auth (detectSessionInUrl false) and a fetch wrapper that aborts every request after 12000 ms. connect() restores the session with getSession() and only calls signInAnonymously() when there is none, then always probes the hardened schema with select id, is_public on knowledge_documents, as role anon when sign-in failed. A network or timeout probe error yields status offline and clears connectPromise, anything else yields status ready with signedIn = no authError and hardened = probe.ok. updateConnection calls the only listener (main.js: renderConnection, renderPrivacyNotice, refreshSyncStatus, which counts chat_history rows when canSyncChats()), then boot() renders the state once more and restoreHistory() reads chat_history only when syncing is possible.
+The Supabase client is created once at module load with the anon key, a persisted session under storageKey starpi-auth (detectSessionInUrl false) and a fetch wrapper that aborts every request after 12000 ms. connect() restores the session with getSession() and only calls signInAnonymously() when there is none, then always probes the hardened schema with select id, is_public on knowledge_documents, as role anon when sign-in failed. A network or timeout probe error yields status offline and scheduleReconnect(), which clears connectPromise and, unless a retry is already pending, calls connect() again on the window online event or after 30 s, doubling per attempt up to 5 min; anything else yields status ready with signedIn = no authError and hardened = probe.ok and resets the backoff. updateConnection calls the only listener (main.js: renderConnection, renderPrivacyNotice, refreshSyncStatus, which counts chat_history rows when canSyncChats()), then boot() renders the state once more and restoreHistory() reads chat_history only when syncing is possible, while a later retry reaches only the listener and never restores history again.
 
 <!-- diagram: supabase-connection-connect -->
 ```mermaid
@@ -3261,12 +3302,13 @@ sequenceDiagram
     participant L as onConnectionChange listener
     participant UI as ui.js renderConnection
     participant CS as chat-store.js
+    participant Win as window timer and online event
 
     Note over Sb: At module load createClient(SUPABASE_URL, SUPABASE_ANON_KEY)<br/>persistSession, autoRefreshToken, detectSessionInUrl false,<br/>storageKey starpi-auth, global fetch = fetchWithTimeout (12000 ms)
     Note over Sb: Initial state is status pending, signedIn false,<br/>hardened false, authError null, probeError null
     Boot->>Sb: onConnectionChange(listener)
     Boot->>Sb: await connect()
-    alt connectPromise already set (not reached today, boot() is the only caller)
+    alt connectPromise already set (not reached today, boot() and retry() call it only when none is set)
         Sb-->>Boot: same promise, concurrent callers share one attempt
     else no attempt running
         Sb->>Auth: ensureSession() calls getSession()
@@ -3303,8 +3345,14 @@ sequenceDiagram
                 CS->>DB: countChatMessages(), HEAD count on chat_history
             end
         end
-        opt status offline
-            Sb->>Sb: connectPromise = null, allows a later retry
+        alt status offline
+            Sb->>Sb: scheduleReconnect() sets connectPromise = null
+            opt no retryTimer pending
+                Sb->>Win: setTimeout(retry, min(30000 x 2^offlineAttempts, 300000) ms), addEventListener online
+                Note over Sb,Win: offlineAttempts + 1, so 30 s, 60 s, 120 s, 240 s, then 5 min
+            end
+        else status ready
+            Sb->>Sb: offlineAttempts = 0
         end
         Sb-->>Boot: ConnectionState
     end
@@ -3318,6 +3366,10 @@ sequenceDiagram
         Note over CS: local messages from localStorage starpi_local_chats_v1
     end
     CS-->>Boot: ChatRow list, rendered by restoreHistory()
+    opt later, after an offline result
+        Win->>Sb: retry() on the online event or timer: clearTimeout, remove online listener, void connect()
+        Note over Sb,CS: a new attempt as above. The badge stays Offline until it settles, then the listener<br/>re-renders badge, privacy notice and sync status. restoreHistory() is not called again
+    end
 ```
 
 <sub>Sources: [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/main.js`](../src/js/main.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/config.js`](../src/js/config.js), [`src/js/signals.js`](../src/js/signals.js), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
@@ -3347,7 +3399,7 @@ flowchart TD
     qForbidden -->|"no"| kUnknown(["unknown"])
 
     subgraph sg_effect["Effect inside connect()"]
-        eOffline["probe error: status offline,<br/>connectPromise reset, badge Offline"]
+        eOffline["probe error: status offline, badge Offline,<br/>scheduleReconnect() resets connectPromise<br/>and retries connect() later"]
         eMigration["probe error: status ready, hardened false,<br/>badge Migration pending"]
         eRestricted["probe error: status ready, hardened false,<br/>badge Restricted, Error (code, else kind)"]
         eAuth["ensureSession error of any kind, also timeout or network:<br/>authError set, signedIn false, status still set by the probe,<br/>after a good probe badge Read only with<br/>Anonymous sign-ins are disabled for auth_disabled, else No session"]
@@ -3365,7 +3417,7 @@ flowchart TD
 
 ### Database badge states (renderConnection)
 
-dbStatusBadge and settingsDbBadge start as Connecting from the index.html markup; renderConnection first runs after connect() has settled and then shows Offline after a network or timeout probe error, or for status ready Live, Read only, Migration pending or Restricted depending on hardened, signedIn and the probe error kind, together with the badge class, the settingsDbAuth text and the project ref. refreshSyncStatus sets the chat sync text. canSyncChats() is true only in Live, the only state in which chat_history is written or read, and even there on-device, attachment and workspace messages stay in localStorage. boot() calls connect() once, so the first settled state stays for the rest of the page session.
+dbStatusBadge and settingsDbBadge start as Connecting from the index.html markup; renderConnection first runs after connect() has settled and then shows Offline after a network or timeout probe error, or for status ready Live, Read only, Migration pending or Restricted depending on hardened, signedIn and the probe error kind, together with the badge class, the settingsDbAuth text and the project ref. refreshSyncStatus sets the chat sync text. canSyncChats() is true only in Live, the only state in which chat_history is written or read, and even there on-device, attachment and workspace messages stay in localStorage. Offline is not final: scheduleReconnect() repeats connect() on the window online event or after 30 s, doubling up to 5 min, and the listener re-renders the badge, while a ready state stays for the rest of the page session.
 
 <!-- diagram: supabase-connection-badge-states -->
 ```mermaid
@@ -3399,6 +3451,8 @@ stateDiagram-v2
 
     [*] --> connecting : page load, connect() running
     connecting --> offline : probe error kind network or timeout
+    offline --> offline : retry still gets network or timeout, next delay doubled up to 5 min
+    offline --> ready_choice : retry on the online event or timer gets status ready
     connecting --> ready_choice : status ready
     ready_choice --> live : hardened and signedIn
     ready_choice --> read_only : hardened, not signedIn
@@ -3410,13 +3464,15 @@ stateDiagram-v2
         persistMessage inserts into chat_history and
         loadCurrentSession reads it, except localOnly messages
         (on-device mode, a question with an attached file,
-        answers quoting the workspace) and failed inserts,
-        which stay in localStorage.
+        question and answer of a turn that uses workspace
+        excerpts) and failed inserts, which stay in localStorage.
         Every other state keeps chats in localStorage only.
     end note
     note left of offline
-        connectPromise is reset so a later connect()
-        could retry, but boot() is the only caller
+        scheduleReconnect() calls connect() again on the
+        window online event or after 30 s, 60 s, ... up to 5 min.
+        The badge stays Offline while a retry runs. History
+        is not restored again, new messages sync once Live.
     end note
 ```
 
@@ -3946,7 +4002,7 @@ flowchart LR
 
 ### Worker isolation, RLS, key handling, CSP and the build gate
 
-Workspace files are parsed only inside the starpi-ingest Web Worker, with an extension allowlist, byte, character and page limits, and pdf.js without font loading; they are never uploaded or synced, only matching excerpts go to the cloud provider or own server that writes an answer, and answers citing them and questions with an attached file stay in localStorage. Supabase access uses the anon key plus an anonymous session, so RLS, grants and CHECK size limits decide what a browser can read or write, and chats sync only when canSyncChats() confirms a session and the hardened schema. Provider keys stay in sessionStorage unless the user opts to remember them and travel only in headers, own-server URLs must be https (plain http only on localhost or 127.0.0.1, the http hosts connect-src allows) without credentials, the vercel.json CSP and headers block script injection, remote image beacons, plugins and framing while connect-src still allows any https host, and verify-dist.mjs fails the build if dist/ would break or weaken that policy.
+Workspace files are parsed only inside the starpi-ingest Web Worker, with an extension allowlist, byte, character and page limits, and pdf.js without font loading; they are never uploaded or synced, only matching excerpts go to the cloud provider or own server that writes an answer, and the question and answer of a turn that uses them, like any question with an attached file, stay in localStorage. Supabase access uses the anon key plus an anonymous session, so RLS, grants and CHECK size limits decide what a browser can read or write, and chats sync only when canSyncChats() confirms a session and the hardened schema. Provider keys stay in sessionStorage unless the user opts to remember them and travel only in headers, own-server URLs must be https (plain http only on localhost or 127.0.0.1, the http hosts connect-src allows) without credentials, the vercel.json CSP and headers block script injection, remote image beacons, plugins and framing while connect-src still allows any https host, and verify-dist.mjs fails the build if dist/ would break or weaken that policy.
 
 <!-- diagram: security-layers-platform -->
 ```mermaid
@@ -3965,7 +4021,7 @@ flowchart LR
         cWorker["ingest.worker.js, Web Worker starpi-ingest<br/>parse, chunk and BM25 off the main thread,<br/>full text kept in worker memory, never uploaded or synced,<br/>failures return ParseError codes, ok false"]
         cParse["parser.js extractText<br/>extension allowlist txt, md, markdown, csv, log, json, pdf<br/>MAX_FILE_BYTES 25 MiB, MAX_TEXT_CHARS 5000000,<br/>at most MAX_PDF_PAGES 2000 read, normalizeText drops NUL and control chars"]
         cPdf["pdf.js legacy build inside the worker<br/>disableFontFace, useSystemFonts false,<br/>isOffscreenCanvasSupported false,<br/>PasswordException becomes encrypted_pdf"]
-        cLocal["chat.js persistMessage localOnly:<br/>on-device mode, answers citing the workspace<br/>and questions with an attached file stay in localStorage<br/>matching excerpts still reach the cloud provider or own server"]
+        cLocal["chat.js persistMessage localOnly:<br/>on-device mode, question and answer of a turn<br/>using workspace excerpts (question stored after retrieval)<br/>and questions with an attached file stay in localStorage<br/>matching excerpts still reach the cloud provider or own server"]
         cRls["Postgres RLS and grants<br/>visible = is_public or owner_id = auth.uid()<br/>published rows read-only for browser roles,<br/>brain_settings service role only, RPCs SECURITY INVOKER"]
         cCheck["CHECK size limits on browser-writable columns<br/>violations fail with SQLSTATE 23514"]
         cSync["canSyncChats: signedIn and hardened,<br/>otherwise chats stay in localStorage"]
@@ -3998,7 +4054,7 @@ flowchart LR
     cWorker --> tLeak
     cParse --> tFreeze
     cPdf --> tPdf
-    iFile -->|"attached-file questions,<br/>answers citing the workspace"| cLocal
+    iFile -->|"attached-file questions,<br/>workspace turns: question and answer"| cLocal
     cLocal --> tLeak
     iDb --> cRls
     iDb --> cCheck
@@ -4025,7 +4081,7 @@ flowchart LR
 
 ### Backend API guards, backend secrets and CI supply chain
 
-The Python backend holds the service role key, so server.py binds to 127.0.0.1 unless BRAIN_API_TOKEN is set and then requires a Bearer token for /api/brain/*; without a token it refuses proxy headers and non-loopback Host headers, and it always rejects origins outside BRAIN_ALLOWED_ORIGINS. Request bodies are bounded (Content-Length required, 1 MiB default, JSON only, 30 s timeout, per-field character limits) and every response carries restrictive headers and generic errors. Secrets come only from the environment and never appear in repr, and CI scans the tree and pull-request commits with a checksum-verified gitleaks while running with read-only permissions, SHA-pinned actions and npm ci --ignore-scripts.
+The Python backend holds the service role key, so server.py binds to 127.0.0.1 unless BRAIN_API_TOKEN is set and then requires a Bearer token for /api/brain/*; without a token it refuses proxy headers and non-loopback Host headers, and it always rejects origins outside BRAIN_ALLOWED_ORIGINS. Request bodies are bounded (Content-Length required, 1 MiB default, JSON only, 30 s timeout, per-field character limits) and every response carries restrictive headers and generic errors. Secrets come only from the process environment or the .env file that core/config.py loads itself (backend/.env, else the repository root; the environment wins, and within the file the last assignment wins) and never appear in repr, and CI scans the tree and pull-request commits with a checksum-verified gitleaks while running with read-only permissions, SHA-pinned actions and npm ci --ignore-scripts.
 
 <!-- diagram: security-layers-backend-ci -->
 ```mermaid
@@ -4044,7 +4100,7 @@ flowchart LR
         cAuth["_check_auth for /api/brain/* when a token is set:<br/>Authorization Bearer checked with hmac.compare_digest, else 401"]
         cBody["_read_json_object: Transfer-Encoding or no Content-Length 411,<br/>invalid or repeated Content-Length 400, above BRAIN_MAX_BODY_BYTES<br/>default 1 MiB 413, not application/json 415, stalled body 408 after 30 s<br/>fields: text 200000, query 4000, source_name 256, source_type 64 characters"]
         cResp["Every response: nosniff, Cache-Control no-store,<br/>Referrer-Policy no-referrer, CSP default-src none,<br/>unhandled errors return a generic 500 internal_error,<br/>request log without headers or query string"]
-        cCfg["core/config.py BrainConfig: service role key only from<br/>SUPABASE_SERVICE_ROLE_KEY, never the anon key,<br/>secret fields excluded from repr"]
+        cCfg["core/config.py BrainConfig: read from the process environment,<br/>which wins over backend/.env (else the root .env)<br/>loaded at import, last assignment in the file wins,<br/>service role key only from SUPABASE_SERVICE_ROLE_KEY,<br/>never the anon key, secret fields excluded from repr"]
         cLeaks["CI job secrets: gitleaks 8.30.1, sha256 verified,<br/>scans the working tree and the commits of a pull request"]
         cSupply["CI and Vercel: permissions contents read,<br/>actions pinned to commit SHAs, persist-credentials false,<br/>npm ci --ignore-scripts"]
     end
@@ -4195,12 +4251,12 @@ flowchart TD
 
 ### Brain API startup checks
 
-Importing core.config loads backend/.env (or the repo-root .env) without overriding existing environment variables and validates BRAIN_LOG_LEVEL, falling back to INFO with a warning that never echoes the raw value; importing core.supabase_client creates db, which counts as live when SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are both set, without any network call. main() validates --log-level and the optional port with argparse (exit 2), and run_server refuses (SystemExit 2) to bind a non-loopback address when BRAIN_API_TOKEN is empty and warns about tokens shorter than 32 characters. A bind error such as a port in use is not caught; otherwise the server installs a SIGTERM handler for systemd, warns when Supabase is not configured and serves until SIGTERM or Ctrl+C.
+Importing core.config loads backend/.env (or the repo-root .env), where quoted values end at the matching quote, unquoted values drop a whitespace # comment and the last assignment of a key wins, without overriding existing environment variables, and validates BRAIN_LOG_LEVEL, falling back to INFO with a warning that never echoes the raw value; importing core.supabase_client creates db, which counts as live when SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are both set, without any network call. main() validates --log-level and the optional port with argparse (exit 2), and run_server refuses (SystemExit 2) to bind a non-loopback address when BRAIN_API_TOKEN is empty and warns about tokens shorter than 32 characters. A bind error such as a port in use is not caught; otherwise the server installs a SIGTERM handler for systemd, warns when Supabase is not configured and serves until SIGTERM or Ctrl+C. Request threads are not daemonic (daemon_threads False), so server_close in the finally block waits for requests in flight before the process exits.
 
 <!-- diagram: backend-request-startup -->
 ```mermaid
 flowchart TD
-    Start(["python server.py [port] [--host HOST] [--log-level LEVEL]"]) --> Env["import core.config<br/>loads backend/.env, else the repo-root .env<br/>variables already in the environment win"]
+    Start(["python server.py [port] [--host HOST] [--log-level LEVEL]"]) --> Env["import core.config<br/>loads backend/.env, else the repo-root .env<br/>parse_env_line: a quoted value ends at its matching quote,<br/>an unquoted value drops a whitespace # comment<br/>last assignment of a key in the file wins<br/>variables already in the environment win"]
     Env --> Cfg["config = BrainConfig()<br/>BRAIN_SERVER_HOST default 127.0.0.1<br/>BRAIN_SERVER_PORT default 9200"]
     Cfg --> Int{"BRAIN_SERVER_PORT or BRAIN_MAX_BODY_BYTES<br/>set but not an integer?"}
     Int -->|"yes"| IntW["warning, default value used"]
@@ -4222,17 +4278,17 @@ flowchart TD
     Loop -->|"no"| TokLen{"token set but shorter<br/>than 32 characters?"}
     TokLen -->|"yes"| TokW["warning"]
     TokLen -->|"no"| Bind
-    TokW --> Bind["create_server: BrainHTTPServer (ThreadingHTTPServer)<br/>AF_INET6 when the host contains a colon<br/>server_bind skips the reverse DNS lookup"]
+    TokW --> Bind["create_server: BrainHTTPServer (ThreadingHTTPServer)<br/>daemon_threads False, request threads not daemonic<br/>AF_INET6 when the host contains a colon<br/>server_bind skips the reverse DNS lookup"]
     Bind -->|"OSError, e.g. address in use"| BindErr["not caught: traceback, exit status 1"]
     Bind --> Sig{"running in the main thread?"}
-    Sig -->|"yes"| SigT["install SIGTERM handler<br/>httpd.shutdown in a daemon thread"]
+    Sig -->|"yes"| SigT["install SIGTERM handler: logs Received SIGTERM,<br/>httpd.shutdown in a daemon thread"]
     Sig -->|"no"| Listen
     SigT --> Listen["log Brain API listening<br/>with supabase_live and token_auth"]
     Listen --> Live{"db.is_live?"}
     Live -->|"no"| MemW["warning: Supabase is not configured,<br/>documents are kept in memory only"]
     Live -->|"yes"| Serve
     MemW --> Serve["serve_forever"]
-    Serve -->|"SIGTERM shutdown or KeyboardInterrupt"| Close["server_close"]
+    Serve -->|"SIGTERM shutdown or KeyboardInterrupt"| Close["finally: server_close<br/>joins the non-daemon request threads,<br/>so requests in flight finish first"]
 ```
 
 <sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py)</sub>
@@ -4606,14 +4662,14 @@ flowchart LR
 
     subgraph jobE2e["Job e2e, needs frontend"]
         dl["download artifact dist,<br/>npx playwright install --with-deps chromium"]
-        pw["npm run test:e2e<br/>app.spec.mjs, 12 tests on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs on desktop only, mermaid 11.17.2"]
+        pw["npm run test:e2e<br/>app.spec.mjs, 15 tests on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs on desktop only, mermaid 11.17.2"]
         rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
     end
 
     subgraph jobBack["Job backend, matrix Python 3.11 and 3.12"]
         ruff["ruff check backend,<br/>ruff format --check backend"]
         comp["python -m compileall -q backend"]
-        ut["python -m unittest discover -s backend -p test_*.py<br/>test_core.py: chunker, embeddings, config, structurer,<br/>supabase_client, ingestion pipeline, rag<br/>test_server.py: routing, body validation, timeouts, proxy and<br/>token auth, length limits, CORS, startup, Content-Length parsing<br/>offline: httpx.Client mocked, fakes behind a 127.0.0.1 server"]
+        ut["python -m unittest discover -s backend -p test_*.py<br/>test_core.py: chunker, embeddings, config, structurer,<br/>supabase_client, ingestion pipeline, rag<br/>test_server.py: routing, body validation, timeouts, proxy and<br/>token auth, length limits, CORS, startup,<br/>shutdown waits for requests in flight, Content-Length parsing<br/>offline: httpx.Client mocked, fakes behind a 127.0.0.1 server"]
     end
 
     subgraph jobDb["Job database"]
@@ -4647,7 +4703,7 @@ flowchart LR
 
 ### Unit tests grouped by concern
 
-npm test runs the 13 tests/unit/*.test.mjs files with the built-in node:test runner in the frontend CI job. Security and UI contract tests cover the sanitizer (on a real jsdom DOM), server URL validation (http only for localhost and 127.0.0.1), the CSP and build settings in vercel.json, handler and icon coverage, and dictionary parity. Retrieval tests pin exact BM25 scores, chunk boundaries, parser error codes (with a generated PDF from tests/fixtures/pdf.mjs), citation labels and grounded offline answers; model tests pin the prompts, the WebLLM model catalog and the benchmark metrics, and docs.test.mjs keeps every documentation diagram single-sourced in docs/ARCHITECTURE.md.
+npm test runs the 13 tests/unit/*.test.mjs files with the built-in node:test runner in the frontend CI job. Security and UI contract tests cover the sanitizer (on a real jsdom DOM), server URL validation (http only for localhost and 127.0.0.1), the CSP and build settings in vercel.json, handler and icon coverage, and dictionary parity. Retrieval tests pin exact BM25 scores, chunk boundaries, parser error codes (with a generated PDF from tests/fixtures/pdf.mjs), citation labels and grounded offline answers; model tests pin the prompts, the WebLLM model catalog and the benchmark metrics, and docs.test.mjs keeps every documentation diagram single-sourced in docs/ARCHITECTURE.md and checks relative links and heading anchors in every Markdown file.
 
 <!-- diagram: test-strategy-unit -->
 ```mermaid
@@ -4676,7 +4732,7 @@ flowchart LR
     end
 
     subgraph gDocs["Documentation"]
-        docs["docs.test.mjs<br/>every mermaid block in docs/ARCHITECTURE.md has a unique<br/>diagram id marker, other Markdown files embed a diagram<br/>only as an exact copy under the same marker,<br/>relative links in the atlas resolve to existing files"]
+        docs["docs.test.mjs, helpers from scripts/markdown.mjs<br/>every mermaid block in docs/ARCHITECTURE.md has a unique<br/>diagram id marker, other Markdown files embed a diagram<br/>only as an exact copy under the same marker,<br/>relative links in every Markdown file resolve to existing files<br/>and their #anchors to existing headings,<br/>helper tests: backtick and tilde fences, link targets,<br/>GitHub heading anchors"]
     end
 
     runner --> render
@@ -4694,11 +4750,11 @@ flowchart LR
     runner --> docs
 ```
 
-<sub>Sources: [`tests/unit/render.test.mjs`](../tests/unit/render.test.mjs), [`tests/unit/config.test.mjs`](../tests/unit/config.test.mjs), [`tests/unit/setup.mjs`](../tests/unit/setup.mjs), [`tests/unit/actions.test.mjs`](../tests/unit/actions.test.mjs), [`tests/unit/i18n.test.mjs`](../tests/unit/i18n.test.mjs), [`tests/unit/parser.test.mjs`](../tests/unit/parser.test.mjs), [`tests/unit/chunker.test.mjs`](../tests/unit/chunker.test.mjs), [`tests/unit/bm25.test.mjs`](../tests/unit/bm25.test.mjs), [`tests/unit/retrieval.test.mjs`](../tests/unit/retrieval.test.mjs), [`tests/unit/synthesizer.test.mjs`](../tests/unit/synthesizer.test.mjs), [`tests/unit/prompts.test.mjs`](../tests/unit/prompts.test.mjs), [`tests/unit/models.test.mjs`](../tests/unit/models.test.mjs), [`tests/unit/diagnostics.test.mjs`](../tests/unit/diagnostics.test.mjs), [`tests/fixtures/pdf.mjs`](../tests/fixtures/pdf.mjs), [`package.json`](../package.json), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs)</sub>
+<sub>Sources: [`tests/unit/render.test.mjs`](../tests/unit/render.test.mjs), [`tests/unit/config.test.mjs`](../tests/unit/config.test.mjs), [`tests/unit/setup.mjs`](../tests/unit/setup.mjs), [`tests/unit/actions.test.mjs`](../tests/unit/actions.test.mjs), [`tests/unit/i18n.test.mjs`](../tests/unit/i18n.test.mjs), [`tests/unit/parser.test.mjs`](../tests/unit/parser.test.mjs), [`tests/unit/chunker.test.mjs`](../tests/unit/chunker.test.mjs), [`tests/unit/bm25.test.mjs`](../tests/unit/bm25.test.mjs), [`tests/unit/retrieval.test.mjs`](../tests/unit/retrieval.test.mjs), [`tests/unit/synthesizer.test.mjs`](../tests/unit/synthesizer.test.mjs), [`tests/unit/prompts.test.mjs`](../tests/unit/prompts.test.mjs), [`tests/unit/models.test.mjs`](../tests/unit/models.test.mjs), [`tests/unit/diagnostics.test.mjs`](../tests/unit/diagnostics.test.mjs), [`tests/fixtures/pdf.mjs`](../tests/fixtures/pdf.mjs), [`package.json`](../package.json), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`scripts/markdown.mjs`](../scripts/markdown.mjs)</sub>
 
 ### End-to-end tests with mocked Supabase and diagnostics
 
-Playwright serves the built dist/ through scripts/serve.mjs, which applies the vercel.json headers to every path, and runs the 12 app.spec.mjs tests on a desktop and a mobile Chromium project. mockSupabase answers every *.supabase.co request, either as a pre-migration project without anonymous sign-ins or as a hardened one, and seeds a document with hostile markup; the diagnostics fixture fails a test on any CSP violation, page error, unexpected console error or request to a host other than 127.0.0.1 and the mocked Supabase. Two workspace tests prove that a question about an attached file stays in localStorage while chats sync and that a citation made before Clear workspace never opens a file added afterwards, and docs-diagrams.spec.mjs renders every Mermaid block in the repository Markdown once on desktop with mermaid 11.17.2.
+Playwright serves the built dist/ through scripts/serve.mjs, which applies the vercel.json headers to every path, and runs the 15 app.spec.mjs tests on a desktop and a mobile Chromium project. mockSupabase answers every *.supabase.co request, either as a pre-migration project without anonymous sign-ins or as a hardened one, and seeds a document with hostile markup; the diagnostics fixture fails a test on any CSP violation, page error, unexpected console error or request to a host other than 127.0.0.1 and the mocked Supabase. The workspace tests prove that a question answered from workspace files or about an attached file stays in localStorage with its answer while chats sync, and that a citation made before Clear workspace never opens a file added afterwards. Two settings tests check that the save dialog confirms only what the browser stored, an offline-start test checks that the app reconnects on the online event and then syncs chats, and docs-diagrams.spec.mjs renders every Mermaid block in the repository Markdown once on desktop with mermaid 11.17.2.
 
 <!-- diagram: test-strategy-e2e -->
 ```mermaid
@@ -4718,16 +4774,18 @@ flowchart TD
         diagx["diagnostics fixture<br/>securitypolicyviolation logged as CSP_VIOLATION,<br/>pageerror and console.error collected, 4xx resource logs ignored,<br/>requests outside 127.0.0.1 and *.supabase.co aborted and recorded,<br/>the test fails unless the list is empty"]
     end
 
-    subgraph app["app.spec.mjs, 12 tests, both projects"]
+    subgraph app["app.spec.mjs, 15 tests, both projects"]
         direction LR
         s1["Migration pending, anonymous sign-ins disabled:<br/>CSP and nosniff on index.html, sw.js, manifest and a script,<br/>hashed assets immutable, Migration pending badge,<br/>offline answer with a citation, This device only,<br/>no chat_history requests, no emoji, icons aria-hidden"]
         s2["Hostile database content: card shows the markup as text,<br/>no img and no javascript: link in the modal, window.__xss undefined"]
         s3["Graph tables missing: honest empty state"]
         s4["Own server http://evil.example/v1 rejected,<br/>starpi_llm_url not stored"]
+        sSave["Saving settings, 2 tests: own server http://127.0.0.1:11434/v1,<br/>dialog Settings saved. and starpi_llm_url stored,<br/>Storage.setItem throwing: dialog Some settings could not be saved"]
         s5["Hardened schema: two chat_history POSTs with<br/>Bearer test-access-token, no owner_id in the body,<br/>search_knowledge RPC used"]
+        sOff["Offline start: *.supabase.co aborted as internetdisconnected,<br/>badge Offline, online event, badge Live,<br/>then question and answer give two chat_history POSTs,<br/>net::ERR_INTERNET_DISCONNECTED console errors required,<br/>removed, then no other diagnostics"]
         s6["No WebGPU, 2 tests: on-device mode explained, question<br/>ranked in the browser, no search RPC or chat POST,<br/>benchmark shows WebGPU not supported"]
         s7["i18n: English default, German without a reload,<br/>German kept after reload, starpi_locale stored"]
-        s8["Workspace: notes.md and a makePdf plan.pdf indexed in the worker,<br/>BM25 scores, cited answer opens the drawer on the chunk,<br/>file text never sent to Supabase"]
+        s8["Workspace: notes.md and a makePdf plan.pdf indexed in the worker,<br/>BM25 scores, cited answer opens the drawer on the chunk,<br/>file text never sent to Supabase,<br/>question and answer kept in starpi_local_chats_v1,<br/>no chat_history POST although chats sync"]
         s9["Attached orion-roadmap.md while chats sync:<br/>question and answer kept in starpi_local_chats_v1,<br/>no chat_history POST"]
         s10["Citation of alpha.md, Clear workspace, beta.md added:<br/>the old citation shows the file-missing note<br/>and its own excerpt, never the new file"]
         s11["Unsupported photo.png rejected with a clear message"]
@@ -4929,7 +4987,7 @@ flowchart TD
 
 ### Backend runtime on EC2
 
-On EC2 the API listens on 127.0.0.1:9200 only; port 9200 is never opened in the security group. A reverse proxy, installed by hand after deploy_ec2.sh, terminates TLS and forwards to the loopback port, so the API must run with BRAIN_API_TOKEN, which deploy_ec2.sh generates into the mode-600 .env when it is missing. The systemd unit loads that file as its EnvironmentFile. The service role key in it bypasses RLS, so the token and the key never leave the server.
+On EC2 the API listens on 127.0.0.1:9200 only; port 9200 is never opened in the security group. A reverse proxy, installed by hand after deploy_ec2.sh, terminates TLS and forwards to the loopback port, so the API must run with BRAIN_API_TOKEN, which deploy_ec2.sh generates into the mode-600 .env when it is missing. The systemd unit has no EnvironmentFile: server.py loads that file itself through core/config.py, so the script makes it belong to SERVICE_USER. The service role key in it bypasses RLS, so the token and the key never leave the server.
 
 <!-- diagram: deployment-ec2-topology -->
 ```mermaid
@@ -4938,7 +4996,7 @@ flowchart TD
     subgraph ec2["EC2 instance: security group opens 22 for your IP, 80 and 443"]
         proxy["Caddy or nginx, set up by hand<br/>TLS on 443, port 80 only for the ACME challenge"]
         server["server.py on 127.0.0.1:9200<br/>starpi-brain.service, User SERVICE_USER<br/>Bearer token on /api/brain/*<br/>CORS allow-list BRAIN_ALLOWED_ORIGINS"]
-        envf[("~/starpi-brain/.env, mode 600<br/>EnvironmentFile of the unit,<br/>also read by core/config.py")]
+        envf[("~/starpi-brain/.env, mode 600, owned by SERVICE_USER<br/>read by core/config.py when server.py starts,<br/>not an EnvironmentFile of the unit")]
     end
     supa["Supabase REST<br/>SUPABASE_SERVICE_ROLE_KEY, bypasses RLS"]
     llm["Chat models<br/>query answers: GEMINI_API_KEYS pool, then<br/>OPENROUTER_API_KEYS pool, then LLM_BASE_URL<br/>ingest structuring: LLM_BASE_URL only"]
@@ -4946,7 +5004,7 @@ flowchart TD
 
     client -->|"HTTPS"| proxy
     proxy -->|"reverse_proxy 127.0.0.1:9200"| server
-    envf -.->|"loaded at start"| server
+    envf -.->|"loaded by server.py at start"| server
     server -->|"documents, sections, RPCs"| supa
     server -->|"structuring and answers"| llm
     server -->|"section and query embeddings"| emb
@@ -4956,7 +5014,7 @@ flowchart TD
 
 ### Backend deployment to EC2 with remote_sync.sh and deploy_ec2.sh
 
-remote_sync.sh checks its arguments and the SSH key, rsyncs backend/ to ~/starpi-brain without .env, .env.local, the virtualenv and cache files (.env.example is copied) and runs aws/deploy_ec2.sh over SSH. The deploy script refuses a root or missing SERVICE_USER, installs a virtualenv with requirements.txt, keeps .env at mode 600 and generates a 64-hex-character BRAIN_API_TOKEN with openssl when it is missing or empty, never printing it and aborting if openssl output looks wrong. It writes a hardened starpi-brain systemd unit that runs server.py bound to 127.0.0.1, restarts it and polls /api/health without failing when the poll never succeeds; filling in .env, BRAIN_ALLOWED_ORIGINS and the TLS reverse proxy (Caddy or nginx) in front of port 9200 are manual steps.
+remote_sync.sh checks its arguments and the SSH key, rsyncs backend/ to ~/starpi-brain without .env, .env.local, the virtualenv and cache files (.env.example is copied) and runs aws/deploy_ec2.sh over SSH. The deploy script refuses a root or missing SERVICE_USER, installs a virtualenv with requirements.txt, aborts when it cannot read .env even with sudo, keeps .env at mode 600 owned by SERVICE_USER and generates a 64-hex-character BRAIN_API_TOKEN with openssl when it is missing or empty, never printing it and aborting if openssl output looks wrong. It writes a hardened starpi-brain systemd unit without EnvironmentFile that runs server.py bound to 127.0.0.1 (server.py loads .env itself), restarts it, reads PORT through core.config as SERVICE_USER and polls /api/health up to 20 times, exiting 1 with a journalctl hint when nothing answers; filling in .env, BRAIN_ALLOWED_ORIGINS and the TLS reverse proxy (Caddy or nginx) in front of port 9200 are manual steps.
 
 <!-- diagram: deployment-ec2 -->
 ```mermaid
@@ -4971,24 +5029,32 @@ flowchart TD
         User -->|"no"| Exit2["exit 1"]
         User -->|"yes"| S1["step 1 of 5: sudo apt-get update, apt-get install<br/>python3 python3-venv curl openssl"]
         S1 --> S2["step 2 of 5: python3 -m venv .venv<br/>pip install --upgrade pip, pip install -r requirements.txt"]
-        S2 --> S3["step 3 of 5: umask 077<br/>.env copied from .env.example if missing<br/>chmod 600 .env"]
-        S3 --> Tok{"last BRAIN_API_TOKEN assignment<br/>in .env has a value?"}
+        S2 --> S3["step 3 of 5: umask 077<br/>.env copied from .env.example if missing"]
+        S3 --> Rd{"read_env_file succeeds?<br/>cat .env, or sudo cat when<br/>the current user cannot read it"}
+        Rd -->|"no"| ExitR["Cannot read .env,<br/>abort without changes, exit 1"]
+        Rd -->|"yes"| Ch6["chmod 600 .env, with sudo when the<br/>current user does not own it, e.g. on a re-run<br/>after it was given to another SERVICE_USER"]
+        Ch6 --> Tok{"last BRAIN_API_TOKEN assignment<br/>in read_env_file output has a value?"}
         Tok -->|"missing or empty"| Gen{"openssl rand -hex 32<br/>is 64 lowercase hex chars?"}
         Gen -->|"no"| Exit3["abort, exit 1"]
-        Gen -->|"yes"| Write["temp file with mode 600: first assignment replaced,<br/>later ones dropped, appended if none, then mv<br/>token never printed or logged"]
-        Tok -->|"yes"| S4
-        Write --> S4["step 4 of 5: /etc/systemd/system/starpi-brain.service<br/>User SERVICE_USER, EnvironmentFile .env<br/>ExecStart .venv/bin/python server.py --host 127.0.0.1<br/>Restart on-failure, RestartSec 5<br/>NoNewPrivileges, ProtectSystem strict, ProtectHome read-only"]
+        Gen -->|"yes"| Write["temp file with mode 600 from read_env_file:<br/>first assignment replaced, later ones dropped,<br/>appended if none, then mv<br/>token never printed or logged"]
+        Tok -->|"yes"| Own
+        Write --> Own{".env owner is SERVICE_USER?"}
+        Own -->|"no"| Chown["sudo chown SERVICE_USER .env"]
+        Own -->|"yes"| S4
+        Chown --> S4["step 4 of 5: /etc/systemd/system/starpi-brain.service<br/>User SERVICE_USER, no EnvironmentFile,<br/>server.py loads .env itself<br/>ExecStart .venv/bin/python server.py --host 127.0.0.1<br/>Restart on-failure, RestartSec 5<br/>NoNewPrivileges, ProtectSystem strict, ProtectHome read-only"]
         S4 --> S5["step 5 of 5: systemctl daemon-reload,<br/>enable and restart starpi-brain"]
-        S5 --> HC{"curl http://127.0.0.1:PORT/api/health OK?<br/>PORT from BRAIN_SERVER_PORT in .env or 9200<br/>up to 10 tries, 1 s apart"}
-        HC -->|"yes"| HCok["print Health check OK"]
-        HC -->|"never"| HCno["no error, the script continues"]
-        HCok --> Status["systemctl status, 5 lines<br/>print the next steps"]
-        HCno --> Status
+        S5 --> Port["PORT = config.server_port from core.config<br/>.venv/bin/python run as SERVICE_USER,<br/>same loader and .env as the service<br/>set -e stops the script if this fails"]
+        Port --> HC{"curl http://127.0.0.1:PORT/api/health OK?<br/>up to 20 tries, 1 s apart"}
+        HC -->|"yes"| Status["systemctl status, 5 lines"]
+        HC -->|"no answer in 20 tries"| Status
+        Status --> Healthy{"health check answered?"}
+        Healthy -->|"no"| HCno["Health check failed on stderr<br/>hint: journalctl -u starpi-brain -n 50 --no-pager<br/>exit 1"]
+        Healthy -->|"yes"| HCok["print Health check OK on 127.0.0.1:PORT<br/>print the next steps"]
         S5 --> API["server.py on 127.0.0.1, port 9200 by default<br/>Bearer token on /api/brain/*<br/>port never opened in the security group"]
-        Manual["manual: fill in .env with SUPABASE_URL,<br/>SUPABASE_SERVICE_ROLE_KEY and model endpoints,<br/>add the site origin to BRAIN_ALLOWED_ORIGINS,<br/>then sudo systemctl restart starpi-brain"]
+        Manual["manual: as SERVICE_USER fill in .env with SUPABASE_URL,<br/>SUPABASE_SERVICE_ROLE_KEY and model endpoints,<br/>add the site origin to BRAIN_ALLOWED_ORIGINS,<br/>then sudo systemctl restart starpi-brain"]
         Proxy["manual: TLS reverse proxy, Caddy or nginx<br/>ports 443, and 80 for ACME<br/>not installed by the script"]
-        Status -.-> Manual
-        Status -.-> Proxy
+        HCok -.-> Manual
+        HCok -.-> Proxy
         Manual -.-> API
         Proxy -->|"reverse_proxy 127.0.0.1:9200"| API
     end
@@ -4998,7 +5064,7 @@ flowchart TD
     API --> Models["chat model and embedding endpoints"]
 ```
 
-<sub>Sources: [`backend/remote_sync.sh`](../backend/remote_sync.sh), [`backend/aws/deploy_ec2.sh`](../backend/aws/deploy_ec2.sh), [`backend/aws/cloud_architecture.md`](../backend/aws/cloud_architecture.md), [`backend/.env.example`](../backend/.env.example)</sub>
+<sub>Sources: [`backend/remote_sync.sh`](../backend/remote_sync.sh), [`backend/aws/deploy_ec2.sh`](../backend/aws/deploy_ec2.sh), [`backend/aws/cloud_architecture.md`](../backend/aws/cloud_architecture.md), [`backend/.env.example`](../backend/.env.example), [`backend/core/config.py`](../backend/core/config.py)</sub>
 
 ### Supabase schema: fresh install or ordered migrations
 
