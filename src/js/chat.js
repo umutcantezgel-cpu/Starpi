@@ -270,7 +270,8 @@ export async function submitChat(rawText) {
   const shownText = file ? `${prompt}\n\n[${file.name}]` : prompt;
 
   appendMessage('user', shownText);
-  void persistMessage(sid, { role: 'user', content: shownText, sources: [], metadata: {} }, { localOnly });
+  // A question about an attached workspace file names that file: keep it on the device like its answer.
+  void persistMessage(sid, { role: 'user', content: shownText, sources: [], metadata: {} }, { localOnly: localOnly || Boolean(file) });
 
   const controller = new AbortController();
   activeAbort = controller;

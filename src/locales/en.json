@@ -52,8 +52,8 @@
   "privacy": {
     "preparing": "Preparing connection…",
     "local": "On-device mode: your question and the model stay on this device.",
-    "server": "Own server: questions go only to {host}.",
-    "cloud": "Cloud assistant: your question and matching excerpts go to your provider.",
+    "server": "Own server: your question goes to {host} and to the knowledge-base search.",
+    "cloud": "Cloud assistant: your question goes to the knowledge-base search, and with matching excerpts to your provider.",
     "extractive": "No model configured: answers quote the knowledge base directly."
   },
   "engine": {

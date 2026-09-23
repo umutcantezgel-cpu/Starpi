@@ -244,11 +244,12 @@ only), loads a small Supabase stand-in (`tests/stub_supabase.sql`: roles,
 - `full_schema.sql` refusing a pre-hardening database, and `20260924000000`
   refusing a database without `20260923000000`;
 - identical `pg_dump` output for upgraded and fresh installs;
-- about 185 RLS / privilege / RPC / size-limit assertions per scenario
-  (`tests/rls_test.sql`), run as `anon`, two different anonymous users and
-  `service_role`: tenant isolation in both directions on every table,
-  published rows staying read-only for their owner, oversized writes rejected,
-  and legacy rows above the limits surviving the upgrade.
+- 184 RLS / privilege / RPC / size-limit assertions per scenario, 191 in the
+  scenarios seeded with legacy rows (`tests/rls_test.sql`), run as `anon`, two
+  different anonymous users and `service_role`: tenant isolation in both
+  directions on every table, published rows staying read-only for their owner,
+  oversized writes rejected, and legacy rows above the limits surviving the
+  upgrade.
 
 The runner applies every file in `migrations/` in file-name order, so a new
 migration is picked up without changing the script.

@@ -242,6 +242,24 @@ test.describe('on-device workspace', () => {
     expect(diagnostics).toEqual([]);
   });
 
+  test('keeps a question about an attached file and its answer on the device while chats sync', async ({ page, diagnostics }) => {
+    const calls = await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await page.goto('/');
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
+
+    await page.setInputFiles('#chatFileInput', { name: 'orion-roadmap.md', mimeType: 'text/markdown', buffer: Buffer.from('# Orion\n\nThe Orion release ships in calendar week 38.') });
+    await expect(page.locator('#attachedFileName')).toHaveText('orion-roadmap.md · 1 chunks');
+    await ask(page, 'When does the Orion release ship?');
+    const answer = page.locator('#chatMessages > div').last();
+    await expect(answer).toContainText('calendar week 38');
+
+    const stored = await page.evaluate(() => localStorage.getItem('starpi_local_chats_v1') ?? '');
+    expect(stored).toContain('orion-roadmap.md');
+    expect(stored).toContain('calendar week 38');
+    expect(calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history'))).toEqual([]);
+    expect(diagnostics).toEqual([]);
+  });
+
   test('rejects unsupported files with a clear message', async ({ page, diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await page.goto('/');

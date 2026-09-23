@@ -116,7 +116,9 @@ export async function callOpenRouter(messages, opts = {}) {
   throw lastErr instanceof Error ? lastErr : new ProviderError(t('provider.cloud_unreachable'));
 }
 
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+// Exactly the plain-http hosts the CSP connect-src allows. CSP host sources cannot express IPv6
+// literals, so http://[::1] would pass here and then be blocked by the browser.
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1']);
 
 /**
  * Validates a user-supplied Chat Completions base URL: https anywhere, plain http only on loopback.

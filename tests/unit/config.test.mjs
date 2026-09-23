@@ -13,6 +13,8 @@ describe('normalizeServerUrl', () => {
     assert.equal(normalizeServerUrl('http://127.0.0.1:11434/v1'), 'http://127.0.0.1:11434/v1');
     assert.equal(normalizeServerUrl('https://llm.example.com/v1?x=1#y'), 'https://llm.example.com/v1');
     assert.throws(() => normalizeServerUrl('http://llm.example.com/v1'));
+    // Not in the CSP connect-src, so it must be rejected here instead of failing silently.
+    assert.throws(() => normalizeServerUrl('http://[::1]:8000/v1'));
     assert.throws(() => normalizeServerUrl('javascript:alert(1)'));
     assert.throws(() => normalizeServerUrl('https://user:pass@example.com'));
     assert.throws(() => normalizeServerUrl('not a url'));

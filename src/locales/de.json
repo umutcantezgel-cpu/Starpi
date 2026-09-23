@@ -52,8 +52,8 @@
   "privacy": {
     "preparing": "Verbindung wird vorbereitet…",
     "local": "Lokaler Modus: Ihre Frage und das Modell bleiben auf diesem Gerät.",
-    "server": "Eigener Server: Fragen gehen nur an {host}.",
-    "cloud": "Cloud-Assistent: Ihre Frage und passende Auszüge gehen an Ihren Anbieter.",
+    "server": "Eigener Server: Ihre Frage geht an {host} und an die Wissensdatenbank-Suche.",
+    "cloud": "Cloud-Assistent: Ihre Frage geht an die Wissensdatenbank-Suche und mit passenden Auszügen an Ihren Anbieter.",
     "extractive": "Kein Modell eingerichtet: Antworten zitieren direkt aus der Wissensdatenbank."
   },
   "engine": {
