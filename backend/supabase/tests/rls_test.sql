@@ -1,7 +1,7 @@
 -- RLS and privilege tests for the Starpi schema.
 --
 -- Run with psql as a superuser on a throwaway database prepared with
--- stub_supabase.sql and full_schema.sql or a legacy fixture + the migration:
+-- stub_supabase.sql and full_schema.sql or a legacy fixture + the migrations:
 --
 --   psql -X -v ON_ERROR_STOP=1 -v legacy=false -f rls_test.sql
 --
@@ -171,8 +171,7 @@ select rls_test.expect_none('policy set is exactly the expected one', $q$
         ('knowledge_relations', 'knowledge_relations_delete_own', 'DELETE', '{authenticated}'),
         ('chat_history', 'chat_history_select_own', 'SELECT', '{authenticated}'),
         ('chat_history', 'chat_history_insert_own', 'INSERT', '{authenticated}'),
-        ('chat_history', 'chat_history_delete_own', 'DELETE', '{authenticated}'),
-        ('brain_settings', 'brain_settings_select_all', 'SELECT', '{anon,authenticated}')
+        ('chat_history', 'chat_history_delete_own', 'DELETE', '{authenticated}')
     ),
     actual as (
         select tablename::text, policyname::text, cmd::text, roles::text as roles
@@ -186,13 +185,45 @@ select rls_test.expect_none('policy set is exactly the expected one', $q$
     (select 'unexpected', * from actual except select 'unexpected', * from expected)
 $q$);
 
-select rls_test.expect_count('only brain_settings has an unconditional policy', $q$
+select rls_test.expect_count('no policy is unconditional (brain_settings has none at all)', $q$
     select 1 from pg_policies
     where schemaname = 'public'
       and tablename in ('knowledge_documents', 'knowledge_sections', 'knowledge_entities',
                         'knowledge_relations', 'chat_history', 'brain_settings')
       and (qual = 'true' or with_check = 'true')
-$q$, 1);
+$q$, 0);
+
+select rls_test.expect_none('size limits on browser-writable columns', $q$
+    with expected(tbl, conname) as (values
+        ('knowledge_documents', 'knowledge_documents_title_max_length'),
+        ('knowledge_documents', 'knowledge_documents_source_type_max_length'),
+        ('knowledge_documents', 'knowledge_documents_source_name_max_length'),
+        ('knowledge_documents', 'knowledge_documents_summary_max_length'),
+        ('knowledge_documents', 'knowledge_documents_raw_content_max_length'),
+        ('knowledge_documents', 'knowledge_documents_tags_max_size'),
+        ('knowledge_documents', 'knowledge_documents_metadata_max_size'),
+        ('knowledge_sections', 'knowledge_sections_heading_max_length'),
+        ('knowledge_sections', 'knowledge_sections_markdown_content_max_length'),
+        ('knowledge_entities', 'knowledge_entities_name_max_length'),
+        ('knowledge_entities', 'knowledge_entities_entity_type_max_length'),
+        ('knowledge_entities', 'knowledge_entities_description_max_length'),
+        ('knowledge_entities', 'knowledge_entities_properties_max_size'),
+        ('knowledge_relations', 'knowledge_relations_relation_type_max_length'),
+        ('knowledge_relations', 'knowledge_relations_properties_max_size'),
+        ('chat_history', 'chat_history_content_max_length')
+    ),
+    actual as (
+        select c.relname::text as tbl, k.conname::text
+        from pg_constraint k
+        join pg_class c on c.oid = k.conrelid
+        where k.connamespace = 'public'::regnamespace
+          and k.contype = 'c'
+          and (k.conname like '%\_max\_length' or k.conname like '%\_max\_size')
+    )
+    (select 'missing' as problem, * from expected except select 'missing', * from actual)
+    union all
+    (select 'unexpected', * from actual except select 'unexpected', * from expected)
+$q$);
 
 select rls_test.expect_none('RPCs: SECURITY INVOKER, search_path pinned, no stray overloads', $q$
     select p.oid::regprocedure, p.prosecdef, p.proconfig
@@ -218,7 +249,7 @@ select rls_test.expect_none('table privilege matrix (anon / authenticated / serv
     granted(r, t, p) as (
         select 'anon', t, 'SELECT'
         from unnest(array['knowledge_documents', 'knowledge_sections', 'knowledge_entities',
-                          'knowledge_relations', 'brain_settings']) as t
+                          'knowledge_relations']) as t
         union all
         select 'authenticated', t, p
         from unnest(array['knowledge_documents', 'knowledge_sections', 'knowledge_entities',
@@ -226,8 +257,6 @@ select rls_test.expect_none('table privilege matrix (anon / authenticated / serv
              unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) as p
         union all
         select 'authenticated', 'chat_history', p from unnest(array['SELECT', 'INSERT', 'DELETE']) as p
-        union all
-        select 'authenticated', 'brain_settings', 'SELECT'
         union all
         select 'service_role', t, p
         from unnest(array['knowledge_documents', 'knowledge_sections', 'knowledge_entities',
@@ -287,6 +316,23 @@ select rls_test.expect_true('legacy entities / relations (if any) are public', $
                      where r.source_entity_id = '22222222-2222-4222-8222-222222222222'), true)
     from public.knowledge_entities e where e.id = '22222222-2222-4222-8222-222222222222'
 $q$);
+
+select rls_test.expect_true('an oversized legacy row survives the migration (limits are NOT VALID)', $q$
+    select char_length(title) > 500 and is_public from public.knowledge_documents
+    where id = '33333333-3333-4333-8333-333333333333'
+$q$);
+
+:as_service
+select rls_test.expect_error('updating an oversized legacy row is checked against the limits', $q$
+    update public.knowledge_documents set summary = 'geaendert'
+    where id = '33333333-3333-4333-8333-333333333333'
+$q$, '23514');
+
+select rls_test.expect_affected('an oversized legacy row can be updated once it fits', $q$
+    update public.knowledge_documents set title = left(title, 500), summary = 'gekuerzt'
+    where id = '33333333-3333-4333-8333-333333333333'
+$q$, 1);
+:as_super
 \endif
 
 -- ------------------------------------------------------------------------------
@@ -362,6 +408,10 @@ select rls_test.expect_count('service_role sees private documents', $q$
     where id = 'd0000000-0000-4000-8000-000000000004' or title = 'Ingest Test'
 $q$, 2);
 
+select rls_test.expect_count('service_role reads brain_settings', $q$
+    select 1 from public.brain_settings where key in ('llm_config', 'rag_config')
+$q$, 2);
+
 -- ------------------------------------------------------------------------------
 -- User A (anonymous sign-in, role authenticated)
 -- ------------------------------------------------------------------------------
@@ -429,6 +479,75 @@ select rls_test.expect_error('A cannot add sections to a public document', $q$
     values ('d0000000-0000-4000-8000-000000000001', 'eingeschleust')
 $q$);
 
+select rls_test.expect_error('document title is limited to 500 characters', $q$
+    insert into public.knowledge_documents (title) values (repeat('t', 501))
+$q$, '23514');
+
+select rls_test.expect_error('document source_type is limited to 64 characters', $q$
+    insert into public.knowledge_documents (title, source_type) values ('zu lang', repeat('t', 65))
+$q$, '23514');
+
+select rls_test.expect_error('document source_name is limited to 500 characters', $q$
+    insert into public.knowledge_documents (title, source_name) values ('zu lang', repeat('n', 501))
+$q$, '23514');
+
+select rls_test.expect_error('document summary is limited to 5000 characters', $q$
+    insert into public.knowledge_documents (title, summary) values ('zu lang', repeat('s', 5001))
+$q$, '23514');
+
+select rls_test.expect_error('document raw_content is limited to 200000 characters', $q$
+    insert into public.knowledge_documents (title, raw_content) values ('zu lang', repeat('x ', 100001))
+$q$, '23514');
+
+select rls_test.expect_error('documents have at most 50 tags', $q$
+    insert into public.knowledge_documents (title, tags) values ('zu viele', array_fill('t'::text, array[51]))
+$q$, '23514');
+
+select rls_test.expect_error('document tags are limited to 16 KiB', $q$
+    insert into public.knowledge_documents (title, tags) values ('zu lang', array[repeat('t', 16385)])
+$q$, '23514');
+
+select rls_test.expect_error('document metadata is limited to 64 KiB', $q$
+    insert into public.knowledge_documents (title, metadata)
+    values ('zu lang', jsonb_build_object('k', repeat('m', 65536)))
+$q$, '23514');
+
+select rls_test.expect_error('A cannot grow own document past the limits', $q$
+    update public.knowledge_documents set title = repeat('t', 501)
+    where id = 'd0000000-0000-4000-8000-0000000000a1'
+$q$, '23514');
+
+select rls_test.expect_error('section heading is limited to 1000 characters', $q$
+    insert into public.knowledge_sections (document_id, heading, markdown_content)
+    values ('d0000000-0000-4000-8000-0000000000a1', repeat('h', 1001), 'x')
+$q$, '23514');
+
+select rls_test.expect_error('section markdown_content is limited to 210000 characters', $q$
+    insert into public.knowledge_sections (document_id, markdown_content)
+    values ('d0000000-0000-4000-8000-0000000000a1', repeat('x ', 105001))
+$q$, '23514');
+
+select rls_test.expect_error('A cannot grow own section past the limits', $q$
+    update public.knowledge_sections set heading = repeat('h', 1001)
+    where document_id = 'd0000000-0000-4000-8000-0000000000a1'
+$q$, '23514');
+
+select rls_test.expect_ok('A inserts a document exactly at the limits', $q$
+    insert into public.knowledge_documents (id, title, source_type, source_name, summary, raw_content, tags, metadata)
+    values ('d0000000-0000-4000-8000-0000000000af', repeat('t', 500), repeat('t', 64), repeat('n', 500),
+            repeat('s', 5000), repeat('x ', 100000), array_fill('t'::text, array[50]),
+            jsonb_build_object('k', repeat('m', 65000)))
+$q$);
+
+select rls_test.expect_ok('A inserts a section exactly at the limits', $q$
+    insert into public.knowledge_sections (document_id, heading, markdown_content)
+    values ('d0000000-0000-4000-8000-0000000000af', repeat('h', 1000), repeat('x ', 105000))
+$q$);
+
+select rls_test.expect_affected('A deletes the document at the limits', $q$
+    delete from public.knowledge_documents where id = 'd0000000-0000-4000-8000-0000000000af'
+$q$, 1);
+
 select rls_test.expect_count('A sees public documents and own ones, not private service rows', $q$
     select 1 from public.knowledge_documents
     where id in ('d0000000-0000-4000-8000-000000000001', 'd0000000-0000-4000-8000-000000000002',
@@ -468,8 +587,21 @@ select rls_test.expect_error('chat role must be user / assistant / system', $q$
     insert into public.chat_history (session_id, role, content) values ('s', 'tool', 'x')
 $q$, '23514');
 
-select rls_test.expect_error('chat content is limited to 100000 characters', $q$
-    insert into public.chat_history (session_id, role, content) values ('s', 'user', repeat('x', 100001))
+select rls_test.expect_error('chat content is limited to 20000 characters', $q$
+    insert into public.chat_history (session_id, role, content) values ('s', 'user', repeat('x', 20001))
+$q$, '23514');
+
+select rls_test.expect_ok('chat content of exactly 20000 characters is accepted', $q$
+    insert into public.chat_history (session_id, role, content) values ('sess-limit', 'assistant', repeat('x', 20000))
+$q$);
+
+select rls_test.expect_affected('A deletes the chat row at the limit', $q$
+    delete from public.chat_history where session_id = 'sess-limit'
+$q$, 1);
+
+select rls_test.expect_error('chat sources are limited to 64 KiB', $q$
+    insert into public.chat_history (session_id, role, content, sources)
+    values ('s', 'assistant', 'x', jsonb_build_array(repeat('q', 65536)))
 $q$, '23514');
 
 select rls_test.expect_error('chat session_id is limited to 128 characters', $q$
@@ -493,6 +625,27 @@ select rls_test.expect_error('A cannot insert a public entity', $q$
     insert into public.knowledge_entities (name, entity_type, is_public) values ('A oeffentlich', 'topic', true)
 $q$);
 
+select rls_test.expect_error('entity name is limited to 500 characters', $q$
+    insert into public.knowledge_entities (name, entity_type) values (repeat('n', 501), 'topic')
+$q$, '23514');
+
+select rls_test.expect_error('entity type is limited to 64 characters', $q$
+    insert into public.knowledge_entities (name, entity_type) values ('zu lang', repeat('t', 65))
+$q$, '23514');
+
+select rls_test.expect_error('entity description is limited to 5000 characters', $q$
+    insert into public.knowledge_entities (name, entity_type, description) values ('zu lang', 'topic', repeat('d', 5001))
+$q$, '23514');
+
+select rls_test.expect_error('entity properties are limited to 64 KiB', $q$
+    insert into public.knowledge_entities (name, entity_type, properties)
+    values ('zu lang', 'topic', jsonb_build_object('k', repeat('p', 65536)))
+$q$, '23514');
+
+select rls_test.expect_error('A cannot grow own entity past the limits', $q$
+    update public.knowledge_entities set description = repeat('d', 5001) where name = 'A Geheimprojekt'
+$q$, '23514');
+
 select rls_test.expect_count('A sees public and own entities', $q$
     select name, entity_type, description from public.knowledge_entities
     where name in ('Projekt Alpha', 'A Geheimprojekt') order by name
@@ -507,6 +660,18 @@ $q$);
 select rls_test.expect_count('A sees own relation', $q$
     select 1 from public.knowledge_relations where owner_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 $q$, 1);
+
+select rls_test.expect_error('relation type is limited to 64 characters', $q$
+    insert into public.knowledge_relations (source_entity_id, target_entity_id, relation_type)
+    select e.id, 'e0000000-0000-4000-8000-000000000001', repeat('r', 65)
+    from public.knowledge_entities e where e.name = 'A Geheimprojekt'
+$q$, '23514');
+
+select rls_test.expect_error('relation properties are limited to 64 KiB', $q$
+    insert into public.knowledge_relations (source_entity_id, target_entity_id, relation_type, properties)
+    select e.id, 'e0000000-0000-4000-8000-000000000001', 'part_of', jsonb_build_object('k', repeat('p', 65536))
+    from public.knowledge_entities e where e.name = 'A Geheimprojekt'
+$q$, '23514');
 
 select rls_test.expect_true('A finds own document with search_knowledge (German stemming)', $q$
     select count(*) = 1 and bool_and(document_title = 'A Passwortrichtlinie')
@@ -530,9 +695,9 @@ select rls_test.expect_error('A cannot execute ingest_document_atomic', $q$
     select public.ingest_document_atomic('x', 'x', '{}', 'text', 'x', 'x', '[]')
 $q$);
 
-select rls_test.expect_count('A reads brain_settings', $q$
-    select 1 from public.brain_settings where key in ('llm_config', 'rag_config')
-$q$, 2);
+select rls_test.expect_error('A cannot read brain_settings', $q$
+    select * from public.brain_settings
+$q$);
 
 select rls_test.expect_error('A cannot change brain_settings', $q$
     update public.brain_settings set description = 'x'
@@ -590,6 +755,40 @@ select rls_test.expect_error('B cannot add sections to A''s document', $q$
     values ('d0000000-0000-4000-8000-0000000000a1', 'eingeschleust')
 $q$);
 
+select rls_test.expect_affected('B cannot update A''s sections', $q$
+    update public.knowledge_sections set markdown_content = 'gehackt'
+    where document_id = 'd0000000-0000-4000-8000-0000000000a1'
+$q$, 0);
+
+select rls_test.expect_affected('B cannot delete A''s sections', $q$
+    delete from public.knowledge_sections where document_id = 'd0000000-0000-4000-8000-0000000000a1'
+$q$, 0);
+
+select rls_test.expect_affected('B cannot update A''s entity', $q$
+    update public.knowledge_entities set description = 'gehackt' where name = 'A Geheimprojekt'
+$q$, 0);
+
+select rls_test.expect_affected('B cannot delete A''s entity', $q$
+    delete from public.knowledge_entities where name = 'A Geheimprojekt'
+$q$, 0);
+
+select rls_test.expect_affected('B cannot update A''s relation', $q$
+    update public.knowledge_relations set relation_type = 'gehackt'
+    where owner_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+$q$, 0);
+
+select rls_test.expect_affected('B cannot delete A''s relation', $q$
+    delete from public.knowledge_relations where owner_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+$q$, 0);
+
+select rls_test.expect_affected('B cannot delete A''s chat rows', $q$
+    delete from public.chat_history where session_id = 'sess-a-only'
+$q$, 0);
+
+select rls_test.expect_error('B cannot update chat rows', $q$
+    update public.chat_history set content = 'gehackt' where session_id = 'sess-a-only'
+$q$);
+
 select rls_test.expect_ok('B inserts an entity', $q$
     insert into public.knowledge_entities (name, entity_type, description, properties)
     values ('B Thema', 'topic', 'Nur fuer B', '{}')
@@ -606,6 +805,105 @@ $q$, 0);
 
 select rls_test.expect_ok('B writes a chat row before being deleted', $q$
     insert into public.chat_history (session_id, role, content) values ('sess-b', 'user', 'Tschuess')
+$q$);
+
+select rls_test.expect_ok('B inserts a private document', $q$
+    insert into public.knowledge_documents (id, title, raw_content)
+    values ('d0000000-0000-4000-8000-0000000000b1', 'B Notiz', 'Nur fuer B')
+$q$);
+
+select rls_test.expect_ok('B inserts a section into own document', $q$
+    insert into public.knowledge_sections (document_id, heading, markdown_content)
+    values ('d0000000-0000-4000-8000-0000000000b1', 'B Abschnitt', 'Nur fuer B')
+$q$);
+
+select rls_test.expect_ok('B links own entity to a public entity', $q$
+    insert into public.knowledge_relations (source_entity_id, target_entity_id, relation_type)
+    select e.id, 'e0000000-0000-4000-8000-000000000001', 'related_to'
+    from public.knowledge_entities e where e.name = 'B Thema'
+$q$);
+
+:as_super
+select rls_test.expect_true('A''s rows are intact after B''s attempts', $q$
+    select (select title = 'A Passwortrichtlinie' from public.knowledge_documents
+            where id = 'd0000000-0000-4000-8000-0000000000a1')
+       and (select bool_and(markdown_content like 'Alle Passw%') and count(*) = 1 from public.knowledge_sections
+            where document_id = 'd0000000-0000-4000-8000-0000000000a1')
+       and (select description = 'Nur fuer A' from public.knowledge_entities where name = 'A Geheimprojekt')
+       and (select bool_and(relation_type = 'part_of') and count(*) = 1 from public.knowledge_relations
+            where owner_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+       and (select count(*) = 1 from public.chat_history where session_id = 'sess-a-only')
+$q$);
+
+-- ------------------------------------------------------------------------------
+-- User A against B's private rows
+-- ------------------------------------------------------------------------------
+:as_a
+select rls_test.expect_count('A cannot see B''s document, section, entity, relation or chat rows', $q$
+    select 1 from public.knowledge_documents where id = 'd0000000-0000-4000-8000-0000000000b1'
+    union all
+    select 1 from public.knowledge_sections where document_id = 'd0000000-0000-4000-8000-0000000000b1'
+    union all
+    select 1 from public.knowledge_entities where name = 'B Thema'
+    union all
+    select 1 from public.knowledge_relations where owner_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    union all
+    select 1 from public.chat_history where session_id = 'sess-b'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot update B''s document', $q$
+    update public.knowledge_documents set title = 'gehackt' where id = 'd0000000-0000-4000-8000-0000000000b1'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot delete B''s document', $q$
+    delete from public.knowledge_documents where id = 'd0000000-0000-4000-8000-0000000000b1'
+$q$, 0);
+
+select rls_test.expect_error('A cannot add sections to B''s document', $q$
+    insert into public.knowledge_sections (document_id, markdown_content)
+    values ('d0000000-0000-4000-8000-0000000000b1', 'eingeschleust')
+$q$);
+
+select rls_test.expect_affected('A cannot update B''s sections', $q$
+    update public.knowledge_sections set markdown_content = 'gehackt'
+    where document_id = 'd0000000-0000-4000-8000-0000000000b1'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot delete B''s sections', $q$
+    delete from public.knowledge_sections where document_id = 'd0000000-0000-4000-8000-0000000000b1'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot update B''s entity', $q$
+    update public.knowledge_entities set description = 'gehackt' where name = 'B Thema'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot delete B''s entity', $q$
+    delete from public.knowledge_entities where name = 'B Thema'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot update B''s relation', $q$
+    update public.knowledge_relations set relation_type = 'gehackt'
+    where owner_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot delete B''s relation', $q$
+    delete from public.knowledge_relations where owner_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot delete B''s chat rows', $q$
+    delete from public.chat_history where session_id = 'sess-b'
+$q$, 0);
+
+:as_super
+select rls_test.expect_true('B''s rows are intact after A''s attempts', $q$
+    select (select title = 'B Notiz' from public.knowledge_documents
+            where id = 'd0000000-0000-4000-8000-0000000000b1')
+       and (select bool_and(markdown_content = 'Nur fuer B') and count(*) = 1 from public.knowledge_sections
+            where document_id = 'd0000000-0000-4000-8000-0000000000b1')
+       and (select description = 'Nur fuer B' from public.knowledge_entities where name = 'B Thema')
+       and (select bool_and(relation_type = 'related_to') and count(*) = 1 from public.knowledge_relations
+            where owner_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+       and (select count(*) = 1 from public.chat_history where session_id = 'sess-b')
 $q$);
 
 -- ------------------------------------------------------------------------------
@@ -673,9 +971,9 @@ select rls_test.expect_error('anon cannot insert entities', $q$
     insert into public.knowledge_entities (name, entity_type) values ('anon', 'topic')
 $q$);
 
-select rls_test.expect_count('anon reads brain_settings', $q$
-    select 1 from public.brain_settings where key in ('llm_config', 'rag_config')
-$q$, 2);
+select rls_test.expect_error('anon cannot read brain_settings', $q$
+    select * from public.brain_settings
+$q$);
 
 select rls_test.expect_error('anon cannot write brain_settings', $q$
     insert into public.brain_settings (key, value) values ('x', '{}')
@@ -794,7 +1092,136 @@ select rls_test.expect_affected('A deletes own document', $q$
     delete from public.knowledge_documents where title = 'A Entwurf'
 $q$, 1);
 
+-- ------------------------------------------------------------------------------
+-- Published rows are read-only for their owner
+-- ------------------------------------------------------------------------------
+select rls_test.expect_ok('A inserts a document to be published', $q$
+    insert into public.knowledge_documents (id, title, raw_content)
+    values ('d0000000-0000-4000-8000-0000000000a2', 'A Freigabe', 'Freigegebener Inhalt')
+$q$);
+
+select rls_test.expect_ok('A inserts a section into the document to be published', $q$
+    insert into public.knowledge_sections (id, document_id, section_index, heading, markdown_content)
+    values ('50000000-0000-4000-8000-0000000000a2', 'd0000000-0000-4000-8000-0000000000a2', 0,
+            'Freigabe', 'Freigegebener Abschnitt')
+$q$);
+
+select rls_test.expect_ok('A inserts an entity to be published', $q$
+    insert into public.knowledge_entities (id, name, entity_type, description)
+    values ('e0000000-0000-4000-8000-0000000000a2', 'A Freigabeprojekt', 'project', 'Vor der Freigabe')
+$q$);
+
+select rls_test.expect_ok('A links the entity to be published', $q$
+    insert into public.knowledge_relations (id, source_entity_id, target_entity_id, relation_type)
+    values ('f0000000-0000-4000-8000-0000000000a2', 'e0000000-0000-4000-8000-0000000000a2',
+            'e0000000-0000-4000-8000-000000000001', 'part_of')
+$q$);
+
+select rls_test.expect_affected('A updates a section of own private document', $q$
+    update public.knowledge_sections set markdown_content = 'Freigegebener Abschnitt, geprueft'
+    where id = '50000000-0000-4000-8000-0000000000a2'
+$q$, 1);
+
+select rls_test.expect_affected('A updates own private entity', $q$
+    update public.knowledge_entities set description = 'Zur Freigabe'
+    where id = 'e0000000-0000-4000-8000-0000000000a2'
+$q$, 1);
+
+select rls_test.expect_affected('A updates own private relation', $q$
+    update public.knowledge_relations set relation_type = 'belongs_to'
+    where id = 'f0000000-0000-4000-8000-0000000000a2'
+$q$, 1);
+
+:as_service
+select rls_test.expect_affected('service_role publishes A''s document', $q$
+    update public.knowledge_documents set is_public = true where id = 'd0000000-0000-4000-8000-0000000000a2'
+$q$, 1);
+
+select rls_test.expect_affected('service_role publishes A''s entity', $q$
+    update public.knowledge_entities set is_public = true where id = 'e0000000-0000-4000-8000-0000000000a2'
+$q$, 1);
+
+select rls_test.expect_affected('service_role publishes A''s relation', $q$
+    update public.knowledge_relations set is_public = true where id = 'f0000000-0000-4000-8000-0000000000a2'
+$q$, 1);
+
+:as_a
+select rls_test.expect_count('A still sees own published document and section', $q$
+    select 1 from public.knowledge_documents where id = 'd0000000-0000-4000-8000-0000000000a2'
+    union all
+    select 1 from public.knowledge_sections where document_id = 'd0000000-0000-4000-8000-0000000000a2'
+$q$, 2);
+
+select rls_test.expect_affected('A cannot update own published document', $q$
+    update public.knowledge_documents set title = 'umgeschrieben'
+    where id = 'd0000000-0000-4000-8000-0000000000a2'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot unpublish own published document', $q$
+    update public.knowledge_documents set is_public = false
+    where id = 'd0000000-0000-4000-8000-0000000000a2'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot delete own published document', $q$
+    delete from public.knowledge_documents where id = 'd0000000-0000-4000-8000-0000000000a2'
+$q$, 0);
+
+select rls_test.expect_error('A cannot add sections to own published document', $q$
+    insert into public.knowledge_sections (document_id, markdown_content)
+    values ('d0000000-0000-4000-8000-0000000000a2', 'eingeschleust')
+$q$);
+
+select rls_test.expect_affected('A cannot update sections of own published document', $q$
+    update public.knowledge_sections set markdown_content = 'umgeschrieben'
+    where document_id = 'd0000000-0000-4000-8000-0000000000a2'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot move a section out of own published document', $q$
+    update public.knowledge_sections set document_id = 'd0000000-0000-4000-8000-0000000000a1'
+    where document_id = 'd0000000-0000-4000-8000-0000000000a2'
+$q$, 0);
+
+select rls_test.expect_error('A cannot move a section into own published document', $q$
+    update public.knowledge_sections set document_id = 'd0000000-0000-4000-8000-0000000000a2'
+    where document_id = 'd0000000-0000-4000-8000-0000000000a1'
+$q$);
+
+select rls_test.expect_affected('A cannot delete sections of own published document', $q$
+    delete from public.knowledge_sections where document_id = 'd0000000-0000-4000-8000-0000000000a2'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot update own published entity', $q$
+    update public.knowledge_entities set description = 'umgeschrieben'
+    where id = 'e0000000-0000-4000-8000-0000000000a2'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot delete own published entity', $q$
+    delete from public.knowledge_entities where id = 'e0000000-0000-4000-8000-0000000000a2'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot update own published relation', $q$
+    update public.knowledge_relations set relation_type = 'umgeschrieben'
+    where id = 'f0000000-0000-4000-8000-0000000000a2'
+$q$, 0);
+
+select rls_test.expect_affected('A cannot delete own published relation', $q$
+    delete from public.knowledge_relations where id = 'f0000000-0000-4000-8000-0000000000a2'
+$q$, 0);
+
 :as_super
+select rls_test.expect_true('published rows are unchanged', $q$
+    select (select title = 'A Freigabe' and is_public and owner_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+            from public.knowledge_documents where id = 'd0000000-0000-4000-8000-0000000000a2')
+       and (select count(*) = 1 and bool_and(markdown_content = 'Freigegebener Abschnitt, geprueft')
+            from public.knowledge_sections where document_id = 'd0000000-0000-4000-8000-0000000000a2')
+       and (select description = 'Zur Freigabe' and is_public
+            from public.knowledge_entities where id = 'e0000000-0000-4000-8000-0000000000a2')
+       and (select relation_type = 'belongs_to' and is_public
+            from public.knowledge_relations where id = 'f0000000-0000-4000-8000-0000000000a2')
+       and (select count(*) = 1 from public.knowledge_sections
+            where document_id = 'd0000000-0000-4000-8000-0000000000a1')
+$q$);
+
 select rls_test.expect_count('deleting a document cascades to its sections', $q$
     select 1 from public.knowledge_sections s
     where not exists (select 1 from public.knowledge_documents d where d.id = s.document_id)

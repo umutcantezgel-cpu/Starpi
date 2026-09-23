@@ -14,6 +14,12 @@ select '11111111-1111-4111-8111-111111111111', 0, 'Altbestand',
        ('[' || string_agg(case when i = 2 then '1' else '0' end, ',' order by i) || ']')::vector
 from generate_series(1, 1536) as i;
 
+-- Title longer than the 500 character limit of 20260924000000: the limits are
+-- added NOT VALID, so existing rows like this one must not block the migration.
+insert into public.knowledge_documents (id, title, summary, tags)
+values ('33333333-3333-4333-8333-333333333333', repeat('Ueberlanger Titel ', 30),
+        'Zu langer Titel', '{legacy}');
+
 -- Chat rows without an owner: the migration deletes them.
 insert into public.chat_history (session_id, role, content)
 values ('legacy-session', 'user', 'legacy chat row');

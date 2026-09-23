@@ -18,7 +18,10 @@
 --     clients have the role "authenticated" and only reach their own rows.
 --   * The backend uses the service role, which bypasses RLS.
 --   * Knowledge rows are public (is_public, set by the service role) or
---     private to owner_id. chat_history is always private to its owner.
+--     private to owner_id. Published rows are read-only for browser roles.
+--     chat_history is always private to its owner; brain_settings is service
+--     role only.
+--   * CHECK constraints bound the size of every column the browser can write.
 --
 -- Prerequisite: Authentication > Sign In / Providers > Anonymous sign-ins.
 --
@@ -58,7 +61,7 @@ begin
             select 1 from information_schema.columns
             where table_schema = 'public' and table_name = tbl and column_name = 'owner_id'
         ) then
-            raise exception 'public.% comes from an older Starpi schema: apply migrations/20260923000000_harden_rls_anonymous_auth.sql instead of full_schema.sql', tbl;
+            raise exception 'public.% comes from an older Starpi schema: apply the files in migrations/ (in file-name order) instead of full_schema.sql', tbl;
         end if;
     end loop;
 end
@@ -166,7 +169,60 @@ create table if not exists public.knowledge_relations (
 );
 
 -- ------------------------------------------------------------------------------
--- 6. Indexes
+-- 6. Size limits for browser writes
+-- ------------------------------------------------------------------------------
+-- Limits (characters unless noted), above what the PWA and the backend send:
+--   documents: title 500, source_type 64, source_name 500, summary 5000,
+--              raw_content 200000 (PWA and backend ingest limit), at most 50
+--              tags / 16 KiB, metadata 64 KiB of JSON
+--   sections:  heading 1000, markdown_content 210000 (a whole document plus
+--              the Markdown frame the PWA adds)
+--   entities:  name 500, entity_type 64, description 5000, properties 64 KiB
+--   relations: relation_type 64, properties 64 KiB (there is no description)
+--   chat_history: content 20000 (chat_history_content_length above is the
+--              older 100000 bound)
+-- Added NOT VALID exactly like migrations/20260924000000_lock_published_rows.sql
+-- does on existing databases, so both schemas stay identical. NOT VALID only
+-- skips the check of rows that exist when the constraint is added; every new
+-- or updated row is checked.
+do $$
+declare
+    c record;
+begin
+    for c in
+        select * from (values
+            ('knowledge_documents', 'knowledge_documents_title_max_length', 'char_length(title) <= 500'),
+            ('knowledge_documents', 'knowledge_documents_source_type_max_length', 'char_length(source_type) <= 64'),
+            ('knowledge_documents', 'knowledge_documents_source_name_max_length', 'char_length(source_name) <= 500'),
+            ('knowledge_documents', 'knowledge_documents_summary_max_length', 'char_length(summary) <= 5000'),
+            ('knowledge_documents', 'knowledge_documents_raw_content_max_length', 'char_length(raw_content) <= 200000'),
+            ('knowledge_documents', 'knowledge_documents_tags_max_size', 'cardinality(tags) <= 50 and octet_length(tags::text) <= 16384'),
+            ('knowledge_documents', 'knowledge_documents_metadata_max_size', 'octet_length(metadata::text) <= 65536'),
+            ('knowledge_sections', 'knowledge_sections_heading_max_length', 'char_length(heading) <= 1000'),
+            ('knowledge_sections', 'knowledge_sections_markdown_content_max_length', 'char_length(markdown_content) <= 210000'),
+            ('knowledge_entities', 'knowledge_entities_name_max_length', 'char_length(name) <= 500'),
+            ('knowledge_entities', 'knowledge_entities_entity_type_max_length', 'char_length(entity_type) <= 64'),
+            ('knowledge_entities', 'knowledge_entities_description_max_length', 'char_length(description) <= 5000'),
+            ('knowledge_entities', 'knowledge_entities_properties_max_size', 'octet_length(properties::text) <= 65536'),
+            ('knowledge_relations', 'knowledge_relations_relation_type_max_length', 'char_length(relation_type) <= 64'),
+            ('knowledge_relations', 'knowledge_relations_properties_max_size', 'octet_length(properties::text) <= 65536'),
+            ('chat_history', 'chat_history_content_max_length', 'char_length(content) <= 20000')
+        ) as v (table_name, constraint_name, check_expression)
+    loop
+        if not exists (
+            select 1 from pg_constraint
+            where conrelid = ('public.' || c.table_name)::regclass
+              and conname = c.constraint_name
+        ) then
+            execute format('alter table public.%I add constraint %I check (%s) not valid',
+                           c.table_name, c.constraint_name, c.check_expression);
+        end if;
+    end loop;
+end
+$$;
+
+-- ------------------------------------------------------------------------------
+-- 7. Indexes
 -- ------------------------------------------------------------------------------
 create index if not exists idx_kdocs_created_at on public.knowledge_documents (created_at desc);
 create index if not exists idx_kdocs_tags on public.knowledge_documents using gin (tags);
@@ -186,7 +242,7 @@ create index if not exists idx_krelations_source on public.knowledge_relations (
 create index if not exists idx_krelations_target on public.knowledge_relations (target_entity_id);
 
 -- ------------------------------------------------------------------------------
--- 7. Row level security
+-- 8. Row level security
 -- ------------------------------------------------------------------------------
 alter table public.knowledge_documents enable row level security;
 alter table public.knowledge_sections enable row level security;
@@ -236,7 +292,8 @@ end
 $$;
 
 -- knowledge_documents: public rows for everyone, private rows for the owner.
--- The browser can never publish (is_public = true is service role only).
+-- The browser can never publish (is_public = true is service role only), and
+-- once the service role has published a row it is read-only for its owner.
 create policy knowledge_documents_select_public_or_own on public.knowledge_documents
     for select to anon, authenticated
     using (is_public or owner_id = (select auth.uid()));
@@ -247,14 +304,15 @@ create policy knowledge_documents_insert_own on public.knowledge_documents
 
 create policy knowledge_documents_update_own on public.knowledge_documents
     for update to authenticated
-    using (owner_id = (select auth.uid()))
+    using (owner_id = (select auth.uid()) and not is_public)
     with check (owner_id = (select auth.uid()) and is_public = false);
 
 create policy knowledge_documents_delete_own on public.knowledge_documents
     for delete to authenticated
-    using (owner_id = (select auth.uid()));
+    using (owner_id = (select auth.uid()) and not is_public);
 
--- knowledge_sections: follow the parent document.
+-- knowledge_sections: visible with the parent document, writable only while
+-- the parent is own and private.
 create policy knowledge_sections_select_visible_document on public.knowledge_sections
     for select to anon, authenticated
     using (exists (
@@ -269,6 +327,7 @@ create policy knowledge_sections_insert_own_document on public.knowledge_section
         select 1 from public.knowledge_documents d
         where d.id = knowledge_sections.document_id
           and d.owner_id = (select auth.uid())
+          and not d.is_public
     ));
 
 create policy knowledge_sections_update_own_document on public.knowledge_sections
@@ -277,11 +336,13 @@ create policy knowledge_sections_update_own_document on public.knowledge_section
         select 1 from public.knowledge_documents d
         where d.id = knowledge_sections.document_id
           and d.owner_id = (select auth.uid())
+          and not d.is_public
     ))
     with check (exists (
         select 1 from public.knowledge_documents d
         where d.id = knowledge_sections.document_id
           and d.owner_id = (select auth.uid())
+          and not d.is_public
     ));
 
 create policy knowledge_sections_delete_own_document on public.knowledge_sections
@@ -290,6 +351,7 @@ create policy knowledge_sections_delete_own_document on public.knowledge_section
         select 1 from public.knowledge_documents d
         where d.id = knowledge_sections.document_id
           and d.owner_id = (select auth.uid())
+          and not d.is_public
     ));
 
 -- knowledge_entities: same pattern as documents.
@@ -303,12 +365,12 @@ create policy knowledge_entities_insert_own on public.knowledge_entities
 
 create policy knowledge_entities_update_own on public.knowledge_entities
     for update to authenticated
-    using (owner_id = (select auth.uid()))
+    using (owner_id = (select auth.uid()) and not is_public)
     with check (owner_id = (select auth.uid()) and is_public = false);
 
 create policy knowledge_entities_delete_own on public.knowledge_entities
     for delete to authenticated
-    using (owner_id = (select auth.uid()));
+    using (owner_id = (select auth.uid()) and not is_public);
 
 -- knowledge_relations: same pattern; both endpoints must be visible to the
 -- writer, so a relation cannot point at someone else's private entity.
@@ -335,7 +397,7 @@ create policy knowledge_relations_insert_own on public.knowledge_relations
 
 create policy knowledge_relations_update_own on public.knowledge_relations
     for update to authenticated
-    using (owner_id = (select auth.uid()))
+    using (owner_id = (select auth.uid()) and not is_public)
     with check (
         owner_id = (select auth.uid())
         and is_public = false
@@ -353,7 +415,7 @@ create policy knowledge_relations_update_own on public.knowledge_relations
 
 create policy knowledge_relations_delete_own on public.knowledge_relations
     for delete to authenticated
-    using (owner_id = (select auth.uid()));
+    using (owner_id = (select auth.uid()) and not is_public);
 
 -- chat_history: owner only, no UPDATE, nothing for anon.
 create policy chat_history_select_own on public.chat_history
@@ -368,13 +430,11 @@ create policy chat_history_delete_own on public.chat_history
     for delete to authenticated
     using (owner_id = (select auth.uid()));
 
--- brain_settings: read only for clients.
-create policy brain_settings_select_all on public.brain_settings
-    for select to anon, authenticated
-    using (true);
+-- brain_settings: no policy. The browser never reads it; the backend uses the
+-- service role, which bypasses RLS.
 
 -- ------------------------------------------------------------------------------
--- 8. Functions
+-- 9. Functions
 -- ------------------------------------------------------------------------------
 -- Re-run: drop every overload before creating the current definitions.
 do $$
@@ -632,7 +692,7 @@ end;
 $$;
 
 -- ------------------------------------------------------------------------------
--- 9. Privileges
+-- 10. Privileges
 -- ------------------------------------------------------------------------------
 -- Supabase grants everything on new objects to anon / authenticated /
 -- service_role by default; start from nothing and grant what is needed.
@@ -643,7 +703,7 @@ revoke all on table
 
 grant select on table
     public.knowledge_documents, public.knowledge_sections, public.knowledge_entities,
-    public.knowledge_relations, public.brain_settings
+    public.knowledge_relations
     to anon;
 
 grant select, insert, update, delete on table
@@ -651,7 +711,6 @@ grant select, insert, update, delete on table
     public.knowledge_relations
     to authenticated;
 grant select, insert, delete on table public.chat_history to authenticated;
-grant select on table public.brain_settings to authenticated;
 
 grant select, insert, update, delete on table
     public.knowledge_documents, public.knowledge_sections, public.knowledge_entities,

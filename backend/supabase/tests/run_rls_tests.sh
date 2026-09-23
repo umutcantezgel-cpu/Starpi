@@ -17,15 +17,19 @@
 #                   (default: postgres)
 #   PGTEST_KEEP=1   keep the working directory (logs, data) for debugging
 #
+# "migrations" below means every migrations/*.sql file, applied in file-name
+# order (the same order as apply_migration.py --migrations).
+#
 # Scenarios:
-#   live         live-shape reconstruction + legacy rows, migration x2, tests,
-#                migration again, data-preservation checks
-#   fresh        full_schema.sql (via apply_migration.py) + migration, tests
+#   live         live-shape reconstruction + legacy rows, migrations x2, tests,
+#                migrations again, data-preservation checks
+#   fresh        full_schema.sql (via apply_migration.py) + migrations, tests
 #   fresh_rerun  schema.sql (psql include of full_schema.sql), full_schema.sql
 #                again, tests
-#   legacy_v2    previous full_schema.sql + legacy rows, migration x2, tests
-#   legacy_v1    previous schema.sql + legacy rows, migration x2, tests
+#   legacy_v2    previous full_schema.sql + legacy rows, migrations x2, tests
+#   legacy_v1    previous schema.sql + legacy rows, migrations x2, tests
 #   guard        full_schema.sql must refuse a pre-hardening database
+#   guard_order  20260924000000 must refuse a database without 20260923000000
 # plus: the public schema dumps of live, fresh and fresh_rerun are identical.
 #
 # Exit code: 0 when everything passes, 1 on any failure, 2 on setup errors.
@@ -46,6 +50,7 @@ done
 [[ -f "$("$pg_bin/pg_config" --sharedir)/extension/vector.control" ]] \
     || die "pgvector is not installed for $("$pg_bin/postgres" --version) (e.g. apt-get install postgresql-16-pgvector)"
 
+# Glob results are sorted, so the migrations run in file-name order.
 shopt -s nullglob
 migrations=("$supabase_dir"/migrations/*.sql)
 shopt -u nullglob
@@ -176,6 +181,7 @@ dump_schema() {
 }
 
 echo "PostgreSQL: $("$pg_bin/postgres" --version); work dir: $work"
+echo "migrations: $(for m in "${migrations[@]}"; do basename "$m"; done | paste -sd ' ' -)"
 
 fixtures="$here/fixtures"
 run_scenario live stub "$fixtures/live_shape.sql" "$fixtures/legacy_seed.sql" \
@@ -187,11 +193,13 @@ run_scenario legacy_v2 stub "$fixtures/legacy_full_schema_v2.sql" "$fixtures/leg
 run_scenario legacy_v1 stub "$fixtures/legacy_schema_v1.sql" "$fixtures/legacy_seed.sql" \
     migrations migrations test-legacy
 run_scenario guard stub "$fixtures/live_shape.sql" "expect-fail:$supabase_dir/full_schema.sql"
+run_scenario guard_order stub "$fixtures/live_shape.sql" \
+    "expect-fail:$supabase_dir/migrations/20260924000000_lock_published_rows.sql"
 
 if dump_schema live && dump_schema fresh && dump_schema fresh_rerun \
     && diff -u "$work/logs/live.schema.sql" "$work/logs/fresh.schema.sql" \
     && diff -u "$work/logs/fresh.schema.sql" "$work/logs/fresh_rerun.schema.sql"; then
-    echo "PASS  schema parity (live + migration == full_schema.sql + migration == full_schema.sql)"
+    echo "PASS  schema parity (live + migrations == full_schema.sql + migrations == full_schema.sql)"
 else
     echo "FAIL  schema parity"
     failures=$((failures + 1))

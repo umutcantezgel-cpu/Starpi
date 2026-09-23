@@ -1,6 +1,7 @@
 -- TEST FIXTURE, do not apply to a real database.
--- The previous schema.sql verbatim: the oldest install shape (no
--- brain_settings, no total_sections, no RLS, legacy index names).
+-- The previous schema.sql verbatim apart from one reworded comment: the oldest
+-- install shape (no brain_settings, no total_sections, no RLS, legacy index
+-- names).
 
 -- ==============================================================================
 -- Enterprise Brain: Supabase Schema with pgvector for RAG & Markdown Knowledge Base
@@ -31,7 +32,7 @@ CREATE TABLE IF NOT EXISTS knowledge_sections (
     heading TEXT,                              -- Markdown Section Header (e.g. "## 2. API Endpoints")
     markdown_content TEXT NOT NULL,            -- Formatted & structured markdown chunk
     token_count INT DEFAULT 0,
-    embedding vector(1536),                    -- Vector embedding (default 1536 for OpenAI / text-embedding-3 or adaptable)
+    embedding vector(1536),                    -- Vector embedding (1536 dimensions, e.g. text-embedding-3, or adaptable)
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
