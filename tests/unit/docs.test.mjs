@@ -54,11 +54,12 @@ describe('markdown helpers', () => {
     ]);
   });
 
-  it('reads inline links with titles and angle brackets, reference definitions, and skips code and URLs', () => {
+  it('reads inline links with titles and angle brackets, reference definitions and HTML src/href, and skips code and URLs', () => {
     const lines = [
       '[a](docs/x.md "Title") [b](<SECURITY.md#scope>) [c](#local) [d](https://example.com/y.md)',
       '`[e](not-a-link.md)`',
       '[r]: backend/README.md#endpoints',
+      '<p><a href="LICENSE"><img alt="x" src="docs/assets/flow.svg"></a> <a href="https://example.com">x</a></p>',
       '~~~bash',
       '[f](inside-fence.md)',
       '~~~',
@@ -68,6 +69,8 @@ describe('markdown helpers', () => {
       { target: 'SECURITY.md', anchor: 'scope' },
       { target: '', anchor: 'local' },
       { target: 'backend/README.md', anchor: 'endpoints' },
+      { target: 'LICENSE', anchor: null },
+      { target: 'docs/assets/flow.svg', anchor: null },
     ]);
   });
 

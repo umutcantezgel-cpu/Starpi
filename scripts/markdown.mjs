@@ -95,7 +95,9 @@ export function linkTargets(lines) {
     .replace(/`[^`\n]*`/g, '');
   const inline = /\]\(\s*<?([^()#\s<>]*)(?:#([^()\s<>]*))?>?(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g;
   const refdef = /^ {0,3}\[(?!\^)[^\]]+\]:\s*<?([^\s#<>]*)(?:#([^\s<>]*))?>?/gm;
-  return [...text.matchAll(inline), ...text.matchAll(refdef)]
+  // HTML embedded in Markdown (badges, images): src and href attributes.
+  const html = /<(?:a|img|source)\b[^>]*?\s(?:href|src|srcset)="([^"#\s]*)(?:#([^"\s]*))?"/gi;
+  return [...text.matchAll(inline), ...text.matchAll(refdef), ...text.matchAll(html)]
     .map(([, target, anchor]) => ({ target, anchor: anchor ?? null }))
     .filter(({ target }) => !/^[a-z][a-z0-9+.-]*:/i.test(target));
 }
