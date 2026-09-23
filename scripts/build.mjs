@@ -27,6 +27,7 @@ const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlaG5sdG9vZ3NjbmJqaHZpeG13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NzMwMTgsImV4cCI6MjA5NDM0OTAxOH0.NNdRrOYLzucKuQfz4bVPPWOhYvgVswDiEtvCrtphF0I';
 
 const WORKER_PLACEHOLDER = '__STARPI_WEBLLM_WORKER_URL__';
+const INGEST_WORKER_PLACEHOLDER = '__STARPI_INGEST_WORKER_URL__';
 
 assertAnonKey(SUPABASE_ANON_KEY);
 
@@ -62,6 +63,7 @@ const esbuildOptions = {
   entryPoints: {
     main: 'src/js/main.js',
     'webllm-worker': 'src/js/webgpu/worker.js',
+    'ingest-worker': 'src/js/rag/ingest.worker.js',
     app: 'src/styles/entry.css',
   },
   outdir: ASSETS,
@@ -101,22 +103,35 @@ async function postProcess(result) {
   const entries = outputsByEntry(result.metafile);
   const mainJs = entries['src/js/main.js'];
   const workerJs = entries['src/js/webgpu/worker.js'];
+  const ingestWorkerJs = entries['src/js/rag/ingest.worker.js'];
   const appCss = entries['src/styles/entry.css'];
-  if (!mainJs || !workerJs || !appCss) throw new Error(`missing entry outputs: ${JSON.stringify(entries)}`);
+  if (!mainJs || !workerJs || !ingestWorkerJs || !appCss) throw new Error(`missing entry outputs: ${JSON.stringify(entries)}`);
 
   const outputs = Object.keys(result.metafile.outputs).map((f) => path.join(ROOT, f));
   const jsOutputs = outputs.filter((f) => f.endsWith('.js'));
 
   // The worker URL is only known after bundling; patch it into the chunk that references it.
-  let patched = 0;
+  let patchedWebllm = 0;
+  let patchedIngest = 0;
   for (const file of jsOutputs) {
-    const code = await readFile(file, 'utf8');
+    let code = await readFile(file, 'utf8');
+    let changed = false;
     if (code.includes(WORKER_PLACEHOLDER)) {
-      await writeFile(file, code.replaceAll(WORKER_PLACEHOLDER, workerJs));
-      patched += 1;
+      code = code.replaceAll(WORKER_PLACEHOLDER, workerJs);
+      patchedWebllm += 1;
+      changed = true;
+    }
+    if (code.includes(INGEST_WORKER_PLACEHOLDER)) {
+      code = code.replaceAll(INGEST_WORKER_PLACEHOLDER, ingestWorkerJs);
+      patchedIngest += 1;
+      changed = true;
+    }
+    if (changed) {
+      await writeFile(file, code);
     }
   }
-  if (patched === 0) throw new Error('worker URL placeholder not found in any output chunk');
+  if (patchedWebllm === 0) throw new Error('worker URL placeholder not found in any output chunk');
+  if (patchedIngest === 0) throw new Error('ingest worker URL placeholder not found in any output chunk');
 
   const publicFiles = await copyPublic();
   const assetUrls = outputs
@@ -145,9 +160,9 @@ async function postProcess(result) {
 
   await writeFile(
     path.join(DIST, 'build-manifest.json'),
-    JSON.stringify({ version, entries: { mainJs, workerJs, appCss }, assets: assetUrls.sort(), precache: shell }, null, 2),
+    JSON.stringify({ version, entries: { mainJs, workerJs, ingestWorkerJs, appCss }, assets: assetUrls.sort(), precache: shell }, null, 2),
   );
-  return { version, mainJs, workerJs, appCss };
+  return { version, mainJs, workerJs, ingestWorkerJs, appCss };
 }
 
 /** Static chunks imported by the main entry (needed to boot offline). */

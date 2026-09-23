@@ -24,7 +24,7 @@ export default [
   {
     files: ['src/js/**/*.js'],
     languageOptions: {
-      ecmaVersion: 2024,
+      ecmaVersion: 'latest',
       sourceType: 'module',
       globals: {
         ...globals.browser,
@@ -40,7 +40,7 @@ export default [
   {
     files: ['src/sw.js'],
     languageOptions: {
-      ecmaVersion: 2024,
+      ecmaVersion: 'latest',
       sourceType: 'script',
       globals: { ...globals.serviceworker },
     },
@@ -48,7 +48,7 @@ export default [
   {
     files: ['scripts/**/*.mjs', 'tests/**/*.mjs', '*.config.js', '*.config.mjs'],
     languageOptions: {
-      ecmaVersion: 2024,
+      ecmaVersion: 'latest',
       sourceType: 'module',
       globals: { ...globals.node },
     },

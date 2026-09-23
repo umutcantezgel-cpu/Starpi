@@ -1,14 +1,15 @@
 // @ts-check
-// Chat flow: retrieval -> answer (cloud provider / on-device model / own server / extractive
-// synthesizer) -> render -> persist. One request at a time; the Stop button aborts network calls
-// and interrupts on-device generation.
+// Chat flow: retrieval (BM25 + Postgres) -> answer (cloud provider / on-device model / own server / extractive
+// synthesizer) -> render -> persist.
+import { currentSessionId, loadCurrentSession, persistMessage, refreshSyncStatus, startNewSession } from './chat-store.js';
 import { LIMITS } from './config.js';
 import { byId, onAction, onChange, setHidden } from './dom.js';
 import { startLocalEngine } from './engine-ui.js';
-import { currentSessionId, loadCurrentSession, persistMessage, refreshSyncStatus, startNewSession } from './chat-store.js';
+import { t } from './i18n/index.js';
 import { appendLoading, appendMessage, createStreamingMessage, resetMessages, splitReasoning } from './messages.js';
 import { callGemini, callLocalServer, callOpenRouter, hasGeminiKey, hasOpenRouterKey } from './providers.js';
-import { escapeMarkdown, sanitizeModelNames } from './render.js';
+import { searchLocalBM25 } from './rag/ingestion-service.js';
+import { sanitizeModelNames } from './render.js';
 import { buildContext, CONTEXT_RULES, distinctSources, rankHitsLocally } from './retrieval.js';
 import { isUserAbort } from './signals.js';
 import { getLlmUrl, getMode } from './state.js';
@@ -22,10 +23,10 @@ import { budgetPrompt } from './webgpu/models.js';
 /** @typedef {{ role: 'user' | 'assistant', content: string }} Turn */
 
 const ENGINE_LABELS = /** @type {Record<string, string>} */ ({
-  cloud: '✨ Starpi Assistent · Cloud Verbindung',
-  client: '🔒 Lokaler Modus · im Browser berechnet',
-  local: '🖥️ Eigener Server (MLX/Ollama)',
-  synthesizer: '📚 Direkt aus der Wissensdatenbank',
+  cloud: 'Starpi Cloud Assistant',
+  client: 'Local In-Browser WebGPU',
+  local: 'Custom Server (MLX/Ollama)',
+  synthesizer: 'Knowledge Base Direct',
 });
 
 /** @type {Turn[]} */
@@ -45,7 +46,7 @@ export function invalidateKnownTitles() {
 async function knownTitles() {
   if (titlesCache && Date.now() - titlesCache.at < 60_000) return titlesCache.titles;
   const res = await listDocuments();
-  const titles = res.ok ? res.data.map((d) => d.title).filter(Boolean) : [];
+  const titles = res.ok ? res.data.map((d) => d.title) : [];
   titlesCache = { at: Date.now(), titles };
   return titles;
 }
@@ -56,36 +57,57 @@ async function knownTitles() {
  * @returns {Promise<{ hits: KnowledgeHit[], method: string }>}
  */
 async function retrieve(query, mode) {
+  // 1. Query client-side BM25 index (for documents parsed and indexed in-browser)
+  /** @type {KnowledgeHit[]} */
+  let bm25Hits = [];
+  try {
+    const scored = await searchLocalBM25(query, LIMITS.retrievalRows);
+    bm25Hits = scored.map((s) => ({
+      documentId: s.chunk.documentId,
+      documentTitle: s.chunk.documentTitle,
+      heading: `Chunk #${s.chunk.chunkIndex}`,
+      content: s.chunk.content,
+      rank: s.score,
+    }));
+  } catch (err) {
+    console.warn('[starpi] BM25 local search error', err);
+  }
+
   if (mode !== 'client') {
     const search = await searchKnowledge(query);
     if (search.ok && search.data.length > 0) {
-      return { hits: search.data, method: 'Postgres Volltextsuche (search_knowledge)' };
+      const merged = [...bm25Hits, ...search.data];
+      return { hits: merged.slice(0, LIMITS.retrievalRows), method: 'Postgres & BM25 Search' };
     }
     const recent = await recentKnowledge(30);
     const why = search.ok
-      ? 'keine Volltext Treffer'
+      ? 'no full-text matches'
       : search.error.kind === 'missing_function'
-        ? 'Suchfunktion noch nicht installiert'
-        : 'Volltextsuche nicht erreichbar';
-    if (!recent.ok) return { hits: [], method: `Wissensdatenbank nicht erreichbar (${recent.error.kind})` };
-    return { hits: rankHitsLocally(query, recent.data, LIMITS.retrievalRows), method: `Stichwortsuche über die neuesten Dokumente (${why})` };
+        ? 'search function not installed'
+        : 'full-text search unavailable';
+    if (!recent.ok) return { hits: bm25Hits, method: bm25Hits.length ? 'BM25 Client Index' : `Knowledge base unreachable (${recent.error.kind})` };
+    const localRanked = rankHitsLocally(query, recent.data, LIMITS.retrievalRows);
+    const merged = [...bm25Hits, ...localRanked];
+    return { hits: merged.slice(0, LIMITS.retrievalRows), method: `Keyword & BM25 Search (${why})` };
   }
-  // Local mode: fetch candidates without sending the question anywhere, rank in the browser.
+
+  // Local mode: client-side BM25 + candidates ranked in browser without sending question anywhere
   const recent = await recentKnowledge(30);
-  if (!recent.ok) return { hits: [], method: `Wissensdatenbank nicht erreichbar (${recent.error.kind})` };
+  const localRanked = recent.ok ? rankHitsLocally(query, recent.data, LIMITS.retrievalRows) : [];
+  const merged = [...bm25Hits, ...localRanked];
   return {
-    hits: rankHitsLocally(query, recent.data, LIMITS.retrievalRows),
-    method: 'Stichwortsuche im Browser (die Frage verlässt das Gerät nicht)',
+    hits: merged.slice(0, LIMITS.retrievalRows),
+    method: 'Local BM25 & Browser Search (zero data leaves device)',
   };
 }
 
-const SYSTEM_PROMPT = `Du bist Starpi, ein intelligenter und hilfsbereiter Unternehmensassistent.
-Antworte stets freundlich, professionell und direkt auf Deutsch ohne Ausschmückung oder unnötigen Jargon.
+const SYSTEM_PROMPT = `You are Starpi, an enterprise AI knowledge assistant.
+Answer professionally, factually, and concisely.
 
-WICHTIGE ANWEISUNGEN:
-1. Nutze die Auszüge aus der Wissensdatenbank als Faktenbasis und erfinde keine Fakten.
-2. Wenn nach Personen, Aufgaben, Terminen oder Budgets gefragt wird, nenne die exakten Fakten und Zahlen übersichtlich.
-3. Nenne zu keinem Zeitpunkt Namen von KI Modellen oder Providern.
+INSTRUCTIONS:
+1. Use the provided excerpts from the knowledge base as facts and never fabricate facts.
+2. When asked about responsibilities, dates, or budgets, provide exact numbers and facts.
+3. Never mention internal model or provider names.
 4. ${CONTEXT_RULES}`;
 
 /**
@@ -101,10 +123,10 @@ WICHTIGE ANWEISUNGEN:
  * @returns {Promise<Answer | null>}
  */
 async function answerWithCloud(req) {
-  const context = req.context || 'Keine passenden Auszüge gefunden.';
+  const context = req.context || 'No relevant excerpts found.';
   if (hasGeminiKey()) {
     try {
-      const r = await callGemini(`${SYSTEM_PROMPT}\n\nWissensdatenbank:\n${context}\n\nNutzeranfrage: ${req.prompt}`, { signal: req.signal });
+      const r = await callGemini(`${SYSTEM_PROMPT}\n\nKnowledge Base:\n${context}\n\nUser Query: ${req.prompt}`, { signal: req.signal });
       return { text: r.text, engine: 'cloud' };
     } catch (err) {
       if (req.signal.aborted) throw err;
@@ -114,7 +136,7 @@ async function answerWithCloud(req) {
   if (hasOpenRouterKey()) {
     try {
       const r = await callOpenRouter(
-        [{ role: 'system', content: `${SYSTEM_PROMPT}\n\nWissensdatenbank:\n${context}` }, ...req.history.slice(-4), { role: 'user', content: req.prompt }],
+        [{ role: 'system', content: `${SYSTEM_PROMPT}\n\nKnowledge Base:\n${context}` }, ...req.history.slice(-4), { role: 'user', content: req.prompt }],
         { signal: req.signal },
       );
       return { text: r.text, engine: 'cloud' };
@@ -123,7 +145,7 @@ async function answerWithCloud(req) {
       return {
         text: '',
         engine: 'synthesizer',
-        note: `Cloud Anbieter nicht erreichbar (${sanitizeModelNames(err instanceof Error ? err.message : String(err)).slice(0, 160)})`,
+        note: `Cloud provider unavailable (${sanitizeModelNames(err instanceof Error ? err.message : String(err)).slice(0, 160)})`,
       };
     }
   }
@@ -142,7 +164,7 @@ async function answerWithLocalModel(req) {
   const budget = budgetPrompt({
     contextWindow: model.chatOptions.context_window_size,
     maxOutputTokens: 512,
-    system: `Du bist Starpi, ein verlässlicher Assistent für Unternehmensdaten. Antworte auf Deutsch und erfinde keine Fakten. ${CONTEXT_RULES}`,
+    system: `You are Starpi, a reliable enterprise assistant. Answer accurately based on context. Do not invent facts. ${CONTEXT_RULES}`,
     context: req.context,
     history: req.history.slice(-4),
     user: req.prompt,
@@ -155,7 +177,7 @@ async function answerWithLocalModel(req) {
   try {
     const text = await engine.generate({
       messages: [
-        { role: 'system', content: budget.context ? `${budget.system}\n\nWissensdatenbank:\n${budget.context}` : budget.system },
+        { role: 'system', content: budget.context ? `${budget.system}\n\nKnowledge Base:\n${budget.context}` : budget.system },
         ...budget.history,
         { role: 'user', content: budget.user },
       ],
@@ -168,13 +190,13 @@ async function answerWithLocalModel(req) {
       return null;
     }
     const durationMs = Math.round(performance.now() - req.started);
-    const trace = describeTrace({ query: req.query, method: req.method, hits: req.hits, engineLabel: 'Lokales Modell im Browser (WebGPU)', durationMs });
+    const trace = describeTrace({ query: req.query, method: req.method, hits: req.hits, engineLabel: 'Local WebGPU Browser Model', durationMs });
     stream.finalize(text, req.sources, trace, durationMs);
     return { text, engine: 'client', rendered: true };
   } catch (err) {
     stream.remove();
     const message = err instanceof Error ? err.message : String(err);
-    return { text: '', engine: 'synthesizer', note: `Lokales Modell: ${message}` };
+    return { text: '', engine: 'synthesizer', note: `Local model: ${message}` };
   } finally {
     req.signal.removeEventListener('abort', onAbort);
   }
@@ -189,7 +211,7 @@ async function answerWithOwnServer(req) {
     const r = await callLocalServer(
       getLlmUrl(),
       [
-        { role: 'system', content: `${SYSTEM_PROMPT}\n\nWissensdatenbank:\n${req.context || 'Keine passenden Auszüge gefunden.'}` },
+        { role: 'system', content: `${SYSTEM_PROMPT}\n\nKnowledge Base:\n${req.context || 'No matching excerpts found.'}` },
         ...req.history.slice(-4),
         { role: 'user', content: req.prompt },
       ],
@@ -198,7 +220,7 @@ async function answerWithOwnServer(req) {
     return { text: r.text, engine: 'local' };
   } catch (err) {
     if (req.signal.aborted) throw err;
-    return { text: '', engine: 'synthesizer', note: `Eigener Server nicht erreichbar (${err instanceof Error ? err.message : String(err)})` };
+    return { text: '', engine: 'synthesizer', note: `Custom server unavailable (${err instanceof Error ? err.message : String(err)})` };
   }
 }
 
@@ -208,13 +230,13 @@ function setBusy(on) {
   setHidden(byId('stopBtn'), !on);
   const send = /** @type {HTMLButtonElement | null} */ (byId('sendBtn'));
   if (send) send.disabled = on;
-  setAssistantStatus(on ? 'Antwort wird erstellt…' : 'Bereit für Ihre Fragen');
+  setAssistantStatus(on ? 'Generating response…' : t('status.ready'));
 }
 
 /** @param {string} rawText */
 export async function submitChat(rawText) {
   if (busy) {
-    setAssistantStatus('Bitte warten, die vorherige Antwort läuft noch.');
+    setAssistantStatus('Please wait, previous response is still generating.');
     return;
   }
   const userText = rawText.trim().slice(0, LIMITS.chatInputChars);
@@ -232,8 +254,8 @@ export async function submitChat(rawText) {
   const history = conversation.slice();
   const mode = getMode();
   const localOnly = mode === 'client';
-  const shownText = userText || `📎 ${file?.name ?? 'Datei'}`;
-  const prompt = file ? `${userText}\n\n[Angehängte Datei: ${file.name}]\n${file.content}` : userText;
+  const shownText = userText || `[File: ${file?.name ?? 'Document'}]`;
+  const prompt = file ? `${userText}\n\n[Attached File: ${file.name}]\n${file.content}` : userText;
   const query = userText || file?.name || '';
 
   appendMessage('user', shownText);
@@ -274,13 +296,12 @@ export async function submitChat(rawText) {
       query,
       method,
       hits,
-      engineLabel: ENGINE_LABELS[answer.engine].replace(/^\S+\s/, ''),
+      engineLabel: ENGINE_LABELS[answer.engine],
       durationMs,
       note,
     });
     const metadata = { engine: answer.engine, thoughts: trace, duration_ms: durationMs };
 
-    // The user may have started a new chat meanwhile: persist to the original session only.
     if (sid === currentSessionId()) {
       if (!answer.rendered) {
         removeLoading();
@@ -288,109 +309,87 @@ export async function submitChat(rawText) {
       }
       conversation.push({ role: 'user', content: prompt.slice(0, 4_000) }, { role: 'assistant', content: answerText });
     }
-    void persistMessage(sid, { role: 'assistant', content: answer.text, sources, metadata }, { localOnly });
+
+    void persistMessage(sid, { role: 'assistant', content: answerText, sources, metadata }, { localOnly });
   } catch (err) {
     removeLoading();
-    if (isUserAbort(err) || controller.signal.aborted) {
-      if (sid === currentSessionId()) appendMessage('assistant', '⏹️ Antwort gestoppt.');
-    } else {
-      console.error('[starpi] chat request failed', err);
-      appendMessage('assistant', `Fehler beim Verarbeiten: ${escapeMarkdown(sanitizeModelNames(err instanceof Error ? err.message : String(err)))}`);
+    if (!isUserAbort(err)) {
+      appendMessage('assistant', `Error processing request: ${err instanceof Error ? err.message : String(err)}`);
     }
   } finally {
-    removeLoading();
-    if (activeAbort === controller) activeAbort = null;
     setBusy(false);
+    activeAbort = null;
   }
-}
-
-function stopGeneration() {
-  activeAbort?.abort();
-  engine.interrupt();
-}
-
-export function startNewChat() {
-  stopGeneration();
-  startNewSession();
-  conversation = [];
-  resetMessages();
-}
-
-/** Replays the stored history of the current session. */
-export async function restoreHistory() {
-  const sid = currentSessionId();
-  const rows = await loadCurrentSession();
-  if (sid !== currentSessionId() || rows.length === 0) return;
-  resetMessages();
-  conversation = [];
-  for (const row of rows) {
-    const meta = /** @type {{ engine?: string, thoughts?: string | null, duration_ms?: number | null }} */ (row.metadata ?? {});
-    const role = row.role === 'user' ? 'user' : 'assistant';
-    conversation.push({ role, content: role === 'assistant' ? splitReasoning(row.content).answer : row.content });
-    appendMessage(role, row.content, {
-      sources: Array.isArray(row.sources) ? row.sources.filter((s) => s && typeof s.title === 'string') : [],
-      badge: role === 'assistant' ? (ENGINE_LABELS[meta.engine ?? ''] ?? '✨ Starpi Assistent · Gespeichert') : '',
-      trace: typeof meta.thoughts === 'string' ? meta.thoughts : null,
-      durationMs: typeof meta.duration_ms === 'number' ? meta.duration_ms : null,
-    });
-  }
-  void refreshSyncStatus();
 }
 
 function removeAttachment() {
   attachment = null;
-  const fileInput = /** @type {HTMLInputElement | null} */ (byId('chatFileInput'));
-  if (fileInput) fileInput.value = '';
-  setHidden(byId('attachedInfo'), true);
+  const info = byId('attachedInfo');
+  if (info) setHidden(info, true);
+  const input = /** @type {HTMLInputElement | null} */ (byId('chatFileInput'));
+  if (input) input.value = '';
 }
 
-/** @param {HTMLElement} el */
-async function attachFile(el) {
-  const inputEl = /** @type {HTMLInputElement} */ (el);
-  const file = inputEl.files?.[0];
-  if (!file) return;
-  if (file.size > LIMITS.attachmentBytes) {
-    window.alert(`Die Datei ist zu groß (maximal ${Math.round(LIMITS.attachmentBytes / 1024)} KB).`);
-    inputEl.value = '';
-    return;
+export async function restoreHistory() {
+  const session = await loadCurrentSession();
+  conversation = [];
+  resetMessages();
+  if (!session || !session.messages.length) return;
+  for (const m of session.messages) {
+    appendMessage(m.role, m.content, { sources: m.sources, badge: m.metadata?.engine ? ENGINE_LABELS[m.metadata.engine] : undefined });
+    conversation.push({ role: m.role, content: m.content });
   }
-  try {
-    attachment = { name: file.name, content: await file.text() };
-  } catch {
-    window.alert('Die Datei konnte nicht gelesen werden.');
-    inputEl.value = '';
-    return;
-  }
-  const nameEl = byId('attachedFileName');
-  if (nameEl) nameEl.textContent = file.name;
-  setHidden(byId('attachedInfo'), false);
-}
-
-/** @param {HTMLTextAreaElement} el */
-function autoResize(el) {
-  el.style.height = 'auto';
-  el.style.height = `${Math.min(el.scrollHeight, 128)}px`;
 }
 
 export function initChat() {
   const form = byId('chatForm');
   const input = /** @type {HTMLTextAreaElement | null} */ (byId('chatInput'));
-  form?.addEventListener('submit', (event) => {
-    event.preventDefault();
-    void submitChat(input?.value ?? '');
+  form?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (input) void submitChat(input.value);
   });
-  input?.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
-      event.preventDefault();
+
+  input?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
       void submitChat(input.value);
     }
   });
-  input?.addEventListener('input', () => autoResize(input));
-  if (input) input.maxLength = LIMITS.chatInputChars;
 
-  onAction('quick-prompt', (el) => submitChat(el.dataset.arg ?? ''));
-  onAction('new-chat', () => startNewChat());
-  onAction('stop-generation', () => stopGeneration());
+  onAction('new-chat', () => {
+    startNewSession();
+    conversation = [];
+    resetMessages();
+    setAssistantStatus(t('status.ready'));
+    void refreshSyncStatus();
+  });
+
+  onAction('stop-generation', () => {
+    activeAbort?.abort();
+    engine.interrupt();
+  });
+
   onAction('remove-attachment', () => removeAttachment());
-  onChange('attach-file', (el) => attachFile(el));
+
+  onAction('quick-prompt', (el) => {
+    const arg = el.dataset.arg ?? '';
+    if (arg) void submitChat(arg);
+  });
+
+  onChange('attach-file', async (el) => {
+    const fileInput = /** @type {HTMLInputElement} */ (el);
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    if (file.size > LIMITS.ingestFileBytes) {
+      window.alert(t('ingest.file_too_large'));
+      fileInput.value = '';
+      return;
+    }
+    const text = await file.text().catch(() => '');
+    attachment = { name: file.name, content: text.slice(0, LIMITS.attachmentChars) };
+    const info = byId('attachedInfo');
+    const nameEl = byId('attachedFileName');
+    if (nameEl) nameEl.textContent = file.name;
+    if (info) setHidden(info, false);
+  });
 }

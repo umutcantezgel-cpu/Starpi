@@ -1,9 +1,10 @@
 // @ts-check
 // Settings tab: compute mode, provider keys (session or device storage), own-server URL,
-// WebGPU model preference and connection tests.
+// WebGPU model preference, and connection tests.
 import { STORAGE_KEYS } from './config.js';
 import { byId, onAction, onChange, setHidden, setHtml } from './dom.js';
 import { renderEngineState, startLocalEngine } from './engine-ui.js';
+import { t } from './i18n/index.js';
 import { callGemini, callOpenRouter, hasGeminiKey, hasOpenRouterKey, normalizeServerUrl, probeLocalServer } from './providers.js';
 import { escapeHtml, sanitizeModelNames } from './render.js';
 import { getLlmUrl, getMode, getModelPreference, setLlmUrl, setMode, setModelPreference } from './state.js';
@@ -19,7 +20,7 @@ function rememberKeys() {
 
 /** @param {string} value */
 function maskKey(value) {
-  return value ? `Gespeichert (••••${value.slice(-4)})` : 'Kein Schlüssel gespeichert.';
+  return value ? `Saved (••••${value.slice(-4)})` : t('settings.openrouter_hint');
 }
 
 function renderKeyHints() {
@@ -34,19 +35,19 @@ export function renderPrivacyNotice() {
   if (!el) return;
   const mode = getMode();
   if (mode === 'client') {
-    el.textContent = '🔒 Lokaler Modus: Das Modell rechnet in Ihrem Browser. Fragen und Chatverlauf bleiben auf diesem Gerät.';
+    el.textContent = t('status.privacy_local');
   } else if (mode === 'local') {
-    let host = 'Ihren eigenen Server';
+    let host = 'Local Server';
     try {
       host = new URL(getLlmUrl()).host;
     } catch {
       // keep generic label
     }
-    el.textContent = `🖥️ Eigener Server: Fragen und passende Auszüge gehen nur an ${host}.`;
+    el.textContent = `${t('status.privacy_own_server')} (${host}).`;
   } else if (hasGeminiKey() || hasOpenRouterKey()) {
-    el.textContent = '☁️ Cloud Modus: Fragen und passende Auszüge werden an Ihren hinterlegten Anbieter gesendet.';
+    el.textContent = t('status.privacy_cloud');
   } else {
-    el.textContent = '📚 Ohne eigenen Schlüssel antwortet Starpi direkt aus der Wissensdatenbank.';
+    el.textContent = t('chat.fallback_note');
   }
 }
 
@@ -99,7 +100,7 @@ async function saveSettings() {
   try {
     url = normalizeServerUrl(urlInput?.value ?? '');
   } catch (err) {
-    window.alert(err instanceof Error ? err.message : 'Ungültige Server Adresse.');
+    window.alert(err instanceof Error ? err.message : 'Invalid server address.');
     urlInput?.focus();
     return;
   }
@@ -128,7 +129,7 @@ async function saveSettings() {
     await engine.unloadModel();
   }
   await changeEngine(mode, { interactive: true });
-  window.alert('Einstellungen gespeichert! Der Modus ist jetzt aktiv.');
+  window.alert(t('settings.saved_toast'));
 }
 
 function clearKeys() {
@@ -136,7 +137,7 @@ function clearKeys() {
   removeSecret(STORAGE_KEYS.openrouterKey);
   renderKeyHints();
   renderPrivacyNotice();
-  window.alert('Alle gespeicherten API Schlüssel wurden von diesem Gerät entfernt.');
+  window.alert('Stored API keys removed from this device.');
 }
 
 /**
@@ -149,17 +150,17 @@ async function testProvider(provider) {
   if (!box) return;
   if (btn) btn.disabled = true;
   box.className = 'text-xs p-2.5 rounded-lg border bg-amber-500/10 border-amber-500/30 text-amber-800 flex items-center gap-2';
-  setHtml(box, `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>${isGemini ? 'Prüfe Google Gemini Verbindung...' : 'Prüfe Cloud Assistent Verbindung...'}</span>`);
+  setHtml(box, `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>${isGemini ? 'Testing Gemini connection...' : 'Testing Cloud Assistant...'}</span>`);
   setHidden(box, false);
 
   const t0 = performance.now();
   try {
     const text = isGemini
-      ? (await callGemini('Bestätige mit genau einem kurzen Satz auf Deutsch, dass der Assistent einsatzbereit ist.')).text
+      ? (await callGemini('Confirm in one short sentence that the assistant is ready.')).text
       : (
           await callOpenRouter([
-            { role: 'system', content: 'Du bist Starpi, der intelligente Assistent. Antworte in genau einem kurzen, freundlichen Satz auf Deutsch.' },
-            { role: 'user', content: 'Bestätige mit genau einem Satz auf Deutsch, dass der Assistent bereit ist.' },
+            { role: 'system', content: 'You are Starpi. Confirm in one short sentence that the assistant is ready.' },
+            { role: 'user', content: 'Confirm readiness.' },
           ])
         ).text;
     const elapsed = Math.round(performance.now() - t0);
@@ -167,7 +168,7 @@ async function testProvider(provider) {
     setHtml(
       box,
       `<div class="flex items-center justify-between font-semibold">
-        <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> ${isGemini ? 'Gemini Verbindung bereit' : 'Cloud Assistent bereit'}</span>
+        <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> ${isGemini ? 'Gemini connection ready' : 'Cloud Assistant ready'}</span>
         <span class="font-mono text-[11px]">${elapsed} ms</span>
       </div>
       <p class="text-[11px] text-slate-600 italic">"${escapeHtml(sanitizeModelNames(text.slice(0, 140)))}"</p>`,
@@ -179,7 +180,7 @@ async function testProvider(provider) {
       box,
       `<div class="flex items-center gap-1.5 font-semibold">
         <i data-lucide="${notConfigured ? 'info' : 'alert-circle'}" class="w-3.5 h-3.5"></i>
-        <span>${notConfigured ? `${isGemini ? 'Gemini' : 'OpenRouter'} nicht konfiguriert` : 'Test fehlgeschlagen'}</span>
+        <span>${notConfigured ? `${isGemini ? 'Gemini' : 'OpenRouter'} not configured` : 'Test failed'}</span>
       </div>
       <p class="text-[11px] mt-1 text-slate-600">${escapeHtml(sanitizeModelNames(err instanceof Error ? err.message : String(err)))}</p>`,
     );
@@ -189,14 +190,14 @@ async function testProvider(provider) {
 }
 
 async function deleteModelCache() {
-  if (!window.confirm('Alle heruntergeladenen Modelldaten aus dem Browser Speicher löschen? Beim nächsten Start des lokalen Modus wird das Modell erneut geladen.')) {
+  if (!window.confirm('Delete all downloaded model weights from browser storage?')) {
     return;
   }
   try {
     await engine.deleteCachedModels();
-    window.alert('Die Modelldaten wurden gelöscht.');
+    window.alert('Model weights deleted.');
   } catch (err) {
-    window.alert(`Löschen fehlgeschlagen: ${err instanceof Error ? err.message : String(err)}`);
+    window.alert(`Deletion failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

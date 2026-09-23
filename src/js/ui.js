@@ -1,17 +1,11 @@
 // @ts-check
-// Navigation, sidebar, device indicator and connection/status indicators.
+// Navigation, sidebar, device indicator, and connection/status indicators.
 import { SUPABASE_PROJECT_REF } from './config.js';
 import { byId } from './dom.js';
 import { refreshIcons } from './icons.js';
+import { t } from './i18n/index.js';
 
-const TABS = ['chat', 'library', 'graph', 'ingest', 'settings'];
-const TITLES = /** @type {Record<string, string>} */ ({
-  chat: 'Starpi Chat',
-  library: 'Wissensarchiv',
-  graph: 'Wissensnetzwerk',
-  ingest: 'Wissen hinzufügen',
-  settings: 'Einstellungen',
-});
+const TABS = ['chat', 'library', 'graph', 'ingest', 'bench', 'settings'];
 
 const ACTIVE_NAV = ['bg-amber-50', 'text-amber-950', 'border', 'border-amber-300/80', 'font-bold', 'shadow-xs'];
 
@@ -29,14 +23,14 @@ export function onTabOpen(tab, hook) {
 /** @param {string} tabId */
 export function switchTab(tabId) {
   const target = TABS.includes(tabId) ? tabId : 'chat';
-  for (const t of TABS) {
-    byId(`tab-${t}`)?.classList.add('hidden');
-    const nav = byId(`nav-${t}`);
+  for (const tName of TABS) {
+    byId(`tab-${tName}`)?.classList.add('hidden');
+    const nav = byId(`nav-${tName}`);
     if (nav) {
       nav.classList.remove(...ACTIVE_NAV);
       nav.classList.add('text-slate-600', 'hover:text-slate-950', 'hover:bg-slate-100/70', 'font-medium');
     }
-    const mNav = byId(`mobile-nav-${t}`);
+    const mNav = byId(`mobile-nav-${tName}`);
     if (mNav) {
       mNav.classList.remove(...ACTIVE_NAV);
       mNav.classList.add('text-slate-600', 'hover:text-slate-900', 'font-medium');
@@ -55,8 +49,10 @@ export function switchTab(tabId) {
     activeMNav.classList.remove('text-slate-600', 'hover:text-slate-900', 'font-medium');
   }
 
-  const titleEl = byId('pageTitle');
-  if (titleEl) titleEl.textContent = TITLES[target] ?? 'Starpi';
+  const titleEl = byId('pageTitleText');
+  if (titleEl) {
+    titleEl.textContent = t(`nav.${target}`) || 'Starpi';
+  }
 
   tabOpenHooks.get(target)?.();
   if (window.innerWidth < 768) toggleSidebar(false);
@@ -82,16 +78,15 @@ export function detectAndDisplayDevice() {
   const iconEl = byId('deviceTypeIcon');
   const textEl = byId('detectedDeviceText');
   let icon = 'laptop';
-  let label = 'Computer';
+  let labelKey = 'device.laptop';
   if (isTablet) {
     icon = 'tablet';
-    label = 'Tablet';
+    labelKey = 'device.tablet';
   } else if (isIOS || isAndroid || window.innerWidth <= 768) {
     icon = 'smartphone';
-    label = 'Smartphone';
+    labelKey = 'device.smartphone';
   }
   if (iconEl) {
-    // lucide replaces <i> with <svg>; recreate the placeholder so the icon can change.
     const placeholder = document.createElement('i');
     placeholder.id = 'deviceTypeIcon';
     placeholder.className = 'w-3.5 h-3.5 text-amber-600';
@@ -99,7 +94,7 @@ export function detectAndDisplayDevice() {
     iconEl.replaceWith(placeholder);
     refreshIcons(placeholder.parentElement ?? document);
   }
-  if (textEl) textEl.textContent = label;
+  if (textEl) textEl.textContent = t(labelKey);
 }
 
 /**
@@ -140,29 +135,30 @@ export function setAssistantStatus(text) {
 export function renderConnection(c) {
   /** @type {'ok' | 'warn' | 'off' | 'busy'} */
   let tone = 'busy';
-  let badge = 'Verbinde';
-  let auth = 'Row Level Security';
+  let badge = t('status.connecting');
+  let auth = t('status.rls_session');
+
   if (c.status === 'offline') {
     tone = 'off';
-    badge = 'Offline';
-    auth = 'Keine Verbindung';
+    badge = t('status.offline');
+    auth = t('status.no_session');
   } else if (c.status === 'ready') {
     if (c.hardened && c.signedIn) {
       tone = 'ok';
-      badge = 'Live';
-      auth = 'RLS · anonyme Sitzung';
+      badge = t('status.live');
+      auth = t('status.rls_session');
     } else if (c.hardened) {
       tone = 'warn';
-      badge = 'Nur lesen';
-      auth = c.authError?.kind === 'auth_disabled' ? 'Anonyme Anmeldung deaktiviert' : 'Keine Sitzung';
+      badge = t('status.read_only');
+      auth = c.authError?.kind === 'auth_disabled' ? t('status.rls_disabled') : t('status.no_session');
     } else if (c.probeError?.kind === 'missing_schema') {
       tone = 'warn';
-      badge = 'Migration offen';
-      auth = 'Datenbank Migration ausstehend';
+      badge = t('status.migration_pending');
+      auth = t('status.migration_needed');
     } else {
       tone = 'warn';
-      badge = 'Eingeschränkt';
-      auth = `Datenbank meldet einen Fehler (${c.probeError?.code || c.probeError?.kind || 'unbekannt'})`;
+      badge = t('status.restricted');
+      auth = `Error (${c.probeError?.code || c.probeError?.kind || 'unknown'})`;
     }
   }
 

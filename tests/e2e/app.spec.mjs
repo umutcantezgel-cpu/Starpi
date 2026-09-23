@@ -13,11 +13,11 @@ test.describe('migration pending, anonymous sign-ins disabled', () => {
     const response = await page.goto('/');
     expect(response?.headers()['content-security-policy']).toContain("script-src 'self' 'wasm-unsafe-eval'");
 
-    await expect(page.locator('#dbStatusBadge')).toHaveText('Migration offen');
+    await expect(page.locator('#dbStatusBadge')).toHaveText(/(Migration offen|Migration Pending)/);
     await page.fill('#chatInput', 'Wann ist der Launch von Projekt Beta?');
     await page.press('#chatInput', 'Enter');
     await expect(page.locator('#chatMessages')).toContainText('3. März geplant');
-    await expect(page.locator('#chatMessages')).toContainText('ohne KI Modell');
+    await expect(page.locator('#chatMessages')).toContainText(/(ohne KI Modell|without an AI model)/);
 
     await openTab(page, 'settings');
     await expect(page.locator('#chatSyncStatusText')).toContainText('Nur auf diesem Gerät');
@@ -41,7 +41,7 @@ test.describe('migration pending, anonymous sign-ins disabled', () => {
     await openTab(page, 'chat');
     await page.fill('#chatInput', 'Welche Dokumente sind hinterlegt?');
     await page.press('#chatInput', 'Enter');
-    await expect(page.locator('#chatMessages')).toContainText('Verfügbare Dokumente');
+    await expect(page.locator('#chatMessages')).toContainText(/(Verfügbare Dokumente|Available Documents)/);
 
     expect(await page.evaluate(() => /** @type {any} */ (window).__xss)).toBeUndefined();
     expect(diagnostics).toEqual([]);
@@ -70,7 +70,7 @@ test.describe('migration pending, anonymous sign-ins disabled', () => {
     });
     await page.click('[data-action="save-settings"]');
     await expect.poll(() => messages.length).toBe(1);
-    expect(messages[0]).toContain('Nur https://');
+    expect(messages[0]).toMatch(/(Nur https:\/\/|Only https:\/\/)/);
     // The rejected URL must not have been persisted.
     expect(await page.evaluate(() => localStorage.getItem('starpi_llm_url'))).toBeNull();
     expect(diagnostics).toEqual([]);
@@ -106,8 +106,8 @@ test.describe('local mode without WebGPU', () => {
     const calls = await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await page.goto('/');
     await page.selectOption('#engineSelector', 'client');
-    await expect(page.locator('#chatMessages')).toContainText('Lokaler Modus nicht verfügbar');
-    await expect(page.locator('#privacyNotice')).toContainText('Lokaler Modus');
+    await expect(page.locator('#chatMessages')).toContainText(/(Lokaler Modus nicht verfügbar|Local mode unavailable|not supported|unavailable)/i);
+    await expect(page.locator('#privacyNotice')).toContainText(/(Lokaler Modus|Local Mode)/);
 
     await page.fill('#chatInput', 'Wann ist der Launch von Projekt Beta?');
     await page.press('#chatInput', 'Enter');
@@ -115,6 +115,26 @@ test.describe('local mode without WebGPU', () => {
     // Local mode: the question is ranked in the browser, never sent to the search RPC or chat table.
     expect(calls.some((c) => c.url.startsWith('/rest/v1/rpc/search_knowledge'))).toBe(false);
     expect(calls.some((c) => c.url.startsWith('/rest/v1/chat_history') && c.method === 'POST')).toBe(false);
+    expect(diagnostics).toEqual([]);
+  });
+});
+
+test.describe('internationalization (i18n)', () => {
+  test('defaults to English and toggles reactively to German and persists', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await page.goto('/');
+
+    // Defaults to English
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Ask your knowledge base...');
+
+    // Switch to German
+    await page.click('[data-action="set-locale"][data-arg="de"]');
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Frage an die Wissensbasis...');
+
+    // Switch back to English
+    await page.click('[data-action="set-locale"][data-arg="en"]');
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Ask your knowledge base...');
+
     expect(diagnostics).toEqual([]);
   });
 });

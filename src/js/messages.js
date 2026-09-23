@@ -1,8 +1,8 @@
 // @ts-check
-// Chat message rendering. User text is escaped; assistant/model/database text is rendered through
-// renderMarkdown() (marked + DOMPurify). No inline handlers: toggles use data-action delegation.
+// Chat message rendering with sanitized Markdown, verifiable citations, and Lucide icons.
 import { byId, onAction } from './dom.js';
 import { refreshIcons } from './icons.js';
+import { t } from './i18n/index.js';
 import { escapeHtml, renderMarkdown, sanitizeModelNames } from './render.js';
 
 /** @typedef {{ title: string, rank?: number | null }} Source */
@@ -51,11 +51,11 @@ export function splitReasoning(rawText) {
   return { thoughts: '', answer: text.replace(/<\/?antwort>/gi, '').trim() };
 }
 
-const PHASE_ICONS = ['🔍', '✦', '📋', '⚡'];
-const PHASE_ROLES = ['Suche', 'Antwort', 'Details', 'Details'];
+const PHASE_ICONS = ['search', 'message-square', 'file-text', 'zap'];
+const PHASE_ROLES = ['Search', 'Response', 'Details', 'Details'];
 
 /**
- * Renders a details/trace text (Markdown with ### headings) as a list of step cards.
+ * Renders a details/trace text as a list of step cards.
  * @param {string} text
  */
 export function formatThoughtSteps(text) {
@@ -80,11 +80,12 @@ export function formatThoughtSteps(text) {
   return phases
     .map((p, idx) => {
       const body = p.content.join('\n');
+      const iconName = PHASE_ICONS[idx % PHASE_ICONS.length];
       return `
         <div class="rounded-lg bg-slate-50 border border-slate-200/80 p-3 space-y-1.5 shadow-xs">
           <div class="flex items-center justify-between gap-2">
             <span class="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
-              <span>${PHASE_ICONS[idx] ?? '✦'}</span>
+              <i data-lucide="${iconName}" class="w-3.5 h-3.5 text-amber-600"></i>
               <span>${escapeHtml(p.title.replace(/^#+\s*/, ''))}</span>
             </span>
             <span class="text-[10px] text-slate-700 font-semibold bg-slate-200/80 px-2 py-0.5 rounded border border-slate-300/70">${PHASE_ROLES[idx] ?? 'Details'}</span>
@@ -108,7 +109,7 @@ function toggleThought(btn) {
   const open = body.classList.contains('hidden');
   body.classList.toggle('hidden', !open);
   chevron?.classList.toggle('rotate-180', open);
-  if (statusText) statusText.textContent = open ? 'Einklappen' : 'Anzeigen';
+  if (statusText) statusText.textContent = open ? 'Hide' : 'Details';
   btn.setAttribute('aria-expanded', String(open));
 }
 
@@ -122,12 +123,13 @@ function thoughtBlock(trace, durationMs) {
     <div class="thought-container mb-3 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden shadow-xs">
       <button type="button" data-action="toggle-thought" aria-expanded="false" class="w-full px-3.5 py-2 flex items-center justify-between text-left text-slate-600 hover:text-slate-900 bg-slate-100/60 hover:bg-slate-100 transition select-none">
         <div class="flex items-center gap-2">
-          <span class="text-xs font-semibold text-slate-800 flex items-center gap-1.5">💡 Quellen & Verarbeitung einsehen</span>
+          <i data-lucide="info" class="w-3.5 h-3.5 text-amber-600"></i>
+          <span class="text-xs font-semibold text-slate-800">Processing & Retrieval Trace</span>
         </div>
         <div class="flex items-center gap-2 text-[11px] text-slate-500 font-mono">
-          <span class="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-[10px] font-sans font-medium">Details</span>
+          <span class="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-[10px] font-sans font-medium">Trace</span>
           ${dur ? `<span class="text-slate-500">${dur}</span>` : ''}
-          <span class="thought-status-text text-[10px] text-amber-800 font-sans font-semibold hover:underline">Anzeigen</span>
+          <span class="thought-status-text text-[10px] text-amber-800 font-sans font-semibold hover:underline">Details</span>
           <i data-lucide="chevron-down" class="thought-chevron w-3.5 h-3.5 transition-transform duration-200 text-slate-600"></i>
         </div>
       </button>
@@ -135,6 +137,53 @@ function thoughtBlock(trace, durationMs) {
         ${formatThoughtSteps(trace)}
       </div>
     </div>`;
+}
+
+/**
+ * Transforms [Doc: filename.ext, Chunk: X] strings in an element into interactive citation badges.
+ * @param {HTMLElement} root
+ */
+function injectCitationBadges(root) {
+  const citationRegex = /\[Doc:\s*([^,\]]+),\s*Chunk:\s*(\d+)\]/g;
+  const walkers = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  /** @type {Text[]} */
+  const textNodes = [];
+  let n;
+  while ((n = walkers.nextNode())) {
+    if (citationRegex.test(n.nodeValue || '')) {
+      textNodes.push(/** @type {Text} */ (n));
+    }
+  }
+
+  for (const node of textNodes) {
+    const val = node.nodeValue || '';
+    const parent = node.parentNode;
+    if (!parent) continue;
+
+    const frag = document.createDocumentFragment();
+    let lastIdx = 0;
+    citationRegex.lastIndex = 0;
+    let match;
+
+    while ((match = citationRegex.exec(val)) !== null) {
+      if (match.index > lastIdx) {
+        frag.appendChild(document.createTextNode(val.slice(lastIdx, match.index)));
+      }
+      const docName = match[1].trim();
+      const chunkIdx = match[2].trim();
+
+      const wrapper = document.createElement('span');
+      wrapper.innerHTML = `<button type="button" data-action="open-citation" data-arg="${escapeHtml(`${docName}:${chunkIdx}`)}" class="inline-flex items-center gap-1 px-1.5 py-0.5 mx-1 rounded text-[10px] font-mono font-bold bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 transition shadow-xs align-middle"><i data-lucide="bookmark" class="w-3 h-3 text-amber-600"></i><span>${escapeHtml(docName)} #${chunkIdx}</span></button>`;
+      const btn = wrapper.firstElementChild;
+      if (btn) frag.appendChild(btn);
+      lastIdx = match.index + match[0].length;
+    }
+
+    if (lastIdx < val.length) {
+      frag.appendChild(document.createTextNode(val.slice(lastIdx)));
+    }
+    parent.replaceChild(frag, node);
+  }
 }
 
 /**
@@ -153,7 +202,7 @@ function badgeBlock(badge, pulse) {
 function sourcesBlock(sources) {
   if (!sources.length) return '';
   return `<div class="mt-2.5 pt-2 border-t border-slate-200 flex flex-wrap gap-1.5">
-      <span class="text-[10px] text-slate-500 mr-1 flex items-center gap-1"><i data-lucide="book-open" class="w-3 h-3"></i> Quellen:</span>
+      <span class="text-[10px] text-slate-500 mr-1 flex items-center gap-1"><i data-lucide="book-open" class="w-3 h-3"></i> Sources:</span>
       ${sources
         .map((s) => `<span class="bg-amber-50 text-amber-950 border border-amber-200 text-[10px] px-2 py-0.5 rounded-full font-bold">${escapeHtml(s.title)}</span>`)
         .join('')}
@@ -161,9 +210,9 @@ function sourcesBlock(sources) {
 }
 
 const ASSISTANT_AVATAR =
-  '<div class="w-8 h-8 rounded-lg bg-[#FFCA00] border border-amber-400/40 flex items-center justify-center text-slate-950 text-sm font-black flex-shrink-0 shadow-xs">✦</div>';
+  '<div class="w-8 h-8 rounded-xl bg-[#FFCA00] border border-amber-400/40 flex items-center justify-center text-slate-950 text-sm font-black flex-shrink-0 shadow-xs">S</div>';
 const USER_AVATAR =
-  '<div class="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-xs">U</div>';
+  '<div class="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-xs">U</div>';
 
 /**
  * @typedef {object} MessageOptions
@@ -204,6 +253,10 @@ export function appendMessage(role, text, opts = {}) {
       ${isUser ? '' : badgeBlock(opts.badge ?? '', false)}
     </div>`;
 
+  if (!isUser) {
+    injectCitationBadges(msgDiv);
+  }
+
   container().appendChild(msgDiv);
   refreshIcons(msgDiv);
   scrollToBottom();
@@ -237,6 +290,8 @@ export function createStreamingMessage(badge) {
   const flush = () => {
     frame = 0;
     proseEl.innerHTML = renderMarkdown(sanitizeModelNames(splitReasoning(pending).answer || pending));
+    injectCitationBadges(proseEl);
+    refreshIcons(proseEl);
     scrollToBottom();
   };
 
@@ -277,18 +332,21 @@ export function appendLoading() {
   div.className = 'flex items-start gap-2.5 sm:gap-3 max-w-3xl';
   div.setAttribute('role', 'status');
   div.innerHTML = `
-    <div class="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-300 flex items-center justify-center text-amber-900 text-sm font-bold flex-shrink-0 shadow-xs">✦</div>
+    <div class="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-300 flex items-center justify-center text-amber-900 text-sm font-bold flex-shrink-0 shadow-xs">
+      <i data-lucide="sparkles" class="w-4 h-4 text-amber-600"></i>
+    </div>
     <div class="bg-white border border-slate-200 rounded-2xl p-3 text-slate-800 text-xs flex items-center gap-2.5 shadow-card">
       <span class="relative flex h-2.5 w-2.5">
         <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
         <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
       </span>
       <div class="flex flex-col sm:flex-row sm:items-center gap-1">
-        <span class="font-semibold text-slate-900">Starpi bereitet die Antwort vor...</span>
-        <span class="text-slate-500 text-[11px]">(Wissensdatenbank wird abgeglichen)</span>
+        <span class="font-semibold text-slate-900">${escapeHtml(t('status.ready'))}</span>
+        <span class="text-slate-500 text-[11px]">(${escapeHtml(t('status.privacy_cloud'))})</span>
       </div>
     </div>`;
   container().appendChild(div);
+  refreshIcons(div);
   scrollToBottom();
   return () => div.remove();
 }

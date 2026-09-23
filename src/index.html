@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="de" class="light">
+<html lang="en" class="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
   <title>Starpi Enterprise Brain & Knowledge Assistant</title>
-  <meta name="description" content="Starpi: Wissensassistent mit lokaler WebGPU Inferenz im Browser und einer Supabase Wissensdatenbank.">
+  <meta name="description" content="Starpi: Browser-native knowledge assistant with WebGPU client-side inference, BM25 retrieval, and private workspace sync.">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="canonical" href="https://www.starpi.app/">
   <meta name="theme-color" content="#FFCA00">
@@ -27,43 +27,47 @@
     <!-- Brand Header -->
     <div class="h-16 px-5 flex items-center justify-between border-b border-slate-200 bg-white">
       <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-xl bg-[#FFCA00] flex items-center justify-center shadow-sm shadow-amber-500/30 text-slate-950 font-extrabold text-lg tracking-wider">
-          ✦
+        <div class="w-9 h-9 rounded-xl bg-[#FFCA00] flex items-center justify-center shadow-sm text-slate-950 font-black text-lg tracking-wider">
+          S
         </div>
         <div>
           <div class="font-extrabold text-base tracking-tight text-slate-900 flex items-center gap-1.5">
-            Starpi
-            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">Brain</span>
+            <span data-i18n="brand.title">Starpi</span>
+            <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300" data-i18n="brand.badge">Brain</span>
           </div>
-          <p class="text-[11px] font-medium text-slate-500">Enterprise Knowledge</p>
+          <p class="text-[11px] font-medium text-slate-500" data-i18n="brand.subtitle">Enterprise Knowledge</p>
         </div>
       </div>
-      <button data-action="toggle-sidebar" class="md:hidden text-slate-400 hover:text-slate-800 p-1">
+      <button data-action="toggle-sidebar" class="md:hidden text-slate-400 hover:text-slate-800 p-1" aria-label="Close sidebar">
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
     </div>
 
     <!-- Navigation Tabs -->
-    <nav class="p-3 space-y-1 bg-white">
+    <nav class="p-3 space-y-1 bg-white overflow-y-auto custom-scrollbar">
       <button data-action="switch-tab" data-arg="chat" id="nav-chat" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all bg-amber-50 text-amber-950 border border-amber-300/80 shadow-xs">
         <i data-lucide="message-square" class="w-4 h-4 text-amber-600"></i>
-        <span>Brain Chat</span>
+        <span data-i18n="nav.chat">Brain Chat</span>
       </button>
       <button data-action="switch-tab" data-arg="library" id="nav-library" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-600 hover:text-slate-950 hover:bg-slate-100/70">
         <i data-lucide="library" class="w-4 h-4"></i>
-        <span>Wissensarchiv</span>
+        <span data-i18n="nav.library">Knowledge Archive</span>
       </button>
       <button data-action="switch-tab" data-arg="graph" id="nav-graph" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-600 hover:text-slate-950 hover:bg-slate-100/70">
         <i data-lucide="network" class="w-4 h-4"></i>
-        <span>Wissensgraph</span>
+        <span data-i18n="nav.graph">Knowledge Graph</span>
       </button>
       <button data-action="switch-tab" data-arg="ingest" id="nav-ingest" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-600 hover:text-slate-950 hover:bg-slate-100/70">
         <i data-lucide="sparkles" class="w-4 h-4"></i>
-        <span>Wissen einspeisen</span>
+        <span data-i18n="nav.ingest">Add Knowledge</span>
+      </button>
+      <button data-action="switch-tab" data-arg="bench" id="nav-bench" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-600 hover:text-slate-950 hover:bg-slate-100/70">
+        <i data-lucide="gauge" class="w-4 h-4"></i>
+        <span data-i18n="nav.bench">Diagnostics & Benchmark</span>
       </button>
       <button data-action="switch-tab" data-arg="settings" id="nav-settings" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-600 hover:text-slate-950 hover:bg-slate-100/70">
         <i data-lucide="settings-2" class="w-4 h-4"></i>
-        <span>Cloud & Server</span>
+        <span data-i18n="nav.settings">Cloud & Server</span>
       </button>
     </nav>
 
@@ -72,14 +76,14 @@
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center gap-2">
           <span id="dbStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
-          <span class="text-xs font-bold text-slate-800">Supabase Cloud</span>
+          <span class="text-xs font-bold text-slate-800" data-i18n="status.supabase_cloud">Supabase Cloud</span>
         </div>
-        <span id="dbStatusBadge" class="text-[10px] uppercase font-bold font-mono px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200">Verbinde</span>
+        <span id="dbStatusBadge" class="text-[10px] uppercase font-bold font-mono px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200" data-i18n="status.connecting">Connecting</span>
       </div>
       <p class="text-[11px] text-slate-500 font-mono truncate" id="dbProjectLabel">Supabase</p>
       <div class="mt-2 text-[11px] text-slate-500 flex justify-between">
-        <span>Suche:</span>
-        <span class="text-slate-800 font-semibold">Postgres Volltext</span>
+        <span data-i18n="status.search_label">Search:</span>
+        <span class="text-slate-800 font-semibold" data-i18n="status.search_value">Postgres Full-Text</span>
       </div>
     </div>
   </aside>
@@ -89,28 +93,36 @@
     <!-- Top Header Bar -->
     <header class="h-16 px-3 sm:px-4 md:px-6 flex items-center justify-between border-b border-slate-200 bg-white/95 backdrop-blur-md shadow-xs z-20">
       <div class="flex items-center gap-2 sm:gap-3">
-        <button data-action="toggle-sidebar" class="md:hidden touch-target-min p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 flex items-center justify-center">
+        <button data-action="toggle-sidebar" class="md:hidden touch-target-min p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 flex items-center justify-center" aria-label="Toggle menu">
           <i data-lucide="menu" class="w-5 h-5"></i>
         </button>
         <div>
           <h1 id="pageTitle" class="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-1.5">
-            <span class="text-amber-500 font-black">✦</span> Starpi
+            <span id="pageTitleText" data-i18n="nav.chat">Starpi Chat</span>
           </h1>
-          <p class="text-[10px] sm:text-[11px] text-slate-500 font-medium hidden xs:block">Ihr persönlicher KI Assistent</p>
+          <p class="text-[10px] sm:text-[11px] text-slate-500 font-medium hidden xs:block" data-i18n="brand.assistant_subtitle">Your AI Knowledge Assistant</p>
         </div>
       </div>
       <div class="flex items-center gap-2">
+        <!-- Language Switcher (EN | DE) -->
+        <div class="flex items-center rounded-xl bg-slate-100 p-0.5 border border-slate-200 text-xs font-semibold">
+          <button type="button" data-action="set-locale" data-arg="en" class="px-2.5 py-1 rounded-lg transition font-bold bg-white text-slate-950 shadow-xs">EN</button>
+          <button type="button" data-action="set-locale" data-arg="de" class="px-2.5 py-1 rounded-lg transition font-medium text-slate-500 hover:text-slate-900">DE</button>
+        </div>
+
+        <!-- Engine Selector -->
         <div class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 shadow-xs rounded-xl px-2.5 py-1.5 text-xs">
           <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" id="engineStatusDot"></span>
           <select id="engineSelector" data-change="change-engine" class="bg-transparent text-slate-800 font-bold text-xs focus:outline-none cursor-pointer max-w-[140px] sm:max-w-none truncate">
-            <option value="council" selected>⚡ Schneller Assistent (Standard)</option>
-            <option value="client">🔒 Lokaler Modus (Inferenz im Browser)</option>
-            <option value="local">🖥️ Eigener Server (MLX/Ollama)</option>
+            <option value="council" selected data-i18n="engine.council">Fast Assistant (Default)</option>
+            <option value="client" data-i18n="engine.client">Local Mode (In-Browser GPU)</option>
+            <option value="local" data-i18n="engine.local">Own Server (MLX/Ollama)</option>
           </select>
         </div>
+
         <button data-action="switch-tab" data-arg="ingest" class="touch-target-min flex items-center gap-1.5 text-xs font-bold bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 px-3.5 py-2 rounded-xl shadow-sm hover:shadow-yellow transition">
           <i data-lucide="plus" class="w-4 h-4"></i>
-          <span class="hidden sm:inline">Neues Wissen</span>
+          <span class="hidden sm:inline" data-i18n="nav.new_knowledge">New Knowledge</span>
         </button>
       </div>
     </header>
@@ -119,12 +131,12 @@
     <div id="webgpuProgressContainer" class="hidden px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900">
       <div class="flex items-center gap-2">
         <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-amber-600"></i>
-        <span id="webgpuProgressText" class="font-medium">Initialisiere lokales Modell im Browser...</span>
+        <span id="webgpuProgressText" class="font-medium" data-i18n="webgpu.init_text">Initializing local model in browser...</span>
       </div>
       <div class="flex items-center gap-2.5 ml-auto">
         <span id="webgpuPercentText" class="font-mono font-bold text-amber-800">0%</span>
-        <button type="button" data-action="cancel-webgpu" class="text-[11px] font-bold text-rose-700 hover:text-rose-900 bg-rose-100/80 hover:bg-rose-200 border border-rose-300 px-2.5 py-1 rounded-lg transition">
-          Laden abbrechen
+        <button type="button" data-action="cancel-webgpu" class="text-[11px] font-bold text-rose-700 hover:text-rose-900 bg-rose-100/80 hover:bg-rose-200 border border-rose-300 px-2.5 py-1 rounded-lg transition" data-i18n="webgpu.cancel">
+          Cancel loading
         </button>
       </div>
     </div>
@@ -137,30 +149,30 @@
       <div class="px-3.5 py-2 bg-white/90 border-b border-slate-200 flex items-center justify-between gap-2 text-xs backdrop-blur-md">
         <div class="flex items-center gap-2">
           <!-- Device detection indicator -->
-          <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-medium" title="Erkanntes Endgerät">
+          <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-medium" data-i18n-title="device.title" title="Detected Device">
             <i data-lucide="smartphone" id="deviceTypeIcon" class="w-3.5 h-3.5 text-amber-600"></i>
-            <span id="detectedDeviceText">Smartphone</span>
+            <span id="detectedDeviceText" data-i18n="device.smartphone">Smartphone</span>
           </div>
           <span class="text-slate-300">·</span>
-          <span class="text-[11px] text-slate-600 font-medium" id="assistantStatusText">Bereit für Ihre Fragen</span>
+          <span class="text-[11px] text-slate-600 font-medium" id="assistantStatusText" data-i18n="status.ready">Ready for your questions</span>
         </div>
 
         <div class="flex items-center gap-2">
-          <!-- Neuer Chat Button -->
-          <button type="button" data-action="new-chat" class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 hover:text-slate-950 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 px-2.5 py-1 rounded-lg transition shadow-xs" title="Neuen Chat starten">
+          <!-- New Chat Button -->
+          <button type="button" data-action="new-chat" class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 hover:text-slate-950 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 px-2.5 py-1 rounded-lg transition shadow-xs" data-i18n-title="chat.new_chat" title="Start new chat">
             <i data-lucide="plus-circle" class="w-3.5 h-3.5 text-amber-600"></i>
-            <span>Neuer Chat</span>
+            <span data-i18n="chat.new_chat">New Chat</span>
           </button>
 
           <!-- Local VRAM Monitor & Unload Button (Only visible in Local Mode) -->
           <div id="localMemoryControls" class="hidden flex items-center gap-2">
             <div id="vramStatusBadge" class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-900 font-mono">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-500" id="vramStatusDot"></span>
-              <span id="vramStatusText">Lokales Modell</span>
+              <span id="vramStatusText" data-i18n="webgpu.local_model">Local Model</span>
             </div>
-            <button type="button" data-action="unload-webgpu" id="btnUnloadWebgpu" class="text-[11px] font-medium text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-lg transition flex items-center gap-1" title="Gibt den Arbeitsspeicher des Geräts frei">
+            <button type="button" data-action="unload-webgpu" id="btnUnloadWebgpu" class="text-[11px] font-medium text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-0.5 rounded-lg transition flex items-center gap-1" data-i18n-title="webgpu.free_memory_title" title="Releases device working memory">
               <i data-lucide="trash-2" class="w-3 h-3"></i>
-              <span class="hidden sm:inline">Speicher freigeben</span>
+              <span class="hidden sm:inline" data-i18n="webgpu.free_memory">Free memory</span>
             </button>
           </div>
         </div>
@@ -170,69 +182,72 @@
       <div id="chatMessages" class="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6 custom-scrollbar select-text bg-gradient-to-b from-white via-slate-50/40 to-amber-50/15">
         <!-- Assistant Welcome Message -->
         <div class="flex items-start gap-2.5 sm:gap-3 max-w-3xl">
-          <div class="w-8 h-8 rounded-xl bg-[#FFCA00] flex-shrink-0 flex items-center justify-center text-slate-950 text-sm font-extrabold shadow-sm shadow-amber-500/20">
-            ✦
+          <div class="w-8 h-8 rounded-xl bg-[#FFCA00] flex-shrink-0 flex items-center justify-center text-slate-950 text-sm font-black shadow-sm">
+            S
           </div>
           <div class="flex-1 bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 text-slate-700 text-sm leading-relaxed shadow-card">
-            <p class="font-extrabold text-slate-950 text-base mb-1">Willkommen bei Starpi, Ihrem Unternehmensassistenten!</p>
-            <p class="text-slate-600">Ich habe Zugriff auf Ihre in Supabase gespeicherten Unternehmensdokumente, Meetingnotizen und Richtlinien. Stellen Sie mir gerne Fragen oder diktieren Sie neue Informationen.</p>
+            <p class="font-extrabold text-slate-950 text-base mb-1" data-i18n="chat.welcome_title">Welcome to Starpi, your enterprise assistant!</p>
+            <p class="text-slate-600" data-i18n="chat.welcome_desc">I have access to your indexed enterprise documents, meeting notes, and policies stored in your private workspace. Ask questions or ingest new knowledge.</p>
             
             <div class="mt-4 flex flex-wrap gap-2">
-              <button data-action="quick-prompt" data-arg="Wann ist der Launch von Projekt Alpha und wer leitet die Frontend Entwicklung?" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
-                🔍 „Projekt Alpha: Launch & Zuständigkeiten?“
+              <button data-action="quick-prompt" data-arg="When is the launch of Project Alpha and who leads development?" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs flex items-center gap-1.5">
+                <i data-lucide="search" class="w-3.5 h-3.5 text-amber-600"></i>
+                <span data-i18n="chat.prompt_alpha">Project Alpha: Launch & Responsibilities?</span>
               </button>
-              <button data-action="quick-prompt" data-arg="Welche Dokumente und Richtlinien sind aktuell im Brain hinterlegt?" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
-                📚 „Welche Dokumente sind hinterlegt?“
+              <button data-action="quick-prompt" data-arg="What documents are currently indexed in the knowledge base?" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs flex items-center gap-1.5">
+                <i data-lucide="book-open" class="w-3.5 h-3.5 text-amber-600"></i>
+                <span data-i18n="chat.prompt_docs">What documents are currently indexed?</span>
               </button>
-              <button data-action="quick-prompt" data-arg="Wie hoch ist das geplante Budget für Projekt Alpha und Marketing?" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs">
-                💰 „Budget für Marketing & Projekt Alpha?“
+              <button data-action="quick-prompt" data-arg="What is the planned budget for Project Alpha and Marketing?" class="text-xs bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-amber-950 font-semibold px-3 py-2 rounded-xl transition text-left shadow-xs flex items-center gap-1.5">
+                <i data-lucide="activity" class="w-3.5 h-3.5 text-amber-600"></i>
+                <span data-i18n="chat.prompt_budget">Budget for Marketing & Project Alpha?</span>
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Input Bar (Tastenleiste) - Always accessible, safe-area padded, elevated for thumb access -->
+      <!-- Input Bar (Tastenleiste) -->
       <div class="p-2.5 sm:p-3 md:p-4 border-t border-slate-200 bg-white/95 backdrop-blur-md sticky bottom-0 z-20 pb-[max(0.65rem,env(safe-area-inset-bottom,12px))] mb-14 md:mb-0">
         <form id="chatForm" class="max-w-4xl mx-auto flex flex-col bg-white border-2 border-slate-200 focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-200/40 rounded-2xl p-1.5 sm:p-2 transition shadow-card">
           <div id="attachedInfo" class="hidden px-2 py-1 text-xs text-amber-800 bg-amber-50 rounded-lg flex items-center justify-between border border-amber-200 mb-1">
-            <span id="attachedFileName" class="font-medium">Datei angehängt</span>
-            <button type="button" data-action="remove-attachment" class="hover:text-red-600 p-1"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+            <span id="attachedFileName" class="font-medium" data-i18n="chat.attached">File attached</span>
+            <button type="button" data-action="remove-attachment" class="hover:text-red-600 p-1" aria-label="Remove attached file"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
           </div>
           <div class="flex items-center gap-1.5 sm:gap-2">
-            <label class="cursor-pointer text-slate-500 hover:text-slate-800 touch-target-min p-2 rounded-xl hover:bg-slate-100 transition flex items-center justify-center" title="Datei anhängen">
+            <label class="cursor-pointer text-slate-500 hover:text-slate-800 touch-target-min p-2 rounded-xl hover:bg-slate-100 transition flex items-center justify-center" data-i18n-title="chat.attach_file" title="Attach file">
               <i data-lucide="paperclip" class="w-5 h-5"></i>
-              <input type="file" id="chatFileInput" class="hidden" data-change="attach-file">
+              <input type="file" id="chatFileInput" class="hidden" data-change="attach-file" accept=".txt,.md,.pdf,.json,.csv">
             </label>
-            <button type="button" id="voiceBtn" data-action="toggle-voice" class="relative text-slate-500 hover:text-amber-600 touch-target-min p-2 rounded-xl hover:bg-slate-100 transition flex items-center justify-center" title="Spracheingabe aktivieren">
+            <button type="button" id="voiceBtn" data-action="toggle-voice" class="relative text-slate-500 hover:text-amber-600 touch-target-min p-2 rounded-xl hover:bg-slate-100 transition flex items-center justify-center" data-i18n-title="chat.voice_input" title="Toggle voice input">
               <i data-lucide="mic" class="w-5 h-5"></i>
               <span id="voicePulse" class="hidden absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
             </button>
-            <textarea id="chatInput" rows="1" placeholder="Frage stellen oder Notiz eingeben..." class="flex-1 bg-transparent border-0 focus:ring-0 text-slate-900 text-sm placeholder-slate-400 resize-none py-2 px-1.5 focus:outline-none max-h-32 custom-scrollbar"></textarea>
-            <button type="button" id="stopBtn" data-action="stop-generation" class="hidden touch-target-min bg-slate-900 hover:bg-slate-700 text-white font-bold p-2.5 rounded-xl transition flex items-center justify-center" title="Antwort stoppen">
+            <textarea id="chatInput" rows="1" data-i18n-placeholder="chat.placeholder" placeholder="Ask a question or enter notes..." class="flex-1 bg-transparent border-0 focus:ring-0 text-slate-900 text-sm placeholder-slate-400 resize-none py-2 px-1.5 focus:outline-none max-h-32 custom-scrollbar"></textarea>
+            <button type="button" id="stopBtn" data-action="stop-generation" class="hidden touch-target-min bg-slate-900 hover:bg-slate-700 text-white font-bold p-2.5 rounded-xl transition flex items-center justify-center" data-i18n-title="chat.stop" title="Stop answer">
               <i data-lucide="square" class="w-4 h-4"></i>
             </button>
-            <button type="submit" id="sendBtn" class="touch-target-min bg-[#FFCA00] hover:bg-[#E5B500] disabled:opacity-40 text-slate-950 font-bold p-2.5 rounded-xl transition shadow-yellow hover:shadow-yellow-lg flex items-center justify-center" title="Nachricht senden">
+            <button type="submit" id="sendBtn" class="touch-target-min bg-[#FFCA00] hover:bg-[#E5B500] disabled:opacity-40 text-slate-950 font-bold p-2.5 rounded-xl transition shadow-yellow hover:shadow-yellow-lg flex items-center justify-center" data-i18n-title="chat.send" title="Send message">
               <i data-lucide="arrow-up" class="w-5 h-5"></i>
             </button>
           </div>
         </form>
-        <p id="privacyNotice" class="text-[10px] sm:text-[11px] text-center text-slate-500 mt-1.5 font-medium">🔒 Verbindung wird vorbereitet</p>
+        <p id="privacyNotice" class="text-[10px] sm:text-[11px] text-center text-slate-500 mt-1.5 font-medium" data-i18n="status.privacy_preparing">Preparing secure connection</p>
       </div>
     </section>
 
     <!-- ========================================== -->
-    <!-- TAB 2: LIBRARY / WISSENSARCHIV -->
+    <!-- TAB 2: LIBRARY / KNOWLEDGE ARCHIVE -->
     <!-- ========================================== -->
     <section id="tab-library" class="flex-1 flex flex-col overflow-hidden hidden p-3 sm:p-4 md:p-6 pb-20 md:pb-6 select-text">
       <div class="max-w-5xl mx-auto w-full flex-1 flex flex-col overflow-hidden">
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
           <div>
-            <h2 class="text-xl font-extrabold text-slate-950 tracking-tight">Gespeicherte Dokumente</h2>
-            <p class="text-xs text-slate-500">Automatisch formatierte Markdown Wissensbestände in Supabase</p>
+            <h2 class="text-xl font-extrabold text-slate-950 tracking-tight" data-i18n="library.title">Indexed Documents</h2>
+            <p class="text-xs text-slate-500" data-i18n="library.subtitle">Structured Markdown knowledge records in Supabase</p>
           </div>
           <div class="flex items-center gap-2 w-full sm:w-auto">
-            <button data-action="reload-documents" class="p-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 shadow-xs transition" title="Aktualisieren">
+            <button data-action="reload-documents" class="p-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 shadow-xs transition" data-i18n-title="library.refresh" title="Refresh">
               <i data-lucide="refresh-cw" class="w-4 h-4"></i>
             </button>
           </div>
@@ -240,70 +255,67 @@
 
         <!-- Document Grid -->
         <div id="docsList" class="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4 custom-scrollbar pb-6">
-          <div class="p-8 text-center text-slate-500 col-span-2 font-medium">Lade Dokumente aus Supabase...</div>
+          <div class="p-8 text-center text-slate-500 col-span-2 font-medium" data-i18n="library.loading">Loading documents from Supabase...</div>
         </div>
       </div>
     </section>
 
     <!-- ========================================== -->
-    <!-- TAB: KNOWLEDGE GRAPH / WISSENSGRAPH -->
+    <!-- TAB 3: KNOWLEDGE GRAPH -->
     <!-- ========================================== -->
     <section id="tab-graph" class="flex-1 flex flex-col overflow-hidden hidden p-3 sm:p-4 md:p-6 pb-20 md:pb-6 select-text">
       <div class="max-w-6xl mx-auto w-full flex-1 flex flex-col overflow-hidden">
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
           <div>
             <div class="flex items-center gap-2">
-              <h2 class="text-xl font-extrabold text-slate-950 tracking-tight">Interaktiver Wissensgraph</h2>
-              <span class="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-300">Graph RAG</span>
+              <h2 class="text-xl font-extrabold text-slate-950 tracking-tight" data-i18n="graph.title">Interactive Knowledge Graph</h2>
+              <span class="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-300" data-i18n="graph.badge">Graph RAG</span>
             </div>
-            <p class="text-xs text-slate-500">Verknüpfte Entitäten (Personen, Projekte, Budgets, Technologien & Richtlinien) aus Supabase</p>
+            <p class="text-xs text-slate-500" data-i18n="graph.subtitle">Linked entities (people, projects, budgets, technologies, regulations)</p>
           </div>
           <div class="flex items-center gap-2">
-            <button data-action="reload-graph" class="p-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 shadow-xs transition" title="Graph neu laden">
+            <button data-action="reload-graph" class="p-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 shadow-xs transition" data-i18n-title="graph.refresh" title="Reload graph">
               <i data-lucide="refresh-cw" class="w-4 h-4"></i>
             </button>
             <button data-action="open-entity-modal" class="flex items-center gap-1.5 text-xs font-bold bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 px-3.5 py-2 rounded-xl shadow-xs hover:shadow-yellow transition">
               <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-              <span>Neue Entität</span>
+              <span data-i18n="graph.new_entity">New Entity</span>
             </button>
           </div>
         </div>
 
-        <!-- Graph Visualization & Entity Details Grid -->
         <div class="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0 overflow-hidden">
-          <!-- Graph Canvas Container -->
           <div class="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 flex flex-col relative overflow-hidden shadow-card">
             <div class="flex flex-wrap items-center justify-between gap-2 mb-3 z-10">
               <div class="flex flex-wrap items-center gap-2.5 text-[11px] text-slate-700 font-medium">
-                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-[#FFCA00] inline-block shadow-xs"></span> Projekt</span>
-                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block shadow-xs"></span> Person</span>
-                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block shadow-xs"></span> Metrik</span>
-                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block shadow-xs"></span> Tech</span>
-                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block shadow-xs"></span> Richtlinie</span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-[#FFCA00] inline-block shadow-xs"></span> <span data-i18n="graph.project">Project</span></span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block shadow-xs"></span> <span data-i18n="graph.person">Person</span></span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block shadow-xs"></span> <span data-i18n="graph.metric">Metric</span></span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block shadow-xs"></span> <span data-i18n="graph.tech">Tech</span></span>
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block shadow-xs"></span> <span data-i18n="graph.regulation">Regulation</span></span>
               </div>
-              <span class="text-[10px] text-slate-500 font-mono">Interaktive Knoten</span>
+              <span class="text-[10px] text-slate-500 font-mono" data-i18n="graph.interactive_nodes">Interactive Nodes</span>
             </div>
             <div class="flex-1 relative w-full h-full min-h-[350px]">
               <canvas id="graphCanvas" class="w-full h-full rounded-xl bg-slate-50/70 border border-slate-200 cursor-pointer"></canvas>
               <div id="graphLoading" class="absolute inset-0 bg-white/80 backdrop-blur-xs flex items-center justify-center text-xs text-slate-600 font-medium">
-                <i data-lucide="loader-2" class="w-5 h-5 animate-spin mr-2 text-amber-600"></i> Lade Graph aus Supabase...
+                <i data-lucide="loader-2" class="w-5 h-5 animate-spin mr-2 text-amber-600"></i> <span data-i18n="graph.loading">Loading graph from Supabase...</span>
               </div>
             </div>
           </div>
 
-          <!-- Entity & Relation Details Panel -->
           <div class="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col overflow-hidden shadow-card">
             <div class="flex items-center justify-between pb-3.5 border-b border-slate-200">
               <h3 class="text-sm font-extrabold text-slate-900 flex items-center gap-2">
                 <i data-lucide="info" class="w-4 h-4 text-amber-600"></i>
-                <span>Entitätsdetails</span>
+                <span data-i18n="graph.details_title">Entity Details</span>
               </h3>
-              <span id="selectedEntityBadge" class="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 font-bold">Info</span>
+              <span id="selectedEntityBadge" class="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 font-bold" data-i18n="graph.details_badge">Info</span>
             </div>
             <div id="entityDetailContent" class="flex-1 overflow-y-auto custom-scrollbar pt-3.5 text-xs space-y-4">
               <div class="text-center py-12 text-slate-400">
                 <i data-lucide="mouse-pointer-click" class="w-8 h-8 mx-auto mb-2 text-slate-300"></i>
-                <p class="font-medium text-slate-500">Klicken Sie auf einen Knoten im Wissensgraphen, um Verknüpfungen und Fakten anzuzeigen.</p>
+                <p class="font-medium text-slate-500" data-i18n="graph.details_empty">Click on any node in the knowledge graph to view linked facts and relations.</p>
               </div>
             </div>
           </div>
@@ -312,13 +324,13 @@
     </section>
 
     <!-- ========================================== -->
-    <!-- TAB 3: INGEST / WISSEN EINSPEISEN -->
+    <!-- TAB 4: INGEST / ADD KNOWLEDGE -->
     <!-- ========================================== -->
     <section id="tab-ingest" class="flex-1 flex flex-col overflow-y-auto hidden p-3 sm:p-4 md:p-6 pb-24 md:pb-6 custom-scrollbar select-text">
       <div class="max-w-3xl mx-auto w-full space-y-6">
         <div>
-          <h2 class="text-xl font-extrabold text-slate-950 tracking-tight">Informationen ins Brain einspeisen</h2>
-          <p class="text-xs text-slate-500">Unformatierte Texte, Meetingtranskripte oder Notizen werden in sauberes Markdown gegliedert und in Ihrer Supabase Wissensdatenbank gespeichert. Neue Einträge sind nur für Ihre Sitzung sichtbar.</p>
+          <h2 class="text-xl font-extrabold text-slate-950 tracking-tight" data-i18n="ingest.title">Add Knowledge to Brain</h2>
+          <p class="text-xs text-slate-500" data-i18n="ingest.subtitle">Unstructured text, meeting transcripts, or documents are structured into clean Markdown and stored in your private workspace.</p>
         </div>
 
         <!-- Drag & Drop Zone -->
@@ -326,40 +338,40 @@
           <div class="w-14 h-14 rounded-2xl bg-amber-100 text-amber-900 flex items-center justify-center mx-auto mb-3 group-hover:scale-105 transition-transform shadow-xs">
             <i data-lucide="upload-cloud" class="w-7 h-7"></i>
           </div>
-          <p class="text-sm font-bold text-slate-900">Dateien per Drag & Drop hier ablegen</p>
-          <p class="text-xs text-slate-500 mt-1">Unterstützt .txt, .md, .json, .csv (Automatisches Auslesen & Vorbefüllen)</p>
-          <input type="file" id="ingestFileInput" class="hidden" accept=".txt,.md,.json,.csv,.log" data-change="ingest-file">
-          <button type="button" data-action="pick-ingest-file" class="mt-3.5 text-xs bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 px-4 py-2 rounded-xl transition font-semibold shadow-xs">
-            Datei vom Gerät wählen
+          <p class="text-sm font-bold text-slate-900" data-i18n="ingest.drop_title">Drag & drop files here</p>
+          <p class="text-xs text-slate-500 mt-1" data-i18n="ingest.drop_subtitle">Supports .pdf, .txt, .md, .json, .csv (Zero-server client-side extraction & BM25 indexing)</p>
+          <input type="file" id="ingestFileInput" class="hidden" accept=".txt,.md,.json,.csv,.pdf,.log" data-change="ingest-file">
+          <button type="button" data-action="pick-ingest-file" class="mt-3.5 text-xs bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 px-4 py-2 rounded-xl transition font-semibold shadow-xs" data-i18n="ingest.pick_file">
+            Choose file from device
           </button>
         </div>
 
         <div class="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-card">
           <div>
-            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Titel / Quelldatei</label>
-            <input type="text" id="ingestTitle" placeholder="z. B. Q3 Marketing Strategie oder Meeting_28Aug.txt" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40 transition">
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" data-i18n="ingest.title_label">Title / Source File</label>
+            <input type="text" id="ingestTitle" data-i18n-placeholder="ingest.title_placeholder" placeholder="e.g. Q3 Marketing Strategy or Meeting_Notes.pdf" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40 transition">
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Kategorie / Quelle</label>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" data-i18n="ingest.category_label">Category / Source</label>
             <select id="ingestSourceType" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40 transition">
-              <option value="meeting_notes">Meeting Notizen / Protokoll</option>
-              <option value="file">Dokument / Bericht</option>
-              <option value="chat">Chat / Konversation</option>
-              <option value="text">Allgemeine Notiz</option>
+              <option value="meeting_notes" data-i18n="ingest.cat_meeting">Meeting Notes / Transcript</option>
+              <option value="file" data-i18n="ingest.cat_file">Document / Report</option>
+              <option value="chat" data-i18n="ingest.cat_chat">Chat / Conversation</option>
+              <option value="text" data-i18n="ingest.cat_text">General Note</option>
             </select>
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Unstrukturierter Text / Rohdaten</label>
-            <textarea id="ingestContent" rows="8" placeholder="Fügen Sie hier Ihren unformatierten Text, Besprechungsnotizen oder Absprachen ein..." class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl p-3.5 text-sm text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40 custom-scrollbar transition"></textarea>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" data-i18n="ingest.content_label">Unstructured Text / Raw Data</label>
+            <textarea id="ingestContent" rows="8" data-i18n-placeholder="ingest.content_placeholder" placeholder="Paste your unformatted text, notes, or agreements here..." class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl p-3.5 text-sm text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40 custom-scrollbar transition"></textarea>
           </div>
 
           <div class="flex items-center justify-end gap-3 pt-2">
-            <button data-action="clear-ingest" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 transition">Zurücksetzen</button>
+            <button data-action="clear-ingest" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 transition" data-i18n="ingest.reset">Reset</button>
             <button data-action="submit-ingest" id="ingestBtn" class="flex items-center gap-2 bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 text-xs font-bold px-6 py-2.5 rounded-xl shadow-yellow hover:shadow-yellow-lg transition">
               <i data-lucide="sparkles" class="w-4 h-4"></i>
-              <span>In Markdown strukturieren & speichern</span>
+              <span data-i18n="ingest.submit">Structure & Index into Knowledge Base</span>
             </button>
           </div>
         </div>
@@ -367,7 +379,7 @@
         <div id="ingestResultCard" class="hidden bg-emerald-50 border border-emerald-200 rounded-2xl p-5 space-y-3 shadow-xs">
           <div class="flex items-center gap-2 text-emerald-800 text-sm font-bold">
             <i data-lucide="check-circle" class="w-5 h-5 text-emerald-600"></i>
-            <span>Erfolgreich in Supabase gespeichert!</span>
+            <span data-i18n="ingest.success_title">Successfully saved and indexed!</span>
           </div>
           <div id="ingestResultPreview" class="prose-custom text-xs text-slate-800 bg-white p-4 rounded-xl border border-emerald-100 overflow-x-auto shadow-subtle"></div>
         </div>
@@ -375,78 +387,180 @@
     </section>
 
     <!-- ========================================== -->
-    <!-- TAB 4: SETTINGS / OPTIONEN & CLOUD -->
+    <!-- TAB 5: DIAGNOSTICS & BENCHMARK -->
+    <!-- ========================================== -->
+    <section id="tab-bench" class="flex-1 flex flex-col overflow-y-auto hidden p-3 sm:p-4 md:p-6 pb-24 md:pb-6 custom-scrollbar select-text">
+      <div class="max-w-4xl mx-auto w-full space-y-6">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 class="text-xl font-extrabold text-slate-950 tracking-tight" data-i18n="bench.title">Hardware Diagnostics & Benchmark</h2>
+            <span class="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-300">WebGPU</span>
+          </div>
+          <p class="text-xs text-slate-500" data-i18n="bench.subtitle">Examine client-side WebGPU compute limits, float16 support, and run standardized inference benchmarks.</p>
+        </div>
+
+        <!-- WebGPU Hardware Profile Card -->
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-4 shadow-card">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="cpu" class="w-4 h-4 text-amber-500"></i>
+              <span data-i18n="bench.adapter_card_title">WebGPU Hardware Profile</span>
+            </h3>
+            <span id="benchWebgpuBadge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-50 text-slate-700 border border-slate-200 flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-400" id="benchWebgpuDot"></span>
+              <span id="benchWebgpuStatusText" data-i18n="status.checking">Checking</span>
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+              <span class="text-slate-500 block text-[10px] font-bold uppercase mb-1" data-i18n="bench.vendor">Vendor</span>
+              <span id="benchVendor" class="font-semibold text-slate-900 text-sm">–</span>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+              <span class="text-slate-500 block text-[10px] font-bold uppercase mb-1" data-i18n="bench.architecture">Architecture</span>
+              <span id="benchArch" class="font-semibold text-slate-900 text-sm">–</span>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+              <span class="text-slate-500 block text-[10px] font-bold uppercase mb-1" data-i18n="bench.f16_support">shader-f16 (float16)</span>
+              <span id="benchF16" class="font-semibold text-slate-900 text-sm">–</span>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+              <span class="text-slate-500 block text-[10px] font-bold uppercase mb-1" data-i18n="bench.device_memory">Device Memory Estimate</span>
+              <span id="benchMemory" class="font-semibold text-slate-900 text-sm">–</span>
+            </div>
+          </div>
+
+          <!-- Limits Accordion -->
+          <details class="rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-xs">
+            <summary class="font-semibold text-slate-700 cursor-pointer select-none flex items-center justify-between">
+              <span class="flex items-center gap-1.5">
+                <i data-lucide="layers" class="w-3.5 h-3.5 text-amber-600"></i>
+                <span data-i18n="bench.limits_title">Hardware & Buffer Limits</span>
+              </span>
+              <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400"></i>
+            </summary>
+            <div id="benchLimitsContainer" class="mt-3 pt-3 border-t border-slate-200/60 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono text-slate-700">
+            </div>
+          </details>
+        </div>
+
+        <!-- Automated Benchmark Runner Card -->
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-4 shadow-card">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="gauge" class="w-4 h-4 text-emerald-600"></i>
+              <span data-i18n="bench.benchmark_card_title">Automated Inference & Compute Benchmark</span>
+            </h3>
+            <button type="button" data-action="run-benchmark" id="btnRunBenchmark" class="flex items-center gap-1.5 text-xs font-bold bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 px-4 py-2 rounded-xl shadow-xs transition">
+              <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+              <span data-i18n="bench.run_btn">Run Hardware Benchmark</span>
+            </button>
+          </div>
+
+          <p class="text-xs text-slate-500" data-i18n="bench.benchmark_desc">Runs standardized matrix compute and prompt execution passes to evaluate client-side throughput.</p>
+
+          <div id="benchProgressCard" class="hidden p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-2">
+            <div class="flex items-center justify-between font-semibold">
+              <span id="benchProgressText">Warming up compute pipelines...</span>
+              <span id="benchProgressPercent">0%</span>
+            </div>
+            <div class="w-full bg-amber-200/60 h-1.5 rounded-full overflow-hidden">
+              <div id="benchProgressBar" class="bg-amber-600 h-full w-0 transition-all duration-200"></div>
+            </div>
+          </div>
+
+          <div id="benchResultsGrid" class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-center">
+              <span class="text-slate-500 block text-[10px] font-bold uppercase mb-1" data-i18n="bench.ttft">Time-To-First-Token (TTFT)</span>
+              <span id="benchResultTTFT" class="text-xl font-extrabold font-mono text-slate-900">–</span>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-center">
+              <span class="text-slate-500 block text-[10px] font-bold uppercase mb-1" data-i18n="bench.tps">Generation Throughput</span>
+              <span id="benchResultTPS" class="text-xl font-extrabold font-mono text-emerald-600">–</span>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-center">
+              <span class="text-slate-500 block text-[10px] font-bold uppercase mb-1" data-i18n="bench.latency">Total Inference Latency</span>
+              <span id="benchResultLatency" class="text-xl font-extrabold font-mono text-slate-900">–</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 6: SETTINGS / OPTIONS & CLOUD -->
     <!-- ========================================== -->
     <section id="tab-settings" class="flex-1 flex flex-col overflow-y-auto hidden p-3 sm:p-4 md:p-6 pb-28 md:pb-6 custom-scrollbar select-text">
       <div class="max-w-2xl mx-auto w-full space-y-5">
         <div>
-          <h2 class="text-xl font-extrabold text-slate-950 tracking-tight">Einstellungen & Verbindungen</h2>
-          <p class="text-xs text-slate-500">Verwalten Sie den Assistenten Modus und die Verbindung zu Ihrer Wissensdatenbank.</p>
+          <h2 class="text-xl font-extrabold text-slate-950 tracking-tight" data-i18n="settings.title">Settings & Connections</h2>
+          <p class="text-xs text-slate-500" data-i18n="settings.subtitle">Manage assistant compute mode and knowledge base connectivity.</p>
         </div>
 
-        <!-- Assistenten-Modus Card -->
+        <!-- Assistant Mode Card -->
         <div class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-4 shadow-card">
           <div class="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
               <i data-lucide="sparkles" class="w-4 h-4 text-amber-500"></i>
-              Assistenten Modus
+              <span data-i18n="settings.mode_card_title">Assistant Mode</span>
             </h3>
             <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Aktiv
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> <span data-i18n="status.active">Active</span>
             </span>
           </div>
 
           <div>
-            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Wählen Sie, wie Starpi arbeiten soll:</label>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5" data-i18n="settings.mode_select_label">Choose how Starpi operates:</label>
             <select id="cfgComputeMode" data-change="change-engine" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 font-medium focus:border-amber-400 focus:outline-none transition">
-              <option value="council" selected>⚡ Schneller Assistent (Empfohlen · Cloud unterstützt, schont Smartphone & Akku)</option>
-              <option value="client">🔒 Lokaler Modus (Rechnet direkt im Browser auf Ihrer GPU · Fragen bleiben auf dem Gerät)</option>
-              <option value="local">🖥️ Eigener Server (Verbindung zu lokalem MLX / Ollama auf Ihrem Mac/PC)</option>
+              <option value="council" selected data-i18n="settings.mode_council_opt">Fast Assistant (Recommended · Cloud supported, saves battery)</option>
+              <option value="client" data-i18n="settings.mode_client_opt">Local Mode (Runs in-browser on your GPU · Zero data leaves device)</option>
+              <option value="local" data-i18n="settings.mode_local_opt">Own Server (Connect to local MLX / Ollama server)</option>
             </select>
-            <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
-              <strong>Hinweis:</strong> Der <em>Schnelle Assistent</em> sendet Ihre Frage und passende Auszüge aus der Wissensdatenbank an den von Ihnen hinterlegten Cloud Anbieter (Google Gemini oder OpenRouter). Ohne eigenen Schlüssel antwortet Starpi direkt aus der Wissensdatenbank.
+            <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed" data-i18n="settings.mode_hint">
+              The Fast Assistant sends your query and matching excerpts to your configured provider. Without a custom key, Starpi answers directly from the knowledge base.
             </p>
           </div>
 
           <div class="pt-2 flex justify-end">
             <button data-action="save-settings" class="bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 text-xs font-bold px-5 py-2.5 rounded-xl transition shadow-yellow hover:shadow-yellow-lg flex items-center gap-1.5">
               <i data-lucide="check" class="w-3.5 h-3.5"></i>
-              Einstellungen speichern
+              <span data-i18n="settings.save_btn">Save Settings</span>
             </button>
           </div>
         </div>
 
-        <!-- Wissensdatenbank Card -->
+        <!-- Database Card -->
         <div class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-4 shadow-card">
           <div class="flex items-center justify-between border-b border-slate-100 pb-3">
             <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
               <i data-lucide="database" class="w-4 h-4 text-emerald-600"></i>
-              Wissensdatenbank (Supabase)
+              <span data-i18n="settings.db_card_title">Knowledge Base (Supabase)</span>
             </h3>
             <span id="settingsDbBadge" class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200 flex items-center gap-1">
               <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-              Verbinde
+              <span data-i18n="status.connecting">Connecting</span>
             </span>
           </div>
 
           <div class="space-y-2 text-xs text-slate-600">
             <div class="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
-              <span class="font-medium text-slate-700">Projekt:</span>
+              <span class="font-medium text-slate-700" data-i18n="settings.project_label">Project:</span>
               <span id="settingsDbProject" class="font-semibold text-slate-900 font-mono truncate">Supabase</span>
             </div>
             <div class="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
-              <span class="font-medium text-slate-700">Zugriffsschutz:</span>
-              <span id="settingsDbAuth" class="font-semibold text-slate-900 text-right">Row Level Security</span>
+              <span class="font-medium text-slate-700" data-i18n="settings.access_label">Access Control:</span>
+              <span id="settingsDbAuth" class="font-semibold text-slate-900 text-right" data-i18n="status.rls_session">Row Level Security</span>
             </div>
             <div class="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
-              <span class="font-medium text-slate-700">Suche:</span>
-              <span class="font-semibold text-slate-900 text-right">Postgres Volltext (Browser) · pgvector (Backend)</span>
+              <span class="font-medium text-slate-700" data-i18n="settings.search_label">Search Engine:</span>
+              <span class="font-semibold text-slate-900 text-right" data-i18n="status.search_detail">Postgres Full-Text (Browser) · pgvector (Backend)</span>
             </div>
             <div class="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
-              <span class="font-medium text-slate-700">Chatverlauf:</span>
+              <span class="font-medium text-slate-700" data-i18n="settings.chat_sync_label">Chat History:</span>
               <span class="font-semibold text-slate-900 flex items-center gap-1.5 text-right">
                 <i data-lucide="cloud" class="w-3.5 h-3.5 text-emerald-600"></i>
-                <span id="chatSyncStatusText">Wird geprüft</span>
+                <span id="chatSyncStatusText" data-i18n="status.checking">Checking</span>
               </span>
             </div>
           </div>
@@ -457,62 +571,62 @@
           <summary class="flex items-center justify-between cursor-pointer font-bold text-xs text-slate-700 hover:text-slate-950 select-none">
             <span class="flex items-center gap-2">
               <i data-lucide="sliders-horizontal" class="w-4 h-4 text-amber-600"></i>
-              Erweiterte Einstellungen (für Administratoren & IT)
+              <span data-i18n="settings.advanced_title">Advanced Settings (Administrators & IT)</span>
             </span>
             <i data-lucide="chevron-down" class="w-4 h-4 transform group-open:rotate-180 transition-transform text-slate-400"></i>
           </summary>
 
           <div class="mt-4 pt-4 border-t border-slate-100 space-y-4">
             <div>
-              <label for="cfgGeminiKey" class="block text-[11px] font-semibold text-slate-600 mb-1">Eigener Google Gemini API Schlüssel (optional)</label>
-              <input type="password" id="cfgGeminiKey" autocomplete="off" spellcheck="false" placeholder="Eigener API Schlüssel" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
-              <p id="cfgGeminiKeyHint" class="text-[10px] text-slate-500 mt-1">Wird priorisiert verwendet, falls eingetragen.</p>
+              <label for="cfgGeminiKey" class="block text-[11px] font-semibold text-slate-600 mb-1" data-i18n="settings.gemini_label">Custom Google Gemini API Key (optional)</label>
+              <input type="password" id="cfgGeminiKey" autocomplete="off" spellcheck="false" data-i18n-placeholder="settings.gemini_placeholder" placeholder="Custom API Key" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
+              <p id="cfgGeminiKeyHint" class="text-[10px] text-slate-500 mt-1" data-i18n="settings.gemini_hint">Used with priority if configured.</p>
             </div>
 
             <div>
-              <label for="cfgOpenrouterKey" class="block text-[11px] font-semibold text-slate-600 mb-1">Eigener OpenRouter API Schlüssel (optional)</label>
-              <input type="password" id="cfgOpenrouterKey" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-..." class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
-              <p id="cfgOpenrouterKeyHint" class="text-[10px] text-slate-500 mt-1">Kein Schlüssel gespeichert.</p>
+              <label for="cfgOpenrouterKey" class="block text-[11px] font-semibold text-slate-600 mb-1" data-i18n="settings.openrouter_label">Custom OpenRouter API Key (optional)</label>
+              <input type="password" id="cfgOpenrouterKey" autocomplete="off" spellcheck="false" data-i18n-placeholder="settings.openrouter_placeholder" placeholder="sk-or-v1-..." class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
+              <p id="cfgOpenrouterKeyHint" class="text-[10px] text-slate-500 mt-1" data-i18n="settings.openrouter_hint">No key saved.</p>
             </div>
 
             <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
               <label class="flex items-center gap-2 text-[11px] font-medium text-slate-700 cursor-pointer select-none">
                 <input type="checkbox" id="cfgRememberKeys" class="rounded border-slate-300 text-amber-500 focus:ring-amber-300">
-                Schlüssel auf diesem Gerät merken
+                <span data-i18n="settings.remember_keys">Remember keys on this device</span>
               </label>
-              <button type="button" data-action="clear-keys" class="text-[11px] font-semibold text-rose-700 hover:text-rose-900 px-2 py-1 rounded-lg hover:bg-rose-50 transition">Schlüssel löschen</button>
-              <p class="w-full text-[10px] text-slate-500">Ohne Häkchen gelten Schlüssel nur bis zum Schließen des Tabs. Nutzen Sie Schlüssel mit Ausgabenlimit.</p>
+              <button type="button" data-action="clear-keys" class="text-[11px] font-semibold text-rose-700 hover:text-rose-900 px-2 py-1 rounded-lg hover:bg-rose-50 transition" data-i18n="settings.clear_keys">Clear keys</button>
+              <p class="w-full text-[10px] text-slate-500" data-i18n="settings.keys_notice">Unchecked keys are kept only until the tab closes.</p>
             </div>
 
             <div>
-              <label for="cfgLlmUrl" class="block text-[11px] font-semibold text-slate-600 mb-1">Lokaler Server / Tunnel Endpunkt (LLM Base URL)</label>
-              <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="http://localhost:8000/v1 oder https://… (Tunnel)" spellcheck="false" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
-              <p class="text-[10px] text-slate-500 mt-1">Erlaubt sind https:// Adressen sowie http://localhost und http://127.0.0.1.</p>
+              <label for="cfgLlmUrl" class="block text-[11px] font-semibold text-slate-600 mb-1" data-i18n="settings.llm_url_label">Local Server / Tunnel Endpoint (LLM Base URL)</label>
+              <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="http://localhost:8000/v1 or https://... (tunnel)" spellcheck="false" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none font-mono">
+              <p class="text-[10px] text-slate-500 mt-1" data-i18n="settings.llm_url_hint">Allowed are https:// addresses as well as http://localhost and http://127.0.0.1.</p>
             </div>
 
             <div>
-              <label for="cfgWebgpuModel" class="block text-[11px] font-semibold text-slate-600 mb-1">WebGPU Modell (für den lokalen Modus)</label>
+              <label for="cfgWebgpuModel" class="block text-[11px] font-semibold text-slate-600 mb-1" data-i18n="settings.webgpu_model_label">WebGPU Model (for local mode)</label>
               <select id="cfgWebgpuModel" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 text-xs text-slate-900 focus:border-amber-400 focus:outline-none">
-                <option value="auto">⚡ Automatische Erkennung nach Hardware</option>
-                <option value="llama-1b">📱 Llama 3.2 1B (ca. 0,7 GB Download · Für Mobilgeräte optimiert)</option>
-                <option value="qwen-1.5b">🧠 Qwen 2.5 1.5B (ca. 1 GB Download · Hohe Genauigkeit)</option>
-                <option value="qwen-3b">💻 Qwen 2.5 3B (ca. 1,9 GB Download · Desktop)</option>
+                <option value="auto" data-i18n="webgpu.model_auto">Automatic detection by hardware</option>
+                <option value="llama-1b" data-i18n="webgpu.model_llama_1b">Llama 3.2 1B (~0.7 GB download · Mobile optimized)</option>
+                <option value="qwen-1.5b" data-i18n="webgpu.model_qwen_1_5b">Qwen 2.5 1.5B (~1.0 GB download · High accuracy)</option>
+                <option value="qwen-3b" data-i18n="webgpu.model_qwen_3b">Qwen 2.5 3B (~1.9 GB download · Desktop)</option>
               </select>
-              <p id="cfgWebgpuHint" class="text-[10px] text-slate-500 mt-1">Modelle werden einmalig heruntergeladen und im Browser Speicher abgelegt.</p>
+              <p id="cfgWebgpuHint" class="text-[10px] text-slate-500 mt-1" data-i18n="webgpu.model_hint">Models are downloaded once and cached in browser storage.</p>
             </div>
 
             <div class="pt-2 border-t border-slate-100 flex flex-wrap gap-2">
               <button type="button" data-action="delete-model-cache" class="text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
-                <i data-lucide="trash-2" class="w-3 h-3"></i> Heruntergeladene Modelldaten löschen
+                <i data-lucide="trash-2" class="w-3 h-3"></i> <span data-i18n="webgpu.delete_cache">Delete downloaded model data</span>
               </button>
             </div>
 
             <div class="pt-2 border-t border-slate-100 flex flex-wrap gap-2">
               <button type="button" data-action="test-gemini" id="btnTestPrimary" class="text-[11px] font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
-                <i data-lucide="zap" class="w-3 h-3 text-amber-600"></i> Primären Pool testen
+                <i data-lucide="zap" class="w-3 h-3 text-amber-600"></i> <span data-i18n="settings.test_primary">Test Primary Pool</span>
               </button>
               <button type="button" data-action="test-openrouter" id="btnTestSecondary" class="text-[11px] font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
-                <i data-lucide="activity" class="w-3 h-3 text-indigo-600"></i> Redundanzpool testen
+                <i data-lucide="activity" class="w-3 h-3 text-indigo-600"></i> <span data-i18n="settings.test_secondary">Test Redundancy Pool</span>
               </button>
             </div>
             <div id="primaryTestStatus" class="hidden text-xs p-2.5 rounded-lg border"></div>
@@ -523,27 +637,27 @@
     </section>
   </main>
 
-  <!-- Mobile Bottom Navigation Bar (Tastenleiste) - Always accessible on phones & tablets -->
+  <!-- Mobile Bottom Navigation Bar -->
   <nav id="mobileBottomNav" class="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-lg border-t border-slate-200 flex items-center justify-around px-1 pt-1.5 pb-[max(0.4rem,env(safe-area-inset-bottom,8px))] shadow-lg">
     <button data-action="switch-tab" data-arg="chat" id="mobile-nav-chat" class="flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition text-amber-950 font-bold bg-amber-50 border border-amber-300/80 shadow-xs touch-target-min">
       <i data-lucide="message-square" class="w-5 h-5 text-amber-600"></i>
-      <span class="text-[10px] mt-0.5">Chat</span>
+      <span class="text-[10px] mt-0.5" data-i18n="nav.chat">Chat</span>
     </button>
     <button data-action="switch-tab" data-arg="library" id="mobile-nav-library" class="flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition text-slate-600 hover:text-slate-900 font-medium touch-target-min">
       <i data-lucide="library" class="w-5 h-5"></i>
-      <span class="text-[10px] mt-0.5">Archiv</span>
-    </button>
-    <button data-action="switch-tab" data-arg="graph" id="mobile-nav-graph" class="flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition text-slate-600 hover:text-slate-900 font-medium touch-target-min">
-      <i data-lucide="network" class="w-5 h-5"></i>
-      <span class="text-[10px] mt-0.5">Graph</span>
+      <span class="text-[10px] mt-0.5" data-i18n="nav.library">Archive</span>
     </button>
     <button data-action="switch-tab" data-arg="ingest" id="mobile-nav-ingest" class="flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition text-slate-600 hover:text-slate-900 font-medium touch-target-min">
       <i data-lucide="plus-circle" class="w-5 h-5"></i>
-      <span class="text-[10px] mt-0.5">Neu</span>
+      <span class="text-[10px] mt-0.5" data-i18n="nav.ingest">New</span>
+    </button>
+    <button data-action="switch-tab" data-arg="bench" id="mobile-nav-bench" class="flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition text-slate-600 hover:text-slate-900 font-medium touch-target-min">
+      <i data-lucide="gauge" class="w-5 h-5"></i>
+      <span class="text-[10px] mt-0.5" data-i18n="nav.bench">Bench</span>
     </button>
     <button data-action="switch-tab" data-arg="settings" id="mobile-nav-settings" class="flex-1 flex flex-col items-center justify-center py-1 rounded-xl transition text-slate-600 hover:text-slate-900 font-medium touch-target-min">
       <i data-lucide="settings-2" class="w-5 h-5"></i>
-      <span class="text-[10px] mt-0.5">Optionen</span>
+      <span class="text-[10px] mt-0.5" data-i18n="nav.settings">Options</span>
     </button>
   </nav>
 
@@ -552,14 +666,57 @@
     <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl select-text">
       <div class="p-5 border-b border-slate-200 flex items-center justify-between">
         <div>
-          <h3 id="modalDocTitle" class="font-extrabold text-slate-950 text-base">Dokument</h3>
+          <h3 id="modalDocTitle" class="font-extrabold text-slate-950 text-base" data-i18n="modals.doc_title">Document</h3>
           <p id="modalDocMeta" class="text-xs text-slate-500 mt-0.5 font-medium"></p>
         </div>
-        <button data-action="close-doc-modal" class="text-slate-400 hover:text-slate-800 p-1.5 rounded-xl hover:bg-slate-100 transition">
+        <button data-action="close-doc-modal" class="text-slate-400 hover:text-slate-800 p-1.5 rounded-xl hover:bg-slate-100 transition" aria-label="Close document modal">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
       <div id="modalDocContent" class="p-6 overflow-y-auto custom-scrollbar prose-custom text-slate-800 text-sm leading-relaxed"></div>
+    </div>
+  </div>
+
+  <!-- Interactive Citation Drawer / Modal -->
+  <div id="citationModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl select-text">
+      <div class="p-5 border-b border-slate-200 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-900 flex items-center justify-center">
+            <i data-lucide="bookmark" class="w-4 h-4 text-amber-700"></i>
+          </div>
+          <div>
+            <h3 id="citationModalTitle" class="font-extrabold text-slate-950 text-base" data-i18n="citation.title">Source Citation</h3>
+            <p id="citationModalDoc" class="text-xs text-slate-500 font-mono mt-0.5"></p>
+          </div>
+        </div>
+        <button data-action="close-citation" class="text-slate-400 hover:text-slate-800 p-1.5 rounded-xl hover:bg-slate-100 transition" aria-label="Close citation modal">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="p-5 space-y-4 overflow-y-auto custom-scrollbar">
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+            <span class="text-slate-500 block text-[10px] font-bold uppercase tracking-wider mb-0.5" data-i18n="citation.chunk_label">Chunk:</span>
+            <span id="citationModalChunkIdx" class="font-mono font-bold text-slate-900">#0</span>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+            <span class="text-slate-500 block text-[10px] font-bold uppercase tracking-wider mb-0.5" data-i18n="citation.score_label">BM25 Score:</span>
+            <span id="citationModalScore" class="font-mono font-bold text-emerald-700">–</span>
+          </div>
+          <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 col-span-2 sm:col-span-1">
+            <span class="text-slate-500 block text-[10px] font-bold uppercase tracking-wider mb-0.5" data-i18n="citation.offset_label">Offsets:</span>
+            <span id="citationModalOffsets" class="font-mono font-semibold text-slate-700 text-[11px]">–</span>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" data-i18n="citation.content_label">Extracted Text Excerpt:</label>
+          <div id="citationModalContent" class="p-4 rounded-xl bg-amber-50/40 border border-amber-200/80 text-xs text-slate-800 leading-relaxed font-sans whitespace-pre-wrap selection:bg-amber-200"></div>
+        </div>
+      </div>
+      <div class="p-4 border-t border-slate-200 flex justify-end">
+        <button type="button" data-action="close-citation" class="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl transition" data-i18n="citation.close">Close</button>
+      </div>
     </div>
   </div>
 
@@ -569,41 +726,41 @@
       <div class="flex items-center justify-between border-b border-slate-200 pb-3.5">
         <h3 class="font-extrabold text-slate-950 text-sm flex items-center gap-2">
           <i data-lucide="plus-circle" class="w-4 h-4 text-amber-600"></i>
-          Neue Wissensgraphentität anlegen
+          <span data-i18n="graph.new_entity">Create Knowledge Entity</span>
         </h3>
-        <button data-action="close-entity-modal" class="text-slate-400 hover:text-slate-800 p-1 rounded-lg">
+        <button data-action="close-entity-modal" class="text-slate-400 hover:text-slate-800 p-1 rounded-lg" aria-label="Close entity modal">
           <i data-lucide="x" class="w-4 h-4"></i>
         </button>
       </div>
       <div>
-        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Name der Entität</label>
-        <input type="text" id="newEntityName" placeholder="z. B. Projekt Beta oder Anna Müller" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40">
+        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" data-i18n="graph.entity_name">Entity Name</label>
+        <input type="text" id="newEntityName" placeholder="e.g. Project Beta or Anna Müller" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40">
       </div>
       <div>
-        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Typ</label>
+        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" data-i18n="graph.entity_type">Type</label>
         <select id="newEntityType" class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40">
-          <option value="project">Projekt (project)</option>
-          <option value="person">Person (person)</option>
-          <option value="metric">Metrik / Budget (metric)</option>
-          <option value="tech">Technologie (tech)</option>
-          <option value="regulation">Richtlinie / Compliance (regulation)</option>
+          <option value="project" data-i18n="graph.project">Project</option>
+          <option value="person" data-i18n="graph.person">Person</option>
+          <option value="metric" data-i18n="graph.metric">Metric / Budget</option>
+          <option value="tech" data-i18n="graph.tech">Technology</option>
+          <option value="regulation" data-i18n="graph.regulation">Regulation / Compliance</option>
         </select>
       </div>
       <div>
-        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Beschreibung</label>
-        <textarea id="newEntityDesc" rows="3" placeholder="Kurzbeschreibung oder Relevanz im Unternehmen..." class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl p-3.5 text-xs text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40"></textarea>
+        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" data-i18n="graph.entity_desc">Description</label>
+        <textarea id="newEntityDesc" rows="3" placeholder="Description or relevance..." class="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl p-3.5 text-xs text-slate-900 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/40"></textarea>
       </div>
       <div class="flex items-center justify-end gap-2 pt-2">
-        <button data-action="close-entity-modal" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 transition">Abbrechen</button>
-        <button data-action="save-entity" class="bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 text-xs font-bold px-5 py-2.5 rounded-xl transition shadow-yellow hover:shadow-yellow-lg">Speichern</button>
+        <button data-action="close-entity-modal" class="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 transition" data-i18n="graph.cancel">Cancel</button>
+        <button data-action="save-entity" class="bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 text-xs font-bold px-5 py-2.5 rounded-xl transition shadow-yellow hover:shadow-yellow-lg" data-i18n="graph.save">Save</button>
       </div>
     </div>
   </div>
 
   <!-- Service worker update notice -->
   <div id="updateBanner" role="status" class="hidden fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[60] bg-slate-900 text-white text-xs font-semibold rounded-xl shadow-lg px-4 py-2.5 flex items-center gap-3">
-    <span>Eine neue Version von Starpi ist verfügbar.</span>
-    <button type="button" data-action="reload-app" class="bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 font-bold px-3 py-1 rounded-lg transition">Neu laden</button>
+    <span data-i18n="update.banner">A new version of Starpi is available.</span>
+    <button type="button" data-action="reload-app" class="bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950 font-bold px-3 py-1 rounded-lg transition" data-i18n="update.reload">Reload</button>
   </div>
 
 </body>
