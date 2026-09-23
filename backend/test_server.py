@@ -11,6 +11,7 @@ import http.client
 import json
 import socket
 import threading
+import time
 import unittest
 from http.server import ThreadingHTTPServer
 from typing import Any
@@ -459,7 +460,43 @@ class StartupTests(unittest.TestCase):
 
     def test_server_is_threaded(self) -> None:
         self.assertTrue(issubclass(server.BrainHTTPServer, ThreadingHTTPServer))
-        self.assertTrue(server.BrainHTTPServer.daemon_threads)
+        self.assertFalse(server.BrainHTTPServer.daemon_threads)
+
+    def test_server_close_waits_for_requests_in_flight(self) -> None:
+        started, finished = threading.Event(), threading.Event()
+        original = server.BrainAPIHandler._handle_health
+
+        def slow_health(handler: server.BrainAPIHandler) -> None:
+            started.set()
+            time.sleep(0.3)
+            original(handler)
+            finished.set()
+
+        httpd = server.create_server("127.0.0.1", 0, make_settings())
+        port = httpd.server_address[1]
+        loop = threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+        loop.start()
+        result: dict[str, Any] = {}
+
+        def call() -> None:
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            conn.request("GET", "/api/health")
+            response = conn.getresponse()
+            result["status"] = response.status
+            response.read()
+            conn.close()
+
+        with mock.patch.object(server.BrainAPIHandler, "_handle_health", slow_health):
+            client = threading.Thread(target=call)
+            client.start()
+            self.assertTrue(started.wait(5))
+            # The SIGTERM handler runs exactly this: shutdown, then server_close in run_server.
+            httpd.shutdown()
+            httpd.server_close()
+            self.assertTrue(finished.is_set(), "server_close returned before the request finished")
+            client.join(5)
+        loop.join(5)
+        self.assertEqual(result.get("status"), 200)
 
     def test_main_uses_the_validated_log_level(self) -> None:
         with (

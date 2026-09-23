@@ -11,7 +11,11 @@
 #   - BRAIN_API_TOKEN in that .env, generated with openssl when it is missing or
 #     empty (never printed)
 #   - starpi-brain.service running server.py as $SERVICE_USER (default: ubuntu),
-#     bound to 127.0.0.1 only
+#     bound to 127.0.0.1 only. The service reads that .env itself (core/config.py),
+#     so local runs and the service parse it the same way; the file belongs to
+#     $SERVICE_USER.
+#   - a health check of /api/health; the script fails when the service does not
+#     answer within 20 seconds
 #
 # Nothing is exposed publicly. A TLS reverse proxy (Caddy or nginx) on this host
 # makes every request arrive from 127.0.0.1, so the API must never run without
@@ -36,6 +40,24 @@ if ! id -u "${SERVICE_USER}" > /dev/null 2>&1; then
     exit 1
 fi
 
+# Runs a command as the service user (directly when that is the current user).
+as_service_user() {
+    if [[ "$(id -un)" == "${SERVICE_USER}" ]]; then
+        "$@"
+    else
+        sudo -u "${SERVICE_USER}" "$@"
+    fi
+}
+
+# Prints the .env, also when it already belongs to another service user (mode 600).
+read_env_file() {
+    if [[ -r "${ENV_FILE}" ]]; then
+        cat "${ENV_FILE}"
+    else
+        sudo cat "${ENV_FILE}"
+    fi
+}
+
 echo "[1/5] Installing system packages"
 sudo apt-get update -y
 sudo apt-get install -y python3 python3-venv curl openssl
@@ -53,6 +75,11 @@ if [[ ! -f "${ENV_FILE}" ]]; then
     cp "${APP_DIR}/.env.example" "${ENV_FILE}"
     echo "      Created from .env.example. Fill in the values, then restart the service."
 fi
+# The token step below rewrites the file from what it reads; never let a failed read empty it.
+if ! read_env_file > /dev/null; then
+    echo "Cannot read ${ENV_FILE}; aborting without changes." >&2
+    exit 1
+fi
 chmod 600 "${ENV_FILE}"
 
 TOKEN_LINE_RE='^[[:space:]]*(export[[:space:]]+)?BRAIN_API_TOKEN[[:space:]]*='
@@ -67,7 +94,7 @@ env_token_is_set() {
             value="${value%%[[:space:]]#*}"
             value="${value//[\"\' $'\t\r']/}"
         fi
-    done < "${ENV_FILE}"
+    done < <(read_env_file)
     [[ -n "${value}" ]]
 }
 
@@ -93,7 +120,7 @@ if ! env_token_is_set; then
                 continue
             fi
             printf '%s\n' "${line}"
-        done < "${ENV_FILE}"
+        done < <(read_env_file)
         (( replaced )) || printf 'BRAIN_API_TOKEN=%s\n' "${api_token}"
     } > "${tmp_env}"
     unset api_token line replaced
@@ -102,6 +129,10 @@ if ! env_token_is_set; then
     trap - EXIT
     echo "      Generated BRAIN_API_TOKEN in ${ENV_FILE} (not shown). Clients send it as"
     echo "      'Authorization: Bearer <token>'; read it from that file on this host."
+fi
+# The service reads the .env itself, so the (private) file must belong to the service user.
+if [[ "$(stat -c %U "${ENV_FILE}")" != "${SERVICE_USER}" ]]; then
+    sudo chown "${SERVICE_USER}" "${ENV_FILE}"
 fi
 umask "${saved_umask}"
 
@@ -116,7 +147,8 @@ Wants=network-online.target
 Type=simple
 User=${SERVICE_USER}
 WorkingDirectory=${APP_DIR}
-EnvironmentFile=${ENV_FILE}
+# No EnvironmentFile: server.py loads ${ENV_FILE} itself, so inline comments and quotes are
+# parsed the same way as in local runs (systemd would keep "# comment" as part of a value).
 # Always loopback; a reverse proxy on this host terminates TLS.
 ExecStart=${VENV_DIR}/bin/python ${APP_DIR}/server.py --host 127.0.0.1
 Restart=on-failure
@@ -140,22 +172,29 @@ sudo systemctl daemon-reload
 sudo systemctl enable "${SERVICE_NAME}.service"
 sudo systemctl restart "${SERVICE_NAME}.service"
 
-PORT="$(sed -n 's/^[[:space:]]*BRAIN_SERVER_PORT[[:space:]]*=[[:space:]]*//p' "${ENV_FILE}" | tail -n 1 | tr -d "\"' ")"
-PORT="${PORT:-9200}"
-for _ in 1 2 3 4 5 6 7 8 9 10; do
+# The port as the service sees it: the same config loader, the same .env.
+PORT="$(cd "${APP_DIR}" && as_service_user "${VENV_DIR}/bin/python" -c 'from core.config import config; print(config.server_port)')"
+healthy=0
+for _ in $(seq 1 20); do
     if curl -fsS "http://127.0.0.1:${PORT}/api/health" > /dev/null 2>&1; then
-        echo "Health check OK on 127.0.0.1:${PORT}"
+        healthy=1
         break
     fi
     sleep 1
 done
 sudo systemctl --no-pager --lines=5 status "${SERVICE_NAME}.service" || true
+if (( ! healthy )); then
+    echo "Health check failed: nothing answered on http://127.0.0.1:${PORT}/api/health within 20 s." >&2
+    echo "Inspect the service log: journalctl -u ${SERVICE_NAME} -n 50 --no-pager" >&2
+    exit 1
+fi
+echo "Health check OK on 127.0.0.1:${PORT}"
 
 cat <<EOF
 
 Next steps
-  1. Edit ${ENV_FILE} (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, model endpoints),
-     then run: sudo systemctl restart ${SERVICE_NAME}
+  1. Edit ${ENV_FILE} as ${SERVICE_USER} (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+     model endpoints), then run: sudo systemctl restart ${SERVICE_NAME}
   2. The API listens on 127.0.0.1:${PORT} only. Do not open that port in the
      security group. To serve it to browsers, put a TLS reverse proxy in front,
      for example Caddy:  your.domain { reverse_proxy 127.0.0.1:${PORT} }

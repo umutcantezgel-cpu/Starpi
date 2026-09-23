@@ -263,6 +263,11 @@ class ConfigTests(unittest.TestCase):
             "KEY = spaced ": ("KEY", "spaced"),
             "KEY=value # comment": ("KEY", "value"),
             'KEY="keep # hash"': ("KEY", "keep # hash"),
+            'KEY="quoted" # comment': ("KEY", "quoted"),
+            "KEY='single' #comment": ("KEY", "single"),
+            'KEY="unterminated': ("KEY", '"unterminated'),
+            "KEY=tab\t# comment": ("KEY", "tab"),
+            "KEY=a#b": ("KEY", "a#b"),
             "KEY=a=b": ("KEY", "a=b"),
             "KEY=": ("KEY", ""),
             "# comment": None,
@@ -283,6 +288,18 @@ class ConfigTests(unittest.TestCase):
                 self.assertTrue(load_env_file(path))
                 values = {k: os.environ.get(k) for k in "ABCD"}
         self.assertEqual(values, {"A": "1", "B": "two words", "C": "3", "D": "from-env"})
+
+    def test_load_env_file_last_assignment_wins(self) -> None:
+        # .env.example ships "BRAIN_API_TOKEN=" and a later line may set it; like systemd and
+        # aws/deploy_ec2.sh, the loader must use the last assignment.
+        content = 'BRAIN_API_TOKEN=\nBRAIN_API_TOKEN="abc" # generated\nE=1\nE=2\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / ".env"
+            path.write_text(content, encoding="utf-8")
+            with mock.patch.dict(os.environ, {"E": "from-env"}, clear=True):
+                self.assertTrue(load_env_file(path))
+                values = {k: os.environ.get(k) for k in ("BRAIN_API_TOKEN", "E")}
+        self.assertEqual(values, {"BRAIN_API_TOKEN": "abc", "E": "from-env"})
 
     def test_load_env_file_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

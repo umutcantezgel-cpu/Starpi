@@ -385,9 +385,14 @@ class BrainAPIHandler(BaseHTTPRequestHandler):
 
 
 class BrainHTTPServer(ThreadingHTTPServer):
-    """Threaded server that carries its settings for the request handlers."""
+    """Threaded server that carries its settings for the request handlers.
 
-    daemon_threads = True
+    Request threads are not daemonic: server_close() (and interpreter exit) waits for requests in
+    flight, so a SIGTERM from systemd lets them finish instead of cutting them off. Each request is
+    bounded by the socket timeout and the upstream HTTP timeouts.
+    """
+
+    daemon_threads = False
 
     def __init__(self, server_address: tuple[str, int], settings: BrainConfig) -> None:
         self.settings = settings

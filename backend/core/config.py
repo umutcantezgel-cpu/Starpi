@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -37,17 +38,21 @@ def parse_env_line(line: str) -> tuple[str, str] | None:
     value = value.strip()
     if not key:
         return None
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
-        value = value[1:-1]
-    elif " #" in value:
+    if value[:1] in ("'", '"'):
+        # Quoted value: everything up to the matching quote, so a trailing comment is dropped.
+        end = value.find(value[0], 1)
+        if end > 0:
+            value = value[1:end]
+    else:
         # Inline comment after an unquoted value.
-        value = value.split(" #", 1)[0].rstrip()
+        value = re.split(r"\s#", value, maxsplit=1)[0].rstrip()
     return key, value
 
 
 def load_env_file(path: Path) -> bool:
     """Loads ``path`` into ``os.environ`` without overriding existing variables.
 
+    Within the file the last assignment of a key wins, as with systemd and the deploy script.
     Returns True when the file was read. Unreadable files are logged and skipped.
     """
     try:
@@ -58,10 +63,13 @@ def load_env_file(path: Path) -> bool:
     except (OSError, UnicodeDecodeError) as exc:
         logger.warning("Could not read env file %s (%s)", path, type(exc).__name__)
         return False
+    values: dict[str, str] = {}
     for raw_line in text.splitlines():
         parsed = parse_env_line(raw_line)
         if parsed is not None:
-            os.environ.setdefault(*parsed)
+            values[parsed[0]] = parsed[1]
+    for key, value in values.items():
+        os.environ.setdefault(key, value)
     return True
 
 
