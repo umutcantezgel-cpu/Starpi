@@ -354,6 +354,7 @@
     "mode_hint": "Der Cloud-Assistent sendet Ihre Frage und die passenden Auszüge an den Anbieter, den Sie einrichten. Ohne Schlüssel zitiert Starpi direkt aus der Wissensdatenbank.",
     "save": "Einstellungen speichern",
     "saved_toast": "Einstellungen gespeichert.",
+    "save_failed": "Einige Einstellungen konnten nicht gespeichert werden: Dieser Browser blockiert oder begrenzt den Speicher (zum Beispiel in einem privaten Fenster). Beim Neuladen der Seite können sie verloren gehen.",
     "db_title": "Wissensdatenbank (Supabase)",
     "project": "Projekt",
     "access": "Zugriffsschutz",

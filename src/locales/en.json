@@ -354,6 +354,7 @@
     "mode_hint": "The cloud assistant sends your question and the matching excerpts to the provider you configure. Without a key, Starpi quotes the knowledge base directly.",
     "save": "Save settings",
     "saved_toast": "Settings saved.",
+    "save_failed": "Some settings could not be saved: this browser blocks or limits storage (for example in a private window). They may be lost when you reload the page.",
     "db_title": "Knowledge base (Supabase)",
     "project": "Project",
     "access": "Access control",

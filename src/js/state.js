@@ -34,11 +34,15 @@ export function getMode() {
   return mode;
 }
 
-/** @param {ComputeMode} next */
+/**
+ * @param {ComputeMode} next
+ * @returns {boolean} whether the mode was also stored for the next visit
+ */
 export function setMode(next) {
   mode = normalizeMode(next);
-  writeLocal(STORAGE_KEYS.computeMode, mode);
+  const stored = writeLocal(STORAGE_KEYS.computeMode, mode);
   for (const fn of modeListeners) fn(mode);
+  return stored;
 }
 
 /** @param {(mode: ComputeMode) => void} fn */
@@ -50,18 +54,24 @@ export function getModelPreference() {
   return preference;
 }
 
-/** @param {unknown} next */
+/**
+ * @param {unknown} next
+ * @returns {boolean} whether the preference was also stored for the next visit
+ */
 export function setModelPreference(next) {
   preference = normalizePreference(next);
-  writeLocal(STORAGE_KEYS.webgpuModel, preference);
+  return writeLocal(STORAGE_KEYS.webgpuModel, preference);
 }
 
 export function getLlmUrl() {
   return llmUrl;
 }
 
-/** @param {string} next */
+/**
+ * @param {string} next
+ * @returns {boolean} whether the URL was also stored for the next visit
+ */
 export function setLlmUrl(next) {
   llmUrl = next;
-  writeLocal(STORAGE_KEYS.llmUrl, next);
+  return writeLocal(STORAGE_KEYS.llmUrl, next);
 }

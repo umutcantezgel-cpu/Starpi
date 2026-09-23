@@ -81,9 +81,10 @@ function syncModeSelectors(mode) {
  * Applies a compute mode. `interactive` is true when the user picked it (allows a model download).
  * @param {string} value
  * @param {{ interactive: boolean }} opts
+ * @returns {Promise<boolean>} whether the mode was also stored for the next visit
  */
 export async function changeEngine(value, opts) {
-  setMode(/** @type {ComputeMode} */ (value));
+  const stored = setMode(/** @type {ComputeMode} */ (value));
   const mode = getMode();
   syncModeSelectors(mode);
   renderPrivacyNotice();
@@ -92,7 +93,7 @@ export async function changeEngine(value, opts) {
   if (mode === 'client') {
     if (engine.isReady()) {
       setEngineDot('ok');
-      return;
+      return stored;
     }
     const loaded = await startLocalEngine({ interactive: opts.interactive });
     if (!loaded && !opts.interactive && engine.getEngineState().status === 'idle') {
@@ -104,6 +105,7 @@ export async function changeEngine(value, opts) {
   } else {
     setEngineDot(hasGeminiKey() || hasOpenRouterKey() ? 'ok' : 'off');
   }
+  return stored;
 }
 
 async function saveSettings() {
@@ -122,32 +124,34 @@ async function saveSettings() {
     urlInput?.focus();
     return;
   }
-  setLlmUrl(url);
+  // Every write reports whether the browser stored it (private windows and full or disabled
+  // storage refuse); the confirmation must not claim more than was kept.
+  let stored = setLlmUrl(url);
   if (urlInput) urlInput.value = url;
 
   const remember = Boolean(rememberInput?.checked);
   const wasRemembered = rememberKeys();
-  writeLocal(STORAGE_KEYS.rememberKeys, remember ? '1' : '0');
+  stored = writeLocal(STORAGE_KEYS.rememberKeys, remember ? '1' : '0') && stored;
   for (const [key, input] of /** @type {Array<[string, HTMLInputElement | null]>} */ ([
     [STORAGE_KEYS.geminiKey, geminiInput],
     [STORAGE_KEYS.openrouterKey, openrouterInput],
   ])) {
     const typed = input?.value.trim() ?? '';
     const existing = readSecret(key);
-    if (typed) writeSecret(key, typed, remember);
-    else if (existing && remember !== wasRemembered) writeSecret(key, existing, remember);
+    if (typed) stored = writeSecret(key, typed, remember) && stored;
+    else if (existing && remember !== wasRemembered) stored = writeSecret(key, existing, remember) && stored;
     if (input) input.value = '';
   }
   renderKeyHints();
 
   const previousPreference = getModelPreference();
-  setModelPreference(modelInput?.value ?? 'auto');
+  stored = setModelPreference(modelInput?.value ?? 'auto') && stored;
   const mode = /** @type {ComputeMode} */ (modeInput?.value ?? 'council');
   if (engine.getEngineState().status !== 'idle' && previousPreference !== getModelPreference()) {
     await engine.unloadModel();
   }
-  await changeEngine(mode, { interactive: true });
-  window.alert(t('settings.saved_toast'));
+  stored = (await changeEngine(mode, { interactive: true })) && stored;
+  window.alert(t(stored ? 'settings.saved_toast' : 'settings.save_failed'));
 }
 
 function clearKeys() {

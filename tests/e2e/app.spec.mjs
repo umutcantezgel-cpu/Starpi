@@ -98,6 +98,44 @@ test.describe('migration pending, anonymous sign-ins disabled', () => {
   });
 });
 
+test.describe('saving settings', () => {
+  /** @param {import('@playwright/test').Page} page */
+  async function saveAndReadDialog(page) {
+    await openTab(page, 'settings');
+    await page.locator('details:has(#cfgLlmUrl) > summary').click();
+    await page.fill('#cfgLlmUrl', 'http://127.0.0.1:11434/v1');
+    /** @type {string[]} */
+    const messages = [];
+    page.on('dialog', (d) => {
+      messages.push(d.message());
+      void d.dismiss();
+    });
+    await page.click('[data-action="save-settings"]');
+    await expect.poll(() => messages.length).toBe(1);
+    return messages[0];
+  }
+
+  test('confirms only what the browser stored', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: false, anonymousAuth: false });
+    await page.goto('/');
+    expect(await saveAndReadDialog(page)).toBe('Settings saved.');
+    expect(await page.evaluate(() => localStorage.getItem('starpi_llm_url'))).toBe('http://127.0.0.1:11434/v1');
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('says so when the browser refuses to store settings', async ({ page, diagnostics }) => {
+    await page.addInitScript(() => {
+      Storage.prototype.setItem = () => {
+        throw new DOMException('Storage is disabled', 'SecurityError');
+      };
+    });
+    await mockSupabase(page, { hardened: false, anonymousAuth: false });
+    await page.goto('/');
+    expect(await saveAndReadDialog(page)).toMatch(/^Some settings could not be saved/);
+    expect(diagnostics).toEqual([]);
+  });
+});
+
 test.describe('hardened schema with anonymous session', () => {
   test('syncs chats through RLS-scoped requests and uses full-text search', async ({ page, diagnostics }) => {
     const calls = await mockSupabase(page, { hardened: true, anonymousAuth: true });

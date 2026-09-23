@@ -25,10 +25,13 @@ export function readLocal(key) {
 /**
  * @param {string} key
  * @param {string} value
+ * @returns {boolean} false when the value could not be stored (storage missing, blocked or full)
  */
 export function writeLocal(key, value) {
   try {
-    storageArea('localStorage')?.setItem(key, value);
+    const area = storageArea('localStorage');
+    if (!area) return false;
+    area.setItem(key, value);
     return true;
   } catch {
     return false;
@@ -63,6 +66,7 @@ export function readLocalJson(key, fallback) {
 /**
  * @param {string} key
  * @param {unknown} value
+ * @returns {boolean}
  */
 export function writeLocalJson(key, value) {
   return writeLocal(key, JSON.stringify(value));
@@ -87,18 +91,19 @@ export function readSecret(key) {
  * @param {string} key
  * @param {string} value
  * @param {boolean} remember
+ * @returns {boolean} false when a non-empty value could not be stored
  */
 export function writeSecret(key, value, remember) {
   removeSecret(key);
-  if (!value) return;
-  if (remember) {
-    writeLocal(key, value);
-    return;
-  }
+  if (!value) return true;
+  if (remember) return writeLocal(key, value);
   try {
-    storageArea('sessionStorage')?.setItem(key, value);
+    const area = storageArea('sessionStorage');
+    if (!area) return false;
+    area.setItem(key, value);
+    return true;
   } catch {
-    // ignore
+    return false;
   }
 }
 
