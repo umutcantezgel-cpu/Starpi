@@ -1,29 +1,31 @@
 ## Description of Changes
-Provide a clear technical explanation of the modifications introduced in this pull request.
+Explain what changes and why. Link related issues.
 
 ## Architectural Area
-* [ ] WebGPU Runtime and WGSL Shaders
-* [ ] Hardware Profiler (`resolveHardwareTier`)
-* [ ] Weight Streaming and Cache API or IndexedDB
-* [ ] Vector Search and pgvector Integration
-* [ ] Service Worker and Offline PWA Capabilities
-* [ ] Backend API and Ingestion Pipelines
+* [ ] Frontend UI and rendering (`src/js`, `src/index.html`)
+* [ ] WebGPU runtime and model selection (`src/js/webgpu`)
+* [ ] Retrieval and Supabase access (`src/js/supabase.js`, `src/js/retrieval.js`)
+* [ ] Database schema, migrations and RLS (`backend/supabase`)
+* [ ] Service worker and PWA (`src/sw.js`, `public/`)
+* [ ] Build, CI and security headers (`scripts/`, `.github/`, `vercel.json`)
+* [ ] Python backend (`backend/`)
 
-## Verification and Testing
-Describe how these changes were tested:
-* [ ] Validated with `npm run validate`
-* [ ] Tested in desktop browser with WebGPU enabled (Chrome, Edge, or Safari)
-* [ ] Tested on mobile browser (iOS Safari or Android Chrome)
-* [ ] Verified clean VRAM allocation and disposal during model switches without memory leaks
+## Verification
+* [ ] `npm run verify` passes (lint, typecheck, unit tests, build, output verification)
+* [ ] `npm run test:e2e` passes
+* [ ] Backend: `ruff check backend` and `python -m unittest discover -s backend -p 'test_*.py'` pass (if touched)
+* [ ] Database: `bash backend/supabase/tests/run_rls_tests.sh` passes (if touched)
+* [ ] Tested in a WebGPU browser (if the local model path changed)
 
-### Benchmark Measurements (if applicable)
-* Model evaluated:
-* Tokens per second (prefill):
-* Tokens per second (decode):
-* Peak GPU memory allocation:
+### Benchmark Measurements (if inference performance is affected)
+* Model and device:
+* Time to first token:
+* Tokens per second (prefill / decode):
+* Peak GPU memory:
 
 ## Checklist
-* [ ] Code conforms to repository formatting and architectural standards
-* [ ] No unhandled GPU buffer allocations or resource leaks
-* [ ] Documentation updated where appropriate
-* [ ] All commits follow concise, imperative commit messages
+* [ ] No inline scripts, event handlers or styles; new actions registered via `onAction()` / `onChange()`
+* [ ] Untrusted content rendered only through `escapeHtml()` / `renderMarkdown()`
+* [ ] New tables and functions have RLS policies, explicit grants and tests
+* [ ] Documentation updated where behaviour changed
+* [ ] Commits follow Conventional Commits

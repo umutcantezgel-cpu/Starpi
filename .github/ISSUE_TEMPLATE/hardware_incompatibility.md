@@ -13,7 +13,7 @@ assignees: ''
 * **Browser and Version**: [such as Chrome 126.0.6478.62, Safari 17.5]
 
 ### WebGPU Adapter Inspection
-Paste the output from the browser console after evaluating `await (await navigator.gpu.requestAdapter()).requestAdapterInfo()`:
+Paste the output from the browser console after evaluating `(await navigator.gpu.requestAdapter()).info`:
 ```json
 {
   "vendor": "",

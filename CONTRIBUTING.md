@@ -1,80 +1,85 @@
 # Contributing to Starpi
 
-Thank you for contributing to Starpi. This document establishes technical standards, development workflows, and architectural expectations for pull requests, bug fixes, and feature additions.
+Thanks for helping improve Starpi. This guide covers the local setup, the checks every change
+must pass and the conventions the codebase relies on.
 
-## Development Principles
+## Development setup
 
-1. **Client Side Autonomy**: Maintain absolute privacy and client autonomy. Do not introduce dependencies requiring mandatory server roundtrips for core inference routines.
-2. **Deterministic Resource Management**: WebGPU runs within memory constrained browser tabs. Every allocated buffer and pipeline must have an explicit disposal path.
-3. **Hardware Portability**: Code must gracefully handle degraded hardware environments, falling back to compact tiers or presenting clear diagnostic errors rather than crashing the browser context.
+```bash
+npm ci                 # Node.js 20.19+ (22 LTS recommended)
+npm run dev            # watch build + local server with production headers on :3000
+```
 
-## Issue Reporting Guidelines
+Backend (optional):
 
-Before opening an issue, verify that the behavior is reproducible and not caused by transient browser cache corruption.
+```bash
+python -m pip install -r backend/requirements-dev.txt
+```
 
-### Bug Reports
-* Include full browser version (`navigator.userAgent`).
-* Include GPU adapter details: Vendor ID, device description, WebGPU feature flags, and `adapter.limits.maxBufferSize`.
-* Provide step by step reproduction steps and browser developer console logs.
+Database tests need PostgreSQL 16 and pgvector
+(`apt-get install postgresql-16 postgresql-16-pgvector` on Debian/Ubuntu).
 
-### Hardware Incompatibilities
-* Use the dedicated Hardware Incompatibility issue template.
-* Provide outputs from `chrome://gpu` or `about:support`.
-* Specify observed failure mode (such as context loss, device creation failure, shader compilation syntax error, or memory allocation termination).
+## Checks before opening a pull request
 
-## Pull Request Workflow
+| Area | Command |
+| --- | --- |
+| Frontend | `npm run verify` (lint, typecheck, unit tests, build, output verification) |
+| End-to-end | `npm run build && npm run test:e2e` (first run: `npx playwright install chromium`) |
+| Backend | `ruff check backend && ruff format --check backend && python -m unittest discover -s backend -p 'test_*.py'` |
+| Database | `bash backend/supabase/tests/run_rls_tests.sh` |
 
-1. **Fork and Branch**:
-   * Create feature branches off `main` with descriptive identifiers (`feature/wgsl_matmul_opt`, `fix/vram_unloading_leak`).
-2. **Validation**:
-   * Run local validation tests before opening a pull request:
-     ```bash
-     npm run validate
-     ```
-   * If modifying backend Python services:
-     ```bash
-     python3 backend/test_brain.py
-     ```
-3. **PR Description**:
-   * Use the standard pull request template located in `.github/pull_request_template.md`.
-   * Explain the architectural justification for changes.
-   * Provide benchmark measurements (such as tokens per second, memory delta, load time) where performance is affected.
+CI runs all of them, plus gitleaks. `backend/scripts/brain_smoke.py` is a manual end-to-end
+check against live endpoints and is not part of the automated suite.
 
-## Code Standards for Core Components
+## Frontend conventions
 
-### WebGPU and WGSL Shaders
+- **ES modules only**, bundled by esbuild. The production CSP forbids inline scripts, inline
+  event handlers and inline styles:
+  - interactive elements use `data-action="name"` (click) or `data-change="name"`, registered
+    with `onAction()` / `onChange()` in `src/js/dom.js`. `tests/unit/actions.test.mjs` fails on
+    unregistered or unused actions;
+  - set styles through CSSOM (`el.style.x = …`) or Tailwind classes, never `style="…"`.
+- **HTML construction:** interpolate untrusted values with `escapeHtml()`. Render Markdown only
+  with `renderMarkdown()`. Values embedded in generated Markdown go through `escapeMarkdown()`.
+  Never assign unsanitized strings to `innerHTML`.
+- **Supabase access** goes through `src/js/supabase.js`, which returns `{ ok, data | error }`
+  results and never throws. Handle every error kind in the UI; no silent failures.
+- **Types:** core modules carry `// @ts-check` and JSDoc types. `npm run typecheck` runs in
+  strict mode and `any` is not accepted.
+- **Tailwind** is pinned to v3 to keep the current design; class names must be complete strings
+  so the compiler can find them.
+- **User-facing text** is German, and code, comments and docs are English. Do not claim
+  capabilities the code does not have (privacy, locality, hosting region).
 
-1. **Memory Alignment**:
-   * Respect WGSL structure alignment rules. Uniform buffers must adhere to 16 byte alignment constraints for vector types.
-   * Explicitly define buffer usage flags (`GPUBufferUsage.STORAGE`, `GPUBufferUsage.UNIFORM`, `GPUBufferUsage.COPY_DST`) with minimal required permissions.
-2. **Device Loss Handling**:
-   * Listen for `device.lost` events. Implement recovery or cleanup procedures rather than leaving the application in an unrecoverable hanging state:
-     ```javascript
-     device.lost.then((info) => {
-       console.error(`WebGPU device lost: ${info.message} (Reason: ${info.reason})`);
-       cleanupAllocatedBuffers();
-     });
-     ```
-3. **Pipeline Caching**:
-   * Reuse `GPUComputePipeline` and `GPUBindGroupLayout` objects across execution runs to avoid redundant compilation overhead during inference loops.
+## WebGPU and WebLLM
 
-### Memory Management and VRAM Hygiene
+- The engine runs in `src/js/webgpu/worker.js`; `src/js/webgpu/engine.js` owns its lifecycle.
+  Every load has a sequence number, and every exit path ends in `worker.terminate()`, which
+  releases GPU memory deterministically.
+- New models must exist in the pinned WebLLM prebuilt catalog, have a `q4f32_1` fallback, and
+  get a catalog entry in `src/js/webgpu/models.js` (the unit tests enforce this).
+- Upgrading `@mlc-ai/web-llm`: re-run the unit tests (model ids) and confirm that the bundle
+  still needs no `unsafe-eval` (`npm run verify:dist` checks for `eval`/`new Function`).
 
-1. **Explicit Destruction**:
-   * JavaScript garbage collection does not automatically manage GPU memory buffers synchronously. Always invoke `.destroy()` on `GPUBuffer` and `GPURenderBundle` instances when releasing models or context windows:
-     ```javascript
-     if (buffer) {
-       buffer.destroy();
-       buffer = null;
-     }
-     ```
-2. **Model Switching Safeguards**:
-   * When switching models or precision tiers, the active inference engine instance must be completely dismantled and confirmed dead before instantiating the new runtime. Verify that GPU allocations return to base levels in system task managers.
-3. **Context Window Bounds**:
-   * Do not exceed declared context window sizes (`context_window_size`) or prefill boundaries (`prefill_chunk_size`). Mobile devices must not exceed 2048 context tokens without explicit user override.
+## Database changes
 
-### JavaScript Style and Dependencies
+- Add a new timestamped file under `backend/supabase/migrations/` and update
+  `full_schema.sql`, so fresh installs and upgraded databases stay identical. The test suite
+  compares both with `pg_dump`.
+- Every table needs RLS with explicit policies per role. Functions default to
+  `SECURITY INVOKER` with `set search_path = ''`.
+- Extend `backend/supabase/tests/rls_test.sql` for every new policy.
 
-* Standard ECMAScript Modules (ESM) syntax is required.
-* Avoid heavy third party UI dependencies; preserve the lean, fast loading architecture of the client.
-* Strictly maintain service worker precache manifests when modifying static assets.
+## Pull requests
+
+- Branch from `main`, keep changes focused, and use [Conventional Commits](https://www.conventionalcommits.org/)
+  (`fix(chat): …`, `feat(webgpu): …`, `docs: …`).
+- Fill in the pull request template. Include benchmark numbers (tokens per second, time to
+  first token, memory) when a change affects inference performance.
+- Report security problems privately (see [SECURITY.md](SECURITY.md)), not in public issues.
+
+## Reporting bugs
+
+Use the issue templates. For WebGPU problems, include the browser version, the output of
+`chrome://gpu` or `about:support`, and the adapter information
+(`(await navigator.gpu.requestAdapter()).info`).
