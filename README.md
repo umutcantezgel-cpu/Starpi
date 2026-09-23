@@ -1,5 +1,16 @@
 # Starpi
 
+<p align="center">
+  <a href="https://github.com/umutcantezgel-cpu/Starpi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/umutcantezgel-cpu/Starpi/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/umutcantezgel-cpu/Starpi/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/umutcantezgel-cpu/Starpi?sort=semver"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <a href="https://www.starpi.app"><img alt="Live demo: www.starpi.app" src="https://img.shields.io/badge/demo-www.starpi.app-facc15"></a>
+</p>
+
+<p align="center">
+  <img src="docs/assets/starpi-flow.svg" width="100%" alt="Starpi pipeline: a dropped PDF, Markdown, JSON or CSV file is parsed in an ingestion worker, split into 500-character chunks and indexed with BM25 in worker memory, answered by WebLLM on WebGPU in its own worker or by your own server, and every citation opens the exact span it came from. Files never leave the device.">
+</p>
+
 Browser-native knowledge assistant: on-device LLM inference with WebGPU, private on-device
 document search with verifiable citations, retrieval over a Supabase Postgres knowledge base
 protected by Row Level Security, and an optional Python ingestion backend with pgvector
