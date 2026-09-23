@@ -9,8 +9,8 @@ idealised design. When the code changes, change the diagram in the same pull req
   repository's Markdown files with the pinned Mermaid release (`tests/e2e/docs-diagrams.spec.mjs`),
   so a broken diagram fails the build.
 - **Single source:** this file is the only place a diagram is edited. The README and the guides embed
-  some of them as exact copies under the same `<!-- diagram: <id> -->` marker, and
-  `tests/unit/docs.test.mjs` fails when a copy differs from this file.
+  some of them as exact copies under the same `<!-- diagram: <id> -->` marker: `npm run docs:sync`
+  refreshes the copies, and `tests/unit/docs.test.mjs` fails when a copy differs from this file.
 - **Conventions:** dashed nodes and edges are optional, manual or outside Starpi's control. Mode names
   follow the UI: *on-device* is the `client` mode, *cloud assistant* is `council` and *own server* is
   `local`.
@@ -94,27 +94,27 @@ idealised design. When the code changes, change the diagram in the same pull req
    - [Worker isolation, RLS, key handling, CSP and the build gate](#worker-isolation-rls-key-handling-csp-and-the-build-gate)
    - [Backend API guards, backend secrets and CI supply chain](#backend-api-guards-backend-secrets-and-ci-supply-chain)
 10. [Optional backend](#10-optional-backend)
-   - [BrainAPIHandler: guards, routing and error responses](#brainapihandler-guards-routing-and-error-responses)
-   - [BrainAPIHandler: JSON body validation and handler dispatch](#brainapihandler-json-body-validation-and-handler-dispatch)
-   - [Brain API startup checks](#brain-api-startup-checks)
-   - [ingest_raw_information: structuring, chunking and embeddings](#ingest_raw_information-structuring-chunking-and-embeddings)
-   - [save_document: size clamping, insert and rollback](#save_document-size-clamping-insert-and-rollback)
-   - [query_brain: vector retrieval and answer providers](#query_brain-vector-retrieval-and-answer-providers)
-   - [Backend command line entry points: cli_supabase and brain_smoke](#backend-command-line-entry-points-cli_supabase-and-brain_smoke)
+    - [BrainAPIHandler: guards, routing and error responses](#brainapihandler-guards-routing-and-error-responses)
+    - [BrainAPIHandler: JSON body validation and handler dispatch](#brainapihandler-json-body-validation-and-handler-dispatch)
+    - [Brain API startup checks](#brain-api-startup-checks)
+    - [ingest_raw_information: structuring, chunking and embeddings](#ingest_raw_information-structuring-chunking-and-embeddings)
+    - [save_document: size clamping, insert and rollback](#save_document-size-clamping-insert-and-rollback)
+    - [query_brain: vector retrieval and answer providers](#query_brain-vector-retrieval-and-answer-providers)
+    - [Backend command line entry points: cli_supabase and brain_smoke](#backend-command-line-entry-points-cli_supabase-and-brain_smoke)
 11. [Build, test and deploy](#11-build-test-and-deploy)
-   - [npm run build (scripts/build.mjs)](#npm-run-build-scriptsbuildmjs)
-   - [Build output gate (verify-dist.mjs)](#build-output-gate-verify-distmjs)
-   - [Dev watch mode and the local static server](#dev-watch-mode-and-the-local-static-server)
-   - [CI jobs and the test layers they run](#ci-jobs-and-the-test-layers-they-run)
-   - [Unit tests grouped by concern](#unit-tests-grouped-by-concern)
-   - [End-to-end tests with mocked Supabase and diagnostics](#end-to-end-tests-with-mocked-supabase-and-diagnostics)
-   - [CI workflow triggers, jobs and Dependabot](#ci-workflow-triggers-jobs-and-dependabot)
-   - [Frontend and end-to-end jobs](#frontend-and-end-to-end-jobs)
-   - [Backend, database and secret-scanning jobs](#backend-database-and-secret-scanning-jobs)
-   - [CI workflow and Vercel build of the PWA](#ci-workflow-and-vercel-build-of-the-pwa)
-   - [Backend runtime on EC2](#backend-runtime-on-ec2)
-   - [Backend deployment to EC2 with remote_sync.sh and deploy_ec2.sh](#backend-deployment-to-ec2-with-remote_syncsh-and-deploy_ec2sh)
-   - [Supabase schema: fresh install or ordered migrations](#supabase-schema-fresh-install-or-ordered-migrations)
+    - [npm run build (scripts/build.mjs)](#npm-run-build-scriptsbuildmjs)
+    - [Build output gate (verify-dist.mjs)](#build-output-gate-verify-distmjs)
+    - [Dev watch mode and the local static server](#dev-watch-mode-and-the-local-static-server)
+    - [CI jobs and the test layers they run](#ci-jobs-and-the-test-layers-they-run)
+    - [Unit tests grouped by concern](#unit-tests-grouped-by-concern)
+    - [End-to-end tests with mocked Supabase and diagnostics](#end-to-end-tests-with-mocked-supabase-and-diagnostics)
+    - [CI workflow triggers, jobs and Dependabot](#ci-workflow-triggers-jobs-and-dependabot)
+    - [Frontend and end-to-end jobs](#frontend-and-end-to-end-jobs)
+    - [Backend, database and secret-scanning jobs](#backend-database-and-secret-scanning-jobs)
+    - [CI workflow and Vercel build of the PWA](#ci-workflow-and-vercel-build-of-the-pwa)
+    - [Backend runtime on EC2](#backend-runtime-on-ec2)
+    - [Backend deployment to EC2 with remote_sync.sh and deploy_ec2.sh](#backend-deployment-to-ec2-with-remote_syncsh-and-deploy_ec2sh)
+    - [Supabase schema: fresh install or ordered migrations](#supabase-schema-fresh-install-or-ordered-migrations)
 
 ## 1. System overview
 
@@ -1581,7 +1581,7 @@ flowchart TD
 
 ## 4. On-device workspace and citations
 
-Files added to the workspace are parsed, chunked and indexed in a dedicated worker and never leave the device. Retrieved chunks are labelled `[Doc: <name>, Chunk: <n>]`; only labels the app registered itself become clickable citations.
+Files added to the workspace are parsed, chunked and indexed in a dedicated worker and are never uploaded. Only the on-device mode keeps their matching excerpts on the device as well: the cloud assistant and an own server receive the excerpts, labelled with their file name, together with the question. Retrieved chunks are labelled `[Doc: <name>, Chunk: <n>]`; only labels the app registered itself become clickable citations.
 
 ### On-device workspace: from file drop to the document list
 
@@ -2362,7 +2362,7 @@ stateDiagram-v2
     ready --> ready : loadModel for the same modelId, engine reused, resolves true
     idle --> error_state : loadModel, probeWebGPU unsupported or no-adapter (never enters loading)
     error_state --> error_state : loadModel again, probe still fails
-    loading --> idle : onlyIfCached and hasModelInCache false
+    loading --> idle : onlyIfCached and hasModelInCache false, seq current
     loading --> idle : confirmDownload declined, seq current
     loading --> idle : unloadModel cancels (loadSeq+1, abortPending cancelled, teardown)
     loading --> ready : CreateWebWorkerMLCEngine resolved and seq current
@@ -2372,7 +2372,6 @@ stateDiagram-v2
     error_state --> idle : unloadModel
     note right of loading
         A run whose seq is no longer loadSeq resolves false without setState
-        (only the onlyIfCached branch sets idle without this check)
         and terminates a worker it created.
         Concurrent loadModel calls share one loadPromise.
     end note
@@ -2441,7 +2440,7 @@ sequenceDiagram
     Lib-->>Eng: cached (false if the check throws)
     opt not cached
         alt onlyIfCached
-            Eng->>Eng: setState idle, no seq check
+            Eng->>Eng: setState idle if seq is current
             Eng-->>UI: false
         else download allowed
             Eng->>Sto: prepareStorage(max(approxDownloadMB, 1)), estimate() if available
@@ -4449,7 +4448,7 @@ flowchart TD
 
 ## 11. Build, test and deploy
 
-How the static bundle is built and verified, which tests guard which behaviour, what CI runs on every pull request and push, and how the frontend, database and backend are deployed.
+How the static bundle is built and verified, which tests guard which behaviour, what CI runs on pushes and pull requests to main, and how the frontend, database and backend are deployed.
 
 ### npm run build (scripts/build.mjs)
 

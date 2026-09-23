@@ -136,10 +136,10 @@ flowchart LR
 **Diagrams** live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), the only place they are edited.
 Update the diagram of any behaviour you change in the same pull request. Other Markdown files
 may embed a diagram only as an exact copy under the same `<!-- diagram: <id> -->` marker
-(`tests/unit/docs.test.mjs`), and every Mermaid block must render with the pinned Mermaid
-release (`tests/e2e/docs-diagrams.spec.mjs`). Stick to `flowchart`, `sequenceDiagram`,
-`stateDiagram-v2`, `erDiagram` and `classDiagram`, quote every flowchart label and keep colours
-and `init` directives out.
+(`npm run docs:sync` refreshes the copies, `tests/unit/docs.test.mjs` enforces it), and every
+Mermaid block must render with the pinned Mermaid release (`tests/e2e/docs-diagrams.spec.mjs`).
+Stick to `flowchart`, `sequenceDiagram`, `stateDiagram-v2`, `erDiagram` and `classDiagram`, quote
+every flowchart label and keep colours and `init` directives out.
 
 ## Frontend conventions
 
@@ -271,7 +271,7 @@ sequenceDiagram
     Lib-->>Eng: cached (false if the check throws)
     opt not cached
         alt onlyIfCached
-            Eng->>Eng: setState idle, no seq check
+            Eng->>Eng: setState idle if seq is current
             Eng-->>UI: false
         else download allowed
             Eng->>Sto: prepareStorage(max(approxDownloadMB, 1)), estimate() if available

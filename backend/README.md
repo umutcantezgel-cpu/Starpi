@@ -29,10 +29,10 @@ root); the environment always wins. [`.env.example`](.env.example) documents eve
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | empty | Supabase project; both empty means in-memory storage |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | empty | Supabase project; both are required, and if either is empty documents are kept in memory only |
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | `http://127.0.0.1:8000/v1`, `EMPTY`, `Qwen/Qwen2.5-7B-Instruct` | Chat Completions-compatible endpoint for structuring and answers |
 | `GEMINI_API_KEYS`, `OPENROUTER_API_KEYS` | empty | Optional key pools, comma separated, tried before `LLM_BASE_URL` for answers |
-| `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL` | `http://127.0.0.1:8000/v1`, `EMPTY` | `/v1/embeddings` endpoint returning 1536 dimensions; without it sections are stored without embeddings |
+| `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL` | `http://127.0.0.1:8000/v1`, `EMPTY`, see `.env.example` | `/v1/embeddings` endpoint returning 1536 dimensions; set the model your endpoint serves. Without the endpoint, sections are stored without embeddings |
 | `BRAIN_SERVER_HOST`, `BRAIN_SERVER_PORT` | `127.0.0.1`, `9200` | Bind address; any non-loopback address requires `BRAIN_API_TOKEN` |
 | `BRAIN_API_TOKEN` | empty | Bearer token for `/api/brain/*` (`openssl rand -hex 32`) |
 | `BRAIN_ALLOWED_ORIGINS` | local dev servers and `starpi.app` | CORS allow-list, comma separated |
@@ -46,9 +46,9 @@ root); the environment always wins. [`.env.example`](.env.example) documents eve
 | `GET /api/health` | never | none | `{"status": "healthy", "supabase_live": bool}`; `supabase_live` only means URL and key are set |
 | `GET /api/brain/documents` | when set | none | `{"documents": [...], "count": n}` |
 | `POST /api/brain/ingest` | when set | `{"text": str, "source_name"?: str, "source_type"?: str}` (200000 / 256 / 64 characters) | document id, title, summary, tags, Markdown, section and embedding counts, storage |
-| `POST /api/brain/query` | when set | `{"query": str}` (4000 characters) | `answer`, `sources`, `provider` |
+| `POST /api/brain/query` | when set | `{"query": str}` (4000 characters) | `answer`, `sources`, `provider` (`gemini_pool`, `openrouter_pool` or `local_llm`); when no model answers, still 200 with `provider` `none`, `error` `llm_unavailable` and the retrieved context as `answer` |
 
-Errors are JSON objects with an `error` code and the matching HTTP status. Every response,
+Rejected requests get a 4xx or 5xx status and a JSON object with an `error` code. Every response,
 including errors, carries the security headers.
 
 ## Request handling
@@ -244,7 +244,8 @@ sequenceDiagram
     Pipe-->>Srv: document_id, title, summary, tags, markdown, counts, storage, status success
 ```
 
-Saving is all or nothing on Supabase and falls back to the in-memory store:
+On Supabase, a document whose sections cannot be inserted is deleted again (best effort: a failed
+rollback is only logged and the row stays). A failed remote save falls back to the in-memory store:
 
 <!-- diagram: backend-pipelines-storage -->
 ```mermaid
@@ -394,7 +395,8 @@ ruff check . && ruff format --check .
 python -m unittest discover -s . -p 'test_*.py'
 ```
 
-The unit tests run offline; HTTP calls are mocked. `scripts/brain_smoke.py` is a manual end-to-end
+The unit tests run offline: calls to external services are mocked or replaced with fakes, and the
+server tests send real HTTP requests to a server started on `127.0.0.1` with an ephemeral port. `scripts/brain_smoke.py` is a manual end-to-end
 check against live endpoints. The database policies are tested separately with
 `supabase/tests/run_rls_tests.sh` (see [supabase/README.md](supabase/README.md)).
 

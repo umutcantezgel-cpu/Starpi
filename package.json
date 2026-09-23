@@ -26,6 +26,7 @@
     "test": "node --test \"tests/unit/*.test.mjs\"",
     "test:e2e": "playwright test",
     "verify:dist": "node scripts/verify-dist.mjs",
+    "docs:sync": "node scripts/sync-diagrams.mjs",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run verify:dist"
   },
   "keywords": [

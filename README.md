@@ -409,7 +409,7 @@ stateDiagram-v2
     ready --> ready : loadModel for the same modelId, engine reused, resolves true
     idle --> error_state : loadModel, probeWebGPU unsupported or no-adapter (never enters loading)
     error_state --> error_state : loadModel again, probe still fails
-    loading --> idle : onlyIfCached and hasModelInCache false
+    loading --> idle : onlyIfCached and hasModelInCache false, seq current
     loading --> idle : confirmDownload declined, seq current
     loading --> idle : unloadModel cancels (loadSeq+1, abortPending cancelled, teardown)
     loading --> ready : CreateWebWorkerMLCEngine resolved and seq current
@@ -419,7 +419,6 @@ stateDiagram-v2
     error_state --> idle : unloadModel
     note right of loading
         A run whose seq is no longer loadSeq resolves false without setState
-        (only the onlyIfCached branch sets idle without this check)
         and terminates a worker it created.
         Concurrent loadModel calls share one loadPromise.
     end note
