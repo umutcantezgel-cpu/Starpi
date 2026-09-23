@@ -56,7 +56,7 @@ database checks.
 | [`tests/unit/`](../tests/unit), [`tests/e2e/`](../tests/e2e) | Node unit tests and Playwright end-to-end tests |
 | [`backend/`](../backend) | Optional Python API, ingestion and retrieval pipelines, EC2 deployment |
 | [`backend/supabase/`](../backend/supabase) | Schema, idempotent migrations and the RLS test harness |
-| [`docs/`](.) | This walkthrough and the architecture atlas |
+| [`docs/`](.) | This walkthrough, the architecture atlas, [release notes](releases) and the README artwork |
 | [`.github/`](../.github) | CI workflow, Dependabot, issue and pull request templates |
 
 ## Follow a question through the code
