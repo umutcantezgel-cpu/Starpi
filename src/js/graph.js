@@ -1,6 +1,7 @@
 // @ts-check
 // Knowledge graph: entities/relations from Supabase drawn on a canvas (text via fillText only).
 import { submitChat } from './chat.js';
+import { closeDialog, openDialog } from './dialog.js';
 import { byId, onAction, setHidden, setHtml } from './dom.js';
 import { hasKey, onLocaleChange, setText, t } from './i18n/index.js';
 import { describeDataError } from './library.js';
@@ -50,27 +51,25 @@ export async function loadKnowledgeGraph() {
   }
 }
 
-/**
- * @param {CanvasRenderingContext2D} ctx
- * @param {string} text
- * @param {number} maxWidth
- */
-function wrapLines(ctx, text, maxWidth) {
-  const words = text.split(/\s+/);
-  /** @type {string[]} */
-  const lines = [];
-  let line = '';
-  for (const word of words) {
-    const next = line ? `${line} ${word}` : word;
-    if (ctx.measureText(next).width > maxWidth && line) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = next;
-    }
-  }
-  if (line) lines.push(line);
-  return lines;
+/** The entities as buttons: the keyboard and screen-reader way into the graph. */
+function renderEntityList() {
+  const list = byId('graphEntityList');
+  if (!list) return;
+  setHidden(byId('graphEntityListLabel'), graph.entities.length === 0);
+  list.replaceChildren(
+    ...graph.entities.map((entity) => {
+      const li = document.createElement('li');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'badge badge-muted hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900';
+      btn.dataset.action = 'select-entity';
+      btn.dataset.arg = entity.id;
+      btn.setAttribute('aria-pressed', String(entity.id === selectedId));
+      btn.textContent = entity.name;
+      li.append(btn);
+      return li;
+    }),
+  );
 }
 
 export function renderGraph() {
@@ -91,15 +90,15 @@ export function renderGraph() {
   ctx.clearRect(0, 0, width, height);
   positions = new Map();
 
+  renderEntityList();
+  // Empty and error states are text in the DOM (announced, translatable), not canvas pixels.
+  const status = byId('graphStatus');
   if (graph.entities.length === 0) {
-    ctx.fillStyle = '#64748b';
-    ctx.font = '13px "Plus Jakarta Sans Variable", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const lines = wrapLines(ctx, emptyMessage ? emptyMessage() : t('graph.empty'), Math.max(160, width - 48));
-    lines.forEach((l, i) => ctx.fillText(l, cx, cy + (i - (lines.length - 1) / 2) * 18));
+    if (status) status.textContent = emptyMessage ? emptyMessage() : t('graph.empty');
+    setHidden(status, false);
     return;
   }
+  setHidden(status, true);
 
   const radius = Math.min(width, height) * 0.36;
   graph.entities.forEach((entity, idx) => {
@@ -107,6 +106,22 @@ export function renderGraph() {
     positions.set(entity.id, { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) });
   });
 
+  // Space taken by nodes and their names; relation labels are placed around it and each other.
+  /** @type {Array<{ x: number, y: number, w: number, h: number }>} */
+  const taken = [];
+  const overlaps = (/** @type {{ x: number, y: number, w: number, h: number }} */ b) =>
+    taken.some((p) => b.x < p.x + p.w && b.x + b.w > p.x && b.y < p.y + p.h && b.y + b.h > p.y);
+  for (const entity of graph.entities) {
+    const pos = positions.get(entity.id);
+    if (!pos) continue;
+    const r = selectedId === entity.id ? 28 : 22;
+    ctx.font = `${selectedId === entity.id ? 'bold ' : '600 '}11px "Plus Jakarta Sans Variable", sans-serif`;
+    const nameWidth = ctx.measureText(entity.name).width;
+    taken.push({ x: pos.x - r, y: pos.y - r, w: 2 * r, h: 2 * r }, { x: pos.x - nameWidth / 2, y: pos.y + r - 1, w: nameWidth, h: 15 });
+  }
+
+  /** @type {Array<{ label: string, src: { x: number, y: number }, tgt: { x: number, y: number }, selected: boolean }>} */
+  const edges = [];
   for (const rel of graph.relations) {
     const src = positions.get(rel.source_entity_id);
     const tgt = positions.get(rel.target_entity_id);
@@ -118,11 +133,34 @@ export function renderGraph() {
     ctx.moveTo(src.x, src.y);
     ctx.lineTo(tgt.x, tgt.y);
     ctx.stroke();
-    ctx.fillStyle = selected ? '#b45309' : '#64748b';
-    ctx.font = '10px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText(rel.relation_type, (src.x + tgt.x) / 2, (src.y + tgt.y) / 2 - 3);
+    edges.push({ label: rel.relation_type, src, tgt, selected });
+  }
+
+  // Labels sit on a pill so crossing lines do not run through them. With a node selected only its
+  // relations are labelled; a label that would cover another one or a node is left out (every
+  // relation is listed in the entity details).
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const edge of edges.sort((a, b) => Number(b.selected) - Number(a.selected))) {
+    if (selectedId && !edge.selected) continue;
+    const w = ctx.measureText(edge.label).width + 8;
+    const h = 14;
+    for (const f of [0.5, 0.38, 0.62]) {
+      const x = edge.src.x + (edge.tgt.x - edge.src.x) * f;
+      const y = edge.src.y + (edge.tgt.y - edge.src.y) * f;
+      const box = { x: x - w / 2, y: y - h / 2, w, h };
+      if (overlaps(box)) continue;
+      taken.push(box);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.fillRect(box.x, box.y, box.w, box.h);
+      ctx.strokeStyle = edge.selected ? '#fcd34d' : '#e2e8f0';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.w - 1, box.h - 1);
+      ctx.fillStyle = edge.selected ? '#92400e' : '#475569';
+      ctx.fillText(edge.label, x, y + 0.5);
+      break;
+    }
   }
 
   for (const entity of graph.entities) {
@@ -151,9 +189,14 @@ export function renderGraph() {
     ctx.textBaseline = 'middle';
     ctx.fillText(entity.name.slice(0, 2).toUpperCase(), pos.x, pos.y);
 
-    ctx.fillStyle = selected ? '#0f172a' : '#334155';
     ctx.font = `${selected ? 'bold ' : '600 '}11px "Plus Jakarta Sans Variable", sans-serif`;
     ctx.textBaseline = 'top';
+    // A halo keeps the name readable where a relation line passes behind it.
+    ctx.strokeStyle = 'rgba(248, 250, 252, 0.95)';
+    ctx.lineWidth = 3;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(entity.name, pos.x, pos.y + r + 5);
+    ctx.fillStyle = selected ? '#0f172a' : '#334155';
     ctx.fillText(entity.name, pos.x, pos.y + r + 5);
   }
 }
@@ -231,7 +274,7 @@ function selectEntity(id) {
 }
 
 function closeEntityModal() {
-  setHidden(byId('entityModal'), true);
+  closeDialog(byId('entityModal'));
   const name = /** @type {HTMLInputElement | null} */ (byId('newEntityName'));
   const desc = /** @type {HTMLTextAreaElement | null} */ (byId('newEntityDesc'));
   if (name) name.value = '';
@@ -257,9 +300,10 @@ async function saveEntity() {
 
 export function initGraph() {
   onAction('reload-graph', () => loadKnowledgeGraph());
-  onAction('open-entity-modal', () => setHidden(byId('entityModal'), false));
+  onAction('open-entity-modal', (el) => openDialog(byId('entityModal'), { trigger: el, initialFocus: byId('newEntityName') }));
   onAction('close-entity-modal', () => closeEntityModal());
   onAction('save-entity', () => saveEntity());
+  onAction('select-entity', (el) => selectEntity(el.dataset.arg ?? ''));
   onAction('ask-entity', (el) => {
     switchTab('chat');
     return submitChat(t('graph.ask_prompt', { name: el.dataset.arg ?? '' }));
@@ -286,8 +330,5 @@ export function initGraph() {
   });
   window.addEventListener('resize', () => {
     if (!byId('tab-graph')?.classList.contains('hidden')) renderGraph();
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeEntityModal();
   });
 }

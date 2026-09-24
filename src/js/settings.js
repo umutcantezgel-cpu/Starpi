@@ -1,17 +1,20 @@
 // @ts-check
 // Settings tab: compute mode, provider keys (session or device storage), own-server URL,
 // WebGPU model preference, and connection tests.
+import { deleteChatHistory } from './chat-store.js';
+import { resetConversation } from './chat.js';
 import { STORAGE_KEYS } from './config.js';
-import { byId, onAction, onChange, setHidden, setHtml } from './dom.js';
+import { canSyncChats } from './supabase.js';
+import { byId, onAction, onChange, setHidden } from './dom.js';
 import { renderEngineState, startLocalEngine } from './engine-ui.js';
 import { refreshIcons } from './icons.js';
 import { formatNumber, getLocale, setText, t } from './i18n/index.js';
 import { readinessPrompt } from './prompts.js';
 import { callGemini, callOpenRouter, hasGeminiKey, hasOpenRouterKey, normalizeServerUrl, probeLocalServer } from './providers.js';
-import { escapeHtml, sanitizeModelNames } from './render.js';
+import { sanitizeModelNames } from './render.js';
 import { getLlmUrl, getMode, getModelPreference, setLlmUrl, setMode, setModelPreference } from './state.js';
 import { readLocal, readSecret, removeSecret, writeLocal, writeSecret } from './storage.js';
-import { setEngineDot } from './ui.js';
+import { setAssistantStatus, setEngineDot } from './ui.js';
 import * as engine from './webgpu/engine.js';
 
 /** @typedef {import('./config.js').ComputeMode} ComputeMode */
@@ -66,6 +69,13 @@ export function renderPrivacyNotice() {
   const text = document.createElement('span');
   setText(text, key, params);
   el.replaceChildren(iconEl, text);
+  // Disclose where the conversation itself is kept when it leaves the browser.
+  if (mode !== 'client' && canSyncChats()) {
+    const history = document.createElement('span');
+    history.className = 'basis-full sm:basis-auto'; // its own line on phones
+    setText(history, 'privacy.history_synced');
+    el.append(history);
+  }
   refreshIcons(el);
 }
 
@@ -101,7 +111,10 @@ export async function changeEngine(value, opts) {
     }
   } else if (mode === 'local') {
     setEngineDot('busy');
-    setEngineDot((await probeLocalServer(getLlmUrl())) ? 'ok' : 'warn');
+    const reachable = await probeLocalServer(getLlmUrl());
+    setEngineDot(reachable ? 'ok' : 'warn');
+    // Not by colour alone: the status line says it too.
+    setAssistantStatus(reachable ? 'status.ready' : 'status.server_unreachable');
   } else {
     setEngineDot(hasGeminiKey() || hasOpenRouterKey() ? 'ok' : 'off');
   }
@@ -163,6 +176,25 @@ function clearKeys() {
 }
 
 /**
+ * A result line: icon plus a translated text that follows a language switch.
+ * @param {string} icon
+ * @param {string} iconClass
+ * @param {string} key
+ * @param {Record<string, string>} [params]
+ */
+function statusLine(icon, iconClass, key, params) {
+  const line = document.createElement('span');
+  line.className = 'flex items-center gap-1.5';
+  const i = document.createElement('i');
+  i.dataset.lucide = icon;
+  i.className = `w-3.5 h-3.5 flex-shrink-0 ${iconClass}`;
+  const text = document.createElement('span');
+  setText(text, key, params);
+  line.append(i, text);
+  return line;
+}
+
+/**
  * @param {'gemini' | 'openrouter'} provider
  */
 async function testProvider(provider) {
@@ -172,39 +204,56 @@ async function testProvider(provider) {
   if (!box) return;
   if (btn) btn.disabled = true;
   box.className = 'text-xs p-2.5 rounded-lg border bg-amber-500/10 border-amber-500/30 text-amber-800 flex items-center gap-2';
-  setHtml(box, `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>${escapeHtml(t(isGemini ? 'settings.test_running_primary' : 'settings.test_running_secondary'))}</span>`);
+  box.replaceChildren(statusLine('loader-2', 'animate-spin', isGemini ? 'settings.test_running_primary' : 'settings.test_running_secondary'));
+  refreshIcons(box);
   setHidden(box, false);
 
   const t0 = performance.now();
   try {
     const prompt = readinessPrompt(getLocale());
+    // A key typed but not saved yet is tested as typed.
+    const typed = /** @type {HTMLInputElement | null} */ (byId(isGemini ? 'cfgGeminiKey' : 'cfgOpenrouterKey'))?.value.trim() || undefined;
     const text = isGemini
-      ? (await callGemini(prompt)).text
-      : (await callOpenRouter([{ role: 'user', content: prompt }])).text;
+      ? (await callGemini(prompt, { key: typed })).text
+      : (await callOpenRouter([{ role: 'user', content: prompt }], { key: typed })).text;
     const elapsed = Math.round(performance.now() - t0);
     box.className = 'text-xs p-2.5 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-800 space-y-1';
-    setHtml(
-      box,
-      `<div class="flex items-center justify-between font-semibold">
-        <span class="flex items-center gap-1.5"><i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-600"></i> ${escapeHtml(t(isGemini ? 'settings.test_ok_primary' : 'settings.test_ok_secondary'))}</span>
-        <span class="font-mono text-[11px]">${escapeHtml(formatNumber(elapsed))} ms</span>
-      </div>
-      <p class="text-[11px] text-slate-600 italic">"${escapeHtml(sanitizeModelNames(text.slice(0, 140)))}"</p>`,
-    );
+    const head = document.createElement('div');
+    head.className = 'flex items-center justify-between gap-2 font-semibold';
+    const ms = document.createElement('span');
+    ms.className = 'font-mono text-[11px]';
+    ms.textContent = `${formatNumber(elapsed)} ms`;
+    head.append(statusLine('check-circle-2', 'text-emerald-600', isGemini ? 'settings.test_ok_primary' : 'settings.test_ok_secondary'), ms);
+    const sample = document.createElement('p');
+    sample.className = 'text-[11px] text-slate-600 italic';
+    sample.textContent = `"${sanitizeModelNames(text.slice(0, 140))}"`;
+    box.replaceChildren(head, sample);
   } catch (err) {
     const notConfigured = Boolean(err && typeof err === 'object' && 'notConfigured' in err && err.notConfigured);
     box.className = `text-xs p-2.5 rounded-lg border ${notConfigured ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-rose-500/10 border-rose-500/30 text-rose-700'}`;
-    setHtml(
-      box,
-      `<div class="flex items-center gap-1.5 font-semibold">
-        <i data-lucide="${notConfigured ? 'info' : 'alert-circle'}" class="w-3.5 h-3.5"></i>
-        <span>${escapeHtml(notConfigured ? t('settings.test_not_configured', { provider: isGemini ? 'Gemini' : 'OpenRouter' }) : t('settings.test_failed'))}</span>
-      </div>
-      <p class="text-[11px] mt-1 text-slate-600">${escapeHtml(sanitizeModelNames(err instanceof Error ? err.message : String(err)))}</p>`,
+    const head = statusLine(
+      notConfigured ? 'info' : 'alert-circle',
+      '',
+      notConfigured ? 'settings.test_not_configured' : 'settings.test_failed',
+      notConfigured ? { provider: isGemini ? 'Gemini' : 'OpenRouter' } : undefined,
     );
+    head.classList.add('font-semibold');
+    const detail = document.createElement('p');
+    detail.className = 'text-[11px] mt-1 text-slate-600';
+    if (notConfigured) setText(detail, 'settings.test_enter_key');
+    else detail.textContent = sanitizeModelNames(err instanceof Error ? err.message : String(err));
+    box.replaceChildren(head, detail);
   } finally {
+    refreshIcons(box);
     if (btn) btn.disabled = false;
   }
+}
+
+async function deleteHistory() {
+  if (!window.confirm(t('settings.delete_history_confirm'))) return;
+  const ok = await deleteChatHistory();
+  resetConversation();
+  window.alert(t(ok ? 'settings.delete_history_done' : 'settings.delete_history_partial'));
 }
 
 async function deleteModelCache() {
@@ -234,4 +283,5 @@ export function initSettings() {
   onAction('test-gemini', () => testProvider('gemini'));
   onAction('test-openrouter', () => testProvider('openrouter'));
   onAction('delete-model-cache', () => deleteModelCache());
+  onAction('delete-chat-history', () => deleteHistory());
 }

@@ -281,7 +281,7 @@ test.describe('on-device workspace', () => {
     await expect(list.locator('li')).toHaveCount(2);
     await expect(list).toContainText('notes.md');
     await expect(list).toContainText('plan.pdf');
-    await expect(list).toContainText('1 pages · 1 chunks');
+    await expect(list).toContainText('1 page · 1 chunk');
 
     // BM25 search panel: real scores, best match first.
     await page.fill('#workspaceQuery', 'Nebula budget');
@@ -326,7 +326,7 @@ test.describe('on-device workspace', () => {
     await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
 
     await page.setInputFiles('#chatFileInput', { name: 'orion-roadmap.md', mimeType: 'text/markdown', buffer: Buffer.from('# Orion\n\nThe Orion release ships in calendar week 38.') });
-    await expect(page.locator('#attachedFileName')).toHaveText('orion-roadmap.md · 1 chunks');
+    await expect(page.locator('#attachedFileName')).toHaveText('orion-roadmap.md · 1 chunk');
     await ask(page, 'When does the Orion release ship?');
     const answer = page.locator('#chatMessages > div').last();
     await expect(answer).toContainText('calendar week 38');
@@ -364,6 +364,27 @@ test.describe('on-device workspace', () => {
     await expect(drawer.locator('#citationModalNote')).toHaveText(/no longer in the workspace/);
     await expect(drawer).toContainText('120000 EUR');
     await expect(drawer).not.toContainText('Beta launch');
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('reports every file of a batch and does not index the same file twice', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await page.goto('/');
+    await openTab(page, 'ingest');
+    const notes = { name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Notes\n\nThe steering group meets every Tuesday in room 4.') };
+    await page.setInputFiles('#workspaceFileInput', [{ name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) }, notes]);
+    const status = page.locator('#workspaceStatus');
+    await expect(status).toContainText('notes.md added: 1 chunk indexed.');
+    await expect(status).toContainText('photo.png: this file type is not supported.');
+
+    await page.setInputFiles('#workspaceFileInput', notes);
+    await expect(status).toContainText('notes.md is already in the workspace');
+    await expect(page.locator('#workspaceList li')).toHaveCount(1);
+
+    // A different file with the same name gets its own name, so citation labels stay unambiguous.
+    await page.setInputFiles('#workspaceFileInput', { ...notes, buffer: Buffer.from('# Notes\n\nThe budget review is on Friday.') });
+    await expect(page.locator('#workspaceList li')).toHaveCount(2);
+    await expect(page.locator('#workspaceList')).toContainText('notes (2).md');
     expect(diagnostics).toEqual([]);
   });
 

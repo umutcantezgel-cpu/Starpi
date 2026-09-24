@@ -74,24 +74,51 @@ function setWorkspaceStatus(key, params) {
   if (key) setText(el, key, params);
 }
 
+const WORKSPACE_ERRORS = ['unsupported_type', 'too_large', 'empty', 'invalid_json', 'invalid_pdf', 'encrypted_pdf', 'pdf_reader', 'worker_crashed', 'cleared'];
+
+/**
+ * The status line with one line per file, so a file that was not added is still reported after
+ * the next one finishes.
+ * @param {Array<[string, Record<string, string | number>]>} lines
+ */
+function setWorkspaceReport(lines) {
+  const el = byId('workspaceStatus');
+  if (!el) return;
+  el.removeAttribute('data-i18n');
+  el.removeAttribute('data-i18n-params');
+  el.replaceChildren(
+    ...lines.map(([key, params]) => {
+      const line = document.createElement('span');
+      line.className = 'block';
+      setText(line, key, params);
+      return line;
+    }),
+  );
+  setHidden(el, !lines.length);
+}
+
 /** @param {File[]} files */
 async function addFiles(files) {
+  /** @type {Array<[string, Record<string, string | number>]>} */
+  const report = [];
+  const show = (/** @type {[string, Record<string, string | number>] | null} */ current) => setWorkspaceReport(current ? [...report, current] : report);
   for (const file of files) {
     if (!WORKSPACE_EXTENSIONS.test(file.name)) {
-      setWorkspaceStatus('workspace.error_unsupported_type', { name: file.name });
+      report.push(['workspace.error_unsupported_type', { name: file.name }]);
+      show(null);
       continue;
     }
-    setWorkspaceStatus('workspace.progress_parsing', { name: file.name, done: 0, total: 1 });
+    show(['workspace.progress_parsing', { name: file.name, done: 0, total: 1 }]);
     try {
       const doc = await addToWorkspace(file, {
-        onProgress: (p) => setWorkspaceStatus(`workspace.progress_${p.stage}`, { name: file.name, done: formatNumber(p.done), total: formatNumber(p.total) }),
+        onProgress: (p) => show([`workspace.progress_${p.stage}`, { name: file.name, done: formatNumber(p.done), total: formatNumber(p.total) }]),
       });
-      setWorkspaceStatus('workspace.added', { name: doc.name, chunks: formatNumber(doc.chunks) });
+      report.push(doc.duplicate ? ['workspace.duplicate', { name: doc.name }] : ['workspace.added', { name: doc.name, chunks: formatNumber(doc.chunks) }]);
     } catch (err) {
       const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : 'internal';
-      const known = ['unsupported_type', 'too_large', 'empty', 'invalid_json', 'invalid_pdf', 'encrypted_pdf', 'worker_crashed', 'cleared'];
-      setWorkspaceStatus(`workspace.error_${known.includes(code) ? code : 'internal'}`, { name: file.name });
+      report.push([`workspace.error_${WORKSPACE_ERRORS.includes(code) ? code : 'internal'}`, { name: file.name }]);
     }
+    show(null);
   }
 }
 

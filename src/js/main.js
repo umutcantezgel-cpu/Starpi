@@ -3,6 +3,7 @@
 import { initBenchUi, refreshDiagnostics } from './bench/bench-ui.js';
 import { refreshSyncStatus } from './chat-store.js';
 import { initChat, restoreHistory } from './chat.js';
+import { initDemo } from './demo.js';
 import { byId, installDelegation, onAction, reportUnexpected, setHidden } from './dom.js';
 import { initEngineUi } from './engine-ui.js';
 import { initGraph, loadKnowledgeGraph } from './graph.js';
@@ -12,42 +13,37 @@ import { initIngest } from './ingest.js';
 import { initLibrary, loadDocuments } from './library.js';
 import { initMessages } from './messages.js';
 import { initCitations } from './rag/citations.js';
+import { initReceipts } from './rag/receipts.js';
 import { changeEngine, initSettings, renderPrivacyNotice } from './settings.js';
 import { getMode } from './state.js';
 import { connect, onConnectionChange } from './supabase.js';
-import { detectAndDisplayDevice, onTabOpen, renderConnection, switchTab, toggleSidebar } from './ui.js';
+import { detectAndDisplayDevice, onTabOpen, renderConnection, switchTab, syncSidebarAccess, toggleSidebar } from './ui.js';
 import { initVoice } from './voice.js';
 
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  const hadController = Boolean(navigator.serviceWorker.controller);
-  /** @type {ServiceWorkerRegistration | null} */
-  let registration = null;
-
-  const showUpdate = () => setHidden(byId('updateBanner'), false);
-  onAction('reload-app', () => {
-    if (registration?.waiting) registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-    else window.location.reload();
-  });
-
-  let reloading = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    // First install claims the page; only reload when an older worker was replaced.
-    if (!hadController || reloading) return;
-    reloading = true;
-    window.location.reload();
-  });
-
+  // Navigations are network-first and assets are content-hashed, so a page usually already runs the
+  // newest build when a new worker takes over. The banner appears only when this page's code is
+  // older than the deployed build, and "Reload" reloads only this tab (never other open tabs, whose
+  // workspaces and drafts live in memory).
+  const currentMain = document.querySelector('script[type="module"][src^="/assets/"]')?.getAttribute('src') ?? null;
+  onAction('reload-app', () => window.location.reload());
+  onAction('dismiss-update', () => setHidden(byId('updateBanner'), true));
+  const checkForUpdate = async () => {
+    try {
+      const res = await fetch('/build-manifest.json', { cache: 'no-store' });
+      if (!res.ok) return;
+      const manifest = await res.json();
+      const latest = manifest?.entries?.mainJs;
+      if (currentMain && typeof latest === 'string' && latest !== currentMain) setHidden(byId('updateBanner'), false);
+    } catch {
+      // Offline or no manifest: nothing to compare against.
+    }
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', () => void checkForUpdate());
   window.addEventListener('load', async () => {
     try {
-      registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-      if (registration.waiting && navigator.serviceWorker.controller) showUpdate();
-      registration.addEventListener('updatefound', () => {
-        const installing = registration?.installing;
-        installing?.addEventListener('statechange', () => {
-          if (installing.state === 'installed' && navigator.serviceWorker.controller) showUpdate();
-        });
-      });
+      await navigator.serviceWorker.register('/sw.js', { scope: '/' });
     } catch (err) {
       console.warn('[starpi] service worker registration failed', err);
     }
@@ -60,6 +56,7 @@ async function boot() {
   installDelegation();
   onAction('switch-tab', (el) => switchTab(el.dataset.arg ?? 'chat'));
   onAction('toggle-sidebar', () => toggleSidebar());
+  syncSidebarAccess(false);
   onAction('set-locale', (el) => setLocale(el.dataset.arg ?? 'en'));
 
   onTabOpen('library', () => void loadDocuments());
@@ -76,6 +73,8 @@ async function boot() {
   initVoice();
   initBenchUi();
   initCitations();
+  initDemo();
+  initReceipts();
 
   refreshIcons();
   detectAndDisplayDevice();

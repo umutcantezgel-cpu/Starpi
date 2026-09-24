@@ -35,6 +35,8 @@ export function switchTab(tabId) {
   if (window.innerWidth < 768) toggleSidebar(false);
 }
 
+const desktop = globalThis.matchMedia?.('(min-width: 768px)');
+
 /** @param {boolean} [forcedState] */
 export function toggleSidebar(forcedState) {
   const sidebar = byId('sidebar');
@@ -44,7 +46,23 @@ export function toggleSidebar(forcedState) {
   const shouldOpen = forcedState ?? !isVisible;
   sidebar.classList.toggle('-translate-x-full', !shouldOpen);
   backdrop.classList.toggle('hidden', !shouldOpen);
+  syncSidebarAccess(shouldOpen);
+  if (shouldOpen && !desktop?.matches) /** @type {HTMLElement | null} */ (sidebar.querySelector('button, a'))?.focus();
 }
+
+/**
+ * On phones the closed off-canvas menu is only moved off screen; `inert` keeps it out of the tab
+ * order and away from screen readers until it is opened.
+ * @param {boolean} [open]
+ */
+export function syncSidebarAccess(open = false) {
+  const sidebar = byId('sidebar');
+  const closed = !desktop?.matches && !open;
+  if (sidebar) sidebar.inert = closed;
+  byId('menuButton')?.setAttribute('aria-expanded', String(!closed && !desktop?.matches));
+}
+
+desktop?.addEventListener?.('change', () => syncSidebarAccess(false));
 
 export function detectAndDisplayDevice() {
   const userAgent = navigator.userAgent || '';
@@ -113,6 +131,7 @@ export function renderConnection(c) {
   /** @type {'ok' | 'warn' | 'off' | 'busy'} */
   let tone = 'busy';
   let badge = 'status.connecting';
+  let detail = 'status.detail_connecting';
   let auth = 'status.rls_session';
   /** @type {Record<string, string> | undefined} */
   let authParams;
@@ -120,23 +139,29 @@ export function renderConnection(c) {
   if (c.status === 'offline') {
     tone = 'off';
     badge = 'status.offline';
+    detail = 'status.detail_offline';
     auth = 'status.no_session';
   } else if (c.status === 'ready') {
     if (c.hardened && c.signedIn) {
       tone = 'ok';
       badge = 'status.live';
+      detail = 'status.detail_live';
       auth = 'status.rls_session';
     } else if (c.hardened) {
-      tone = 'warn';
-      badge = 'status.read_only';
+      // Reading published documents works; saving and chat sync need a session.
+      tone = 'ok';
+      badge = 'status.public';
+      detail = 'status.detail_public';
       auth = c.authError?.kind === 'auth_disabled' ? 'status.rls_disabled' : 'status.no_session';
     } else if (c.probeError?.kind === 'missing_schema') {
       tone = 'warn';
       badge = 'status.migration_pending';
+      detail = 'status.detail_setup';
       auth = 'status.migration_needed';
     } else {
       tone = 'warn';
       badge = 'status.restricted';
+      detail = 'status.detail_setup';
       auth = 'status.probe_error';
       authParams = { code: c.probeError?.code || c.probeError?.kind || 'unknown' };
     }
@@ -151,8 +176,14 @@ export function renderConnection(c) {
     setText(badgeEl, badge);
     badgeEl.className = `badge ${colors[tone]}`;
   }
-  const label = byId('dbProjectLabel');
-  if (label) label.textContent = SUPABASE_PROJECT_REF;
+  setText(byId('dbStatusDetail'), detail);
+
+  // Saving to the knowledge base needs a session and the hardened schema; say so instead of failing.
+  const canWrite = c.status === 'ready' && c.signedIn && c.hardened;
+  for (const el of document.querySelectorAll('[data-requires-session]')) {
+    /** @type {HTMLButtonElement} */ (el).disabled = !canWrite && c.status !== 'pending';
+  }
+  for (const note of document.querySelectorAll('.session-note')) note.classList.toggle('hidden', canWrite || c.status === 'pending');
 
   const settingsBadge = byId('settingsDbBadge');
   if (settingsBadge) {

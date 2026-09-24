@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { LIMITS, SUPABASE_ANON_KEY, SUPABASE_URL, TIMEOUTS_MS } from './config.js';
 import { withTimeoutSignal } from './signals.js';
 
-/** @typedef {'timeout' | 'network' | 'missing_schema' | 'missing_function' | 'forbidden' | 'auth_disabled' | 'not_signed_in' | 'unknown'} ErrorKind */
+/** @typedef {'timeout' | 'network' | 'missing_schema' | 'missing_function' | 'forbidden' | 'not_found' | 'auth_disabled' | 'not_signed_in' | 'unknown'} ErrorKind */
 /** @typedef {{ kind: ErrorKind, message: string, code?: string }} DataError */
 /**
  * @template T
@@ -60,6 +60,9 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     storageKey: 'starpi-auth',
   },
   global: { fetch: fetchWithTimeout },
+  // postgrest-js would retry timed-out reads three more times (about a minute per request); the app
+  // handles failures itself: it marks the connection offline and reconnects in the background.
+  db: { retry: false },
 });
 
 /**
@@ -101,13 +104,20 @@ export function classifyError(err) {
  * @returns {Promise<Result<T>>}
  */
 async function run(request) {
+  let result;
   try {
     const { data, error } = await request;
-    if (error) return { ok: false, error: classifyError(error) };
-    return { ok: true, data: /** @type {T} */ (data) };
+    result = error ? { ok: /** @type {const} */ (false), error: classifyError(error) } : { ok: /** @type {const} */ (true), data: /** @type {T} */ (data) };
   } catch (err) {
-    return { ok: false, error: classifyError(err) };
+    result = { ok: /** @type {const} */ (false), error: classifyError(err) };
   }
+  // A request that cannot reach Supabase switches the app to offline, so later requests answer
+  // from the device at once instead of waiting for timeouts; a reconnect is scheduled.
+  if (!result.ok && (result.error.kind === 'network' || result.error.kind === 'timeout') && connection.status === 'ready') {
+    updateConnection({ status: 'offline' });
+    scheduleReconnect();
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +182,12 @@ async function ensureSession() {
 export function connect() {
   if (!connectPromise) {
     connectPromise = (async () => {
+      if (globalThis.navigator?.onLine === false) {
+        const error = /** @type {DataError} */ ({ kind: 'network', message: 'The browser is offline' });
+        updateConnection({ status: 'offline', signedIn: false, authError: error, hardened: false, probeError: error });
+        scheduleReconnect();
+        return connection;
+      }
       const authError = await ensureSession();
       const probe = await run(sb.from('knowledge_documents').select('id, is_public').limit(1));
       const offline = !probe.ok && (probe.error.kind === 'network' || probe.error.kind === 'timeout');
@@ -205,6 +221,17 @@ function scheduleReconnect() {
   globalThis.addEventListener?.('online', retry);
 }
 
+/**
+ * Deletes every chat message of this browser's session (row level security limits it to own rows).
+ * @returns {Promise<Result<null>>}
+ */
+export async function deleteOwnChats() {
+  const { data } = await sb.auth.getSession();
+  const uid = data.session?.user?.id;
+  if (!uid) return { ok: true, data: null };
+  return run(sb.from('chat_history').delete().eq('owner_id', uid));
+}
+
 /** Chats may be stored in Supabase only when a session exists and RLS isolates them per user. */
 export function canSyncChats() {
   return connection.signedIn && connection.hardened;
@@ -235,7 +262,7 @@ export async function getDocument(id) {
     run(sb.from('knowledge_sections').select('heading, markdown_content').eq('document_id', id).order('section_index', { ascending: true })),
   ]);
   if (!doc.ok) return doc;
-  if (!doc.data) return { ok: false, error: { kind: 'forbidden', message: 'Document not found or not shared.' } };
+  if (!doc.data) return { ok: false, error: { kind: 'not_found', message: 'Document not found or not shared.' } };
   const sectionRows = sections.ok ? /** @type {Array<{ heading: string | null, markdown_content: string | null }>} */ (sections.data ?? []) : [];
   return { ok: true, data: { doc: /** @type {DocumentRow} */ (doc.data), sections: sectionRows } };
 }
@@ -385,18 +412,21 @@ export function insertChatMessage(sessionId, message) {
 }
 
 /**
+ * The newest messages of a session, oldest first.
  * @param {string} sessionId
  * @returns {Promise<Result<ChatRow[]>>}
  */
-export function loadChatSession(sessionId) {
-  return run(
+export async function loadChatSession(sessionId) {
+  /** @type {Result<ChatRow[]>} */
+  const res = await run(
     sb
       .from('chat_history')
       .select('role, content, sources, metadata, created_at')
       .eq('session_id', sessionId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(LIMITS.localChatMessagesPerSession),
   );
+  return res.ok ? { ok: true, data: [...(res.data ?? [])].reverse() } : res;
 }
 
 /** @returns {Promise<Result<number>>} */

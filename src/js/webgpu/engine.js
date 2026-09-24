@@ -19,7 +19,7 @@ const WORKER_URL = '__STARPI_WEBLLM_WORKER_URL__';
 /** @typedef {import('@mlc-ai/web-llm').ChatCompletionMessageParam} ChatCompletionMessageParam */
 
 /**
- * @typedef {'unsupported' | 'no-adapter' | 'quota' | 'network' | 'device-lost' | 'out-of-memory' | 'cancelled' | 'busy' | 'not-loaded' | 'unknown'} EngineErrorKind
+ * @typedef {'unsupported' | 'no-adapter' | 'quota' | 'network' | 'code-download' | 'device-lost' | 'out-of-memory' | 'cancelled' | 'busy' | 'not-loaded' | 'unknown'} EngineErrorKind
  */
 
 /**
@@ -102,8 +102,31 @@ export function isReady() {
 }
 
 function loadWebLLM() {
-  webllmModule ??= import('@mlc-ai/web-llm');
+  // A failed import is not cached here, although the browser may keep the failure until a reload.
+  webllmModule ??= import('@mlc-ai/web-llm').catch((err) => {
+    webllmModule = null;
+    throw err;
+  });
   return webllmModule;
+}
+
+/** Scope and URL layout WebLLM uses for its model cache (Cache API, "webllm/model"). */
+const MODEL_CACHE = 'webllm/model';
+
+/**
+ * True only when the model is certainly not cached: its tensor index is missing from WebLLM's cache.
+ * Lets the app skip downloading the 6 MB WebLLM library just to learn that nothing is cached.
+ * @param {string} modelId
+ */
+async function certainlyNotCached(modelId) {
+  try {
+    if (!globalThis.caches) return false;
+    if (!(await caches.has(MODEL_CACHE))) return true;
+    const cache = await caches.open(MODEL_CACHE);
+    return !(await cache.match(`https://huggingface.co/mlc-ai/${modelId}/resolve/main/tensor-cache.json`));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -188,6 +211,9 @@ export function classifyEngineError(err) {
   if (/out of memory|OOM|allocation failed|failed to allocate/i.test(message)) {
     return new EngineError('out-of-memory', 'Out of GPU memory for this model', err);
   }
+  if (/dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(message)) {
+    return new EngineError('code-download', 'The on-device engine could not be downloaded', err);
+  }
   if (name === 'TypeError' && /fetch|network|load failed/i.test(message)) {
     return new EngineError('network', 'Model download failed', err);
   }
@@ -198,10 +224,10 @@ export function classifyEngineError(err) {
 }
 
 /**
- * Checks the storage quota before a multi-GB download and requests persistent storage.
+ * Checks the storage quota before a multi-GB download.
  * @param {number} requiredMB
  */
-async function prepareStorage(requiredMB) {
+async function checkQuota(requiredMB) {
   const storage = navigator.storage;
   if (!storage?.estimate) return;
   const { quota = 0, usage = 0 } = await storage.estimate();
@@ -212,11 +238,27 @@ async function prepareStorage(requiredMB) {
       freeMB: Math.floor(freeMB),
     });
   }
+}
+
+/** Asks for persistent storage, only after the user agreed to the download. */
+async function requestPersistence() {
   try {
-    await storage.persist?.();
+    await navigator.storage?.persist?.();
   } catch {
     // Persistence is best effort; the browser may still evict under pressure.
   }
+}
+
+/**
+ * Quota check, confirmation and persistence before a download. Resolves false when declined.
+ * @param {ModelChoice} choice
+ * @param {LoadOptions} options
+ */
+async function agreeToDownload(choice, options) {
+  await checkQuota(Math.max(choice.approxDownloadMB, 1));
+  if (options.confirmDownload && !(await options.confirmDownload(choice))) return false;
+  await requestPersistence();
+  return true;
 }
 
 /** Releases the engine and its worker. Never throws. */
@@ -269,6 +311,14 @@ export function loadModel(options) {
     const choice = chooseModel(probe.hw, options.preference);
 
     if (engine && state.model?.modelId === choice.modelId) return true;
+    // Settle the cheap questions first: without a cached model, a start-up load stops here silently,
+    // and an interactive load asks for consent before anything is downloaded.
+    const missing = await certainlyNotCached(choice.modelId);
+    if (missing) {
+      if (options.onlyIfCached) return false;
+      if (!(await agreeToDownload(choice, options))) return false;
+      if (!current()) return false;
+    }
     await teardown();
     if (!current()) return false;
     setState({ status: 'loading', error: null, model: null, progress: { progress: 0, text: '', phase: 'init' } });
@@ -278,14 +328,10 @@ export function loadModel(options) {
     const record = webllm.prebuiltAppConfig.model_list.find((m) => m.model_id === choice.modelId);
     if (!record) throw new EngineError('unknown', `Model ${choice.modelId} is not in this WebLLM build`, undefined, { reason: choice.modelId });
 
-    const cached = await webllm.hasModelInCache(choice.modelId).catch(() => false);
-    if (!cached) {
-      if (options.onlyIfCached) {
-        if (current()) setState({ status: 'idle', progress: null });
-        return false;
-      }
-      await prepareStorage(Math.max(choice.approxDownloadMB, 1));
-      if (options.confirmDownload && !(await options.confirmDownload(choice))) {
+    const cached = missing ? false : await webllm.hasModelInCache(choice.modelId).catch(() => false);
+    if (!cached && !missing) {
+      // Partly cached (the index exists, some shards do not): same consent as a fresh download.
+      if (options.onlyIfCached || !(await agreeToDownload(choice, options))) {
         if (current()) setState({ status: 'idle', progress: null });
         return false;
       }

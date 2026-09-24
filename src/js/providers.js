@@ -49,11 +49,11 @@ async function httpError(res, label) {
 /**
  * Single-turn Gemini completion. The key travels in the x-goog-api-key header, never in the URL.
  * @param {string} prompt
- * @param {{ signal?: AbortSignal }} [opts]
+ * @param {{ signal?: AbortSignal, key?: string }} [opts]  `key`: test a key that is not saved yet
  * @returns {Promise<{ text: string }>}
  */
 export async function callGemini(prompt, opts = {}) {
-  const key = readSecret(STORAGE_KEYS.geminiKey).trim();
+  const key = (opts.key || readSecret(STORAGE_KEYS.geminiKey)).trim();
   if (!key) throw new ProviderError(t('provider.no_gemini_key'), { notConfigured: true });
   const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
     method: 'POST',
@@ -75,11 +75,11 @@ const OPENROUTER_MAX_ATTEMPTS = 3;
 /**
  * OpenRouter chat completion with failover across free models.
  * @param {ChatMessage[]} messages
- * @param {{ signal?: AbortSignal }} [opts]
+ * @param {{ signal?: AbortSignal, key?: string }} [opts]  `key`: test a key that is not saved yet
  * @returns {Promise<{ text: string, model: string }>}
  */
 export async function callOpenRouter(messages, opts = {}) {
-  const key = readSecret(STORAGE_KEYS.openrouterKey).trim();
+  const key = (opts.key || readSecret(STORAGE_KEYS.openrouterKey)).trim();
   if (!key) {
     throw new ProviderError(t('provider.no_openrouter_key'), { notConfigured: true });
   }
@@ -142,17 +142,28 @@ export function normalizeServerUrl(value) {
   return url.toString().replace(/\/+$/, '');
 }
 
+/** Model id reported by the own server's GET /models, per server URL. */
+const serverModels = new Map();
+
 /**
+ * Checks the own server and remembers the first model it lists: servers such as Ollama reject a
+ * chat request without a `model` field.
  * @param {string} baseUrl
  * @returns {Promise<boolean>}
  */
 export async function probeLocalServer(baseUrl) {
   try {
-    const res = await fetch(`${normalizeServerUrl(baseUrl)}/models`, {
+    const base = normalizeServerUrl(baseUrl);
+    const res = await fetch(`${base}/models`, {
       method: 'GET',
       signal: AbortSignal.timeout(TIMEOUTS_MS.localServerProbe),
     });
-    return res.ok;
+    if (!res.ok) return false;
+    /** @type {{ data?: Array<{ id?: unknown }> } | null} */
+    const body = await res.json().catch(() => null);
+    const id = body?.data?.find((m) => typeof m?.id === 'string')?.id;
+    if (typeof id === 'string') serverModels.set(base, id.slice(0, 200));
+    return true;
   } catch {
     return false;
   }
@@ -165,10 +176,13 @@ export async function probeLocalServer(baseUrl) {
  * @returns {Promise<{ text: string }>}
  */
 export async function callLocalServer(baseUrl, messages, opts = {}) {
-  const res = await fetch(`${normalizeServerUrl(baseUrl)}/chat/completions`, {
+  const base = normalizeServerUrl(baseUrl);
+  if (!serverModels.has(base)) await probeLocalServer(base);
+  const model = serverModels.get(base);
+  const res = await fetch(`${base}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, temperature: 0.7, max_tokens: 1024 }),
+    body: JSON.stringify({ ...(model ? { model } : {}), messages, temperature: 0.7, max_tokens: 1024 }),
     signal: withTimeoutSignal(opts.signal, TIMEOUTS_MS.localServer),
   });
   if (!res.ok) throw await httpError(res, 'server');

@@ -6,7 +6,7 @@ import { formatNumber, setText } from './i18n/index.js';
 import { LIMITS, STORAGE_KEYS } from './config.js';
 import { byId } from './dom.js';
 import { readLocal, readLocalJson, writeLocal, writeLocalJson } from './storage.js';
-import { canSyncChats, countChatMessages, getConnection, insertChatMessage, loadChatSession } from './supabase.js';
+import { canSyncChats, countChatMessages, deleteOwnChats, getConnection, insertChatMessage, loadChatSession } from './supabase.js';
 
 /** @typedef {import('./supabase.js').ChatRow} ChatRow */
 
@@ -46,7 +46,8 @@ function readLocalChats() {
 function appendLocal(sid, message) {
   const chats = readLocalChats();
   const entry = chats[sid] ?? { updatedAt: 0, messages: [] };
-  entry.messages = [...entry.messages, message].slice(-LIMITS.localChatMessagesPerSession);
+  const stamped = message.created_at ? message : { ...message, created_at: new Date().toISOString() };
+  entry.messages = [...entry.messages, stamped].slice(-LIMITS.localChatMessagesPerSession);
   entry.updatedAt = Date.now();
   chats[sid] = entry;
   const newest = Object.entries(chats)
@@ -63,7 +64,8 @@ function appendLocal(sid, message) {
 export async function persistMessage(sid, message, opts) {
   if (!message.content) return;
   if (opts.localOnly || !canSyncChats()) {
-    appendLocal(sid, message);
+    // The flag keeps on-device turns out of the history sent to cloud providers after a reload.
+    appendLocal(sid, { ...message, metadata: { ...message.metadata, local_only: opts.localOnly } });
     return;
   }
   const res = await insertChatMessage(sid, message);
@@ -80,7 +82,10 @@ export async function persistMessage(sid, message, opts) {
  * @returns {Promise<ChatRow[]>}
  */
 export async function loadCurrentSession() {
-  const local = readLocalChats()[sessionId]?.messages ?? [];
+  // Rows stored before the local_only flag existed are treated as on-device turns.
+  const local = (readLocalChats()[sessionId]?.messages ?? []).map((m) =>
+    typeof m.metadata?.local_only === 'boolean' ? m : { ...m, metadata: { ...m.metadata, local_only: true } },
+  );
   if (!canSyncChats()) return local;
   const res = await loadChatSession(sessionId);
   if (!res.ok) {
@@ -90,8 +95,38 @@ export async function loadCurrentSession() {
   const remote = res.data ?? [];
   if (remote.length === 0) return local;
   if (local.length === 0) return remote;
-  // Messages written while offline/local-only live in localStorage; show them after the synced ones.
-  return [...remote, ...local.filter((m) => !remote.some((r) => r.role === m.role && r.content === m.content))];
+  return mergeByTime(remote, local);
+}
+
+/**
+ * Synced and on-device messages in the order they were written. Local rows from before timestamps
+ * were stored go last, and are dropped when a synced row has the same text.
+ * @param {ChatRow[]} remote
+ * @param {ChatRow[]} local
+ * @returns {ChatRow[]}
+ */
+export function mergeByTime(remote, local) {
+  const at = (/** @type {ChatRow} */ m) => {
+    const ms = m.created_at ? Date.parse(m.created_at) : Number.NaN;
+    return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+  };
+  const legacyDuplicate = (/** @type {ChatRow} */ m) => !m.created_at && remote.some((r) => r.role === m.role && r.content === m.content);
+  // Array.prototype.sort is stable, so rows with equal or missing times keep their order.
+  return [...remote, ...local.filter((m) => !legacyDuplicate(m))].sort((a, b) => at(a) - at(b));
+}
+
+/**
+ * Deletes the chat history: every session stored in this browser and, when chats are synced, this
+ * session's rows in Supabase. Starts a new session.
+ * @returns {Promise<boolean>} false when the synced history could not be deleted
+ */
+export async function deleteChatHistory() {
+  writeLocalJson(STORAGE_KEYS.localChats, {});
+  startNewSession();
+  if (!canSyncChats()) return true;
+  const res = await deleteOwnChats();
+  void refreshSyncStatus();
+  return res.ok;
 }
 
 export async function refreshSyncStatus() {
