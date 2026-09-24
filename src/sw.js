@@ -4,25 +4,30 @@
 // - Only same-origin GET requests are handled. Supabase, model weights (Hugging Face), provider APIs
 //   and every other cross-origin request bypass the worker entirely, so private API responses are
 //   never written to CacheStorage and WebLLM keeps sole ownership of its own model caches.
-// - The versioned app shell is precached; hashed /assets/* files are cache-first (immutable);
-//   navigations are network-first with the cached shell as offline fallback.
+// - The app shell ("/", its CSS and JS, the ingest worker, the Latin font and the public files) is
+//   precached per build. Hashed /assets/* files are immutable: they live in one unversioned cache,
+//   are served cache-first and are pruned on activation when no longer part of the build.
+// - Navigations are network-first with a short deadline; the cached shell answers when the network
+//   fails or stalls. Only the HTML of "/" is ever stored as the shell.
 // - Activation deletes only caches created by this worker ("starpi-" prefix).
 
 const VERSION = '__STARPI_BUILD_VERSION__';
 const PRECACHE = ['__STARPI_PRECACHE__'];
+const ASSETS = ['__STARPI_ASSETS__'];
 const CACHE_PREFIX = 'starpi-';
 const SHELL_CACHE = `${CACHE_PREFIX}shell-${VERSION}`;
-const ASSET_CACHE = `${CACHE_PREFIX}assets-${VERSION}`;
+const ASSET_CACHE = `${CACHE_PREFIX}assets`;
+const NAVIGATION_DEADLINE_MS = 3500;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(SHELL_CACHE);
-      await cache.addAll(PRECACHE.map((url) => new Request(url, { cache: 'reload' })));
-      // Workers up to v1.0 ("starpi-cache-vN") cached private Supabase responses and model shards:
-      // replace them immediately instead of waiting for every tab to close.
-      const keys = await caches.keys();
-      if (keys.some((key) => /^starpi-cache-v\d+$/.test(key))) await self.skipWaiting();
+      // Only the page itself must bypass the HTTP cache; hashed assets it just loaded are reused.
+      await cache.addAll(PRECACHE.map((url) => (url === '/' ? new Request(url, { cache: 'reload' }) : url)));
+      // Take over right away: pages load network-first and assets are content-hashed, so waiting for
+      // every tab to close gains nothing. Pages decide themselves whether to offer a reload.
+      await self.skipWaiting();
     })(),
   );
 });
@@ -36,13 +41,15 @@ self.addEventListener('activate', (event) => {
           .filter((key) => key.startsWith(CACHE_PREFIX) && key !== SHELL_CACHE && key !== ASSET_CACHE)
           .map((key) => caches.delete(key)),
       );
+      // Keep hashed assets that the new build still uses (e.g. an unchanged 6 MB WebLLM chunk).
+      const assets = await caches.open(ASSET_CACHE);
+      const current = new Set(ASSETS);
+      for (const request of await assets.keys()) {
+        if (!current.has(new URL(request.url).pathname)) await assets.delete(request);
+      }
       await self.clients.claim();
     })(),
   );
-});
-
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 /** @param {Response} response */
@@ -50,17 +57,37 @@ function cacheable(response) {
   return response.ok && response.type === 'basic' && response.status === 200 && !/no-store/i.test(response.headers.get('Cache-Control') || '');
 }
 
+/** @param {Response} response */
+function isShellHtml(response) {
+  return cacheable(response) && !response.redirected && (response.headers.get('Content-Type') || '').startsWith('text/html');
+}
+
 /** @param {FetchEvent} event */
 async function networkFirstNavigation(event) {
-  try {
-    const response = await fetch(event.request);
-    if (cacheable(response)) {
+  const url = new URL(event.request.url);
+  const network = fetch(event.request).then((response) => {
+    // Store the page only; a direct visit to a PDF, an icon or a redirect must never become the shell.
+    if (url.pathname === '/' && isShellHtml(response)) {
       const copy = response.clone();
-      event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.put('/index.html', copy)));
+      event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.put('/', copy)));
     }
     return response;
+  });
+  const cachedShell = () => caches.match('/', { cacheName: SHELL_CACHE });
+  // A stalled connection (weak signal, captive portal) falls back to the cached shell after a
+  // short deadline instead of showing a blank page; the network response still updates the cache.
+  const deadline = new Promise((resolve) => setTimeout(resolve, NAVIGATION_DEADLINE_MS, 'deadline'));
+  try {
+    const first = await Promise.race([network, deadline]);
+    if (first !== 'deadline') return /** @type {Response} */ (first);
+    const cached = await cachedShell();
+    if (cached) {
+      event.waitUntil(network.catch(() => undefined));
+      return cached;
+    }
+    return await network;
   } catch (err) {
-    const cached = (await caches.match('/index.html', { cacheName: SHELL_CACHE })) || (await caches.match('/'));
+    const cached = await cachedShell();
     if (cached) return cached;
     throw err;
   }
@@ -71,7 +98,7 @@ async function cacheFirstAsset(event) {
   const cached = await caches.match(event.request);
   if (cached) return cached;
   const response = await fetch(event.request);
-  if (cacheable(response)) {
+  if (cacheable(response) && new URL(event.request.url).pathname.startsWith('/assets/')) {
     const copy = response.clone();
     event.waitUntil(caches.open(ASSET_CACHE).then((cache) => cache.put(event.request, copy)));
   }

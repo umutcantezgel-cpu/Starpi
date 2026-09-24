@@ -1,6 +1,8 @@
 import js from '@eslint/js';
 import globals from 'globals';
 
+const PURE = ['src/js/core/**/*.js', 'src/js/rag/bm25.js', 'src/js/rag/chunker.js'];
+
 export default [
   {
     ignores: ['dist/**', '.build/**', 'node_modules/**', 'backend/**', 'playwright-report/**', 'test-results/**'],
@@ -23,6 +25,7 @@ export default [
   },
   {
     files: ['src/js/**/*.js'],
+    ignores: PURE,
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
@@ -30,11 +33,25 @@ export default [
         ...globals.browser,
         __STARPI_SUPABASE_URL__: 'readonly',
         __STARPI_SUPABASE_ANON_KEY__: 'readonly',
+        __STARPI_VERSION__: 'readonly',
       },
     },
     rules: {
       'no-console': ['error', { allow: ['warn', 'error'] }],
       'no-script-url': 'error',
+    },
+  },
+  {
+    // Pure modules (the source check, receipts, chunking, BM25) run in the browser, in workers and in
+    // Node, so they may only use globals all three share.
+    files: PURE,
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals['shared-node-browser'], crypto: 'readonly' },
+    },
+    rules: {
+      'no-console': 'error',
     },
   },
   {

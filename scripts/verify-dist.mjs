@@ -5,6 +5,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildVersion } from './lib/build-version.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
@@ -49,6 +50,23 @@ for (const ref of [...new Set([...localRefs, ...manifest.precache.filter((/** @t
 const sw = await readFile(path.join(DIST, 'sw.js'), 'utf8');
 if (sw.includes('__STARPI_')) problems.push('unresolved placeholder in sw.js');
 if (!sw.includes(manifest.version)) problems.push('sw.js does not carry the build version');
+// The version covers the page, the hashed assets, every public file and the service worker, so a
+// changed manifest, icon or sample document reaches returning visitors.
+const publicFiles = await Promise.all(
+  (manifest.public ?? []).map(async (/** @type {string} */ url) => ({ url, bytes: await readFile(path.join(DIST, url.slice(1))) })),
+);
+const expected = buildVersion({ html, assetUrls: manifest.assets, publicFiles, swTemplate: await readFile(path.join(ROOT, 'src', 'sw.js'), 'utf8') });
+if (!manifest.public?.length) problems.push('build-manifest.json lists no public files');
+if (expected !== manifest.version) problems.push(`build version ${manifest.version} does not match the dist contents (${expected})`);
+
+// The workspace must work offline, and only "/" may be the offline page (a redirected /index.html
+// breaks offline navigation on hosts with clean URLs).
+if (!manifest.precache.includes(manifest.entries.ingestWorkerJs)) problems.push('the ingest worker is not precached');
+if (manifest.precache.includes('/index.html')) problems.push('/index.html is precached; use "/" as the only shell page');
+
+// The source check highlights statements with ::highlight(); the rule must survive the CSS build.
+const css = await readFile(path.join(DIST, manifest.entries.appCss.slice(1)), 'utf8');
+if (!css.includes('::highlight(starpi-review)')) problems.push('app CSS lacks the ::highlight(starpi-review) rule');
 
 // 4. JavaScript bundles: no unresolved placeholders, no eval-like constructs (CSP has no 'unsafe-eval').
 for (const asset of manifest.assets.filter((/** @type {string} */ a) => a.endsWith('.js'))) {

@@ -4,11 +4,12 @@
 //
 // Usage: node scripts/build.mjs [--watch] [--serve]
 import { spawn, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
+import { buildVersion } from './lib/build-version.mjs';
+import { assertPublicKey } from './lib/supabase-key.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(ROOT, 'src');
@@ -26,24 +27,12 @@ const SUPABASE_ANON_KEY =
   process.env.STARPI_SUPABASE_ANON_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlaG5sdG9vZ3NjbmJqaHZpeG13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3NzMwMTgsImV4cCI6MjA5NDM0OTAxOH0.NNdRrOYLzucKuQfz4bVPPWOhYvgVswDiEtvCrtphF0I';
 
+const APP_VERSION = JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8')).version;
+
 const WORKER_PLACEHOLDER = '__STARPI_WEBLLM_WORKER_URL__';
 const INGEST_WORKER_PLACEHOLDER = '__STARPI_INGEST_WORKER_URL__';
 
-assertAnonKey(SUPABASE_ANON_KEY);
-
-/** Refuses to ship anything but an anon-role JWT (never a service_role key) to the browser. */
-function assertAnonKey(jwt) {
-  const [, payload] = jwt.split('.');
-  let role;
-  try {
-    role = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')).role;
-  } catch {
-    throw new Error('STARPI_SUPABASE_ANON_KEY is not a valid JWT');
-  }
-  if (role !== 'anon') {
-    throw new Error(`STARPI_SUPABASE_ANON_KEY must have role "anon", got "${role}"`);
-  }
-}
+assertPublicKey(SUPABASE_ANON_KEY);
 
 function runTailwind() {
   const bin = path.join(ROOT, 'node_modules', '.bin', 'tailwindcss');
@@ -84,6 +73,7 @@ const esbuildOptions = {
   define: {
     __STARPI_SUPABASE_URL__: JSON.stringify(SUPABASE_URL),
     __STARPI_SUPABASE_ANON_KEY__: JSON.stringify(SUPABASE_ANON_KEY),
+    __STARPI_VERSION__: JSON.stringify(APP_VERSION),
   },
 };
 
@@ -144,23 +134,25 @@ async function postProcess(result) {
   if (html.includes('%STARPI_')) throw new Error('unresolved placeholder in src/index.html');
   await writeFile(path.join(DIST, 'index.html'), html);
 
-  const version = createHash('sha256')
-    .update(html)
-    .update(assetUrls.sort().join('\n'))
-    .digest('hex')
-    .slice(0, 12);
+  const swTemplate = await readFile(path.join(SRC, 'sw.js'), 'utf8');
+  const publicBytes = await Promise.all(publicFiles.map(async (url) => ({ url, bytes: await readFile(path.join(DIST, url.slice(1))) })));
+  assetUrls.sort();
+  const version = buildVersion({ html, assetUrls, publicFiles: publicBytes, swTemplate });
 
-  // Precache only the app shell; lazily loaded chunks (WebLLM, fonts) are cached on first use.
-  const shell = ['/', '/index.html', appCss, mainJs, ...directImports(result.metafile, mainJs), ...publicFiles];
-  const sw = (await readFile(path.join(SRC, 'sw.js'), 'utf8'))
+  // Precache the app shell: the page, its CSS and JS, the ingest worker (the workspace must work
+  // offline), the Latin font and the public files. WebLLM and pdf.js are cached on first use.
+  const latinFont = assetUrls.find((u) => /plus-jakarta-sans-latin-wght-normal-[\w-]+\.woff2$/.test(u));
+  const shell = ['/', appCss, mainJs, ingestWorkerJs, ...(latinFont ? [latinFont] : []), ...directImports(result.metafile, mainJs), ...publicFiles];
+  const sw = swTemplate
     .replace("'__STARPI_BUILD_VERSION__'", JSON.stringify(version))
-    .replace("['__STARPI_PRECACHE__']", JSON.stringify([...new Set(shell)]));
+    .replace("['__STARPI_PRECACHE__']", JSON.stringify([...new Set(shell)]))
+    .replace("['__STARPI_ASSETS__']", JSON.stringify(assetUrls));
   if (sw.includes('__STARPI_')) throw new Error('unresolved placeholder in src/sw.js');
   await writeFile(path.join(DIST, 'sw.js'), sw);
 
   await writeFile(
     path.join(DIST, 'build-manifest.json'),
-    JSON.stringify({ version, entries: { mainJs, workerJs, ingestWorkerJs, appCss }, assets: assetUrls.sort(), precache: shell }, null, 2),
+    JSON.stringify({ version, entries: { mainJs, workerJs, ingestWorkerJs, appCss }, assets: assetUrls, public: [...publicFiles].sort(), precache: shell }, null, 2),
   );
   return { version, mainJs, workerJs, ingestWorkerJs, appCss };
 }

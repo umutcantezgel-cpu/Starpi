@@ -1,6 +1,8 @@
 // @ts-check
 // Static configuration. Supabase values are public by design (anon key + RLS) and injected at build time.
 
+/** App version from package.json, recorded in answer receipts. */
+export const APP_VERSION = __STARPI_VERSION__;
 export const SUPABASE_URL = __STARPI_SUPABASE_URL__;
 export const SUPABASE_ANON_KEY = __STARPI_SUPABASE_ANON_KEY__;
 export const SUPABASE_PROJECT_REF = new URL(SUPABASE_URL).hostname.split('.')[0];
