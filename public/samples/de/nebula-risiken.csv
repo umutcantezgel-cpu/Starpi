@@ -1,0 +1,5 @@
+id;risiko;bewertung;verantwortlich;massnahme
+R-01;Verzug beim Lieferanten der Verkehrsdaten;Hoch;Marta Silva;Zweiter Lieferant unter Vertrag bis 30.11.2026
+R-02;Fahrerinnen und Fahrer lehnen die neue App ab;Mittel;Tom Becker;Pilot mit 20 Fahrern im Depot Hamburg
+R-03;Cloud-Kosten übersteigen das Infrastrukturbudget;Hoch;Lena Park;Monatliche Kostenprüfung mit einer Obergrenze von 8.000 € pro Monat
+R-04;Datenschutzprüfung dauert länger als geplant;Niedrig;Jonas Weber;Prüfung im Oktober 2026 starten

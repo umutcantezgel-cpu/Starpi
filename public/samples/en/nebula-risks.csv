@@ -1,0 +1,5 @@
+id,risk,rating,owner,mitigation
+R-01,Delay of the traffic data supplier,High,Marta Silva,Second supplier under contract by 30 November 2026
+R-02,Drivers reject the new app,Medium,Tom Becker,Pilot with 20 drivers at the Hamburg depot
+R-03,Cloud costs exceed the infrastructure budget,High,Lena Park,Monthly cost review with a hard limit of 8000 EUR per month
+R-04,Data protection review takes longer than planned,Low,Jonas Weber,Start the review in October 2026
