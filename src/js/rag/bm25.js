@@ -9,9 +9,8 @@
 
 export const BM25_PARAMS = Object.freeze({ k1: 1.2, b: 0.75 });
 
-/** English and German function words that carry no retrieval signal. */
-export const STOPWORDS = new Set([
-  // English
+/** English function words that carry no retrieval signal. */
+export const STOPWORDS_EN = new Set([
   'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', 'as', 'at', 'be',
   'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by', 'can', 'could', 'did', 'do',
   'does', 'doing', 'down', 'during', 'each', 'few', 'for', 'from', 'further', 'had', 'has', 'have', 'having', 'he',
@@ -21,7 +20,10 @@ export const STOPWORDS = new Set([
   'them', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to', 'too', 'under', 'until', 'up', 'very',
   'was', 'we', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'whom', 'why', 'will', 'with', 'would',
   'you', 'your', 'yours',
-  // German
+]);
+
+/** German function words that carry no retrieval signal. */
+export const STOPWORDS_DE = new Set([
   'aber', 'alle', 'allem', 'allen', 'aller', 'alles', 'als', 'also', 'an', 'andere', 'anderen', 'auch', 'auf',
   'aus', 'bei', 'beim', 'bin', 'bis', 'bist', 'da', 'damit', 'dann', 'das', 'dass', 'dein', 'deine', 'dem', 'den',
   'denn', 'der', 'des', 'dessen', 'dich', 'die', 'dies', 'diese', 'diesem', 'diesen', 'dieser', 'dieses', 'dir',
@@ -35,6 +37,9 @@ export const STOPWORDS = new Set([
   'welches', 'wenn', 'wer', 'werde', 'werden', 'wie', 'wieder', 'will', 'wir', 'wird', 'wo', 'wurde', 'wurden',
   'zu', 'zum', 'zur', 'über',
 ]);
+
+/** English and German function words. */
+export const STOPWORDS = new Set([...STOPWORDS_EN, ...STOPWORDS_DE]);
 
 /**
  * Lowercases, applies Unicode NFKC, strips punctuation and drops stopwords and single characters.

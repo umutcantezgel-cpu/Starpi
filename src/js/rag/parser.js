@@ -7,10 +7,17 @@ export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 export const MAX_TEXT_CHARS = 5_000_000;
 export const MAX_PDF_PAGES = 2_000;
 
+/**
+ * Identifies the extraction rules in answer receipts. Bump the version whenever the same file would
+ * produce different text (tests/unit/golden.test.mjs pins the output); the pdf.js version is
+ * recorded separately for PDFs.
+ */
+export const EXTRACTOR = Object.freeze({ id: 'starpi-extract', version: 1 });
+
 export const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'csv', 'log']);
 export const SUPPORTED_EXTENSIONS = new Set([...TEXT_EXTENSIONS, 'json', 'pdf']);
 
-/** @typedef {'unsupported_type' | 'too_large' | 'empty' | 'invalid_json' | 'invalid_pdf' | 'encrypted_pdf'} ParseErrorCode */
+/** @typedef {'unsupported_type' | 'too_large' | 'empty' | 'invalid_json' | 'invalid_pdf' | 'encrypted_pdf' | 'pdf_reader'} ParseErrorCode */
 
 export class ParseError extends Error {
   /**
@@ -75,11 +82,83 @@ export function jsonToText(raw) {
 }
 
 /**
+ * Splits CSV text into rows of fields (RFC 4180 quoting: "a ""b""", fields may contain the
+ * delimiter and line breaks).
+ * @param {string} text
+ * @param {string} delimiter
+ * @returns {string[][]}
+ */
+export function parseCsv(text, delimiter) {
+  /** @type {string[][]} */
+  const rows = [];
+  /** @type {string[]} */
+  let row = [];
+  let field = '';
+  let quoted = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') {
+        field += '"';
+        i += 1;
+      } else if (ch === '"') quoted = false;
+      else field += ch;
+    } else if (ch === '"' && field === '') quoted = true;
+    else if (ch === delimiter) {
+      row.push(field);
+      field = '';
+    } else if (ch === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else if (ch !== '\r') field += ch;
+  }
+  if (field !== '' || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows.filter((r) => r.some((f) => f.trim() !== ''));
+}
+
+/**
+ * Turns a CSV table with a header row into one "column: value; column: value" line per row, so
+ * each line reads as a statement ("risk: …; rating: High; owner: …"). Files without a usable header
+ * (numeric or duplicate column names, ragged rows) are kept as they are.
+ * @param {string} text
+ */
+export function csvToText(text) {
+  const firstLine = text.slice(0, text.indexOf('\n') === -1 ? text.length : text.indexOf('\n'));
+  const delimiter = [',', ';', '\t'].map((d) => /** @type {[string, number]} */ ([d, firstLine.split(d).length - 1])).sort((a, b) => b[1] - a[1])[0];
+  if (delimiter[1] === 0) return text;
+  const rows = parseCsv(text, delimiter[0]);
+  if (rows.length < 2) return text;
+  const header = rows[0].map((h) => h.trim());
+  const usable =
+    header.every((h) => h !== '' && !/^[\d.,\s-]+$/.test(h)) &&
+    new Set(header.map((h) => h.toLowerCase())).size === header.length &&
+    rows.every((r) => r.length === header.length);
+  if (!usable) return text;
+  return rows
+    .slice(1)
+    .map((r) =>
+      r
+        .map((v, i) => [header[i], v.replace(/\s+/g, ' ').trim()])
+        .filter(([, v]) => v !== '')
+        .map(([h, v]) => `${h}: ${v}`)
+        .join('; '),
+    )
+    .filter(Boolean)
+    .join('\n');
+}
+
+/**
  * Decodes a UTF-8 byte stream incrementally (large files never exist as one byte array in JS).
  * @param {ReadableStream<Uint8Array>} stream
  */
 export async function streamToText(stream) {
-  const reader = stream.pipeThrough(new TextDecoderStream('utf-8')).getReader();
+  const decoder = /** @type {TransformStream<Uint8Array, string>} */ (/** @type {unknown} */ (new TextDecoderStream('utf-8')));
+  const reader = stream.pipeThrough(decoder).getReader();
   let text = '';
   for (;;) {
     const { done, value } = await reader.read();
@@ -101,7 +180,13 @@ function loadPdfjs() {
   // Math.sumPrecise, Promise.try, ...), so PDFs also parse in browsers older than the latest release;
   // the polyfills only exist in this worker. Importing the worker module first registers
   // globalThis.pdfjsWorker, so pdf.js parses in this thread instead of spawning another worker.
-  pdfjsPromise ??= import('pdfjs-dist/legacy/build/pdf.worker.mjs').then(() => import('pdfjs-dist/legacy/build/pdf.mjs'));
+  pdfjsPromise ??= import('pdfjs-dist/legacy/build/pdf.worker.mjs')
+    .then(() => import('pdfjs-dist/legacy/build/pdf.mjs'))
+    .catch((err) => {
+      // Do not keep a failed download; the next PDF tries again.
+      pdfjsPromise = null;
+      throw new ParseError('pdf_reader', err instanceof Error ? err.message : 'The PDF reader could not be loaded');
+    });
   return pdfjsPromise;
 }
 
@@ -151,7 +236,7 @@ export async function pdfToText(buffer, onPage) {
       if (length > MAX_TEXT_CHARS) throw new ParseError('too_large', 'Extracted text is too long', { max: MAX_TEXT_CHARS });
       onPage?.(i, pages);
     }
-    return { text: out.join('\n\n'), pages };
+    return { text: out.join('\n\n'), pages, pdfjs: String(pdfjs.version ?? '') };
   } finally {
     await task.destroy();
   }
@@ -161,7 +246,7 @@ export async function pdfToText(buffer, onPage) {
  * Extracts plain text from a file.
  * @param {Blob & { name: string }} file
  * @param {(page: number, pages: number) => void} [onPage]
- * @returns {Promise<{ text: string, kind: string, pages: number | null }>}
+ * @returns {Promise<{ text: string, kind: string, pages: number | null, pdfjs: string | null }>}
  */
 export async function extractText(file, onPage) {
   const ext = extensionOf(file.name);
@@ -172,16 +257,21 @@ export async function extractText(file, onPage) {
 
   let text;
   let pages = null;
+  /** @type {string | null} */
+  let pdfjs = null;
   if (ext === 'pdf') {
     const result = await pdfToText(await file.arrayBuffer(), onPage);
     text = result.text;
     pages = result.pages;
+    pdfjs = result.pdfjs;
   } else if (ext === 'json') {
     text = jsonToText(await streamToText(file.stream()));
+  } else if (ext === 'csv') {
+    text = csvToText(normalizeText(await streamToText(file.stream())));
   } else {
     text = await streamToText(file.stream());
   }
   text = normalizeText(text);
   if (!text.trim()) throw new ParseError('empty', 'No extractable text');
-  return { text, kind: ext === 'markdown' ? 'md' : ext, pages };
+  return { text, kind: ext === 'markdown' ? 'md' : ext, pages, pdfjs };
 }

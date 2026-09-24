@@ -8,6 +8,12 @@ export const DEFAULT_CHUNK_SIZE = 500;
 export const DEFAULT_CHUNK_OVERLAP = 50;
 
 /**
+ * Identifies the chunking rules in answer receipts. Bump the version whenever the same text and
+ * options would produce different chunk bounds (tests/unit/golden.test.mjs pins the output).
+ */
+export const CHUNKER = Object.freeze({ id: 'starpi-chunk', version: 1 });
+
+/**
  * @typedef {object} TextChunk
  * @property {number} index  0-based position in the document
  * @property {number} start  offset of the first character in the source text (inclusive)
