@@ -55,8 +55,8 @@ describe('icons', () => {
     ...collect(/dataset\.lucide = '([a-z0-9-]+)'/g),
     ...collect(/icon: '([a-z0-9-]+)'/g),
     // names chosen at runtime (device type, privacy notice, workspace file kind, graph edge direction,
-    // trace phases, provider test result)
-    ...collect(/'(laptop|tablet|smartphone|lock|server|cloud|library|file-text|braces|file|database|arrow-right|arrow-left|loader-2|upload|info|alert-circle|search|sparkles|clipboard-list|zap)'/g),
+    // trace phases, provider test result, source check result, sample questions)
+    ...collect(/'(laptop|tablet|smartphone|lock|server|cloud|library|file-text|braces|file|database|arrow-right|arrow-left|loader-2|upload|info|alert-circle|search|sparkles|clipboard-list|zap|shield-alert|shield-question-mark|shield-check|calendar|wallet|triangle-alert|check-circle-2)'/g),
   ]);
   const registered = new Set([...iconsSrc.matchAll(/^ {2}([A-Z]\w*),$/gm)].map((m) => m[1]));
 

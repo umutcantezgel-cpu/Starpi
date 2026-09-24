@@ -51,6 +51,10 @@ describe('synthesizeAnswer', () => {
     assert.doesNotMatch(list('What is the budget for the documentation team?'), /Available documents \(2\)/);
     assert.ok(isGreeting('Hallo Starpi'));
     assert.ok(isGreeting('Hello there'));
+    assert.ok(isGreeting('Hi! Who are you and what can you do?'));
+    assert.ok(!isGreeting('Hi, what is the total budget of Nebula?'));
+    assert.ok(!isGreeting('Hallo, wann ist der Kickoff?'));
+    assert.ok(!isGreeting('Who are you planning to hire?'));
     assert.match(synthesizeAnswer({ query: 'hallo', hits: [], citations: [], knownTitles: [], modelAvailable: true }), /No documents yet/);
   });
 
@@ -64,7 +68,7 @@ describe('describeTrace', () => {
   it('reports the retrieval method, hit counts and engine', () => {
     const t = describeTrace({ query: 'q', method: 'Postgres full-text search', hits, engineLabel: 'Cloud', durationMs: 1234 });
     assert.match(t, /Postgres full-text search/);
-    assert.match(t, /1 excerpts from 1 documents/);
+    assert.match(t, /1 excerpt from 1 document /);
     assert.match(t, /1\.2 s/);
   });
 });

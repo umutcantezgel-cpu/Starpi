@@ -80,7 +80,8 @@ export function hasKey(key, locale = current) {
 
 /**
  * Translates a key. Falls back to English, then to the key itself, so a missing entry is visible
- * instead of silently empty. `{name}` placeholders are replaced from params.
+ * instead of silently empty. `{name}` placeholders are replaced from params; `{name:one|other}`
+ * picks the singular or plural word for the count in `name` ("{n} {n:chunk|chunks}").
  * @param {string} key
  * @param {Params} [params]
  * @param {Locale} [locale]
@@ -88,7 +89,9 @@ export function hasKey(key, locale = current) {
 export function t(key, params, locale = current) {
   const template = lookup(DICTIONARIES[locale], key) ?? lookup(DICTIONARIES[DEFAULT_LOCALE], key) ?? key;
   if (!params) return template;
-  return template.replace(/\{(\w+)\}/g, (match, name) => (name in params ? String(params[name]) : match));
+  return template
+    .replace(/\{(\w+):([^|{}]*)\|([^{}]*)\}/g, (match, name, one, other) => (name in params ? (String(params[name]) === '1' ? one : other) : match))
+    .replace(/\{(\w+)\}/g, (match, name) => (name in params ? String(params[name]) : match));
 }
 
 /**

@@ -7,6 +7,7 @@ import { byId, onAction } from './dom.js';
 import { refreshIcons } from './icons.js';
 import { applyTranslations, formatNumber, setText, t } from './i18n/index.js';
 import { citationSources, linkifyCitations } from './rag/citations.js';
+import { clearGroundingHighlights } from './rag/grounding-view.js';
 import { escapeHtml, renderMarkdown } from './render.js';
 
 /** @typedef {{ title: string, rank?: number | null }} Source */
@@ -33,6 +34,7 @@ export function initMessages() {
 
 /** Restores the welcome message only (new chat / before replaying history). */
 export function resetMessages() {
+  clearGroundingHighlights();
   const el = container();
   el.replaceChildren(...(welcomeTemplate ? [welcomeTemplate.cloneNode(true)] : []));
   applyTranslations(el);
@@ -131,7 +133,7 @@ function thoughtBlock(trace, durationMs) {
           <i data-lucide="lightbulb" class="w-3.5 h-3.5 text-amber-600"></i>
           <span data-i18n="trace.title">${escapeHtml(t('trace.title'))}</span>
         </span>
-        <span class="flex items-center gap-2 text-[11px] text-slate-500">
+        <span class="flex items-center gap-2 text-[11px] text-slate-600">
           ${dur ? `<span class="font-mono">${escapeHtml(dur)}</span>` : ''}
           <span class="thought-status-text text-[11px] text-amber-800 font-semibold" data-i18n="trace.show">${escapeHtml(t('trace.show'))}</span>
           <i data-lucide="chevron-down" class="thought-chevron w-3.5 h-3.5 transition-transform duration-200 text-slate-600"></i>
@@ -149,7 +151,7 @@ function thoughtBlock(trace, durationMs) {
  */
 function badgeBlock(badgeKey, pulse) {
   if (!badgeKey) return '';
-  return `<div class="mt-2.5 pt-2 border-t border-slate-200 flex items-center gap-1.5 text-[11px] text-slate-500">
+  return `<div class="mt-2.5 pt-2 border-t border-slate-200 flex items-center gap-1.5 text-[11px] text-slate-600">
       <span class="w-1.5 h-1.5 rounded-full bg-emerald-500${pulse ? ' animate-pulse' : ''}"></span>
       <span data-i18n="${escapeHtml(badgeKey)}">${escapeHtml(t(badgeKey))}</span>
     </div>`;
@@ -199,7 +201,7 @@ function attachSources(bubble, opts) {
 export function appendMessage(role, text, opts = {}) {
   const isUser = role === 'user';
   const msgDiv = document.createElement('div');
-  msgDiv.className = `flex items-start gap-3 max-w-3xl ${isUser ? 'ml-auto flex-row-reverse' : ''}`;
+  msgDiv.className = `flex items-start gap-3 w-full max-w-4xl mx-auto ${isUser ? 'flex-row-reverse' : ''}`;
 
   let mainText = text;
   let trace = opts.trace ?? null;
@@ -213,10 +215,10 @@ export function appendMessage(role, text, opts = {}) {
 
   msgDiv.innerHTML = `
     ${isUser ? USER_AVATAR : ASSISTANT_AVATAR}
-    <div class="flex-1 min-w-0 ${isUser ? 'bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-800'} rounded-2xl p-4 text-sm leading-relaxed shadow-xs">
+    <div class="flex-1 min-w-0 ${isUser ? 'sm:max-w-[85%] bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-800'} rounded-2xl p-4 text-sm leading-relaxed shadow-xs">
       ${!isUser && trace ? thoughtBlock(trace, opts.durationMs ?? null) : ''}
       <div class="message-content ${isUser ? 'text-white break-words' : 'prose-custom break-words'}">${bodyHtml}</div>
-      ${isUser ? '' : '<div class="message-sources"></div>'}
+      ${isUser ? '' : '<div class="message-sources"></div><div class="message-provenance"></div>'}
       ${isUser ? '' : badgeBlock(opts.badge ?? '', false)}
     </div>`;
 
@@ -245,7 +247,7 @@ export function appendNotice(notice) {
   };
   const iconTones = { info: 'text-sky-600', success: 'text-emerald-600', warn: 'text-amber-600' };
   const div = document.createElement('div');
-  div.className = 'flex items-start gap-3 max-w-3xl';
+  div.className = 'flex items-start gap-3 w-full max-w-4xl mx-auto';
   div.setAttribute('role', 'status');
   div.innerHTML = `
     ${ASSISTANT_AVATAR}
@@ -272,13 +274,14 @@ export function appendNotice(notice) {
  */
 export function createStreamingMessage(badgeKey) {
   const msgDiv = document.createElement('div');
-  msgDiv.className = 'flex items-start gap-3 max-w-3xl';
+  msgDiv.className = 'flex items-start gap-3 w-full max-w-4xl mx-auto';
   msgDiv.innerHTML = `
     ${ASSISTANT_AVATAR}
     <div class="flex-1 min-w-0 bg-white border border-slate-200 rounded-2xl p-4 text-slate-800 text-sm leading-relaxed shadow-xs">
       <div class="streaming-trace"></div>
       <div class="message-content prose-custom break-words"><span class="inline-block w-1.5 h-3.5 bg-[#FFCA00] animate-pulse"></span></div>
       <div class="message-sources"></div>
+      <div class="message-provenance"></div>
       ${badgeBlock(badgeKey, true)}
     </div>`;
   container().appendChild(msgDiv);
@@ -328,7 +331,7 @@ export function createStreamingMessage(badgeKey) {
 /** @returns {() => void} removes the indicator */
 export function appendLoading() {
   const div = document.createElement('div');
-  div.className = 'flex items-start gap-3 max-w-3xl';
+  div.className = 'flex items-start gap-3 w-full max-w-4xl mx-auto';
   div.setAttribute('role', 'status');
   div.innerHTML = `
     ${ASSISTANT_AVATAR}

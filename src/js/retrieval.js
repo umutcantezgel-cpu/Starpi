@@ -2,7 +2,29 @@
 // Pure retrieval helpers: local keyword ranking (used in local mode so questions never leave the
 // device, and as a fallback when the search RPC is unavailable) and context assembly for prompts.
 
+import { citationLabel, labelName } from './core/labels.js';
+
+export { CITATION_PATTERN, citationLabel } from './core/labels.js';
+
 /** @typedef {import('./supabase.js').KnowledgeHit} KnowledgeHit */
+/** @typedef {import('./rag/workspace.js').WorkspaceHit} WorkspaceHit */
+
+/**
+ * A workspace search hit in the shape of a knowledge-base hit, so both flow through one pipeline.
+ * @param {WorkspaceHit} h
+ * @returns {KnowledgeHit}
+ */
+export function workspaceHit(h) {
+  return {
+    documentId: h.docId,
+    documentTitle: h.docName,
+    heading: '',
+    content: h.text,
+    tags: [],
+    rank: h.score,
+    workspace: { docId: h.docId, chunkIndex: h.chunkIndex, start: h.start, end: h.end },
+  };
+}
 
 const STOPWORDS = new Set([
   'der', 'die', 'das', 'und', 'oder', 'aber', 'ein', 'eine', 'einen', 'einem', 'einer', 'ist', 'sind', 'war', 'wer',
@@ -71,26 +93,12 @@ export function distinctSources(hits) {
  * @property {number} chunk       1-based chunk number within the document
  * @property {'workspace' | 'knowledge'} source  on-device workspace or Supabase knowledge base
  * @property {string} heading
- * @property {string} text        the excerpt text exactly as given to the model
+ * @property {string} text        the excerpt text as given to the model (cut to the excerpt limit)
+ * @property {boolean} truncated  whether `text` was cut, i.e. ends before the retrieved passage does
  * @property {number | null} score  BM25 score (workspace) or search rank (knowledge base)
- * @property {{ docId: string, start: number, end: number } | null} span  character offsets in the source file
+ * @property {string | null} documentId  knowledge-base document id, or the workspace document id
+ * @property {{ docId: string, chunkIndex: number, start: number, end: number } | null} span  workspace chunk and its character offsets in the extracted text
  */
-
-/** @param {string} name */
-function labelName(name) {
-  return name.replace(/[[\]\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Document';
-}
-
-/**
- * @param {string} doc
- * @param {number} chunk 1-based
- */
-export function citationLabel(doc, chunk) {
-  return `[Doc: ${labelName(doc)}, Chunk: ${chunk}]`;
-}
-
-/** Matches citation labels in model output: [Doc: <name>, Chunk: <n>]. */
-export const CITATION_PATTERN = /\[Doc:\s*([^\]\n]+?),\s*Chunk:\s*(\d{1,6})\s*\]/g;
 
 /**
  * Assigns a stable citation to every hit. Workspace chunks keep their real chunk number; knowledge
@@ -122,16 +130,18 @@ export function assignCitations(hits, limits) {
       label = citationLabel(doc, chunk);
     }
     used.add(label);
-    const text = h.content.length > limits.excerptChars ? `${h.content.slice(0, limits.excerptChars)}…` : h.content;
+    const truncated = h.content.length > limits.excerptChars;
     out.push({
       label,
       doc,
       chunk,
       source: h.workspace ? 'workspace' : 'knowledge',
       heading: h.heading.replace(/^#+\s*/, ''),
-      text,
+      text: truncated ? `${h.content.slice(0, limits.excerptChars)}…` : h.content,
+      truncated,
       score: h.rank,
-      span: h.workspace ? { docId: h.workspace.docId, start: h.workspace.start, end: h.workspace.end } : null,
+      documentId: h.documentId ?? null,
+      span: h.workspace ? { docId: h.workspace.docId, chunkIndex: h.workspace.chunkIndex, start: h.workspace.start, end: h.workspace.end } : null,
     });
   }
   return out;
@@ -139,17 +149,48 @@ export function assignCitations(hits, limits) {
 
 /**
  * Builds the retrieval context block. Excerpts are fenced and labelled as data so the model is
- * told not to follow instructions contained in documents (prompt-injection mitigation).
+ * told not to follow instructions contained in documents (prompt-injection mitigation). When the
+ * budget runs out, the text of an excerpt is cut, never its fences.
  * @param {Citation[]} citations
  * @param {{ maxChars: number }} limits
  */
 export function buildContext(citations, limits) {
-  let out = '';
+  /** @type {string[]} */
+  const blocks = [];
+  let used = 0;
   citations.forEach((c, i) => {
-    if (out.length >= limits.maxChars) return;
     const heading = c.heading ? ` · ${c.heading}` : '';
-    const block = `<<<EXCERPT ${i + 1} ${c.label}${heading}>>>\n${c.text}\n<<<END EXCERPT ${i + 1}>>>\n\n`;
-    out += block.slice(0, Math.max(0, limits.maxChars - out.length));
+    const open = `<<<EXCERPT ${i + 1} ${c.label}${heading}>>>\n`;
+    const close = `\n<<<END EXCERPT ${i + 1}>>>`;
+    const separator = blocks.length ? 2 : 0;
+    const room = limits.maxChars - used - separator - open.length - close.length;
+    if (room < Math.min(MIN_EXCERPT_CHARS, c.text.length)) return;
+    const text = c.text.length <= room ? c.text : `${c.text.slice(0, room - 1).trimEnd()}…`;
+    blocks.push(`${open}${text}${close}`);
+    used += separator + open.length + text.length + close.length;
   });
-  return out.trim();
+  return blocks.join('\n\n');
+}
+
+/** An excerpt cut shorter than this is left out rather than sent as a fragment. */
+const MIN_EXCERPT_CHARS = 120;
+
+/**
+ * Combines workspace and knowledge-base hits so neither source crowds out the other: each gets at
+ * least half of the free slots when it has that many hits. `pinned` leading workspace hits (the
+ * attached file) are always kept.
+ * @template T
+ * @param {T[]} workspace  ranked workspace hits
+ * @param {T[]} knowledge  ranked knowledge-base hits
+ * @param {number} limit
+ * @param {number} [pinned]
+ * @returns {T[]}
+ */
+export function mergeHits(workspace, knowledge, limit, pinned = 0) {
+  const kept = workspace.slice(0, Math.min(pinned, limit));
+  const rest = workspace.slice(kept.length);
+  const room = limit - kept.length;
+  const fromKnowledge = Math.min(knowledge.length, Math.max(room - rest.length, Math.ceil(room / 2)));
+  const fromWorkspace = Math.min(rest.length, room - fromKnowledge);
+  return [...kept, ...rest.slice(0, fromWorkspace), ...knowledge.slice(0, fromKnowledge)];
 }

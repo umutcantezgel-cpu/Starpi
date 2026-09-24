@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { assignCitations, buildContext, CITATION_PATTERN, citationLabel, distinctSources, rankHitsLocally, tokenize } from '../../src/js/retrieval.js';
+import { assignCitations, buildContext, CITATION_PATTERN, citationLabel, distinctSources, mergeHits, rankHitsLocally, tokenize } from '../../src/js/retrieval.js';
 
 const hit = (title, content, id = title) => ({ documentId: id, documentTitle: title, heading: '', content, tags: [], rank: null });
 
@@ -43,7 +43,7 @@ describe('citations', () => {
     const [c] = assignCitations([workspaceHit('report.pdf', 4, 'Budget text')], { excerptChars: 100 });
     assert.equal(c.label, '[Doc: report.pdf, Chunk: 5]');
     assert.equal(c.source, 'workspace');
-    assert.deepEqual(c.span, { docId: 'ws-report.pdf', start: 10, end: 21 });
+    assert.deepEqual(c.span, { docId: 'ws-report.pdf', chunkIndex: 4, start: 10, end: 21 });
     assert.equal(c.score, 1.5);
   });
 
@@ -79,5 +79,46 @@ describe('buildContext', () => {
     const ctx = buildContext(citations, { maxChars: 500 });
     assert.ok(ctx.startsWith('<<<EXCERPT 1 [Doc: Doc, Chunk: 1]>>>'), ctx.slice(0, 60));
     assert.ok(ctx.length <= 500);
+  });
+
+  it('never cuts a fence: every opened excerpt is closed, for any budget', () => {
+    const citations = assignCitations(
+      Array.from({ length: 6 }, (_, i) => hit(`Doc ${i}`, `Excerpt ${i} `.repeat(150))),
+      { excerptChars: 1_600 },
+    );
+    for (const maxChars of [0, 50, 200, 700, 1_800, 4_000, 9_000, 20_000]) {
+      const ctx = buildContext(citations, { maxChars });
+      const opened = [...ctx.matchAll(/<<<EXCERPT (\d+) /g)].map((m) => m[1]);
+      const closed = [...ctx.matchAll(/<<<END EXCERPT (\d+)>>>/g)].map((m) => m[1]);
+      assert.deepEqual(opened, closed, `maxChars ${maxChars}`);
+      assert.ok(ctx.length <= maxChars, `maxChars ${maxChars}: ${ctx.length}`);
+      assert.ok(ctx === '' || ctx.endsWith('>>>'), `maxChars ${maxChars}`);
+    }
+  });
+
+  it('marks a cut excerpt with an ellipsis', () => {
+    const citations = assignCitations([hit('Doc', 'word '.repeat(100))], { excerptChars: 1_000 });
+    const ctx = buildContext(citations, { maxChars: 300 });
+    assert.match(ctx, /…\n<<<END EXCERPT 1>>>$/);
+  });
+});
+
+describe('mergeHits', () => {
+  const ws = (n) => Array.from({ length: n }, (_, i) => `w${i}`);
+  const kb = (n) => Array.from({ length: n }, (_, i) => `k${i}`);
+
+  it('keeps a strong knowledge-base hit when the workspace has many weak ones', () => {
+    assert.deepEqual(mergeHits(ws(6), kb(1), 6), ['w0', 'w1', 'w2', 'w3', 'w4', 'k0']);
+  });
+
+  it('splits the slots when both sources have enough hits, and fills from the other when one is short', () => {
+    assert.deepEqual(mergeHits(ws(6), kb(6), 6), ['w0', 'w1', 'w2', 'k0', 'k1', 'k2']);
+    assert.deepEqual(mergeHits(ws(2), kb(6), 6), ['w0', 'w1', 'k0', 'k1', 'k2', 'k3']);
+    assert.deepEqual(mergeHits(ws(6), [], 6), ws(6));
+    assert.deepEqual(mergeHits([], kb(8), 6), kb(6));
+  });
+
+  it('always keeps the pinned hits of an attached file', () => {
+    assert.deepEqual(mergeHits(ws(9), kb(9), 9, 3), ['w0', 'w1', 'w2', 'w3', 'w4', 'w5', 'k0', 'k1', 'k2']);
   });
 });

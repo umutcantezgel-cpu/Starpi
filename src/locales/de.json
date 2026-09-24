@@ -8,7 +8,9 @@
     "close": "Schließen",
     "cancel": "Abbrechen",
     "save": "Speichern",
-    "model_generic": "KI-Modell"
+    "model_generic": "KI-Modell",
+    "skip_to_content": "Zum Inhalt springen",
+    "section_navigation": "Bereiche"
   },
   "nav": {
     "chat": "Chat",
@@ -33,7 +35,6 @@
     "knowledge_base": "Wissensdatenbank",
     "connecting": "Verbinde",
     "live": "Live",
-    "read_only": "Nur lesen",
     "migration_pending": "Migration offen",
     "restricted": "Eingeschränkt",
     "offline": "Offline",
@@ -41,7 +42,15 @@
     "rls_disabled": "Anonyme Anmeldung ist deaktiviert",
     "no_session": "Keine Sitzung",
     "migration_needed": "Datenbankmigration noch nicht angewendet",
-    "probe_error": "Fehler ({code})"
+    "probe_error": "Fehler ({code})",
+    "public": "Öffentliches Wissen",
+    "detail_connecting": "Verbindung wird geprüft…",
+    "detail_live": "Veröffentlichte und eigene Dokumente; Chats werden in Ihrem privaten Verlauf gespeichert.",
+    "detail_public": "Veröffentlichte Dokumente; Ihre Chats und Dateien bleiben auf diesem Gerät.",
+    "detail_offline": "Nicht erreichbar; Antworten nutzen die Dateien im lokalen Arbeitsbereich.",
+    "detail_setup": "Die Datenbank ist nicht vollständig eingerichtet; siehe Einstellungen.",
+    "server_unreachable": "Eigener Server nicht erreichbar; Antworten werden aus den Quellen zitiert",
+    "reading_file": "Die angehängte Datei wird zuerst gelesen…"
   },
   "device": {
     "title": "Erkanntes Gerät",
@@ -54,7 +63,9 @@
     "local": "Lokaler Modus: Ihre Frage und das Modell bleiben auf diesem Gerät.",
     "server": "Eigener Server: Ihre Frage geht an {host} und an die Wissensdatenbank-Suche.",
     "cloud": "Cloud-Assistent: Ihre Frage geht an die Wissensdatenbank-Suche und mit passenden Auszügen an Ihren Anbieter.",
-    "extractive": "Kein Modell eingerichtet: Ihre Frage geht an die Wissensdatenbank-Suche, Antworten zitieren direkt daraus."
+    "extractive": "Kein Modell eingerichtet: Ihre Frage geht an die Wissensdatenbank-Suche, Antworten zitieren direkt daraus.",
+    "history_synced": "Fragen und Antworten werden in Ihrem privaten Chatverlauf gespeichert; löschen können Sie ihn in den Einstellungen.",
+    "history_local": "Chats werden in diesem Browser gespeichert; löschen können Sie sie in den Einstellungen."
   },
   "engine": {
     "mode_cloud": "Cloud-Assistent",
@@ -99,7 +110,8 @@
       "cancelled": "Das Laden wurde abgebrochen.",
       "busy": "Das Modell bearbeitet gerade eine andere Anfrage. Versuchen Sie es danach erneut.",
       "not-loaded": "Das lokale Modell ist nicht geladen.",
-      "unknown": "Unerwarteter Fehler: {reason}"
+      "unknown": "Unerwarteter Fehler: {reason}",
+      "code-download": "Die lokale KI-Engine konnte nicht geladen werden (Verbindung unterbrochen). Laden Sie die Seite neu, um es erneut zu versuchen."
     }
   },
   "chat": {
@@ -116,7 +128,7 @@
     "placeholder": "Frage stellen…",
     "attach_file": "Datei anhängen (wird dem lokalen Arbeitsbereich hinzugefügt)",
     "attaching": "{name} wird gelesen…",
-    "attached": "{name} · {chunks} Abschnitte",
+    "attached": "{name} · {chunks} {chunks:Abschnitt|Abschnitte}",
     "attached_placeholder": "Datei angehängt",
     "remove_attachment": "Anhang entfernen",
     "voice_input": "Spracheingabe",
@@ -130,7 +142,43 @@
     "note_local_failed": "Lokales Modell: {reason}",
     "note_server_failed": "Eigener Server nicht erreichbar ({reason})",
     "error_title": "Die Anfrage konnte nicht abgeschlossen werden",
-    "error_body": "{reason}"
+    "error_body": "{reason}",
+    "voice_stop": "Spracheingabe beenden",
+    "voice_hint": "Spracheingabe: Der Sprachdienst Ihres Browsers wandelt Sprache in Text um",
+    "voice_off_title": "Spracheingabe ist im lokalen Modus aus",
+    "voice_off_local": "Dieser Browser erkennt Sprache auf den Servern seines Herstellers, Ihre Stimme würde also das Gerät verlassen. Tippen Sie die Frage oder nutzen Sie die Spracheingabe in einem anderen Modus.",
+    "voice_error_denied": "Der Mikrofonzugriff wurde blockiert. Erlauben Sie ihn in den Website-Einstellungen des Browsers.",
+    "voice_error_microphone": "Es wurde kein Mikrofon gefunden.",
+    "voice_error_network": "Der Sprachdienst des Browsers ist nicht erreichbar.",
+    "voice_error_no_speech": "Es wurde keine Sprache erkannt. Versuchen Sie es erneut und sprechen Sie, sobald das Mikrofon rot wird.",
+    "voice_error_language": "Der Sprachdienst des Browsers unterstützt diese Sprache nicht.",
+    "voice_error_other": "Die Spracheingabe wurde beendet ({code}).",
+    "log_label": "Unterhaltung",
+    "provider_failed_title": "Das KI-Modell konnte nicht antworten",
+    "provider_failed_body": "{reason}. Die Antwort unten zitiert die Quellen direkt. Prüfen Sie den Schlüssel oder Server in den Einstellungen."
+  },
+  "demo": {
+    "pitch": "Neu hier? Laden Sie drei Beispieldateien eines erfundenen Projekts und stellen Sie Fragen dazu. Die Dateien werden auf diesem Gerät gelesen; nichts wird hochgeladen.",
+    "try": "Mit Beispieldateien ausprobieren",
+    "loading": "Beispieldateien werden geladen…",
+    "loading_body": "Ein Projektplan, ein Risikoregister und ein Kickoff-Protokoll einer erfundenen Firma werden in den lokalen Arbeitsbereich gelesen.",
+    "loaded_title": "Beispieldateien bereit",
+    "loaded_body": "{names} liegen im lokalen Arbeitsbereich. Stellen Sie eine dieser Fragen oder eine eigene; jede Antwort zeigt ihre Quellen und eine Quellenprüfung.",
+    "error_title": "Die Beispieldateien konnten nicht geladen werden",
+    "error_body": "Grund: {reason}",
+    "q_launch": "Starttermin und Projektleitung",
+    "q_launch_question": "Wann startet Projekt Nebula und wer leitet die Entwicklung?",
+    "q_budget": "Budget und Aufteilung",
+    "q_budget_question": "Wie hoch ist das freigegebene Budget und wie ist es aufgeteilt?",
+    "q_risks": "Hohe Risiken und Verantwortliche",
+    "q_risks_question": "Welche Risiken sind hoch bewertet und wer ist verantwortlich?",
+    "check": "Quellenprüfung an einem Fehler testen",
+    "check_missing": "Laden Sie zuerst die Beispieldateien.",
+    "flawed_find_budget": "freigegebene Budget Projekt Nebula beträgt",
+    "flawed_find_meeting": "Lenkungskreis tagt jeden Dienstag",
+    "flawed_find_launch": "Projekt Nebula startet öffentlich",
+    "flawed_answer": "Das freigegebene Budget für Projekt Nebula beträgt 520.000 € {budget}. Der Lenkungskreis tagt jeden Dienstag um 10:00 Uhr {meeting}. Projekt Nebula startet öffentlich am 12. Mai 2027 {launch}.",
+    "flawed_badge": "Beispielantwort mit einem absichtlichen Fehler, für diese Demo geschrieben (nicht generiert)"
   },
   "prompt": {
     "user_question": "Frage:"
@@ -143,7 +191,7 @@
     "why_missing": "Suchfunktion nicht installiert",
     "why_unavailable": "Volltextsuche nicht verfügbar",
     "local": "Im Browser gerankt (die Frage wird nirgendwohin gesendet)",
-    "unreachable": "Wissensdatenbank nicht erreichbar ({kind})"
+    "offline": "Wissensdatenbank nicht erreichbar, übersprungen"
   },
   "synth": {
     "greeting": "Hallo! Ich antworte aus Ihrer Wissensdatenbank und Ihrem lokalen Arbeitsbereich und nenne jede Quelle.",
@@ -153,7 +201,14 @@
     "no_hits_heading": "Keine passenden Auszüge",
     "no_hits_body": "Weder die Wissensdatenbank noch der Arbeitsbereich enthalten etwas zu dieser Frage. Versuchen Sie andere Stichwörter oder fügen Sie ein Dokument hinzu.",
     "no_documents": "Noch keine Dokumente.",
-    "footer_no_model": "Direkt aus den Quellen zitiert; es wurde kein KI-Modell verwendet."
+    "footer_no_model": "Direkt aus den Quellen zitiert; es wurde kein KI-Modell verwendet.",
+    "more_documents": "und {n} weitere",
+    "kb_unavailable_short": "Die Wissensdatenbank ist gerade nicht erreichbar.",
+    "kb_unavailable_heading": "Wissensdatenbank nicht erreichbar",
+    "kb_unavailable_body": "Die Wissensdatenbank ist gerade nicht erreichbar, daher wurden nur die Dateien im lokalen Arbeitsbereich durchsucht. Starpi verbindet sich automatisch neu.",
+    "file_heading": "Aus {name}",
+    "closest_heading": "Nächstliegende Passagen",
+    "closest_note": "Kein Satz passt zum Wortlaut Ihrer Frage; das sind die Passagen, die die Suche gefunden hat."
   },
   "trace": {
     "title": "Quellen und Verarbeitung",
@@ -167,7 +222,7 @@
     "query": "Anfrage",
     "method": "Verfahren",
     "matches": "Treffer",
-    "matches_value": "{hits} Auszüge aus {docs} Dokumenten ({titles})",
+    "matches_value": "{hits} {hits:Auszug|Auszüge} aus {docs} {docs:Dokument|Dokumenten} ({titles})",
     "engine": "Engine",
     "duration": "Dauer",
     "note": "Hinweis"
@@ -183,9 +238,74 @@
     "offsets": "Zeichen",
     "excerpt": "Zitierter Text im Kontext",
     "loading_context": "Umgebender Text wird geladen…",
-    "note_workspace": "Markiert: genau der Abschnitt, den das Modell erhalten hat, im extrahierten Text ({length} Zeichen).",
-    "note_knowledge": "Der Auszug aus der Wissensdatenbank genau so, wie ihn das Modell erhalten hat.",
-    "note_missing": "Die Datei ist nicht mehr im Arbeitsbereich; angezeigt wird der Auszug, den das Modell erhalten hat."
+    "note_workspace": "Markiert: der zitierte Abschnitt im aus der Datei extrahierten Text ({length} Zeichen).",
+    "note_knowledge": "Der Auszug aus der Wissensdatenbank, so wie er zitiert wurde.",
+    "note_missing": "Die Datei ist nicht mehr im Arbeitsbereich; angezeigt wird der zitierte Auszug."
+  },
+  "grounding": {
+    "title": "Quellenprüfung",
+    "summary": "{ok}/{total} Aussagen passen zu ihren zitierten Auszügen",
+    "review": "{n} prüfen",
+    "partial": "{n} teilweise",
+    "only_unchecked": "Nicht verglichen: Antwort und Auszüge sind in verschiedenen Sprachen",
+    "unchecked": "{n} Aussage(n) wurden nicht verglichen, weil Antwort und Auszug in verschiedenen Sprachen sind.",
+    "too_long": "Diese Antwort ist für die Quellenprüfung zu lang",
+    "disclaimer": "Die Prüfung vergleicht Zahlen, Daten, Uhrzeiten, Codes, Zitate und Wortlaut jeder Aussage mit den Auszügen, die sie zitiert. Eine Übereinstimmung beweist nicht, dass die Aussage stimmt; eine Markierung heißt: Quelle öffnen und prüfen.",
+    "reason_missing_fact": "{fact} steht nicht in {label}.",
+    "reason_fact_elsewhere": "{fact} steht in {other}, nicht im zitierten {label}.",
+    "reason_uncited_found": "Ohne Quellenangabe; die passende Stelle ist {other}.",
+    "reason_uncited_missing": "Ohne Quellenangabe, und {fact} steht in keinem Auszug.",
+    "reason_low_overlap": "Nur wenige ihrer Wörter stehen in {label}.",
+    "reason_unknown_citation": "{found} gehört nicht zu den Auszügen, die diese Antwort erhalten hat.",
+    "reason_label_mismatch": "{found} ist anders geschrieben als {label}.",
+    "reason_quote_missing": "Das Zitat {fact} steht nicht in {label}.",
+    "reason_approximate": "{fact} ist gerundet oder ungefähr; {label} nennt {found}.",
+    "reason_from_conversation": "{fact} stammt aus der Frage oder dem Gespräch, nicht aus einem Auszug.",
+    "reason_not_delivered": "{label} passte nicht mehr in den Kontext des Modells.",
+    "statement": "„{text}“"
+  },
+  "receipt": {
+    "button": "Beleg",
+    "title": "Antwortbeleg",
+    "intro": "Ein Beleg listet die Auszüge, die diese Antwort zitiert, mit einem SHA-256-Fingerabdruck jeder Datei und der genauen Position jeder Passage. Wer dieselben Dateien hat, kann prüfen, dass jeder Auszug eine exakte, unveränderte Passage ist.",
+    "id": "Beleg-ID",
+    "contents": "Inhalt",
+    "counts": "{workspace} Arbeitsbereich · {knowledge} Wissensdatenbank",
+    "proves_title": "Was er beweist",
+    "proves": "Jeder Auszug aus dem Arbeitsbereich ist eine exakte, unveränderte Passage der Datei mit dem aufgezeichneten Fingerabdruck, an der aufgezeichneten Position. Die Quellenprüfung lässt sich daraus neu berechnen.",
+    "not_proves_title": "Was er nicht beweist",
+    "not_proves": "Dass Starpi die Antwort geschrieben hat (Belege sind nicht signiert), welche Auszüge das Modell tatsächlich gelesen hat, dass die Antwort stimmt, oder irgendetwas über Auszüge aus der Wissensdatenbank.",
+    "include_question": "Frage einschließen",
+    "include_excerpts": "Auszugstexte einschließen",
+    "privacy": "Die Datei entsteht auf diesem Gerät und enthält Auszüge Ihrer Dokumente sowie Fingerabdrücke, die sie identifizieren. Sie verlässt das Gerät nur, wenn Sie sie weitergeben.",
+    "download": "Beleg herunterladen",
+    "verify_open": "Antwortbeleg prüfen",
+    "verify_title": "Beleg prüfen",
+    "verify_intro": "Wählen Sie einen Beleg und die Originaldateien. Beides wird auf diesem Gerät gelesen; Dateien werden über ihren Fingerabdruck zugeordnet, nicht über ihren Namen.",
+    "verify_pick_receipt": "Beleg (.json)",
+    "verify_pick_files": "Originaldateien",
+    "verify_run": "Prüfen",
+    "verify_running": "Der Beleg wird mit den Dateien abgeglichen…",
+    "verify_need_receipt": "Wählen Sie zuerst eine Belegdatei.",
+    "verify_invalid": "Das ist kein gültiger Starpi-Beleg ({reason}).",
+    "summary": "{ok}/{total} Auszüge aus dem Arbeitsbereich aus Ihren Dateien reproduziert",
+    "id_ok": "Der Hash des Belegs passt zu seinem Inhalt.",
+    "id_changed": "Der Beleg wurde nach dem Erstellen verändert: Sein Hash passt nicht zu seinem Inhalt.",
+    "answer_ok": "Der Antworttext passt zu seinem Fingerabdruck.",
+    "answer_changed": "Der Antworttext passt nicht zu seinem Fingerabdruck.",
+    "check_knowledge": "{label}: Auszug aus der Wissensdatenbank; nicht unabhängig prüfbar.",
+    "check_file_missing": "{label}: Keine der gewählten Dateien hat den aufgezeichneten Fingerabdruck.",
+    "check_file_not_verifiable": "{label}: Es wurde kein Fingerabdruck der Datei aufgezeichnet.",
+    "check_passage_match": "{label}: exakte Passage in {file} an der aufgezeichneten Position gefunden.",
+    "check_passage_moved": "{label}: Die Passage steht in {file}, aber nicht an der aufgezeichneten Position.",
+    "check_passage_mismatch": "{label}: Der Text an der aufgezeichneten Position weicht vom Auszug ab.",
+    "check_text_mismatch": "{label}: Der aus der Datei extrahierte Text weicht vom aufgezeichneten Text ab.",
+    "check_text_version_differs": "{label}: Die Datei wurde mit einer anderen Extraktionsversion gelesen; der extrahierte Text weicht ab.",
+    "check_chunk_mismatch": "{label}: Die Datei ergibt heute andere Abschnittsgrenzen.",
+    "check_chunk_version_differs": "{label}: Die Regeln für Abschnitte haben sich seit dem Beleg geändert.",
+    "grounding_same": "Quellenprüfung für {n} Aussagen neu berechnet: dieselben Ergebnisse wie im Beleg.",
+    "grounding_differs": "Quellenprüfung für {n} Aussagen neu berechnet: {diff} Ergebnis(se) weichen vom Beleg ab.",
+    "grounding_conversation": "Einige Ergebnisse nutzten frühere Chatnachrichten, die Belege nicht enthalten."
   },
   "workspace": {
     "title": "Lokaler Arbeitsbereich",
@@ -195,8 +315,8 @@
     "drop_title": "Dateien hier ablegen oder klicken",
     "drop_hint": "PDF, TXT, Markdown, JSON oder CSV · bis 25 MB pro Datei",
     "empty": "Noch keine Dateien im Arbeitsbereich.",
-    "meta": "{chunks} Abschnitte · {chars} Zeichen",
-    "meta_pages": "{pages} Seiten · {chunks} Abschnitte · {chars} Zeichen",
+    "meta": "{chunks} {chunks:Abschnitt|Abschnitte} · {chars} Zeichen",
+    "meta_pages": "{pages} {pages:Seite|Seiten} · {chunks} {chunks:Abschnitt|Abschnitte} · {chars} Zeichen",
     "remove": "Aus dem Arbeitsbereich entfernen",
     "to_form": "Text in das Formular der Wissensdatenbank übernehmen",
     "clear": "Arbeitsbereich leeren",
@@ -207,7 +327,7 @@
     "search": "Suchen",
     "no_results": "Kein Abschnitt passt zu dieser Anfrage.",
     "score": "BM25 {score}",
-    "added": "{name} hinzugefügt: {chunks} Abschnitte indexiert.",
+    "added": "{name} hinzugefügt: {chunks} {chunks:Abschnitt|Abschnitte} indexiert.",
     "truncated": "Der Text wurde für das Formular der Wissensdatenbank auf {max} Zeichen gekürzt.",
     "progress_parsing": "Text aus {name} wird extrahiert… {done}/{total}",
     "progress_chunking": "{name} wird in Abschnitte zerlegt…",
@@ -221,7 +341,10 @@
     "error_encrypted_pdf": "{name} ist passwortgeschützt.",
     "error_worker_crashed": "Der Dokument-Worker wurde beim Lesen von {name} beendet; der Arbeitsbereich wurde zurückgesetzt.",
     "error_cleared": "Der Arbeitsbereich wurde geleert, während {name} gelesen wurde.",
-    "error_internal": "{name} konnte nicht verarbeitet werden."
+    "error_internal": "{name} konnte nicht verarbeitet werden.",
+    "progress_reading": "Prüfsumme für {name} wird berechnet…",
+    "error_pdf_reader": "{name}: Der PDF-Leser konnte nicht geladen werden. Prüfen Sie die Verbindung und fügen Sie die Datei erneut hinzu; hilft das nicht, laden Sie die Seite neu.",
+    "duplicate": "{name} ist bereits im Arbeitsbereich und wurde nicht doppelt hinzugefügt."
   },
   "library": {
     "title": "Wissensdatenbank",
@@ -235,14 +358,15 @@
     "document": "Dokument",
     "loading_document": "Wird geladen…",
     "summary": "Zusammenfassung",
-    "meta": "Erstellt am {date} · {sections} Abschnitte"
+    "meta": "Erstellt am {date} · {sections} {sections:Abschnitt|Abschnitte}"
   },
   "data": {
     "error_unreachable": "Die Wissensdatenbank ist gerade nicht erreichbar. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
     "error_missing_schema": "Die benötigten Tabellen oder Funktionen sind in dieser Datenbank noch nicht eingerichtet (Migration offen).",
-    "error_forbidden": "Keine Berechtigung. Für diese Aktion ist eine Sitzung nötig (anonyme Anmeldung in Supabase aktivieren).",
+    "error_forbidden": "Nicht erlaubt: Zum Speichern braucht es eine Browser-Sitzung, die diese Seite gerade nicht anbietet. Veröffentlichte Dokumente lassen sich weiterhin lesen.",
     "error_auth_disabled": "Die anonyme Anmeldung ist in Supabase deaktiviert.",
-    "error_other": "Fehler: {reason}"
+    "error_other": "Fehler: {reason}",
+    "error_not_found": "Dieses Dokument gibt es nicht mehr, oder es ist nicht freigegeben."
   },
   "graph": {
     "title": "Wissensgraph",
@@ -274,13 +398,14 @@
     "type_person": "Person",
     "type_metric": "Kennzahl",
     "type_tech": "Technologie",
-    "type_regulation": "Vorschrift"
+    "type_regulation": "Vorschrift",
+    "entity_list": "Entitäten (wählen Sie eine aus, um Details und Beziehungen zu sehen)"
   },
   "ingest": {
     "title": "Wissen hinzufügen",
-    "subtitle": "Dateien privat auf diesem Gerät durchsuchen oder Text in der gemeinsamen Wissensdatenbank speichern.",
+    "subtitle": "Dateien privat auf diesem Gerät durchsuchen oder Text in Ihrer privaten Wissensdatenbank speichern (nur in diesem Browser sichtbar).",
     "kb_title": "In der Wissensdatenbank speichern",
-    "kb_description": "Der Text wird als Markdown-Dokument gespeichert, das dieser Browsersitzung gehört und durch Row Level Security geschützt ist.",
+    "kb_description": "Der Text wird als Markdown-Dokument gespeichert, das nur diese Browser-Sitzung sehen kann, geschützt durch Row Level Security. Wenn Sie die Browserdaten löschen, verlieren Sie den Zugriff darauf.",
     "title_label": "Titel",
     "title_placeholder": "z. B. Marketingplan Q3",
     "category_label": "Typ",
@@ -303,7 +428,8 @@
     "md_facts": "1. Inhalt",
     "md_meta": "2. Metadaten",
     "md_source": "Quelle",
-    "md_indexed": "Gespeichert"
+    "md_indexed": "Gespeichert",
+    "session_note": "Zum Speichern in der Wissensdatenbank braucht es eine Browser-Sitzung, die gerade nicht verfügbar ist. Der lokale Arbeitsbereich oben funktioniert wie gewohnt."
   },
   "diagnostics": {
     "title": "Diagnose & Benchmark",
@@ -390,7 +516,12 @@
     "test_ok_primary": "Gemini ist bereit",
     "test_ok_secondary": "OpenRouter ist bereit",
     "test_not_configured": "{provider} ist nicht eingerichtet",
-    "test_failed": "Test fehlgeschlagen"
+    "test_failed": "Test fehlgeschlagen",
+    "test_enter_key": "Geben Sie oben einen Schlüssel ein; er wird wie eingegeben getestet und erst mit „Einstellungen speichern“ gespeichert.",
+    "delete_history": "Chatverlauf löschen",
+    "delete_history_confirm": "Alle in diesem Browser gespeicherten Chats und, falls synchronisiert, Ihren synchronisierten Chatverlauf löschen? Das lässt sich nicht rückgängig machen.",
+    "delete_history_done": "Chatverlauf gelöscht.",
+    "delete_history_partial": "Die Chats in diesem Browser wurden gelöscht, der synchronisierte Verlauf aber gerade nicht. Versuchen Sie es erneut, wenn die Wissensdatenbank erreichbar ist."
   },
   "sync": {
     "checking": "Wird geprüft…",

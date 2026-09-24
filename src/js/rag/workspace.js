@@ -6,7 +6,22 @@
 /** Replaced at build time with the hashed worker URL (scripts/build.mjs). */
 const INGEST_WORKER_URL = '__STARPI_INGEST_WORKER_URL__';
 
-/** @typedef {{ docId: string, name: string, kind: string, chars: number, chunks: number, pages: number | null }} WorkspaceDocument */
+/**
+ * A document in the workspace, as reported by the worker (DocumentInfo in ingest.worker.js).
+ * @typedef {object} WorkspaceDocument
+ * @property {string} docId
+ * @property {string} name
+ * @property {string} kind
+ * @property {number} chars
+ * @property {number} chunks
+ * @property {number | null} pages
+ * @property {number} bytes
+ * @property {string | null} fileSha256
+ * @property {string} textSha256
+ * @property {{ id: string, version: number, pdfjs: string | null }} extractor
+ * @property {{ id: string, version: number, size: number, overlap: number }} chunker
+ * @property {boolean} [duplicate]  set on the reply when the same file was already in the workspace
+ */
 /**
  * @typedef {object} WorkspaceHit
  * @property {string} docId
@@ -130,6 +145,7 @@ export async function addToWorkspace(file, options = {}) {
   const doc = /** @type {WorkspaceDocument} */ (
     await request('ingest', { file, chunkSize: options.chunkSize, chunkOverlap: options.chunkOverlap }, options.onProgress)
   );
+  if (doc.duplicate) return doc;
   docs = [...docs, doc];
   notify();
   return doc;
@@ -180,6 +196,17 @@ export async function removeFromWorkspace(docId) {
   await request('remove', { docId });
   docs = docs.filter((d) => d.docId !== docId);
   notify();
+}
+
+/**
+ * Re-checks an answer receipt against original files, in the worker (extraction and chunking are
+ * too heavy for the UI thread). Adds nothing to the workspace.
+ * @param {unknown} receipt  parsed JSON
+ * @param {File[]} files
+ * @returns {Promise<import('../core/receipt.js').VerifyReport | { invalid: { error: string, path: string } }>}
+ */
+export function verifyReceiptFiles(receipt, files) {
+  return request('verify-receipt', { receipt, files });
 }
 
 /** Discards every document: the worker (and its memory) is terminated. */

@@ -8,7 +8,9 @@
     "close": "Close",
     "cancel": "Cancel",
     "save": "Save",
-    "model_generic": "AI model"
+    "model_generic": "AI model",
+    "skip_to_content": "Skip to content",
+    "section_navigation": "Sections"
   },
   "nav": {
     "chat": "Chat",
@@ -33,7 +35,6 @@
     "knowledge_base": "Knowledge base",
     "connecting": "Connecting",
     "live": "Live",
-    "read_only": "Read only",
     "migration_pending": "Migration pending",
     "restricted": "Restricted",
     "offline": "Offline",
@@ -41,7 +42,15 @@
     "rls_disabled": "Anonymous sign-ins are disabled",
     "no_session": "No session",
     "migration_needed": "Database migration not applied yet",
-    "probe_error": "Error ({code})"
+    "probe_error": "Error ({code})",
+    "public": "Public knowledge",
+    "detail_connecting": "Checking the connection…",
+    "detail_live": "Published and your own documents; chats sync to your private history.",
+    "detail_public": "Published documents; your chats and files stay on this device.",
+    "detail_offline": "Not reachable; answers use the files in your on-device workspace.",
+    "detail_setup": "The database setup is incomplete; see Settings.",
+    "server_unreachable": "Own server not reachable; answers are quoted from the sources",
+    "reading_file": "Reading the attached file first…"
   },
   "device": {
     "title": "Detected device",
@@ -54,7 +63,9 @@
     "local": "On-device mode: your question and the model stay on this device.",
     "server": "Own server: your question goes to {host} and to the knowledge-base search.",
     "cloud": "Cloud assistant: your question goes to the knowledge-base search, and with matching excerpts to your provider.",
-    "extractive": "No model configured: your question goes to the knowledge-base search, and answers quote it directly."
+    "extractive": "No model configured: your question goes to the knowledge-base search, and answers quote it directly.",
+    "history_synced": "Questions and answers are saved to your private chat history; delete it in Settings.",
+    "history_local": "Chats are saved in this browser; delete them in Settings."
   },
   "engine": {
     "mode_cloud": "Cloud assistant",
@@ -99,7 +110,8 @@
       "cancelled": "Loading was cancelled.",
       "busy": "The model is busy with another request. Try again when it has finished.",
       "not-loaded": "The on-device model is not loaded.",
-      "unknown": "Unexpected error: {reason}"
+      "unknown": "Unexpected error: {reason}",
+      "code-download": "The on-device engine could not be downloaded (connection interrupted). Reload the page to try again."
     }
   },
   "chat": {
@@ -116,7 +128,7 @@
     "placeholder": "Ask a question…",
     "attach_file": "Attach a file (added to the on-device workspace)",
     "attaching": "Reading {name}…",
-    "attached": "{name} · {chunks} chunks",
+    "attached": "{name} · {chunks} {chunks:chunk|chunks}",
     "attached_placeholder": "File attached",
     "remove_attachment": "Remove attachment",
     "voice_input": "Voice input",
@@ -130,7 +142,43 @@
     "note_local_failed": "On-device model: {reason}",
     "note_server_failed": "Own server unavailable ({reason})",
     "error_title": "The request could not be completed",
-    "error_body": "{reason}"
+    "error_body": "{reason}",
+    "voice_stop": "Stop voice input",
+    "voice_hint": "Voice input: your browser's speech service turns speech into text",
+    "voice_off_title": "Voice input is off in the on-device mode",
+    "voice_off_local": "This browser recognizes speech on its vendor's servers, so your voice would leave the device. Type the question, or use voice input in another mode.",
+    "voice_error_denied": "Microphone access was blocked. Allow it in the browser's site settings to use voice input.",
+    "voice_error_microphone": "No microphone was found.",
+    "voice_error_network": "The browser's speech service could not be reached.",
+    "voice_error_no_speech": "No speech was heard. Try again and speak after the microphone turns red.",
+    "voice_error_language": "The browser's speech service does not support this language.",
+    "voice_error_other": "Voice input stopped ({code}).",
+    "log_label": "Conversation",
+    "provider_failed_title": "The AI model could not answer",
+    "provider_failed_body": "{reason}. The answer below quotes the sources directly. Check the key or server in Settings."
+  },
+  "demo": {
+    "pitch": "New here? Load three sample files of a fictitious project and ask about them. The files are read on this device; nothing is uploaded.",
+    "try": "Try with sample files",
+    "loading": "Loading sample files…",
+    "loading_body": "A project plan, a risk register and kickoff notes of a fictitious company are read into the on-device workspace.",
+    "loaded_title": "Sample files ready",
+    "loaded_body": "{names} are in the on-device workspace. Ask one of these questions or your own; every answer shows its sources and a source check.",
+    "error_title": "The sample files could not be loaded",
+    "error_body": "Reason: {reason}",
+    "q_launch": "Launch date and project lead",
+    "q_launch_question": "When does Project Nebula launch and who leads development?",
+    "q_budget": "Budget and how it is split",
+    "q_budget_question": "What is the approved budget and how is it split?",
+    "q_risks": "High risks and their owners",
+    "q_risks_question": "Which risks are rated high and who owns them?",
+    "check": "See the source check catch an error",
+    "check_missing": "Load the sample files first.",
+    "flawed_find_budget": "approved budget Project Nebula EUR",
+    "flawed_find_meeting": "steering group meets every Tuesday",
+    "flawed_find_launch": "public launch Project Nebula planned",
+    "flawed_answer": "The approved budget for Project Nebula is 520,000 EUR {budget}. The steering group meets every Tuesday at 10:00 {meeting}. The public launch is planned for 12 May 2027 {launch}.",
+    "flawed_badge": "Example answer with one deliberate error, written for this demo (not generated)"
   },
   "prompt": {
     "user_question": "Question:"
@@ -143,7 +191,7 @@
     "why_missing": "search function not installed",
     "why_unavailable": "full-text search unavailable",
     "local": "Ranked in the browser (the question is not sent anywhere)",
-    "unreachable": "Knowledge base unreachable ({kind})"
+    "offline": "knowledge base not reachable, skipped"
   },
   "synth": {
     "greeting": "Hello! I answer from your knowledge base and your on-device workspace, and I cite every source.",
@@ -153,7 +201,14 @@
     "no_hits_heading": "No matching excerpts",
     "no_hits_body": "Nothing in the knowledge base or the workspace matches this question. Try other keywords or add a document.",
     "no_documents": "No documents yet.",
-    "footer_no_model": "Quoted directly from the sources; no AI model was used."
+    "footer_no_model": "Quoted directly from the sources; no AI model was used.",
+    "more_documents": "and {n} more",
+    "kb_unavailable_short": "The knowledge base cannot be reached right now.",
+    "kb_unavailable_heading": "Knowledge base not reachable",
+    "kb_unavailable_body": "The knowledge base cannot be reached right now, so only files in this device's workspace were searched. Starpi reconnects automatically.",
+    "file_heading": "From {name}",
+    "closest_heading": "Closest passages",
+    "closest_note": "No sentence matches the wording of your question; these are the passages the search found."
   },
   "trace": {
     "title": "Sources and processing",
@@ -167,7 +222,7 @@
     "query": "Query",
     "method": "Method",
     "matches": "Matches",
-    "matches_value": "{hits} excerpts from {docs} documents ({titles})",
+    "matches_value": "{hits} {hits:excerpt|excerpts} from {docs} {docs:document|documents} ({titles})",
     "engine": "Engine",
     "duration": "Duration",
     "note": "Note"
@@ -183,9 +238,74 @@
     "offsets": "Characters",
     "excerpt": "Cited text in context",
     "loading_context": "Loading the surrounding text…",
-    "note_workspace": "Highlighted: the exact chunk given to the model, inside the extracted text ({length} characters).",
-    "note_knowledge": "The excerpt from the knowledge base exactly as it was given to the model.",
-    "note_missing": "The file is no longer in the workspace; showing the excerpt as it was given to the model."
+    "note_workspace": "Highlighted: the cited chunk inside the text extracted from the file ({length} characters).",
+    "note_knowledge": "The excerpt from the knowledge base as it was cited.",
+    "note_missing": "The file is no longer in the workspace; showing the cited excerpt."
+  },
+  "grounding": {
+    "title": "Source check",
+    "summary": "{ok}/{total} statements match their cited excerpts",
+    "review": "{n} to review",
+    "partial": "{n} partly",
+    "only_unchecked": "Not compared: the answer and its excerpts are in different languages",
+    "unchecked": "{n} statement(s) were not compared because the answer and the excerpt are in different languages.",
+    "too_long": "This answer is too long for the source check",
+    "disclaimer": "The check compares the numbers, dates, times, codes, quotations and wording of each statement with the excerpts it cites. A match does not prove a statement correct; a flag means: open the source and check.",
+    "reason_missing_fact": "{fact} is not in {label}.",
+    "reason_fact_elsewhere": "{fact} is in {other}, not in the cited {label}.",
+    "reason_uncited_found": "No citation; the matching passage is {other}.",
+    "reason_uncited_missing": "No citation, and {fact} is in none of the excerpts.",
+    "reason_low_overlap": "Few of its words appear in {label}.",
+    "reason_unknown_citation": "{found} is not one of the excerpts this answer was given.",
+    "reason_label_mismatch": "{found} is written differently from {label}.",
+    "reason_quote_missing": "The quotation {fact} is not in {label}.",
+    "reason_approximate": "{fact} is rounded or approximate; {label} says {found}.",
+    "reason_from_conversation": "{fact} comes from the question or the conversation, not from an excerpt.",
+    "reason_not_delivered": "{label} did not fit into the model's context.",
+    "statement": "“{text}”"
+  },
+  "receipt": {
+    "button": "Receipt",
+    "title": "Answer receipt",
+    "intro": "A receipt lists the excerpts this answer cited, with a SHA-256 fingerprint of each file and the exact position of each passage. Anyone who has the same files can check that every excerpt is an exact, unchanged passage.",
+    "id": "Receipt ID",
+    "contents": "Contents",
+    "counts": "{workspace} workspace · {knowledge} knowledge base",
+    "proves_title": "What it proves",
+    "proves": "Each workspace excerpt is an exact, unchanged passage of the file with the recorded fingerprint, at the recorded position. The source check can be recomputed from it.",
+    "not_proves_title": "What it does not prove",
+    "not_proves": "That Starpi wrote the answer (receipts are not signed), which excerpts the model actually read, that the answer is correct, or anything about knowledge-base excerpts.",
+    "include_question": "Include the question",
+    "include_excerpts": "Include the excerpt texts",
+    "privacy": "The file is created on this device and contains excerpts of your documents and fingerprints that identify them. It only leaves this device if you share it.",
+    "download": "Download receipt",
+    "verify_open": "Verify an answer receipt",
+    "verify_title": "Verify a receipt",
+    "verify_intro": "Choose a receipt and the original files. Both are read on this device; files are matched by their fingerprint, not by their name.",
+    "verify_pick_receipt": "Receipt (.json)",
+    "verify_pick_files": "Original files",
+    "verify_run": "Verify",
+    "verify_running": "Checking the receipt against the files…",
+    "verify_need_receipt": "Choose a receipt file first.",
+    "verify_invalid": "This is not a valid Starpi receipt ({reason}).",
+    "summary": "{ok}/{total} workspace excerpts reproduced from your files",
+    "id_ok": "The receipt hash matches its contents.",
+    "id_changed": "The receipt was changed after it was created: its hash does not match its contents.",
+    "answer_ok": "The answer text matches its fingerprint.",
+    "answer_changed": "The answer text does not match its fingerprint.",
+    "check_knowledge": "{label}: knowledge-base excerpt; not independently verifiable.",
+    "check_file_missing": "{label}: none of the chosen files has the recorded fingerprint.",
+    "check_file_not_verifiable": "{label}: no file fingerprint was recorded.",
+    "check_passage_match": "{label}: exact passage found in {file} at the recorded position.",
+    "check_passage_moved": "{label}: the passage is in {file}, but not at the recorded position.",
+    "check_passage_mismatch": "{label}: the text at the recorded position differs from the excerpt.",
+    "check_text_mismatch": "{label}: the text extracted from the file differs from the recorded text.",
+    "check_text_version_differs": "{label}: the file was read with a different extraction version; the extracted text differs.",
+    "check_chunk_mismatch": "{label}: chunking the file today gives different chunk bounds.",
+    "check_chunk_version_differs": "{label}: the chunking rules changed since the receipt was created.",
+    "grounding_same": "Source check recomputed for {n} statements: same verdicts as recorded.",
+    "grounding_differs": "Source check recomputed for {n} statements: {diff} verdict(s) differ from the receipt.",
+    "grounding_conversation": "Some verdicts used earlier chat turns, which receipts do not contain."
   },
   "workspace": {
     "title": "On-device workspace",
@@ -195,8 +315,8 @@
     "drop_title": "Drop files here or click to choose",
     "drop_hint": "PDF, TXT, Markdown, JSON or CSV · up to 25 MB each",
     "empty": "No files in the workspace yet.",
-    "meta": "{chunks} chunks · {chars} characters",
-    "meta_pages": "{pages} pages · {chunks} chunks · {chars} characters",
+    "meta": "{chunks} {chunks:chunk|chunks} · {chars} characters",
+    "meta_pages": "{pages} {pages:page|pages} · {chunks} {chunks:chunk|chunks} · {chars} characters",
     "remove": "Remove from workspace",
     "to_form": "Copy text to the knowledge base form",
     "clear": "Clear workspace",
@@ -207,7 +327,7 @@
     "search": "Search",
     "no_results": "No chunk matches this query.",
     "score": "BM25 {score}",
-    "added": "{name} added: {chunks} chunks indexed.",
+    "added": "{name} added: {chunks} {chunks:chunk|chunks} indexed.",
     "truncated": "The text was shortened to {max} characters for the knowledge base form.",
     "progress_parsing": "Extracting text from {name}… {done}/{total}",
     "progress_chunking": "Splitting {name} into chunks…",
@@ -221,7 +341,10 @@
     "error_encrypted_pdf": "{name} is password protected.",
     "error_worker_crashed": "The document worker stopped while reading {name}; the workspace was reset.",
     "error_cleared": "The workspace was cleared while {name} was being read.",
-    "error_internal": "{name} could not be processed."
+    "error_internal": "{name} could not be processed.",
+    "progress_reading": "Fingerprinting {name}…",
+    "error_pdf_reader": "{name}: the PDF reader could not be downloaded. Check your connection and add the file again; if it keeps failing, reload the page.",
+    "duplicate": "{name} is already in the workspace; it was not added twice."
   },
   "library": {
     "title": "Knowledge base",
@@ -235,14 +358,15 @@
     "document": "Document",
     "loading_document": "Loading…",
     "summary": "Summary",
-    "meta": "Created {date} · {sections} sections"
+    "meta": "Created {date} · {sections} {sections:section|sections}"
   },
   "data": {
     "error_unreachable": "The knowledge base cannot be reached right now. Check your connection and try again.",
     "error_missing_schema": "The required tables or functions are not installed in this database yet (migration pending).",
-    "error_forbidden": "Not allowed. This action needs a session (enable anonymous sign-ins in Supabase).",
+    "error_forbidden": "Not allowed: saving needs a browser session, which this site does not offer right now. Reading published documents still works.",
     "error_auth_disabled": "Anonymous sign-ins are disabled in Supabase.",
-    "error_other": "Error: {reason}"
+    "error_other": "Error: {reason}",
+    "error_not_found": "This document no longer exists or is not shared."
   },
   "graph": {
     "title": "Knowledge graph",
@@ -274,13 +398,14 @@
     "type_person": "Person",
     "type_metric": "Metric",
     "type_tech": "Technology",
-    "type_regulation": "Regulation"
+    "type_regulation": "Regulation",
+    "entity_list": "Entities (select one to see its details and relations)"
   },
   "ingest": {
     "title": "Add knowledge",
-    "subtitle": "Search files privately on this device, or save text to the shared knowledge base.",
+    "subtitle": "Search files privately on this device, or save text to your private knowledge base (visible only in this browser).",
     "kb_title": "Save to the knowledge base",
-    "kb_description": "The text is stored as a Markdown document owned by this browser session and protected by Row Level Security.",
+    "kb_description": "The text is stored as a Markdown document that only this browser session can see, protected by Row Level Security. Clearing this browser's data removes your access to it.",
     "title_label": "Title",
     "title_placeholder": "e.g. Q3 marketing plan",
     "category_label": "Type",
@@ -303,7 +428,8 @@
     "md_facts": "1. Content",
     "md_meta": "2. Metadata",
     "md_source": "Source",
-    "md_indexed": "Saved"
+    "md_indexed": "Saved",
+    "session_note": "Saving to the knowledge base needs a browser session, which is not available right now. The on-device workspace above works as usual."
   },
   "diagnostics": {
     "title": "Diagnostics & benchmark",
@@ -390,7 +516,12 @@
     "test_ok_primary": "Gemini is ready",
     "test_ok_secondary": "OpenRouter is ready",
     "test_not_configured": "{provider} is not configured",
-    "test_failed": "Test failed"
+    "test_failed": "Test failed",
+    "test_enter_key": "Enter a key in the field above; it is tested as typed, and saved only when you click Save settings.",
+    "delete_history": "Delete chat history",
+    "delete_history_confirm": "Delete every chat stored in this browser and, if chats are synced, your synced chat history? This cannot be undone.",
+    "delete_history_done": "Chat history deleted.",
+    "delete_history_partial": "The chats in this browser were deleted, but the synced history could not be deleted right now. Try again when the knowledge base is reachable."
   },
   "sync": {
     "checking": "Checking…",

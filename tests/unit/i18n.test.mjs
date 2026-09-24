@@ -49,11 +49,11 @@ function usedKeys() {
   for (const text of files) for (const re of patterns) for (const m of text.matchAll(re)) keys.add(m[1]);
   // Keys assembled at runtime.
   for (const phase of ['init', 'download', 'cache', 'shaders', 'finalizing']) keys.add(`engine.progress.${phase}`);
-  for (const kind of ['unsupported', 'no-adapter', 'quota', 'network', 'device-lost', 'out-of-memory', 'cancelled', 'busy', 'not-loaded', 'unknown']) {
+  for (const kind of ['unsupported', 'no-adapter', 'quota', 'network', 'code-download', 'device-lost', 'out-of-memory', 'cancelled', 'busy', 'not-loaded', 'unknown']) {
     keys.add(`engine.error.${kind}`);
   }
-  for (const stage of ['parsing', 'chunking', 'indexing']) keys.add(`workspace.progress_${stage}`);
-  for (const code of ['unsupported_type', 'too_large', 'empty', 'invalid_json', 'invalid_pdf', 'encrypted_pdf', 'worker_crashed', 'cleared', 'internal']) {
+  for (const stage of ['reading', 'parsing', 'chunking', 'indexing']) keys.add(`workspace.progress_${stage}`);
+  for (const code of ['unsupported_type', 'too_large', 'empty', 'invalid_json', 'invalid_pdf', 'encrypted_pdf', 'pdf_reader', 'worker_crashed', 'cleared', 'internal']) {
     keys.add(`workspace.error_${code}`);
   }
   for (const phase of ['warmup', 'prefill', 'decode', 'done']) keys.add(`diagnostics.phase_${phase}`);
@@ -61,6 +61,16 @@ function usedKeys() {
   for (const tab of ['chat', 'library', 'graph', 'ingest', 'bench', 'settings']) keys.add(`nav.${tab}`);
   for (const dir of ['outgoing', 'incoming']) keys.add(`graph.${dir}`);
   for (const role of ['retrieval', 'answer', 'details']) keys.add(`trace.role_${role}`);
+  for (const key of ['review', 'partial']) keys.add(`grounding.${key}`);
+  for (const e of ['denied', 'microphone', 'network', 'no_speech', 'language', 'other']) keys.add(`chat.voice_error_${e}`);
+  for (const q of ['launch', 'budget', 'risks']) keys.add(`demo.q_${q}`), keys.add(`demo.q_${q}_question`);
+  for (const f of ['budget', 'meeting', 'launch']) keys.add(`demo.flawed_find_${f}`);
+  for (const s of ['file_missing', 'file_not_verifiable', 'passage_match', 'passage_moved', 'passage_mismatch', 'text_mismatch', 'text_version_differs', 'chunk_mismatch', 'chunk_version_differs']) {
+    keys.add(`receipt.check_${s}`);
+  }
+  for (const code of ['missing_fact', 'fact_elsewhere', 'uncited_found', 'uncited_missing', 'low_overlap', 'unknown_citation', 'label_mismatch', 'quote_missing', 'approximate', 'from_conversation', 'not_delivered']) {
+    keys.add(`grounding.reason_${code}`);
+  }
   return [...keys].filter((k) => !k.startsWith('ns.')).sort();
 }
 
@@ -116,5 +126,14 @@ describe('t()', () => {
   it('falls back to the key for unknown entries', () => {
     assert.equal(t('does.not.exist'), 'does.not.exist');
     assert.equal(hasKey('does.not.exist'), false);
+  });
+});
+
+describe('plural forms', () => {
+  it('picks the singular for a count of 1 and the plural otherwise, in both languages', () => {
+    assert.equal(t('workspace.meta', { chunks: '1', chars: '66' }), '1 chunk · 66 characters');
+    assert.equal(t('workspace.meta', { chunks: '12', chars: '6,600' }), '12 chunks · 6,600 characters');
+    assert.equal(t('library.meta', { date: 'x', sections: 1 }, 'de'), 'Erstellt am x · 1 Abschnitt');
+    assert.equal(t('trace.matches_value', { hits: 1, docs: 2, titles: 't' }, 'de'), '1 Auszug aus 2 Dokumenten (t)');
   });
 });

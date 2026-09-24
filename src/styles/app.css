@@ -40,7 +40,10 @@ body {
 .prose-custom ol { list-style-type: decimal; margin-left: 1.4rem; margin-bottom: 0.6rem; color: #334155; }
 .prose-custom pre { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 0.75rem; padding: 0.85rem; margin: 0.6rem 0; overflow-x: auto; font-size: 0.82rem; color: #0f172a; }
 .prose-custom code { background: #fef3c7; color: #78350f; padding: 0.15rem 0.35rem; border-radius: 0.3rem; font-size: 0.82rem; font-weight: 600; }
-.prose-custom table { width: 100%; border-collapse: collapse; margin: 0.8rem 0; font-size: 0.85rem; }
+.prose-custom pre code { background: transparent; color: inherit; padding: 0; border-radius: 0; font-weight: 400; }
+/* Wide tables scroll inside their own box instead of widening the conversation. */
+.prose-custom table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 0.8rem 0; font-size: 0.85rem; }
+.prose-custom { overflow-wrap: anywhere; }
 .prose-custom th, .prose-custom td { border: 1px solid #e2e8f0; padding: 0.5rem 0.7rem; text-align: left; }
 .prose-custom th { background: #f1f5f9; font-weight: 700; color: #0f172a; }
 .prose-custom blockquote { border-left: 3px solid #ffca00; padding-left: 0.85rem; margin: 0.6rem 0; color: #475569; background: #fffbeb; padding-top: 0.4rem; padding-bottom: 0.4rem; border-radius: 0 0.5rem 0.5rem 0; }
@@ -74,10 +77,10 @@ body {
   }
   /* 16px on phones: iOS Safari zooms into smaller inputs on focus (page zoom stays enabled). */
   .field {
-    @apply w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-base sm:text-sm text-slate-900 placeholder-slate-400 transition focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-200/50;
+    @apply w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-base sm:text-sm text-slate-900 placeholder-slate-500 transition focus:outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-700/30;
   }
   .btn {
-    @apply inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
     @apply bg-[#FFCA00] hover:bg-[#E5B500] text-slate-950;
@@ -110,10 +113,16 @@ body {
     @apply bg-amber-50 text-amber-950 border-amber-200;
   }
   .citation-chip {
-    @apply inline-flex items-center gap-1 align-baseline mx-0.5 rounded-md border border-amber-300 bg-amber-50 px-1.5 py-px text-[11px] font-medium text-amber-950 transition hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 max-w-[16rem];
+    @apply inline-flex items-center gap-1 align-baseline mx-0.5 rounded-md border border-amber-300 bg-amber-50 px-1.5 py-px text-[11px] font-medium text-amber-950 transition hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 max-w-[min(16rem,100%)];
   }
-  .citation-chip span {
-    @apply truncate;
+  .citation-chip svg {
+    @apply flex-shrink-0;
+  }
+  .citation-chip .citation-chip-doc {
+    @apply truncate min-w-0;
+  }
+  .citation-chip .citation-chip-num {
+    @apply flex-shrink-0 whitespace-nowrap;
   }
   .citation-chip-lg {
     @apply mx-0 py-0.5;
@@ -121,14 +130,89 @@ body {
   .citation-mark {
     @apply bg-amber-200/70 text-slate-900 rounded px-0.5;
   }
+  .citation-chip-flag {
+    @apply border-rose-300 bg-rose-50 text-rose-900 hover:bg-rose-100;
+  }
+  /* Source check under an answer. */
+  .grounding-bar {
+    @apply mt-3 rounded-xl border text-[12px] leading-relaxed;
+  }
+  .grounding-bar summary {
+    @apply flex flex-wrap items-center gap-x-2 gap-y-1 cursor-pointer select-none px-3 py-2 rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400;
+  }
+  .grounding-ok {
+    @apply border-emerald-200 bg-emerald-50/60 text-emerald-950;
+  }
+  .grounding-partial {
+    @apply border-amber-200 bg-amber-50/70 text-amber-950;
+  }
+  .grounding-review {
+    @apply border-rose-200 bg-rose-50/70 text-rose-950;
+  }
+  .grounding-counts {
+    @apply text-slate-700;
+  }
+  /* Children of <details> inherit from its shadow slot, not from the element: set the divider
+     colour per state instead of inheriting it. */
+  .grounding-body {
+    @apply border-t px-3 py-2.5 space-y-2 bg-white/70 rounded-b-xl;
+  }
+  .grounding-ok .grounding-body {
+    @apply border-emerald-200;
+  }
+  .grounding-partial .grounding-body {
+    @apply border-amber-200;
+  }
+  .grounding-review .grounding-body {
+    @apply border-rose-200;
+  }
+  .grounding-list {
+    @apply space-y-2.5;
+  }
+  .grounding-statement {
+    @apply text-slate-800 italic;
+  }
+  .grounding-reason {
+    @apply text-slate-700;
+  }
+  .grounding-item-unsupported .grounding-reason {
+    @apply text-rose-900 font-medium;
+  }
+  .grounding-refs {
+    @apply flex flex-wrap gap-1.5 pt-0.5;
+  }
+  .grounding-note {
+    @apply text-[11px] text-slate-600;
+  }
+  .badge-review {
+    @apply bg-rose-100 text-rose-900 border-rose-200;
+  }
+  .badge-partial {
+    @apply bg-amber-100 text-amber-950 border-amber-200;
+  }
+  .receipt-line {
+    @apply flex items-start gap-2 text-[12px] leading-relaxed;
+  }
+  .receipt-line-ok {
+    @apply text-emerald-900;
+  }
+  .receipt-line-fail {
+    @apply text-rose-900;
+  }
+  .receipt-line-na {
+    @apply text-slate-700;
+  }
   .lang-toggle button[aria-pressed='true'] {
     @apply bg-white text-slate-950 shadow-subtle;
   }
   .lang-toggle button[aria-pressed='false'] {
-    @apply text-slate-500 hover:text-slate-900;
+    @apply text-slate-600 hover:text-slate-900;
   }
   .nav-item {
-    @apply w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 transition hover:text-slate-950 hover:bg-slate-100;
+    @apply w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 transition hover:text-slate-950 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900;
+  }
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[80] focus:rounded-lg focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-slate-950 focus:shadow-lg focus:ring-2 focus:ring-slate-900;
   }
   .nav-item[aria-current='page'] {
     @apply bg-amber-50 text-amber-950 ring-1 ring-inset ring-amber-300/80;
@@ -137,12 +221,25 @@ body {
     @apply text-amber-600;
   }
   .mobile-nav-item {
-    @apply flex-1 min-w-0 flex flex-col items-center justify-center py-1 rounded-lg transition text-slate-500 font-medium;
+    @apply flex-1 min-w-0 flex flex-col items-center justify-center py-1 rounded-lg transition text-slate-600 font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900;
   }
   .mobile-nav-item[aria-current='page'] {
     @apply text-amber-950 bg-amber-50;
   }
   .mobile-nav-item[aria-current='page'] svg {
     @apply text-amber-600;
+  }
+}
+
+/* Statements the source check flags, highlighted in the answer (CSS Custom Highlight API). Kept
+   outside the Tailwind layers so the build keeps the pseudo-element as written. */
+::highlight(starpi-review) {
+  background-color: rgb(254 205 211 / 0.7);
+  color: #4c0519;
+}
+@media (forced-colors: active) {
+  ::highlight(starpi-review) {
+    background-color: Mark;
+    color: MarkText;
   }
 }

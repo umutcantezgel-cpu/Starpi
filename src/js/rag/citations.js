@@ -2,7 +2,8 @@
 // Verifiable citations. Every answer registers the exact excerpts it was given; only labels that
 // match one of those excerpts become clickable. Buttons are built with DOM APIs (never from model
 // output), and the drawer shows the cited chunk highlighted inside its source text.
-import { byId, onAction, setHidden } from '../dom.js';
+import { closeDialog, isDialogOpen, openDialog } from '../dialog.js';
+import { byId, onAction } from '../dom.js';
 import { refreshIcons } from '../icons.js';
 import { formatNumber, setText, t } from '../i18n/index.js';
 import { CITATION_PATTERN, citationLabel } from '../retrieval.js';
@@ -56,9 +57,14 @@ export function citationButton(scope, index, variant) {
   const icon = document.createElement('i');
   icon.dataset.lucide = c.source === 'workspace' ? 'file-text' : 'database';
   icon.className = 'w-3 h-3';
-  const label = document.createElement('span');
-  label.textContent = `${c.doc} · ${c.chunk}`;
-  btn.append(icon, label);
+  // Two parts, so a long document name is cut and the chunk number that tells chips apart is not.
+  const name = document.createElement('span');
+  name.className = 'citation-chip-doc';
+  name.textContent = c.doc;
+  const num = document.createElement('span');
+  num.className = 'citation-chip-num';
+  num.textContent = ` · ${c.chunk}`; // the leading space keeps the text readable when copied or read aloud
+  btn.append(icon, name, num);
   return btn;
 }
 
@@ -71,7 +77,8 @@ export function citationButton(scope, index, variant) {
 export function linkifyCitations(root, scope) {
   if (!scope || !scopes.has(scope)) return;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode: (node) => (node.parentElement?.closest('code, pre, button') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    // Never inside a link: a verified citation button must not become part of a model-written link.
+    acceptNode: (node) => (node.parentElement?.closest('a, code, pre, button') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
   });
   /** @type {Text[]} */
   const nodes = [];
@@ -132,11 +139,11 @@ function renderHighlighted(el, parts) {
   post.className = 'text-slate-500';
   post.textContent = `${parts.after}${parts.cutEnd ? '…' : ''}`;
   el.replaceChildren(pre, mark, post);
-  mark.scrollIntoView?.({ block: 'center' });
+  // Show the start of the cited passage; only the excerpt box scrolls, never the dialog.
+  el.scrollTop = Math.max(0, mark.offsetTop - el.offsetTop - 8);
 }
 
-/** @type {HTMLElement | null} */
-let lastTrigger = null;
+let openSeq = 0;
 
 /**
  * @param {string} arg "<scope>:<index>"
@@ -148,7 +155,6 @@ async function openCitation(arg, trigger) {
   const modal = byId('citationModal');
   const content = byId('citationModalContent');
   if (!c || !modal || !content) return;
-  lastTrigger = trigger;
 
   const docEl = byId('citationModalDoc');
   if (docEl) docEl.textContent = c.doc;
@@ -161,15 +167,17 @@ async function openCitation(arg, trigger) {
   const offsets = byId('citationModalOffsets');
   if (offsets) offsets.textContent = c.span ? `${formatNumber(c.span.start)}–${formatNumber(c.span.end)}` : '–';
   const note = byId('citationModalNote');
+  const token = ++openSeq;
 
   renderHighlighted(content, { before: '', match: c.text, after: '', cutStart: false, cutEnd: false });
   setText(note, c.source === 'workspace' ? 'citation.loading_context' : 'citation.note_knowledge');
-  setHidden(modal, false);
-  /** @type {HTMLElement | null} */ (modal.querySelector('[data-action="close-citation"]'))?.focus();
+  openDialog(modal, { trigger, initialFocus: modal.querySelector('[data-action="close-citation"]') });
 
   if (c.span) {
     try {
       const ctx = await getChunkContext(c.span.docId, c.span.start, c.span.end);
+      // A late reply must not overwrite a citation opened after this one.
+      if (token !== openSeq || !isDialogOpen(modal)) return;
       renderHighlighted(content, {
         before: ctx.before,
         match: ctx.match,
@@ -179,23 +187,17 @@ async function openCitation(arg, trigger) {
       });
       setText(note, 'citation.note_workspace', { length: formatNumber(ctx.length) });
     } catch {
+      if (token !== openSeq) return;
       setText(note, 'citation.note_missing');
     }
   }
 }
 
 function closeCitation() {
-  const modal = byId('citationModal');
-  if (!modal || modal.classList.contains('hidden')) return;
-  setHidden(modal, true);
-  lastTrigger?.focus();
-  lastTrigger = null;
+  closeDialog(byId('citationModal'));
 }
 
 export function initCitations() {
   onAction('open-citation', (el) => openCitation(el.dataset.arg ?? '', el));
   onAction('close-citation', () => closeCitation());
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeCitation();
-  });
 }
