@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="100%" role="img" aria-labelledby="t d">
   <title id="t">Starpi: local-first RAG with verifiable citations</title>
-  <desc id="d">A file is dropped, parsed and chunked in an ingestion worker, indexed with BM25 in worker memory, answered by WebLLM on WebGPU in its own worker, and every citation opens the exact span it came from. Files never leave the device.</desc>
+  <desc id="d">A file is dropped, parsed and chunked in an ingestion worker and indexed with BM25 in worker memory. The answer comes from WebLLM on WebGPU, your own server or a cloud model with your key; a source check compares every statement with the excerpt it cites, and every citation opens the exact span it came from. Files are parsed on the device; only cited excerpts go to a server or cloud model.</desc>
   <style>
     .sans { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
@@ -91,9 +91,9 @@
     <rect x="736" y="84" width="192" height="140" rx="12" class="lit" style="animation-delay:3.4s"/>
     <path class="icon" d="M894 100 h18 v18 h-18z M900 106 h6 v6 h-6z"/>
     <text x="752" y="112" class="step mono">04</text>
-    <text x="752" y="142" class="h">WebGPU inference</text>
-    <text x="752" y="166" class="sub">WebLLM in its own worker</text>
-    <text x="752" y="186" class="sub">or your own server</text>
+    <text x="752" y="142" class="h">Answer model</text>
+    <text x="752" y="166" class="sub">WebLLM, your server</text>
+    <text x="752" y="186" class="sub">or a cloud model</text>
 
     <rect x="968" y="84" width="192" height="140" rx="12" class="node"/>
     <rect x="968" y="84" width="192" height="140" rx="12" class="lit lit5" style="animation-delay:4.5s"/>
@@ -128,24 +128,24 @@
 
   <g class="sans">
     <g class="badge" style="animation-delay:.4s">
-      <rect x="151" y="340" width="214" height="28" rx="14"/>
-      <circle cx="169" cy="354" r="4"/>
-      <text x="181" y="358">Files never leave the device</text>
+      <rect x="173" y="340" width="214" height="28" rx="14"/>
+      <circle cx="191" cy="354" r="4"/>
+      <text x="203" y="358">Files parsed on this device</text>
     </g>
     <g class="badge" style="animation-delay:.8s">
-      <rect x="379" y="340" width="164" height="28" rx="14"/>
-      <circle cx="397" cy="354" r="4"/>
-      <text x="409" y="358">Verifiable citations</text>
+      <rect x="401" y="340" width="230" height="28" rx="14"/>
+      <circle cx="419" cy="354" r="4"/>
+      <text x="431" y="358">Source check on every answer</text>
     </g>
     <g class="badge" style="animation-delay:1.2s">
-      <rect x="557" y="340" width="208" height="28" rx="14"/>
-      <circle cx="575" cy="354" r="4"/>
-      <text x="587" y="358">Strict CSP · no unsafe-eval</text>
+      <rect x="645" y="340" width="160" height="28" rx="14"/>
+      <circle cx="663" cy="354" r="4"/>
+      <text x="675" y="358">Verifiable receipts</text>
     </g>
     <g class="badge" style="animation-delay:1.6s">
-      <rect x="779" y="340" width="270" height="28" rx="14"/>
-      <circle cx="797" cy="354" r="4"/>
-      <text x="809" y="358">On-device mode: question stays local</text>
+      <rect x="819" y="340" width="208" height="28" rx="14"/>
+      <circle cx="837" cy="354" r="4"/>
+      <text x="849" y="358">Strict CSP · no unsafe-eval</text>
     </g>
   </g>
 </svg>
