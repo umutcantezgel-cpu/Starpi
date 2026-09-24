@@ -74,7 +74,7 @@
     "label_cloud": "Cloud-Assistent",
     "label_client": "Lokales Modell (WebGPU)",
     "label_server": "Eigener Server",
-    "label_synthesizer": "Zitiert aus der Wissensdatenbank",
+    "label_synthesizer": "Zitiert aus den Quellen",
     "model_generic": "Das lokale Modell",
     "cancel": "Abbrechen",
     "unload": "Entladen",

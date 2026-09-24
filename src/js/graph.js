@@ -114,10 +114,40 @@ export function renderGraph() {
   for (const entity of graph.entities) {
     const pos = positions.get(entity.id);
     if (!pos) continue;
-    const r = selectedId === entity.id ? 28 : 22;
-    ctx.font = `${selectedId === entity.id ? 'bold ' : '600 '}11px "Plus Jakarta Sans Variable", sans-serif`;
-    const nameWidth = ctx.measureText(entity.name).width;
-    taken.push({ x: pos.x - r, y: pos.y - r, w: 2 * r, h: 2 * r }, { x: pos.x - nameWidth / 2, y: pos.y + r - 1, w: nameWidth, h: 15 });
+    const pad = selectedId === entity.id ? 28 : 22;
+    taken.push({ x: pos.x - pad, y: pos.y - pad, w: 2 * pad, h: 2 * pad });
+  }
+  // Names go below their node, or above it when that space is taken, or shortened below it.
+  /** @type {Map<string, { text: string, y: number }>} */
+  const names = new Map();
+  const nameOrder = [...graph.entities].sort((a, b) => Number(b.id === selectedId) - Number(a.id === selectedId));
+  for (const entity of nameOrder) {
+    const pos = positions.get(entity.id);
+    if (!pos) continue;
+    const selected = selectedId === entity.id;
+    const r = selected ? 22 : 18;
+    ctx.font = `${selected ? 'bold ' : '600 '}11px "Plus Jakarta Sans Variable", sans-serif`;
+    const boxFor = (/** @type {string} */ text, /** @type {number} */ y) => {
+      const w = ctx.measureText(text).width + 4;
+      return { x: pos.x - w / 2, y: y - 1, w, h: 15 };
+    };
+    const below = pos.y + r + 5;
+    const above = pos.y - r - 18;
+    /** @type {{ text: string, y: number } | null} */
+    let placed = null;
+    // The longest text that fits, below the node or else above it.
+    for (let n = entity.name.length; !placed && n >= Math.min(6, entity.name.length); n -= 1) {
+      const text = n === entity.name.length ? entity.name : `${entity.name.slice(0, n).trimEnd()}…`;
+      for (const y of [below, above]) {
+        if (!overlaps(boxFor(text, y))) {
+          placed = { text, y };
+          break;
+        }
+      }
+    }
+    placed ??= { text: entity.name, y: below };
+    taken.push(boxFor(placed.text, placed.y));
+    names.set(entity.id, placed);
   }
 
   /** @type {Array<{ label: string, src: { x: number, y: number }, tgt: { x: number, y: number }, selected: boolean }>} */
@@ -189,15 +219,16 @@ export function renderGraph() {
     ctx.textBaseline = 'middle';
     ctx.fillText(entity.name.slice(0, 2).toUpperCase(), pos.x, pos.y);
 
+    const name = names.get(entity.id) ?? { text: entity.name, y: pos.y + r + 5 };
     ctx.font = `${selected ? 'bold ' : '600 '}11px "Plus Jakarta Sans Variable", sans-serif`;
     ctx.textBaseline = 'top';
     // A halo keeps the name readable where a relation line passes behind it.
     ctx.strokeStyle = 'rgba(248, 250, 252, 0.95)';
     ctx.lineWidth = 3;
     ctx.lineJoin = 'round';
-    ctx.strokeText(entity.name, pos.x, pos.y + r + 5);
+    ctx.strokeText(name.text, pos.x, name.y);
     ctx.fillStyle = selected ? '#0f172a' : '#334155';
-    ctx.fillText(entity.name, pos.x, pos.y + r + 5);
+    ctx.fillText(name.text, pos.x, name.y);
   }
 }
 

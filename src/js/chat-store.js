@@ -116,8 +116,8 @@ export function mergeByTime(remote, local) {
 }
 
 /**
- * Deletes the chat history: every session stored in this browser and, when chats are synced, this
- * session's rows in Supabase. Starts a new session.
+ * Deletes the chat history: every chat stored in this browser and, when chats are synced, every
+ * synced message of this browser's anonymous user. Starts a new chat session.
  * @returns {Promise<boolean>} false when the synced history could not be deleted
  */
 export async function deleteChatHistory() {

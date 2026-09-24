@@ -52,6 +52,7 @@ export async function mockSupabase(page, mode) {
         headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' },
       });
     }
+    if (url.pathname === '/auth/v1/settings') return json(200, { external: { anonymous_users: mode.anonymousAuth, email: true }, disable_signup: false });
     if (url.pathname === '/auth/v1/signup') {
       if (!mode.anonymousAuth) return json(422, { code: 422, error_code: 'anonymous_provider_disabled', msg: 'Anonymous sign-ins are disabled' });
       const now = Math.floor(Date.now() / 1000);

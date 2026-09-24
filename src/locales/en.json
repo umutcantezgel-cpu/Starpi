@@ -74,7 +74,7 @@
     "label_cloud": "Cloud assistant",
     "label_client": "On-device model (WebGPU)",
     "label_server": "Own server",
-    "label_synthesizer": "Quoted from the knowledge base",
+    "label_synthesizer": "Quoted from the sources",
     "model_generic": "The on-device model",
     "cancel": "Cancel",
     "unload": "Unload",

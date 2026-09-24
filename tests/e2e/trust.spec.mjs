@@ -52,6 +52,8 @@ test.describe('sample files', () => {
     await expect(bar).toHaveClass(/grounding-ok/);
     await expect(bar.locator('summary')).toContainText(/(\d+)\/\1 statements match their cited excerpts/);
     await expect(answer.locator('.citation-chip-flag')).toHaveCount(0);
+    // A question about the sample files searches only the workspace, not the shared knowledge base.
+    await expect(answer).not.toContainText('Projekt Beta Kickoff');
   });
 
   test('show the source check flagging a deliberate error, with its reason and a highlight', async ({ page, diagnostics: _diagnostics }) => {
@@ -203,9 +205,12 @@ test.describe('privacy of on-device turns', () => {
 
 test.describe('without a browser session', () => {
   test('reads published knowledge and explains why saving is off instead of failing', async ({ page, diagnostics: _diagnostics }) => {
-    await mockSupabase(page, { hardened: true, anonymousAuth: false });
+    const calls = await mockSupabase(page, { hardened: true, anonymousAuth: false });
     await page.goto('/');
     await expect(page.locator('#dbStatusBadge')).toHaveText('Public knowledge');
+    // The auth settings say anonymous sign-ins are off, so no sign-in request fails on every visit.
+    expect(calls.some((c) => c.url.startsWith('/auth/v1/settings'))).toBe(true);
+    expect(calls.some((c) => c.url.startsWith('/auth/v1/signup'))).toBe(false);
     await expect(page.locator('#dbStatusDetail')).toContainText('Published documents');
     const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
     await page.click(isMobile ? '#mobile-nav-ingest' : '#nav-ingest');

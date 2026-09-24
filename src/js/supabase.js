@@ -160,12 +160,35 @@ function updateConnection(patch) {
   for (const listener of connectionListeners) listener(connection);
 }
 
+/**
+ * Whether the project allows anonymous sign-ins, from the public auth settings. `null` when the
+ * settings cannot be read; the sign-in is then simply attempted.
+ * @returns {Promise<boolean | null>}
+ */
+async function anonymousSignInsEnabled() {
+  try {
+    const res = await fetchWithTimeout(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_ANON_KEY } });
+    if (!res.ok) return null;
+    /** @type {{ external?: { anonymous_users?: unknown } } | null} */
+    const settings = await res.json().catch(() => null);
+    const enabled = settings?.external?.anonymous_users;
+    return typeof enabled === 'boolean' ? enabled : null;
+  } catch {
+    return null;
+  }
+}
+
 /** @returns {Promise<DataError | null>} */
 async function ensureSession() {
   try {
     const { data, error } = await sb.auth.getSession();
     if (error) return classifyError(error);
     if (data.session) return null;
+    // Asking first avoids a failed sign-in request (and a console error) on every visit to a
+    // project that keeps anonymous sign-ins off.
+    if ((await anonymousSignInsEnabled()) === false) {
+      return { kind: 'auth_disabled', message: 'Anonymous sign-ins are disabled', code: 'anonymous_provider_disabled' };
+    }
     const signIn = await sb.auth.signInAnonymously();
     return signIn.error ? classifyError(signIn.error) : null;
   } catch (err) {
@@ -222,12 +245,18 @@ function scheduleReconnect() {
 }
 
 /**
- * Deletes every chat message of this browser's session (row level security limits it to own rows).
+ * Deletes every synced chat message of this browser's anonymous user, in all chat sessions (row
+ * level security limits the delete to own rows).
  * @returns {Promise<Result<null>>}
  */
 export async function deleteOwnChats() {
-  const { data } = await sb.auth.getSession();
-  const uid = data.session?.user?.id;
+  let uid;
+  try {
+    const { data } = await sb.auth.getSession();
+    uid = data.session?.user?.id;
+  } catch (err) {
+    return { ok: false, error: classifyError(err) };
+  }
   if (!uid) return { ok: true, data: null };
   return run(sb.from('chat_history').delete().eq('owner_id', uid));
 }

@@ -38,6 +38,7 @@ function addQuestions(notice) {
     btn.className = 'btn btn-secondary text-left';
     btn.dataset.action = 'quick-prompt';
     btn.dataset.arg = `${key}_question`;
+    btn.dataset.scope = 'workspace'; // about the sample files: the knowledge base is not searched
     const icon = document.createElement('i');
     icon.dataset.lucide = ICONS[i];
     icon.className = 'w-3.5 h-3.5 text-amber-600';

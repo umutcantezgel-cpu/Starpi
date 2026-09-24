@@ -100,9 +100,10 @@ async function retrieveWorkspace(query, focusDocId) {
  * @param {string} query
  * @param {import('./config.js').ComputeMode} mode
  * @param {string | null} focusDocId
+ * @param {boolean} workspaceOnly  a question about the files in the workspace (the sample questions)
  * @returns {Promise<{ hits: KnowledgeHit[], method: string, kbUnavailable: boolean }>}
  */
-async function retrieve(query, mode, focusDocId) {
+async function retrieve(query, mode, focusDocId, workspaceOnly) {
   const { hits: local, pinned } = await retrieveWorkspace(query, focusDocId);
   const limit = LIMITS.retrievalRows + (focusDocId ? 3 : 0);
   const merge = (/** @type {KnowledgeHit[]} */ remote) => mergeHits(local, remote, limit, pinned);
@@ -115,6 +116,8 @@ async function retrieve(query, mode, focusDocId) {
     method: join(hits, remote),
     kbUnavailable,
   });
+
+  if (workspaceOnly) return result(local.slice(0, limit), '', false);
 
   // While Supabase is known to be unreachable, answer from the workspace at once instead of waiting
   // for requests to time out; the connection is retried in the background (supabase.js).
@@ -280,8 +283,11 @@ function setBusy(on) {
   setAssistantStatus(on ? 'status.generating' : 'status.ready');
 }
 
-/** @param {string} rawText */
-export async function submitChat(rawText) {
+/**
+ * @param {string} rawText
+ * @param {{ workspaceOnly?: boolean }} [options]  workspaceOnly: search only the on-device workspace
+ */
+export async function submitChat(rawText, options = {}) {
   if (busy) {
     setAssistantStatus('status.busy');
     return;
@@ -333,7 +339,7 @@ export async function submitChat(rawText) {
   const started = performance.now();
 
   try {
-    const { hits, method, kbUnavailable } = await retrieve(prompt, mode, file?.docId ?? null);
+    const { hits, method, kbUnavailable } = await retrieve(prompt, mode, file?.docId ?? null, options.workspaceOnly === true);
     const greeting = !file && isGreeting(userText);
     const used = greeting ? [] : hits;
     const usesWorkspace = used.some((h) => h.workspace);
@@ -553,10 +559,11 @@ export function initChat() {
   onAction('remove-attachment', () => removeAttachment());
   onAction('pick-chat-file', () => byId('chatFileInput')?.click());
 
-  // Quick prompts carry an i18n key, so the question is asked in the active language.
+  // Quick prompts carry an i18n key, so the question is asked in the active language. Questions about
+  // the sample files (data-scope="workspace") search only the workspace.
   onAction('quick-prompt', (el) => {
     const key = el.dataset.arg ?? '';
-    if (key) void submitChat(hasKey(key) ? t(key) : key);
+    if (key) void submitChat(hasKey(key) ? t(key) : key, { workspaceOnly: el.dataset.scope === 'workspace' });
   });
 
   onChange('attach-file', (el) => {
