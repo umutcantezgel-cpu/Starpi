@@ -30,6 +30,10 @@ SUPABASE_CONNECT_TIMEOUT_SECONDS = 5.0
 # Columns returned by list_documents; raw_content is left out to keep responses small.
 DOCUMENT_LIST_COLUMNS = ("id", "title", "summary", "tags", "source_type", "source_name", "total_sections", "created_at")
 DOCUMENT_LIST_LIMIT = 200
+# The service role bypasses row level security, so every read filters to what an anonymous visitor
+# may see anyway: published rows and rows written by the backend itself (no owner). Private rows of
+# browser sessions (owner_id set, is_public false) never leave the database through this API.
+VISIBLE_ROWS = "(is_public.eq.true,owner_id.is.null)"
 
 # Size limits of the CHECK constraints in supabase/migrations/20260924000000_lock_published_rows.sql.
 # Model-generated fields are clipped to them, so a long title or heading cannot make an insert fail.
@@ -256,6 +260,7 @@ class SupabaseBrainClient:
                         f"{self.url}/rest/v1/knowledge_documents",
                         params={
                             "select": ",".join(DOCUMENT_LIST_COLUMNS),
+                            "or": VISIBLE_ROWS,
                             "order": "created_at.desc",
                             "limit": str(limit),
                         },
@@ -273,6 +278,21 @@ class SupabaseBrainClient:
             docs = list(self._local_docs.values())
         docs.reverse()
         return [{col: doc.get(col) for col in DOCUMENT_LIST_COLUMNS} | {"storage": "memory"} for doc in docs[:limit]]
+
+    def _visible_matches(self, client: httpx.Client, matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Drops matches from private documents (the RPC runs with the service role, which bypasses RLS)."""
+        ids = sorted({str(m.get("document_id")) for m in matches if m.get("document_id")})
+        if not ids:
+            return []
+        resp = client.get(
+            f"{self.url}/rest/v1/knowledge_documents",
+            params={"select": "id", "id": f"in.({','.join(ids)})", "or": VISIBLE_ROWS},
+            headers=self._headers(),
+        )
+        resp.raise_for_status()
+        rows = resp.json()
+        visible = {str(r.get("id")) for r in rows if isinstance(r, dict)} if isinstance(rows, list) else set()
+        return [m for m in matches if str(m.get("document_id")) in visible]
 
     def search_similar_sections(
         self,
@@ -299,8 +319,8 @@ class SupabaseBrainClient:
                     )
                     resp.raise_for_status()
                     data = resp.json()
-                if isinstance(data, list):
-                    return data
+                    if isinstance(data, list):
+                        return self._visible_matches(client, data)
                 logger.warning("Unexpected match RPC response type %s", type(data).__name__)
             except (httpx.HTTPError, ValueError) as exc:
                 logger.warning("match_knowledge_sections RPC failed (%s); searching in memory", describe_error(exc))

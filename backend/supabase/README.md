@@ -9,6 +9,7 @@ graph, chat history and the RPCs used by the browser and the backend.
 | `full_schema.sql` | Fresh install. Canonical schema (the state after all migrations), safe to re-run on a database it created. Refuses to run on a pre-hardening schema. |
 | `migrations/20260923000000_harden_rls_anonymous_auth.sql` | Upgrade 1 of an existing database (the live project and any install from an earlier `schema.sql` / `full_schema.sql`): owner-based RLS for anonymous sign-ins. Idempotent. |
 | `migrations/20260924000000_lock_published_rows.sql` | Upgrade 2 (needs upgrade 1): published rows read-only for browser roles, `brain_settings` service role only, size limits for browser writes. Idempotent. |
+| `migrations/20260924120000_search_knowledge_shared_terms.sql` | Upgrade 3 (needs upgrades 1 and 2): `search_knowledge` answers questions in natural language; when no row contains every term it returns rows that share at least two. Idempotent. |
 | `schema.sql` | Kept for old links: includes `full_schema.sql` when run with psql. |
 | `apply_migration.py` | Applies `full_schema.sql`, given files or all migrations (in file-name order) to `DATABASE_URL`. |
 | `tests/` | Local PostgreSQL tests for RLS, privileges, RPCs, size limits and idempotency (`run_rls_tests.sh`). |
@@ -43,8 +44,9 @@ Take a backup of the Starpi tables first (see [Rollback](#rollback)).
 
 1. `migrations/20260923000000_harden_rls_anonymous_auth.sql`
 2. `migrations/20260924000000_lock_published_rows.sql`
+3. `migrations/20260924120000_search_knowledge_shared_terms.sql`
 
-- SQL editor: paste and run the first file, then the second.
+- SQL editor: paste and run each file, in this order.
 - psql:
   ```bash
   for f in backend/supabase/migrations/*.sql; do
@@ -53,11 +55,11 @@ Take a backup of the Starpi tables first (see [Rollback](#rollback)).
   ```
 - Python: `DATABASE_URL=... python backend/supabase/apply_migration.py --migrations`
   (all files in `migrations/`, in order, stops at the first failure)
-- Supabase CLI: copy both files into your CLI project's `supabase/migrations/`
+- Supabase CLI: copy the files into your CLI project's `supabase/migrations/`
   and run `supabase db push`. Each file has its own `begin; ... commit;`.
 
 The second file checks that the first one has been applied and stops
-otherwise. Both are idempotent, but `20260923000000` re-creates its own
+otherwise; the third checks that `search_knowledge` exists. Both are idempotent, but `20260923000000` re-creates its own
 policies on every run (it first drops every policy on the Starpi tables), so
 re-running it alone undoes the policy part of `20260924000000`. Always re-run
 the whole set, as `--migrations` does.
@@ -243,7 +245,7 @@ after anonymous sign-in (`owner_id = auth.uid()`), `service_role` = backend
 
 | Function | anon | authenticated | service_role | Notes |
 | --- | --- | --- | --- | --- |
-| `search_knowledge(query_text, match_count default 6)` | yes | yes | yes | German full-text search, returns `section_id, document_id, document_title, heading, markdown_content, tags, rank`; `match_count` clamped to 1..20; blank query returns nothing |
+| `search_knowledge(query_text, match_count default 6)` | yes | yes | yes | German full-text search, returns `section_id, document_id, document_title, heading, markdown_content, tags, rank`. Rows containing every term come first (websearch syntax); when there are none, rows sharing at least two terms (English function words and one-letter terms do not count), ranked by the number of shared terms; a document stands in for its sections only when it has none. `match_count` clamped to 1..20; blank query returns nothing |
 | `match_knowledge_sections(query_embedding, match_threshold, match_count)` | no | yes | yes | vector search, `match_count` clamped to 1..50 |
 | `match_knowledge_hybrid(query_text, query_embedding, match_count, rrf_k)` | no | yes | yes | reciprocal rank fusion of vector and full-text ranks |
 | `ingest_document_atomic(...)` | no | no | yes | document + sections in one transaction |
@@ -485,7 +487,7 @@ only), loads a small Supabase stand-in (`tests/stub_supabase.sql`: roles,
 - `full_schema.sql` refusing a pre-hardening database, and `20260924000000`
   refusing a database without `20260923000000`;
 - identical `pg_dump` output for upgraded and fresh installs;
-- 184 RLS / privilege / RPC / size-limit assertions per scenario, 191 in the
+- 191 RLS / privilege / RPC / size-limit assertions per scenario, 198 in the
   scenarios seeded with legacy rows (`tests/rls_test.sql`), run as `anon`, two
   different anonymous users and `service_role`: tenant isolation in both
   directions on every table, published rows staying read-only for their owner,

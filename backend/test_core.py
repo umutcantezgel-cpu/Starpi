@@ -381,6 +381,29 @@ class SupabaseClientTests(unittest.TestCase):
         self.addCleanup(patcher.stop)
         return client
 
+    def test_live_listing_only_returns_public_or_backend_rows(self) -> None:
+        http = self.patch_client(get=[response(200, [{"id": "d1", "title": "Public"}], method="GET")])
+        client = SupabaseBrainClient(url="https://x.supabase.co", key="service-key")
+        self.assertEqual([d["title"] for d in client.list_documents()], ["Public"])
+        params = http.get.call_args.kwargs["params"]
+        self.assertEqual(params["or"], "(is_public.eq.true,owner_id.is.null)")
+
+    def test_live_search_drops_matches_from_private_documents(self) -> None:
+        matches = [
+            {"id": "s1", "document_id": "public-doc", "similarity": 0.9},
+            {"id": "s2", "document_id": "private-doc", "similarity": 0.8},
+        ]
+        http = self.patch_client(
+            post=[response(200, matches)],
+            get=[response(200, [{"id": "public-doc"}], method="GET")],
+        )
+        client = SupabaseBrainClient(url="https://x.supabase.co", key="service-key")
+        result = client.search_similar_sections(REAL_VECTOR, threshold=0.2, limit=4)
+        self.assertEqual([m["id"] for m in result], ["s1"])
+        params = http.get.call_args.kwargs["params"]
+        self.assertEqual(params["id"], "in.(private-doc,public-doc)")
+        self.assertEqual(params["or"], "(is_public.eq.true,owner_id.is.null)")
+
     def test_live_save_never_persists_fallback_vectors(self) -> None:
         http = self.patch_client(post=[response(201, [{"id": "doc-1", "title": "Doc"}]), response(201, None)])
         client = SupabaseBrainClient(url="https://x.supabase.co", key="service-key")

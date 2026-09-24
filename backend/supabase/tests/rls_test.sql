@@ -1001,6 +1001,40 @@ select rls_test.expect_count('search_knowledge supports OR and phrases', $q$
     select 1 from public.search_knowledge('Budget OR "Projekt Alpha" Oktober')
 $q$, 3);
 
+select rls_test.expect_true('search_knowledge: a question without a full match returns rows sharing two terms', $q$
+    select array_agg(heading order by ord) = array['Zeitplan', 'Budgetplanung']
+       and bool_and(rank >= 2)
+    from (select heading, rank, row_number() over () as ord
+          from public.search_knowledge('Wann startet der Launch von Projekt Alpha?')) s
+$q$);
+
+select rls_test.expect_true('search_knowledge: English function words are not shared terms', $q$
+    select count(*) = 1 and bool_and(heading = 'Zeitplan')
+    from public.search_knowledge('When is the launch of the Alpha project planned for?')
+$q$);
+
+select rls_test.expect_count('search_knowledge: rows sharing a single term of several are not returned', $q$
+    select 1 from public.search_knowledge('Budget Urlaubsplanung Kantine')
+$q$, 0);
+
+select rls_test.expect_count('search_knowledge: the shared-term fallback still hides private rows', $q$
+    select 1 from public.search_knowledge('Gehaltsbänder jährlich angepasst Kantine')
+$q$, 0);
+
+select rls_test.expect_true('search_knowledge: a full match wins over rows sharing more terms', $q$
+    select count(*) = 1 and bool_and(heading = 'Budgetplanung')
+    from public.search_knowledge('quartalsweise Budget')
+$q$);
+
+select rls_test.expect_count('search_knowledge: shared terms spread over a sectioned document return no document hit', $q$
+    select 1 from public.search_knowledge('Handbuch Projektwissen Urlaub')
+$q$, 0);
+
+select rls_test.expect_true('search_knowledge: shared terms of a document without sections return the document', $q$
+    select count(*) = 1 and bool_and(section_id is null and document_title = 'Reisekostenrichtlinie')
+    from public.search_knowledge('Dienstreisen Spesen Urlaub')
+$q$);
+
 select rls_test.expect_true('search_knowledge falls back to a document-level hit', $q$
     select count(*) = 1
        and bool_and(section_id is null and heading is null
