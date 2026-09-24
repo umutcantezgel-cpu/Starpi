@@ -1,0 +1,69 @@
+name: Release
+
+# Publishes a GitHub release for the version in package.json once CI has passed on main, using
+# docs/releases/v<version>.md as the release notes. Nothing happens when the release already
+# exists or when there are no release notes for the version, so every green run on main is safe.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. 1.1.0 (default: the version in package.json)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create the release for package.json's version
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Create the release if it does not exist yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          version="${INPUT_VERSION:-$(node -p "require('./package.json').version")}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$version' is not a version number"
+            exit 1
+          fi
+          notes="docs/releases/v${version}.md"
+          if [[ ! -f "$notes" ]]; then
+            echo "No $notes: nothing to release for $version."
+            exit 0
+          fi
+          if gh release view "v${version}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v${version} already exists."
+            exit 0
+          fi
+          gh release create "v${version}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "Starpi v${version}" \
+            --notes-file "$notes" \
+            --latest
+          echo "Created release v${version} at ${TARGET_SHA}."
