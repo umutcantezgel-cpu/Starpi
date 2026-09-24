@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.starpi.app/schemas/receipt-v1.json",
+  "title": "Starpi answer receipt",
+  "description": "starpi.receipt/v1: the excerpts one answer cited, with file fingerprints, passage offsets and source-check verdicts. Described in docs/spec/receipts.md; implemented in src/js/core/receipt.js.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "createdAt", "generator", "answer", "question", "citations", "grounding"],
+  "properties": {
+    "schema": { "const": "starpi.receipt/v1" },
+    "id": { "$ref": "#/$defs/sha256", "description": "SHA-256 of the canonical JSON (RFC 8785) of the receipt without id." },
+    "createdAt": { "type": "string", "maxLength": 64, "description": "ISO 8601 time from the device clock." },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "maxLength": 40 },
+        "version": { "type": "string", "maxLength": 40 }
+      }
+    },
+    "answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "sha256", "engine", "locale"],
+      "properties": {
+        "text": { "type": "string", "maxLength": 200000 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "engine": { "type": "string", "maxLength": 40, "description": "cloud, client, local or synthesizer" },
+        "locale": { "type": "string", "maxLength": 10 }
+      }
+    },
+    "question": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "properties": { "text": { "type": "string", "maxLength": 10000 } }
+        }
+      ]
+    },
+    "citations": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/citation" } },
+    "grounding": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/grounding" }] }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "citationIndexes": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "doc", "heading", "source", "delivered", "excerpt", "verifiable"],
+      "properties": {
+        "label": { "type": "string", "maxLength": 400 },
+        "doc": { "type": "string", "maxLength": 400 },
+        "heading": { "type": "string", "maxLength": 1000 },
+        "source": { "enum": ["workspace", "knowledge"] },
+        "delivered": { "enum": ["full", "partial", "omitted"] },
+        "excerpt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text", "sha256", "truncated"],
+          "properties": {
+            "text": { "anyOf": [{ "type": "null" }, { "type": "string", "maxLength": 20000 }] },
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "truncated": { "type": "boolean" }
+          }
+        },
+        "verifiable": { "type": "boolean" },
+        "document": { "$ref": "#/$defs/document" },
+        "chunk": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["index", "start", "end", "sha256"],
+          "properties": {
+            "index": { "type": "integer", "minimum": 0 },
+            "start": { "type": "integer", "minimum": 0, "description": "UTF-16 code units into the extracted text" },
+            "end": { "type": "integer", "minimum": 0, "description": "not before start" },
+            "sha256": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/sha256" }] }
+          }
+        },
+        "knowledge": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["documentId"],
+          "properties": { "documentId": { "anyOf": [{ "type": "null" }, { "type": "string", "maxLength": 100 }] } }
+        }
+      }
+    },
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "bytes", "fileSha256", "textSha256", "textChars", "pages", "extractor", "chunker"],
+      "properties": {
+        "name": { "type": "string", "maxLength": 400 },
+        "kind": { "type": "string", "maxLength": 20, "description": "pdf, md, txt, csv, json or log" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "fileSha256": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/sha256" }] },
+        "textSha256": { "$ref": "#/$defs/sha256" },
+        "textChars": { "type": "integer", "minimum": 0 },
+        "pages": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+        "extractor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "pdfjs"],
+          "properties": {
+            "id": { "type": "string", "maxLength": 40 },
+            "version": { "type": "integer", "minimum": 0 },
+            "pdfjs": { "anyOf": [{ "type": "null" }, { "type": "string", "maxLength": 40 }] }
+          }
+        },
+        "chunker": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "size", "overlap"],
+          "properties": {
+            "id": { "type": "string", "maxLength": 40 },
+            "version": { "type": "integer", "minimum": 0 },
+            "size": { "type": "integer", "minimum": 1 },
+            "overlap": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "grounding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "counts", "sentences"],
+      "properties": {
+        "algorithm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version"],
+          "properties": {
+            "id": { "type": "string", "maxLength": 40 },
+            "version": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "sentences": { "type": "array", "maxItems": 500, "items": { "$ref": "#/$defs/sentence" } }
+      }
+    },
+    "sentence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "cites", "citeSource", "verdict", "reasons"],
+      "properties": {
+        "text": { "type": "string", "maxLength": 5000 },
+        "cites": { "$ref": "#/$defs/citationIndexes" },
+        "citeSource": { "enum": ["own", "block", "leadin", "answer", null] },
+        "verdict": { "enum": ["supported", "weak", "unsupported", "unchecked"] },
+        "reasons": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/reason" } }
+      }
+    },
+    "reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "level"],
+      "properties": {
+        "code": {
+          "enum": [
+            "missing_fact",
+            "fact_elsewhere",
+            "fact_context",
+            "name_missing",
+            "uncited_found",
+            "uncited_missing",
+            "low_overlap",
+            "unknown_citation",
+            "label_mismatch",
+            "quote_missing",
+            "approximate",
+            "from_conversation",
+            "not_delivered"
+          ]
+        },
+        "level": { "enum": ["weak", "unsupported"] },
+        "fact": { "type": "string", "maxLength": 500 },
+        "found": { "type": "string", "maxLength": 500 },
+        "cites": { "$ref": "#/$defs/citationIndexes" },
+        "other": { "$ref": "#/$defs/citationIndexes" }
+      }
+    }
+  }
+}

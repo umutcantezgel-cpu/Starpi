@@ -201,3 +201,70 @@ describe('scripts/verify-receipt.mjs', () => {
     assert.ok(readFileSync(receiptPath, 'utf8').includes(RECEIPT_SCHEMA));
   });
 });
+
+describe('docs/spec/receipt.schema.json', () => {
+  const schema = JSON.parse(readFileSync(path.join(ROOT, 'docs/spec/receipt.schema.json'), 'utf8'));
+
+  /**
+   * Validates against the subset of JSON Schema the receipt schema uses. Returns error paths.
+   * @param {any} value
+   * @param {any} s
+   * @param {string} [at]
+   * @returns {string[]}
+   */
+  function check(value, s, at = '$') {
+    if (s.$ref) return check(value, schema.$defs[s.$ref.replace('#/$defs/', '')], at);
+    if (s.anyOf) return s.anyOf.some((/** @type {any} */ alt) => check(value, alt, at).length === 0) ? [] : [`${at}: no alternative matches`];
+    if ('const' in s) return value === s.const ? [] : [`${at}: not ${s.const}`];
+    if (s.enum) return s.enum.includes(value) ? [] : [`${at}: ${JSON.stringify(value)} not in enum`];
+    const type = value === null ? 'null' : Array.isArray(value) ? 'array' : Number.isInteger(value) ? 'integer' : typeof value;
+    if (s.type && s.type !== type) return [`${at}: ${type}, expected ${s.type}`];
+    /** @type {string[]} */
+    const errors = [];
+    if (type === 'string') {
+      if (s.maxLength !== undefined && value.length > s.maxLength) errors.push(`${at}: too long`);
+      if (s.pattern && !new RegExp(s.pattern).test(value)) errors.push(`${at}: pattern`);
+    }
+    if (type === 'integer' && s.minimum !== undefined && value < s.minimum) errors.push(`${at}: below minimum`);
+    if (type === 'array') {
+      if (s.maxItems !== undefined && value.length > s.maxItems) errors.push(`${at}: too many items`);
+      if (s.items) value.forEach((/** @type {any} */ v, /** @type {number} */ i) => errors.push(...check(v, s.items, `${at}[${i}]`)));
+    }
+    if (type === 'object') {
+      for (const key of s.required ?? []) if (!(key in value)) errors.push(`${at}.${key}: missing`);
+      for (const [key, v] of Object.entries(value)) {
+        if (s.properties?.[key]) errors.push(...check(v, s.properties[key], `${at}.${key}`));
+        else if (s.additionalProperties === false) errors.push(`${at}.${key}: not in the schema`);
+        else if (typeof s.additionalProperties === 'object') errors.push(...check(v, s.additionalProperties, `${at}.${key}`));
+      }
+    }
+    return errors;
+  }
+
+  it('describes every receipt the app builds, with and without the optional texts', async () => {
+    const full = await receiptFor(PDF, 'kickoff.pdf', 'The beta starts on 1 February 2027 {label}. The group meets every Friday {label}.');
+    assert.ok(full.grounding?.sentences.some((s) => s.reasons.length), 'the fixture should record at least one reason');
+    assert.deepEqual(check(full, schema), []);
+    assert.deepEqual(check(JSON.parse(JSON.stringify(full)), schema), []);
+    const md = await receiptFor(MD, 'plan.md', 'The approved budget is 480,000 EUR {label}.');
+    assert.deepEqual(check(md, schema), []);
+  });
+
+  it('rejects what validateReceipt rejects, and a field the format does not have', async () => {
+    const r = JSON.parse(JSON.stringify(await receiptFor(MD, 'plan.md', 'The approved budget is 480,000 EUR {label}.')));
+    assert.notDeepEqual(check({ ...r, schema: 'starpi.receipt/v2' }, schema), []);
+    assert.notDeepEqual(check({ ...r, id: 'abc' }, schema), []);
+    assert.notDeepEqual(check({ ...r, extra: 1 }, schema), []);
+    r.citations[0].delivered = 'some';
+    assert.notDeepEqual(check(r, schema), []);
+  });
+
+  it('lists the reason codes and verdicts of the source check', () => {
+    const source = readFileSync(path.join(ROOT, 'src/js/core/grounding.js'), 'utf8');
+    const typedef = /@typedef \{([^}]+)\} ReasonCode/.exec(source)?.[1] ?? '';
+    const codes = [...typedef.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
+    assert.deepEqual([...schema.$defs.reason.properties.code.enum].sort(), codes);
+    assert.deepEqual(schema.$defs.sentence.properties.verdict.enum, ['supported', 'weak', 'unsupported', 'unchecked']);
+    assert.equal(schema.properties.schema.const, RECEIPT_SCHEMA);
+  });
+});
