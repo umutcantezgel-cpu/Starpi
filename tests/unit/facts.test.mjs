@@ -60,6 +60,14 @@ describe('extractFacts (claims)', () => {
     assert.deepEqual(facts('Der Lenkungskreis tagt dienstags um 10:00 Uhr.'), ['weekday:w:2', 'time:t:10:00']);
     assert.deepEqual(facts('The decision is due in June; the team may decide.'), ['month:mo:06']);
     assert.deepEqual(facts('Planned for Q3.'), ['code:c:q3']);
+    assert.deepEqual(facts('Risk R-02 and ISO-27001 apply.'), ['code:c:r02', 'code:c:iso27001']);
+  });
+
+  it('reads numbers written as words by the same rule as digits', () => {
+    assert.deepEqual(facts('The beta has twelve users.'), ['number:n:12']);
+    assert.deepEqual(facts('Der Start verschiebt sich um zwei Wochen.'), ['number:n:2']);
+    assert.deepEqual(facts('Two of the risks are high.'), []);
+    assert.deepEqual(facts('About twenty-five people and two hundred users.'), []);
   });
 
   it('reads quotations of two or more words', () => {
@@ -88,6 +96,22 @@ describe('indexSource and lookupFact', () => {
     assert.deepEqual(found('Kickoff on 29 August 2026.'), [null]);
     assert.deepEqual(found('They meet on Tuesdays.'), [null]);
     assert.deepEqual(found('Exactly 4.6 million users.'), [null]);
+    assert.deepEqual(found('The team has eleven people.'), [null]);
+  });
+
+  it('offers the year of a date and the hour of a time as numbers, not the day or month', () => {
+    const dates = indexSource('Second supplier under contract by 30.11.2026. Review at 10:30.');
+    const lookup = (/** @type {string} */ s) => extractFacts(s).map((f) => lookupFact(f, dates).found);
+    assert.deepEqual(lookup('A pilot with 30 drivers.'), [null]);
+    assert.deepEqual(lookup('A pilot with 11 drivers.'), [null]);
+    assert.deepEqual(lookup('Planned for 2026, with a check at 10 am.'), ['exact', null]);
+    assert.deepEqual(lookup('Contracts are due in 2026, reviewed from 10 onwards.'), ['exact', 'exact']);
+  });
+
+  it('matches codes written with or without a hyphen', () => {
+    const codes = indexSource('id: R-02; risk: Drivers reject the new app');
+    assert.deepEqual(extractFacts('Risk R02 is medium.').map((f) => lookupFact(f, codes).found), ['exact']);
+    assert.deepEqual(extractFacts('Risk R-03 is medium.').map((f) => lookupFact(f, codes).found), [null]);
   });
 
   it('accepts rounding to the written digits and marked approximations as approximate', () => {

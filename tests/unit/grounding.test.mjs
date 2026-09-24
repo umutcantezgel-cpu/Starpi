@@ -122,6 +122,54 @@ describe('groundAnswer', () => {
     assert.equal(r.crossLanguage, true);
   });
 
+  it('uses the language of the whole answer for a statement too short to tell', () => {
+    const de = sources([{ text: 'Budget: Das Projekt hat ein freigegebenes Gesamtbudget von 480.000 EUR. Der öffentliche Start ist am 12.05.2027.' }]);
+    const r = check('The approved budget is 480,000 EUR, and the public launch follows later [Doc: plan.md, Chunk: 1].\n\n| Item | Value |\n|---|---|\n| Total budget | 480,000 EUR [Doc: plan.md, Chunk: 1] |', de);
+    assert.deepEqual(verdicts(r), ['supported', 'supported']);
+    assert.equal(r.sentences.every((s) => s.overlap === null), true);
+  });
+
+  it('flags a value that stands next to something else in the excerpt', () => {
+    const split = sources([{ text: 'The budget is 480,000 EUR. It is split into 310,000 EUR for development, 95,000 EUR for infrastructure and 75,000 EUR for training and rollout.' }]);
+    const wrong = check('Of the budget, 75,000 EUR is reserved for infrastructure [Doc: plan.md, Chunk: 1].', split);
+    assert.deepEqual(verdicts(wrong), ['weak:fact_context']);
+    assert.equal(wrong.sentences[0].reasons[0].fact, '75,000');
+    assert.equal(wrong.sentences[0].reasons[0].found, 'and 75,000 EUR for training and rollout.');
+    const right = check('Infrastructure gets 95,000 EUR, training and rollout 75,000 EUR [Doc: plan.md, Chunk: 1].', split);
+    assert.deepEqual(verdicts(right), ['supported']);
+    const swapped = check('Development gets 95,000 EUR, infrastructure 310,000 EUR [Doc: plan.md, Chunk: 1].', split);
+    assert.deepEqual(verdicts(swapped), ['weak:fact_context+fact_context']);
+  });
+
+  it('does not flag values in short label lines or next to words every row repeats', () => {
+    const rows = sources([
+      {
+        text: [
+          'Date: 14 September 2026.',
+          'Decision: the group meets weekly.',
+          'id: R-01; risk: Delay of the data supplier; owner: Marta Silva',
+          'id: R-02; risk: Drivers reject the app; owner: Tom Becker',
+          'id: R-03; risk: Cloud costs rise; owner: Lena Park',
+        ].join('\n'),
+      },
+    ]);
+    assert.deepEqual(verdicts(check('The decision was recorded on 14 September 2026 [Doc: plan.md, Chunk: 1].', rows)), ['supported']);
+    assert.deepEqual(verdicts(check('Risk R-02 is the delay of the data supplier, owned by Marta Silva [Doc: plan.md, Chunk: 1].', rows)), ['weak:fact_context']);
+    assert.deepEqual(verdicts(check('Risk R-02 is that drivers reject the app [Doc: plan.md, Chunk: 1].', rows)), ['supported']);
+  });
+
+  it('flags a name in an English statement that the cited excerpt does not contain', () => {
+    assert.deepEqual(verdicts(check('The planner is led by Lena Park [Doc: plan.md, Chunk: 1].')), ['supported']);
+    const wrong = check('Lena Park leads development of the planner with Marta Silva [Doc: plan.md, Chunk: 1].');
+    assert.deepEqual(verdicts(wrong), ['weak:name_missing+name_missing']);
+    assert.deepEqual(wrong.sentences[0].reasons.map((r) => r.fact), ['Marta', 'Silva']);
+    // Words that open a sentence, a list item or a clause after a colon are not taken for names.
+    assert.deepEqual(verdicts(check('Summary: The approved budget is 480,000 EUR [Doc: plan.md, Chunk: 1].')), ['supported']);
+    assert.deepEqual(verdicts(check('Marta says Nebula launches on 12 May 2027 [Doc: plan.md, Chunk: 1].', sources(), { given: ['What did Marta say?'] })), ['supported']);
+    const de = sources([{ text: 'Das Projekt Nebula startet am 12. Mai 2027. Die Entwicklung leitet Lena Park.' }]);
+    assert.deepEqual(verdicts(check('Die Entwicklung leitet Lena Park, die Planung übernimmt das Kernteam [Doc: plan.md, Chunk: 1].', de)), ['supported']);
+  });
+
   it('counts only cited statements for extractive answers and ignores headings', () => {
     const md = '### From your sources\n\n* **plan.md:** The approved budget is 480,000 EUR. \\[Doc: plan.md, Chunk: 1\\]\n\n_Quoted directly from the sources._';
     const r = check(md, sources(), { citedOnly: true });

@@ -1,0 +1,138 @@
+{
+ "kb_en": [
+  {
+   "label": "[Doc: Project Alpha launch plan (sample), Chunk: 1]",
+   "doc": "Project Alpha launch plan (sample)",
+   "heading": "Overview",
+   "text": "## Overview\n\nProject Alpha is the new document assistant of a fictitious company. It answers questions about internal documents and cites its sources. This plan is sample data for the Starpi demo; all names and numbers are invented."
+  },
+  {
+   "label": "[Doc: Project Alpha launch plan (sample), Chunk: 2]",
+   "doc": "Project Alpha launch plan (sample)",
+   "heading": "Timeline",
+   "text": "## Timeline\n\nProject Alpha launches on 15 September 2026. The frontend design is due on 5 September 2026. A beta with ten internal users starts on 8 September 2026. The go/no-go meeting takes place on 11 September 2026."
+  },
+  {
+   "label": "[Doc: Project Alpha launch plan (sample), Chunk: 3]",
+   "doc": "Project Alpha launch plan (sample)",
+   "heading": "Owners",
+   "text": "## Owners\n\nMichael leads development and builds the Supabase connection for the vector database. Sarah owns the frontend design in Figma. Alex runs the deployment on a GPU server in Germany with vLLM. Lena leads marketing and the launch campaign."
+  },
+  {
+   "label": "[Doc: Project Alpha launch plan (sample), Chunk: 4]",
+   "doc": "Project Alpha launch plan (sample)",
+   "heading": "Risks",
+   "text": "## Risks\n\nGDPR compliance must be ensured before the launch; no user data goes to cloud providers outside the EU without encryption. The GPU server handles about 40 concurrent users; a second server can be added within two days. If the design slips beyond 5 September 2026, the launch moves by one week."
+  },
+  {
+   "label": "[Doc: Budget 2026 for marketing and Project Alpha (sample), Chunk: 1]",
+   "doc": "Budget 2026 for marketing and Project Alpha (sample)",
+   "heading": "Summary",
+   "text": "## Summary\n\nThe 2026 budget plans 120,000 EUR for marketing and 45,000 EUR for Project Alpha. The management team approved both amounts on 20 August 2026."
+  },
+  {
+   "label": "[Doc: Budget 2026 for marketing and Project Alpha (sample), Chunk: 2]",
+   "doc": "Budget 2026 for marketing and Project Alpha (sample)",
+   "heading": "Project Alpha",
+   "text": "## Project Alpha\n\nThe Project Alpha budget of 45,000 EUR is split into 30,000 EUR for development, 9,000 EUR for the GPU server in Germany and 6,000 EUR for design and testing. Michael reports the spending every month."
+  },
+  {
+   "label": "[Doc: Budget 2026 for marketing and Project Alpha (sample), Chunk: 3]",
+   "doc": "Budget 2026 for marketing and Project Alpha (sample)",
+   "heading": "Marketing",
+   "text": "## Marketing\n\nThe marketing budget of 120,000 EUR is split into 50,000 EUR for online campaigns, 40,000 EUR for events and 30,000 EUR for content. 15,000 EUR of the online campaigns are reserved for the Project Alpha launch campaign. Lena owns the marketing budget."
+  },
+  {
+   "label": "[Doc: Budget 2026 for marketing and Project Alpha (sample), Chunk: 4]",
+   "doc": "Budget 2026 for marketing and Project Alpha (sample)",
+   "heading": "Rules",
+   "text": "## Rules\n\nSpending above 5,000 EUR needs the approval of the budget owner. Unused funds do not carry over to 2027."
+  },
+  {
+   "label": "[Doc: Weekly sync, 9 September 2026 (sample), Chunk: 1]",
+   "doc": "Weekly sync, 9 September 2026 (sample)",
+   "heading": "Status",
+   "text": "## Status\n\nParticipants: Michael, Sarah, Alex and Lena. The frontend design was delivered on 4 September 2026, one day early. The beta started on 8 September 2026 with ten internal users."
+  },
+  {
+   "label": "[Doc: Weekly sync, 9 September 2026 (sample), Chunk: 2]",
+   "doc": "Weekly sync, 9 September 2026 (sample)",
+   "heading": "Decisions",
+   "text": "## Decisions\n\nThe launch date of 15 September 2026 stays. The GPU server runs vLLM in a data centre in Frankfurt. Lena starts the launch campaign on 14 September 2026."
+  },
+  {
+   "label": "[Doc: Weekly sync, 9 September 2026 (sample), Chunk: 3]",
+   "doc": "Weekly sync, 9 September 2026 (sample)",
+   "heading": "Action items",
+   "text": "## Action items\n\nMichael fixes the slow search in long PDF files by 11 September 2026. Alex sets up monitoring and alerts for the GPU server. Sarah prepares the release notes."
+  }
+ ],
+ "kb_de": [
+  {
+   "label": "[Doc: Launchplan Projekt Alpha (Beispiel), Chunk: 1]",
+   "doc": "Launchplan Projekt Alpha (Beispiel)",
+   "heading": "Überblick",
+   "text": "## Überblick\n\nProjekt Alpha ist der neue Dokumentenassistent eines erfundenen Unternehmens. Er beantwortet Fragen zu internen Dokumenten und nennt seine Quellen. Dieser Plan sind Beispieldaten für die Starpi-Demo; alle Namen und Zahlen sind erfunden."
+  },
+  {
+   "label": "[Doc: Launchplan Projekt Alpha (Beispiel), Chunk: 2]",
+   "doc": "Launchplan Projekt Alpha (Beispiel)",
+   "heading": "Zeitplan",
+   "text": "## Zeitplan\n\nProjekt Alpha startet am 15. September 2026. Das Frontend-Design ist bis zum 5. September 2026 fertig. Eine Beta mit zehn internen Nutzern beginnt am 8. September 2026. Die Go/No-Go-Besprechung findet am 11. September 2026 statt."
+  },
+  {
+   "label": "[Doc: Launchplan Projekt Alpha (Beispiel), Chunk: 3]",
+   "doc": "Launchplan Projekt Alpha (Beispiel)",
+   "heading": "Verantwortliche",
+   "text": "## Verantwortliche\n\nMichael leitet die Entwicklung und baut die Supabase-Anbindung für die Vektordatenbank. Sarah verantwortet das Frontend-Design in Figma. Alex übernimmt das Deployment auf einem GPU-Server in Deutschland mit vLLM. Lena leitet das Marketing und die Launch-Kampagne."
+  },
+  {
+   "label": "[Doc: Launchplan Projekt Alpha (Beispiel), Chunk: 4]",
+   "doc": "Launchplan Projekt Alpha (Beispiel)",
+   "heading": "Risiken",
+   "text": "## Risiken\n\nDie DSGVO-Konformität muss vor dem Launch sichergestellt sein; keine Nutzerdaten gehen ohne Verschlüsselung an Cloud-Anbieter außerhalb der EU. Der GPU-Server trägt etwa 40 gleichzeitige Nutzer; ein zweiter Server ist innerhalb von zwei Tagen verfügbar. Verschiebt sich das Design über den 5. September 2026 hinaus, verschiebt sich der Launch um eine Woche."
+  },
+  {
+   "label": "[Doc: Budget 2026 für Marketing und Projekt Alpha (Beispiel), Chunk: 1]",
+   "doc": "Budget 2026 für Marketing und Projekt Alpha (Beispiel)",
+   "heading": "Zusammenfassung",
+   "text": "## Zusammenfassung\n\nDas Budget 2026 sieht 120.000 EUR für Marketing und 45.000 EUR für Projekt Alpha vor. Die Geschäftsführung hat beide Beträge am 20. August 2026 freigegeben."
+  },
+  {
+   "label": "[Doc: Budget 2026 für Marketing und Projekt Alpha (Beispiel), Chunk: 2]",
+   "doc": "Budget 2026 für Marketing und Projekt Alpha (Beispiel)",
+   "heading": "Projekt Alpha",
+   "text": "## Projekt Alpha\n\nDas Budget von Projekt Alpha über 45.000 EUR teilt sich auf in 30.000 EUR für die Entwicklung, 9.000 EUR für den GPU-Server in Deutschland und 6.000 EUR für Design und Tests. Michael berichtet die Ausgaben monatlich."
+  },
+  {
+   "label": "[Doc: Budget 2026 für Marketing und Projekt Alpha (Beispiel), Chunk: 3]",
+   "doc": "Budget 2026 für Marketing und Projekt Alpha (Beispiel)",
+   "heading": "Marketing",
+   "text": "## Marketing\n\nDas Marketingbudget über 120.000 EUR teilt sich auf in 50.000 EUR für Online-Kampagnen, 40.000 EUR für Events und 30.000 EUR für Content. 15.000 EUR der Online-Kampagnen sind für die Launch-Kampagne von Projekt Alpha reserviert. Lena verantwortet das Marketingbudget."
+  },
+  {
+   "label": "[Doc: Budget 2026 für Marketing und Projekt Alpha (Beispiel), Chunk: 4]",
+   "doc": "Budget 2026 für Marketing und Projekt Alpha (Beispiel)",
+   "heading": "Regeln",
+   "text": "## Regeln\n\nAusgaben über 5.000 EUR muss die Person freigeben, die das Budget verantwortet. Nicht verbrauchte Mittel werden nicht ins Jahr 2027 übertragen."
+  },
+  {
+   "label": "[Doc: Wöchentlicher Sync, 9. September 2026 (Beispiel), Chunk: 1]",
+   "doc": "Wöchentlicher Sync, 9. September 2026 (Beispiel)",
+   "heading": "Stand",
+   "text": "## Stand\n\nTeilnehmer: Michael, Sarah, Alex und Lena. Das Frontend-Design wurde am 4. September 2026 geliefert, einen Tag früher als geplant. Die Beta ist am 8. September 2026 mit zehn internen Nutzern gestartet."
+  },
+  {
+   "label": "[Doc: Wöchentlicher Sync, 9. September 2026 (Beispiel), Chunk: 2]",
+   "doc": "Wöchentlicher Sync, 9. September 2026 (Beispiel)",
+   "heading": "Entscheidungen",
+   "text": "## Entscheidungen\n\nDer Launchtermin 15. September 2026 bleibt. Der GPU-Server betreibt vLLM in einem Rechenzentrum in Frankfurt. Lena startet die Launch-Kampagne am 14. September 2026."
+  },
+  {
+   "label": "[Doc: Wöchentlicher Sync, 9. September 2026 (Beispiel), Chunk: 3]",
+   "doc": "Wöchentlicher Sync, 9. September 2026 (Beispiel)",
+   "heading": "Aufgaben",
+   "text": "## Aufgaben\n\nMichael behebt bis zum 11. September 2026 die langsame Suche in langen PDF-Dateien. Alex richtet Monitoring und Alarme für den GPU-Server ein. Sarah bereitet die Release Notes vor."
+  }
+ ]
+}

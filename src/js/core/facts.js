@@ -94,6 +94,9 @@ const SPELLED = new Map(
 );
 
 const SPELLED_FOLDED = new Map([...SPELLED].map(([w, n]) => [fold(w), n]));
+const NUMBER_WORD = `${alternation(SPELLED.keys())}|one|eins?|thousand|tausend|million|millionen|mio|billion|milliarden?|mrd|dozen|dutzend|and|und`;
+const SPELLED_PART_AFTER = new RegExp(`^[\\s-]+(?:${NUMBER_WORD})(?![\\p{L}])|^[\\s-]*\\d`, 'iu');
+const SPELLED_PART_BEFORE = new RegExp(`(?<![\\p{L}])(?:${NUMBER_WORD})[\\s-]+$|\\d[\\s-]*$`, 'iu');
 
 /** Words that describe the sources rather than stating something. */
 const BOILERPLATE = new Set([
@@ -307,7 +310,7 @@ function findTimes(text) {
   const push = (/** @type {RegExpExecArray} */ m, /** @type {number} */ h, /** @type {number} */ min) => {
     if (h > 23 || min > 59) return;
     const v = `t:${pad2(h)}:${pad2(min)}`;
-    out.push({ start: m.index, end: m.index + m[0].length, surface: m[0].trim(), claim: [v], source: [v], nums: [h, min].filter((n) => n > 0) });
+    out.push({ start: m.index, end: m.index + m[0].length, surface: m[0].trim(), claim: [v], source: [v], nums: h > 0 ? [h] : [] });
   };
   const ampm = (/** @type {number} */ h, /** @type {string | undefined} */ suffix) => {
     const s = (suffix ?? '').toLowerCase().replace(/\./g, '');
@@ -359,21 +362,23 @@ function findWeekdaysAndMonths(text, claim) {
 }
 
 /**
- * Codes that mix letters and digits (Q3, A320, 5G, v2). Numbers with a unit or ordinal suffix
- * ("480k", "10kg", "3rd") are numbers, not codes.
+ * Codes that mix letters and digits (Q3, A320, 5G, v2), also with a hyphen between a short letter
+ * prefix and the digits (R-02, ISO-27001, COVID-19); the hyphen is not part of the value, so
+ * "R-02", "R 02" and "R02" match. Numbers with a unit or ordinal suffix ("480k", "10kg", "3rd") are
+ * numbers, not codes.
  * @param {string} text
  * @returns {Found[]}
  */
 function findCodes(text) {
   /** @type {Found[]} */
   const out = [];
-  const re = new RegExp(`${B}[\\p{L}\\p{N}]+${E}`, 'gu');
+  const re = new RegExp(`${B}(?:\\p{L}{1,6}-\\d{1,6}|[\\p{L}\\p{N}]+)${E}`, 'gu');
   let m;
   while ((m = re.exec(text)) !== null) {
     const token = m[0];
     if (!/\p{L}/u.test(token) || !/\p{N}/u.test(token)) continue;
     if (/^\d+(?:[.,]\d+)?\p{L}+$/u.test(token)) continue;
-    const v = `c:${fold(token)}`;
+    const v = `c:${fold(token).replace('-', '')}`;
     out.push({ start: m.index, end: m.index + token.length, surface: token, claim: [v], source: [v], nums: [] });
   }
   return out;
@@ -478,7 +483,32 @@ export function extractFacts(sentence) {
   for (const n of findNumbers(text, true)) {
     facts.push({ kind: 'number', surface: n.surface, start: n.start, end: n.end, values: n.claim, nums: n.nums, approx: n.approx, sig: n.sig });
   }
+  for (const n of findSpelledNumbers(text)) {
+    facts.push({ kind: 'number', surface: n.surface, start: n.start, end: n.end, values: n.claim, nums: n.nums, approx: n.approx, sig: 0 });
+  }
   return facts.sort((a, b) => a.start - b.start);
+}
+
+/**
+ * Numbers written as words in a claim ("twelve users", "zwei Wochen"), under the same rule as
+ * digits: from ten upwards always, below ten only with a unit.
+ * @param {string} text
+ */
+function findSpelledNumbers(text) {
+  /** @type {Array<Found & { approx: boolean }>} */
+  const out = [];
+  const re = new RegExp(`${B}(${alternation(SPELLED.keys())})${E}`, 'giu');
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const n = SPELLED.get(m[1].toLowerCase());
+    const rest = text.slice(m.index + m[0].length);
+    // Part of a larger number ("twenty-five", "two hundred", "ten thousand"): left to the reader.
+    if (!n || n === 100 || SPELLED_PART_AFTER.test(rest) || SPELLED_PART_BEFORE.test(text.slice(0, m.index))) continue;
+    if (n < 10 && !UNIT_AFTER.test(rest)) continue;
+    const before = text.slice(Math.max(0, m.index - 24), m.index);
+    out.push({ start: m.index, end: m.index + m[0].length, surface: m[0], claim: [numKey(n)], source: [numKey(n)], nums: [n], approx: APPROX_BEFORE.test(before) });
+  }
+  return out;
 }
 
 /**
@@ -527,9 +557,11 @@ export function indexSource(text) {
   /** @type {number[]} */
   const nums = [];
   let masked = text;
+  // A date offers its year and a time its hour as plain numbers ("in 2026", "at 10"); the day and
+  // month do not, or "30 drivers" would match "30.11.2026".
   for (const d of findDates(masked)) {
     d.source.forEach((v) => values.add(v));
-    nums.push(...d.nums);
+    nums.push(...d.nums.filter((n) => n >= 1000));
     masked = mask(masked, [[d.start, d.end]]);
   }
   for (const t of findTimes(masked)) {

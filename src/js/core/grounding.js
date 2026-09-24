@@ -8,9 +8,13 @@
 // Input is the rendered answer as blocks of text and citation markers (see grounding-view.js for
 // the DOM side, blocksFromMarkdown() for plain text) plus the excerpts, index-aligned with the
 // citation markers. Pure: no DOM, runs in the browser, in workers and in Node.
-import { contentTokens, extractFacts, guessLanguage, indexSource, lookupFact, tokenMatches } from './facts.js';
+import { contentTokens, extractFacts, fold, guessLanguage, indexSource, lookupFact, tokenMatches } from './facts.js';
+import { STOPWORDS_EN } from '../rag/bm25.js';
 import { CITATION_PATTERN, LOOSE_LABEL_PATTERN, parseLabel } from './labels.js';
 import { sentenceSpans } from './sentences.js';
+
+/** Currency and unit words: they stand next to a value everywhere, so they say nothing about where it belongs. */
+const UNIT_WORDS = new Set(['eur', 'euro', 'euros', 'usd', 'dollar', 'dollars', 'chf', 'gbp', 'uhr', 'am', 'pm']);
 
 export const GROUNDING = Object.freeze({ id: 'starpi-grounding', version: 1 });
 
@@ -52,7 +56,7 @@ export const THRESHOLDS = Object.freeze({
 /** @typedef {'supported' | 'weak' | 'unsupported' | 'unchecked' | 'neutral'} Verdict */
 
 /**
- * @typedef {'missing_fact' | 'fact_elsewhere' | 'uncited_found' | 'uncited_missing' | 'low_overlap'
+ * @typedef {'missing_fact' | 'fact_elsewhere' | 'fact_context' | 'name_missing' | 'uncited_found' | 'uncited_missing' | 'low_overlap'
  *   | 'unknown_citation' | 'label_mismatch' | 'quote_missing' | 'approximate' | 'from_conversation'
  *   | 'not_delivered'} ReasonCode
  */
@@ -211,7 +215,136 @@ export function associate(blocks) {
  * @property {Array<import('./facts.js').SourceIndex | null>} indexes  null for omitted excerpts
  * @property {import('./facts.js').SourceIndex | null} given  the question and recent turns
  * @property {boolean} citedOnly  only statements with their own marker count (extractive answers)
+ * @property {'en' | 'de' | null} [lang]  language of the whole answer, for statements too short to tell
+ * @property {Array<Passage[] | undefined>} [passages]  per excerpt, filled on first use
  */
+
+/**
+ * A part of an excerpt that states at most one value, with its facts and words (the excerpt's
+ * heading and document name count as part of every passage).
+ * @typedef {{ text: string, index: import('./facts.js').SourceIndex, context: import('./facts.js').SourceIndex, words: number, part: boolean }} Passage
+ */
+
+/** Where a sentence that lists several values can be cut between two of them. */
+const VALUE_SEPARATOR = /,\s|;\s|\s(?:and|und|sowie|or|oder|while|whereas|während|but|aber)\s|\s[-–—]\s/giu;
+
+/**
+ * Splits a sentence that states several values into one part per value, cutting at the last
+ * separator between two values: "310,000 EUR for development, 95,000 EUR for infrastructure and
+ * 75,000 EUR for training" gives three parts. Values with no separator between them stay together.
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function valueParts(text) {
+  const facts = extractFacts(text).filter((f) => f.kind !== 'quote');
+  if (facts.length < 2) return [text];
+  const cuts = [0];
+  for (let k = 1; k < facts.length; k += 1) {
+    const from = facts[k - 1].end;
+    const gap = text.slice(from, facts[k].start);
+    let last = -1;
+    for (const m of gap.matchAll(VALUE_SEPARATOR)) last = m.index ?? -1;
+    if (last >= 0) cuts.push(from + last);
+  }
+  cuts.push(text.length);
+  const parts = [];
+  for (let k = 1; k < cuts.length; k += 1) parts.push(text.slice(cuts[k - 1], cuts[k]));
+  return parts;
+}
+
+/**
+ * The passages of an excerpt: its sentences and lines (in a PDF, a line that breaks off
+ * mid-sentence is joined to the next), each split into one part per value.
+ * @param {GroundingSource} source
+ * @returns {Passage[]}
+ */
+function passagesOf(source) {
+  const wraps = /\.pdf$/i.test(source.doc);
+  /** @type {string[]} */
+  const sentences = [];
+  for (const span of sentenceSpans(source.text)) {
+    const text = source.text.slice(span.start, span.end);
+    const prev = sentences.length ? sentences[sentences.length - 1] : null;
+    if (wraps && prev !== null && !/[.!?:;|]$/.test(prev) && /^\p{Ll}/u.test(text)) sentences[sentences.length - 1] = `${prev} ${text}`;
+    else sentences.push(text);
+  }
+  const extra = `\n${source.doc}\n${source.heading}`;
+  return sentences.flatMap((sentence) => {
+    const parts = valueParts(sentence);
+    return parts.map((text) => ({ text, index: indexSource(text), context: indexSource(`${text}${extra}`), words: wordsWithoutFacts(text).length, part: parts.length > 1 }));
+  });
+}
+
+/**
+ * Content words of a statement part, without its facts and without currency and unit words.
+ * @param {string} text
+ */
+function wordsWithoutFacts(text) {
+  let plain = text;
+  for (const f of extractFacts(text)) plain = plain.slice(0, f.start) + ' '.repeat(f.end - f.start) + plain.slice(f.end);
+  return contentTokens(plain).filter((w) => !UNIT_WORDS.has(w));
+}
+
+/**
+ * Whether a value the cited excerpts do contain stands only in passages that share none of the
+ * words the statement puts next to it, while another passage does share them: "75,000 EUR for
+ * infrastructure" when the excerpt says "95,000 EUR for infrastructure and 75,000 EUR for
+ * training". Returns where the value was found, or null when it stands with the statement's words
+ * (or the check cannot tell).
+ * @param {import('./facts.js').Fact} fact
+ * @param {string[]} words  the words the statement puts next to the value
+ * @param {number[]} cited  delivered excerpts cited by the statement
+ * @param {CheckContext} ctx
+ * @returns {{ index: number, passage: string } | null}
+ */
+function misplaced(fact, words, cited, ctx) {
+  const cache = (ctx.passages ??= []);
+  const passages = cited.flatMap((i) => (cache[i] ??= passagesOf(ctx.sources[i])).map((p) => ({ ...p, source: i })));
+  // A word found in most passages (a column name repeated on every row) says nothing about where a
+  // value belongs.
+  const telling = words.filter((w) => passages.filter((p) => tokenMatches(w, p.index)).length * 2 <= passages.length);
+  if (!telling.length) return null;
+  /** @type {{ index: number, passage: string } | null} */
+  let place = null;
+  let related = false;
+  for (const p of passages) {
+    const shared = telling.some((w) => tokenMatches(w, p.context));
+    const holds = lookupFact(fact, p.index, 0).found === 'exact';
+    // A line such as "Date: 14 September 2026" is too short to say what else the value could belong
+    // to; one part of a sentence that lists several values ("95,000 EUR for infrastructure") is not.
+    if (holds && (shared || p.words < (p.part ? 1 : 2))) return null;
+    if (holds) place ??= { index: p.source, passage: p.text };
+    else if (shared) related = true;
+  }
+  return place && related ? place : null;
+}
+
+/** Capitalised words that are not names: weekdays, months and words that open a clause. */
+const NOT_NAMES = new Set([
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'january', 'february', 'march', 'april',
+  'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december', 'i', 'note', 'sources', 'source', 'ok',
+]);
+
+/**
+ * Names in an English statement: capitalised words that do not open the sentence, a list item, a
+ * table cell or a clause after a colon ("…at the Munich depot", "…owned by Marta Silva").
+ * @param {string} text
+ * @param {import('./facts.js').Fact[]} facts
+ * @returns {Array<{ surface: string, token: string }>}
+ */
+function namesOf(text, facts) {
+  /** @type {Array<{ surface: string, token: string }>} */
+  const out = [];
+  for (const m of text.matchAll(/(?<![\p{L}\p{N}'’-])\p{Lu}[\p{L}]+(?:['’]s)?(?![\p{L}\p{N}])/gu)) {
+    const at = m.index ?? 0;
+    if (/(?:^|[.!?:;|•*-])\s*["'“‘(]?\s*$/u.test(text.slice(0, at))) continue;
+    if (facts.some((f) => at >= f.start && at < f.end)) continue;
+    const token = fold(m[0].replace(/['’]s$/u, ''));
+    if (NOT_NAMES.has(token) || STOPWORDS_EN.has(token) || UNIT_WORDS.has(token)) continue;
+    out.push({ surface: m[0].replace(/['’]s$/u, ''), token });
+  }
+  return out;
+}
 
 /**
  * Checks one statement.
@@ -249,6 +382,8 @@ export function checkSentence(draft, ctx) {
   if (cites.length && !delivered.length && omitted.length) reasons.push({ code: 'not_delivered', level: 'unsupported', cites: omitted });
 
   const others = ctx.indexes.map((_, i) => i).filter((i) => ctx.indexes[i] && !cites.includes(i));
+  /** @type {import('./facts.js').Fact[]} facts found in the cited excerpts */
+  const found = [];
   for (const fact of facts) {
     /** @type {{ index: number, detail?: string } | null} */
     let approx = null;
@@ -263,7 +398,10 @@ export function checkSentence(draft, ctx) {
       if (hit.found === 'approx' && !approx) approx = { index: i, detail: hit.detail };
       if (hit.found === 'partial') partial = true;
     }
-    if (exact) continue;
+    if (exact) {
+      if (fact.kind !== 'quote') found.push(fact);
+      continue;
+    }
     if (approx) {
       reasons.push({ code: 'approximate', level: 'weak', fact: fact.surface, cites: [approx.index], found: approx.detail });
       continue;
@@ -301,13 +439,39 @@ export function checkSentence(draft, ctx) {
   let overlap = null;
   let crossLanguage = false;
   if (delivered.length && tokens.length >= THRESHOLDS.minContentTokens) {
-    const sentenceLang = guessLanguage(draft.text);
+    const sentenceLang = guessLanguage(draft.text) ?? ctx.lang ?? null;
     const sourceLangs = delivered.map((i) => ctx.indexes[i]?.lang ?? null).filter(Boolean);
     crossLanguage = Boolean(sentenceLang && sourceLangs.length && sourceLangs.every((l) => l !== sentenceLang));
     if (!crossLanguage) {
       const matched = tokens.filter((t) => delivered.some((i) => tokenMatches(t, /** @type {import('./facts.js').SourceIndex} */ (ctx.indexes[i])))).length;
       overlap = Math.round((matched / tokens.length) * 1000) / 1000;
       if (overlap < THRESHOLDS.supportedOverlap) reasons.push({ code: 'low_overlap', level: 'weak', cites: delivered });
+    }
+  }
+
+  if (delivered.length && !crossLanguage && (guessLanguage(draft.text) ?? ctx.lang) === 'en') {
+    for (const name of namesOf(draft.text, facts)) {
+      if (delivered.some((i) => tokenMatches(name.token, /** @type {import('./facts.js').SourceIndex} */ (ctx.indexes[i])))) continue;
+      if (ctx.given && tokenMatches(name.token, ctx.given)) continue;
+      reasons.push({ code: 'name_missing', level: 'weak', fact: name.surface, cites: delivered });
+    }
+  }
+
+  if (found.length && !crossLanguage && delivered.length) {
+    // Each value is compared with the words next to it: the part of the statement it stands in
+    // when the statement lists several values, else the whole statement.
+    let offset = 0;
+    const parts = valueParts(draft.text).map((text) => {
+      const part = { start: offset, end: offset + text.length, words: wordsWithoutFacts(text) };
+      offset += text.length;
+      return part;
+    });
+    for (const fact of found) {
+      const part = parts.find((p) => fact.start >= p.start && fact.start < p.end);
+      const words = part?.words ?? [];
+      if (words.length < (parts.length > 1 ? 1 : THRESHOLDS.minContentTokens - 1)) continue;
+      const place = misplaced(fact, words, delivered, ctx);
+      if (place) reasons.push({ code: 'fact_context', level: 'weak', fact: fact.surface, cites: [place.index], found: clip(place.passage, 160) });
     }
   }
 
@@ -320,6 +484,15 @@ export function checkSentence(draft, ctx) {
   else verdict = 'unchecked';
   if (verdict === 'weak' && !reasons.length) reasons.push({ code: 'uncited_found', level: 'weak' });
   return { ...base, cites, verdict, reasons, overlap, crossLanguage };
+}
+
+/**
+ * @param {string} text
+ * @param {number} max
+ */
+function clip(text, max) {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
 }
 
 /**
@@ -339,8 +512,9 @@ export function groundAnswer(blocks, sources, options = {}) {
 
   const indexes = sources.map((s) => (s.delivered === 'omitted' ? null : indexSource(`${s.text}\n${s.doc}\n${s.heading}`)));
   const given = options.given?.length ? indexSource(options.given.join('\n')) : null;
+  const text = blocks.map((b) => b.segments.map((s) => (s.type === 'text' ? s.text : ' ')).join('')).join('\n');
   /** @type {CheckContext} */
-  const ctx = { sources, indexes, given, citedOnly: Boolean(options.citedOnly) };
+  const ctx = { sources, indexes, given, citedOnly: Boolean(options.citedOnly), lang: guessLanguage(text) };
   for (const d of drafts) {
     const r = checkSentence(d, ctx);
     if (r.crossLanguage) report.crossLanguage = true;

@@ -11,7 +11,7 @@
 //
 // Pure: WebCrypto (crypto.subtle) only, so it runs in the browser, in workers and in Node 20+.
 import { chunkText, CHUNKER } from '../rag/chunker.js';
-import { indexSource } from './facts.js';
+import { guessLanguage, indexSource } from './facts.js';
 import { checkSentence, GROUNDING } from './grounding.js';
 
 export const RECEIPT_SCHEMA = 'starpi.receipt/v1';
@@ -447,6 +447,8 @@ export async function verifyReceipt(receipt, files, tools) {
     }));
     const indexes = sources.map((s) => (s.delivered === 'omitted' ? null : indexSource(`${s.text}\n${s.doc}\n${s.heading}`)));
     const given = receipt.question ? indexSource(receipt.question.text) : null;
+    /** @type {import('./grounding.js').CheckContext} */
+    const ctx = { sources, indexes, given, citedOnly: false, lang: guessLanguage(receipt.answer.text) };
     const differences = [];
     let recomputed = 0;
     let needsConversation = false;
@@ -458,7 +460,7 @@ export async function verifyReceipt(receipt, files, tools) {
         .map((r) => ({ label: r.found ?? '', resolved: r.code === 'label_mismatch' && r.cites?.length ? r.cites[0] : null }));
       const result = checkSentence(
         { block: 0, kind: 'p', start: 0, end: s.text.length, text: s.text, own: s.citeSource === 'own' ? s.cites.slice() : [], bad, cites: s.cites.filter((c) => !bad.some((b) => b.resolved === c)), citeSource: s.citeSource },
-        { sources, indexes, given, citedOnly: false },
+        ctx,
       );
       recomputed += 1;
       if (result.verdict !== s.verdict) differences.push({ sentence: i, recorded: s.verdict, now: result.verdict });
