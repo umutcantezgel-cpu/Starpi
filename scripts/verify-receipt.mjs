@@ -3,6 +3,7 @@
 //
 // Usage: node scripts/verify-receipt.mjs <receipt.json> [file ...] [--json]
 //        npm run verify:receipt -- <receipt.json> [file ...]
+//        npx -p @starpi/core starpi-verify-receipt <receipt.json> [file ...]   (the same code, packaged)
 //
 // For every excerpt from the on-device workspace it checks, with the same extraction and chunking
 // code the app uses: that one of the files has the recorded SHA-256 fingerprint, that extracting it
@@ -23,7 +24,7 @@ const [receiptPath, ...filePaths] = args.filter((a) => a !== '--json');
 
 /** @param {string} message */
 function usage(message) {
-  console.error(`verify-receipt: ${message}\nusage: node scripts/verify-receipt.mjs <receipt.json> [file ...] [--json]`);
+  console.error(`verify-receipt: ${message}\nusage: verify-receipt <receipt.json> [file ...] [--json]`);
   process.exit(2);
 }
 

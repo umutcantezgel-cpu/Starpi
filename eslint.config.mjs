@@ -5,7 +5,7 @@ const PURE = ['src/js/core/**/*.js', 'src/js/rag/bm25.js', 'src/js/rag/chunker.j
 
 export default [
   {
-    ignores: ['dist/**', '.build/**', 'node_modules/**', 'backend/**', 'playwright-report/**', 'test-results/**'],
+    ignores: ['dist/**', 'packages/*/dist/**', '.build/**', 'node_modules/**', 'backend/**', 'playwright-report/**', 'test-results/**'],
   },
   js.configs.recommended,
   {

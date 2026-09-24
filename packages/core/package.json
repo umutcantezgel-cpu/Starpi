@@ -1,0 +1,43 @@
+{
+  "name": "@starpi/core",
+  "version": "0.1.0",
+  "description": "Deterministic source check for RAG answers and verifiable answer receipts (starpi.receipt/v1), with the text extraction, chunking and BM25 of Starpi.",
+  "type": "module",
+  "license": "MIT",
+  "author": "umutcantezgel-cpu",
+  "homepage": "https://github.com/umutcantezgel-cpu/Starpi/tree/main/packages/core#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/umutcantezgel-cpu/Starpi.git",
+    "directory": "packages/core"
+  },
+  "bugs": "https://github.com/umutcantezgel-cpu/Starpi/issues",
+  "keywords": ["rag", "retrieval-augmented-generation", "citations", "grounding", "faithfulness", "provenance", "bm25", "receipts"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "starpi-verify-receipt": "./dist/verify-receipt.js"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.19"
+  },
+  "peerDependencies": {
+    "pdfjs-dist": "^6.3.289"
+  },
+  "peerDependenciesMeta": {
+    "pdfjs-dist": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "prepack": "node ../../scripts/build-core.mjs"
+  }
+}
