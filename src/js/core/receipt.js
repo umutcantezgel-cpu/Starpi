@@ -1,6 +1,6 @@
 // @ts-check
 // Answer receipts (schema "starpi.receipt/v1"): a JSON file per answer that lists the excerpts the
-// answer cited, with SHA-256 fingerprints of the source files, the exact character offsets of each
+// answer was given, with SHA-256 fingerprints of the source files, the exact character offsets of each
 // passage, the source-check verdicts, and a hash over all of it. Anyone who has the same files can
 // reproduce every passage (verifyReceipt below, in the app or with scripts/verify-receipt.mjs).
 //

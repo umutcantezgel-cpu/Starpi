@@ -12,6 +12,7 @@ import { blocksFromMarkdown, GROUNDING, groundAnswer } from '../../src/js/core/g
 import { CHUNKER, chunkText } from '../../src/js/rag/chunker.js';
 import { EXTRACTOR, extractText } from '../../src/js/rag/parser.js';
 import { makePdf } from '../fixtures/pdf.mjs';
+import { loadCorpora, loadItems } from '../../scripts/eval-source-check.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const sha = (/** @type {string} */ s) => createHash('sha256').update(s).digest('hex');
@@ -61,5 +62,14 @@ describe(`source check pins (${GROUNDING.id} ${GROUNDING.version})`, () => {
         ['unsupported', 'uncited_missing'],
       ],
     );
+  });
+
+  it('verdicts and reasons on every statement of the 308 labelled answers are unchanged', async () => {
+    const corpora = await loadCorpora();
+    const lines = (await loadItems()).flatMap((item) => {
+      const sources = corpora[item.corpus];
+      return groundAnswer(blocksFromMarkdown(item.answer, sources), sources).sentences.map((s) => `${item.id}|${s.verdict}|${s.reasons.map((r) => `${r.code}:${r.fact ?? ''}`).join(',')}`);
+    });
+    assert.equal(sha(lines.join('\n')), 'e2d8d04e18bf66c0796cc5b1f4959d20214b514233eac2fd1b6b307fdb3d587c');
   });
 });
