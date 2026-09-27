@@ -13,6 +13,7 @@ const ABBREVIATIONS = new Set([
 function isAbbreviation(token) {
   const word = token.replace(/^[^\p{L}\p{N}]+/u, '');
   if (/^\d{1,2}$/.test(word)) return true; // ordinals: "am 3. März"; a year ends a sentence
+  if (/^\d{1,2}\.\d{1,2}$/.test(word)) return true; // German day and month: "vom 1.6. bis 31.8."
   if (ABBREVIATIONS.has(word)) return true;
   // "e.g", "z.B", "u.a": the last dot-separated part decides.
   const last = word.includes('.') ? word.slice(word.lastIndexOf('.') + 1) : '';

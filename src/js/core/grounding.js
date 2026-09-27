@@ -103,6 +103,7 @@ export const THRESHOLDS = Object.freeze({
  * @property {string} text
  * @property {number[]} own
  * @property {Array<{ label: string, resolved: number | null }>} bad
+ * @property {Array<{ label: string, resolved: number | null }>} [inheritedBad]  labels on a "Sources:" line that are not excerpts
  */
 
 /**
@@ -168,6 +169,8 @@ export function associate(blocks) {
   const drafts = [];
   /** @type {Set<number>} */
   const answerCites = new Set();
+  /** @type {Array<{ label: string, resolved: number | null }>} */
+  const answerBad = [];
   /** @type {Map<number, number[]>} */
   const blockCites = new Map();
 
@@ -175,6 +178,7 @@ export function associate(blocks) {
     const { text, cites, bad } = flatten(block);
     if (isContentless(text)) {
       cites.forEach((c) => answerCites.add(c.index));
+      bad.forEach((c) => answerBad.push({ label: c.label, resolved: c.resolved }));
       if (cites.length) blockCites.set(b, cites.map((c) => c.index));
       return;
     }
@@ -204,7 +208,9 @@ export function associate(blocks) {
       if (cites?.length) return { ...d, cites: cites.slice(), citeSource: /** @type {SentenceResult['citeSource']} */ ('leadin') };
       lead = blocks[lead]?.leadIn ?? null;
     }
-    if (answerCites.size) return { ...d, cites: [...answerCites], citeSource: /** @type {SentenceResult['citeSource']} */ ('answer') };
+    if (answerCites.size || answerBad.length) {
+      return { ...d, cites: [...answerCites], inheritedBad: answerBad.slice(), citeSource: /** @type {SentenceResult['citeSource']} */ ('answer') };
+    }
     return { ...d, cites: /** @type {number[]} */ ([]), citeSource: /** @type {SentenceResult['citeSource']} */ (null) };
   });
 }
@@ -359,16 +365,17 @@ export function checkSentence(draft, ctx) {
   const facts = extractFacts(draft.text);
   const tokens = contentTokens(draft.text);
   const ownMarker = draft.own.length > 0 || draft.bad.length > 0;
+  const badLabels = [...draft.bad, ...(draft.inheritedBad ?? [])];
 
   if ((draft.kind === 'heading' || draft.kind === 'header-row') && !ownMarker) return neutral;
   if (ctx.citedOnly && !ownMarker) return neutral;
-  if (!draft.cites.length && !draft.bad.length && !facts.length) return neutral;
+  if (!draft.cites.length && !badLabels.length && !facts.length) return neutral;
   if (!facts.length && tokens.length < THRESHOLDS.minContentTokens && !draft.bad.length) return neutral;
 
   /** @type {Reason[]} */
   const reasons = [];
   const cites = draft.cites.slice();
-  for (const b of draft.bad) {
+  for (const b of badLabels) {
     if (b.resolved !== null && ctx.sources[b.resolved]) {
       if (!cites.includes(b.resolved)) cites.push(b.resolved);
       reasons.push({ code: 'label_mismatch', level: 'weak', found: b.label, cites: [b.resolved] });

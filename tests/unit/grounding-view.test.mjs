@@ -82,6 +82,24 @@ describe('source check in the rendered answer', () => {
     assert.ok(el.querySelector(`#${buttons[0].getAttribute('aria-describedby')}`));
   });
 
+  it('lets the items of a loose list inherit the citations of their lead-in', () => {
+    const { scope, sources } = register();
+    const el = message('The plan says [Doc: plan.md, Chunk: 1]:\n\n- Nebula launches on 12 May 2027\n\n- The approved budget is 480,000 EUR', scope);
+    const report = view.applyGrounding(el, { scope, sources });
+    assert.deepEqual(report?.counts, { supported: 2, weak: 0, unsupported: 0, unchecked: 0 });
+    assert.deepEqual(report?.sentences.filter((s) => s.verdict !== 'neutral').map((s) => s.citeSource), ['leadin', 'leadin']);
+  });
+
+  it('shows a neutral bar, not a green one, when nothing could be compared', () => {
+    const { scope, sources } = register();
+    const el = message('Das Projekt ersetzt den papierbasierten Prozess durch eine mobile App für Fahrer [Doc: plan.md, Chunk: 1].', scope);
+    const report = view.applyGrounding(el, { scope, sources });
+    assert.equal(report?.counts.unchecked, 1);
+    const bar = /** @type {HTMLElement} */ (el.querySelector('.grounding-bar'));
+    assert.ok(bar.classList.contains('grounding-none'));
+    assert.equal(bar.querySelector('summary [data-lucide]')?.getAttribute('data-lucide'), 'shield');
+  });
+
   it('works without the CSS Custom Highlight API and renders nothing for answers without statements', () => {
     const { scope, sources } = register();
     assert.equal(typeof globalThis.Highlight, 'undefined');

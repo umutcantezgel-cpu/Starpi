@@ -149,6 +149,9 @@ body {
   .grounding-review {
     @apply border-rose-200 bg-rose-50/70 text-rose-950;
   }
+  .grounding-none {
+    @apply border-slate-200 bg-slate-50 text-slate-800;
+  }
   .grounding-counts {
     @apply text-slate-700;
   }
@@ -165,6 +168,9 @@ body {
   }
   .grounding-review .grounding-body {
     @apply border-rose-200;
+  }
+  .grounding-none .grounding-body {
+    @apply border-slate-200;
   }
   .grounding-list {
     @apply space-y-2.5;

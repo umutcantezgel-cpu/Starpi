@@ -137,8 +137,9 @@ export function blocksFromElement(root, scope, sources) {
 
   // A list introduced by "…:" (a paragraph or the enclosing list item) inherits its citations.
   blocks.forEach((block, b) => {
-    const el = elements[b];
-    if (block.kind !== 'li') return;
+    // A loose list (items separated by blank lines) puts each item's text in a <p> inside the <li>.
+    const el = block.kind === 'li' ? elements[b] : block.kind === 'p' && elements[b].parentElement?.tagName === 'LI' ? elements[b].parentElement : null;
+    if (!el || (el !== elements[b] && el.firstElementChild !== elements[b])) return;
     const list = el.parentElement;
     const intro = list?.previousElementSibling ?? (list?.parentElement?.tagName === 'LI' ? list.parentElement : null);
     const introIndex = intro ? index.get(intro) : undefined;
@@ -245,10 +246,12 @@ export function applyGrounding(messageEl, input) {
 
   const run = `grd-${++reportSeq}`;
   const details = document.createElement('details');
-  details.className = `grounding-bar ${unsupported ? 'grounding-review' : weak ? 'grounding-partial' : 'grounding-ok'}`;
+  // Nothing compared (too long, or facts-only across languages without facts): no green "ok".
+  const compared = total > 0 && !report.skipped;
+  details.className = `grounding-bar ${unsupported ? 'grounding-review' : weak ? 'grounding-partial' : compared ? 'grounding-ok' : 'grounding-none'}`;
   const summary = document.createElement('summary');
   const icon = document.createElement('i');
-  icon.dataset.lucide = unsupported ? 'shield-alert' : weak ? 'shield-question-mark' : 'shield-check';
+  icon.dataset.lucide = unsupported ? 'shield-alert' : weak ? 'shield-question-mark' : compared ? 'shield-check' : 'shield';
   icon.className = 'w-3.5 h-3.5 flex-shrink-0';
   icon.setAttribute('aria-hidden', 'true');
   const title = document.createElement('span');

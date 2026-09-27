@@ -332,6 +332,8 @@ function findTimes(text) {
   while ((m = colon.exec(text)) !== null) push(m, ampm(Number(m[1]), m[3]), Number(m[2]));
   const dotUhr = new RegExp(`${B}([01]?\\d|2[0-3])\\.([0-5]\\d)\\s*uhr${E}`, 'giu');
   while ((m = dotUhr.exec(text)) !== null) push(m, Number(m[1]), Number(m[2]));
+  const dotAmPm = new RegExp(`${B}(1[0-2]|0?[1-9])\\.([0-5]\\d)\\s*(am|pm|a\\.m\\.|p\\.m\\.)(?![\\p{L}])`, 'giu');
+  while ((m = dotAmPm.exec(text)) !== null) push(m, ampm(Number(m[1]), m[3]), Number(m[2]));
   const hourOnly = new RegExp(`${B}(1[0-2]|0?[1-9])\\s*(am|pm|a\\.m\\.|p\\.m\\.)(?![\\p{L}])|${B}([01]?\\d|2[0-3])\\s*uhr${E}`, 'giu');
   while ((m = hourOnly.exec(text)) !== null) {
     const at = m.index;

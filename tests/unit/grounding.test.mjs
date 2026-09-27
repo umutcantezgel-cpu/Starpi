@@ -158,6 +158,19 @@ describe('groundAnswer', () => {
     assert.deepEqual(verdicts(check('Risk R-02 is that drivers reject the app [Doc: plan.md, Chunk: 1].', rows)), ['supported']);
   });
 
+  it('reports labels on a "Sources:" line that are not excerpts', () => {
+    const invented = check('The approved budget is 480,000 EUR.\n\nSources: [Doc: plan.md, Chunk: 1], [Doc: invented.pdf, Chunk: 7]');
+    assert.deepEqual(verdicts(invented), ['unsupported:unknown_citation']);
+    const misspelled = check('The approved budget is 480,000 EUR.\n\nSources: [doc: Plan.md, chunk 1]');
+    assert.deepEqual(verdicts(misspelled), ['weak:label_mismatch']);
+    assert.deepEqual(misspelled.sentences[0].cites, [0]);
+  });
+
+  it('reads English times with a dot and German day-month dates inside a sentence', () => {
+    assert.deepEqual(verdicts(check('The steering group meets every Tuesday at 10.00 am [Doc: notes.md, Chunk: 1].')), ['supported']);
+    assert.deepEqual(splitSentences('Der Pilot läuft vom 1.6. bis 31.8.2026. Danach folgt der Rollout.'), ['Der Pilot läuft vom 1.6. bis 31.8.2026.', 'Danach folgt der Rollout.']);
+  });
+
   it('flags a name in an English statement that the cited excerpt does not contain', () => {
     assert.deepEqual(verdicts(check('The planner is led by Lena Park [Doc: plan.md, Chunk: 1].')), ['supported']);
     const wrong = check('Lena Park leads development of the planner with Marta Silva [Doc: plan.md, Chunk: 1].');

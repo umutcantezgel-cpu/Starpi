@@ -5,8 +5,8 @@ retrieval-augmented generation (RAG) application:
 
 - **Source check:** compares every statement of an answer with the excerpts it cites: numbers in
   English and German formats (480,000 = 480.000 = 480k), dates, times, weekdays, codes, quotations
-  and wording, and names in English statements. It reports `supported`, `weak`, `unsupported` or `unchecked` per statement, with a
-  reason that names the missing value.
+  and wording, and names in English statements. It reports `supported`, `weak`, `unsupported` or
+  `unchecked` per statement, with a reason that names the missing value.
 - **Answer receipts** (`starpi.receipt/v1`): a JSON record of the cited excerpts with SHA-256
   fingerprints of the source files and passage offsets, and a verifier that reproduces every
   passage from the original files.
@@ -75,7 +75,8 @@ Verdicts and reason codes:
 | `unsupported` | `missing_fact`, `uncited_missing`, `quote_missing`, `unknown_citation`, `not_delivered` |
 | `weak` | `approximate`, `fact_elsewhere`, `fact_context`, `name_missing`, `uncited_found`, `from_conversation`, `low_overlap`, `label_mismatch`, a partial quotation |
 | `supported` | none: every fact is in a cited excerpt and at least half of the content words appear there |
-| `unchecked` | none: cited, but without facts and too short to compare |
+| `unchecked` | none: statement and excerpt are in different languages (facts only) and the statement has no facts |
+| `neutral` | not counted: headings, short fragments, statements with neither a citation nor a fact |
 
 ## Create and verify receipts
 

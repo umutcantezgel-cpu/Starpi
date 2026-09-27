@@ -401,7 +401,8 @@ export async function submitChat(rawText, options = {}) {
         const report = applyGrounding(messageEl, {
           scope: citations,
           sources: citationList.map((c, i) => ({ label: c.label, doc: c.doc, heading: c.heading, text: coverage[i].text, delivered: coverage[i].delivered })),
-          given: [prompt, ...history.slice(-4).map((h) => h.content)],
+          // What the user said may be repeated without a source; the model's own earlier answers may not.
+          given: [prompt, ...history.slice(-4).filter((h) => h.role === 'user').map((h) => h.content)],
           citedOnly: answer.engine === 'synthesizer',
         });
         const docs = new Map(listWorkspace().map((d) => [d.docId, d]));
