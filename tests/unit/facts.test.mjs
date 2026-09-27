@@ -61,6 +61,7 @@ describe('extractFacts (claims)', () => {
     assert.deepEqual(facts('The decision is due in June; the team may decide.'), ['month:mo:06']);
     assert.deepEqual(facts('Planned for Q3.'), ['code:c:q3']);
     assert.deepEqual(facts('Risk R-02 and ISO-27001 apply.'), ['code:c:r02', 'code:c:iso27001']);
+    assert.deepEqual(facts('Risk R‑03 and R–04 apply.'), ['code:c:r03', 'code:c:r04']);
   });
 
   it('reads numbers written as words by the same rule as digits', () => {
@@ -68,6 +69,9 @@ describe('extractFacts (claims)', () => {
     assert.deepEqual(facts('Der Start verschiebt sich um zwei Wochen.'), ['number:n:2']);
     assert.deepEqual(facts('Two of the risks are high.'), []);
     assert.deepEqual(facts('About twenty-five people and two hundred users.'), []);
+    assert.deepEqual(facts('Five designers and twelve developers.'), ['number:n:12']);
+    assert.deepEqual(facts('The pilot lasts two weeks and fifteen users take part.'), ['number:n:2', 'number:n:15']);
+    assert.deepEqual(facts('A hundred and twenty users.'), []);
   });
 
   it('reads quotations of two or more words', () => {
@@ -106,6 +110,16 @@ describe('indexSource and lookupFact', () => {
     assert.deepEqual(lookup('A pilot with 11 drivers.'), [null]);
     assert.deepEqual(lookup('Planned for 2026, with a check at 10 am.'), ['exact', null]);
     assert.deepEqual(lookup('Contracts are due in 2026, reviewed from 10 onwards.'), ['exact', 'exact']);
+  });
+
+  it('reads "4.05." at the end of a sentence as a decimal as well as a German date', () => {
+    const rate = indexSource('The interest rate is 4.05 % per year. Kickoff: 14.09.');
+    const lookup = (/** @type {string} */ s, /** @type {ReturnType<typeof indexSource>} */ idx = rate) => extractFacts(s).map((f) => lookup1(f, idx));
+    const lookup1 = (/** @type {any} */ f, /** @type {ReturnType<typeof indexSource>} */ idx) => lookupFact(f, idx).found;
+    assert.deepEqual(lookup('The interest rate is 4.05.'), ['exact']);
+    assert.deepEqual(lookup('The interest rate is 4.06.'), [null]);
+    assert.deepEqual(lookup('Kickoff on 14 September.'), ['exact']);
+    assert.deepEqual(lookup('The rate is 4.05 % per year.', indexSource('The interest rate is 4.05.')), ['exact']);
   });
 
   it('matches codes written with or without a hyphen', () => {

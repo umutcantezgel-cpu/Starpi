@@ -94,9 +94,10 @@ const SPELLED = new Map(
 );
 
 const SPELLED_FOLDED = new Map([...SPELLED].map(([w, n]) => [fold(w), n]));
-const NUMBER_WORD = `${alternation(SPELLED.keys())}|one|eins?|thousand|tausend|million|millionen|mio|billion|milliarden?|mrd|dozen|dutzend|and|und`;
-const SPELLED_PART_AFTER = new RegExp(`^[\\s-]+(?:${NUMBER_WORD})(?![\\p{L}])|^[\\s-]*\\d`, 'iu');
-const SPELLED_PART_BEFORE = new RegExp(`(?<![\\p{L}])(?:${NUMBER_WORD})[\\s-]+$|\\d[\\s-]*$`, 'iu');
+const NUMBER_WORD = `${alternation(SPELLED.keys())}|one|eins?|thousand|tausend|million|millionen|mio|billion|milliarden?|mrd|dozen|dutzend`;
+// "and" joins two number words ("a hundred and twenty"); between other words it is just "and".
+const SPELLED_PART_AFTER = new RegExp(`^[\\s-]+(?:(?:and|und)\\s+)?(?:${NUMBER_WORD})(?![\\p{L}])|^[\\s-]*\\d`, 'iu');
+const SPELLED_PART_BEFORE = new RegExp(`(?<![\\p{L}])(?:${NUMBER_WORD})(?:\\s+(?:and|und))?[\\s-]+$|\\d[\\s-]*$`, 'iu');
 
 /** Words that describe the sources rather than stating something. */
 const BOILERPLATE = new Set([
@@ -227,8 +228,9 @@ function findDates(text) {
   /**
    * @param {RegExpExecArray} m
    * @param {Array<{ y: number, mo: number, d: number }>} readings  y = 0 without a year, d = 0 without a day
+   * @param {boolean} [alsoNumber]  the text is also a decimal number
    */
-  const add = (m, readings) => {
+  const add = (m, readings, alsoNumber = false) => {
     const valid = readings.filter((r) => validDate(r.y, r.mo, r.d === 0 ? 1 : r.d));
     if (!valid.length) return;
     /** @type {Set<string>} */
@@ -250,11 +252,17 @@ function findDates(text) {
       if (y) nums.push(y);
       nums.push(mo);
     }
+    if (alsoNumber) {
+      // "4.05." ends an English sentence as often as "14.09." is a German date: both readings count.
+      const n = numKey(Number(m[0].replace(/\.$/, '')));
+      claim.add(n);
+      source.add(n);
+    }
     out.push({ start: m.index, end: m.index + m[0].length, surface: m[0].trim(), claim: [...claim], source: [...source], nums });
     masked = mask(masked, [[m.index, m.index + m[0].length]]);
   };
   const month = (/** @type {string} */ name) => MONTHS.get(fold(name).replace(/\.$/, '')) ?? MONTHS.get(name.toLowerCase().replace(/\.$/, '')) ?? 0;
-  /** @type {Array<[RegExp, (m: RegExpExecArray) => Array<{ y: number, mo: number, d: number }> | null]>} */
+  /** @type {Array<[RegExp, (m: RegExpExecArray) => Array<{ y: number, mo: number, d: number }> | null, boolean?]>} */
   const patterns = [
     [new RegExp(`${B}(\\d{4})-(\\d{1,2})-(\\d{1,2})${E}`, 'gu'), (m) => [{ y: Number(m[1]), mo: Number(m[2]), d: Number(m[3]) }]],
     [new RegExp(`${B}(\\d{1,2})\\.\\s?(\\d{1,2})\\.\\s?(\\d{4}|\\d{2})${E}`, 'gu'), (m) => [{ y: fullYear(m[3]), mo: Number(m[2]), d: Number(m[1]) }]],
@@ -281,20 +289,20 @@ function findDates(text) {
       },
     ],
     [new RegExp(`${B}(\\d{1,2})/(\\d{4})${E}`, 'gu'), (m) => [{ y: Number(m[2]), mo: Number(m[1]), d: 0 }]],
-    [new RegExp(`${B}(\\d{1,2})\\.(\\d{2})\\.(?![\\p{N}])`, 'gu'), (m) => [{ y: 0, mo: Number(m[2]), d: Number(m[1]) }]],
+    [new RegExp(`${B}(\\d{1,2})\\.(\\d{2})\\.(?![\\p{N}])`, 'gu'), (m) => [{ y: 0, mo: Number(m[2]), d: Number(m[1]) }], true],
     [
       new RegExp(`(?<![\\p{L}])(?:am|vom|bis|ab|zum|seit|den|dem)\\s+(\\d{1,2})\\.(\\d{1,2})\\.(?![\\p{N}])`, 'giu'),
       (m) => [{ y: 0, mo: Number(m[2]), d: Number(m[1]) }],
     ],
   ];
-  for (const [re, read] of patterns) {
+  for (const [re, read, alsoNumber] of patterns) {
     re.lastIndex = 0;
     let m;
     const snapshot = masked;
     while ((m = re.exec(snapshot)) !== null) {
       if (masked.slice(m.index, m.index + m[0].length).trim() !== m[0].trim()) continue; // overlaps an earlier date
       const readings = read(m);
-      if (readings) add(m, readings);
+      if (readings) add(m, readings, alsoNumber);
     }
   }
   return out;
@@ -372,7 +380,7 @@ function findWeekdaysAndMonths(text, claim) {
 function findCodes(text) {
   /** @type {Found[]} */
   const out = [];
-  const re = new RegExp(`${B}(?:\\p{L}{1,6}-\\d{1,6}|[\\p{L}\\p{N}]+)${E}`, 'gu');
+  const re = new RegExp(`${B}(?:\\p{L}{1,6}[-‐‑‒–]\\d{1,6}|[\\p{L}\\p{N}]+)${E}`, 'gu');
   let m;
   while ((m = re.exec(text)) !== null) {
     const token = m[0];
