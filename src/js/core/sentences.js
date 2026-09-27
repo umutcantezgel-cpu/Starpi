@@ -65,3 +65,14 @@ export function splitSentences(text) {
     .map((s) => text.slice(s.start, s.end).replace(/\s+/g, ' ').trim())
     .filter(Boolean);
 }
+
+/**
+ * The first `end` UTF-16 units of `text`, one fewer when that would split a surrogate pair (an
+ * emoji), so the result stays well-formed Unicode for hashing and JSON.
+ * @param {string} text
+ * @param {number} end
+ */
+export function safeSlice(text, end) {
+  const code = text.charCodeAt(end - 1);
+  return text.slice(0, code >= 0xd800 && code <= 0xdbff ? end - 1 : end);
+}

@@ -523,7 +523,8 @@
     "delete_history": "Chatverlauf löschen",
     "delete_history_confirm": "Alle in diesem Browser gespeicherten Chats und, falls synchronisiert, Ihren synchronisierten Chatverlauf löschen? Das lässt sich nicht rückgängig machen.",
     "delete_history_done": "Chatverlauf gelöscht.",
-    "delete_history_partial": "Die Chats in diesem Browser wurden gelöscht, der synchronisierte Verlauf aber gerade nicht. Versuchen Sie es erneut, wenn die Wissensdatenbank erreichbar ist."
+    "delete_history_partial": "Die Chats in diesem Browser wurden gelöscht, der synchronisierte Verlauf aber gerade nicht. Versuchen Sie es erneut, wenn die Wissensdatenbank erreichbar ist.",
+    "delete_history_busy": "Eine Antwort wird noch geschrieben. Warten Sie darauf oder stoppen Sie sie, und löschen Sie dann den Chatverlauf."
   },
   "sync": {
     "checking": "Wird geprüft…",

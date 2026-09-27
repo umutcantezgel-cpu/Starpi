@@ -523,7 +523,8 @@
     "delete_history": "Delete chat history",
     "delete_history_confirm": "Delete every chat stored in this browser and, if chats are synced, your synced chat history? This cannot be undone.",
     "delete_history_done": "Chat history deleted.",
-    "delete_history_partial": "The chats in this browser were deleted, but the synced history could not be deleted right now. Try again when the knowledge base is reachable."
+    "delete_history_partial": "The chats in this browser were deleted, but the synced history could not be deleted right now. Try again when the knowledge base is reachable.",
+    "delete_history_busy": "An answer is still being written. Wait for it or stop it, then delete the chat history."
   },
   "sync": {
     "checking": "Checking…",

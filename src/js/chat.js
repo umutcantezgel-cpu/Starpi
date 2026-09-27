@@ -272,13 +272,15 @@ async function answerWithOwnServer(req) {
 /** @param {boolean} on */
 function setBusy(on) {
   busy = on;
+  // Hiding the focused Stop button drops focus later, not at once: note it before hiding.
+  const stopHadFocus = document.activeElement === byId('stopBtn');
   setHidden(byId('stopBtn'), !on);
   const send = /** @type {HTMLButtonElement | null} */ (byId('sendBtn'));
   const input = byId('chatInput');
   // Disabling the focused Send button would drop keyboard focus to <body>; keep it in the input.
   if (on && send && document.activeElement === send) input?.focus();
   if (send) send.disabled = on;
-  if (!on && document.activeElement === document.body) input?.focus();
+  if (!on && (stopHadFocus || document.activeElement === document.body)) input?.focus();
   byId('chatMessages')?.setAttribute('aria-busy', String(on));
   setAssistantStatus(on ? 'status.generating' : 'status.ready');
 }

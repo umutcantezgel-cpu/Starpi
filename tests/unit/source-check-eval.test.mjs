@@ -1,10 +1,16 @@
 // Measures the source check on labelled answers (tests/fixtures/grounding/eval.json, see
-// scripts/eval-source-check.mjs). The thresholds are what the check achieves today, so a rule change
-// that makes it worse fails here; the planted errors that depend on meaning (a wrong person, a
-// negation, a value attached to the wrong thing) are reported, not required.
+// scripts/eval-source-check.mjs) and fails when a rule change makes any published result worse:
+// more flagged statements in faithful answers, or fewer planted errors flagged in any category.
+// Better results pass; then raise the numbers here and in the README.
 import assert from 'node:assert/strict';
 import { before, describe, it } from 'node:test';
 import { FACT_CATEGORIES, loadCorpora, loadItems, summarize } from '../../scripts/eval-source-check.mjs';
+
+/** Results as published in the README ("How well it works"): flagged = unsupported or weak. */
+const PUBLISHED = {
+  dev: { faithfulWeak: 0, flagged: { number: 15, date: 15, time: 6, weekday: 6, code: 5, entity: 3, relation: 2, negation: 0 } },
+  holdout: { faithfulWeak: 15, flagged: { number: 15, date: 16, time: 6, weekday: 6, code: 6, entity: 4, relation: 6, negation: 0 } },
+};
 
 /** @type {Record<string, ReturnType<typeof summarize>>} */
 const bySet = {};
@@ -16,25 +22,29 @@ before(async () => {
 });
 
 describe('source check evaluation', () => {
-  it('never marks a statement of a faithful answer unsupported', () => {
+  it('measures both sets', () => {
+    assert.deepEqual(Object.keys(bySet).sort(), Object.keys(PUBLISHED).sort());
+  });
+
+  it('never marks a statement of a faithful answer unsupported, and flags no more of them as weak', () => {
     for (const [set, s] of Object.entries(bySet)) {
-      assert.ok(s.faithful.answers >= 40, `${set}: ${s.faithful.answers} faithful answers`);
       assert.equal(s.faithful.falseAlarms, 0, `${set}: false alarms`);
-      assert.ok(s.faithful.weak <= Math.ceil(s.faithful.statements * 0.05), `${set}: ${s.faithful.weak} of ${s.faithful.statements} statements weak`);
+      assert.ok(s.faithful.weak <= PUBLISHED[/** @type {'dev' | 'holdout'} */ (set)].faithfulWeak, `${set}: ${s.faithful.weak} faithful statements weak`);
     }
   });
 
-  it('flags nearly every changed number, date, time, weekday and code', () => {
+  it('flags at least as many planted errors per category as published', () => {
     for (const [set, s] of Object.entries(bySet)) {
-      const facts = Object.entries(s.byCategory).filter(([c]) => FACT_CATEGORIES.includes(c));
-      const total = facts.reduce((n, [, c]) => n + c.total, 0);
-      const flagged = facts.reduce((n, [, c]) => n + c.caught + c.flagged, 0);
-      assert.ok(total >= 40, `${set}: ${total} fact errors`);
-      assert.ok(flagged / total >= 0.9, `${set}: ${flagged}/${total} fact errors flagged`);
+      for (const [category, min] of Object.entries(PUBLISHED[/** @type {'dev' | 'holdout'} */ (set)].flagged)) {
+        const c = s.byCategory[category];
+        assert.ok(c, `${set}: no ${category} items`);
+        assert.ok(c.caught + c.flagged >= min, `${set}: ${category} ${c.caught + c.flagged}/${c.total} flagged, published ${min}`);
+      }
       for (const category of ['date', 'time', 'weekday']) {
         const c = s.byCategory[category];
-        if (c) assert.equal(c.caught, c.total, `${set}: ${category} ${c.caught}/${c.total}`);
+        assert.equal(c.caught, c.total, `${set}: every changed ${category} is unsupported`);
       }
+      assert.ok(FACT_CATEGORIES.every((c) => c in s.byCategory));
     }
   });
 });

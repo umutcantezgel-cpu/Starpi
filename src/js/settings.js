@@ -2,7 +2,7 @@
 // Settings tab: compute mode, provider keys (session or device storage), own-server URL,
 // WebGPU model preference, and connection tests.
 import { deleteChatHistory } from './chat-store.js';
-import { resetConversation } from './chat.js';
+import { isChatBusy, resetConversation } from './chat.js';
 import { STORAGE_KEYS } from './config.js';
 import { canSyncChats } from './supabase.js';
 import { byId, onAction, onChange, setHidden } from './dom.js';
@@ -250,6 +250,11 @@ async function testProvider(provider) {
 }
 
 async function deleteHistory() {
+  // An answer still being written would store its turn again after the delete.
+  if (isChatBusy()) {
+    window.alert(t('settings.delete_history_busy'));
+    return;
+  }
   if (!window.confirm(t('settings.delete_history_confirm'))) return;
   const ok = await deleteChatHistory();
   resetConversation();

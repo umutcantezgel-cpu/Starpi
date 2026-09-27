@@ -162,8 +162,10 @@ function updateConnection(patch) {
 
 /**
  * Whether the project allows anonymous sign-ins, from the public auth settings. `null` when the
- * settings cannot be read; the sign-in is then simply attempted.
- * @returns {Promise<boolean | null>}
+ * answer says nothing about it or the request fails (the sign-in is then simply attempted); a
+ * timeout error when the project does not answer, so the app goes offline at once instead of
+ * waiting for a sign-in as well.
+ * @returns {Promise<boolean | null | DataError>}
  */
 async function anonymousSignInsEnabled() {
   try {
@@ -173,8 +175,10 @@ async function anonymousSignInsEnabled() {
     const settings = await res.json().catch(() => null);
     const enabled = settings?.external?.anonymous_users;
     return typeof enabled === 'boolean' ? enabled : null;
-  } catch {
-    return null;
+  } catch (err) {
+    // A timeout means the project does not answer: a sign-in would wait just as long.
+    const error = classifyError(err);
+    return error.kind === 'timeout' ? error : null;
   }
 }
 
@@ -186,9 +190,11 @@ async function ensureSession() {
     if (data.session) return null;
     // Asking first avoids a failed sign-in request (and a console error) on every visit to a
     // project that keeps anonymous sign-ins off.
-    if ((await anonymousSignInsEnabled()) === false) {
+    const allowed = await anonymousSignInsEnabled();
+    if (allowed === false) {
       return { kind: 'auth_disabled', message: 'Anonymous sign-ins are disabled', code: 'anonymous_provider_disabled' };
     }
+    if (allowed !== null && allowed !== true) return allowed;
     const signIn = await sb.auth.signInAnonymously();
     return signIn.error ? classifyError(signIn.error) : null;
   } catch (err) {

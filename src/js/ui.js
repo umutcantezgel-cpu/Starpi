@@ -62,7 +62,8 @@ export function syncSidebarAccess(open = false) {
   byId('menuButton')?.setAttribute('aria-expanded', String(!closed && !desktop?.matches));
 }
 
-desktop?.addEventListener?.('change', () => syncSidebarAccess(false));
+// A layout change keeps the sidebar's real state: it may still be open on the phone layout.
+desktop?.addEventListener?.('change', () => syncSidebarAccess(!byId('sidebar')?.classList.contains('-translate-x-full')));
 
 export function detectAndDisplayDevice() {
   const userAgent = navigator.userAgent || '';

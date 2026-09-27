@@ -11,7 +11,7 @@
 import { contentTokens, extractFacts, fold, guessLanguage, indexSource, lookupFact, tokenMatches } from './facts.js';
 import { STOPWORDS_EN } from '../rag/bm25.js';
 import { CITATION_PATTERN, LOOSE_LABEL_PATTERN, parseLabel } from './labels.js';
-import { sentenceSpans } from './sentences.js';
+import { safeSlice, sentenceSpans } from './sentences.js';
 
 /** Currency and unit words: they stand next to a value everywhere, so they say nothing about where it belongs. */
 const UNIT_WORDS = new Set(['eur', 'euro', 'euros', 'usd', 'dollar', 'dollars', 'chf', 'gbp', 'uhr', 'am', 'pm']);
@@ -60,6 +60,25 @@ export const THRESHOLDS = Object.freeze({
  *   | 'unknown_citation' | 'label_mismatch' | 'quote_missing' | 'approximate' | 'from_conversation'
  *   | 'not_delivered'} ReasonCode
  */
+
+/** Every reason code, in the order of the ReasonCode type. */
+export const REASON_CODES = Object.freeze(
+  /** @type {ReasonCode[]} */ ([
+    'missing_fact',
+    'fact_elsewhere',
+    'fact_context',
+    'name_missing',
+    'uncited_found',
+    'uncited_missing',
+    'low_overlap',
+    'unknown_citation',
+    'label_mismatch',
+    'quote_missing',
+    'approximate',
+    'from_conversation',
+    'not_delivered',
+  ]),
+);
 
 /**
  * @typedef {object} Reason
@@ -227,7 +246,7 @@ export function associate(blocks) {
 
 /**
  * A part of an excerpt that states at most one value, with its facts and words (the excerpt's
- * heading and document name count as part of every passage).
+ * heading counts as part of every passage).
  * @typedef {{ text: string, index: import('./facts.js').SourceIndex, context: import('./facts.js').SourceIndex, words: number, part: boolean }} Passage
  */
 
@@ -274,7 +293,9 @@ function passagesOf(source) {
     if (wraps && prev !== null && !/[.!?:;|]$/.test(prev) && /^\p{Ll}/u.test(text)) sentences[sentences.length - 1] = `${prev} ${text}`;
     else sentences.push(text);
   }
-  const extra = `\n${source.doc}\n${source.heading}`;
+  // The section heading belongs to every passage below it. The document name does not: a statement
+  // word that is also in the file name ("plan" in nebula-plan.md) says nothing about the passage.
+  const extra = `\n${source.heading}`;
   return sentences.flatMap((sentence) => {
     const parts = valueParts(sentence);
     return parts.map((text) => ({ text, index: indexSource(text), context: indexSource(`${text}${extra}`), words: wordsWithoutFacts(text).length, part: parts.length > 1 }));
@@ -459,8 +480,8 @@ export function checkSentence(draft, ctx) {
   if (delivered.length && !crossLanguage && (guessLanguage(draft.text) ?? ctx.lang) === 'en') {
     for (const name of namesOf(draft.text, facts)) {
       if (delivered.some((i) => tokenMatches(name.token, /** @type {import('./facts.js').SourceIndex} */ (ctx.indexes[i])))) continue;
-      if (ctx.given && tokenMatches(name.token, ctx.given)) continue;
-      reasons.push({ code: 'name_missing', level: 'weak', fact: name.surface, cites: delivered });
+      if (ctx.given && tokenMatches(name.token, ctx.given)) reasons.push({ code: 'from_conversation', level: 'weak', fact: name.surface });
+      else reasons.push({ code: 'name_missing', level: 'weak', fact: name.surface, cites: delivered });
     }
   }
 
@@ -499,7 +520,7 @@ export function checkSentence(draft, ctx) {
  */
 function clip(text, max) {
   const flat = text.replace(/\s+/g, ' ').trim();
-  return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
+  return flat.length > max ? `${safeSlice(flat, max - 1).trimEnd()}…` : flat;
 }
 
 /**

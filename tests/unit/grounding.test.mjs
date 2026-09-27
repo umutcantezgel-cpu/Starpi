@@ -179,6 +179,8 @@ describe('groundAnswer', () => {
     // Words that open a sentence, a list item or a clause after a colon are not taken for names.
     assert.deepEqual(verdicts(check('Summary: The approved budget is 480,000 EUR [Doc: plan.md, Chunk: 1].')), ['supported']);
     assert.deepEqual(verdicts(check('Marta says Nebula launches on 12 May 2027 [Doc: plan.md, Chunk: 1].', sources(), { given: ['What did Marta say?'] })), ['supported']);
+    // A name that only the question contains is reported as coming from the conversation.
+    assert.deepEqual(verdicts(check('The planner that Marta mentioned launches on 12 May 2027 [Doc: plan.md, Chunk: 1].', sources(), { given: ['What did Marta say?'] })), ['weak:from_conversation']);
     const de = sources([{ text: 'Das Projekt Nebula startet am 12. Mai 2027. Die Entwicklung leitet Lena Park.' }]);
     assert.deepEqual(verdicts(check('Die Entwicklung leitet Lena Park, die Planung übernimmt das Kernteam [Doc: plan.md, Chunk: 1].', de)), ['supported']);
   });

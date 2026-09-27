@@ -3,6 +3,7 @@
 // device, and as a fallback when the search RPC is unavailable) and context assembly for prompts.
 
 import { citationLabel, labelName } from './core/labels.js';
+import { safeSlice } from './core/sentences.js';
 
 export { CITATION_PATTERN, citationLabel } from './core/labels.js';
 
@@ -137,7 +138,7 @@ export function assignCitations(hits, limits) {
       chunk,
       source: h.workspace ? 'workspace' : 'knowledge',
       heading: h.heading.replace(/^#+\s*/, ''),
-      text: truncated ? `${h.content.slice(0, limits.excerptChars)}…` : h.content,
+      text: truncated ? `${safeSlice(h.content, limits.excerptChars)}…` : h.content,
       truncated,
       score: h.rank,
       documentId: h.documentId ?? null,
@@ -165,7 +166,7 @@ export function buildContext(citations, limits) {
     const separator = blocks.length ? 2 : 0;
     const room = limits.maxChars - used - separator - open.length - close.length;
     if (room < Math.min(MIN_EXCERPT_CHARS, c.text.length)) return;
-    const text = c.text.length <= room ? c.text : `${c.text.slice(0, room - 1).trimEnd()}…`;
+    const text = c.text.length <= room ? c.text : `${safeSlice(c.text, room - 1).trimEnd()}…`;
     blocks.push(`${open}${text}${close}`);
     used += separator + open.length + text.length + close.length;
   });

@@ -138,7 +138,17 @@
             "version": { "type": "integer", "minimum": 0 }
           }
         },
-        "counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["supported", "weak", "unsupported", "unchecked"],
+          "properties": {
+            "supported": { "type": "integer", "minimum": 0 },
+            "weak": { "type": "integer", "minimum": 0 },
+            "unsupported": { "type": "integer", "minimum": 0 },
+            "unchecked": { "type": "integer", "minimum": 0 }
+          }
+        },
         "sentences": { "type": "array", "maxItems": 500, "items": { "$ref": "#/$defs/sentence" } }
       }
     },

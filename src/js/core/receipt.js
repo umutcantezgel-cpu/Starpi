@@ -12,7 +12,7 @@
 // Pure: WebCrypto (crypto.subtle) only, so it runs in the browser, in workers and in Node 20+.
 import { chunkText, CHUNKER } from '../rag/chunker.js';
 import { guessLanguage, indexSource } from './facts.js';
-import { checkSentence, GROUNDING, THRESHOLDS } from './grounding.js';
+import { checkSentence, GROUNDING, REASON_CODES, THRESHOLDS } from './grounding.js';
 
 export const RECEIPT_SCHEMA = 'starpi.receipt/v1';
 
@@ -234,8 +234,14 @@ export function validateReceipt(value) {
    */
   const int = (v, path, min = 0) => (Number.isInteger(v) && /** @type {number} */ (v) >= min) || fail(path, 'integer');
   const hex = (/** @type {unknown} */ v, /** @type {string} */ path) => (typeof v === 'string' && HEX64.test(v)) || fail(path, 'sha256');
-  const oneOf = (/** @type {unknown} */ v, /** @type {string} */ path, /** @type {Array<string | null>} */ list) =>
+  const oneOf = (/** @type {unknown} */ v, /** @type {string} */ path, /** @type {ReadonlyArray<string | null>} */ list) =>
     list.includes(/** @type {string | null} */ (v)) || fail(path, `one of ${list.join('|')}`);
+  // Members the format does not define are refused, as in the JSON Schema: a receipt cannot carry
+  // extra fields (a fake "signature", say) that a verifier would silently accept.
+  const only = (/** @type {Record<string, unknown>} */ v, /** @type {string} */ path, /** @type {string[]} */ keys) => {
+    const extra = Object.keys(v).find((k) => !keys.includes(k));
+    return extra === undefined || fail(path ? `${path}.${extra}` : extra, 'unknown member');
+  };
 
   if (!isObj(value)) return { ok: false, error: 'not_a_receipt', path: '' };
   const r = /** @type {Record<string, any>} */ (value);
@@ -244,23 +250,26 @@ export function validateReceipt(value) {
       ? { ok: false, error: 'unsupported_version', path: 'schema' }
       : { ok: false, error: 'not_a_receipt', path: 'schema' };
   }
+  only(r, '', ['schema', 'id', 'createdAt', 'generator', 'answer', 'question', 'citations', 'grounding']);
   hex(r.id, 'id');
   str(r.createdAt, 'createdAt', 64);
   if (!isObj(r.generator)) fail('generator', 'object');
-  else str(r.generator.name, 'generator.name', 40) && str(r.generator.version, 'generator.version', 40);
+  else only(r.generator, 'generator', ['name', 'version']) && str(r.generator.name, 'generator.name', 40) && str(r.generator.version, 'generator.version', 40);
   if (!isObj(r.answer)) fail('answer', 'object');
   else {
+    only(r.answer, 'answer', ['text', 'sha256', 'engine', 'locale']);
     str(r.answer.text, 'answer.text', RECEIPT_LIMITS.answerChars);
     hex(r.answer.sha256, 'answer.sha256');
     str(r.answer.engine, 'answer.engine', 40);
     str(r.answer.locale, 'answer.locale', 10);
   }
-  if (r.question !== null && !(isObj(r.question) && str(r.question.text, 'question.text', RECEIPT_LIMITS.questionChars))) fail('question', 'object');
+  if (r.question !== null && !(isObj(r.question) && only(r.question, 'question', ['text']) && str(r.question.text, 'question.text', RECEIPT_LIMITS.questionChars))) fail('question', 'object');
   if (!Array.isArray(r.citations) || r.citations.length > RECEIPT_LIMITS.citations) fail('citations', 'array');
   else {
     r.citations.forEach((c, i) => {
       const p = `citations[${i}]`;
       if (!isObj(c)) return fail(p, 'object');
+      only(c, p, ['label', 'doc', 'heading', 'source', 'delivered', 'deliveredChars', 'excerpt', 'verifiable', 'document', 'chunk', 'knowledge']);
       str(c.label, `${p}.label`, RECEIPT_LIMITS.nameChars);
       str(c.doc, `${p}.doc`, RECEIPT_LIMITS.nameChars);
       str(c.heading, `${p}.heading`, 1000);
@@ -273,6 +282,7 @@ export function validateReceipt(value) {
       if (typeof c.verifiable !== 'boolean') fail(`${p}.verifiable`, 'boolean');
       if (!isObj(c.excerpt)) fail(`${p}.excerpt`, 'object');
       else {
+        only(c.excerpt, `${p}.excerpt`, ['text', 'sha256', 'truncated']);
         optStr(c.excerpt.text, `${p}.excerpt.text`, RECEIPT_LIMITS.excerptChars);
         hex(c.excerpt.sha256, `${p}.excerpt.sha256`);
         if (typeof c.excerpt.truncated !== 'boolean') fail(`${p}.excerpt.truncated`, 'boolean');
@@ -280,6 +290,7 @@ export function validateReceipt(value) {
       if (c.document !== undefined) {
         const d = c.document;
         if (!isObj(d)) return fail(`${p}.document`, 'object');
+        only(d, `${p}.document`, ['name', 'kind', 'bytes', 'fileSha256', 'textSha256', 'textChars', 'pages', 'extractor', 'chunker']);
         str(d.name, `${p}.document.name`, RECEIPT_LIMITS.nameChars);
         str(d.kind, `${p}.document.kind`, 20);
         int(d.bytes, `${p}.document.bytes`);
@@ -288,9 +299,10 @@ export function validateReceipt(value) {
         int(d.textChars, `${p}.document.textChars`);
         if (d.pages !== null) int(d.pages, `${p}.document.pages`);
         if (!isObj(d.extractor)) fail(`${p}.document.extractor`, 'object');
-        else str(d.extractor.id, `${p}.document.extractor.id`, 40) && int(d.extractor.version, `${p}.document.extractor.version`) && optStr(d.extractor.pdfjs, `${p}.document.extractor.pdfjs`, 40);
+        else only(d.extractor, `${p}.document.extractor`, ['id', 'version', 'pdfjs']) && str(d.extractor.id, `${p}.document.extractor.id`, 40) && int(d.extractor.version, `${p}.document.extractor.version`) && optStr(d.extractor.pdfjs, `${p}.document.extractor.pdfjs`, 40);
         if (!isObj(d.chunker)) fail(`${p}.document.chunker`, 'object');
         else {
+          only(d.chunker, `${p}.document.chunker`, ['id', 'version', 'size', 'overlap']);
           str(d.chunker.id, `${p}.document.chunker.id`, 40);
           int(d.chunker.version, `${p}.document.chunker.version`);
           int(d.chunker.size, `${p}.document.chunker.size`, 1);
@@ -300,12 +312,13 @@ export function validateReceipt(value) {
       if (c.chunk !== undefined) {
         const k = c.chunk;
         if (!isObj(k)) return fail(`${p}.chunk`, 'object');
+        only(k, `${p}.chunk`, ['index', 'start', 'end', 'sha256']);
         int(k.index, `${p}.chunk.index`);
         int(k.start, `${p}.chunk.start`);
         int(k.end, `${p}.chunk.end`, Number.isInteger(k.start) ? k.start : 0);
         if (k.sha256 !== null) hex(k.sha256, `${p}.chunk.sha256`);
       }
-      if (c.knowledge !== undefined && !(isObj(c.knowledge) && optStr(c.knowledge.documentId, `${p}.knowledge.documentId`, 100))) fail(`${p}.knowledge`, 'object');
+      if (c.knowledge !== undefined && !(isObj(c.knowledge) && only(c.knowledge, `${p}.knowledge`, ['documentId']) && optStr(c.knowledge.documentId, `${p}.knowledge.documentId`, 100))) fail(`${p}.knowledge`, 'object');
       return true;
     });
   }
@@ -313,15 +326,19 @@ export function validateReceipt(value) {
     const g = r.grounding;
     if (!isObj(g) || !isObj(g.algorithm) || !isObj(g.counts) || !Array.isArray(g.sentences) || g.sentences.length > RECEIPT_LIMITS.sentences) fail('grounding', 'object');
     else {
+      only(g, 'grounding', ['algorithm', 'counts', 'sentences']);
+      only(g.algorithm, 'grounding.algorithm', ['id', 'version']);
+      only(g.counts, 'grounding.counts', ['supported', 'weak', 'unsupported', 'unchecked']);
+      for (const k of ['supported', 'weak', 'unsupported', 'unchecked']) int(g.counts[k], `grounding.counts.${k}`);
       str(g.algorithm.id, 'grounding.algorithm.id', 40);
       int(g.algorithm.version, 'grounding.algorithm.version');
-      for (const [k, v] of Object.entries(g.counts)) int(v, `grounding.counts.${k}`);
       const n = Array.isArray(r.citations) ? r.citations.length : 0;
       const cites = (/** @type {unknown} */ list, /** @type {string} */ path) =>
         (Array.isArray(list) && list.every((i) => Number.isInteger(i) && i >= 0 && i < n)) || fail(path, 'citation indexes');
       g.sentences.forEach((/** @type {any} */ s, /** @type {number} */ i) => {
         const p = `grounding.sentences[${i}]`;
         if (!isObj(s)) return fail(p, 'object');
+        only(s, p, ['text', 'cites', 'citeSource', 'verdict', 'reasons']);
         str(s.text, `${p}.text`, RECEIPT_LIMITS.sentenceChars);
         cites(s.cites, `${p}.cites`);
         oneOf(s.citeSource, `${p}.citeSource`, ['own', 'block', 'leadin', 'answer', null]);
@@ -330,7 +347,8 @@ export function validateReceipt(value) {
         s.reasons.forEach((/** @type {any} */ reason, /** @type {number} */ j) => {
           const q = `${p}.reasons[${j}]`;
           if (!isObj(reason)) return fail(q, 'object');
-          str(reason.code, `${q}.code`, 40);
+          only(reason, q, ['code', 'level', 'fact', 'found', 'cites', 'other']);
+          oneOf(reason.code, `${q}.code`, REASON_CODES);
           oneOf(reason.level, `${q}.level`, ['weak', 'unsupported']);
           for (const key of ['fact', 'found']) if (reason[key] !== undefined) str(reason[key], `${q}.${key}`, 500);
           for (const key of ['cites', 'other']) if (reason[key] !== undefined) cites(reason[key], `${q}.${key}`);
@@ -491,7 +509,9 @@ export async function verifyReceipt(receipt, files, tools) {
     let needsConversation = false;
     for (const [i, s] of receipt.grounding.sentences.entries()) {
       if (s.reasons.some((r) => r.code === 'from_conversation')) needsConversation = true;
-      if (s.cites.some((c) => sourceTexts[c] === null)) continue;
+      // A verdict can also depend on excerpts the statement does not cite (a value found in another
+      // excerpt): when one of those is not available either, the statement cannot be recomputed.
+      if (s.cites.some((c) => sourceTexts[c] === null) || s.reasons.some((r) => r.other?.some((c) => sourceTexts[c] === null))) continue;
       const bad = s.reasons
         .filter((r) => r.code === 'unknown_citation' || r.code === 'label_mismatch')
         .map((r) => ({ label: r.found ?? '', resolved: r.code === 'label_mismatch' && r.cites?.length ? r.cites[0] : null }));

@@ -67,9 +67,14 @@ function addQuestions(notice) {
  * for this demo, not generated, and says so; its citations point at the real sample chunks.
  */
 async function showCheckDemo() {
-  const set = SAMPLES[getLocale() === 'de' ? 'de' : 'en'];
+  // The sample set in the workspace decides the language of the example, which may differ from the
+  // interface language after a switch.
+  const present = new Set(listWorkspace().map((d) => d.name));
+  const order = /** @type {Array<'en' | 'de'>} */ (getLocale() === 'de' ? ['de', 'en'] : ['en', 'de']);
+  const lang = order.find((l) => SAMPLES[l].every((p) => present.has(p.split('/').pop() ?? ''))) ?? order[0];
+  const set = SAMPLES[lang];
   const names = new Set(set.map((p) => p.split('/').pop()));
-  const find = async (/** @type {string} */ key) => (await searchWorkspace(t(key), 5)).find((h) => names.has(h.docName));
+  const find = async (/** @type {string} */ key) => (await searchWorkspace(t(key, undefined, lang), 5)).find((h) => names.has(h.docName));
   const hits = [await find('demo.flawed_find_budget'), await find('demo.flawed_find_meeting'), await find('demo.flawed_find_launch')];
   if (hits.some((h) => !h)) {
     appendNotice({ icon: 'triangle-alert', tone: 'warn', title: 'demo.check_missing' });
@@ -85,7 +90,7 @@ async function showCheckDemo() {
     return escapeMarkdown(c?.label ?? '');
   };
   appendMessage('user', t('demo.check'));
-  const el = appendMessage('assistant', t('demo.flawed_answer', { budget: labelOf(0), meeting: labelOf(1), launch: labelOf(2) }), {
+  const el = appendMessage('assistant', t('demo.flawed_answer', { budget: labelOf(0), meeting: labelOf(1), launch: labelOf(2) }, lang), {
     citations: scope,
     badge: 'demo.flawed_badge',
   });

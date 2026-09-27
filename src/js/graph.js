@@ -56,6 +56,8 @@ function renderEntityList() {
   const list = byId('graphEntityList');
   if (!list) return;
   setHidden(byId('graphEntityListLabel'), graph.entities.length === 0);
+  // Rebuilding the list removes the focused button; keyboard focus returns to its replacement.
+  const focused = list.contains(document.activeElement) ? /** @type {HTMLElement} */ (document.activeElement).dataset.arg : undefined;
   list.replaceChildren(
     ...graph.entities.map((entity) => {
       const li = document.createElement('li');
@@ -70,6 +72,7 @@ function renderEntityList() {
       return li;
     }),
   );
+  if (focused !== undefined) /** @type {HTMLElement | null} */ (list.querySelector(`button[data-arg="${CSS.escape(focused)}"]`))?.focus();
 }
 
 export function renderGraph() {
@@ -304,12 +307,16 @@ function selectEntity(id) {
   showEntityDetails(graph.entities.find((e) => e.id === id) ?? null);
 }
 
-function closeEntityModal() {
-  closeDialog(byId('entityModal'));
+function clearEntityForm() {
   const name = /** @type {HTMLInputElement | null} */ (byId('newEntityName'));
   const desc = /** @type {HTMLTextAreaElement | null} */ (byId('newEntityDesc'));
   if (name) name.value = '';
   if (desc) desc.value = '';
+}
+
+function closeEntityModal() {
+  // The form is cleared by onClose, also when Escape closes the dialog.
+  closeDialog(byId('entityModal'));
 }
 
 async function saveEntity() {
@@ -331,7 +338,7 @@ async function saveEntity() {
 
 export function initGraph() {
   onAction('reload-graph', () => loadKnowledgeGraph());
-  onAction('open-entity-modal', (el) => openDialog(byId('entityModal'), { trigger: el, initialFocus: byId('newEntityName') }));
+  onAction('open-entity-modal', (el) => openDialog(byId('entityModal'), { trigger: el, initialFocus: byId('newEntityName'), onClose: clearEntityForm }));
   onAction('close-entity-modal', () => closeEntityModal());
   onAction('save-entity', () => saveEntity());
   onAction('select-entity', (el) => selectEntity(el.dataset.arg ?? ''));

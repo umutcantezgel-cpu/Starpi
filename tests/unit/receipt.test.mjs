@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { blocksFromMarkdown, groundAnswer } from '../../src/js/core/grounding.js';
+import { blocksFromMarkdown, groundAnswer, REASON_CODES } from '../../src/js/core/grounding.js';
 import { buildReceipt, canonicalJson, RECEIPT_SCHEMA, sha256Hex, validateReceipt, verifyReceipt } from '../../src/js/core/receipt.js';
 import { CHUNKER, chunkText } from '../../src/js/rag/chunker.js';
 import { EXTRACTOR, extractText } from '../../src/js/rag/parser.js';
@@ -127,6 +127,14 @@ describe('validateReceipt', () => {
     const negative = structuredClone(r);
     negative.citations[0].chunk.start = -1;
     assert.equal(validateReceipt(negative).ok, false);
+    // Members and reason codes the format does not define are refused, as in the JSON Schema.
+    assert.deepEqual(validateReceipt({ ...r, signature: 'trust me' }), { ok: false, error: 'unknown member', path: 'signature' });
+    const extraCite = structuredClone(r);
+    extraCite.citations[0].note = 'x';
+    assert.deepEqual(validateReceipt(extraCite), { ok: false, error: 'unknown member', path: 'citations[0].note' });
+    const badCode = structuredClone(r);
+    badCode.grounding.sentences[0].reasons = [{ code: 'totally_fine', level: 'weak' }];
+    assert.equal(validateReceipt(badCode).ok, false);
   });
 });
 
@@ -324,6 +332,7 @@ describe('docs/spec/receipt.schema.json', () => {
     const typedef = /@typedef \{([^}]+)\} ReasonCode/.exec(source)?.[1] ?? '';
     const codes = [...typedef.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
     assert.deepEqual([...schema.$defs.reason.properties.code.enum].sort(), codes);
+    assert.deepEqual([...REASON_CODES].sort(), codes);
     assert.deepEqual(schema.$defs.sentence.properties.verdict.enum, ['supported', 'weak', 'unsupported', 'unchecked']);
     assert.equal(schema.properties.schema.const, RECEIPT_SCHEMA);
   });
