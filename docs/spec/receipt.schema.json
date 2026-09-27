@@ -52,11 +52,12 @@
       "additionalProperties": false,
       "required": ["label", "doc", "heading", "source", "delivered", "excerpt", "verifiable"],
       "properties": {
-        "label": { "type": "string", "maxLength": 400 },
-        "doc": { "type": "string", "maxLength": 400 },
+        "label": { "type": "string", "maxLength": 600 },
+        "doc": { "type": "string", "maxLength": 600 },
         "heading": { "type": "string", "maxLength": 1000 },
         "source": { "enum": ["workspace", "knowledge"] },
         "delivered": { "enum": ["full", "partial", "omitted"] },
+        "deliveredChars": { "type": "integer", "minimum": 0, "maximum": 20000, "description": "Only for delivered partial: how many of the excerpt's first characters reached the model." },
         "excerpt": {
           "type": "object",
           "additionalProperties": false,
@@ -93,7 +94,7 @@
       "additionalProperties": false,
       "required": ["name", "kind", "bytes", "fileSha256", "textSha256", "textChars", "pages", "extractor", "chunker"],
       "properties": {
-        "name": { "type": "string", "maxLength": 400 },
+        "name": { "type": "string", "maxLength": 600 },
         "kind": { "type": "string", "maxLength": 20, "description": "pdf, md, txt, csv, json or log" },
         "bytes": { "type": "integer", "minimum": 0 },
         "fileSha256": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/sha256" }] },
@@ -146,7 +147,7 @@
       "additionalProperties": false,
       "required": ["text", "cites", "citeSource", "verdict", "reasons"],
       "properties": {
-        "text": { "type": "string", "maxLength": 5000 },
+        "text": { "type": "string", "maxLength": 20000 },
         "cites": { "$ref": "#/$defs/citationIndexes" },
         "citeSource": { "enum": ["own", "block", "leadin", "answer", null] },
         "verdict": { "enum": ["supported", "weak", "unsupported", "unchecked"] },

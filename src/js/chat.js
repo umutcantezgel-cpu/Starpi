@@ -419,6 +419,7 @@ export async function submitChat(rawText, options = {}) {
               heading: c.heading,
               source: c.source,
               delivered: coverage[i].delivered,
+              deliveredChars: coverage[i].delivered === 'partial' && c.text.startsWith(coverage[i].text) ? coverage[i].text.length : undefined,
               text: c.text,
               truncated: c.truncated,
               documentId: c.source === 'knowledge' ? c.documentId : null,

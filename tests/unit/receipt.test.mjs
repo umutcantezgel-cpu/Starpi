@@ -164,6 +164,51 @@ describe('verifyReceipt', () => {
     assert.equal(report.citations[0].passage, 'match', 'the file passage itself is still genuine');
   });
 
+  it('recomputes a cut excerpt on the part that reached the model, so a genuine receipt has no differences', async () => {
+    const excerpt = `${'The steering group reviewed the plan in detail. '.repeat(8)}The approved budget is 480,000 EUR.`;
+    const label = '[Doc: Budget 2026, Chunk: 1]';
+    const delivered = excerpt.slice(0, 200);
+    const answer = `The approved budget is 480,000 EUR ${label}.`;
+    const sources = [{ label, doc: 'Budget 2026', heading: '', text: delivered, delivered: /** @type {const} */ ('partial') }];
+    const grounding = groundAnswer(blocksFromMarkdown(answer, sources), sources);
+    assert.equal(grounding.sentences[0].verdict, 'unsupported', 'the value is in the part that did not reach the model');
+    const citation = { label, doc: 'Budget 2026', heading: '', source: /** @type {const} */ ('knowledge'), delivered: /** @type {const} */ ('partial'), text: excerpt, truncated: false, documentId: 'kb-2' };
+    const withLength = await buildReceipt({ createdAt: '2026-09-24T01:00:00.000Z', version: '1.1.0', answer: { text: answer, engine: 'cloud', locale: 'en' }, question: 'Budget?', grounding, citations: [{ ...citation, deliveredChars: delivered.length }] });
+    assert.equal(validateReceipt(JSON.parse(JSON.stringify(withLength))).ok, true);
+    const ok = await verifyReceipt(withLength, [], tools);
+    assert.equal(ok.grounding?.recomputed, 1);
+    assert.deepEqual(ok.grounding?.differences, []);
+    // Without the delivered length the statement cannot be recomputed and is left out, not reported as changed.
+    const without = await buildReceipt({ createdAt: '2026-09-24T01:00:00.000Z', version: '1.1.0', answer: { text: answer, engine: 'cloud', locale: 'en' }, question: 'Budget?', grounding, citations: [citation] });
+    const skipped = await verifyReceipt(without, [], tools);
+    assert.equal(skipped.grounding?.recomputed, 0);
+    assert.deepEqual(skipped.grounding?.differences, []);
+  });
+
+  it('accepts every receipt the source check can produce: many reasons, long statements, long titles', async () => {
+    const title = `Budget ${'x'.repeat(490)}`;
+    const label = `[Doc: ${title}, Chunk: 1]`;
+    const values = Array.from({ length: 22 }, (_, i) => `${11 + i}000 EUR`).join(', ');
+    const long = `The plan lists ${'many words about the project '.repeat(220)}and ends here`;
+    const answer = `The quarterly costs were ${values} ${label}.\n\n${long} ${label}.`;
+    const sources = [{ label, doc: title, heading: '', text: 'The approved budget is 480,000 EUR.', delivered: /** @type {const} */ ('full') }];
+    const grounding = groundAnswer(blocksFromMarkdown(answer, sources), sources);
+    assert.ok(grounding.sentences[0].reasons.length > 20);
+    assert.ok(grounding.sentences[1].text.length > 5000);
+    const r = await buildReceipt({
+      createdAt: '2026-09-24T01:00:00.000Z',
+      version: '1.1.0',
+      answer: { text: answer, engine: 'cloud', locale: 'en' },
+      question: 'Costs?',
+      grounding,
+      citations: [{ label, doc: title, heading: '', source: 'knowledge', delivered: 'full', text: sources[0].text, truncated: false, documentId: 'kb-3' }],
+    });
+    assert.equal(r.grounding?.sentences[0].verdict, 'unsupported');
+    const parsed = validateReceipt(JSON.parse(JSON.stringify(r)));
+    assert.equal(parsed.ok, true, JSON.stringify(parsed));
+    assert.deepEqual((await verifyReceipt(r, [], tools)).grounding?.differences, []);
+  });
+
   it('keeps passages verifiable when the chunking rules change', async () => {
     const r = structuredClone(await receiptFor(MD, 'plan.md', 'The budget is 480,000 EUR {label}.'));
     const doc = /** @type {NonNullable<typeof r.citations[0]['document']>} */ (r.citations[0].document);

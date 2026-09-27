@@ -103,6 +103,7 @@ normalized (UTF-8, `\n` line ends, no control characters); for a PDF they always
 | `doc`, `heading` | string | Document name as used in the label, and the section heading (knowledge base) or `""`. |
 | `source` | `workspace` or `knowledge` | Where the excerpt came from. |
 | `delivered` | `full`, `partial` or `omitted` | How much of the excerpt reached the model after the app fitted the context to the model's budget. Extractive answers always have `full`. |
+| `deliveredChars` | integer, optional | Only with `partial`: how many of the excerpt's first characters reached the model. The source check of the answer ran on exactly that part. |
 | `excerpt` | object | `text` (the excerpt, or `null` when excerpts were left out on export), `sha256` of the excerpt text, `truncated` (the excerpt was shortened to 1,600 characters and ends with `…`). |
 | `verifiable` | boolean | `true` for a workspace excerpt with a file fingerprint and chunk offsets. |
 | `document` | object | Workspace only: `name`, `kind` (`pdf`, `md`, `txt`, `csv`, `json`, `log`), `bytes`, `fileSha256` (null where WebCrypto is unavailable), `textSha256`, `textChars`, `pages` (PDF) or `null`, `extractor` and `chunker` (see [Versions](#versions)). |
@@ -124,12 +125,14 @@ are left out. Each sentence has:
 - `verdict`: `supported`, `weak`, `unsupported` or `unchecked`;
 - `reasons`: objects with `code`, `level` (`weak` or `unsupported`) and, depending on the code,
   `fact` (the value that was looked for), `cites`, `other` (citations where the value was found
-  instead) and `found`.
+  instead) and `found`. At most the first 20 reasons of a statement are recorded; they already
+  decide its verdict.
 
-Reason codes: `missing_fact`, `fact_elsewhere`, `fact_context`, `name_missing`, `uncited_found`, `uncited_missing`,
-`low_overlap`, `unknown_citation`, `label_mismatch`, `quote_missing`, `approximate`,
-`from_conversation` and `not_delivered`. For `fact_context`, `found` holds the passage of the cited
-excerpt where the value stands (at most 160 characters). Their wording in the app is in `src/locales/*.json` under `grounding.reason_*`.
+Reason codes: `missing_fact`, `fact_elsewhere`, `fact_context`, `name_missing`, `uncited_found`,
+`uncited_missing`, `low_overlap`, `unknown_citation`, `label_mismatch`, `quote_missing`,
+`approximate`, `from_conversation` and `not_delivered`. For `fact_context`, `found` holds the
+passage of the cited excerpt where the value stands (at most 160 characters). Their wording in the
+app is in `src/locales/*.json` under `grounding.reason_*`.
 
 ## Hashing and offsets
 
@@ -186,7 +189,8 @@ The verifier first checks the receipt against the schema and its size limits, th
 5. **L3, chunk**: chunks the text with the recorded size and overlap and compares the bounds of the
    recorded chunk.
 6. **Source check**: recomputes the verdict of every statement whose cited excerpts are available
-   and lists the statements whose verdict differs. Verdicts that depended on earlier chat turns
+   and lists the statements whose verdict differs. For a partly delivered excerpt it uses the first
+   `deliveredChars` characters; without that field, statements citing it are not recomputed. Verdicts that depended on earlier chat turns
    (`from_conversation`) cannot be reproduced, because receipts do not contain the conversation.
 
 Knowledge-base excerpts are reported as not verifiable. An excerpt whose text does not match its
@@ -242,10 +246,11 @@ receipt**.
 | --- | --- |
 | Receipt file | 2,000,000 bytes |
 | Citations | 64 |
-| Checked statements | 500, each with at most 20 reasons |
+| Checked statements | 500, each at most 20,000 characters with at most 20 reasons |
 | Answer text | 200,000 characters |
 | Question text | 10,000 characters |
 | Excerpt text | 20,000 characters |
+| Labels and document names | 600 characters |
 | Other strings | 1,000 characters or less, depending on the field |
 
 A receipt above a limit, or with a field of the wrong type, is rejected with the path of the first

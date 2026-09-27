@@ -12,7 +12,7 @@
 // Pure: WebCrypto (crypto.subtle) only, so it runs in the browser, in workers and in Node 20+.
 import { chunkText, CHUNKER } from '../rag/chunker.js';
 import { guessLanguage, indexSource } from './facts.js';
-import { checkSentence, GROUNDING } from './grounding.js';
+import { checkSentence, GROUNDING, THRESHOLDS } from './grounding.js';
 
 export const RECEIPT_SCHEMA = 'starpi.receipt/v1';
 
@@ -21,6 +21,8 @@ export const RECEIPT_LIMITS = Object.freeze({
   citations: 64,
   sentences: 500,
   reasons: 20,
+  sentenceChars: THRESHOLDS.maxChars,
+  nameChars: 600,
   answerChars: 200_000,
   questionChars: 10_000,
   excerptChars: 20_000,
@@ -47,6 +49,7 @@ export const RECEIPT_LIMITS = Object.freeze({
  * @property {string} heading
  * @property {'workspace' | 'knowledge'} source
  * @property {'full' | 'partial' | 'omitted'} delivered  how much of the excerpt reached the model
+ * @property {number} [deliveredChars]  for a partly delivered excerpt: how many of its first characters reached the model
  * @property {{ text: string | null, sha256: string, truncated: boolean }} excerpt
  * @property {boolean} verifiable  a workspace excerpt with a file fingerprint
  * @property {ReceiptDocument} [document]
@@ -81,7 +84,7 @@ export const RECEIPT_LIMITS = Object.freeze({
  * @property {string} version  app version
  * @property {{ text: string, engine: string, locale: string }} answer
  * @property {string} question
- * @property {Array<{ label: string, doc: string, heading: string, source: 'workspace' | 'knowledge', delivered: 'full' | 'partial' | 'omitted', text: string, truncated: boolean, document?: ReceiptDocument, chunk?: { index: number, start: number, end: number }, documentId?: string | null }>} citations
+ * @property {Array<{ label: string, doc: string, heading: string, source: 'workspace' | 'knowledge', delivered: 'full' | 'partial' | 'omitted', deliveredChars?: number, text: string, truncated: boolean, document?: ReceiptDocument, chunk?: { index: number, start: number, end: number }, documentId?: string | null }>} citations
  * @property {import('./grounding.js').GroundingReport | null} grounding
  */
 
@@ -145,6 +148,9 @@ export async function buildReceipt(draft, options = {}) {
       excerpt: { text: includeExcerpts ? c.text : null, sha256: sha, truncated: c.truncated },
       verifiable: c.source === 'workspace' && Boolean(c.document?.fileSha256) && Boolean(c.chunk),
     };
+    // The source check of a model answer ran on the part of a cut excerpt that reached the model;
+    // its length lets a verifier recompute on exactly that part.
+    if (c.delivered === 'partial' && Number.isInteger(c.deliveredChars)) entry.deliveredChars = c.deliveredChars;
     if (c.document) entry.document = c.document;
     if (c.chunk) entry.chunk = { ...c.chunk, sha256: c.truncated ? null : sha };
     if (c.source === 'knowledge') entry.knowledge = { documentId: c.documentId ?? null };
@@ -161,7 +167,8 @@ export async function buildReceipt(draft, options = {}) {
             cites: s.cites.slice(),
             citeSource: s.citeSource,
             verdict: s.verdict,
-            reasons: s.reasons.map((r) => ({ ...r })),
+            // Verification compares verdicts, which the first reasons already decide.
+            reasons: s.reasons.slice(0, RECEIPT_LIMITS.reasons).map((r) => ({ ...r })),
           })),
       }
     : null;
@@ -240,11 +247,15 @@ export function validateReceipt(value) {
     r.citations.forEach((c, i) => {
       const p = `citations[${i}]`;
       if (!isObj(c)) return fail(p, 'object');
-      str(c.label, `${p}.label`, 400);
-      str(c.doc, `${p}.doc`, 400);
+      str(c.label, `${p}.label`, RECEIPT_LIMITS.nameChars);
+      str(c.doc, `${p}.doc`, RECEIPT_LIMITS.nameChars);
       str(c.heading, `${p}.heading`, 1000);
       oneOf(c.source, `${p}.source`, ['workspace', 'knowledge']);
       oneOf(c.delivered, `${p}.delivered`, ['full', 'partial', 'omitted']);
+      if (c.deliveredChars !== undefined) {
+        if (c.delivered !== 'partial') fail(`${p}.deliveredChars`, 'only for a partly delivered excerpt');
+        else if (int(c.deliveredChars, `${p}.deliveredChars`) && c.deliveredChars > RECEIPT_LIMITS.excerptChars) fail(`${p}.deliveredChars`, 'integer');
+      }
       if (typeof c.verifiable !== 'boolean') fail(`${p}.verifiable`, 'boolean');
       if (!isObj(c.excerpt)) fail(`${p}.excerpt`, 'object');
       else {
@@ -255,7 +266,7 @@ export function validateReceipt(value) {
       if (c.document !== undefined) {
         const d = c.document;
         if (!isObj(d)) return fail(`${p}.document`, 'object');
-        str(d.name, `${p}.document.name`, 400);
+        str(d.name, `${p}.document.name`, RECEIPT_LIMITS.nameChars);
         str(d.kind, `${p}.document.kind`, 20);
         int(d.bytes, `${p}.document.bytes`);
         if (d.fileSha256 !== null) hex(d.fileSha256, `${p}.document.fileSha256`);
@@ -297,7 +308,7 @@ export function validateReceipt(value) {
       g.sentences.forEach((/** @type {any} */ s, /** @type {number} */ i) => {
         const p = `grounding.sentences[${i}]`;
         if (!isObj(s)) return fail(p, 'object');
-        str(s.text, `${p}.text`, 5000);
+        str(s.text, `${p}.text`, RECEIPT_LIMITS.sentenceChars);
         cites(s.cites, `${p}.cites`);
         oneOf(s.citeSource, `${p}.citeSource`, ['own', 'block', 'leadin', 'answer', null]);
         oneOf(s.verdict, `${p}.verdict`, ['supported', 'weak', 'unsupported', 'unchecked']);
@@ -346,6 +357,18 @@ const squash = (text) => text.replace(/\s+/g, ' ').trim();
  */
 
 /**
+ * The text the source check of the answer ran on: the whole excerpt, or for a cut excerpt its
+ * delivered first part. Null when that part is not known (the statement is then not recomputed).
+ * @param {ReceiptCitation} c
+ * @param {string} text
+ * @returns {string | null}
+ */
+function deliveredPart(c, text) {
+  if (c.delivered !== 'partial') return text;
+  return Number.isInteger(c.deliveredChars) && /** @type {number} */ (c.deliveredChars) <= text.length ? text.slice(0, c.deliveredChars) : null;
+}
+
+/**
  * Re-checks a receipt against the original files: file fingerprints, extracted text, the passage at
  * each offset, the chunk bounds, and the source-check verdicts (recomputed, not trusted).
  * @param {Receipt} receipt  validated with validateReceipt()
@@ -377,7 +400,7 @@ export async function verifyReceipt(receipt, files, tools) {
     /** @type {CitationCheck} */
     const check = { index, label: c.label, source: c.source, file: 'not_verifiable', text: null, passage: null, chunk: null, excerptConsistent, fileName: null };
     checks.push(check);
-    sourceTexts.push(excerptConsistent ? c.excerpt.text : null);
+    sourceTexts.push(excerptConsistent ? deliveredPart(c, /** @type {string} */ (c.excerpt.text)) : null);
     if (c.source !== 'workspace' || !c.document || !c.chunk || !c.document.fileSha256) continue;
 
     const file = byHash.get(c.document.fileSha256);
@@ -411,7 +434,7 @@ export async function verifyReceipt(receipt, files, tools) {
     const expected = c.chunk.sha256 ?? c.excerpt.sha256;
     if ((await sha256Hex(passage)) === expected) {
       check.passage = 'match';
-      if (sourceTexts[index] === null && c.delivered === 'full') sourceTexts[index] = passage;
+      if (sourceTexts[index] === null && c.delivered !== 'omitted' && !c.excerpt.truncated) sourceTexts[index] = deliveredPart(c, passage);
     } else if (c.excerpt.text && excerptConsistent && squash(text).includes(squash(c.excerpt.text.replace(/…$/, '')))) {
       check.passage = 'moved';
     } else {
