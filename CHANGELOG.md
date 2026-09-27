@@ -5,7 +5,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [1.1.0] - 2026-09-24
+## [1.2.0] - 2026-09-27
 
 ### Added
 
@@ -39,6 +39,58 @@ and versions follow [Semantic Versioning](https://semver.org/).
   end-to-end tests.
 - **Release workflow.** A GitHub release is created for the version in `package.json` once CI has
   passed on `main`, with the notes from `docs/releases/`.
+- **Documentation.** Section 12 of the [architecture atlas](docs/ARCHITECTURE.md) on the source
+  check, answer receipts and the sample files, every other section checked against the current
+  code (117 diagrams), the receipt format in [`docs/spec/`](docs/spec/receipts.md), and a README
+  that shows the source check, receipts and their evaluation.
+
+### Changed
+
+- **Knowledge-base search** (migration `20260924120000`): when no row contains every search term,
+  `search_knowledge` returns the rows that share at least two of them, so questions in natural
+  language find their passages instead of falling back to the newest documents.
+- **Retrieval** keeps slots for both the workspace and the knowledge base, so many weak workspace
+  hits no longer push out a strong knowledge-base hit; the model context always closes its excerpt
+  fences; extractive answers quote only the excerpt that was delivered.
+- **Service worker:** versioned by the content of the page, the assets, every public file and the
+  worker itself; prunes assets of older builds; stores only the real page as the offline shell. A
+  new worker takes over at once only when no page is open, so an open tab keeps its in-memory
+  workspace.
+- **Keys:** the build accepts Supabase publishable keys (`sb_publishable_…`) and refuses secret and
+  service-role keys. Node.js 22.13 or newer.
+- **First visit:** without a browser session the sidebar says *Public knowledge*, and actions that
+  need one are disabled with an explanation instead of failing.
+
+### Fixed
+
+- A question that starts with a greeting ("Hi, what is the budget?") is answered from the
+  sources; a file still being read belongs to the question it was attached to.
+- The same file added twice is indexed once; a different file with the same name gets its own
+  name, so a citation never points at an invented chunk number.
+- Late replies no longer overwrite a citation or document opened after them; error messages
+  follow a language switch; several files added at once are reported one by one.
+- Synced chat history loads the newest messages, and on-device turns are merged by time.
+- Phones and tablets: the knowledge graph scrolls and its labels no longer overlap, wide tables
+  scroll inside the answer, the page title and mode selector fit, the message box grows with its
+  text, and citation chips keep their chunk number visible.
+- Testing an OpenRouter key that is typed but not saved yet uses that key.
+
+### Security
+
+- An answer quoted without a model that lists the names of workspace files (a greeting, the
+  document list) stays on the device like the turns that use the files: never synced, never sent
+  to a cloud provider or an own server as chat history.
+- The Python backend runs with the service role, which bypasses RLS; its document list and search
+  results are now limited to published rows, like the browser's.
+- Receipts are validated against size and field limits and refused with members the format does
+  not define; the app renders them as text only, and the command-line verifier escapes control and
+  bidirectional characters. A receipt exported without excerpt texts quotes no excerpt text in its
+  source-check reasons either.
+
+## [1.1.0] - 2026-09-24
+
+### Added
+
 - **On-device workspace.** PDF, text, Markdown, JSON and CSV files are parsed in a dedicated
   worker (pdf.js without `eval` or font loading), split into 500-character chunks with a
   50-character overlap and exact offsets, and indexed with Okapi BM25 (k1 = 1.2, b = 0.75). Files
@@ -60,7 +112,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
   no inline code, verified after every build; unit tests, Playwright end-to-end tests on desktop
   and mobile, and CI jobs for the frontend, end-to-end, backend, database (PostgreSQL 16 with
   pgvector) and secret scanning.
-- **Documentation.** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) with 117 diagrams checked
+- **Documentation.** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) with 87 diagrams checked
   against the code (copies in the README and guides stay in sync through `npm run docs:sync`), a
   [walkthrough](docs/WALKTHROUGH.md), [`backend/README.md`](backend/README.md), an animated
   pipeline overview in the README, a security policy and a code of conduct. CI renders every
@@ -69,20 +121,6 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **Knowledge-base search** (migration `20260924120000`): when no row contains every search term,
-  `search_knowledge` returns the rows that share at least two of them, so questions in natural
-  language find their passages instead of falling back to the newest documents.
-- **Retrieval** keeps slots for both the workspace and the knowledge base, so many weak workspace
-  hits no longer push out a strong knowledge-base hit; the model context always closes its excerpt
-  fences; extractive answers quote only the excerpt that was delivered.
-- **Service worker:** versioned by the content of the page, the assets, every public file and the
-  worker itself; prunes assets of older builds; stores only the real page as the offline shell. A
-  new worker takes over at once only when no page is open, so an open tab keeps its in-memory
-  workspace.
-- **Keys:** the build accepts Supabase publishable keys (`sb_publishable_…`) and refuses secret and
-  service-role keys. Node.js 22.13 or newer.
-- **First visit:** without a browser session the sidebar says *Public knowledge*, and actions that
-  need one are disabled with an explanation instead of failing.
 - **Database** (migration `20260924000000`): published rows are read-only for browser roles,
   `brain_settings` is service role only, and CHECK constraints bound every text and JSON column the
   browser can write.
@@ -96,17 +134,6 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- A question that starts with a greeting ("Hi, what is the budget?") is answered from the
-  sources; a file still being read belongs to the question it was attached to.
-- The same file added twice is indexed once; a different file with the same name gets its own
-  name, so a citation never points at an invented chunk number.
-- Late replies no longer overwrite a citation or document opened after them; error messages
-  follow a language switch; several files added at once are reported one by one.
-- Synced chat history loads the newest messages, and on-device turns are merged by time.
-- Phones and tablets: the knowledge graph scrolls and its labels no longer overlap, wide tables
-  scroll inside the answer, the page title and mode selector fit, the message box grows with its
-  text, and citation chips keep their chunk number visible.
-- Testing an OpenRouter key that is typed but not saved yet uses that key.
 - Chat turns that use the on-device workspace (the question, a named attachment and the answer)
   are never synced to Supabase.
 - The local preview server, which also runs the end-to-end tests, applied the production headers
@@ -126,14 +153,6 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Security
 
-- Chat turns that used workspace files, or an answer quoted without a model that lists their
-  names, are never synced and never sent to a cloud provider or an own server as chat history.
-- The Python backend runs with the service role, which bypasses RLS; its document list and search
-  results are now limited to published rows, like the browser's.
-- Receipts are validated against size and field limits and refused with members the format does
-  not define; the app renders them as text only, and the command-line verifier escapes control and
-  bidirectional characters. A receipt exported without excerpt texts quotes no excerpt text in its
-  source-check reasons either.
 - Browser roles only see public rows or their own; chats are visible to their owner only, and
   browser roles cannot execute SECURITY DEFINER functions.
 - Provider API keys stay in the browser tab unless the user opts in to keep them.
@@ -148,6 +167,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - First public release: knowledge base on Supabase with pgvector, knowledge graph, voice input,
   cloud and on-device (WebGPU) answers, and an installable PWA.
 
-[Unreleased]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/umutcantezgel-cpu/Starpi/releases/tag/v1.0.0

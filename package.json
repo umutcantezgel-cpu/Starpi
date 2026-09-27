@@ -1,6 +1,6 @@
 {
   "name": "starpi",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Knowledge assistant in the browser that shows how far each answer can be trusted: verifiable citations, a deterministic source check on every answer, answer receipts, on-device files and WebGPU inference.",
   "type": "module",

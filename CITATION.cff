@@ -7,8 +7,8 @@ authors:
   - family-names: Tezgel
     given-names: Umutcan
     alias: umutcantezgel-cpu
-version: 1.1.0
-date-released: "2026-09-24"
+version: 1.2.0
+date-released: "2026-09-27"
 license: MIT
 repository-code: "https://github.com/umutcantezgel-cpu/Starpi"
 url: "https://www.starpi.app"
