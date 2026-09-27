@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Starpi Knowledge Assistant",
   "short_name": "Starpi",
-  "description": "Knowledge assistant with on-device WebGPU inference, private on-device document search with citations and a Supabase knowledge base.",
+  "description": "Knowledge assistant that cites every passage, checks every answer against its sources and gives verifiable answer receipts. Files are read on your device.",
   "lang": "en",
   "start_url": "/",
   "scope": "/",
