@@ -125,6 +125,20 @@ async function receiptId(body) {
   return sha256Hex(canonicalJson(body));
 }
 
+/** Reasons whose `found` quotes the excerpt: a passage, or the value the excerpt states. */
+const FOUND_FROM_EXCERPT = new Set(['fact_context', 'approximate', 'fact_elsewhere']);
+
+/**
+ * A copy of a reason; without excerpts, also without the excerpt text it may quote.
+ * @param {import('./grounding.js').Reason} reason
+ * @param {boolean} includeExcerpts
+ */
+function withoutExcerpt(reason, includeExcerpts) {
+  const copy = { ...reason };
+  if (!includeExcerpts && FOUND_FROM_EXCERPT.has(copy.code)) delete copy.found;
+  return copy;
+}
+
 /**
  * Builds a receipt for one answer.
  * @param {ReceiptDraft} draft
@@ -168,7 +182,7 @@ export async function buildReceipt(draft, options = {}) {
             citeSource: s.citeSource,
             verdict: s.verdict,
             // Verification compares verdicts, which the first reasons already decide.
-            reasons: s.reasons.slice(0, RECEIPT_LIMITS.reasons).map((r) => ({ ...r })),
+            reasons: s.reasons.slice(0, RECEIPT_LIMITS.reasons).map((r) => withoutExcerpt(r, includeExcerpts)),
           })),
       }
     : null;

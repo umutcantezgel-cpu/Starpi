@@ -73,16 +73,21 @@ if (asJson) {
   console.log(JSON.stringify({ ok: !failed, receipt: valid.receipt.id, ...report }, null, 2));
 } else {
   const mark = (/** @type {boolean} */ ok) => (ok ? 'ok  ' : 'FAIL');
-  console.log(`receipt ${valid.receipt.id.slice(0, 16)}… (${valid.receipt.createdAt}, ${valid.receipt.answer.engine})`);
+  // Strings from the receipt are untrusted: control and bidirectional characters are shown escaped,
+  // so a crafted receipt cannot rewrite or hide lines of this report in a terminal.
+  const safe = (/** @type {unknown} */ s) =>
+    // eslint-disable-next-line no-control-regex -- matching control characters is the point here
+    String(s).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  console.log(`receipt ${valid.receipt.id.slice(0, 16)}… (${safe(valid.receipt.createdAt)}, ${safe(valid.receipt.answer.engine)})`);
   console.log(`${mark(report.idMatches)} receipt hash matches its contents`);
   console.log(`${mark(report.answerMatches)} answer hash matches the answer text`);
   for (const c of report.citations) {
     if (c.source === 'knowledge') {
-      console.log(`n/a  ${c.label}: knowledge-base excerpt, not independently verifiable${c.excerptConsistent === false ? ' (excerpt does not match its fingerprint)' : ''}`);
+      console.log(`n/a  ${safe(c.label)}: knowledge-base excerpt, not independently verifiable${c.excerptConsistent === false ? ' (excerpt does not match its fingerprint)' : ''}`);
       continue;
     }
-    const detail = [`file ${c.file}${c.fileName ? ` (${c.fileName})` : ''}`, c.text && `text ${c.text}`, c.passage && `passage ${c.passage}`, c.chunk && `chunk ${c.chunk}`].filter(Boolean).join(', ');
-    console.log(`${mark(c.file === 'match' && c.passage === 'match')} ${c.label}: ${detail}`);
+    const detail = [`file ${c.file}${c.fileName ? ` (${safe(c.fileName)})` : ''}`, c.text && `text ${c.text}`, c.passage && `passage ${c.passage}`, c.chunk && `chunk ${c.chunk}`].filter(Boolean).join(', ');
+    console.log(`${mark(c.file === 'match' && c.passage === 'match')} ${safe(c.label)}: ${detail}`);
   }
   console.log(`\n${report.summary.reproduced}/${report.summary.verifiable} workspace excerpts reproduced from the given files`);
   if (report.grounding) {
@@ -91,6 +96,6 @@ if (asJson) {
     for (const d of g.differences) console.log(`     statement ${d.sentence + 1}: recorded ${d.recorded}, now ${d.now}`);
     if (g.needsConversation) console.log('     note: some verdicts depend on earlier chat turns, which receipts do not contain');
   }
-  for (const w of report.warnings) console.log(`warn ${w}`);
+  for (const w of report.warnings) console.log(`warn ${safe(w)}`);
 }
 process.exit(failed ? 1 : 0);

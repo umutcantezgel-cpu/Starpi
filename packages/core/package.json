@@ -27,7 +27,7 @@
   "files": ["dist", "README.md", "LICENSE"],
   "sideEffects": false,
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22.13"
   },
   "peerDependencies": {
     "pdfjs-dist": "^6.3.289"

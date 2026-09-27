@@ -123,7 +123,10 @@ export function mergeByTime(remote, local) {
 export async function deleteChatHistory() {
   writeLocalJson(STORAGE_KEYS.localChats, {});
   startNewSession();
-  if (!canSyncChats()) return true;
+  // Nothing was synced from this browser when the connection is up and chats cannot sync (no
+  // session, or an older schema). Offline or still connecting, the delete is attempted and reports
+  // a failure instead of claiming success.
+  if (getConnection().status === 'ready' && !canSyncChats()) return true;
   const res = await deleteOwnChats();
   void refreshSyncStatus();
   return res.ok;

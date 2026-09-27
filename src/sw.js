@@ -25,9 +25,12 @@ self.addEventListener('install', (event) => {
       const cache = await caches.open(SHELL_CACHE);
       // Only the page itself must bypass the HTTP cache; hashed assets it just loaded are reused.
       await cache.addAll(PRECACHE.map((url) => (url === '/' ? new Request(url, { cache: 'reload' }) : url)));
-      // Take over right away: pages load network-first and assets are content-hashed, so waiting for
-      // every tab to close gains nothing. Pages decide themselves whether to offer a reload.
-      await self.skipWaiting();
+      // Take over right away only when no page is open. An open page may run an older build whose
+      // code reloads itself when the worker changes, which would clear its in-memory workspace.
+      // Otherwise the new worker waits until those pages close (pages load network-first and assets
+      // are content-hashed, so they do not need it) or until a page asks for it.
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      if (!windows.length) await self.skipWaiting();
     })(),
   );
 });
@@ -52,6 +55,10 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') void self.skipWaiting();
+});
+
 /** @param {Response} response */
 function cacheable(response) {
   return response.ok && response.type === 'basic' && response.status === 200 && !/no-store/i.test(response.headers.get('Cache-Control') || '');
@@ -65,9 +72,12 @@ function isShellHtml(response) {
 /** @param {FetchEvent} event */
 async function networkFirstNavigation(event) {
   const url = new URL(event.request.url);
+  let servedCache = false;
   const network = fetch(event.request).then((response) => {
     // Store the page only; a direct visit to a PDF, an icon or a redirect must never become the shell.
-    if (url.pathname === '/' && isShellHtml(response)) {
+    // After the deadline served the cached shell, a later response is not stored: its assets were
+    // never loaded, so an offline start could get HTML whose scripts are in no cache.
+    if (!servedCache && url.pathname === '/' && isShellHtml(response)) {
       const copy = response.clone();
       event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.put('/', copy)));
     }
@@ -75,13 +85,14 @@ async function networkFirstNavigation(event) {
   });
   const cachedShell = () => caches.match('/', { cacheName: SHELL_CACHE });
   // A stalled connection (weak signal, captive portal) falls back to the cached shell after a
-  // short deadline instead of showing a blank page; the network response still updates the cache.
+  // short deadline instead of showing a blank page.
   const deadline = new Promise((resolve) => setTimeout(resolve, NAVIGATION_DEADLINE_MS, 'deadline'));
   try {
     const first = await Promise.race([network, deadline]);
     if (first !== 'deadline') return /** @type {Response} */ (first);
     const cached = await cachedShell();
     if (cached) {
+      servedCache = true;
       event.waitUntil(network.catch(() => undefined));
       return cached;
     }

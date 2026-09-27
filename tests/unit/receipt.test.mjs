@@ -185,6 +185,21 @@ describe('verifyReceipt', () => {
     assert.deepEqual(skipped.grounding?.differences, []);
   });
 
+  it('leaves out passages quoted in reasons when the excerpt texts are left out', async () => {
+    const label = '[Doc: plan.md, Chunk: 1]';
+    const text = 'The budget is 480,000 EUR. It is split into 95,000 EUR for infrastructure and 75,000 EUR for training. CONFIDENTIAL';
+    const answer = `Of the budget, 75,000 EUR is reserved for infrastructure ${label}.`;
+    const sources = [{ label, doc: 'plan.md', heading: '', text, delivered: /** @type {const} */ ('full') }];
+    const grounding = groundAnswer(blocksFromMarkdown(answer, sources), sources);
+    assert.equal(grounding.sentences[0].reasons[0].code, 'fact_context');
+    const draft = { createdAt: '2026-09-24T01:00:00.000Z', version: '1.1.0', answer: { text: answer, engine: 'cloud', locale: 'en' }, question: 'Budget?', grounding, citations: [{ label, doc: 'plan.md', heading: '', source: /** @type {const} */ ('knowledge'), delivered: /** @type {const} */ ('full'), text, truncated: false, documentId: null }] };
+    const without = await buildReceipt(draft, { includeExcerpts: false });
+    assert.equal(without.grounding?.sentences[0].reasons[0].found, undefined);
+    assert.ok(!JSON.stringify(without).includes('training'));
+    const withText = await buildReceipt(draft);
+    assert.match(withText.grounding?.sentences[0].reasons[0].found ?? '', /training/);
+  });
+
   it('accepts every receipt the source check can produce: many reasons, long statements, long titles', async () => {
     const title = `Budget ${'x'.repeat(490)}`;
     const label = `[Doc: ${title}, Chunk: 1]`;

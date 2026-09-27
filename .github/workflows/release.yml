@@ -3,6 +3,7 @@ name: Release
 # Publishes a GitHub release for the version in package.json once CI has passed on main, using
 # docs/releases/v<version>.md as the release notes. Nothing happens when the release already
 # exists or when there are no release notes for the version, so every green run on main is safe.
+# A manual run releases the head of main (the same check applies), never another branch.
 
 on:
   workflow_run:
@@ -10,11 +11,6 @@ on:
     types: [completed]
     branches: [main]
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release, e.g. 1.1.0 (default: the version in package.json)'
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -27,7 +23,7 @@ jobs:
   release:
     name: Create the release for package.json's version
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -42,11 +38,10 @@ jobs:
       - name: Create the release if it does not exist yet
         env:
           GH_TOKEN: ${{ github.token }}
-          INPUT_VERSION: ${{ inputs.version }}
           TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
-          version="${INPUT_VERSION:-$(node -p "require('./package.json').version")}"
+          version="$(node -p "require('./package.json').version")"
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::'$version' is not a version number"
             exit 1

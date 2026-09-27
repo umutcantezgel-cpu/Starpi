@@ -381,6 +381,9 @@ export async function submitChat(rawText, options = {}) {
 
     const durationMs = Math.round(performance.now() - started);
     const answerText = splitReasoning(answer.text).answer || answer.text;
+    // An answer quoted without a model can list the files in the workspace (greeting, document list):
+    // their names stay on this device like the files themselves.
+    const namesWorkspace = answer.engine === 'synthesizer' && listWorkspace().some((d) => answerText.includes(d.name));
     const trace = describeTrace({ query: prompt, method, hits: used, engineLabel: t(ENGINE_LABELS[answer.engine]), durationMs, note });
     const metadata = { engine: answer.engine, thoughts: trace, duration_ms: durationMs };
 
@@ -442,12 +445,12 @@ export async function submitChat(rawText, options = {}) {
         messageEl.querySelector('.message-provenance')?.append(receiptButton(receipt));
         refreshIcons(messageEl);
       }
-      const turnLocal = localOnly || usesWorkspace || Boolean(file);
+      const turnLocal = localOnly || usesWorkspace || namesWorkspace || Boolean(file);
       conversation.push({ role: 'user', content: prompt.slice(0, 4_000), localOnly: turnLocal }, { role: 'assistant', content: answerText, localOnly: turnLocal });
     }
 
     // Answers quoting the on-device workspace stay on this device, even when chats are synced.
-    void persistMessage(sid, { role: 'assistant', content: answerText, sources, metadata }, { localOnly: localOnly || usesWorkspace });
+    void persistMessage(sid, { role: 'assistant', content: answerText, sources, metadata }, { localOnly: localOnly || usesWorkspace || namesWorkspace });
   } catch (err) {
     storeQuestion(false);
     removeLoading();

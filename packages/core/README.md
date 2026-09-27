@@ -13,8 +13,8 @@ retrieval-augmented generation (RAG) application:
 - The **text extraction** (Markdown, text, CSV, JSON, PDF), **chunking** with exact offsets and
   **BM25** index that produce those excerpts in Starpi.
 
-No dependencies; ESM; runs in browsers, Web Workers and Node.js 20.19+. PDF extraction needs the
-optional peer dependency `pdfjs-dist` 6.
+No dependencies; ESM; runs in browsers, Web Workers and Node.js 22.13+ (the version pdf.js 6
+requires). PDF extraction needs the optional peer dependency `pdfjs-dist` 6.
 
 This is the same code the Starpi app runs: the package is built from the app's modules
 (`scripts/build-core.mjs`), so its behaviour is covered by the app's tests.
@@ -130,8 +130,8 @@ recorded offsets and the chunk bounds, and recomputes the source check.
 ### Command line
 
 ```bash
-npx -p @starpi/core starpi-verify-receipt receipt.json plan.md notes.pdf
 npx -p @starpi/core starpi-verify-receipt receipt.json plan.md --json
+npx -p @starpi/core -p pdfjs-dist@6 starpi-verify-receipt receipt.json plan.md notes.pdf   # with PDFs
 ```
 
 Exit code 0 when every workspace excerpt was reproduced, 1 when something did not match or a file
