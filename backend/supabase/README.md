@@ -298,8 +298,10 @@ flowchart TD
 
     names["Policy names are the table name plus<br/>_select_public_or_own, _insert_own,<br/>_update_own and _delete_own"]
     lock["Published-row lock, 20260924000000_lock_published_rows<br/>added and not is_public to the update and delete USING,<br/>before that owners could still change published rows.<br/>Re-running 20260923000000 alone restores the old policies"]
+    brainApi["Brain API, backend/core/supabase_client.py:<br/>document list and match_knowledge_sections results<br/>filtered to is_public or owner_id null (VISIBLE_ROWS),<br/>supabase_service.py for the command line does not filter"]
     names -.- role
     lock -.- usingChk
+    svc -.- brainApi
 ```
 
 <!-- diagram: rls-access-sections-chat-settings -->
@@ -361,7 +363,7 @@ flowchart TD
     svc["service_role"]
 
     subgraph sg_fns["RPCs, SECURITY INVOKER, search_path empty, arrows are EXECUTE grants"]
-        sk["search_knowledge<br/>(query_text, match_count default 6)<br/>German full text on sections, else document hit,<br/>1 to 20 rows, blank or null query returns none"]
+        sk["search_knowledge<br/>(query_text, match_count default 6)<br/>German full text, rows with every term first,<br/>else rows sharing at least two terms or the only one,<br/>match_count clamped to 1 to 20,<br/>blank or null query returns none"]
         mks["match_knowledge_sections<br/>(query_embedding, match_threshold default 0.25,<br/>match_count default 5)<br/>vector search, 1 to 50 rows"]
         mkh["match_knowledge_hybrid<br/>(query_text, query_embedding,<br/>match_count default 5, rrf_k default 60)<br/>RRF of top 25 vector and top 25 full-text ranks,<br/>1 to 50 rows"]
         ing["ingest_document_atomic<br/>(doc_title, doc_summary, doc_tags,<br/>doc_source_type, doc_source_name,<br/>doc_raw_content, sections_data)<br/>new document is private, owner_id null,<br/>22023 if sections_data is not a JSON array"]
@@ -376,7 +378,7 @@ flowchart TD
     svc --> mkh
     svc --> ing
 
-    invoker["Runs as the caller, so table RLS<br/>limits rows to what the caller can see,<br/>service_role bypasses RLS.<br/>Every overload is dropped before create,<br/>so no older SECURITY DEFINER variant stays"]
+    invoker["Runs as the caller, so table RLS<br/>limits rows to what the caller can see,<br/>service_role bypasses RLS.<br/>full_schema.sql and 20260923000000 drop every overload<br/>before create, so no older SECURITY DEFINER variant stays.<br/>20260924120000 uses create or replace, same signature"]
     sk -.- invoker
     mks -.- invoker
     mkh -.- invoker
@@ -507,7 +509,7 @@ flowchart TD
     setup -->|"yes"| cluster
     clusterErr(["exit 2: initdb failed or could not start PostgreSQL"])
     cluster -->|"fails"| clusterErr
-    scen["run_scenario NAME: create database starpi_NAME, run the steps in order<br/>every scenario starts with stub_supabase.sql: roles anon, authenticated, service_role,<br/>auth.users, auth.uid(), Supabase default grants, sentinel objects of the other app<br/>first failing step: FAIL, log tail printed, next scenario"]
+    scen["run_scenario NAME: create database starpi_NAME, run the steps in order<br/>every scenario starts with stub_supabase.sql: roles anon, authenticated, service_role,<br/>auth.users, auth.uid(), Supabase default grants, sentinel objects of the other app<br/>migrations step: every migrations/*.sql in file-name order<br/>first failing step: FAIL, log tail printed, next scenario"]
     cluster --> scen
 
     subgraph sg_upgrade["Upgrade paths"]
@@ -532,7 +534,7 @@ flowchart TD
     scen --> guardOrder
 
     aIdem["Second migrations run succeeds on the upgraded schema:<br/>idempotent on the live shape and both earlier schema versions"]
-    aRls["rls_test.sql: 184 checks, 191 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits, RPCs"]
+    aRls["rls_test.sql: 191 checks, 198 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback"]
     aPost["post_rerun_check.sql, 13 checks: a further migrations run keeps<br/>ownership, visibility, chat rows, the published-row lock,<br/>size limits and brain_settings closed to A and anon"]
     aGuard["Step passes only when psql exits non-zero:<br/>pre-hardening database refused, order enforced"]
     aFreshRerun["full_schema.sql re-runs cleanly on a database it created"]

@@ -7,112 +7,312 @@
   <a href="https://www.starpi.app"><img alt="Live demo: www.starpi.app" src="https://img.shields.io/badge/demo-www.starpi.app-facc15"></a>
 </p>
 
+**A knowledge assistant in the browser that shows how far each answer can be trusted.** Starpi
+answers questions from your files and from a shared knowledge base, cites every passage it used,
+compares every statement of the answer with the passages it cites, and gives you a receipt that
+anyone can check against the original files. Your files are read on your device and never
+uploaded; the answer can come from an on-device model (WebGPU), your own server or a cloud model.
+English and German.
+
 <p align="center">
-  <img src="docs/assets/starpi-flow.svg" width="100%" alt="Starpi pipeline: a dropped PDF, Markdown, JSON or CSV file is parsed in an ingestion worker, split into 500-character chunks and indexed with BM25 in worker memory, answered by WebLLM on WebGPU in its own worker or by your own server, and every citation opens the exact span it came from. Files never leave the device.">
+  <img src="docs/assets/screenshots/source-check.png" width="100%" alt="Starpi chat. An answer about the sample project passes the source check (4 of 4 statements match their cited excerpts). A second, prepared answer with one wrong number is flagged: the statement is highlighted and the source check says 520,000 is not in the cited excerpt of nebula-plan.md.">
 </p>
 
-Browser-native knowledge assistant: on-device LLM inference with WebGPU, private on-device
-document search with verifiable citations, retrieval over a Supabase Postgres knowledge base
-protected by Row Level Security, and an optional Python ingestion backend with pgvector
-embeddings. The interface is in English by default and switches to German with one click.
+**Live:** [www.starpi.app](https://www.starpi.app) · **Tour of the code:** [walkthrough](docs/WALKTHROUGH.md) ·
+**How it works in detail:** [architecture atlas](docs/ARCHITECTURE.md) · [Changelog](CHANGELOG.md)
 
-**Deployment:** [https://www.starpi.app](https://www.starpi.app) · **New here?** Start with the
-[walkthrough](docs/WALKTHROUGH.md), then the [architecture atlas](docs/ARCHITECTURE.md) ·
-[Changelog](CHANGELOG.md)
+## Try it in 20 seconds
 
-## Overview
+1. Open [www.starpi.app](https://www.starpi.app). No account, no API key, nothing to install.
+2. Click **Try with sample files**. A plan (Markdown), a risk register (CSV) and kickoff notes (PDF)
+   of a fictitious project are read into the on-device workspace.
+3. Ask one of the suggested questions. Every citation opens the exact passage, highlighted in its
+   file, and the **Source check** under the answer shows how many statements match their excerpts.
+4. Click **See the source check catch an error**: a prepared answer with one wrong number (labelled
+   as written for the demo) is flagged, with the reason.
+5. Open **Receipt** under an answer, download it, and verify it against the sample files, in the
+   dialog or on the command line with `npm run verify:receipt`.
 
-Starpi answers questions about a company knowledge base (documents, meeting notes, a small
-knowledge graph) and about files the user adds to an on-device workspace. The browser retrieves
-relevant passages, labels each one `[Doc: <name>, Chunk: <n>]`, and then produces an answer in one
-of four ways:
+Without an API key Starpi answers by quoting the sources, and says so. Add a Gemini or OpenRouter
+key, point it at your own server, or load an on-device model in **Settings**, and a model writes the
+answer; the same checks apply.
 
-| Mode | Where the model runs | What leaves the device |
+## What is different
+
+Retrieval-augmented assistants cite sources, but a citation does not tell you whether the sentence
+next to it says what the source says. Starpi makes that visible and checkable:
+
+- **Source check on every answer.** Each statement is compared with the excerpts it cites: numbers
+  in English and German formats (480,000 = 480.000 = 480k), dates, times, weekdays, codes,
+  quotations and wording, and names in English answers. A value that is not in the cited excerpt
+  is named ("520,000 is not in [Doc: plan.md, Chunk: 1]"), the statement is highlighted, and its
+  citation is marked. It runs in the browser, is deterministic and needs no second model. On
+  labelled test answers it flagged every changed value in the held-out set and no statement of a
+  faithful answer as unsupported ([how well it works](#how-well-it-works)).
+- **Answer receipts.** A JSON file per answer with SHA-256 fingerprints of the source files, the
+  exact offsets of each cited passage and the source-check verdicts. Anyone with the same files can
+  reproduce every passage, in the app or with a command-line verifier. The format is specified in
+  [`docs/spec/receipts.md`](docs/spec/receipts.md).
+- **Citations the model cannot forge.** Only labels the app registered for the excerpts it sent
+  become clickable, and the drawer shows the cited chunk inside its source text.
+- **Files are read on the device.** PDF, Markdown, text, JSON and CSV files are parsed, chunked
+  and indexed with BM25 in a Web Worker and never uploaded. Only the excerpts an answer needs go to
+  the model you chose (none in on-device mode), and turns that use your files are never synced or
+  sent to a cloud provider or your own server as chat history.
+- **A privacy statement per mode.** The footer says where the question goes in the current mode;
+  in on-device mode it does not leave the browser.
+
+Both checks have limits, and the app says so where it shows them. The source check compares text;
+a match does not prove a statement true, and a flag means "open the source and look". Receipts are
+not signed: they show that the excerpts are reproducible from the same files, not who wrote the
+answer or what a model read.
+
+<table>
+  <tr>
+    <td width="62%"><img src="docs/assets/screenshots/receipt.png" alt="The answer receipt dialog after verifying a downloaded receipt against the original sample files: 3/3 workspace excerpts reproduced, the receipt and answer hashes match, and the source check gives the same verdicts."></td>
+    <td width="38%"><img src="docs/assets/screenshots/mobile.png" alt="Starpi on a phone: an answer quoted from the sample files with its sources, a passing source check and a receipt button."></td>
+  </tr>
+  <tr>
+    <td>Verifying a receipt against the original files</td>
+    <td>On a phone</td>
+  </tr>
+</table>
+
+## How the source check works
+
+The check reads the rendered answer, not the raw text, so it knows exactly which citation belongs
+to which sentence (also for lists, tables and a "Sources:" line). For each statement it extracts the
+facts and looks them up in the cited excerpts, then compares the remaining wording:
+
+| Verdict | When |
+| --- | --- |
+| **Supported** | Every fact is in a cited excerpt and at least half of the content words appear there. |
+| **Weak** | A value is rounded or approximate, appears only in another excerpt or in the question, or stands in the excerpt next to something else than the statement says; an English statement names someone or something the excerpt does not; the wording overlaps little; or a statement without a citation states a value that one of the excerpts contains. |
+| **Unsupported** | A number, date, time, weekday, code or quotation appears in none of the excerpts, a cited label was not one of the excerpts, or the cited excerpt did not fit into the model's context. |
+| **Unchecked** | The statement and its excerpt are in different languages, so only facts are compared, and the statement has none. |
+
+Headings, short fragments, and statements with neither a citation nor a fact are not counted.
+
+A value the excerpt does contain, but only next to other words ("75,000 EUR for infrastructure"
+when the excerpt says "95,000 EUR for infrastructure and 75,000 EUR for training"), is marked weak,
+and the panel quotes the passage where the value stands. In English answers, a name that none of
+the cited excerpts contains ("the Munich depot" when the plan says Hamburg) is marked weak too.
+When the answer and the excerpt are in different languages, only the facts are compared. The rules
+live in [`src/js/core/facts.js`](src/js/core/facts.js) and
+[`src/js/core/grounding.js`](src/js/core/grounding.js), carry a version that receipts record, and are
+pinned by golden tests.
+
+### How well it works
+
+Measured with `npm run eval:source-check` on labelled answers about the sample files and the sample
+knowledge base, in English, in German and across the two. Each answer is either faithful or has
+exactly one planted error. The first set was available while the rules were adjusted; the held-out
+set was written afterwards, in a different style, and only measured.
+
+| | First set | Held-out set |
 | --- | --- | --- |
-| **On-device** | In the browser. [WebLLM](https://github.com/mlc-ai/web-llm) runs in a dedicated Web Worker on WebGPU. | Nothing. Candidate documents are fetched without the question and ranked in the browser. Chat history stays in `localStorage`. |
-| **Cloud assistant** | Google Gemini or OpenRouter, with **your own** API key | The question and the retrieved excerpts go to the chosen provider. The question is searched with Postgres full-text search. |
-| **Own server** | Any Chat Completions-compatible endpoint (`/v1/chat/completions`: MLX, Ollama, vLLM) at `https://…` or `http://localhost` | The question and the retrieved excerpts go to that server. The question is also searched with Postgres full-text search. |
-| **Extractive fallback** | No model | Quotes matching sentences from the sources verbatim, each with its citation. Used when no key or model is available; it never invents content. |
+| Faithful answers (statements) | 50 (143) | 100 (324) |
+| Statements of faithful answers marked unsupported | 0 | 0 |
+| Statements of faithful answers marked weak | 0 | 15 (4.6 %) |
+| Changed number, date, time, weekday or code: flagged | 47 of 49 | 49 of 49 |
+| Wrong name or place: flagged (names are checked in English only) | 3 of 10 | 4 of 10 |
+| Correct value attached to the wrong thing: flagged | 2 of 10 | 6 of 10 |
+| Negated statement: flagged | 0 of 10 | 0 of 10 |
 
-Chat history is synchronised to Supabase only when the browser has an anonymous session **and**
-the hardened RLS schema is installed, so every row is visible to its owner only. Otherwise it
-stays on the device. A chat turn that uses the on-device workspace (the question and its answer)
-is never synchronised.
+The answers were written by language models following these instructions, and every label was
+confirmed by two independent model reviewers; they are not answers from real users, and the sample
+is small. One rule was corrected after the held-out set was written (a word from the file name no
+longer counts as context for a value); it raised the held-out "wrong thing" row from 4 to 6 and
+changed nothing else. Read the table as what the check can and cannot see: it is reliable for
+changed values and blind to a statement that keeps the source's words and reverses their meaning.
+The labelled answers are in [`tests/fixtures/grounding/eval.json`](tests/fixtures/grounding/eval.json),
+and a unit test fails if any of these results gets worse.
 
-System prompts follow the interface language: the on-device model is told *"You are Starpi, a
-high-performance on-device AI assistant. Respond in English unless the user explicitly prompts in
-another language."* (or the German equivalent), followed by grounding, prompt-injection and
-citation rules (`src/js/prompts.js`).
+<!-- diagram: source-check-pipeline -->
+```mermaid
+flowchart TD
+    sIn(["chat.js submitChat: rendered messageEl, a citation scope,<br/>the same chat session still shown"]) --> sEng{"answer.engine is synthesizer?"}
+    sEng -->|"yes"| sFull["every excerpt delivered full,<br/>text = the excerpt as given"]
+    sEng -->|"no, a model answered"| sCov["contextCoverage(citationList, deliveredContext or context):<br/>the EXCERPT n blocks of the context that was sent give<br/>full, partial without the ellipsis, or omitted"]
+    sFull --> sApply
+    sCov --> sApply
+    sDemo(["demo.js showCheckDemo: excerpts delivered full,<br/>no given, citedOnly off"]) -.-> sApply
+    sApply["applyGrounding(messageEl): scope, sources with label, doc,<br/>heading, delivered text and state, given = the prompt and the<br/>user messages among the last 4 conversation entries,<br/>citedOnly = synthesizer answer"]
+    sApply --> sSlot{".message-content and .message-provenance<br/>present and sources not empty?"}
+    sSlot -->|"no"| sNull(["returns null, no panel"])
+    sSlot -->|"yes"| sBlocks["blocksFromElement: one block per p, li, h1 to h6, tr,<br/>blockquote, dd, dt, pre skipped, br as a line break,<br/>td and th cells joined with a separator,<br/>kind p, li, heading, row, header-row or other"]
+    sBlocks --> sBtn{"button with data-action open-citation<br/>and data-arg of this answer's scope?"}
+    sBtn -->|"yes"| sCite["cite segment, chip position recorded"]
+    sBtn -->|"no"| sIgn["other buttons ignored"]
+    sBlocks --> sLoose["text matching LOOSE_LABEL_PATTERN: badcite,<br/>resolveLabel by document name and chunk number"]
+    sBlocks --> sLead["list item, or the first paragraph of a loose list item,<br/>whose list follows a block ending in a colon:<br/>leadIn = that block"]
+    sCite --> sSize
+    sLoose --> sSize
+    sLead --> sSize
+    sSize{"groundAnswer: text segments over<br/>THRESHOLDS.maxChars 20000 characters?"}
+    sSize -->|"yes"| sSkip["skipped too_long"]
+    sSize -->|"no"| sAssoc["associate: sentenceSpans per block, no statement ends at the dot<br/>of an ordinal, a day.month date such as 1.6. or a known abbreviation,<br/>a marker belongs to the last statement that starts before it,<br/>a statement without one inherits from the next cited statement<br/>of its block, then the previous one, then its lead-in up to 4 hops,<br/>then the markers and bad labels of contentless blocks<br/>such as a Sources line"]
+    sAssoc --> sMany{"more than maxSentences 300 statements?"}
+    sMany -->|"yes"| sSkip
+    sMany -->|"no"| sIdx["indexSource per excerpt over text, doc and heading,<br/>no index for an omitted excerpt, given indexed,<br/>answer language from guessLanguage"]
+    sIdx --> sCheck["checkSentence per statement,<br/>see source-check-verdicts"]
+    sCheck --> sCount["counts supported, weak, unsupported, unchecked,<br/>neutral statements not counted"]
+    sCount --> sAny{"anything counted, unchecked or skipped?"}
+    sSkip --> sAny
+    sAny -->|"no"| sQuiet(["report returned, no panel"])
+    sAny -->|"yes"| sBar["details.grounding-bar replaces the .message-provenance content:<br/>grounding-review and shield-alert when a statement is unsupported,<br/>else grounding-partial and shield-question-mark when one is weak,<br/>else grounding-ok and shield-check when statements were compared,<br/>else grounding-none and shield"]
+    sBar --> sSum["summary: grounding.title, then grounding.too_long,<br/>grounding.summary ok of total, or grounding.only_unchecked,<br/>badges grounding.review n and grounding.partial n"]
+    sSum --> sList["ol.grounding-list: unsupported first, then weak, in answer order,<br/>li id grd-n-i, n per panel, i the statement index,<br/>grounding.statement cut to 160 chars,<br/>one grounding.reason_code line per reason, citation badges"]
+    sList --> sNotes["grounding.unchecked n when statements were not compared,<br/>grounding.disclaimer in every panel"]
+    sNotes --> sOpen["details opened when a statement is unsupported"]
+    sOpen --> sChips["each citation button belongs to the last statement of its block<br/>that starts before it, else the first, if that one is unsupported:<br/>class citation-chip-flag, aria-describedby = id of its list item"]
+    sChips --> sHl{"Highlight and CSS.highlights available?"}
+    sHl -->|"yes"| sMark["a Range per unsupported statement in the<br/>starpi-review highlight, no DOM change, no inline style"]
+    sHl -->|"no"| sNoMark["no highlight, the flagged list<br/>stays the accessible channel"]
+    sMark --> sRet(["report returned to chat.js for the receipt draft"])
+    sNoMark --> sRet
+    sReset(["resetMessages: new chat, deleted or restored history"]) -.-> sClear["clearGroundingHighlights"]
+```
 
-### On-device workspace and citations
+## How it works
 
-**Add knowledge → On-device workspace** accepts PDF, TXT, Markdown, JSON and CSV files (drag and
-drop or file picker, up to 25 MB each). A dedicated worker (`src/js/rag/ingest.worker.js`)
-extracts the text (PDF via a pinned, lazily loaded pdf.js; text via a streaming UTF-8 decoder;
-JSON flattened into `path: value` lines), splits it into 500-character windows with 50 characters
-of overlap that end on paragraph, sentence or word boundaries, and indexes the chunks with Okapi
-BM25 (`k1 = 1.2`, `b = 0.75`, English and German stopwords). Documents live in the worker's memory
-only and disappear on reload; nothing is uploaded.
+<p align="center">
+  <img src="docs/assets/starpi-flow.svg" width="100%" alt="Starpi pipeline: dropped PDF, Markdown, JSON or CSV files are parsed on the device in an ingestion worker, split into 500-character chunks with exact offsets and indexed with BM25 in worker memory; an answer model (WebLLM, your own server or a cloud model) answers with citations, and each citation opens the exact span. Badges: files parsed on this device, source check on every answer, verifiable receipts, strict CSP without unsafe-eval.">
+</p>
 
-Every answer registers the exact excerpts it was given. Citation labels in the answer become
-buttons only when they match one of those excerpts, so a model cannot invent a clickable source.
-The citation drawer shows the document, chunk number, BM25 score, character offsets and the chunk
-highlighted inside the extracted text.
+The browser retrieves passages from the on-device workspace (BM25) and from the shared knowledge
+base (Postgres full-text search behind row level security), labels each one
+`[Doc: <name>, Chunk: <n>]`, and answers in one of four ways:
 
-### Diagnostics and benchmark
+| Mode | Where the answer is written | What leaves the device |
+| --- | --- | --- |
+| **On-device** | [WebLLM](https://github.com/mlc-ai/web-llm) on WebGPU, in a dedicated Web Worker | Nothing. Knowledge-base candidates are fetched without the question and ranked in the browser. |
+| **Cloud assistant** | Google Gemini or OpenRouter, with **your own** API key | The question and the retrieved excerpts go to the provider, and the question to the knowledge-base search. Chat turns that used your files are never sent as history. |
+| **Own server** | Any Chat Completions endpoint (`/v1/chat/completions`: MLX, Ollama, vLLM) at `https://…` or `http://localhost` | The question and the retrieved excerpts go to that server, and the question to the knowledge-base search. |
+| **Quoted from the sources** | No model | Only the question, to the knowledge-base search. Matching sentences are quoted verbatim with their citations; used when no model is configured or a model fails. |
 
-The **Diagnostics** tab lists the WebGPU adapter (vendor, architecture, device), `shader-f16`
-support, the relevant limits (buffer sizes, compute workgroup limits) and adapter features. The
-benchmark runs on the loaded on-device model: one warm-up request, then a fixed prompt of about 64
-tokens that generates exactly 128 tokens (`ignore_eos`). It reports the measured time to first
-token, decode throughput (tokens after the first divided by the time after it), WebLLM's prefill
-throughput and the total time. Without WebGPU the tab says so instead of showing numbers.
+Chats are synced to Supabase only when the browser has an anonymous session **and** the hardened
+row-level-security schema is installed, so every row is visible to its owner only; otherwise they
+stay in the browser. **Settings › Delete chat history** removes both.
 
-### Languages
+<details>
+<summary><strong>What leaves the device in each mode</strong> (diagram)</summary>
 
-English is the default for every visitor; the **EN | DE** switch in the header changes the
-language instantly, without a reload, and the choice is kept in `localStorage`. Strings live in
-`src/locales/en.json` and `src/locales/de.json`; markup references them with `data-i18n`,
-`data-i18n-placeholder`, `data-i18n-title` and `data-i18n-aria`, and code uses `t()` / `setText()`
-from `src/js/i18n/index.js`. Unit tests require identical keys and placeholders in both files and
-check that every key used by the UI exists.
+<!-- diagram: modes-privacy-data-egress -->
+```mermaid
+flowchart TD
+    Ask(["submitChat: question trimmed to 8000 chars<br/>mode = getMode(), stored in starpi_compute_mode"])
+    UserTurn{"storeQuestion(usesWorkspace), question localOnly?<br/>client mode, a file attached,<br/>or any used excerpt from the workspace"}
+    Skip{"demo sample question,<br/>or connection offline?"}
+    RetMode{"retrieve(): mode is client?"}
+    Ctx["mergeHits + assignCitations + buildContext<br/>at most 6 hits, 9 with an attachment, both sources keep slots<br/>excerpt max 1600 chars, context max 9000 chars<br/>a greeting-only message uses no excerpts"]
+    Dispatch{"answer path by mode"}
+    CKeys{"hasGeminiKey()?<br/>else hasOpenRouterKey()?"}
+    Abort(["Stop pressed before a rendered answer:<br/>error to the submitChat catch,<br/>answer not shown or persisted"])
+    Persist{"answer localOnly?<br/>client mode, any used excerpt<br/>came from the workspace, or a synthesizer<br/>answer names a workspace file"}
+    Sync{"not localOnly: canSyncChats()?<br/>signed in and hardened schema"}
 
-## Architecture
+    subgraph dev["Stays in this browser"]
+        WsSearch["retrieveWorkspace: BM25 in the ingest worker, every mode<br/>an attached file pins up to 3 chunks<br/>worker error: no workspace hits"]
+        Keys[("provider keys<br/>readSecret: sessionStorage, then localStorage")]
+        Hist["shareableHistory: last 4 turns<br/>not marked localOnly"]
+        LGen["client: WebLLM worker on WebGPU<br/>budgeted excerpts + last 4 history messages<br/>+ question stay in the browser"]
+        Synth["synthesizeAnswer: extractive quotes<br/>with citation labels, no model"]
+        Check["source check and receipt draft,<br/>in memory only"]
+        LS[("localStorage<br/>starpi_local_chats_v1")]
+    end
 
-The [architecture atlas](docs/ARCHITECTURE.md) documents every subsystem with diagrams checked
-against the code: boot, chat, retrieval and citations, the WebGPU engine, storage, the service
-worker, the database and its policies, the backend, build, tests and deployment. The overview below
-shows where each part runs and which trust boundary it sits behind; dashed nodes are services
-outside Starpi's control.
+    subgraph net["Sent over the network"]
+        FTS["Supabase rpc search_knowledge<br/>question as query_text, first 1000 chars<br/>match_count 6"]
+        Recent["Supabase recentKnowledge(30)<br/>30 newest documents, question not sent<br/>rankHitsLocally in the browser"]
+        Gem["council: Gemini gemini-2.5-flash generateContent<br/>one user part: system + excerpts incl. workspace<br/>+ question, no chat history"]
+        OR["council: OpenRouter chat/completions<br/>system + excerpts incl. workspace<br/>+ shareable history + question"]
+        Srv["local: own server getLlmUrl()/chat/completions<br/>system + excerpts incl. workspace<br/>+ shareable history + question, no key<br/>GET /models first while no model id is known"]
+        HF["WebLLM model files: huggingface.co weights,<br/>raw.githubusercontent.com wasm<br/>only when not cached, after a confirm, no user text"]
+        Titles["Supabase listDocuments, no question sent<br/>skipped while offline, titles cached 60 s"]
+        CH[("Supabase chat_history insert")]
+    end
+
+    Ask --> WsSearch --> Skip
+    Skip -->|"yes: no Supabase search"| Ctx
+    Skip -->|"no"| RetMode
+    RetMode -->|"no, council or local"| FTS
+    RetMode -->|"yes"| Recent
+    FTS -->|"rows found"| Ctx
+    FTS -.->|"zero rows or error"| Recent
+    Recent -->|"ranked hits, none if it fails"| Ctx
+    WsSearch -->|"workspace excerpts"| Ctx
+    Ctx -->|"after retrieval and the greeting check,<br/>before assignCitations"| UserTurn
+    Ask -.->|"turn throws before that:<br/>catch runs storeQuestion(false)"| UserTurn
+    UserTurn -->|"yes"| LS
+    UserTurn -->|"no"| Sync
+    Ctx --> Dispatch
+    Dispatch -->|"council"| CKeys
+    Dispatch -->|"client"| LGen
+    Dispatch -->|"local"| Srv
+    CKeys -->|"Gemini key"| Gem
+    CKeys -->|"only OpenRouter key"| OR
+    CKeys -->|"no key"| Synth
+    Gem -.->|"fails, OpenRouter key set"| OR
+    Gem -.->|"fails, no OpenRouter key"| Synth
+    OR -.->|"all attempts fail,<br/>or HTTP 401 or 403"| Synth
+    Hist -.->|"history"| OR
+    Hist -.->|"history"| Srv
+    HF -.->|"only when not cached"| LGen
+    LGen -.->|"not loaded, declined,<br/>empty or throws"| Synth
+    Srv -.->|"throws, not aborted"| Synth
+    Keys -.->|"Gemini key only,<br/>x-goog-api-key header"| Gem
+    Keys -.->|"OpenRouter key only,<br/>Authorization Bearer"| OR
+    Synth -.->|"known titles"| Titles
+    Dispatch -.->|"user abort"| Abort
+    Dispatch -.->|"answer with citations,<br/>same session"| Check
+    Gem --> Persist
+    OR --> Persist
+    LGen --> Persist
+    Srv --> Persist
+    Synth --> Persist
+    Persist -->|"yes"| LS
+    Persist -->|"no"| Sync
+    Sync -->|"yes"| CH
+    Sync -->|"no"| LS
+    CH -.->|"insert fails"| LS
+```
+
+</details>
+
+<details>
+<summary><strong>System context and trust boundaries</strong> (diagram)</summary>
 
 <!-- diagram: system-context-overview -->
 ```mermaid
 flowchart LR
     subgraph device["User device: browser tab on www.starpi.app, CSP enforced"]
         subgraph mainThread["Main thread, src/js"]
-            boot["main.js boot()<br/>chat.js, settings.js, UI modules"]
-            sbClient["supabase.js createClient<br/>anon key compiled in, build refuses other roles<br/>fetchWithTimeout 12 s"]
+            boot["main.js boot()<br/>chat.js, settings.js, demo.js, UI modules"]
+            sbClient["supabase.js createClient<br/>public key compiled in: publishable or anon JWT,<br/>build refuses sb_secret_ keys, non-anon JWTs<br/>and any other key, fetchWithTimeout 12 s, db retry off"]
             provJs["providers.js<br/>callGemini, callOpenRouter,<br/>callLocalServer, probeLocalServer"]
             engineJs["webgpu/engine.js<br/>loadModel, generate, unloadModel"]
             wsJs["rag/workspace.js<br/>request(type, payload)"]
+            trustJs["rag/grounding-view.js, rag/receipts.js<br/>source check and receipt drafts,<br/>computed and kept in memory"]
+            voiceJs["voice.js<br/>Web Speech API, processLocally<br/>required in client mode"]
         end
         subgraph llmWorker["Web Worker starpi-webllm"]
             mlc["webgpu/worker.js<br/>WebWorkerMLCEngineHandler<br/>inference on WebGPU"]
         end
         subgraph ingestWorker["Web Worker starpi-ingest"]
-            ingest["rag/ingest.worker.js<br/>extractText with pdf.js, chunkText,<br/>BM25Index in worker memory only"]
+            ingest["rag/ingest.worker.js<br/>extractText with pdf.js, chunkText,<br/>BM25Index in worker memory only,<br/>SHA-256 of file and text, verify-receipt"]
         end
-        sw["sw.js service worker<br/>same-origin GET only,<br/>cross-origin requests bypass it"]
+        sw["sw.js service worker<br/>same-origin GET only,<br/>cross-origin requests bypass it,<br/>a new version skips waiting only<br/>when no window is open"]
         subgraph browserStores["Per-origin browser storage"]
             ls[("localStorage<br/>starpi_local_chats_v1, starpi_chat_session_id,<br/>starpi_compute_mode, starpi_webgpu_model,<br/>starpi_llm_url, starpi_remember_keys,<br/>starpi_locale, starpi-auth session")]
             ss[("sessionStorage<br/>Gemini and OpenRouter keys for this tab,<br/>in localStorage instead if remember is on")]
-            swCache[("CacheStorage<br/>starpi-shell-VERSION, starpi-assets-VERSION")]
+            swCache[("CacheStorage<br/>starpi-shell-VERSION, starpi-assets")]
             modelCache[("Cache API owned by WebLLM<br/>webllm/model, webllm/config, webllm/wasm")]
         end
     end
 
     subgraph vercel["Vercel static hosting"]
-        host["dist/: index.html, hashed /assets/*, sw.js<br/>vercel.json headers on every path:<br/>CSP script-src self and wasm-unsafe-eval,<br/>connect-src self, data:, https:, wss://*.supabase.co,<br/>http://localhost:* and http://127.0.0.1:*<br/>HSTS, COOP same-origin, X-Frame-Options DENY,<br/>nosniff, Referrer-Policy, Permissions-Policy"]
+        host["dist/: index.html, hashed /assets/*, sw.js,<br/>build-manifest.json, public files such as /samples/*<br/>vercel.json headers on every path:<br/>CSP script-src self and wasm-unsafe-eval,<br/>connect-src self, data:, https:, wss://*.supabase.co,<br/>http://localhost:* and http://127.0.0.1:*<br/>HSTS, COOP same-origin, X-Frame-Options DENY,<br/>nosniff, Referrer-Policy,<br/>Permissions-Policy microphone self only"]
     end
 
     subgraph supabase["Supabase project: access decided by roles and RLS"]
@@ -135,324 +335,53 @@ flowchart LR
         ownServer["Own Chat Completions server<br/>https anywhere, http only on<br/>localhost or 127.0.0.1"]
         hf["Hugging Face<br/>huggingface.co/mlc-ai weights"]
         ghLibs["raw.githubusercontent.com<br/>binary-mlc-llm-libs wasm"]
+        speech["Browser speech recognition<br/>vendor servers in most browsers"]
         backendApis["Backend upstreams<br/>LLM_BASE_URL, EMBEDDING_BASE_URL,<br/>GEMINI_API_KEYS, OPENROUTER_API_KEYS"]
     end
 
-    host -->|"app shell and hashed assets<br/>with security headers"| sw
-    sw -->|"navigations network-first,<br/>/assets/* and precache cache-first"| boot
-    sw -->|"precache, put if cacheable()"| swCache
-    boot -->|"register /sw.js, SKIP_WAITING"| sw
+    host -->|"app shell, hashed assets and<br/>public files with security headers"| sw
+    sw -->|"navigations network-first, cached shell<br/>after 3.5 s or on failure,<br/>/assets/* and precache cache-first"| boot
+    sw -->|"precache at install, / with cache reload,<br/>navigations store / again only as<br/>non-redirected HTML and not after the<br/>cached shell was served, /assets/* put if cacheable()"| swCache
+    boot -->|"register /sw.js, scope /"| sw
+    boot -->|"GET /build-manifest.json no-store<br/>after controllerchange, update banner"| host
     boot -->|"settings, locale, chat fallback"| ls
     provJs -->|"readSecret"| ss
     sbClient -->|"persistSession, storageKey starpi-auth"| ls
     engineJs -->|"CreateWebWorkerMLCEngine,<br/>messages in, stream deltas out"| mlc
-    engineJs -->|"hasModelInCache,<br/>deleteModelAllInfoInCache"| modelCache
+    engineJs -->|"certainlyNotCached, hasModelInCache,<br/>deleteModelAllInfoInCache"| modelCache
     mlc -->|"read and write shards"| modelCache
     mlc -->|"GET weights if not cached,<br/>interactive loads only, after confirmDownload"| hf
     mlc -->|"GET model_lib wasm"| ghLibs
-    wsJs -->|"postMessage ingest, search, head,<br/>context, text, remove,<br/>File structured-cloned"| ingest
-    sbClient -->|"getSession, signInAnonymously"| auth
-    sbClient -->|"apikey anon, Bearer session JWT:<br/>select, insert, delete, rpc search_knowledge"| rest
+    wsJs -->|"postMessage ingest, search, head,<br/>context, text, remove, verify-receipt,<br/>File structured-cloned"| ingest
+    trustJs -->|"verifyReceiptFiles"| wsJs
+    sbClient -->|"getSession, GET /auth/v1/settings,<br/>signInAnonymously unless<br/>anonymous sign-ins are off"| auth
+    sbClient -->|"apikey public key, Bearer session JWT:<br/>select, insert, delete, rpc search_knowledge"| rest
     rest -->|"SQL as anon or authenticated"| tables
     rest -->|"rpc"| rpcFns
     rpcFns -->|"run as the caller role"| tables
     provJs -->|"x-goog-api-key header,<br/>prompt with retrieved excerpts"| gemini
     provJs -->|"Bearer key, messages,<br/>failover over free models"| openrouter
     provJs -->|"messages, no key sent,<br/>GET /models probe"| ownServer
+    voiceJs -->|"microphone audio, handled by the browser"| speech
     caller -->|"Bearer BRAIN_API_TOKEN when set,<br/>else loopback Host only"| brain
-    brain -->|"service_role key bypasses RLS:<br/>knowledge_documents, knowledge_sections,<br/>rpc match_knowledge_sections"| rest
+    brain -->|"service_role key bypasses RLS:<br/>knowledge_documents, knowledge_sections,<br/>rpc match_knowledge_sections,<br/>reads kept to is_public or no owner"| rest
     brain -->|"chat/completions, embeddings,<br/>generateContent"| backendApis
 
     classDef external stroke-dasharray: 5 5
-    class gemini,openrouter,ownServer,hf,ghLibs,backendApis external
+    class gemini,openrouter,ownServer,hf,ghLibs,speech,backendApis external
 ```
 
-### Key flows
+</details>
 
-**One chat turn**, from the input to the persisted answer
-([details](docs/ARCHITECTURE.md#3-answering-a-question)):
+The [architecture atlas](docs/ARCHITECTURE.md) documents every subsystem with diagrams checked
+against the code: boot, chat, retrieval and citations, the source check and receipts, the WebGPU
+engine, storage and offline use, the database and its policies, the backend, and build, test and
+deployment.
 
-<!-- diagram: chat-request-lifecycle -->
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant Chat as chat.js submitChat
-    participant Msg as messages.js
-    participant Store as chat-store.js
-    participant WS as rag/workspace.js worker
-    participant SB as supabase.js
-    participant Ret as retrieval.js
-    participant Cit as rag/citations.js
-    participant Eng as providers.js or WebGPU engine
-    participant Syn as synthesizer.js
+## On-device models
 
-    User->>Chat: chatForm submit, Enter, quick-prompt or graph ask-entity
-    opt busy is true
-        Chat-->>User: setAssistantStatus status.busy, return
-    end
-    opt no text and no attachment
-        Chat-->>User: return without a message
-    end
-    Note over Chat: trim to 8000 chars, clear input, removeAttachment.<br/>Captures sid, history, mode and localOnly = mode is client.<br/>A file without text asks chat.summarize_file
-    Chat->>Msg: appendMessage user shownText
-    Note over Chat,Store: storeQuestion is prepared, the question is not stored yet
-    Note over Chat: new AbortController, setBusy(true) shows Stop and status.generating
-    Chat->>Msg: appendLoading()
-    Chat->>WS: searchWorkspace(prompt, 6), any error gives no workspace hits
-    opt attached docId not among the hits
-        Chat->>WS: firstChunks(docId, 3) prepended
-    end
-    alt mode council or local
-        Chat->>SB: searchKnowledge(prompt), rpc search_knowledge
-        opt RPC error or zero rows
-            Chat->>SB: recentKnowledge(30), on failure workspace hits only
-            Chat->>Ret: rankHitsLocally(prompt, rows, 6)
-        end
-    else mode client
-        Chat->>SB: recentKnowledge(30), question is not sent
-        Chat->>Ret: rankHitsLocally(prompt, rows, 6), none if the fetch failed
-    end
-    Note over Chat: used is empty for a greeting without a file, else all hits
-    Chat->>Store: storeQuestion(usesWorkspace), void persistMessage user
-    Note over Chat,Store: localOnly = mode client, a file attached or a used hit from the workspace.<br/>If retrieve() throws first, the catch calls storeQuestion(false)
-    Chat->>Ret: assignCitations(used, excerptChars 1600)
-    Chat->>Cit: registerCitations gives scope id or null
-    Chat->>Ret: distinctSources and buildContext(maxChars 9000)
-    alt mode council
-        Chat->>Eng: answerWithCloud, Gemini then OpenRouter
-    else mode client
-        Chat->>Eng: answerWithLocalModel, removes loading, streams its own bubble
-    else mode local
-        Chat->>Eng: answerWithOwnServer, callLocalServer(getLlmUrl())
-    end
-    Eng-->>Chat: Answer, empty text with note, or null
-    opt answer is null or its text is empty
-        Chat->>SB: knownTitles(), listDocuments unless cached under 60 s
-        Chat->>Syn: synthesizeAnswer, extractive with citation labels
-    end
-    alt signal aborted and answer not rendered
-        Note over Chat,Msg: throw AbortError, the catch (storeQuestion(false) is a no-op)<br/>removes loading, isUserAbort so no notice
-    else a call threw, e.g. a council or local error rethrown after abort
-        Note over Chat: the catch calls storeQuestion(false), a no-op here<br/>because the question was stored after retrieval
-        Chat->>Msg: removeLoading, appendNotice chat.error_title unless isUserAbort
-    else answer ready
-        Chat->>Syn: describeTrace(prompt, method, used, engine label, note)
-        opt sid is still currentSessionId()
-            Chat->>Msg: removeLoading, appendMessage assistant unless already streamed
-            Msg->>Cit: linkifyCitations and citationSources row
-            Chat->>Chat: conversation.push user and assistant turns
-        end
-        Chat->>Store: void persistMessage assistant, localOnly or usesWorkspace
-        alt localOnly or not canSyncChats()
-            Store->>Store: appendLocal to localStorage
-        else chat sync available
-            Store->>SB: insertChatMessage into chat_history
-            Note over Store,SB: on error console.warn and appendLocal,<br/>on success refreshSyncStatus
-        end
-    end
-    Note over Chat: finally removeLoading, setBusy(false), activeAbort = null
-```
-
-**What leaves the device** in each mode:
-
-<!-- diagram: modes-privacy-data-egress -->
-```mermaid
-flowchart TD
-    Ask(["submitChat: question trimmed to 8000 chars<br/>mode = getMode(), stored in starpi_compute_mode"])
-    UserTurn{"storeQuestion(usesWorkspace), question localOnly?<br/>client mode, a file attached,<br/>or any used excerpt from the workspace"}
-    RetMode{"retrieve(): mode is client?"}
-    Ctx["assignCitations + buildContext<br/>workspace hits first, at most 6 hits, 9 with an attachment<br/>excerpt max 1600 chars, context max 9000 chars<br/>a greeting uses no excerpts"]
-    Dispatch{"answer path by mode"}
-    CKeys{"hasGeminiKey()?<br/>else hasOpenRouterKey()?"}
-    Abort(["Stop pressed before a rendered answer:<br/>AbortError, answer not shown or persisted"])
-    Persist{"answer localOnly?<br/>client mode, or any used excerpt<br/>came from the workspace"}
-    Sync{"not localOnly: canSyncChats()?<br/>signed in and hardened schema"}
-
-    subgraph dev["Stays in this browser"]
-        WsSearch["retrieveWorkspace: BM25 in the ingest worker, every mode<br/>an unmatched attached file adds its first 3 chunks<br/>worker error: no workspace hits"]
-        Keys[("provider keys<br/>readSecret: sessionStorage, then localStorage")]
-        LGen["client: WebLLM worker on WebGPU<br/>budgeted excerpts + last 4 history messages<br/>+ question stay in the browser"]
-        Synth["synthesizeAnswer: extractive quotes<br/>with citation labels, no model"]
-        LS[("localStorage<br/>starpi_local_chats_v1")]
-    end
-
-    subgraph net["Sent over the network"]
-        FTS["Supabase rpc search_knowledge<br/>question as query_text, first 1000 chars<br/>match_count 6"]
-        Recent["Supabase recentKnowledge(30)<br/>30 newest documents, question not sent<br/>rankHitsLocally in the browser"]
-        Gem["council: Gemini gemini-2.5-flash generateContent<br/>one user part: system + excerpts incl. workspace<br/>+ question, no chat history"]
-        OR["council: OpenRouter chat/completions<br/>system + excerpts incl. workspace<br/>+ last 4 history messages + question"]
-        Srv["local: own server getLlmUrl()/chat/completions<br/>system + excerpts incl. workspace<br/>+ last 4 history messages + question, no key"]
-        HF["WebLLM model files: huggingface.co weights,<br/>raw.githubusercontent.com wasm<br/>only when not cached, after a confirm, no user text"]
-        Titles["Supabase listDocuments, no question sent<br/>only titles used, cached 60 s"]
-        CH[("Supabase chat_history insert")]
-    end
-
-    Ctx -->|"after retrieval and the greeting check,<br/>before assignCitations"| UserTurn
-    Ask -.->|"turn throws before that:<br/>catch runs storeQuestion(false)"| UserTurn
-    UserTurn -->|"yes"| LS
-    UserTurn -->|"no"| Sync
-    Ask --> WsSearch --> RetMode
-    RetMode -->|"no, council or local"| FTS
-    RetMode -->|"yes"| Recent
-    FTS -->|"rows found"| Ctx
-    FTS -.->|"zero rows or error"| Recent
-    Recent -->|"ranked hits, none if it fails"| Ctx
-    WsSearch -->|"workspace excerpts"| Ctx
-    Ctx --> Dispatch
-    Dispatch -->|"council"| CKeys
-    Dispatch -->|"client"| LGen
-    Dispatch -->|"local"| Srv
-    CKeys -->|"Gemini key"| Gem
-    CKeys -->|"only OpenRouter key"| OR
-    CKeys -->|"no key"| Synth
-    Gem -.->|"fails, OpenRouter key set"| OR
-    Gem -.->|"fails, no OpenRouter key"| Synth
-    OR -.->|"all attempts fail,<br/>or HTTP 401 or 403"| Synth
-    HF -.->|"first load only"| LGen
-    LGen -.->|"not loaded, declined,<br/>empty or throws"| Synth
-    Srv -.->|"throws, not aborted"| Synth
-    Keys -.->|"Gemini key only,<br/>x-goog-api-key header"| Gem
-    Keys -.->|"OpenRouter key only,<br/>Authorization Bearer"| OR
-    Synth -.->|"known titles"| Titles
-    Dispatch -.->|"user abort"| Abort
-    Gem --> Persist
-    OR --> Persist
-    LGen --> Persist
-    Srv --> Persist
-    Synth --> Persist
-    Persist -->|"yes"| LS
-    Persist -->|"no"| Sync
-    Sync -->|"yes"| CH
-    Sync -->|"no"| LS
-    CH -.->|"insert fails"| LS
-```
-
-**From a retrieved chunk to a verified citation**
-([details](docs/ARCHITECTURE.md#4-on-device-workspace-and-citations)):
-
-<!-- diagram: citations-answer-to-drawer -->
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant Chat as chat.js submitChat
-    participant Ret as retrieval.js
-    participant Cit as rag/citations.js
-    participant Gen as model or synthesizer.js
-    participant Msg as messages.js
-    participant WS as rag/workspace.js
-    participant W as ingest.worker.js
-
-    Note over Chat: used = the retrieved hits, or none for a greeting without an attached file
-    Chat->>Ret: assignCitations(used, excerptChars 1600)
-    Ret-->>Chat: citations with label, doc, chunk, source, heading, text, score, span
-    Chat->>Cit: registerCitations(citations)
-    Cit-->>Chat: scope id, or null when there are none
-    Chat->>Ret: buildContext(citations, maxChars 9000)
-    Ret-->>Chat: fenced EXCERPT blocks, each header carries its label
-    alt a model answers (cloud, own server or on-device)
-        Chat->>Gen: system prompt with the citation rules and the context
-        Gen-->>Chat: answer text that cites labels
-    else no model, a failed model or empty text
-        Chat->>Gen: synthesizeAnswer with used hits and the citation list
-        Gen-->>Chat: up to 4 quoted sentences, each followed by its excerpt label
-    end
-    Chat->>Msg: appendMessage(text, citations scope), only if the chat session is unchanged
-    Note over Chat,Msg: a streamed on-device answer is finished by<br/>stream.finalize(text, citations scope) with the same steps
-    Msg->>Cit: linkifyCitations(content rendered by renderMarkdown, scope), then citationSources(scope)
-    Cit-->>Msg: open-citation buttons for registered labels only, Sources badge row
-    User->>Cit: click open-citation, data-arg is scope and index
-    alt scope evicted or index unknown
-        Cit-->>User: nothing opens
-    else citation found
-        Cit-->>User: citationModal with doc, source, chunk, score, offsets, the excerpt in a mark
-        alt source knowledge, span null
-            Cit-->>User: note citation.note_knowledge, no worker request
-        else source workspace, span set
-            Cit-->>User: note citation.loading_context
-            Cit->>WS: getChunkContext(span.docId, span.start, span.end)
-            WS->>W: context, pad 400, a new worker is started if none runs
-            alt the worker has a document with that docId
-                W-->>WS: before, match, after, start, end, length
-                WS-->>Cit: context
-                Cit-->>User: before, match in a mark, after, ellipsis where cut, note citation.note_workspace
-            else no such docId
-                W-->>WS: ok false, code empty
-                WS-->>Cit: reject WorkspaceError, also on a worker crash
-                Cit-->>User: excerpt stays, note citation.note_missing
-            end
-        end
-    end
-    Note over WS,W: ids are ws-instanceId-n with a random instanceId<br/>per worker, so after Clear workspace or a crash<br/>an old span never matches a newer file
-```
-
-### Frontend modules (`src/js`)
-
-| Module | Responsibility |
-| --- | --- |
-| `main.js` | Boot sequence, service worker registration and update prompt |
-| `i18n/index.js`, `../locales/*.json` | Runtime translation (`t`, `setText`, `setLocale`), English default, German dictionary |
-| `dom.js` | Single delegated dispatcher for `data-action` / `data-change` (no inline handlers) |
-| `render.js` | `escapeHtml`, `escapeMarkdown`, `renderMarkdown` (marked + DOMPurify: no scripts, handlers, styles, images, `data-*` attributes or unsafe URLs) |
-| `supabase.js` | Client, anonymous-session bootstrap, schema capability probe, typed queries with timeouts and error classification |
-| `chat.js`, `chat-store.js`, `messages.js` | Chat flow, retrieval, persistence policy, message rendering with throttled streaming |
-| `retrieval.js`, `synthesizer.js` | Keyword ranking, citation labels, context fencing against prompt injection, extractive answers |
-| `prompts.js` | Language-specific system prompts (identity, grounding, citation rules) |
-| `rag/ingest.worker.js`, `rag/parser.js`, `rag/chunker.js`, `rag/bm25.js` | On-device workspace: text extraction, sliding-window chunking, Okapi BM25 |
-| `rag/workspace.js`, `rag/citations.js` | Worker RPC client; citation registry, safe citation buttons and the citation drawer |
-| `bench/bench-ui.js`, `bench/diagnostics.js` | WebGPU adapter report and the inference benchmark |
-| `providers.js` | Gemini (key in the `x-goog-api-key` header), OpenRouter, own Chat Completions server (URL validation) |
-| `webgpu/models.js` | Pure model selection (shader-f16 detection, `q4f32_1` fallback, context budgeting) |
-| `webgpu/engine.js`, `webgpu/worker.js` | Worker-based engine lifecycle: load sequencing, cancel, unload, device-loss handling, quota checks |
-| `library.js`, `ingest.js`, `graph.js`, `settings.js`, `voice.js`, `ui.js` | Feature views |
-
-### On-device models
-
-Model ids are validated against the pinned WebLLM prebuilt catalog in the unit tests. On
-adapters without the `shader-f16` feature the `q4f32_1` variant is selected automatically.
-
-The engine's states, including cancelled and superseded loads and device loss:
-
-<!-- diagram: webgpu-lifecycle-states -->
-```mermaid
-stateDiagram-v2
-    [*] --> idle
-    state "error (EngineError kept in state.error)" as error_state
-    idle --> loading : loadModel, probe ok, chooseModel, teardown, seq still current
-    error_state --> loading : loadModel retry, probe ok, teardown
-    ready --> loading : loadModel for a different modelId (teardown first)
-    ready --> ready : loadModel for the same modelId, engine reused, resolves true
-    idle --> error_state : loadModel, probeWebGPU unsupported or no-adapter (never enters loading)
-    error_state --> error_state : loadModel again, probe still fails
-    loading --> idle : onlyIfCached and hasModelInCache false, seq current
-    loading --> idle : confirmDownload declined, seq current
-    loading --> idle : unloadModel cancels (loadSeq+1, abortPending cancelled, teardown)
-    loading --> ready : CreateWebWorkerMLCEngine resolved and seq current
-    loading --> error_state : run threw with seq current, teardown, classifyEngineError
-    ready --> error_state : generate or runBenchmark failed with device-lost or out-of-memory (loadSeq+1, teardown)
-    ready --> idle : unloadModel (unload button, changed model preference, deleteCachedModels)
-    error_state --> idle : unloadModel
-    note right of loading
-        A run whose seq is no longer loadSeq resolves false without setState
-        and terminates a worker it created.
-        Concurrent loadModel calls share one loadPromise.
-    end note
-    note right of ready
-        generate and runBenchmark throw not-loaded unless ready,
-        and busy while the generating flag is set.
-        Other generation errors are rethrown, status stays ready.
-        chat.js, bench-ui.js and changeEngine check isReady first,
-        so no caller runs loadModel from ready today.
-    end note
-    note left of error_state
-        EngineErrors from the probe (unsupported, no-adapter),
-        prepareStorage (quota) and the model lookup (unknown) pass through.
-        Other failures are classified as quota, device-lost,
-        out-of-memory, network, unsupported or unknown.
-        cancelled never lands here.
-    end note
-```
+Model ids are validated against the pinned WebLLM catalog in the unit tests. On adapters without
+the `shader-f16` feature the `q4f32_1` variant is selected automatically.
 
 | Preset | WebLLM model (f16 / f32 fallback) | Approx. download | VRAM (f16 / f32) | Context window |
 | --- | --- | --- | --- | --- |
@@ -460,19 +389,21 @@ stateDiagram-v2
 | `qwen-1.5b` | `Qwen2.5-1.5B-Instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 1.0 GB | 1,630 MB / 1,889 MB | 2,048 |
 | `qwen-3b` (desktop default, ≥ 8 GB RAM) | `Qwen2.5-3B-Instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 1.9 GB | 2,505 MB / 2,894 MB | 4,096 |
 
-Before downloading, the app checks `navigator.storage.estimate()`, asks for confirmation and
-requests persistent storage. Weights are cached by WebLLM itself, not by the service worker.
-**Settings → Advanced → Delete downloaded model data** removes them.
+Nothing is downloaded without confirmation. Before asking, the app checks whether the model is
+already cached and whether the storage quota suffices; persistent storage is requested only after
+you agree. Weights are cached by WebLLM, not by the service worker; **Settings › Advanced › Delete
+downloaded model data** removes them. The **Diagnostics** tab reports the WebGPU adapter and
+measures time to first token and decode speed on the loaded model.
 
 ## Browser support
 
-| Browser | WebGPU (local mode) | Notes |
+| Browser | On-device model (WebGPU) | Notes |
 | --- | --- | --- |
 | Chrome / Edge 113+ (Windows, macOS, ChromeOS) | Yes | Linux support depends on GPU and driver; check `chrome://gpu`. |
-| Chrome 121+ on Android 12+ | Yes | Compact 1B model with a 2,048-token context is selected by default. |
+| Chrome 121+ on Android 12+ | Yes | The compact 1B model with a 2,048-token context is selected by default. |
 | Safari 26 (macOS, iOS, iPadOS) | Yes | iOS may evict cached model data under storage pressure. |
-| Firefox 141+ | Windows only so far | Other platforms are rolling out. |
-| Any browser without WebGPU | No | Cloud, own-server and extractive modes still work. |
+| Firefox 141+ | Windows; other platforms are rolling out | `about:support` › Graphics shows whether WebGPU is available. |
+| Any browser without WebGPU | No | Everything else works: sample files, workspace, source check, receipts, cloud and own-server modes. |
 
 Own-server mode from `https://www.starpi.app` to `http://localhost` triggers Chrome's Local
 Network Access permission prompt (Chrome 142+), and Ollama must allow the origin
@@ -480,7 +411,7 @@ Network Access permission prompt (Chrome 142+), and Ollama must allow the origin
 
 ## Quickstart
 
-Prerequisites: Node.js 20.19+ (22 LTS recommended), npm 10+. Python 3.11+ only for the backend.
+Prerequisites: Node.js 22.13+ (`.nvmrc`), npm 10+. Python 3.11+ only for the optional backend.
 
 ```bash
 git clone https://github.com/umutcantezgel-cpu/Starpi.git
@@ -496,109 +427,95 @@ Content-Security-Policy.
 | --- | --- |
 | `npm run build` | Production build into `dist/` (Tailwind CSS, esbuild bundle, hashed assets, generated service worker) |
 | `npm run preview` | Serve `dist/` with production headers |
-| `npm run lint` / `npm run typecheck` | ESLint; TypeScript `checkJs` in strict mode for the core modules |
+| `npm run lint` / `npm run typecheck` | ESLint; TypeScript `checkJs` in strict mode for every `@ts-check` module |
 | `npm test` | Unit tests (`node --test`) |
-| `npm run test:e2e` | Playwright tests against `dist/` with a mocked Supabase backend |
+| `npm run test:e2e` | Playwright tests against `dist/` with a mocked Supabase backend, including an axe accessibility scan |
 | `npm run verify` | Lint, typecheck, unit tests, build and output verification |
+| `npm run verify:receipt -- receipt.json file…` | Verify an answer receipt against the original files |
+| `npm run docs:sync` | Copy diagrams from the atlas into the README and guides |
 
 ### Configuration
 
-The Supabase URL and **anon** key are public by design and compiled into the bundle. Forks set
-their own at build time:
+The Supabase URL and the public key are compiled into the bundle. Forks set their own at build
+time, with a publishable key (`sb_publishable_…`) or a legacy `anon` JWT:
 
 ```bash
 STARPI_SUPABASE_URL=https://<project-ref>.supabase.co \
-STARPI_SUPABASE_ANON_KEY=<anon key> \
+STARPI_SUPABASE_ANON_KEY=<publishable or anon key> \
 npm run build
 ```
 
-The build refuses any key whose JWT role is not `anon`, so a `service_role` key can never
-reach the browser.
+The build refuses secret keys (`sb_secret_…`) and any JWT whose role is not `anon`, so a key that
+bypasses row level security can never reach the browser.
 
 ## Database setup (Supabase)
 
-See [`backend/supabase/README.md`](backend/supabase/README.md) for details, verification
-queries and rollback.
+See [`backend/supabase/README.md`](backend/supabase/README.md) for details, verification queries and
+rollback.
 
-1. Enable **Anonymous sign-ins** (Authentication → Sign In / Providers). Consider CAPTCHA and
-   rate limits for anonymous sign-ins.
+1. Enable **Anonymous sign-ins** (Authentication › Sign In / Providers). Consider CAPTCHA and rate
+   limits for anonymous sign-ins. Without them the app still reads published knowledge and keeps
+   chats in the browser.
 2. New project: apply `backend/supabase/full_schema.sql`. Existing project: apply the files in
-   `backend/supabase/migrations/` in file-name order (`20260923000000_harden_rls_anonymous_auth.sql`,
-   then `20260924000000_lock_published_rows.sql`).
-3. Verify with Supabase's security advisors.
-
-Until the migration is applied, the app detects the old schema. It then keeps chats on the
-device and notes, after saving, that new knowledge entries are visible to other visitors.
+   `backend/supabase/migrations/` in file-name order.
+3. Check the result with Supabase's security advisors.
 
 ## Optional backend
 
-`backend/` is a dependency-light Python service for server-side ingestion (Markdown
-structuring, chunking, 1536-dimensional embeddings) and pgvector retrieval. It uses the
-**service role** key and must never be exposed without authentication. It binds to
-`127.0.0.1` by default and requires `BRAIN_API_TOKEN` on any other interface.
-
-```bash
-cd backend
-python -m pip install -r requirements.txt
-cp .env.example .env   # fill in SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, LLM and embedding endpoints
-python server.py
-```
-
-Endpoints, configuration, request guards and pipelines are described in
+`backend/` is a dependency-light Python service for server-side ingestion (Markdown structuring,
+chunking, 1536-dimensional embeddings) and pgvector retrieval. It holds the **service role** key,
+binds to `127.0.0.1` by default and requires `BRAIN_API_TOKEN` on any other interface. See
 [backend/README.md](backend/README.md).
 
-## Security model
+## Security
 
-- **Data access:** the browser uses the public anon key and an anonymous Supabase session;
-  RLS restricts chats to their owner and private knowledge rows to their creator. SECURITY
-  DEFINER functions are not callable by browser roles.
-- **Content rendering:** all Markdown from the database or models passes through DOMPurify
-  with a restrictive profile. Values interpolated into HTML are escaped. The UI uses
-  delegated event handlers, so the CSP needs no `unsafe-inline`.
-- **Headers:** `script-src 'self' 'wasm-unsafe-eval'`, `style-src 'self'`,
-  `img-src 'self' data: blob:` (blocks exfiltration via remote images),
-  `frame-ancestors 'none'`, plus Permissions-Policy, COOP and HSTS. `connect-src` allows
-  `https:` because the own-server endpoint is user-defined.
-- **Untrusted files:** workspace files are parsed in a dedicated worker; pdf.js runs there without
-  `eval`, font loading or network access, and extracted text is only ever set as `textContent`.
-  Citation buttons are created with DOM APIs from registered excerpts, never from model output.
-- **Credentials:** provider keys are kept for the browser tab only unless the user opts in
-  to storing them on the device. They are never written back into form fields.
-- **Supply chain:** exact dependency pins with a lockfile, `npm ci --ignore-scripts`, no CDN
-  scripts at runtime, SHA-pinned GitHub Actions, gitleaks in CI.
+- **Data access:** the public key and an anonymous session; row level security limits chats to
+  their owner and private knowledge rows to their creator, and published rows are read-only for
+  the browser.
+- **Rendering:** Markdown from the database or a model passes DOMPurify with a restrictive
+  profile; the source check, receipts and citations are built with DOM APIs and `textContent`.
+- **Headers:** `script-src 'self' 'wasm-unsafe-eval'`, `style-src 'self'`, no inline code (checked
+  after every build), `frame-ancestors 'none'`, HSTS, COOP and a Permissions-Policy.
+- **Untrusted files:** parsed in a worker; pdf.js runs without `eval` or font loading.
+- **Credentials:** provider keys stay in the browser tab unless you choose to keep them.
+- **Supply chain:** exact dependency pins, `npm ci --ignore-scripts`, SHA-pinned GitHub Actions,
+  gitleaks in CI.
 
-Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
+Details and known limitations are in [SECURITY.md](SECURITY.md).
 
 ## Testing and CI
 
-`.github/workflows/ci.yml` runs on every pull request:
+`.github/workflows/ci.yml` runs on every push and pull request to `main`:
 
 | Job | Checks |
 | --- | --- |
-| `frontend` | ESLint, TypeScript, unit tests, production build, `verify-dist` (no inline scripts/handlers/styles, all assets present, no `eval`) |
-| `e2e` | Playwright on desktop and mobile viewports under the production CSP: zero CSP violations, XSS payloads stay inert, graceful degradation, no chat writes without RLS |
-| `backend` | ruff, byte-compilation, offline unit tests on Python 3.11 and 3.12 |
-| `database` | Migration and RLS test suite on PostgreSQL 16 + pgvector (live, fresh and legacy schema shapes; idempotency; cross-user isolation) |
-| `secrets` | gitleaks on the working tree and on the commits of the pull request |
+| `frontend` | ESLint, TypeScript, unit tests (including golden tests for extraction, chunking and the source check, and receipt round trips), production build, `verify-dist` |
+| `e2e` | Playwright on desktop and mobile viewports under the production CSP: zero CSP violations, sample files, source check, receipts verified against the original files, axe (no serious or critical violations), privacy of on-device turns, inert XSS payloads, offline reconnect |
+| `backend` | ruff, byte-compilation and offline unit tests on Python 3.11 and 3.12 |
+| `database` | Migration and RLS suite on PostgreSQL 16 with pgvector: live, fresh and legacy schemas, idempotency, schema parity, cross-user isolation, search |
+| `secrets` | gitleaks on the working tree and on the commits of a pull request |
+
+The unit and end-to-end suites also check the documentation: every Mermaid block renders, diagram
+copies match the atlas, and links and anchors resolve.
 
 ## Roadmap
 
-- **Benchmark history:** keep the Diagnostics results per model and device class (with peak GPU
-  memory) and use them for the automatic model choice instead of static thresholds.
-- **Quantization tiers:** measure the trade-offs between `q4f16_1`, `q4f32_1` and higher-precision
-  variants per adapter, and add a tier for mid-range mobile GPUs.
-- **Answer quality evaluation:** an English and German question-answering set over the knowledge base
-  that compares local models, own-server models and cloud providers on answer faithfulness
-  and citation accuracy.
-- **Hybrid retrieval in the browser:** compute query embeddings on-device so local mode can use
+- **Answer quality evaluation:** an English and German question set over the sample data that
+  compares on-device, own-server and cloud models on faithfulness and citation accuracy, with the
+  source check as one of the measures.
+- **Model-based checks:** an optional second opinion (entailment) for statements the deterministic
+  check can only mark as weak.
+- **Signed receipts:** optional signatures for receipts produced by a deployment.
+- **Hybrid retrieval in the browser:** on-device query embeddings, so on-device mode can use
   pgvector ranking without sending the question to the server.
-- **Bundle size:** load the WebLLM runtime only inside the worker. Today the main thread also
-  parses the shared chunk when local mode starts.
+- **Benchmark history:** keep Diagnostics results per model and device class and use them for the
+  automatic model choice.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), the [walkthrough](docs/WALKTHROUGH.md) for a tour of the code
-and the [Code of Conduct](CODE_OF_CONDUCT.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md), the [walkthrough](docs/WALKTHROUGH.md) for a tour of the
+code, and the [Code of Conduct](CODE_OF_CONDUCT.md). Changes are listed in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

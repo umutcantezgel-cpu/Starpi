@@ -1,9 +1,9 @@
 # Answer receipts (`starpi.receipt/v1`)
 
 An answer receipt is a JSON file that Starpi creates for one answer. It lists the excerpts the answer
-cited, with a SHA-256 fingerprint of every source file, the extraction and chunking rules, the exact
+was given (cited or not), with a SHA-256 fingerprint of every source file, the extraction and chunking rules, the exact
 character offsets of each passage, and the verdicts of the source check. Anyone who has the same
-files can check that every cited workspace excerpt is an exact, unchanged passage of those files:
+files can check that every workspace excerpt is an exact, unchanged passage of those files:
 in the app (**Add knowledge › On-device workspace › Verify an answer receipt**, or the **Receipt**
 button under an answer) or with the command-line verifier.
 
@@ -119,8 +119,8 @@ are left out. Each sentence has:
 
 - `text`: the statement as shown, citation labels removed;
 - `cites`: indexes into `citations`;
-- `citeSource`: where the citations came from: `own` (in the sentence), `block` (earlier in the
-  same paragraph or list item), `leadin` (a line ending in a colon before a list), `answer` (a
+- `citeSource`: where the citations came from: `own` (in the sentence), `block` (the nearest cited
+  sentence of the same paragraph or list item, the following one first), `leadin` (a line ending in a colon before a list), `answer` (a
   "Sources:" line), or `null`;
 - `verdict`: `supported`, `weak`, `unsupported` or `unchecked`;
 - `reasons`: objects with `code`, `level` (`weak` or `unsupported`) and, depending on the code,
@@ -167,8 +167,10 @@ version:
 | Chunking (`chunkText`, [`src/js/rag/chunker.js`](../../src/js/rag/chunker.js)) | `document.chunker` | `starpi-chunk` 1, size 500, overlap 50 |
 | Source check ([`src/js/core/grounding.js`](../../src/js/core/grounding.js)) | `grounding.algorithm` | `starpi-grounding` 1 |
 
-Golden tests (`tests/unit/golden.test.mjs`) pin the output of all three. A change that alters their
-output must bump the version, so an old receipt is reported as "made with other rules" instead of
+Golden tests (`tests/unit/golden.test.mjs`) pin the output of all three: extraction and chunking of
+the sample files, and the verdicts and reasons of the source check on every statement of the 308
+labelled answers in `tests/fixtures/grounding/eval.json`. A change that alters their output must
+bump the version, so an old receipt is reported as "made with other rules" instead of
 failing without explanation. An incompatible change of the receipt format itself gets a new
 `schema` value.
 

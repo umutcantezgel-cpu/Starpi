@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use Starpi in your work, please cite it as below."
 type: software
 title: "Starpi"
-abstract: "Local-first knowledge assistant: in-browser retrieval-augmented generation with verifiable citations, WebGPU inference in a Web Worker, and a Supabase knowledge base protected by row level security."
+abstract: "Knowledge assistant in the browser that shows how far each answer can be trusted: retrieval-augmented generation with verifiable citations, a deterministic source check that compares every statement with the excerpts it cites, and answer receipts that anyone can verify against the original files. Files are read on the device; answers come from WebGPU inference in a Web Worker, an own server or a cloud model."
 authors:
   - family-names: Tezgel
     given-names: Umutcan
@@ -13,8 +13,11 @@ license: MIT
 repository-code: "https://github.com/umutcantezgel-cpu/Starpi"
 url: "https://www.starpi.app"
 keywords:
-  - webgpu
   - rag
+  - grounding
+  - faithfulness
+  - provenance
+  - webgpu
   - bm25
   - webllm
   - citations

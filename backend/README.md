@@ -63,7 +63,7 @@ flowchart TD
     HasDo -->|"no, e.g. HEAD, PUT, DELETE,<br/>or a malformed request line or headers"| StdErr["stdlib calls the send_error override<br/>before any guard runs: drains body,<br/>JSON error from the status phrase<br/>e.g. 501 not_implemented, connection closed"]
     HasDo -->|"yes, _dispatch then _route"| Proxy{"_check_proxy_headers<br/>no BRAIN_API_TOKEN and any of Forwarded,<br/>X-Forwarded-For, X-Forwarded-Host,<br/>X-Forwarded-Proto, X-Real-IP?"}
     Proxy -->|"yes"| E401P["401 api_token_required_behind_proxy<br/>with WWW-Authenticate Bearer"]
-    Proxy -->|"no"| Orig{"Origin header present and not in allowed_origins?<br/>BRAIN_ALLOWED_ORIGINS, default http://localhost:3000,<br/>http://127.0.0.1:3000, https://www.starpi.app, https://starpi.app<br/>an empty Origin is not allowed"}
+    Proxy -->|"no"| Orig{"Origin header present and not in allowed_origins?<br/>BRAIN_ALLOWED_ORIGINS, trailing slashes removed, default<br/>http://localhost:3000, http://127.0.0.1:3000,<br/>https://www.starpi.app, https://starpi.app<br/>an empty Origin is not allowed"}
     Orig -->|"yes"| E403O["403 origin_not_allowed"]
     Orig -->|"no"| HostC{"_check_host<br/>no token, Host header present and<br/>not localhost or a loopback IP?"}
     HostC -->|"yes"| E403H["403 host_not_allowed"]
@@ -108,7 +108,7 @@ JSON bodies are bounded and validated before any work starts:
 flowchart TD
     H{"handler for the matched route"}
     H -->|"GET /api/health"| Health["_handle_health<br/>status healthy, supabase_live = bool(db.is_live)<br/>is_live only means SUPABASE_URL and<br/>SUPABASE_SERVICE_ROLE_KEY are set, no connectivity check"]
-    H -->|"GET /api/brain/documents"| Docs{"_handle_documents: db.list_documents<br/>is_live and GET /rest/v1/knowledge_documents<br/>order created_at.desc, limit 200<br/>returns a JSON list?"}
+    H -->|"GET /api/brain/documents"| Docs{"_handle_documents: db.list_documents<br/>is_live and GET /rest/v1/knowledge_documents<br/>or=(is_public.eq.true,owner_id.is.null)<br/>order created_at.desc, limit 200<br/>returns a JSON list?"}
     Docs -->|"yes"| R200
     Docs -->|"not live, httpx.HTTPError,<br/>ValueError or non-list body"| DocsMem["warning if live, newest 200 documents<br/>of the in-memory store, storage memory"]
     DocsMem --> R200
@@ -118,7 +118,7 @@ flowchart TD
     CL -->|"no"| E411
     CL -->|"yes"| CLv{"exactly one Content-Length<br/>made of ASCII digits only?"}
     CLv -->|"no"| E400L["400 invalid_content_length"]
-    CLv -->|"yes"| Max{"length above max_body_bytes?<br/>BRAIN_MAX_BODY_BYTES, default 1048576<br/>more than 18 digits counts as 10^18"}
+    CLv -->|"yes"| Max{"length above max_body_bytes?<br/>BRAIN_MAX_BODY_BYTES, default 1048576<br/>more than 18 significant digits counts as 10^18"}
     Max -->|"yes"| E413["413 payload_too_large<br/>with max_bytes"]
     Max -->|"no"| CT{"Content-Type media type<br/>is application/json?"}
     CT -->|"no"| E415["415 unsupported_media_type"]
@@ -126,13 +126,13 @@ flowchart TD
     Read -->|"TimeoutError, body stalled past 30 s"| E408["408 request_timeout<br/>Connection close"]
     Read -->|"bytes received"| Short{"fewer bytes than Content-Length?"}
     Short -->|"yes"| E400B["400 incomplete_body"]
-    Short -->|"no"| Json{"UTF-8 decode and json.loads succeed?"}
+    Short -->|"no"| Json{"UTF-8 decode and json.loads succeed?<br/>RecursionError counts as a failure"}
     Json -->|"no"| E400J["400 invalid_json"]
     Json -->|"yes"| Obj{"top level is a JSON object?"}
     Obj -->|"no"| E400O["400 json_body_must_be_object"]
     Obj -->|"yes"| Fields{"_string_field checks<br/>ingest: text required, max 200000 chars,<br/>source_name max 256, source_type max 64<br/>query: query required, max 4000 chars"}
     Fields -->|"not a string, too long,<br/>or required and missing or blank"| E400F["400 invalid_field<br/>with field and detail"]
-    Fields -->|"ingest"| Ing["ingest_raw_information<br/>source_name default Web-Upload<br/>source_type default text"]
+    Fields -->|"ingest"| Ing["ingest_raw_information<br/>source_name Web-Upload when missing or blank<br/>source_type text when missing or blank"]
     Fields -->|"query"| Qry["query_brain(user_query)"]
     Health --> R200["_send 200 JSON"]
     Ing --> R200
@@ -157,7 +157,7 @@ Start-up refuses unsafe configurations:
 <!-- diagram: backend-request-startup -->
 ```mermaid
 flowchart TD
-    Start(["python server.py [port] [--host HOST] [--log-level LEVEL]"]) --> Env["import core.config<br/>loads backend/.env, else the repo-root .env<br/>parse_env_line: a quoted value ends at its matching quote,<br/>an unquoted value drops a whitespace # comment<br/>last assignment of a key in the file wins<br/>variables already in the environment win"]
+    Start(["python server.py [port] [--host HOST] [--log-level LEVEL]"]) --> Env["import core.config<br/>loads backend/.env, else the repo-root .env<br/>parse_env_line: an export prefix is dropped,<br/>a quoted value ends at its matching quote,<br/>an unquoted value drops a whitespace # comment<br/>last assignment of a key in the file wins<br/>variables already in the environment win<br/>an unreadable file is logged and skipped"]
     Env --> Cfg["config = BrainConfig()<br/>BRAIN_SERVER_HOST default 127.0.0.1<br/>BRAIN_SERVER_PORT default 9200"]
     Cfg --> Int{"BRAIN_SERVER_PORT or BRAIN_MAX_BODY_BYTES<br/>set but not an integer?"}
     Int -->|"yes"| IntW["warning, default value used"]
@@ -211,13 +211,13 @@ sequenceDiagram
 
     Srv->>Pipe: ingest_raw_information(raw_text, source_name, source_type)
     Pipe->>Str: structure_raw_content(raw_text, source_name)
-    alt raw_text blank
-        Str-->>Pipe: fixed Leeres Dokument structure, tag empty
+    alt raw_text blank, not reachable through server.py
+        Str-->>Pipe: fixed empty structure, title source_name or Leeres Dokument, tag empty
     else text present
         Str->>LLM: POST LLM_BASE_URL/chat/completions, LLM_MODEL, temperature 0.2, max_tokens 3000
         Note over Str,LLM: timeout 120 s, connect 3 s, Bearer only when LLM_API_KEY is set and not EMPTY
         alt HTTP error, unexpected reply shape or no JSON object
-            Str-->>Pipe: fallback_structure, title source_name or first line, tags auto-ingest and raw
+            Str-->>Pipe: fallback_structure, title source_name, else the first 60 chars of the first line, else Dokument, tags auto-ingest and raw
         else JSON object parsed (code fences tolerated)
             Str-->>Pipe: title (else source_name or Unbenanntes Dokument), summary, tags (max 20), markdown (raw_text if missing)
         end
@@ -265,6 +265,7 @@ sequenceDiagram
         DB->>DB: section_payload clips heading 1000 and markdown_content 210000
         Note over DB: embedding sent only if it is 1536 finite numbers, else NULL. fallback_embedding is never sent
         DB->>REST: POST /rest/v1/knowledge_documents, Prefer return=representation
+        Note over DB,REST: no owner_id or is_public in the body, the defaults give owner_id null and is_public false
         REST-->>DB: created row with id
         opt at least one section
             DB->>REST: POST /rest/v1/knowledge_sections with document_id, Prefer return=minimal
@@ -315,11 +316,16 @@ sequenceDiagram
         Rag->>DB: search_similar_sections(vector, threshold 0.15, limit 5)
         alt db.is_live
             DB->>REST: POST /rest/v1/rpc/match_knowledge_sections
-            Note over DB,REST: query_embedding, match_threshold, match_count
-            alt RPC ok and body is a list
+            Note over DB,REST: query_embedding, match_threshold, match_count. The RPC has no visibility filter of its own and the service role bypasses RLS, so matches from private documents come back too
+            alt RPC ok, body is a list and the visibility check does not fail
                 REST-->>DB: matching rows
-            else HTTP error, invalid JSON or non-list body
-                DB->>DB: rank_local_sections over in-memory sections
+                DB->>REST: _visible_matches, GET /rest/v1/knowledge_documents with select id, id in the match document ids, or VISIBLE_ROWS
+                REST-->>DB: ids of documents with is_public true or owner_id null
+                DB->>DB: keep the matches of those documents in RPC order
+                Note over DB: no document ids gives an empty list without the second request, a non-list answer drops every match
+            else HTTP error or invalid JSON from either request, or a non-list RPC body
+                DB->>DB: warning, rank_local_sections over in-memory sections
+                Note over DB: in live mode these are only documents whose Supabase save failed in this process
             end
         else offline mode
             DB->>DB: rank_local_sections, cosine above threshold, top 5
@@ -370,20 +376,20 @@ flowchart TD
     HOff --> HExit1["print JSON, exit 1"]
     HUnr --> HExit1
     HErr --> HExit1
-    Parse -->|"list"| LReq{"configured, and GET /rest/v1/knowledge_documents<br/>newest first, no limit, timeout 15 s<br/>returns a JSON list?"}
-    LReq -->|"yes"| LPrint["print Total documents and one line<br/>per document, exit 0"]
+    Parse -->|"list"| LReq{"configured, and GET /rest/v1/knowledge_documents<br/>newest first, no limit parameter, no visibility filter,<br/>timeout 15 s, connect 5 s, returns a JSON list?"}
+    LReq -->|"yes"| LPrint["print Total documents and one line<br/>per document, private rows included, exit 0"]
     LReq -->|"not configured, httpx.HTTPError,<br/>ValueError or non-list body"| LMem["warning if configured, in-memory list<br/>empty in a fresh CLI process"]
     LMem --> LPrint
     Parse -->|"test-query"| QText["query = the words joined, default Projekt Alpha<br/>get_embedding_with_source"]
     QText --> QReal{"configured and only a hash vector,<br/>embedding endpoint unavailable?"}
     QReal -->|"yes"| QE2["remote vector search skipped<br/>message on stderr, exit 1"]
     QReal -->|"no"| QM{"match_sections threshold 0.1, limit 3<br/>configured, and RPC match_knowledge_sections<br/>returns a JSON list? timeout 20 s"}
-    QM -->|"yes"| QPrint["print matches: document title,<br/>heading and similarity, exit 0"]
+    QM -->|"yes, not filtered by visibility"| QPrint["print matches: document title,<br/>heading and similarity, exit 0"]
     QM -->|"not configured, httpx.HTTPError,<br/>ValueError or non-list body"| QMem["rank_local_sections over the<br/>in-memory sections"]
     QMem --> QPrint
     Smoke(["python backend/scripts/brain_smoke.py<br/>--query Q repeatable, --skip-ingest, --verbose"]) --> SLive["print Supabase live = db.is_live"]
     SLive --> SIng{"--skip-ingest?"}
-    SIng -->|"no"| SIngest["ingest_raw_information with a sample meeting note<br/>Meeting_Alpha_28Aug.txt, meeting_notes<br/>writes a real document when Supabase is configured"]
+    SIng -->|"no"| SIngest["ingest_raw_information with a sample meeting note<br/>Meeting_Alpha_28Aug.txt, meeting_notes<br/>writes a real document when Supabase is configured,<br/>owner_id null, so the API document list returns it"]
     SIng -->|"yes"| SQ
     SIngest --> SQ["query_brain for each --query<br/>or the 2 default questions<br/>print provider, answer and sources, exit 0"]
 ```
