@@ -144,6 +144,7 @@ idealised design. When the code changes, change the diagram in the same pull req
     - [checkSentence: when a statement is checked, its reasons and its verdict](#checksentence-when-a-statement-is-checked-its-reasons-and-its-verdict)
     - [Facts: strict claims, lenient excerpts and how they are matched](#facts-strict-claims-lenient-excerpts-and-how-they-are-matched)
     - [Answer receipts: fingerprints, draft, dialog and download](#answer-receipts-fingerprints-draft-dialog-and-download)
+    - [Deterministic citation verification and receipt flow](#deterministic-citation-verification-and-receipt-flow)
     - [Re-checking a receipt in the app and on the command line](#re-checking-a-receipt-in-the-app-and-on-the-command-line)
     - [Sample files and the source-check demo](#sample-files-and-the-source-check-demo)
 
@@ -6805,6 +6806,44 @@ sequenceDiagram
 ```
 
 <sub>Sources: [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
+
+### Deterministic citation verification and receipt flow
+
+The verification pipeline links an on-screen answer back to source file bytes through four deterministic layers (L0 to L3). During ingestion, `chunkText` records exact UTF-16 code unit offsets `[start, end]` alongside `fileSha256` and `textSha256`. After response generation, `applyGrounding` deterministically evaluates factual claims (`extractFacts`) against cited excerpt tokens (`indexSource`) without probabilistic models. To export proof, `buildReceipt` formats citation offsets and source-check findings, serializes the payload using canonical JSON (RFC 8785: sorted keys, stripped whitespace, normalized numeric values), and computes `id = sha256Hex(canonicalJson(body))`. During verification (`verifyReceipt` in browser or CLI), the receipt structure is validated against strict limits, source files are identified by cryptographic hash rather than filename, and each passage is verified against the original text bounds before recomputing grounding verdicts.
+
+<!-- diagram: citation-verification-receipt-flow -->
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as Chat & UI
+    participant GW as rag/grounding-view.js
+    participant CG as core/grounding.js
+    participant CR as core/receipt.js
+    participant VR as verifyReceipt (App / CLI)
+    Note over UI,CG: 1. Answer Synthesis & Grounding Evaluation
+    UI->>GW: applyGrounding(messageEl, sources, given)
+    GW->>CG: groundAnswer(renderedText, deliveredExcerpts)
+    CG->>CG: splitSentences, extractFacts (strict claims), indexSource (lenient excerpts)
+    CG->>CG: checkSentence per statement -> verdicts (supported, weak, unsupported)
+    CG-->>GW: GroundingReport (counts, statements, reasons)
+    Note over GW,CR: 2. Cryptographic Receipt Assembly
+    GW->>CR: buildReceipt(draft, { includeQuestion, includeExcerpts })
+    CR->>CR: Anchor citations with document fingerprints, chunk offsets [start, end]
+    CR->>CR: canonicalJson(receiptBody) -> RFC 8785 canonical serialization
+    CR->>CR: id = sha256Hex(canonicalBody)
+    CR-->>UI: starpi.receipt/v1 JSON artifact
+    Note over UI,VR: 3. Four-Tier Deterministic Verification
+    UI->>VR: verifyReceipt(receipt, sourceFiles)
+    VR->>VR: validateReceipt: schema, bounds, allowed fields & reason codes
+    VR->>VR: L0 File Check: sha256Hex(fileBytes) == document.fileSha256
+    VR->>VR: L1 Text Check: sha256Hex(extractedText) == document.textSha256
+    VR->>VR: L2 Passage Check: extractedText.slice(start, end) matches excerpt
+    VR->>VR: L3 Chunk Check: chunkText(text, size, overlap) reproduces [start, end]
+    VR->>CG: Re-run checkSentence on reproduced passages
+    VR-->>UI: VerificationReport (idMatch, L0-L3 status, reproduced/verifiable count)
+```
+
+<sub>Sources: [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
 
 ### Re-checking a receipt in the app and on the command line
 
