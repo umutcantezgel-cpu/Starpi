@@ -13,7 +13,7 @@
   },
   "homepage": "https://www.starpi.app",
   "license": "MIT",
-  "author": "umutcantezgel-cpu",
+  "author": "Umutcan Emre Tezgel (https://github.com/umutcantezgel-cpu)",
   "engines": {
     "node": ">=22.13"
   },

@@ -4,7 +4,7 @@
   "description": "Deterministic source check for RAG answers and verifiable answer receipts (starpi.receipt/v1), with the text extraction, chunking and BM25 of Starpi.",
   "type": "module",
   "license": "MIT",
-  "author": "umutcantezgel-cpu",
+  "author": "Umutcan Emre Tezgel (https://github.com/umutcantezgel-cpu)",
   "homepage": "https://github.com/umutcantezgel-cpu/Starpi/tree/main/packages/core#readme",
   "repository": {
     "type": "git",

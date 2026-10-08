@@ -5,7 +5,7 @@ title: "Starpi"
 abstract: "Knowledge assistant in the browser that shows how far each answer can be trusted: retrieval-augmented generation with verifiable citations, a deterministic source check that compares every statement with the excerpts it cites, and answer receipts that anyone can verify against the original files. Files are read on the device; answers come from WebGPU inference in a Web Worker, an own server or a cloud model."
 authors:
   - family-names: Tezgel
-    given-names: Umutcan
+    given-names: Umutcan Emre
     alias: umutcantezgel-cpu
 version: 1.2.0
 date-released: "2026-09-27"
