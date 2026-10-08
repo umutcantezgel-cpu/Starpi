@@ -52,19 +52,19 @@
     "@mlc-ai/web-llm": "0.2.85",
     "@supabase/supabase-js": "2.117.2",
     "dompurify": "3.4.16",
-    "lucide": "1.48.0",
+    "lucide": "1.52.0",
     "marked": "18.0.14",
-    "pdfjs-dist": "6.3.289"
+    "pdfjs-dist": "6.4.299"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.63.0",
     "esbuild": "0.28.2",
-    "eslint": "10.11.0",
-    "globals": "17.12.0",
-    "jsdom": "30.1.1",
-    "mermaid": "12.0.0",
+    "eslint": "10.12.0",
+    "globals": "17.13.0",
+    "jsdom": "30.1.2",
+    "mermaid": "12.1.0",
     "tailwindcss": "3.4.19",
     "typescript": "7.0.2"
   },
