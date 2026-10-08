@@ -22,7 +22,7 @@
     "dev": "node scripts/build.mjs --watch --serve",
     "preview": "node scripts/serve.mjs --port 3000",
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test \"tests/unit/*.test.mjs\"",
     "test:e2e": "playwright test",
     "verify:dist": "node scripts/verify-dist.mjs",
