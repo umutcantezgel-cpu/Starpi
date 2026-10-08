@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { prebuiltAppConfig } from '@mlc-ai/web-llm';
 import {
@@ -23,6 +24,40 @@ describe('model catalog', () => {
     for (const spec of Object.values(MODEL_CATALOG)) {
       assert.match(spec.f16, /q4f16_1/);
       assert.match(spec.f32, /q4f32_1/);
+    }
+  });
+});
+
+describe('README model table', () => {
+  const readme = readFileSync(new URL('../../README.md', import.meta.url), 'utf8');
+  const num = (/** @type {string} */ s) => Number(s.replaceAll(',', ''));
+  // | `qwen-3b` (desktop default, …) | `…` / `…` | 1.9 GB | 2,505 MB / 2,894 MB | 4,096 |
+  const rows = new Map(
+    [...readme.matchAll(/^\| `([\w.-]+)`[^|]*\|[^|]*\| ([\d.]+) GB \| ([\d,]+) MB \/ ([\d,]+) MB \| ([\d,]+) \|$/gm)].map(
+      ([, key, gb, f16, f32, ctx]) => [key, { gb: Number(gb), f16: num(f16), f32: num(f32), ctx: num(ctx) }],
+    ),
+  );
+  const byId = new Map(prebuiltAppConfig.model_list.map((m) => [m.model_id, m]));
+
+  it('has one row per preset', () => {
+    assert.deepEqual([...rows.keys()].sort(), Object.keys(MODEL_CATALOG).sort());
+  });
+
+  it('states the VRAM of the pinned WebLLM catalog and the context window the app requests', () => {
+    for (const [key, spec] of Object.entries(MODEL_CATALOG)) {
+      const row = rows.get(key);
+      assert.ok(row, key);
+      const f16 = byId.get(spec.f16);
+      const f32 = byId.get(spec.f32);
+      assert.equal(row.f16, Math.round(f16.vram_required_MB), `${key}: f16 VRAM`);
+      assert.equal(row.f32, Math.round(f32.vram_required_MB), `${key}: f32 VRAM`);
+      assert.equal(row.gb, spec.approxDownloadMB / 1000, `${key}: download size`);
+      const ctx = chooseModel(desktop, /** @type {any} */ (key)).chatOptions.context_window_size;
+      assert.equal(row.ctx, ctx, `${key}: context window`);
+      for (const m of [f16, f32]) {
+        const limit = m.overrides?.context_window_size;
+        if (limit !== undefined) assert.ok(ctx <= limit, `${m.model_id}: context ${ctx} exceeds ${limit}`);
+      }
     }
   });
 });
