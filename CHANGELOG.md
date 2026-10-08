@@ -25,6 +25,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - Copyright holder and package author use the maintainer's full name.
 - `npm run typecheck` passes `--noEmit` explicitly.
 - `source-map-js` 1.2.1 → 1.2.2 in the lockfile (development dependency, GHSA-68fv-2mgg-jv7q).
+- npm `overrides` pin `katex` 0.18.11 under mermaid (GHSA-238p-pmpm-9mq7) and
+  `postcss-selector-parser` 7.1.6 under Tailwind CSS 3 (GHSA-rj75-hqrm-r3gf). Both are
+  development dependencies; the built `dist/` is byte-identical.
 - Dependencies: `pdfjs-dist` 6.3.289 → 6.4.299, `lucide` 1.48.0 → 1.52.0; development tooling
   `eslint` 10.11.0 → 10.12.0, `globals` 17.12.0 → 17.13.0, `jsdom` 30.1.1 → 30.1.2,
   `mermaid` 12.0.0 → 12.1.0, `ruff` 0.16.9 → 0.16.10. The source-check evaluation output is
