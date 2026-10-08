@@ -6,13 +6,34 @@ Security fixes are made on the `main` branch, which is what https://www.starpi.a
 
 ## Reporting a vulnerability
 
-Please report vulnerabilities privately through GitHub:
-**Security → Advisories → Report a vulnerability** in this repository. Do not open a public
-issue for security problems.
+Please report vulnerabilities privately, preferably through GitHub:
+**Security → Advisories → Report a vulnerability** in this repository. If you cannot use GitHub,
+email **phoenixprojekt1@gmail.com** with the subject line `[starpi security]`. Do not open a
+public issue, discussion or pull request for security problems.
 
 Include the affected component (frontend, service worker, database policies, Python backend,
-deployment scripts), reproduction steps, and the impact you observed. You can expect an initial
-response within 7 days. Coordinated disclosure timelines are agreed per report.
+deployment scripts), the commit or release you tested, reproduction steps, and the impact you
+observed.
+
+### Coordinated disclosure
+
+| Step | Target |
+| --- | --- |
+| Acknowledgement of your report | within 7 days |
+| Triage: confirmed or declined, with a severity assessment | within 14 days |
+| Fix released on `main` and deployed to www.starpi.app | within 90 days of the report |
+| Public advisory (GitHub Security Advisory, CVE requested where applicable) | when the fix is released |
+
+If a fix needs longer, we agree on a new date with you before the 90 days end. Reporters are
+credited in the advisory unless they ask not to be. Please keep the details confidential until
+the advisory is published.
+
+### Safe harbor
+
+We will not pursue or support legal action against research that follows this policy: testing
+only against your own deployment, a local build or your own account on www.starpi.app; not
+accessing, modifying or retaining other users' data; not degrading the service for others (no
+load or denial-of-service testing); and reporting promptly through the channels above.
 
 ## Scope
 
