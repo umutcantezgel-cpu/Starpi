@@ -8,7 +8,7 @@ import { FACT_CATEGORIES, loadCorpora, loadItems, summarize } from '../../script
 
 /** Results as published in the README ("How well it works"): flagged = unsupported or weak. */
 const PUBLISHED = {
-  dev: { faithfulWeak: 0, flagged: { number: 15, date: 15, time: 6, weekday: 6, code: 5, entity: 3, relation: 2, negation: 0 } },
+  dev: { faithfulWeak: 0, flagged: { number: 16, date: 15, time: 6, weekday: 6, code: 5, entity: 3, relation: 2, negation: 0 } },
   holdout: { faithfulWeak: 15, flagged: { number: 15, date: 16, time: 6, weekday: 6, code: 6, entity: 4, relation: 6, negation: 0 } },
 };
 

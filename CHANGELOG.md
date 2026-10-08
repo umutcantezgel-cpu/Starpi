@@ -5,6 +5,32 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Dependency audit in CI.** A new `audit` job fails on any advisory in runtime npm dependencies
+  and on any advisory in the backend requirements (`pip-audit`, pinned in
+  `backend/requirements-dev.txt`). Advisories in development tooling are reported as a warning.
+- **README model table is checked against the WebLLM catalog.** `tests/unit/models.test.mjs`
+  compares the VRAM figures with `vram_required_MB` of the pinned catalog and the context window
+  with the one the app requests.
+- **"Reproduce the published numbers"** in the README: the commands and the test that pins each
+  figure.
+- `.mailmap` with the maintainer's canonical name and address.
+
+### Changed
+
+- `SECURITY.md`: email channel next to GitHub private advisories, disclosure targets
+  (acknowledgement within 7 days, triage within 14, fix within 90) and a safe-harbor statement.
+  The Code of Conduct lists the same address for enforcement reports.
+- Copyright holder and package author use the maintainer's full name.
+- `npm run typecheck` passes `--noEmit` explicitly.
+- `source-map-js` 1.2.1 → 1.2.2 in the lockfile (development dependency, GHSA-68fv-2mgg-jv7q).
+
+### Fixed
+
+- README: the first answer set flags 48 of 49 changed values, not 47; the floor in
+  `tests/unit/source-check-eval.test.mjs` is raised to match.
+
 ## [1.2.0] - 2026-09-27
 
 ### Added

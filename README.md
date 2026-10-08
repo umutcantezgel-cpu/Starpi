@@ -8,11 +8,11 @@
 </p>
 
 **A knowledge assistant in the browser that shows how far each answer can be trusted.** Starpi
-answers questions from your files and from a shared knowledge base, cites every passage it used,
-compares every statement of the answer with the passages it cites, and gives you a receipt that
-anyone can check against the original files. Your files are read on your device and never
-uploaded; the answer can come from an on-device model (WebGPU), your own server or a cloud model.
-English and German.
+answers from your files with an on-device LLM (WebGPU, WebLLM in a Web Worker), your own server or
+a cloud model; a deterministic source check compares every statement with the passages it cites,
+and every answer comes with a receipt that anyone can verify against the original files. Your
+files are read on your device and never uploaded, and the app is a static site: no account, no
+API key and no server of your own are needed. English and German.
 
 <p align="center">
   <img src="docs/assets/screenshots/source-check.png" width="100%" alt="Starpi chat. An answer about the sample project passes the source check (4 of 4 statements match their cited excerpts). A second, prepared answer with one wrong number is flagged: the statement is highlighted and the source check says 520,000 is not in the cited excerpt of nebula-plan.md.">
@@ -114,7 +114,7 @@ set was written afterwards, in a different style, and only measured.
 | Faithful answers (statements) | 50 (143) | 100 (324) |
 | Statements of faithful answers marked unsupported | 0 | 0 |
 | Statements of faithful answers marked weak | 0 | 15 (4.6 %) |
-| Changed number, date, time, weekday or code: flagged | 47 of 49 | 49 of 49 |
+| Changed number, date, time, weekday or code: flagged | 48 of 49 | 49 of 49 |
 | Wrong name or place: flagged (names are checked in English only) | 3 of 10 | 4 of 10 |
 | Correct value attached to the wrong thing: flagged | 2 of 10 | 6 of 10 |
 | Negated statement: flagged | 0 of 10 | 0 of 10 |
@@ -434,6 +434,25 @@ Content-Security-Policy.
 | `npm run verify:receipt -- receipt.json file…` | Verify an answer receipt against the original files |
 | `npm run docs:sync` | Copy diagrams from the atlas into the README and guides |
 
+### Reproduce the published numbers
+
+The figures in this README are produced by scripts in the repository and pinned by unit tests.
+None of these steps needs a GPU, an account or an API key. From a fresh clone with an empty npm
+cache, the four commands took 16 seconds in total on a 4-vCPU Linux container with Node.js 22:
+
+```bash
+git clone https://github.com/umutcantezgel-cpu/Starpi.git && cd Starpi
+npm ci
+npm test                    # unit tests, including the checks in the table below
+npm run eval:source-check   # per-category results of the source check on both answer sets
+```
+
+| Figure | Produced by | Pinned by |
+| --- | --- | --- |
+| Source check results ([How well it works](#how-well-it-works)) | `npm run eval:source-check` on [`tests/fixtures/grounding/eval.json`](tests/fixtures/grounding/eval.json) | `tests/unit/source-check-eval.test.mjs` fails if any result gets worse |
+| VRAM, download size and context window ([On-device models](#on-device-models)) | `vram_required_MB` in the WebLLM catalog pinned by `package-lock.json`; the context window the app requests (`chooseModel`) | `tests/unit/models.test.mjs` fails if the table and the catalog differ |
+| Time to first token, prefill and decode speed | **Diagnostics** tab on your device: a warm-up request, then a fixed prompt with exactly 128 generated tokens (`ignore_eos`, temperature 0) on a reset chat | Not published: the result depends on the GPU, the driver and the browser |
+
 ### Configuration
 
 The Supabase URL and the public key are compiled into the bundle. Forks set their own at build
@@ -493,6 +512,7 @@ Details and known limitations are in [SECURITY.md](SECURITY.md).
 | `e2e` | Playwright on desktop and mobile viewports under the production CSP: zero CSP violations, sample files, source check, receipts verified against the original files, axe (no serious or critical violations), privacy of on-device turns, inert XSS payloads, offline reconnect |
 | `backend` | ruff, byte-compilation and offline unit tests on Python 3.11 and 3.12 |
 | `database` | Migration and RLS suite on PostgreSQL 16 with pgvector: live, fresh and legacy schemas, idempotency, schema parity, cross-user isolation, search |
+| `audit` | `npm audit` with no advisory of any severity allowed in runtime dependencies (development tooling is reported, not blocking), `pip-audit` on the backend requirements |
 | `secrets` | gitleaks on the working tree and on the commits of a pull request |
 
 The unit and end-to-end suites also check the documentation: every Mermaid block renders, diagram
