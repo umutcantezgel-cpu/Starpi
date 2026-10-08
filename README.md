@@ -498,7 +498,7 @@ binds to `127.0.0.1` by default and requires `BRAIN_API_TOKEN` on any other inte
 - **Untrusted files:** parsed in a worker; pdf.js runs without `eval` or font loading.
 - **Credentials:** provider keys stay in the browser tab unless you choose to keep them.
 - **Supply chain:** exact dependency pins, `npm ci --ignore-scripts`, SHA-pinned GitHub Actions,
-  gitleaks in CI.
+  a dependency audit (`npm audit`, `pip-audit`) and gitleaks in CI.
 
 Details and known limitations are in [SECURITY.md](SECURITY.md).
 

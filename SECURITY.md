@@ -66,7 +66,9 @@ Out of scope:
   styles; no remote images) and sanitizes all rendered Markdown.
 - The Python backend holds the `service_role` key, binds to `127.0.0.1` by default and requires
   a bearer token when exposed on another interface.
-- CI runs gitleaks on the working tree and on the commits of every pull request.
+- CI runs gitleaks on the working tree and on the commits of every pull request, and fails on
+  any known advisory in a runtime npm dependency (`npm audit`) or in the backend requirements
+  (`pip-audit`).
 - Chat turns that use the on-device workspace are never synced and never sent to a cloud provider
   or an own server as chat history.
 
@@ -282,7 +284,7 @@ flowchart LR
     subgraph sg_in["Untrusted input"]
         iReq["HTTP requests to the brain API<br/>/api/health, /api/brain/documents,<br/>/api/brain/ingest, /api/brain/query"]
         iSecret["Backend secrets<br/>SUPABASE_SERVICE_ROLE_KEY, BRAIN_API_TOKEN,<br/>LLM, embedding and provider keys"]
-        iRepo["Commits, pull requests<br/>and npm dependencies"]
+        iRepo["Commits, pull requests,<br/>npm and pip dependencies"]
     end
 
     subgraph sg_ctl["Controls"]
@@ -296,6 +298,7 @@ flowchart LR
         cVisible["core/supabase_client.py VISIBLE_ROWS<br/>is_public true or owner_id null:<br/>list_documents filtered, match_knowledge_sections<br/>matches kept only for such documents,<br/>a failed lookup falls back to the in-memory search"]
         cCfg["core/config.py BrainConfig: read from the process environment,<br/>which wins over backend/.env (else the root .env)<br/>loaded at import, last assignment in the file wins,<br/>service role key only from SUPABASE_SERVICE_ROLE_KEY,<br/>never the anon key, secret fields excluded from repr"]
         cLeaks["CI job secrets: gitleaks 8.30.1, sha256 verified,<br/>scans the working tree and the commits of a pull request"]
+        cAudit["CI job audit: npm audit --omit=dev fails on any advisory<br/>in a runtime dependency, pip-audit on<br/>backend/requirements-dev.txt fails on any advisory,<br/>development tooling: warning at high severity only"]
         cSupply["CI and Vercel: permissions contents read,<br/>actions pinned to commit SHAs, persist-credentials false,<br/>npm ci --ignore-scripts"]
         cRelease["release.yml: contents write for the release job only,<br/>which installs nothing and runs gh release create,<br/>after CI succeeded on a push to main or by hand on main,<br/>version always from package.json, no dispatch inputs,<br/>SHA-pinned checkout, persist-credentials false"]
     end
@@ -308,6 +311,7 @@ flowchart LR
         tPrivate["Private rows of browser sessions<br/>read through the service role,<br/>which bypasses RLS"]
         tKeys["Service role or provider keys<br/>in logs or in git history"]
         tSupply["Install scripts, moved action tags,<br/>a persisted token or write access<br/>in jobs that run dependency code"]
+        tVuln["Dependencies with a published advisory<br/>shipped in dist/ or installed for the backend"]
     end
 
     iReq --> cBind
@@ -330,6 +334,8 @@ flowchart LR
     iSecret --> cLeaks
     iRepo --> cLeaks
     iRepo --> cSupply
+    iRepo --> cAudit
+    cAudit --> tVuln
     cCfg --> tKeys
     cLeaks --> tKeys
     cSupply --> tSupply

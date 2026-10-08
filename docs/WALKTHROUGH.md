@@ -46,8 +46,8 @@ reads the public knowledge base. Then try:
    *Diagnostics* measures time to first token and decode speed of the loaded model.
 
 Checks before a pull request: `npm run verify` (lint, typecheck, unit tests, build, output
-verification) and `npm run test:e2e`. [CONTRIBUTING.md](../CONTRIBUTING.md) lists the backend and
-database checks.
+verification) and `npm run test:e2e`. [CONTRIBUTING.md](../CONTRIBUTING.md) lists the backend,
+database and dependency checks.
 
 ## Repository map
 
@@ -164,6 +164,7 @@ reporting time to first token and decode speed through
 | Database | 191 RLS, privilege, search and size-limit assertions per scenario (198 with legacy rows) on fresh, upgraded and legacy schemas, plus schema parity | [`backend/supabase/tests/`](../backend/supabase/tests) |
 | Build gate | No inline code, every asset present, no `eval`, the service worker version recomputed from the build | [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs) |
 | Documentation | Every Mermaid block renders; diagram copies match the atlas; links and anchors resolve | [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs) |
+| Dependency audit | No known advisory in a runtime npm dependency (`npm audit`) or in the backend requirements (`pip-audit`); advisories in development tooling are reported | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) |
 
 CI runs all of them, plus gitleaks, on every push and pull request to `main`
 ([atlas §11](ARCHITECTURE.md#11-build-test-and-deploy)).
