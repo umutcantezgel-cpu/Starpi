@@ -133,7 +133,7 @@ idealised design. When the code changes, change the diagram in the same pull req
     - [End-to-end tests for the source check, receipts and accessibility](#end-to-end-tests-for-the-source-check-receipts-and-accessibility)
     - [CI workflow triggers, jobs and Dependabot](#ci-workflow-triggers-jobs-and-dependabot)
     - [Frontend and end-to-end jobs](#frontend-and-end-to-end-jobs)
-    - [Backend, database and secret-scanning jobs](#backend-database-and-secret-scanning-jobs)
+    - [Backend, database, audit and secret-scanning jobs](#backend-database-audit-and-secret-scanning-jobs)
     - [Release workflow after CI](#release-workflow-after-ci)
     - [CI workflow and Vercel build of the PWA](#ci-workflow-and-vercel-build-of-the-pwa)
     - [Backend runtime on EC2](#backend-runtime-on-ec2)
@@ -5978,7 +5978,7 @@ flowchart TD
 
 ### CI jobs and the test layers they run
 
-The CI workflow runs five jobs on pushes and pull requests to main (and on manual dispatch). The frontend job runs lint, typecheck, the node:test unit suite of 24 files (including the documentation test and a build of @starpi/core into a temporary directory), the production build and verify-dist, then uploads dist, which the e2e job reuses to run Playwright under the production headers: the app spec, the trust spec with its axe accessibility scan, and the Mermaid render gate. The backend job lints, byte-compiles and runs the offline unittest suites on Python 3.11 and 3.12. The database job installs PostgreSQL 16 with pgvector and runs the RLS harness, whose rls_test.sql has 191 checks in the fresh and fresh_rerun scenarios and 198 in the three scenarios seeded with legacy rows, and the secrets job scans the tree, and on pull requests the new commits, with a checksum-verified gitleaks. npm run verify repeats the frontend gate locally.
+The CI workflow runs six jobs on pushes and pull requests to main (and on manual dispatch). The frontend job runs lint, typecheck, the node:test unit suite of 24 files (including the documentation test and a build of @starpi/core into a temporary directory), the production build and verify-dist, then uploads dist, which the e2e job reuses to run Playwright under the production headers: the app spec, the trust spec with its axe accessibility scan, and the Mermaid render gate. The backend job lints, byte-compiles and runs the offline unittest suites on Python 3.11 and 3.12. The database job installs PostgreSQL 16 with pgvector and runs the RLS harness, whose rls_test.sql has 191 checks in the fresh and fresh_rerun scenarios and 198 in the three scenarios seeded with legacy rows. The audit job runs npm audit on the lockfile, failing on any advisory in a runtime dependency and only warning about development tooling, and pip-audit on the backend requirements, and the secrets job scans the tree, and on pull requests the new commits, with a checksum-verified gitleaks. npm run verify repeats the frontend gate locally.
 
 <!-- diagram: test-strategy-ci-gates -->
 ```mermaid
@@ -5987,7 +5987,7 @@ flowchart LR
 
     subgraph jobFront["Job frontend: Node 22, npm ci --ignore-scripts"]
         lint["npm run lint<br/>ESLint, eslint.config.mjs"]
-        tc["npm run typecheck<br/>tsc -p tsconfig.json"]
+        tc["npm run typecheck<br/>tsc -p tsconfig.json --noEmit"]
         unit["npm test<br/>node --test on the 24 tests/unit/*.test.mjs files,<br/>docs.test.mjs and core-package.test.mjs included"]
         build["npm run build<br/>scripts/build.mjs"]
         verify["npm run verify:dist<br/>scripts/verify-dist.mjs: dist/ is CSP-compatible,<br/>referenced assets exist, sw.js carries the recomputed version"]
@@ -5996,7 +5996,7 @@ flowchart LR
 
     subgraph jobE2e["Job e2e, needs frontend"]
         dl["download artifact dist,<br/>npx playwright install --with-deps chromium"]
-        pw["npm run test:e2e<br/>app.spec.mjs, 16 tests, and trust.spec.mjs, 12 tests,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.0.0"]
+        pw["npm run test:e2e<br/>app.spec.mjs, 16 tests, and trust.spec.mjs, 12 tests,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.1.0"]
         rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
     end
 
@@ -6011,6 +6011,12 @@ flowchart LR
         rls["bash backend/supabase/tests/run_rls_tests.sh<br/>PG_BIN /usr/lib/postgresql/16/bin<br/>live, fresh, fresh_rerun, legacy_v2, legacy_v1,<br/>guard, guard_order, schema parity via pg_dump<br/>rls_test.sql: 191 checks, 198 with legacy rows"]
     end
 
+    subgraph jobAudit["Job audit"]
+        npmRt["npm audit --omit=dev --audit-level=low<br/>any advisory in a runtime dependency fails"]
+        npmAll["npm audit --audit-level=high<br/>development tooling: warning only"]
+        pipAud["pip-audit -r backend/requirements-dev.txt<br/>any advisory fails"]
+    end
+
     subgraph jobSec["Job secrets"]
         gl["gitleaks 8.30.1 download,<br/>sha256sum -c checksum"]
         glDir["gitleaks dir . --config .gitleaks.toml<br/>--redact --exit-code 1"]
@@ -6022,12 +6028,14 @@ flowchart LR
     trig --> lint
     trig --> ruff
     trig --> apt
+    trig --> npmRt
     trig --> gl
     lint --> tc --> unit --> build --> verify --> art
     art -->|"built once, reused"| dl --> pw
     pw -.->|"failure"| rep
     ruff --> comp --> ut
     apt --> rls
+    npmRt --> npmAll --> pipAud
     gl --> glDir
     glDir -->|"pull_request only"| glPr
     local -.->|"same steps as"| lint
@@ -6135,7 +6143,7 @@ flowchart LR
 
 ### End-to-end tests with mocked Supabase and diagnostics
 
-Playwright serves the built dist/ through scripts/serve.mjs, which applies the vercel.json headers to every path, and runs app.spec.mjs (16 tests) and trust.spec.mjs (12 tests) on a desktop and a mobile Chromium project. mockSupabase answers every *.supabase.co request with two independent flags, hardened (otherwise a pre-migration project) and anonymousAuth, reports through auth/v1/settings whether anonymous sign-ins are on, and seeds a document with hostile markup; the diagnostics fixture fails a test on any CSP violation, page error, unexpected console error or request to a host other than 127.0.0.1 and the mocked Supabase. The workspace tests check that a question answered from workspace files or about an attached file stays in localStorage with its answer while chats sync, that a citation made before Clear workspace never opens a file added afterwards, and that a batch reports every file, refuses the same file twice and renames a different file with the same name. Two settings tests check that the save dialog confirms only what the browser stored, an offline-start test checks that the app reconnects on the online event and then syncs chats, and docs-diagrams.spec.mjs renders every Mermaid block in the repository Markdown with mermaid 12.0.0, skipped on the mobile project.
+Playwright serves the built dist/ through scripts/serve.mjs, which applies the vercel.json headers to every path, and runs app.spec.mjs (16 tests) and trust.spec.mjs (12 tests) on a desktop and a mobile Chromium project. mockSupabase answers every *.supabase.co request with two independent flags, hardened (otherwise a pre-migration project) and anonymousAuth, reports through auth/v1/settings whether anonymous sign-ins are on, and seeds a document with hostile markup; the diagnostics fixture fails a test on any CSP violation, page error, unexpected console error or request to a host other than 127.0.0.1 and the mocked Supabase. The workspace tests check that a question answered from workspace files or about an attached file stays in localStorage with its answer while chats sync, that a citation made before Clear workspace never opens a file added afterwards, and that a batch reports every file, refuses the same file twice and renames a different file with the same name. Two settings tests check that the save dialog confirms only what the browser stored, an offline-start test checks that the app reconnects on the online event and then syncs chats, and docs-diagrams.spec.mjs renders every Mermaid block in the repository Markdown with mermaid 12.1.0, skipped on the mobile project.
 
 <!-- diagram: test-strategy-e2e -->
 ```mermaid
@@ -6175,7 +6183,7 @@ flowchart TD
 
     trust["trust.spec.mjs, 12 tests, both projects:<br/>sample files, source check, receipts, privacy,<br/>session without sign-in, axe scan and keyboard,<br/>see the next diagram"]
 
-    docs["docs-diagrams.spec.mjs, skipped on the mobile project<br/>every mermaid block in repository Markdown parses and renders<br/>with the pinned mermaid 12.0.0, securityLevel strict,<br/>in a blank page via setContent: no app page, no diagnostics fixture"]
+    docs["docs-diagrams.spec.mjs, skipped on the mobile project<br/>every mermaid block in repository Markdown parses and renders<br/>with the pinned mermaid 12.1.0, securityLevel strict,<br/>in a blank page via setContent: no app page, no diagnostics fixture"]
 
     serve --> app
     serve --> trust
@@ -6254,7 +6262,7 @@ flowchart TD
 
 ### CI workflow triggers, jobs and Dependabot
 
-The CI workflow runs on pushes and pull requests to main (the default branch) and on manual dispatch, with read-only contents permission and one concurrency group per PR or ref that cancels older runs. Four jobs start in parallel: frontend, the backend Python 3.11/3.12 matrix, database and secrets. e2e runs only after frontend succeeds, because it needs the dist artifact that frontend uploads, and besides the app and trust specs it renders every Mermaid block in the repository's Markdown. Every completed CI run on main starts the separate Release workflow, whose job only runs when that CI run passed and was triggered by a push; the Release workflow can also be dispatched by hand, and then its job runs only on main. Dependabot opens weekly update PRs for npm (dev dependencies grouped, Tailwind majors ignored), pip in /backend and GitHub Actions, and those PRs go through the same workflow.
+The CI workflow runs on pushes and pull requests to main (the default branch) and on manual dispatch, with read-only contents permission and one concurrency group per PR or ref that cancels older runs. Five jobs start in parallel: frontend, the backend Python 3.11/3.12 matrix, database, audit and secrets. e2e runs only after frontend succeeds, because it needs the dist artifact that frontend uploads, and besides the app and trust specs it renders every Mermaid block in the repository's Markdown. Every completed CI run on main starts the separate Release workflow, whose job only runs when that CI run passed and was triggered by a push; the Release workflow can also be dispatched by hand, and then its job runs only on main. Dependabot opens weekly update PRs for npm (dev dependencies grouped, Tailwind majors ignored), pip in /backend and GitHub Actions, and those PRs go through the same workflow.
 
 <!-- diagram: ci-workflow-overview -->
 ```mermaid
@@ -6274,6 +6282,7 @@ flowchart TD
     CFG --> FE["frontend: Frontend (lint, typecheck, unit tests, build)<br/>15 min, uploads the dist artifact"]
     CFG --> BE["backend: Backend (Python 3.11) and Backend (Python 3.12)<br/>10 min, matrix with fail-fast false"]
     CFG --> DB["database: Database migration and RLS tests<br/>(PostgreSQL 16 + pgvector), 15 min"]
+    CFG --> AUD["audit: Dependency audit (npm audit, pip-audit)<br/>10 min, Node 22 and Python 3.12"]
     CFG --> SEC["secrets: Secret scanning (gitleaks)<br/>5 min, gitleaks 8.30.1"]
     FE -->|"needs: frontend succeeded"| E2E["e2e: End-to-end (Playwright, production headers)<br/>20 min, app and trust specs plus rendering of every<br/>Mermaid block in the Markdown files"]
     FE -->|"frontend failed"| SKIP["e2e is skipped"]
@@ -6281,6 +6290,7 @@ flowchart TD
     E2E --> RES
     BE --> RES
     DB --> RES
+    AUD --> RES
     SEC --> RES
     SKIP --> RES
     RES -->|"yes"| GREEN(["CI run passes"])
@@ -6294,7 +6304,7 @@ flowchart TD
 
 ### Frontend and end-to-end jobs
 
-The frontend job installs from the lockfile without install scripts, then runs lint, typecheck, the 24 unit test files, the production build and verify:dist, and uploads dist (kept 3 days, and the upload errors if there are no files); any failing step fails the job and skips e2e. e2e downloads that same dist, installs Chromium and runs Playwright against scripts/serve.mjs on port 4173 with service workers blocked, test.only forbidden on CI and no retries. Its specs exercise the app under the production headers (every response, workers included, carries the CSP) with a mocked Supabase, check the source check, receipts and accessibility with mocked model APIs and axe, and parse and render every Mermaid block in the Markdown files with mermaid 12.0.0, skipped on the mobile project. If any e2e step fails, playwright-report and test-results are uploaded for 7 days.
+The frontend job installs from the lockfile without install scripts, then runs lint, typecheck, the 24 unit test files, the production build and verify:dist, and uploads dist (kept 3 days, and the upload errors if there are no files); any failing step fails the job and skips e2e. e2e downloads that same dist, installs Chromium and runs Playwright against scripts/serve.mjs on port 4173 with service workers blocked, test.only forbidden on CI and no retries. Its specs exercise the app under the production headers (every response, workers included, carries the CSP) with a mocked Supabase, check the source check, receipts and accessibility with mocked model APIs and axe, and parse and render every Mermaid block in the Markdown files with mermaid 12.1.0, skipped on the mobile project. If any e2e step fails, playwright-report and test-results are uploaded for 7 days.
 
 <!-- diagram: ci-frontend-e2e -->
 ```mermaid
@@ -6304,7 +6314,7 @@ flowchart TD
       F2["actions/setup-node v7.0.0: Node 22, npm cache"]
       F3["npm ci --ignore-scripts"]
       F4["npm run lint: eslint ."]
-      F5["npm run typecheck: tsc -p tsconfig.json"]
+      F5["npm run typecheck: tsc -p tsconfig.json --noEmit"]
       F6["npm test: node --test tests/unit/*.test.mjs,<br/>24 files"]
       F7["npm run build: scripts/build.mjs"]
       F8["npm run verify:dist: CSP compatibility,<br/>assets, service worker and build version"]
@@ -6322,7 +6332,7 @@ flowchart TD
     end
     PWC["playwright.config.mjs: testDir tests/e2e,<br/>webServer node scripts/serve.mjs --port 4173,<br/>projects desktop-chromium and mobile-chromium,<br/>serviceWorkers block, forbidOnly on CI, retries 0,<br/>list + html reporter on CI, trace retain-on-failure"]
     G4 -.- PWC
-    SPECS["app.spec.mjs: the app under the production CSP,<br/>with a mocked Supabase<br/>trust.spec.mjs: sample files, source check, receipts,<br/>privacy, axe scan via @axe-core/playwright<br/>docs-diagrams.spec.mjs: every mermaid block in the<br/>Markdown files parses and renders with mermaid 12.0.0,<br/>skipped on mobile-chromium"]
+    SPECS["app.spec.mjs: the app under the production CSP,<br/>with a mocked Supabase<br/>trust.spec.mjs: sample files, source check, receipts,<br/>privacy, axe scan via @axe-core/playwright<br/>docs-diagrams.spec.mjs: every mermaid block in the<br/>Markdown files parses and renders with mermaid 12.1.0,<br/>skipped on mobile-chromium"]
     G4 -.- SPECS
     G4 -->|"all tests passed"| EOK(["e2e passes"])
     sg_e2e -->|"any step fails"| G5["if failure(): upload-artifact playwright-report<br/>with playwright-report/ and test-results/, kept 7 days"]
@@ -6331,16 +6341,16 @@ flowchart TD
 
 <sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`package.json`](../package.json), [`playwright.config.mjs`](../playwright.config.mjs), [`scripts/serve.mjs`](../scripts/serve.mjs), [`tests/e2e/app.spec.mjs`](../tests/e2e/app.spec.mjs), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/fixtures.mjs`](../tests/e2e/fixtures.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs)</sub>
 
-### Backend, database and secret-scanning jobs
+### Backend, database, audit and secret-scanning jobs
 
-The backend job runs once per Python version (3.11, 3.12) with fail-fast off, and runs ruff check, ruff format --check, a byte-compile and the offline unittest suite, any of which fails its leg. The database job installs PostgreSQL 16 with pgvector and runs run_rls_tests.sh, which starts a throwaway cluster, runs seven scenarios (five apply the schema or the three migration files and run rls_test.sql, while guard and guard_order only require a file to refuse the database) plus a schema-parity diff, and exits 1 if any of them failed and 2 on a setup error; rls_test.sql has 191 checks in fresh and fresh_rerun and 198 in live, legacy_v2 and legacy_v1, which are seeded with legacy rows. The secrets job downloads gitleaks 8.30.1, verifies its pinned SHA-256, scans the working tree, and on pull requests also scans the commits between the base and head SHAs. A failed download, a checksum mismatch or any leak fails the job.
+The backend job runs once per Python version (3.11, 3.12) with fail-fast off, and runs ruff check, ruff format --check, a byte-compile and the offline unittest suite, any of which fails its leg. The database job installs PostgreSQL 16 with pgvector and runs run_rls_tests.sh, which starts a throwaway cluster, runs seven scenarios (five apply the schema or the three migration files and run rls_test.sql, while guard and guard_order only require a file to refuse the database) plus a schema-parity diff, and exits 1 if any of them failed and 2 on a setup error; rls_test.sql has 191 checks in fresh and fresh_rerun and 198 in live, legacy_v2 and legacy_v1, which are seeded with legacy rows. The audit job needs no npm install: npm audit reads package-lock.json and fails on any advisory in a runtime dependency (--omit=dev --audit-level=low); a second npm audit over the whole tree at high severity only emits a warning annotation, because the advisories it can report are in build and test tooling that is not shipped in dist/. It then installs backend/requirements-dev.txt on Python 3.12 and runs pip-audit, pinned there, over the backend requirements; any advisory fails the job. The secrets job downloads gitleaks 8.30.1, verifies its pinned SHA-256, scans the working tree, and on pull requests also scans the commits between the base and head SHAs. A failed download, a checksum mismatch or any leak fails the job.
 
 <!-- diagram: ci-backend-database-secrets -->
 ```mermaid
 flowchart TD
     subgraph sg_be["backend job, once per Python 3.11 and 3.12"]
       B1["checkout, actions/setup-python v7.0.0<br/>with pip cache keyed on backend/requirements*.txt"]
-      B2["python -m pip install -r backend/requirements-dev.txt<br/>(requirements.txt plus ruff 0.16.8)"]
+      B2["python -m pip install -r backend/requirements-dev.txt<br/>(requirements.txt plus ruff 0.16.10 and pip-audit 2.10.1)"]
       B3["Lint: ruff check backend --no-cache"]
       B4["Lint: ruff format --check backend"]
       B5["python -m compileall -q backend"]
@@ -6362,6 +6372,19 @@ flowchart TD
     DX -->|"0: all scenarios and schema parity pass"| DOK(["database passes"])
     DX -->|"1: a scenario or schema parity failed"| DFAIL
     DX -->|"2: setup error, e.g. PG binaries or pgvector<br/>missing, no migrations, initdb or start failed"| DFAIL
+    subgraph sg_audit["audit job"]
+      A1["checkout, actions/setup-node v7.0.0: Node 22"]
+      A2{"npm audit --omit=dev --audit-level=low<br/>reports an advisory in a runtime dependency?"}
+      A3["npm audit --audit-level=high over the whole tree,<br/>a finding only emits a warning annotation"]
+      A4["actions/setup-python v7.0.0: Python 3.12,<br/>pip install -r backend/requirements-dev.txt"]
+      A5{"pip-audit -r backend/requirements-dev.txt<br/>reports an advisory?"}
+      A1 --> A2
+      A2 -->|"no"| A3 --> A4 --> A5
+    end
+    A2 -->|"yes"| AFAIL(["audit fails"])
+    A4 -->|"install error"| AFAIL
+    A5 -->|"yes"| AFAIL
+    A5 -->|"no"| AOK(["audit passes"])
     subgraph sg_sec["secrets job"]
       S1["checkout with fetch-depth 0"]
       S2["curl -f the gitleaks 8.30.1 linux_x64 tarball<br/>into RUNNER_TEMP, under set -euo pipefail"]
@@ -6420,7 +6443,7 @@ flowchart TD
 
 ### CI workflow and Vercel build of the PWA
 
-Pushes and pull requests to main (and manual dispatch) run five CI jobs: frontend (lint, typecheck, unit tests, build, verify:dist), e2e on the built dist under the vercel.json headers, backend on Python 3.11 and 3.12, the database migration and RLS suite, and gitleaks secret scanning. Neither ci.yml nor release.yml has a deploy step, so the Vercel build is triggered by settings of the Vercel project outside this repo and nothing in the repo makes it wait for CI. .vercelignore leaves the backend, the tests, the workflows, env files, node_modules and build and test output out of the deployment. vercel.json installs with npm ci --ignore-scripts, builds with npm run build (which stops on a blank or secret Supabase key and on a JWT whose role is not anon) into dist and sets a strict CSP, nosniff, X-Frame-Options DENY, COOP, HSTS and Permissions-Policy on all paths, plus immutable caching for assets/ and no-cache for sw.js, the root and index.html.
+Pushes and pull requests to main (and manual dispatch) run six CI jobs: frontend (lint, typecheck, unit tests, build, verify:dist), e2e on the built dist under the vercel.json headers, backend on Python 3.11 and 3.12, the database migration and RLS suite, a dependency audit (npm audit, pip-audit) and gitleaks secret scanning. Neither ci.yml nor release.yml has a deploy step, so the Vercel build is triggered by settings of the Vercel project outside this repo and nothing in the repo makes it wait for CI. .vercelignore leaves the backend, the tests, the workflows, env files, node_modules and build and test output out of the deployment. vercel.json installs with npm ci --ignore-scripts, builds with npm run build (which stops on a blank or secret Supabase key and on a JWT whose role is not anon) into dist and sets a strict CSP, nosniff, X-Frame-Options DENY, COOP, HSTS and Permissions-Policy on all paths, plus immutable caching for assets/ and no-cache for sw.js, the root and index.html.
 
 <!-- diagram: deployment-ci-vercel -->
 ```mermaid
@@ -6433,6 +6456,7 @@ flowchart TD
         E2E["e2e job, needs frontend<br/>npm ci --ignore-scripts, downloads dist,<br/>installs Chromium, npm run test:e2e<br/>app, trust and Mermaid docs specs<br/>playwright-report uploaded on failure"]
         BE["backend job, Python 3.11 and 3.12<br/>pip install requirements-dev.txt<br/>ruff check, ruff format --check,<br/>compileall, unittest discover test_*.py"]
         DBJ["database job<br/>PostgreSQL 16 and pgvector<br/>backend/supabase/tests/run_rls_tests.sh"]
+        AUD["audit job<br/>npm audit: no advisory in runtime dependencies<br/>pip-audit on backend/requirements-dev.txt"]
         SEC["secrets job<br/>gitleaks 8.30.1, sha256 verified<br/>working tree, plus PR commits on pull_request"]
     end
     Push --> Conc
@@ -6440,6 +6464,7 @@ flowchart TD
     Conc --> FE
     Conc --> BE
     Conc --> DBJ
+    Conc --> AUD
     Conc --> SEC
     FE -->|"dist artifact"| E2E
     sg_ci -.->|"CI passed on a push to main"| REL["release.yml: GitHub release only,<br/>no deploy step"]

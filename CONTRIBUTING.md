@@ -77,6 +77,7 @@ flowchart TD
 | End-to-end | `npm run build && npm run test:e2e` (first run: `npx playwright install chromium`) |
 | Backend | `ruff check backend && ruff format --check backend && python -m unittest discover -s backend -p 'test_*.py'` |
 | Database | `bash backend/supabase/tests/run_rls_tests.sh` |
+| Dependencies | `npm audit --omit=dev` and `pip-audit -r backend/requirements-dev.txt` |
 
 CI runs all of them, plus gitleaks. `backend/scripts/brain_smoke.py` is a manual end-to-end
 check against live endpoints and is not part of the automated suite.
@@ -88,7 +89,7 @@ flowchart LR
 
     subgraph jobFront["Job frontend: Node 22, npm ci --ignore-scripts"]
         lint["npm run lint<br/>ESLint, eslint.config.mjs"]
-        tc["npm run typecheck<br/>tsc -p tsconfig.json"]
+        tc["npm run typecheck<br/>tsc -p tsconfig.json --noEmit"]
         unit["npm test<br/>node --test on the 24 tests/unit/*.test.mjs files,<br/>docs.test.mjs and core-package.test.mjs included"]
         build["npm run build<br/>scripts/build.mjs"]
         verify["npm run verify:dist<br/>scripts/verify-dist.mjs: dist/ is CSP-compatible,<br/>referenced assets exist, sw.js carries the recomputed version"]
@@ -97,7 +98,7 @@ flowchart LR
 
     subgraph jobE2e["Job e2e, needs frontend"]
         dl["download artifact dist,<br/>npx playwright install --with-deps chromium"]
-        pw["npm run test:e2e<br/>app.spec.mjs, 16 tests, and trust.spec.mjs, 12 tests,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.0.0"]
+        pw["npm run test:e2e<br/>app.spec.mjs, 16 tests, and trust.spec.mjs, 12 tests,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.1.0"]
         rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
     end
 
@@ -112,6 +113,12 @@ flowchart LR
         rls["bash backend/supabase/tests/run_rls_tests.sh<br/>PG_BIN /usr/lib/postgresql/16/bin<br/>live, fresh, fresh_rerun, legacy_v2, legacy_v1,<br/>guard, guard_order, schema parity via pg_dump<br/>rls_test.sql: 191 checks, 198 with legacy rows"]
     end
 
+    subgraph jobAudit["Job audit"]
+        npmRt["npm audit --omit=dev --audit-level=low<br/>any advisory in a runtime dependency fails"]
+        npmAll["npm audit --audit-level=high<br/>development tooling: warning only"]
+        pipAud["pip-audit -r backend/requirements-dev.txt<br/>any advisory fails"]
+    end
+
     subgraph jobSec["Job secrets"]
         gl["gitleaks 8.30.1 download,<br/>sha256sum -c checksum"]
         glDir["gitleaks dir . --config .gitleaks.toml<br/>--redact --exit-code 1"]
@@ -123,12 +130,14 @@ flowchart LR
     trig --> lint
     trig --> ruff
     trig --> apt
+    trig --> npmRt
     trig --> gl
     lint --> tc --> unit --> build --> verify --> art
     art -->|"built once, reused"| dl --> pw
     pw -.->|"failure"| rep
     ruff --> comp --> ut
     apt --> rls
+    npmRt --> npmAll --> pipAud
     gl --> glDir
     glDir -->|"pull_request only"| glPr
     local -.->|"same steps as"| lint

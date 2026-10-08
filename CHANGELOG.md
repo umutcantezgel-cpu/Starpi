@@ -29,6 +29,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
   `eslint` 10.11.0 → 10.12.0, `globals` 17.12.0 → 17.13.0, `jsdom` 30.1.1 → 30.1.2,
   `mermaid` 12.0.0 → 12.1.0, `ruff` 0.16.9 → 0.16.10. The source-check evaluation output is
   unchanged.
+- The architecture atlas and `CONTRIBUTING.md` describe the `audit` job (six CI jobs), the
+  explicit `--noEmit`, and name mermaid 12.1.0 and ruff 0.16.10.
 
 ### Fixed
 
