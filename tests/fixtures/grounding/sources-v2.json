@@ -1,0 +1,188 @@
+{
+  "spec_en": [
+    {
+      "label": "[Doc: Edge Gateway EG-400 operating specification (sample), Chunk: 1]",
+      "doc": "Edge Gateway EG-400 operating specification (sample)",
+      "heading": "Scope and sample notice",
+      "text": "## Scope and sample notice\n\nThis is sample data: Corvane Systems, the EG-400, all sites, people, IDs and figures in this document are fictitious. This specification covers the Edge Gateway EG-400 made by Corvane Systems as deployed at the Ridgeway plant, the Harbor Point plant and the Northfield warehouse. Three gateways are in service: GW-17 at Ridgeway, GW-22 at Harbor Point and GW-31 at Northfield. Priya Raman, the OT lead, owns this specification; Marcus Hale maintains the network configuration of all three gateways. Version 2.3 of the specification took effect on 4 March 2027 and replaces version 2.1. Version 2.2 was never released.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Edge Gateway EG-400 operating specification (sample), Chunk: 2]",
+      "doc": "Edge Gateway EG-400 operating specification (sample)",
+      "heading": "Power supply and operating environment",
+      "text": "## Power supply and operating environment\n\nThe EG-400 runs on 24 V DC and accepts an input range of 18 V to 30 V DC. GW-17 and GW-31 are fed directly from a 24 V DC rail, while GW-22 at Harbor Point is powered from a 48 V DC battery bank through a CV-48 step-down converter. Power over Ethernet is not supported. The permitted operating temperature is -20 °C to +60 °C, and the storage temperature is -40 °C to +85 °C. The gateway must not be operated above 60 °C, even for short periods. The housing is fanless and rated IP54; it is not approved for outdoor installation without the EK-2 enclosure from Corvane Systems. Relative humidity must stay between 10 % and 90 %, non-condensing.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Edge Gateway EG-400 operating specification (sample), Chunk: 3]",
+      "doc": "Edge Gateway EG-400 operating specification (sample)",
+      "heading": "Network interfaces and ports",
+      "text": "## Network interfaces and ports\n\nThe EG-400 has two Ethernet ports: LAN1 faces the machine network and LAN2 faces the plant network. Routing between LAN1 and LAN2 is disabled and cannot be enabled in the admin interface.\n\n| Port | Protocol | Purpose | Default state |\n|---|---|---|---|\n| 8443 | HTTPS | Local admin interface | Enabled |\n| 8883 | MQTT over TLS | Telemetry to FleetView | Enabled |\n| 1883 | MQTT, unencrypted | Legacy telemetry | Disabled |\n| 502 | Modbus TCP | Machine polling on LAN1 | Enabled |\n| 22 | SSH | Vendor diagnostics | Disabled |\n\nPort 8443 serves the admin interface, and port 8883 carries telemetry to the FleetView console. Port 1883 must not be enabled on production gateways. Telnet is not supported.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Edge Gateway EG-400 operating specification (sample), Chunk: 4]",
+      "doc": "Edge Gateway EG-400 operating specification (sample)",
+      "heading": "Remote access",
+      "text": "## Remote access\n\nThere is no remote access to the EG-400 admin interface from outside the plant network. Remote maintenance is only possible through the SecureRelay appliance supplied by Altamesh Networks. The SecureRelay tunnel stays disabled unless Priya Raman has approved a maintenance ticket. Remote sessions are not started without written approval, and approval by phone is not accepted. A session may last at most 90 minutes and is closed after an idle timeout of 15 minutes. Sofia Lindqvist of Corvane Systems support may join sessions for GW-17 and GW-22, but she is not permitted to change firewall rules. Vendor access to GW-31 at Northfield is prohibited until its firmware has been updated.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Edge Gateway EG-400 operating specification (sample), Chunk: 5]",
+      "doc": "Edge Gateway EG-400 operating specification (sample)",
+      "heading": "Firmware and updates",
+      "text": "## Firmware and updates\n\nGW-17 and GW-22 run firmware 4.2.1, whereas GW-31 still runs firmware 4.1.8. The update of GW-31 to 4.2.1 failed on 9 June 2027 because the flash partition was full. The acceptance test of firmware 4.2.1 passed at Ridgeway on 14 May 2027. Firmware 4.2.0 was withdrawn by Corvane Systems, as Sofia Lindqvist confirmed on 2 May 2027, and must never be installed. Automatic updates are disabled on all gateways; Marcus Hale installs updates manually in the maintenance window on Sundays from 02:00 to 05:00. Unsigned firmware images are rejected. A rollback to the previous version is allowed only if the new version has failed its acceptance test.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Edge Gateway EG-400 operating specification (sample), Chunk: 6]",
+      "doc": "Edge Gateway EG-400 operating specification (sample)",
+      "heading": "Monitoring and alarms",
+      "text": "## Monitoring and alarms\n\nEach gateway sends telemetry every 10 seconds to the FleetView console, and the Kestrel Insight dashboard shows the aggregated values. A gateway that sends no data for 5 minutes is marked offline, and an alarm goes to the shift supervisor, Daniel Okafor. GW-31 was offline for 3 hours on 22 July 2027 after a power failure at Northfield. After the update to firmware 4.2.1, memory usage on GW-22 decreased from 71 % to 58 %, while message latency at Harbor Point increased from 120 ms to 180 ms. A CPU load above 85 % for 10 minutes triggers a warning. Alarms are not suppressed at night. Gateway logs stay on the gateway for 7 days and are then forwarded to ArchiveVault.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Edge Gateway EG-400 operating specification (sample), Chunk: 7]",
+      "doc": "Edge Gateway EG-400 operating specification (sample)",
+      "heading": "Decommissioning",
+      "text": "## Decommissioning\n\nA gateway must not be taken out of service without a decommissioning ticket signed by Tomás Ferreira of IT security. Before shipment, the configuration and all certificates are erased with the WipeTool from Corvane Systems, and a wipe certificate is filed in ArchiveVault. A gateway is not returned to Corvane Systems unless the wipe certificate exists. Storage modules from GW-31 are physically destroyed at Northfield and are never shipped. Spare units are kept at Ridgeway in a powered-off state; a spare unit is not connected to the plant network until Marcus Hale has installed firmware 4.2.1 on it.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Plant data retention and access policy (sample), Chunk: 1]",
+      "doc": "Plant data retention and access policy (sample)",
+      "heading": "Purpose and sample notice",
+      "text": "## Purpose and sample notice\n\nThis is sample data: the company, the sites, the people, the vendors and all periods in this policy are fictitious. The policy governs how long plant data from the Ridgeway plant, the Harbor Point plant and the Northfield warehouse is kept and who may access it. Elena Voss, the data protection officer, owns the policy. Grace Whitfield, the plant manager at Ridgeway, approved it on 18 March 2027, and it takes effect on 1 April 2027. The policy covers telemetry from the EG-400 gateways, audit logs, gate camera footage and recordings of remote maintenance sessions. Office e-mail is not covered by this policy.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Plant data retention and access policy (sample), Chunk: 2]",
+      "doc": "Plant data retention and access policy (sample)",
+      "heading": "Retention periods",
+      "text": "## Retention periods\n\nEach data category has a fixed retention period, counted in days from the time the data is recorded.\n\n| Data category | Retention | Storage location |\n|---|---|---|\n| Raw telemetry | 30 days | EG-400 gateway |\n| Aggregated telemetry | 400 days | Brightline Cloud |\n| Audit logs | 730 days | ArchiveVault |\n| Gate camera footage | 14 days | Camera recorder on site |\n| Remote session recordings | 180 days | ArchiveVault |\n\nRaw telemetry is kept for 30 days on the gateway, whereas aggregated telemetry is kept for 400 days in Brightline Cloud. Gate camera footage must not be kept longer than 14 days unless it is under a legal hold.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Plant data retention and access policy (sample), Chunk: 3]",
+      "doc": "Plant data retention and access policy (sample)",
+      "heading": "Access roles",
+      "text": "## Access roles\n\nOperators have read-only access to the Kestrel Insight dashboard and cannot export data. Engineers may read and change gateway configurations, but they are not allowed to delete audit logs. Contractors have no access to audit logs or camera footage. Access to gate camera footage is not granted without the approval of Elena Voss. Marcus Hale administers the accounts in ArchiveVault; Daniel Okafor may view, but not export, the session recordings of his shift. Shared accounts are prohibited at all sites. An account that has not been used for 60 days is disabled automatically, and it is re-enabled only after the line manager confirms the need.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Plant data retention and access policy (sample), Chunk: 4]",
+      "doc": "Plant data retention and access policy (sample)",
+      "heading": "Exports and transfers",
+      "text": "## Exports and transfers\n\nPlant data must not leave the European Union. Brightline Cloud stores aggregated telemetry in its Frankfurt region; replication to other regions is disabled. Kestrel Analytics receives only aggregated and pseudonymized telemetry, and raw telemetry is never shared with Kestrel Analytics. An export larger than 5 GB requires approval by Elena Voss; smaller exports without personal data are allowed for engineers without approval. USB storage devices are prohibited at Ridgeway and Harbor Point. At Northfield, USB export is allowed only on the encrypted laptop NB-04, and only if Tomás Ferreira has unlocked the port beforehand.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Plant data retention and access policy (sample), Chunk: 5]",
+      "doc": "Plant data retention and access policy (sample)",
+      "heading": "Deletion and legal holds",
+      "text": "## Deletion and legal holds\n\nData whose retention period has expired is deleted by a nightly job that starts at 01:30. Backups of ArchiveVault are kept for 35 days, so deleted records can remain in a backup for up to 35 more days. Data under a legal hold must not be deleted, even after its retention period has expired. A legal hold is set and released only by Hannah Brooks of the legal department. The deletion job is not paused unless a legal hold is active or Elena Voss has ordered a pause in writing. Manual deletion of audit logs before the end of the retention period is not permitted.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Plant data retention and access policy (sample), Chunk: 6]",
+      "doc": "Plant data retention and access policy (sample)",
+      "heading": "Audits and incidents",
+      "text": "## Audits and incidents\n\nThe audit at Harbor Point on 12 June 2027 passed without findings. The audit at Northfield on 3 September 2027 failed because raw telemetry on GW-31 had been kept for 90 days instead of 30 days. Two days later, Hannah Brooks placed the Northfield gate camera footage under a legal hold. From the first to the second quarter of 2027, the number of access requests increased from 12 to 19, while the number of security incidents decreased from 4 to 1. A suspected data breach must be reported to Elena Voss within 24 hours and to the supervisory authority within 72 hours. Grace Whitfield reviews this policy once a year; the next review is due on 1 April 2028.",
+      "delivered": "full"
+    }
+  ],
+  "spec_de": [
+    {
+      "label": "[Doc: Betriebsspezifikation Edge-Gateway EG-400 (Beispiel), Chunk: 1]",
+      "doc": "Betriebsspezifikation Edge-Gateway EG-400 (Beispiel)",
+      "heading": "Zweck und Beispielhinweis",
+      "text": "## Zweck und Beispielhinweis\n\nDies sind Beispieldaten: Firmen, Standorte, Personen, Gateway-IDs und alle Zahlen in diesem Dokument sind frei erfunden. Die Spezifikation beschreibt das Edge-Gateway EG-400 der Tessner Automation GmbH, wie es im Werk Süd, im Werk Nord und im Außenlager Lechfeld betrieben wird. Im Einsatz sind drei Gateways: GW-08 im Werk Süd, GW-12 im Werk Nord und GW-29 im Außenlager Lechfeld. Verantwortlich für die Spezifikation ist Jana Wiesner aus der OT-Leitung; die Netzwerkkonfiguration pflegt Florian Brandt. Version 1.6 gilt seit dem 17. Februar 2027 und ersetzt Version 1.4. Die Spezifikation gilt nicht für die älteren Gateways vom Typ EG-200.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Betriebsspezifikation Edge-Gateway EG-400 (Beispiel), Chunk: 2]",
+      "doc": "Betriebsspezifikation Edge-Gateway EG-400 (Beispiel)",
+      "heading": "Stromversorgung und Umgebungsbedingungen",
+      "text": "## Stromversorgung und Umgebungsbedingungen\n\nDas EG-400 arbeitet mit 12 V DC oder 24 V DC; zulässig ist ein Eingangsbereich von 10 V bis 36 V DC. GW-08 im Werk Süd hängt an einer 12-V-Versorgung, während GW-12 und GW-29 mit 24 V DC aus dem Schaltschrank versorgt werden. Power over Ethernet wird nicht unterstützt. Die zulässige Betriebstemperatur liegt bei -10 °C bis +55 °C, die Lagertemperatur bei -30 °C bis +70 °C. Oberhalb von 55 °C darf das Gateway nicht betrieben werden. Im Außenlager Lechfeld ist der Betrieb nur im beheizten Gehäuse TG-5 von Tessner Automation zulässig, weil die Halle im Winter nicht beheizt ist. Eine Lüfterkühlung ist nicht vorgesehen.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Betriebsspezifikation Edge-Gateway EG-400 (Beispiel), Chunk: 3]",
+      "doc": "Betriebsspezifikation Edge-Gateway EG-400 (Beispiel)",
+      "heading": "Schnittstellen und Ports",
+      "text": "## Schnittstellen und Ports\n\nDas Gateway hat zwei Ethernet-Ports: ETH0 für das Maschinennetz und ETH1 für das Werksnetz. Das Routing zwischen ETH0 und ETH1 ist deaktiviert und lässt sich über die Weboberfläche nicht aktivieren.\n\n| Port | Protokoll | Zweck | Standardzustand |\n|---|---|---|---|\n| 9443 | HTTPS | Lokale Weboberfläche | aktiviert |\n| 8883 | MQTT über TLS | Telemetrie an ProSight | aktiviert |\n| 1883 | MQTT unverschlüsselt | Testbetrieb | deaktiviert |\n| 4840 | OPC UA | Maschinenanbindung an ETH0 | aktiviert |\n| 22 | SSH | Herstellerdiagnose | deaktiviert |\n\nPort 9443 dient der Weboberfläche, Port 4840 der Maschinenanbindung. Port 1883 ist nur im Testnetz von Werk Nord erlaubt und im Produktionsnetz verboten. Telnet wird nicht unterstützt.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Betriebsspezifikation Edge-Gateway EG-400 (Beispiel), Chunk: 4]",
+      "doc": "Betriebsspezifikation Edge-Gateway EG-400 (Beispiel)",
+      "heading": "Fernwartung",
+      "text": "## Fernwartung\n\nFür das Außenlager Lechfeld ist Fernwartung grundsätzlich verboten. Im Werk Süd und im Werk Nord gibt es keinen Fernzugriff auf die Weboberfläche von außerhalb des Werksnetzes; Fernwartung läuft dort ausschließlich über die Box LinkGuard R2 von Nordwall IT. Die LinkGuard-Verbindung bleibt deaktiviert, sofern Jana Wiesner kein Wartungsticket freigegeben hat. Eine Sitzung wird nicht ohne schriftliche Freigabe gestartet; eine mündliche Freigabe ist nicht zulässig. Eine Sitzung dauert höchstens 60 Minuten, der Timeout bei Inaktivität beträgt 20 Minuten. Stefan Kroll vom Support der Tessner Automation GmbH darf Sitzungen für GW-08 begleiten, Änderungen an Firewall-Regeln sind ihm aber verboten. Für GW-12 ist der Herstellerzugriff bis zum erfolgreichen Firmware-Update gesperrt.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Betriebsspezifikation Edge-Gateway EG-400 (Beispiel), Chunk: 5]",
+      "doc": "Betriebsspezifikation Edge-Gateway EG-400 (Beispiel)",
+      "heading": "Firmware und Updates",
+      "text": "## Firmware und Updates\n\nAuf GW-08 und GW-29 läuft die Firmware 3.9.4, auf GW-12 noch die Firmware 3.8.7. Das Update von GW-12 auf 3.9.4 ist am 5. Mai 2027 fehlgeschlagen, weil die Prüfsumme des Images nicht stimmte; ein zweiter Versuch ist für den 12. Juni 2027 geplant. Der Abnahmetest der Firmware 3.9.4 wurde am 21. April 2027 im Werk Süd bestanden. Die Firmware 3.9.2 hat Tessner Automation zurückgezogen, was Stefan Kroll am 28. März 2027 bestätigt hat; sie darf nie installiert werden. Automatische Updates sind auf allen Gateways deaktiviert. Florian Brandt spielt Updates samstags zwischen 22:00 und 01:00 Uhr ein. Ein Downgrade ist nicht ohne Freigabe von Lukas Hoffmann aus der IT-Sicherheit erlaubt.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Betriebsspezifikation Edge-Gateway EG-400 (Beispiel), Chunk: 6]",
+      "doc": "Betriebsspezifikation Edge-Gateway EG-400 (Beispiel)",
+      "heading": "Überwachung und Logs",
+      "text": "## Überwachung und Logs\n\nJedes Gateway sendet alle 30 Sekunden Telemetrie an den Leitstand ProSight; das Dashboard Mirava Pulse zeigt die verdichteten Werte. Meldet ein Gateway 10 Minuten lang keine Daten, gilt es als offline, und Schichtleiter Mehmet Yıldız erhält einen Alarm. GW-29 war am 14. August 2027 von 06:40 bis 09:10 Uhr offline, nachdem im Außenlager Lechfeld ein Netzteil ausgefallen war. Seit der Firmware 3.9.4 ist die CPU-Last auf GW-08 von 64 % auf 41 % gesunken, die Latenz der Telemetrie im Werk Süd ist dagegen von 90 ms auf 140 ms gestiegen. Die Logs bleiben 5 Tage auf dem Gateway und werden dann an TresorStore übertragen. Das Debug-Logging ist im Produktivbetrieb deaktiviert.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Betriebsspezifikation Edge-Gateway EG-400 (Beispiel), Chunk: 7]",
+      "doc": "Betriebsspezifikation Edge-Gateway EG-400 (Beispiel)",
+      "heading": "Außerbetriebnahme",
+      "text": "## Außerbetriebnahme\n\nEin Gateway wird nicht ohne ein Ticket von Lukas Hoffmann außer Betrieb genommen. Vor dem Versand werden Konfiguration und Zertifikate mit dem Werkzeug CleanSlate von Tessner Automation gelöscht, und das Löschprotokoll wird in TresorStore abgelegt. Ein Gateway geht nicht an den Hersteller zurück, sofern kein Löschprotokoll vorliegt. Altgeräte entsorgt die Recyclon GmbH; eine Entsorgung ohne Löschprotokoll ist nicht zulässig. Speichermodule aus dem Außenlager Lechfeld werden vor Ort vernichtet und nie versendet. Ersatzgeräte lagern ausgeschaltet im Werk Nord; ein Ersatzgerät kommt erst ins Werksnetz, wenn Florian Brandt die Firmware 3.9.4 aufgespielt hat.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Richtlinie Datenaufbewahrung und Zugriff Werk Süd (Beispiel), Chunk: 1]",
+      "doc": "Richtlinie Datenaufbewahrung und Zugriff Werk Süd (Beispiel)",
+      "heading": "Zweck und Beispielhinweis",
+      "text": "## Zweck und Beispielhinweis\n\nDies sind Beispieldaten: Unternehmen, Personen, Dienstleister und alle Fristen dieser Richtlinie sind frei erfunden. Die Richtlinie legt fest, wie lange Daten aus dem Werk Süd aufbewahrt werden und wer darauf zugreifen darf. Sie gilt auch für Daten des Außenlagers Lechfeld, soweit diese im Werk Süd gespeichert werden. Verantwortlich ist die Datenschutzbeauftragte Katrin Albers. Werkleiterin Birgit Sommer hat die Richtlinie am 9. Juni 2027 freigegeben; sie tritt am 1. Juli 2027 in Kraft. Erfasst sind Telemetriedaten der Gateways, Audit-Logs, Videodaten der Torkameras und Aufzeichnungen von Fernwartungssitzungen. Personalakten fallen nicht unter diese Richtlinie.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Richtlinie Datenaufbewahrung und Zugriff Werk Süd (Beispiel), Chunk: 2]",
+      "doc": "Richtlinie Datenaufbewahrung und Zugriff Werk Süd (Beispiel)",
+      "heading": "Aufbewahrungsfristen",
+      "text": "## Aufbewahrungsfristen\n\nFür jede Datenkategorie gilt eine feste Aufbewahrungsfrist, gezählt in Tagen ab der Erfassung.\n\n| Datenkategorie | Frist | Speicherort |\n|---|---|---|\n| Telemetrie-Rohdaten | 21 Tage | Gateway |\n| Verdichtete Telemetrie | 365 Tage | Datenhafen Cloud |\n| Audit-Logs | 1095 Tage | TresorStore |\n| Videodaten der Torkameras | 10 Tage | Videorekorder im Werk |\n| Aufzeichnungen der Fernwartung | 120 Tage | TresorStore |\n\nRohdaten bleiben 21 Tage auf dem Gateway, verdichtete Telemetrie dagegen 365 Tage in der Datenhafen Cloud. Videodaten dürfen nicht länger als 10 Tage gespeichert werden, sofern kein Legal Hold besteht.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Richtlinie Datenaufbewahrung und Zugriff Werk Süd (Beispiel), Chunk: 3]",
+      "doc": "Richtlinie Datenaufbewahrung und Zugriff Werk Süd (Beispiel)",
+      "heading": "Rollen und Zugriffsrechte",
+      "text": "## Rollen und Zugriffsrechte\n\nBediener haben nur Lesezugriff auf das Dashboard Mirava Pulse und dürfen keine Daten exportieren. Instandhalter dürfen Gateway-Konfigurationen lesen und ändern; Änderungen an der Firewall sind nur im Vier-Augen-Prinzip erlaubt, und das Löschen von Audit-Logs ist ihnen verboten. Externe Dienstleister erhalten keinen Zugriff auf Audit-Logs oder Videodaten. Der Zugriff auf Videodaten wird nicht ohne Freigabe von Katrin Albers erteilt. Florian Brandt verwaltet die Konten in TresorStore; Mehmet Yıldız darf die Fernwartungsaufzeichnungen seiner Schicht ansehen, aber nicht herunterladen. Sammelkonten sind verboten. Konten, die 45 Tage nicht genutzt wurden, werden automatisch deaktiviert und erst nach Bestätigung durch die Führungskraft wieder aktiviert.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Richtlinie Datenaufbewahrung und Zugriff Werk Süd (Beispiel), Chunk: 4]",
+      "doc": "Richtlinie Datenaufbewahrung und Zugriff Werk Süd (Beispiel)",
+      "heading": "Export und Weitergabe",
+      "text": "## Export und Weitergabe\n\nWerksdaten dürfen die EU nicht verlassen. Die Datenhafen Cloud speichert die verdichtete Telemetrie im Rechenzentrum Wien; eine Replikation in andere Regionen ist deaktiviert. Mirava Analytics erhält ausschließlich verdichtete und pseudonymisierte Daten, Rohdaten werden nie an Mirava Analytics weitergegeben. Exporte über 2 GB sind nicht ohne Freigabe von Katrin Albers zulässig; kleinere Exporte ohne personenbezogene Daten sind für Instandhalter erlaubt. USB-Datenträger sind im Werk Süd verboten. Im Außenlager Lechfeld ist ein USB-Export nur am verschlüsselten Laptop LT-11 erlaubt, und nur dann, wenn Lukas Hoffmann den Port vorher freigeschaltet hat.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Richtlinie Datenaufbewahrung und Zugriff Werk Süd (Beispiel), Chunk: 5]",
+      "doc": "Richtlinie Datenaufbewahrung und Zugriff Werk Süd (Beispiel)",
+      "heading": "Löschung und Legal Hold",
+      "text": "## Löschung und Legal Hold\n\nAbgelaufene Daten entfernt ein nächtlicher Löschlauf, der um 02:15 Uhr startet. Sicherungen von TresorStore werden 28 Tage aufbewahrt, sodass gelöschte Datensätze bis zu 28 weitere Tage in einer Sicherung liegen können. Daten unter Legal Hold dürfen nicht gelöscht werden, auch wenn ihre Frist abgelaufen ist. Einen Legal Hold setzt und hebt ausschließlich Dr. Ines Gramm aus der Rechtsabteilung auf. Der Löschlauf wird nicht angehalten, sofern weder ein Legal Hold aktiv ist noch Katrin Albers eine Unterbrechung schriftlich angeordnet hat. Eine vorzeitige manuelle Löschung von Audit-Logs ist nicht zulässig.",
+      "delivered": "full"
+    },
+    {
+      "label": "[Doc: Richtlinie Datenaufbewahrung und Zugriff Werk Süd (Beispiel), Chunk: 6]",
+      "doc": "Richtlinie Datenaufbewahrung und Zugriff Werk Süd (Beispiel)",
+      "heading": "Audits und Vorfälle",
+      "text": "## Audits und Vorfälle\n\nDas interne Audit im Werk Süd am 22. September 2027 wurde bestanden, das Audit im Außenlager Lechfeld am 6. Oktober 2027 dagegen nicht bestanden, weil Videodaten 30 Tage statt 10 Tage gespeichert waren. Noch am selben Tag hat Dr. Ines Gramm einen Legal Hold auf diese Videodaten gesetzt. Vom zweiten zum dritten Quartal 2027 ist die Zahl der Zugriffsanfragen von 8 auf 15 gestiegen, die Zahl der Sicherheitsvorfälle ist von 5 auf 2 gesunken. Ein vermuteter Datenschutzvorfall ist Katrin Albers innerhalb von 12 Stunden und der Aufsichtsbehörde innerhalb von 72 Stunden zu melden. Birgit Sommer prüft die Richtlinie jährlich; die nächste Prüfung ist am 1. Juli 2028 fällig.",
+      "delivered": "full"
+    }
+  ]
+}
