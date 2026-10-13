@@ -11,9 +11,14 @@ retrieval-augmented generation (RAG) application:
   English and German formats (480,000 = 480.000 = 480k), dates, times, weekdays, codes, quotations
   and wording, and names in English statements. It reports `supported`, `weak`, `unsupported` or
   `unchecked` per statement, with a reason that names the missing value.
-- **Answer receipts** (`starpi.receipt/v1`): a JSON record of the cited excerpts with SHA-256
-  fingerprints of the source files and passage offsets, and a verifier that reproduces every
-  passage from the original files.
+- **Answer receipts** (`starpi.receipt/v2`): a JSON record of the cited excerpts with SHA-256
+  fingerprints of the source files and passage offsets, a Merkle tree (RFC 6962) with an
+  inclusion proof per citation, optional Ed25519 or ECDSA P-256 signatures, and a verifier that
+  reproduces every passage from the original files. Receipts of the first format
+  (`starpi.receipt/v1`) are still verified.
+- **`starpi-ground`**, a command that checks a Markdown document of any length against source
+  files and writes text, JSON or SARIF 2.1.0, so a CI job can fail on an unsupported statement
+  and show it in GitHub code scanning.
 - The **text extraction** (Markdown, text, CSV, JSON, PDF), **chunking** with exact offsets and
   **BM25** index that produce those excerpts in Starpi.
 
@@ -31,6 +36,8 @@ so its behaviour is covered by the app's tests.
 | Check an answer against the excerpts it cites | `groundAnswer(blocksFromMarkdown(answer, sources), sources)` | [Check an answer](#check-an-answer-against-its-sources) |
 | Record which excerpts an answer was given | `buildReceipt({ … })` | [Receipts](#create-and-verify-receipts) |
 | Reproduce every excerpt from the original files | `verifyReceipt(receipt, files, { extractor: EXTRACTOR, extract })`, `npx starpi-verify-receipt` | [Receipts](#create-and-verify-receipts) |
+| Sign a receipt, check a signature | `signReceipt(receipt, privateKey)`, `verifyReceiptSignature(receipt, publicKey)` | [Sign receipts](#sign-receipts) |
+| Check a whole document in CI, as SARIF | `npx starpi-ground --answer notes.md --source docs/ --format sarif`, `checkDocument`, `toSarif` | [Check documents in CI](#check-documents-in-ci) |
 | Split text into chunks with exact offsets | `chunkText(text)` | [Chunk and search](#chunk-and-search) |
 | Rank chunks for a question | `new BM25Index()`, `.add(chunks)`, `.search(query)` | [Chunk and search](#chunk-and-search) |
 | Read Markdown, text, CSV, JSON and PDF files | `extractText(file)` | [Receipts](#create-and-verify-receipts) |
@@ -40,8 +47,10 @@ so its behaviour is covered by the app's tests.
 The source check is a heuristic. It compares text; it does not understand it. A statement it marks
 `supported` can still be wrong (for example with the right number attached to the wrong thing), and
 a correct paraphrase can be marked `weak`. Use a flag as "open the source and look", not as a
-verdict on truth. Receipts are not signed: they show that the excerpts are reproducible from the
-same files, not who produced the answer or which excerpts a model read. The format is specified in
+verdict on truth. Receipts show that the excerpts are reproducible from the same files, not which
+excerpts a model read. A signed receipt shows who signed it only when you check the signature with
+the signer's public key, obtained from the signer; the key inside the receipt proves only that it
+was not changed after signing. The format is specified in
 [docs/spec/receipts.md](https://github.com/umutcantezgel-cpu/Starpi/blob/main/docs/spec/receipts.md).
 
 ## Install
@@ -155,7 +164,49 @@ console.log(result.summary); // { reproduced: 1, verifiable: 1 }
 
 `verifyReceipt` checks the receipt hash, the answer hash and, per workspace excerpt, the file
 fingerprint (files are matched by hash, not by name), the extracted text, the passage at the
-recorded offsets and the chunk bounds, and recomputes the source check.
+recorded offsets and the chunk bounds, and recomputes the source check with the rules version the
+receipt records. For a v2 receipt it also recomputes the Merkle root and checks every inclusion
+proof (`result.merkle`, `result.citations[i].proof`) and the signature, if there is one
+(`result.signature`). `buildReceipt(draft, { schema: RECEIPT_SCHEMA_V1 })` still writes the first
+format for verifiers that only read v1.
+
+One citation can be checked against the root without the others:
+
+```js
+import { verifyCitationProof } from '@starpi/core';
+
+const included = await verifyCitationProof(receipt.citations[2], 2, receipt.merkle); // true or false
+```
+
+### Sign receipts
+
+The app does not sign receipts; a deployment that produces receipts can, with a key it controls.
+Ed25519 and ECDSA on P-256 (`ES256`) are supported, with WebCrypto only:
+
+```bash
+openssl genpkey -algorithm ed25519 -out signer-private.pem
+openssl pkey -in signer-private.pem -pubout -out signer.pem   # publish this one
+```
+
+```js
+import { readFileSync } from 'node:fs';
+import { signReceipt, verifyReceiptSignature } from '@starpi/core';
+
+const pem = readFileSync('signer-private.pem', 'utf8');
+const der = Buffer.from(pem.replace(/-----[^-]+-----|\s+/g, ''), 'base64');
+const privateKey = await crypto.subtle.importKey('pkcs8', der, { name: 'Ed25519' }, true, ['sign']);
+const signed = await signReceipt(receipt, privateKey);
+
+const check = await verifyReceiptSignature(signed, readFileSync('signer.pem', 'utf8'));
+console.log(check); // { status: 'valid', alg: 'Ed25519', keyId: '…', trusted: true }
+```
+
+The signature covers the receipt id (and through it everything in the receipt) and the Merkle
+root; it is not part of the id. `status` is `valid`, `invalid`, `unsigned`, `key_mismatch` (signed
+with another key than the one you gave) or `unsupported_algorithm`; `trusted` is true only for a
+key you supplied. `keyId` is the SHA-256 of the public key's SubjectPublicKeyInfo, the same as
+`openssl pkey -pubin -in signer.pem -outform DER | sha256sum`. `importPublicKey` and `publicKeyId`
+read JWK and PEM public keys.
 
 ### Command line
 
@@ -165,8 +216,70 @@ npx -p @starpi/core starpi-verify-receipt receipt.json plan.md   # without insta
 npx -p @starpi/core -p pdfjs-dist@6 starpi-verify-receipt receipt.json plan.md notes.pdf   # with PDFs
 ```
 
-Exit code 0 when every workspace excerpt was reproduced, 1 when something did not match or a file
-is missing, 2 for a usage error or an invalid receipt.
+Add `--public-key signer.pem` (PEM or JWK) to check who signed a receipt. Exit code 0 when every
+workspace excerpt was reproduced (and, for v2, the Merkle tree and any signature are valid), 1
+when something did not match, a file is missing or the receipt is not signed with the given key,
+2 for a usage error or an invalid receipt.
+
+## Check documents in CI
+
+`starpi-ground` checks a Markdown document (release notes, generated documentation, an answer)
+against source files with the same source check, and fails when a statement is not supported:
+
+With `notes.md` holding two statements about the sample files of the Starpi repository
+(`public/samples/en`):
+
+```markdown
+# Nebula status
+
+The approved budget for Project Nebula is 480,000 EUR.
+The public launch is planned for 12 June 2027.
+```
+
+```bash
+npx --yes --package=@starpi/core@2 --package=pdfjs-dist@6 starpi-ground --answer notes.md --source public/samples/en
+```
+
+```text
+notes.md:4:1 unsupported “The public launch is planned for 12 June 2027.”
+    12 June 2027 is not in [Doc: nebula-kickoff.pdf, Chunk: 1], [Doc: nebula-plan.md, Chunk: 1], [Doc: nebula-plan.md, Chunk: 2] and 3 more excerpts.
+
+2 statements checked against 6 excerpts from 3 files (citations: all): 1 supported, 0 weak, 1 unsupported, 0 unchecked
+```
+
+The plan says 12 May 2027; the command exits with 1. `pdfjs-dist` is needed only because the
+sources include a PDF; a PDF that cannot be read stops the run with exit code 2 instead of being
+left out.
+
+Sources are read like the app reads them (Markdown, text, CSV, logs, JSON; PDF with the optional
+`pdfjs-dist`), chunked into 500-character excerpts and labelled `[Doc: <file name>, Chunk: <n>]`;
+a directory adds every supported file below it, except hidden ones and `node_modules`. A document
+with citation labels is checked against the excerpts it cites; a document without labels compares
+every statement with every excerpt (`--cite labels|all` overrides). Documents longer than the
+check's limits are split at headings and paragraphs; a paragraph that is still too long is
+reported as not checked and fails the run.
+
+| Option | Values |
+| --- | --- |
+| `--format` | `text` (default), `json`, `sarif` (SARIF 2.1.0) |
+| `--output` | write the report to a file instead of standard output |
+| `--fail-on` | `unsupported` (default), `weak`, `never` |
+| `--cite` | `auto` (default), `labels`, `all` |
+
+Exit code 0 when no statement is at or above the `--fail-on` level, 1 when one is, 2 for a usage
+error or an unreadable file. In SARIF, every unsupported statement is an `error` and every weak one
+a `warning`, at its line and column, with the reason as the rule and a fingerprint that stays the
+same when the statement moves. In GitHub Actions (the job needs `security-events: write`):
+
+```yaml
+- run: npx --yes --package=@starpi/core@2 starpi-ground --answer docs/release-notes.md --source docs/spec --format sarif --output starpi.sarif
+- uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+  if: always()
+  with:
+    sarif_file: starpi.sarif
+```
+
+`checkDocument(markdown, sources)` and `toSarif(documents, tool)` do the same in code.
 
 ## Chunk and search
 

@@ -4,6 +4,7 @@
 //   dist/index.js            ESM bundle of packages/core/src/index.js (no dependencies; pdfjs-dist
 //                            is imported only when a PDF is read, as an optional peer dependency)
 //   dist/verify-receipt.js   the receipt verifier CLI (scripts/verify-receipt.mjs) for Node
+//   dist/ground.js           the source check CLI with SARIF output (scripts/ground.mjs) for Node
 //   dist/index.d.ts, types/  type declarations generated from the JSDoc types
 //
 // Usage: node scripts/build-core.mjs [--out <dir>] [--no-types]
@@ -40,17 +41,19 @@ await build({
   logLevel: 'warning',
 });
 
-await build({
-  entryPoints: [path.join(ROOT, 'scripts/verify-receipt.mjs')],
-  outfile: path.join(OUT, 'verify-receipt.js'),
-  bundle: true,
-  format: 'esm',
-  platform: 'node',
-  target: 'node20',
-  external,
-  banner: { js: banner },
-  logLevel: 'warning',
-});
+for (const name of ['verify-receipt', 'ground']) {
+  await build({
+    entryPoints: [path.join(ROOT, `scripts/${name}.mjs`)],
+    outfile: path.join(OUT, `${name}.js`),
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    target: 'node20',
+    external,
+    banner: { js: banner },
+    logLevel: 'warning',
+  });
+}
 
 if (withTypes) {
   const tsc = path.join(ROOT, 'node_modules/typescript/bin/tsc');

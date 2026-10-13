@@ -129,7 +129,7 @@ jobs:
           set -euo pipefail
           tgz="$GITHUB_WORKSPACE/release-assets/starpi-core-${VERSION}.tgz"
           listing="$(tar -tzf "$tgz")"
-          for file in package/package.json package/README.md package/LICENSE package/dist/index.js package/dist/index.d.ts package/dist/verify-receipt.js; do
+          for file in package/package.json package/README.md package/LICENSE package/dist/index.js package/dist/index.d.ts package/dist/verify-receipt.js package/dist/ground.js; do
             grep -qxF "$file" <<<"$listing" || { echo "::error::$file is missing from $tgz"; exit 1; }
           done
           banner="$(tar -xzOf "$tgz" package/dist/index.js | sed -n 1p)"
@@ -142,12 +142,24 @@ jobs:
           npm install --offline --ignore-scripts --no-audit --no-fund "$tgz"
           node --input-type=module -e "
             const core = await import('@starpi/core');
-            for (const name of ['groundAnswer', 'blocksFromMarkdown', 'buildReceipt', 'verifyReceipt', 'chunkText', 'BM25Index']) {
+            for (const name of ['groundAnswer', 'blocksFromMarkdown', 'checkDocument', 'toSarif', 'buildReceipt', 'signReceipt', 'verifyReceipt', 'verifyReceiptSignature', 'chunkText', 'BM25Index']) {
               if (typeof core[name] !== 'function') throw new Error(name + ' is not exported');
             }"
+          for bin in starpi-verify-receipt starpi-ground; do
+            status=0
+            "node_modules/.bin/$bin" >/dev/null 2>&1 || status=$?
+            [[ "$status" -eq 2 ]] || { echo "::error::$bin without arguments exited $status, expected 2"; exit 1; }
+          done
+          # starpi-ground finds the wrong value and writes SARIF 2.1.0.
+          printf '# Plan\n\nThe approved budget is 480,000 EUR.\n' > plan.md
+          printf 'The approved budget is 520,000 EUR.\n' > answer.md
           status=0
-          node_modules/.bin/starpi-verify-receipt >/dev/null 2>&1 || status=$?
-          [[ "$status" -eq 2 ]] || { echo "::error::starpi-verify-receipt without arguments exited $status, expected 2"; exit 1; }
+          node_modules/.bin/starpi-ground --answer answer.md --source plan.md --format sarif --output starpi.sarif || status=$?
+          [[ "$status" -eq 1 ]] || { echo "::error::starpi-ground exited $status on an unsupported statement, expected 1"; exit 1; }
+          node -e "
+            const log = JSON.parse(require('node:fs').readFileSync('starpi.sarif', 'utf8'));
+            const ids = log.runs[0].results.map((r) => r.ruleId);
+            if (log.version !== '2.1.0' || ids.join() !== 'missing_fact') throw new Error('unexpected SARIF: ' + log.version + ' ' + ids);"
 
       - name: Checksums
         if: steps.decide.outputs.create == 'true'
