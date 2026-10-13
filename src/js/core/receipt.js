@@ -1,20 +1,34 @@
 // @ts-check
-// Answer receipts (schema "starpi.receipt/v1"): a JSON file per answer that lists the excerpts the
-// answer was given, with SHA-256 fingerprints of the source files, the exact character offsets of each
-// passage, the source-check verdicts, and a hash over all of it. Anyone who has the same files can
-// reproduce every passage (verifyReceipt below, in the app or with scripts/verify-receipt.mjs).
+// Answer receipts: a JSON file per answer that lists the excerpts the answer was given, with SHA-256
+// fingerprints of the source files, the exact character offsets of each passage, the source-check
+// verdicts, and a hash over all of it. Anyone who has the same files can reproduce every passage
+// (verifyReceipt below, in the app or with scripts/verify-receipt.mjs).
+//
+// Format "starpi.receipt/v2" (written by default) adds a Merkle tree over the citations (RFC 6962,
+// merkle.js) with an inclusion proof per citation, and an optional signature (Ed25519 or ECDSA P-256,
+// signature.js) over the id and the Merkle root. "starpi.receipt/v1" receipts are still read and
+// verified, and can still be written ({ schema: RECEIPT_SCHEMA_V1 }).
 //
 // What a receipt proves: each workspace excerpt is an exact, unchanged passage of the file with the
-// recorded fingerprint, at the recorded position, under the recorded extraction rules. What it does
-// not prove: that Starpi wrote the answer (receipts are not signed), which excerpts the model read,
-// that the answer is correct, or anything about knowledge-base excerpts. See docs/spec/receipts.md.
+// recorded fingerprint, at the recorded position, under the recorded extraction rules; a signed
+// receipt was not changed after it was signed. What it does not prove: who signed it, unless the
+// verifier has the signer's public key from the signer; which excerpts the model read; that the
+// answer is correct; or anything about knowledge-base excerpts. See docs/spec/receipts.md.
 //
 // Pure: WebCrypto (crypto.subtle) only, so it runs in the browser, in workers and in Node 20+.
 import { chunkText, CHUNKER } from '../rag/chunker.js';
 import { guessLanguage, indexSource } from './facts.js';
-import { checkSentence, GROUNDING, REASON_CODES, THRESHOLDS } from './grounding.js';
+import { checkSentence, GROUNDING, GROUNDING_VERSIONS, REASON_CODES, THRESHOLDS } from './grounding.js';
+import { canonicalJson, sha256Hex } from './hash.js';
+import { MERKLE_ALG, merkleLeafHash, merkleTree, verifyMerkleProof } from './merkle.js';
+import { signHead, SIGNATURE_ALGS, verifyHead } from './signature.js';
 
-export const RECEIPT_SCHEMA = 'starpi.receipt/v1';
+export { canonicalJson, sha256Hex };
+
+/** The format buildReceipt writes. */
+export const RECEIPT_SCHEMA = 'starpi.receipt/v2';
+/** The first format: no Merkle tree, no signature. Still read, verified and, on request, written. */
+export const RECEIPT_SCHEMA_V1 = 'starpi.receipt/v1';
 
 export const RECEIPT_LIMITS = Object.freeze({
   bytes: 2_000_000,
@@ -27,6 +41,8 @@ export const RECEIPT_LIMITS = Object.freeze({
   questionChars: 10_000,
   excerptChars: 20_000,
   textChars: 1_000,
+  // An audit path has one hash per tree level: at most ceil(log2(64)) = 6 for 64 citations.
+  proof: 6,
 });
 
 /**
@@ -55,6 +71,7 @@ export const RECEIPT_LIMITS = Object.freeze({
  * @property {ReceiptDocument} [document]
  * @property {{ index: number, start: number, end: number, sha256: string | null }} [chunk]  offsets in UTF-16 code units
  * @property {{ documentId: string | null }} [knowledge]
+ * @property {string[]} [proof]  v2: the citation's Merkle audit path (RFC 6962), sibling first
  */
 
 /**
@@ -67,15 +84,24 @@ export const RECEIPT_LIMITS = Object.freeze({
  */
 
 /**
+ * @typedef {object} ReceiptMerkle
+ * @property {'sha256-rfc6962'} alg
+ * @property {number} size  number of leaves: one per citation, in order
+ * @property {string} root  Merkle tree hash (hex)
+ */
+
+/**
  * @typedef {object} Receipt
  * @property {string} schema
- * @property {string} id  SHA-256 of the canonical JSON of the receipt without `id`
+ * @property {string} id  SHA-256 of the canonical JSON of the receipt without `id` and `signature`
  * @property {string} createdAt  device clock, ISO 8601
  * @property {{ name: string, version: string }} generator
  * @property {{ text: string, sha256: string, engine: string, locale: string }} answer
  * @property {{ text: string } | null} question
  * @property {ReceiptCitation[]} citations
  * @property {{ algorithm: { id: string, version: number }, counts: Record<string, number>, sentences: ReceiptSentence[] } | null} grounding
+ * @property {ReceiptMerkle} [merkle]  v2
+ * @property {import('./signature.js').ReceiptSignature} [signature]  v2, optional
  */
 
 /**
@@ -89,40 +115,42 @@ export const RECEIPT_LIMITS = Object.freeze({
  */
 
 const HEX64 = /^[0-9a-f]{64}$/;
+const B64URL_32 = /^[A-Za-z0-9_-]{43}$/;
+const B64URL_64 = /^[A-Za-z0-9_-]{86}$/;
 
 /**
- * SHA-256 as lowercase hex. Strings are hashed as UTF-8.
- * @param {string | ArrayBuffer | Uint8Array} data
+ * The receipt id: SHA-256 of the canonical JSON of the receipt without `id` and `signature` (the
+ * signature covers the id, so it cannot be part of it).
+ * @param {Omit<Receipt, 'id'> & { id?: string }} receipt
  */
-export async function sha256Hex(data) {
-  const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data instanceof Uint8Array ? data : new Uint8Array(data);
-  const digest = await crypto.subtle.digest('SHA-256', /** @type {Uint8Array<ArrayBuffer>} */ (bytes));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Canonical JSON: object keys sorted by UTF-16 code units, no whitespace, `undefined` members
- * dropped. For values made of strings, integers, booleans, null, arrays and objects this equals
- * RFC 8785 (JCS).
- * @param {unknown} value
- * @returns {string}
- */
-export function canonicalJson(value) {
-  if (value === null || typeof value !== 'object') {
-    if (typeof value === 'number' && !Number.isFinite(value)) throw new TypeError('canonicalJson: non-finite number');
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) return `[${value.map((v) => canonicalJson(v === undefined ? null : v)).join(',')}]`;
-  const obj = /** @type {Record<string, unknown>} */ (value);
-  const keys = Object.keys(obj).filter((k) => obj[k] !== undefined).sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`).join(',')}}`;
-}
-
-/**
- * @param {Omit<Receipt, 'id'>} body
- */
-async function receiptId(body) {
+async function receiptId(receipt) {
+  const body = { ...receipt };
+  delete body.id;
+  delete body.signature;
   return sha256Hex(canonicalJson(body));
+}
+
+/**
+ * The Merkle leaf hash of a citation: SHA-256(0x00 ‖ UTF-8(canonical JSON of the citation without
+ * its proof and without the excerpt text)). The excerpt text is committed through excerpt.sha256, so
+ * a receipt exported without excerpt texts has the same root.
+ * @param {ReceiptCitation} citation
+ */
+export async function citationLeafHash(citation) {
+  const leaf = /** @type {ReceiptCitation} */ ({ ...citation, excerpt: { sha256: citation.excerpt.sha256, truncated: citation.excerpt.truncated } });
+  delete leaf.proof;
+  return merkleLeafHash(canonicalJson(leaf));
+}
+
+/**
+ * Checks that a citation (with its proof) is the citation at `index` of a receipt with this Merkle
+ * root, without the other citations.
+ * @param {ReceiptCitation} citation
+ * @param {number} index
+ * @param {ReceiptMerkle} merkle
+ */
+export async function verifyCitationProof(citation, index, merkle) {
+  return verifyMerkleProof(await citationLeafHash(citation), index, merkle.size, citation.proof ?? [], merkle.root);
 }
 
 /** Reasons whose `found` quotes the excerpt: a passage, or the value the excerpt states. */
@@ -140,14 +168,17 @@ function withoutExcerpt(reason, includeExcerpts) {
 }
 
 /**
- * Builds a receipt for one answer.
+ * Builds a receipt for one answer: v2 (with a Merkle tree over the citations) unless `schema` asks
+ * for v1.
  * @param {ReceiptDraft} draft
- * @param {{ includeQuestion?: boolean, includeExcerpts?: boolean }} [options]
+ * @param {{ includeQuestion?: boolean, includeExcerpts?: boolean, schema?: typeof RECEIPT_SCHEMA | typeof RECEIPT_SCHEMA_V1 }} [options]
  * @returns {Promise<Receipt>}
  */
 export async function buildReceipt(draft, options = {}) {
   const includeQuestion = options.includeQuestion ?? true;
   const includeExcerpts = options.includeExcerpts ?? true;
+  const schema = options.schema ?? RECEIPT_SCHEMA;
+  if (schema !== RECEIPT_SCHEMA && schema !== RECEIPT_SCHEMA_V1) throw new TypeError(`buildReceipt: unknown schema ${schema}`);
   /** @type {ReceiptCitation[]} */
   const citations = [];
   for (const c of draft.citations) {
@@ -188,7 +219,7 @@ export async function buildReceipt(draft, options = {}) {
     : null;
   /** @type {Omit<Receipt, 'id'>} */
   const body = {
-    schema: RECEIPT_SCHEMA,
+    schema,
     createdAt: draft.createdAt,
     generator: { name: 'starpi', version: draft.version },
     answer: { text: draft.answer.text, sha256: await sha256Hex(draft.answer.text), engine: draft.answer.engine, locale: draft.answer.locale },
@@ -196,14 +227,59 @@ export async function buildReceipt(draft, options = {}) {
     citations,
     grounding,
   };
+  if (schema === RECEIPT_SCHEMA) {
+    const tree = await merkleTree(await Promise.all(citations.map(citationLeafHash)));
+    citations.forEach((c, i) => {
+      c.proof = tree.proofs[i];
+    });
+    body.merkle = { alg: MERKLE_ALG, size: citations.length, root: tree.root };
+  }
   const id = await receiptId(body);
-  const { schema, ...rest } = body;
-  return { schema, id, ...rest };
+  // schema and id first, for people reading the file.
+  return Object.assign({ schema, id }, body);
 }
 
 /**
- * Checks that a parsed JSON value is a well-formed v1 receipt within the size limits. Every string
- * that is later shown in the app is bounded; nothing is interpreted as HTML.
+ * Signs a v2 receipt (Ed25519, or ECDSA P-256 with SHA-256) and returns a copy with `signature`.
+ * The signature covers the receipt id and the Merkle root; the public key is embedded as a JWK, and
+ * its key id is the SHA-256 of its SPKI. Signing again replaces the signature.
+ * @param {Receipt} receipt  a v2 receipt from buildReceipt
+ * @param {CryptoKey} privateKey
+ * @param {{ publicKey?: CryptoKey | JsonWebKey | string }} [options]  needed unless the private key is extractable
+ * @returns {Promise<Receipt>}
+ */
+export async function signReceipt(receipt, privateKey, options = {}) {
+  if (receipt.schema !== RECEIPT_SCHEMA || !receipt.merkle) throw new TypeError(`signReceipt: only ${RECEIPT_SCHEMA} receipts can be signed`);
+  // A signature over an id or root that does not match the contents would vouch for nothing.
+  if ((await receiptId(receipt)) !== receipt.id) throw new Error('signReceipt: the receipt id does not match its contents');
+  const tree = await merkleTree(await Promise.all(receipt.citations.map(citationLeafHash)));
+  if (tree.root !== receipt.merkle.root || receipt.merkle.size !== receipt.citations.length) throw new Error('signReceipt: the Merkle root does not match the citations');
+  const signature = await signHead({ id: receipt.id, merkle: receipt.merkle }, privateKey, options.publicKey);
+  return { ...receipt, signature };
+}
+
+/**
+ * Checks the signature of a receipt: `valid` when the signature verifies and the id and Merkle root
+ * still match the receipt's contents. `trusted` is true only for a public key the caller supplies;
+ * without one, the key embedded in the receipt is used, which shows that the receipt is unchanged
+ * since signing, not who signed it.
+ * @param {Receipt} receipt  validated with validateReceipt()
+ * @param {CryptoKey | JsonWebKey | string} [publicKey]
+ * @returns {Promise<import('./signature.js').SignatureCheck>}
+ */
+export async function verifyReceiptSignature(receipt, publicKey) {
+  if (receipt.schema !== RECEIPT_SCHEMA || !receipt.signature || !receipt.merkle) return { status: 'unsigned', alg: null, keyId: null, trusted: false };
+  const check = await verifyHead({ id: receipt.id, merkle: receipt.merkle }, receipt.signature, publicKey);
+  if (check.status !== 'valid') return check;
+  const tree = await merkleTree(await Promise.all(receipt.citations.map(citationLeafHash)));
+  const unchanged = (await receiptId(receipt)) === receipt.id && tree.root === receipt.merkle.root && receipt.merkle.size === receipt.citations.length;
+  return unchanged ? check : { ...check, status: 'invalid', trusted: false };
+}
+
+/**
+ * Checks that a parsed JSON value is a well-formed v1 or v2 receipt within the size limits. Every
+ * string that is later shown in the app is bounded; nothing is interpreted as HTML. Each version has
+ * its own allowlist of members: a v1 receipt with a Merkle tree or a signature is refused.
  * @param {unknown} value
  * @returns {{ ok: true, receipt: Receipt } | { ok: false, error: string, path: string }}
  */
@@ -245,12 +321,13 @@ export function validateReceipt(value) {
 
   if (!isObj(value)) return { ok: false, error: 'not_a_receipt', path: '' };
   const r = /** @type {Record<string, any>} */ (value);
-  if (r.schema !== RECEIPT_SCHEMA) {
+  if (r.schema !== RECEIPT_SCHEMA && r.schema !== RECEIPT_SCHEMA_V1) {
     return typeof r.schema === 'string' && r.schema.startsWith('starpi.receipt/')
       ? { ok: false, error: 'unsupported_version', path: 'schema' }
       : { ok: false, error: 'not_a_receipt', path: 'schema' };
   }
-  only(r, '', ['schema', 'id', 'createdAt', 'generator', 'answer', 'question', 'citations', 'grounding']);
+  const v2 = r.schema === RECEIPT_SCHEMA;
+  only(r, '', ['schema', 'id', 'createdAt', 'generator', 'answer', 'question', 'citations', 'grounding', ...(v2 ? ['merkle', 'signature'] : [])]);
   hex(r.id, 'id');
   str(r.createdAt, 'createdAt', 64);
   if (!isObj(r.generator)) fail('generator', 'object');
@@ -269,7 +346,8 @@ export function validateReceipt(value) {
     r.citations.forEach((c, i) => {
       const p = `citations[${i}]`;
       if (!isObj(c)) return fail(p, 'object');
-      only(c, p, ['label', 'doc', 'heading', 'source', 'delivered', 'deliveredChars', 'excerpt', 'verifiable', 'document', 'chunk', 'knowledge']);
+      only(c, p, ['label', 'doc', 'heading', 'source', 'delivered', 'deliveredChars', 'excerpt', 'verifiable', 'document', 'chunk', 'knowledge', ...(v2 ? ['proof'] : [])]);
+      if (v2 && !(Array.isArray(c.proof) && c.proof.length <= RECEIPT_LIMITS.proof && c.proof.every((/** @type {unknown} */ h, /** @type {number} */ j) => hex(h, `${p}.proof[${j}]`)))) fail(`${p}.proof`, 'array');
       str(c.label, `${p}.label`, RECEIPT_LIMITS.nameChars);
       str(c.doc, `${p}.doc`, RECEIPT_LIMITS.nameChars);
       str(c.heading, `${p}.heading`, 1000);
@@ -358,6 +436,31 @@ export function validateReceipt(value) {
       });
     }
   }
+  if (v2) {
+    const m = r.merkle;
+    if (!isObj(m)) fail('merkle', 'object');
+    else {
+      only(m, 'merkle', ['alg', 'size', 'root']);
+      oneOf(m.alg, 'merkle.alg', [MERKLE_ALG]);
+      if (int(m.size, 'merkle.size') && Array.isArray(r.citations) && m.size !== r.citations.length) fail('merkle.size', 'number of citations');
+      hex(m.root, 'merkle.root');
+    }
+    if (r.signature !== undefined) {
+      const sig = r.signature;
+      if (!isObj(sig)) fail('signature', 'object');
+      else {
+        only(sig, 'signature', ['alg', 'keyId', 'publicKey', 'value']);
+        oneOf(sig.alg, 'signature.alg', SIGNATURE_ALGS);
+        hex(sig.keyId, 'signature.keyId');
+        if (typeof sig.value !== 'string' || !B64URL_64.test(sig.value)) fail('signature.value', 'base64url signature');
+        const k = sig.publicKey;
+        const b64 = (/** @type {unknown} */ v, /** @type {string} */ path) => (typeof v === 'string' && B64URL_32.test(v)) || fail(path, 'base64url coordinate');
+        if (!isObj(k)) fail('signature.publicKey', 'object');
+        else if (sig.alg === 'Ed25519') only(k, 'signature.publicKey', ['kty', 'crv', 'x']) && oneOf(k.kty, 'signature.publicKey.kty', ['OKP']) && oneOf(k.crv, 'signature.publicKey.crv', ['Ed25519']) && b64(k.x, 'signature.publicKey.x');
+        else if (sig.alg === 'ES256') only(k, 'signature.publicKey', ['kty', 'crv', 'x', 'y']) && oneOf(k.kty, 'signature.publicKey.kty', ['EC']) && oneOf(k.crv, 'signature.publicKey.crv', ['P-256']) && b64(k.x, 'signature.publicKey.x') && b64(k.y, 'signature.publicKey.y');
+      }
+    }
+  }
   if (failure) return { ok: false, .../** @type {{ error: string, path: string }} */ (failure) };
   return { ok: true, receipt: /** @type {Receipt} */ (/** @type {unknown} */ (value)) };
 }
@@ -376,15 +479,19 @@ const squash = (text) => text.replace(/\s+/g, ' ').trim();
  * @property {'match' | 'mismatch' | 'version_differs' | null} chunk  L3: chunking gives the recorded bounds
  * @property {boolean | null} excerptConsistent  the excerpt text in the receipt matches its fingerprint
  * @property {string | null} fileName  name of the provided file that matched
+ * @property {boolean | null} proof  v2: the citation's inclusion proof leads to the recorded Merkle root
  */
 
 /**
  * @typedef {object} VerifyReport
+ * @property {string} schema          the receipt format, starpi.receipt/v1 or /v2
  * @property {boolean} idMatches      the receipt hash matches its contents
  * @property {boolean} answerMatches  the answer hash matches the answer text
  * @property {CitationCheck[]} citations
  * @property {{ reproduced: number, verifiable: number }} summary  workspace passages reproduced from the provided files
  * @property {{ recomputed: number, differences: Array<{ sentence: number, recorded: string, now: string }>, needsConversation: boolean } | null} grounding
+ * @property {{ size: number, rootMatches: boolean, validProofs: number } | null} merkle  v2: the root recomputed from the citations, and how many inclusion proofs lead to it
+ * @property {import('./signature.js').SignatureCheck | null} signature  v2: the signature check (status `unsigned` without one); null for v1
  * @property {string[]} warnings
  */
 
@@ -402,19 +509,32 @@ function deliveredPart(c, text) {
 
 /**
  * Re-checks a receipt against the original files: file fingerprints, extracted text, the passage at
- * each offset, the chunk bounds, and the source-check verdicts (recomputed, not trusted).
+ * each offset, the chunk bounds, and the source-check verdicts (recomputed, not trusted). For a v2
+ * receipt also the Merkle root, every inclusion proof and the signature, if there is one.
  * @param {Receipt} receipt  validated with validateReceipt()
  * @param {Array<{ name: string, bytes: Uint8Array }>} files
  * @param {{ extract: (bytes: Uint8Array, name: string) => Promise<{ text: string, pdfjs: string | null }>, extractor: { id: string, version: number } }} tools
+ * @param {{ publicKey?: CryptoKey | JsonWebKey | string }} [options]  the signer's public key, to check who signed
  * @returns {Promise<VerifyReport>}
  */
-export async function verifyReceipt(receipt, files, tools) {
+export async function verifyReceipt(receipt, files, tools, options = {}) {
   /** @type {string[]} */
   const warnings = [];
-  const body = /** @type {Omit<Receipt, 'id'> & { id?: string }} */ ({ ...receipt });
-  delete body.id;
-  const idMatches = (await receiptId(body)) === receipt.id;
+  const idMatches = (await receiptId(receipt)) === receipt.id;
   const answerMatches = (await sha256Hex(receipt.answer.text)) === receipt.answer.sha256;
+
+  /** @type {VerifyReport['merkle']} */
+  let merkle = null;
+  /** @type {boolean[]} */
+  let proofs = [];
+  if (receipt.schema === RECEIPT_SCHEMA && receipt.merkle) {
+    const recorded = receipt.merkle;
+    const leaves = await Promise.all(receipt.citations.map(citationLeafHash));
+    const tree = await merkleTree(leaves);
+    proofs = await Promise.all(receipt.citations.map((c, i) => verifyMerkleProof(leaves[i], i, recorded.size, c.proof ?? [], recorded.root)));
+    merkle = { size: recorded.size, rootMatches: tree.root === recorded.root && recorded.size === leaves.length, validProofs: proofs.filter(Boolean).length };
+  }
+  const signature = receipt.schema === RECEIPT_SCHEMA ? await verifyReceiptSignature(receipt, options.publicKey) : null;
 
   /** @type {Map<string, { name: string, bytes: Uint8Array }>} */
   const byHash = new Map();
@@ -430,7 +550,7 @@ export async function verifyReceipt(receipt, files, tools) {
     const excerptConsistent = c.excerpt.text === null ? null : (await sha256Hex(c.excerpt.text)) === c.excerpt.sha256;
     if (excerptConsistent === false) warnings.push(`citation ${index + 1}: the excerpt text does not match its fingerprint`);
     /** @type {CitationCheck} */
-    const check = { index, label: c.label, source: c.source, file: 'not_verifiable', text: null, passage: null, chunk: null, excerptConsistent, fileName: null };
+    const check = { index, label: c.label, source: c.source, file: 'not_verifiable', text: null, passage: null, chunk: null, excerptConsistent, fileName: null, proof: merkle ? proofs[index] : null };
     checks.push(check);
     sourceTexts.push(excerptConsistent ? deliveredPart(c, /** @type {string} */ (c.excerpt.text)) : null);
     if (c.source !== 'workspace' || !c.document || !c.chunk || !c.document.fileSha256) continue;
@@ -490,8 +610,12 @@ export async function verifyReceipt(receipt, files, tools) {
   /** @type {VerifyReport['grounding']} */
   let grounding = null;
   if (receipt.grounding) {
-    if (receipt.grounding.algorithm.id !== GROUNDING.id || receipt.grounding.algorithm.version !== GROUNDING.version) {
-      warnings.push(`source check recorded with ${receipt.grounding.algorithm.id} ${receipt.grounding.algorithm.version}, recomputed with ${GROUNDING.id} ${GROUNDING.version}`);
+    // The verdicts are recomputed with the rules that recorded them when this code still has them
+    // (every earlier version of starpi-grounding), else with the current rules and a warning.
+    const recorded = receipt.grounding.algorithm;
+    const version = recorded.id === GROUNDING.id && GROUNDING_VERSIONS.includes(recorded.version) ? recorded.version : GROUNDING.version;
+    if (recorded.id !== GROUNDING.id || recorded.version !== version) {
+      warnings.push(`source check recorded with ${recorded.id} ${recorded.version}, recomputed with ${GROUNDING.id} ${version}`);
     }
     const sources = receipt.citations.map((c, i) => ({
       label: c.label,
@@ -503,7 +627,7 @@ export async function verifyReceipt(receipt, files, tools) {
     const indexes = sources.map((s) => (s.delivered === 'omitted' ? null : indexSource(`${s.text}\n${s.doc}\n${s.heading}`)));
     const given = receipt.question ? indexSource(receipt.question.text) : null;
     /** @type {import('./grounding.js').CheckContext} */
-    const ctx = { sources, indexes, given, citedOnly: false, lang: guessLanguage(receipt.answer.text) };
+    const ctx = { sources, indexes, given, citedOnly: false, lang: guessLanguage(receipt.answer.text), version };
     const differences = [];
     let recomputed = 0;
     let needsConversation = false;
@@ -525,5 +649,5 @@ export async function verifyReceipt(receipt, files, tools) {
     grounding = { recomputed, differences, needsConversation };
   }
 
-  return { idMatches, answerMatches, citations: checks, summary: { reproduced, verifiable }, grounding, warnings };
+  return { schema: receipt.schema, idMatches, answerMatches, citations: checks, summary: { reproduced, verifiable }, grounding, merkle, signature, warnings };
 }

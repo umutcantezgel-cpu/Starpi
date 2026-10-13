@@ -203,10 +203,11 @@ export async function removeFromWorkspace(docId) {
  * too heavy for the UI thread). Adds nothing to the workspace.
  * @param {unknown} receipt  parsed JSON
  * @param {File[]} files
- * @returns {Promise<import('../core/receipt.js').VerifyReport | { invalid: { error: string, path: string } }>}
+ * @param {string | null} [publicKey]  the signer's public key (JWK or PEM text), to check who signed
+ * @returns {Promise<import('../core/receipt.js').VerifyReport | { invalid: { error: string, path: string } } | { invalidKey: string }>}
  */
-export function verifyReceiptFiles(receipt, files) {
-  return request('verify-receipt', { receipt, files });
+export function verifyReceiptFiles(receipt, files, publicKey = null) {
+  return request('verify-receipt', { receipt, files, publicKey });
 }
 
 /** Discards every document: the worker (and its memory) is terminated. */

@@ -19,8 +19,23 @@ export {
   THRESHOLDS,
 } from '../../../src/js/core/grounding.js';
 
-// Answer receipts.
-export { buildReceipt, canonicalJson, RECEIPT_LIMITS, RECEIPT_SCHEMA, sha256Hex, validateReceipt, verifyReceipt } from '../../../src/js/core/receipt.js';
+// Answer receipts, their Merkle tree (RFC 6962) and signatures (Ed25519, ECDSA P-256).
+export {
+  buildReceipt,
+  canonicalJson,
+  citationLeafHash,
+  RECEIPT_LIMITS,
+  RECEIPT_SCHEMA,
+  RECEIPT_SCHEMA_V1,
+  sha256Hex,
+  signReceipt,
+  validateReceipt,
+  verifyCitationProof,
+  verifyReceipt,
+  verifyReceiptSignature,
+} from '../../../src/js/core/receipt.js';
+export { MERKLE_ALG, merkleLeafHash, merkleTree, verifyMerkleProof } from '../../../src/js/core/merkle.js';
+export { importPublicKey, publicKeyId, SIGNATURE_ALGS } from '../../../src/js/core/signature.js';
 
 // Text extraction (PDFs need the optional peer dependency pdfjs-dist), chunking and BM25.
 export {

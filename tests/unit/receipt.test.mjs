@@ -8,7 +8,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { blocksFromMarkdown, groundAnswer, REASON_CODES } from '../../src/js/core/grounding.js';
-import { buildReceipt, canonicalJson, RECEIPT_SCHEMA, sha256Hex, validateReceipt, verifyReceipt } from '../../src/js/core/receipt.js';
+import { buildReceipt, canonicalJson, RECEIPT_SCHEMA, RECEIPT_SCHEMA_V1, sha256Hex, signReceipt, validateReceipt, verifyReceipt } from '../../src/js/core/receipt.js';
 import { CHUNKER, chunkText } from '../../src/js/rag/chunker.js';
 import { EXTRACTOR, extractText } from '../../src/js/rag/parser.js';
 import { makePdf } from '../fixtures/pdf.mjs';
@@ -29,8 +29,9 @@ const tools = {
  * @param {Uint8Array} bytes
  * @param {string} name
  * @param {string} answer  may contain {label}
+ * @param {Parameters<typeof buildReceipt>[1]} [options]
  */
-async function receiptFor(bytes, name, answer) {
+async function receiptFor(bytes, name, answer, options) {
   const { text, pages, pdfjs } = await extractText(new File([bytes], name));
   const chunk = chunkText(text)[0];
   const label = `[Doc: ${name}, Chunk: 1]`;
@@ -66,7 +67,7 @@ async function receiptFor(bytes, name, answer) {
       },
       { label: '[Doc: Handbook, Chunk: 1]', doc: 'Handbook', heading: 'Travel', source: 'knowledge', delivered: 'full', text: 'Trains are booked in second class.', truncated: false, documentId: 'kb-1' },
     ],
-  });
+  }, options);
 }
 
 const PDF = makePdf(['Kickoff notes', 'The beta starts at the Hamburg depot on 1 February 2027.', 'The steering group meets every Tuesday at 10:00.']);
@@ -116,7 +117,7 @@ describe('validateReceipt', () => {
   it('rejects other schemas, bad hashes, out-of-range citation indexes and oversized text', async () => {
     const r = JSON.parse(JSON.stringify(await receiptFor(MD, 'plan.md', 'The budget is 480,000 EUR {label}.')));
     assert.deepEqual(validateReceipt({ schema: 'x' }), { ok: false, error: 'not_a_receipt', path: 'schema' });
-    assert.deepEqual(validateReceipt({ ...r, schema: 'starpi.receipt/v2' }), { ok: false, error: 'unsupported_version', path: 'schema' });
+    assert.deepEqual(validateReceipt({ ...r, schema: 'starpi.receipt/v3' }), { ok: false, error: 'unsupported_version', path: 'schema' });
     assert.equal(validateReceipt({ ...r, id: 'abc' }).ok, false);
     const badCite = structuredClone(r);
     badCite.grounding.sentences[0].cites = [9];
@@ -128,7 +129,7 @@ describe('validateReceipt', () => {
     negative.citations[0].chunk.start = -1;
     assert.equal(validateReceipt(negative).ok, false);
     // Members and reason codes the format does not define are refused, as in the JSON Schema.
-    assert.deepEqual(validateReceipt({ ...r, signature: 'trust me' }), { ok: false, error: 'unknown member', path: 'signature' });
+    assert.deepEqual(validateReceipt({ ...r, signature: 'trust me' }), { ok: false, error: 'object', path: 'signature' });
     const extraCite = structuredClone(r);
     extraCite.citations[0].note = 'x';
     assert.deepEqual(validateReceipt(extraCite), { ok: false, error: 'unknown member', path: 'citations[0].note' });
@@ -270,70 +271,109 @@ describe('scripts/verify-receipt.mjs', () => {
   });
 });
 
-describe('docs/spec/receipt.schema.json', () => {
-  const schema = JSON.parse(readFileSync(path.join(ROOT, 'docs/spec/receipt.schema.json'), 'utf8'));
+for (const [file, format] of /** @type {const} */ ([
+  ['receipt.schema.json', RECEIPT_SCHEMA_V1],
+  ['receipt-v2.schema.json', RECEIPT_SCHEMA],
+])) {
+  describe(`docs/spec/${file}`, () => {
+    const schema = JSON.parse(readFileSync(path.join(ROOT, 'docs/spec', file), 'utf8'));
+    const build = (/** @type {Uint8Array} */ bytes, /** @type {string} */ name, /** @type {string} */ answer, /** @type {{ includeQuestion?: boolean, includeExcerpts?: boolean }} */ options = {}) =>
+      receiptFor(bytes, name, answer, { ...options, schema: format });
 
-  /**
-   * Validates against the subset of JSON Schema the receipt schema uses. Returns error paths.
-   * @param {any} value
-   * @param {any} s
-   * @param {string} [at]
-   * @returns {string[]}
-   */
-  function check(value, s, at = '$') {
-    if (s.$ref) return check(value, schema.$defs[s.$ref.replace('#/$defs/', '')], at);
-    if (s.anyOf) return s.anyOf.some((/** @type {any} */ alt) => check(value, alt, at).length === 0) ? [] : [`${at}: no alternative matches`];
-    if ('const' in s) return value === s.const ? [] : [`${at}: not ${s.const}`];
-    if (s.enum) return s.enum.includes(value) ? [] : [`${at}: ${JSON.stringify(value)} not in enum`];
-    const type = value === null ? 'null' : Array.isArray(value) ? 'array' : Number.isInteger(value) ? 'integer' : typeof value;
-    if (s.type && s.type !== type) return [`${at}: ${type}, expected ${s.type}`];
-    /** @type {string[]} */
-    const errors = [];
-    if (type === 'string') {
-      if (s.maxLength !== undefined && value.length > s.maxLength) errors.push(`${at}: too long`);
-      if (s.pattern && !new RegExp(s.pattern).test(value)) errors.push(`${at}: pattern`);
-    }
-    if (type === 'integer' && s.minimum !== undefined && value < s.minimum) errors.push(`${at}: below minimum`);
-    if (type === 'array') {
-      if (s.maxItems !== undefined && value.length > s.maxItems) errors.push(`${at}: too many items`);
-      if (s.items) value.forEach((/** @type {any} */ v, /** @type {number} */ i) => errors.push(...check(v, s.items, `${at}[${i}]`)));
-    }
-    if (type === 'object') {
-      for (const key of s.required ?? []) if (!(key in value)) errors.push(`${at}.${key}: missing`);
-      for (const [key, v] of Object.entries(value)) {
-        if (s.properties?.[key]) errors.push(...check(v, s.properties[key], `${at}.${key}`));
-        else if (s.additionalProperties === false) errors.push(`${at}.${key}: not in the schema`);
-        else if (typeof s.additionalProperties === 'object') errors.push(...check(v, s.additionalProperties, `${at}.${key}`));
+    /**
+     * Validates against the subset of JSON Schema the receipt schemas use. Returns error paths.
+     * @param {any} value
+     * @param {any} s
+     * @param {string} [at]
+     * @returns {string[]}
+     */
+    function check(value, s, at = '$') {
+      if (s.$ref) return check(value, schema.$defs[s.$ref.replace('#/$defs/', '')], at);
+      if (s.anyOf) return s.anyOf.some((/** @type {any} */ alt) => check(value, alt, at).length === 0) ? [] : [`${at}: no alternative matches`];
+      if ('const' in s) return value === s.const ? [] : [`${at}: not ${s.const}`];
+      if (s.enum) return s.enum.includes(value) ? [] : [`${at}: ${JSON.stringify(value)} not in enum`];
+      const type = value === null ? 'null' : Array.isArray(value) ? 'array' : Number.isInteger(value) ? 'integer' : typeof value;
+      if (s.type && s.type !== type) return [`${at}: ${type}, expected ${s.type}`];
+      /** @type {string[]} */
+      const errors = [];
+      if (type === 'string') {
+        if (s.maxLength !== undefined && value.length > s.maxLength) errors.push(`${at}: too long`);
+        if (s.pattern && !new RegExp(s.pattern).test(value)) errors.push(`${at}: pattern`);
       }
+      if (type === 'integer' && s.minimum !== undefined && value < s.minimum) errors.push(`${at}: below minimum`);
+      if (type === 'integer' && s.maximum !== undefined && value > s.maximum) errors.push(`${at}: above maximum`);
+      if (type === 'array') {
+        if (s.maxItems !== undefined && value.length > s.maxItems) errors.push(`${at}: too many items`);
+        if (s.items) value.forEach((/** @type {any} */ v, /** @type {number} */ i) => errors.push(...check(v, s.items, `${at}[${i}]`)));
+      }
+      if (type === 'object') {
+        for (const key of s.required ?? []) if (!(key in value)) errors.push(`${at}.${key}: missing`);
+        for (const [key, v] of Object.entries(value)) {
+          if (s.properties?.[key]) errors.push(...check(v, s.properties[key], `${at}.${key}`));
+          else if (s.additionalProperties === false) errors.push(`${at}.${key}: not in the schema`);
+          else if (typeof s.additionalProperties === 'object') errors.push(...check(v, s.additionalProperties, `${at}.${key}`));
+        }
+      }
+      return errors;
     }
-    return errors;
-  }
 
-  it('describes every receipt the app builds, with and without the optional texts', async () => {
-    const full = await receiptFor(PDF, 'kickoff.pdf', 'The beta starts on 1 February 2027 {label}. The group meets every Friday {label}.');
-    assert.ok(full.grounding?.sentences.some((s) => s.reasons.length), 'the fixture should record at least one reason');
-    assert.deepEqual(check(full, schema), []);
-    assert.deepEqual(check(JSON.parse(JSON.stringify(full)), schema), []);
-    const md = await receiptFor(MD, 'plan.md', 'The approved budget is 480,000 EUR {label}.');
-    assert.deepEqual(check(md, schema), []);
-  });
+    it('uses only the keywords the checker above implements', () => {
+      const known = new Set(['$schema', '$id', '$ref', '$defs', 'title', 'description', 'type', 'additionalProperties', 'required', 'properties', 'const', 'enum', 'anyOf', 'items', 'maxItems', 'maxLength', 'pattern', 'minimum', 'maximum']);
+      /** @param {any} node @param {boolean} names  the keys are names (properties, $defs), not keywords */
+      const walk = (node, names = false) => {
+        if (Array.isArray(node)) return node.forEach((n) => walk(n));
+        if (typeof node !== 'object' || node === null) return undefined;
+        for (const [key, value] of Object.entries(node)) {
+          if (!names) assert.ok(known.has(key), `unknown keyword ${key}`);
+          if (key === 'enum' || key === 'const' || key === 'required') continue;
+          walk(value, !names && (key === 'properties' || key === '$defs'));
+        }
+        return undefined;
+      };
+      walk(schema);
+    });
 
-  it('rejects what validateReceipt rejects, and a field the format does not have', async () => {
-    const r = JSON.parse(JSON.stringify(await receiptFor(MD, 'plan.md', 'The approved budget is 480,000 EUR {label}.')));
-    assert.notDeepEqual(check({ ...r, schema: 'starpi.receipt/v2' }, schema), []);
-    assert.notDeepEqual(check({ ...r, id: 'abc' }, schema), []);
-    assert.notDeepEqual(check({ ...r, extra: 1 }, schema), []);
-    r.citations[0].delivered = 'some';
-    assert.notDeepEqual(check(r, schema), []);
-  });
+    it('describes every receipt the app builds, with and without the optional texts', async () => {
+      const full = await build(PDF, 'kickoff.pdf', 'The beta starts on 1 February 2027 {label}. The group meets every Friday {label}.');
+      assert.ok(full.grounding?.sentences.some((s) => s.reasons.length), 'the fixture should record at least one reason');
+      assert.deepEqual(check(full, schema), []);
+      assert.deepEqual(check(JSON.parse(JSON.stringify(full)), schema), []);
+      const md = await build(MD, 'plan.md', 'The approved budget is 480,000 EUR {label}.', { includeExcerpts: false, includeQuestion: false });
+      assert.deepEqual(check(md, schema), []);
+    });
 
-  it('lists the reason codes and verdicts of the source check', () => {
-    const source = readFileSync(path.join(ROOT, 'src/js/core/grounding.js'), 'utf8');
-    const typedef = /@typedef \{([^}]+)\} ReasonCode/.exec(source)?.[1] ?? '';
-    const codes = [...typedef.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
-    assert.deepEqual([...schema.$defs.reason.properties.code.enum].sort(), codes);
-    assert.deepEqual([...REASON_CODES].sort(), codes);
-    assert.deepEqual(schema.$defs.sentence.properties.verdict.enum, ['supported', 'weak', 'unsupported', 'unchecked']);
-    assert.equal(schema.properties.schema.const, RECEIPT_SCHEMA);
+    it('rejects what validateReceipt rejects, and a field the format does not have', async () => {
+      const r = JSON.parse(JSON.stringify(await build(MD, 'plan.md', 'The approved budget is 480,000 EUR {label}.')));
+      assert.notDeepEqual(check({ ...r, schema: 'starpi.receipt/v3' }, schema), []);
+      assert.notDeepEqual(check({ ...r, schema: format === RECEIPT_SCHEMA ? RECEIPT_SCHEMA_V1 : RECEIPT_SCHEMA }, schema), []);
+      assert.notDeepEqual(check({ ...r, id: 'abc' }, schema), []);
+      assert.notDeepEqual(check({ ...r, extra: 1 }, schema), []);
+      assert.notDeepEqual(check({ ...r, signature: 'trust me' }, schema), []);
+      r.citations[0].delivered = 'some';
+      assert.notDeepEqual(check(r, schema), []);
+    });
+
+    it('lists the reason codes and verdicts of the source check', () => {
+      const source = readFileSync(path.join(ROOT, 'src/js/core/grounding.js'), 'utf8');
+      const typedef = /@typedef \{([^}]+)\} ReasonCode/.exec(source)?.[1] ?? '';
+      const codes = [...typedef.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
+      assert.deepEqual([...schema.$defs.reason.properties.code.enum].sort(), codes);
+      assert.deepEqual([...REASON_CODES].sort(), codes);
+      assert.deepEqual(schema.$defs.sentence.properties.verdict.enum, ['supported', 'weak', 'unsupported', 'unchecked']);
+      assert.equal(schema.properties.schema.const, format);
+    });
+
+    if (format === RECEIPT_SCHEMA) {
+      it('describes signed receipts of both algorithms and refuses a mismatched key type', async () => {
+        for (const params of [{ name: 'Ed25519' }, { name: 'ECDSA', namedCurve: 'P-256' }]) {
+          const keys = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey(params, true, ['sign', 'verify']));
+          const signed = JSON.parse(JSON.stringify(await signReceipt(await build(MD, 'plan.md', 'The approved budget is 480,000 EUR {label}.'), keys.privateKey)));
+          assert.deepEqual(check(signed, schema), []);
+          signed.signature.alg = signed.signature.alg === 'Ed25519' ? 'ES256' : 'Ed25519';
+          assert.notDeepEqual(check(signed, schema), []);
+          assert.equal(validateReceipt(signed).ok, false);
+        }
+      });
+    }
   });
-});
+}

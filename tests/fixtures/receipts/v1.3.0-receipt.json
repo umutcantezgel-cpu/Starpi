@@ -1,0 +1,226 @@
+{
+  "schema": "starpi.receipt/v1",
+  "id": "1297598a0fe8017086aaa0b6ad91969161b5a657207bd47d57fdd943c46c2048",
+  "createdAt": "2026-10-13T12:00:00.000Z",
+  "generator": {
+    "name": "starpi",
+    "version": "1.3.0"
+  },
+  "answer": {
+    "text": "The approved budget for Project Nebula is 480,000 EUR [Doc: nebula-plan.md, Chunk: 1]. The public launch is planned for 12 June 2027 [Doc: nebula-plan.md, Chunk: 1]. Marta Silva owns the risk of a delayed traffic data supplier [Doc: nebula-risks.csv, Chunk: 1].",
+    "sha256": "4551e5b6821d1d0aee85e0de9d295e6322038b58dd4eb011312306e4a404373c",
+    "engine": "cloud",
+    "locale": "en"
+  },
+  "question": {
+    "text": "What are the budget, the launch date and the owner of the supplier risk?"
+  },
+  "citations": [
+    {
+      "label": "[Doc: nebula-plan.md, Chunk: 1]",
+      "doc": "nebula-plan.md",
+      "heading": "",
+      "source": "workspace",
+      "delivered": "full",
+      "excerpt": {
+        "text": "# Project Nebula: project plan\n\n> Sample document for the Starpi demo. The company, the people and all figures are fictitious.\n\n## Summary\n\nProject Nebula replaces the route planning system of Helio Freight with a self-hosted planner. The public launch of Project Nebula is planned for 12 May 2027. Lena Park leads development; Tom Becker is the product owner.\n\n## Budget\n\nThe approved budget for Project Nebula is 480,000 EUR.",
+        "sha256": "7a049fa1469413ad854978c0079294975aacff852eb83dac0c16495fbac4925e",
+        "truncated": false
+      },
+      "verifiable": true,
+      "document": {
+        "name": "nebula-plan.md",
+        "kind": "md",
+        "bytes": 1028,
+        "fileSha256": "669f7c8278ae89bf50b5b6ffcac2fa1193f3c76949a90a9f1846a34e2baab7a5",
+        "textSha256": "669f7c8278ae89bf50b5b6ffcac2fa1193f3c76949a90a9f1846a34e2baab7a5",
+        "textChars": 1028,
+        "pages": null,
+        "extractor": {
+          "id": "starpi-extract",
+          "version": 1,
+          "pdfjs": null
+        },
+        "chunker": {
+          "id": "starpi-chunk",
+          "version": 1,
+          "size": 500,
+          "overlap": 50
+        }
+      },
+      "chunk": {
+        "index": 0,
+        "start": 0,
+        "end": 427,
+        "sha256": "7a049fa1469413ad854978c0079294975aacff852eb83dac0c16495fbac4925e"
+      }
+    },
+    {
+      "label": "[Doc: nebula-plan.md, Chunk: 2]",
+      "doc": "nebula-plan.md",
+      "heading": "",
+      "source": "workspace",
+      "delivered": "full",
+      "excerpt": {
+        "text": "approved budget for Project Nebula is 480,000 EUR. It is split into 310,000 EUR for development, 95,000 EUR for infrastructure and 75,000 EUR for training and rollout. The steering group approved the budget on 3 March 2026.\n\n## Milestones\n\n- Kickoff: 14 September 2026\n- Beta at the Hamburg depot: 1 February 2027\n- Public launch: 12 May 2027\n\n## Team and meetings\n\nThe core team has 9 people: 5 developers, 2 data engineers, 1 designer and 1 product owner.",
+        "sha256": "5ee5f913fe541885760b09bbde2835d865895bc44a0e8bdd3c7e997476fcbb58",
+        "truncated": false
+      },
+      "verifiable": true,
+      "document": {
+        "name": "nebula-plan.md",
+        "kind": "md",
+        "bytes": 1028,
+        "fileSha256": "669f7c8278ae89bf50b5b6ffcac2fa1193f3c76949a90a9f1846a34e2baab7a5",
+        "textSha256": "669f7c8278ae89bf50b5b6ffcac2fa1193f3c76949a90a9f1846a34e2baab7a5",
+        "textChars": 1028,
+        "pages": null,
+        "extractor": {
+          "id": "starpi-extract",
+          "version": 1,
+          "pdfjs": null
+        },
+        "chunker": {
+          "id": "starpi-chunk",
+          "version": 1,
+          "size": 500,
+          "overlap": 50
+        }
+      },
+      "chunk": {
+        "index": 1,
+        "start": 377,
+        "end": 834,
+        "sha256": "5ee5f913fe541885760b09bbde2835d865895bc44a0e8bdd3c7e997476fcbb58"
+      }
+    },
+    {
+      "label": "[Doc: nebula-risks.csv, Chunk: 1]",
+      "doc": "nebula-risks.csv",
+      "heading": "",
+      "source": "workspace",
+      "delivered": "full",
+      "excerpt": {
+        "text": "id: R-01; risk: Delay of the traffic data supplier; rating: High; owner: Marta Silva; mitigation: Second supplier under contract by 30 November 2026\nid: R-02; risk: Drivers reject the new app; rating: Medium; owner: Tom Becker; mitigation: Pilot with 20 drivers at the Hamburg depot\nid: R-03; risk: Cloud costs exceed the infrastructure budget; rating: High; owner: Lena Park; mitigation: Monthly cost review with a hard limit of 8000 EUR per month\nid: R-04; risk: Data protection review takes",
+        "sha256": "0708ceac37e634337d6abca4026c24cd611a3a93f6e1bb5421a04259ada604e5",
+        "truncated": false
+      },
+      "verifiable": true,
+      "document": {
+        "name": "nebula-risks.csv",
+        "kind": "csv",
+        "bytes": 461,
+        "fileSha256": "97dcd9795adcffc8d8e01504ebee74645a614a13ab1d48a4e874d873b04bae0c",
+        "textSha256": "d6a77407d33705a1c5ddeb7f42e86fb2ead5221ac95f9c84f4bcd5ef91fc54c2",
+        "textChars": 592,
+        "pages": null,
+        "extractor": {
+          "id": "starpi-extract",
+          "version": 1,
+          "pdfjs": null
+        },
+        "chunker": {
+          "id": "starpi-chunk",
+          "version": 1,
+          "size": 500,
+          "overlap": 50
+        }
+      },
+      "chunk": {
+        "index": 0,
+        "start": 0,
+        "end": 493,
+        "sha256": "0708ceac37e634337d6abca4026c24cd611a3a93f6e1bb5421a04259ada604e5"
+      }
+    },
+    {
+      "label": "[Doc: nebula-risks.csv, Chunk: 2]",
+      "doc": "nebula-risks.csv",
+      "heading": "",
+      "source": "workspace",
+      "delivered": "full",
+      "excerpt": {
+        "text": "onth\nid: R-04; risk: Data protection review takes longer than planned; rating: Low; owner: Jonas Weber; mitigation: Start the review in October 2026",
+        "sha256": "974c047d5bca8e95e60ea9ecdc65ad6e64a2c4a8ae86212ed05d6ab75fd19d1d",
+        "truncated": false
+      },
+      "verifiable": true,
+      "document": {
+        "name": "nebula-risks.csv",
+        "kind": "csv",
+        "bytes": 461,
+        "fileSha256": "97dcd9795adcffc8d8e01504ebee74645a614a13ab1d48a4e874d873b04bae0c",
+        "textSha256": "d6a77407d33705a1c5ddeb7f42e86fb2ead5221ac95f9c84f4bcd5ef91fc54c2",
+        "textChars": 592,
+        "pages": null,
+        "extractor": {
+          "id": "starpi-extract",
+          "version": 1,
+          "pdfjs": null
+        },
+        "chunker": {
+          "id": "starpi-chunk",
+          "version": 1,
+          "size": 500,
+          "overlap": 50
+        }
+      },
+      "chunk": {
+        "index": 1,
+        "start": 444,
+        "end": 592,
+        "sha256": "974c047d5bca8e95e60ea9ecdc65ad6e64a2c4a8ae86212ed05d6ab75fd19d1d"
+      }
+    }
+  ],
+  "grounding": {
+    "algorithm": {
+      "id": "starpi-grounding",
+      "version": 1
+    },
+    "counts": {
+      "supported": 2,
+      "weak": 0,
+      "unsupported": 1,
+      "unchecked": 0
+    },
+    "sentences": [
+      {
+        "text": "The approved budget for Project Nebula is 480,000 EUR.",
+        "cites": [
+          0
+        ],
+        "citeSource": "own",
+        "verdict": "supported",
+        "reasons": []
+      },
+      {
+        "text": "The public launch is planned for 12 June 2027.",
+        "cites": [
+          0
+        ],
+        "citeSource": "own",
+        "verdict": "unsupported",
+        "reasons": [
+          {
+            "code": "missing_fact",
+            "level": "unsupported",
+            "fact": "12 June 2027",
+            "cites": [
+              0
+            ]
+          }
+        ]
+      },
+      {
+        "text": "Marta Silva owns the risk of a delayed traffic data supplier.",
+        "cites": [
+          2
+        ],
+        "citeSource": "own",
+        "verdict": "supported",
+        "reasons": []
+      }
+    ]
+  }
+}

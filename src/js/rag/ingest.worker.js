@@ -12,10 +12,11 @@
 //   text     { docId }                                    -> { name, text }
 //   remove   { docId }                                    -> { removed }
 //   clear    {}                                           -> { cleared: true }
-//   verify-receipt { receipt, files: File[] }             -> VerifyReport | { invalid: { error, path } }
+//   verify-receipt { receipt, files: File[], publicKey }  -> VerifyReport | { invalid: { error, path } } | { invalidKey }
 // Replies: { id, ok: true, result } | { id, ok: false, error: { code, message, details } }
 // Progress: { id, progress: { stage: 'reading' | 'parsing' | 'chunking' | 'indexing', done, total } }
 import { sha256Hex, validateReceipt, verifyReceipt } from '../core/receipt.js';
+import { importPublicKey } from '../core/signature.js';
 import { BM25Index } from './bm25.js';
 import { CHUNKER, chunkText, DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE } from './chunker.js';
 import { EXTRACTOR, extractText, MAX_FILE_BYTES, ParseError } from './parser.js';
@@ -188,19 +189,33 @@ async function handle(type, payload, id) {
     case 'verify-receipt': {
       const parsed = validateReceipt(payload.receipt);
       if (!parsed.ok) return { invalid: { error: parsed.error, path: parsed.path } };
+      /** @type {CryptoKey | undefined} */
+      let publicKey;
+      if (typeof payload.publicKey === 'string') {
+        try {
+          publicKey = await importPublicKey(payload.publicKey);
+        } catch (err) {
+          return { invalidKey: err instanceof Error ? err.message : String(err) };
+        }
+      }
       /** @type {File[]} */
       const given = Array.isArray(payload.files) ? payload.files.slice(0, MAX_VERIFY_FILES) : [];
       const files = [];
       for (const f of given) {
         if (f.size <= MAX_FILE_BYTES) files.push({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
       }
-      return verifyReceipt(parsed.receipt, files, {
-        extractor: EXTRACTOR,
-        extract: async (bytes, name) => {
-          const r = await extractText(new File([/** @type {Uint8Array<ArrayBuffer>} */ (bytes)], name));
-          return { text: r.text, pdfjs: r.pdfjs };
+      return verifyReceipt(
+        parsed.receipt,
+        files,
+        {
+          extractor: EXTRACTOR,
+          extract: async (bytes, name) => {
+            const r = await extractText(new File([/** @type {Uint8Array<ArrayBuffer>} */ (bytes)], name));
+            return { text: r.text, pdfjs: r.pdfjs };
+          },
         },
-      });
+        { publicKey },
+      );
     }
     default:
       throw new ParseError('unsupported_type', `Unknown request: ${type}`);
