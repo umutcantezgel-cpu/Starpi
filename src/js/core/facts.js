@@ -371,6 +371,35 @@ function findWeekdaysAndMonths(text, claim) {
   return out;
 }
 
+/** Words that make "10.4.12" a version rather than a date. */
+const VERSION_CONTEXT = /(?:version|versions|firmware|release|build|patch|ver|software)\s*$/iu;
+
+/**
+ * Version numbers with three or four dotted parts ("4.2.1", "v3.9.4", "10.0.0.12"), read as codes
+ * by version 2 of the source check (version 1 read "3.9.4 am" as the number 3.9 and the time 4 am).
+ * One that could be a date ("10.4.12") is a version only after a word such as "firmware" or
+ * "version", or with a "v" in front.
+ * @param {string} text
+ * @returns {Found[]}
+ */
+function findVersions(text) {
+  /** @type {Found[]} */
+  const out = [];
+  const re = new RegExp(`${B}(v)?(\\d{1,4})\\.(\\d{1,4})\\.(\\d{1,4})(?:\\.(\\d{1,4}))?(?![\\p{L}\\p{N}]|\\.\\d)`, 'giu');
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const parts = m.slice(2, 6).filter((x) => x !== undefined);
+    const before = text.slice(Math.max(0, m.index - 24), m.index);
+    const dateShape = parts.length === 3 && Number(parts[0]) >= 1 && Number(parts[0]) <= 31 && Number(parts[1]) >= 1 && Number(parts[1]) <= 12 && parts[2].length >= 2;
+    // "4.480.000" groups thousands: a number, not a version.
+    const thousands = parts.slice(1).every((x) => x.length === 3);
+    if (thousands || (dateShape && !m[1] && !VERSION_CONTEXT.test(before.trimEnd()))) continue;
+    const v = `v:${parts.map((x) => String(Number(x))).join('.')}`;
+    out.push({ start: m.index, end: m.index + m[0].length, surface: m[0], claim: [v], source: [v], nums: [] });
+  }
+  return out;
+}
+
 /**
  * Codes that mix letters and digits (Q3, A320, 5G, v2), also with a hyphen between a short letter
  * prefix and the digits (R-02, ISO-27001, COVID-19); the hyphen is not part of the value, so
@@ -465,15 +494,22 @@ function findNumbers(text, claim) {
 /**
  * Facts stated in an answer sentence (claim mode).
  * @param {string} sentence
+ * @param {{ version?: number }} [options]  version of the source-check rules (default 2); version 1 reads no version numbers
  * @returns {Fact[]}
  */
-export function extractFacts(sentence) {
+export function extractFacts(sentence, options = {}) {
   /** @type {Fact[]} */
   const facts = [];
   let text = sentence.replace(LOOSE_LABEL_PATTERN, (s) => ' '.repeat(s.length));
   for (const q of findQuotes(text)) {
     facts.push({ kind: 'quote', surface: q.surface, start: q.start, end: q.end, values: [q.words.join(' ')], nums: [], approx: false, sig: 0 });
     text = mask(text, [[q.start, q.end]]);
+  }
+  if ((options.version ?? 2) >= 2) {
+    for (const v of findVersions(text)) {
+      facts.push({ kind: 'code', surface: v.surface, start: v.start, end: v.end, values: v.claim, nums: [], approx: false, sig: 0 });
+      text = mask(text, [[v.start, v.end]]);
+    }
   }
   for (const d of findDates(text)) {
     facts.push({ kind: 'date', surface: d.surface, start: d.start, end: d.end, values: d.claim, nums: [], approx: false, sig: 0 });
@@ -559,14 +595,21 @@ export function guessLanguage(text) {
  * Indexes an excerpt (source mode): every fact reading, every number, the folded word sequence and
  * the content tokens.
  * @param {string} text
+ * @param {{ version?: number }} [options]  version of the source-check rules (default 2); version 1 reads no version numbers
  * @returns {SourceIndex}
  */
-export function indexSource(text) {
+export function indexSource(text, options = {}) {
   /** @type {Set<string>} */
   const values = new Set();
   /** @type {number[]} */
   const nums = [];
   let masked = text;
+  if ((options.version ?? 2) >= 2) {
+    for (const v of findVersions(masked)) {
+      v.source.forEach((x) => values.add(x));
+      masked = mask(masked, [[v.start, v.end]]);
+    }
+  }
   // A date offers its year and a time its hour as plain numbers ("in 2026", "at 10"); the day and
   // month do not, or "30 drivers" would match "30.11.2026".
   for (const d of findDates(masked)) {

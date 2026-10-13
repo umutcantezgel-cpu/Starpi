@@ -127,6 +127,23 @@ test.describe('source check on model answers', () => {
     await expect(answer.locator('.message-content .citation-chip-flag')).toHaveCount(2);
   });
 
+  test('names a statement that reverses its excerpt and a name the excerpt has in another place', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const label = '[Doc: spec.md, Chunk: 1]';
+    await mockGemini(page, `Power over Ethernet is supported ${label}. Marcus Hale owns the specification ${label}. Port 8443 serves the admin interface ${label}.`);
+    await page.goto('/');
+    await attach(page, 'spec.md', '# Gateway\n\nPower over Ethernet is not supported. Port 8443 serves the admin interface.\n\nPriya Raman owns this specification; Marcus Hale maintains the network configuration.');
+    await ask(page, 'What does the gateway support, and who owns the specification?');
+
+    const answer = page.locator('#chatMessages > div').last();
+    const bar = answer.locator('.grounding-bar');
+    await expect(bar).toContainText('1/3 statements match their cited excerpts');
+    await expect(bar).toContainText(`${label} says the opposite: “Power over Ethernet is not supported”.`);
+    await expect(bar).toContainText(`${label} names someone or something else here, not Marcus Hale: “Priya Raman owns this specification”.`);
+    // Only the unsupported statement flags its citation; the weak one is listed for review.
+    await expect(answer.locator('.message-content .citation-chip-flag')).toHaveCount(1);
+  });
+
   test('accepts the same facts in another format', async ({ page, diagnostics: _diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     const label = '[Doc: budget.md, Chunk: 1]';

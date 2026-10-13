@@ -134,7 +134,7 @@ describe('groundAnswer', () => {
     const wrong = check('Of the budget, 75,000 EUR is reserved for infrastructure [Doc: plan.md, Chunk: 1].', split);
     assert.deepEqual(verdicts(wrong), ['weak:fact_context']);
     assert.equal(wrong.sentences[0].reasons[0].fact, '75,000');
-    assert.equal(wrong.sentences[0].reasons[0].found, 'and 75,000 EUR for training and rollout.');
+    assert.equal(wrong.sentences[0].reasons[0].found, 'and 75,000 EUR for training and rollout');
     const right = check('Infrastructure gets 95,000 EUR, training and rollout 75,000 EUR [Doc: plan.md, Chunk: 1].', split);
     assert.deepEqual(verdicts(right), ['supported']);
     const swapped = check('Development gets 95,000 EUR, infrastructure 310,000 EUR [Doc: plan.md, Chunk: 1].', split);

@@ -5,6 +5,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { REASON_CODES } from '../../src/js/core/grounding.js';
 import { DEFAULT_LOCALE, hasKey, LOCALES, t } from '../../src/js/i18n/index.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -68,9 +69,7 @@ function usedKeys() {
   for (const s of ['file_missing', 'file_not_verifiable', 'passage_match', 'passage_moved', 'passage_mismatch', 'text_mismatch', 'text_version_differs', 'chunk_mismatch', 'chunk_version_differs']) {
     keys.add(`receipt.check_${s}`);
   }
-  for (const code of ['missing_fact', 'fact_elsewhere', 'fact_context', 'name_missing', 'uncited_found', 'uncited_missing', 'low_overlap', 'unknown_citation', 'label_mismatch', 'quote_missing', 'approximate', 'from_conversation', 'not_delivered']) {
-    keys.add(`grounding.reason_${code}`);
-  }
+  for (const code of REASON_CODES) keys.add(`grounding.reason_${code}`);
   return [...keys].filter((k) => !k.startsWith('ns.')).sort();
 }
 

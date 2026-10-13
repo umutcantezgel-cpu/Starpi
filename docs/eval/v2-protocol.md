@@ -52,8 +52,9 @@ are measured on.
   without `--unblind`, and refuses a held-out file whose SHA-256 differs from the frozen one.
 - The session that writes the rules does not read `eval-v2-holdout.json`.
 - The unit tests that measure the labelled answers (`tests/unit/source-check-eval.test.mjs`,
-  `tests/unit/golden.test.mjs`) pin version 1 of the rules until the final measurement, so running
-  them during development shows nothing about version 2 on the held-out sets.
+  `tests/unit/golden.test.mjs`) measure version 2 of the rules on `dev` and `v2dev` only until the
+  final measurement, so running them during development shows nothing about version 2 on the
+  held-out sets.
 - Before this protocol, while version 2 was designed, a read-only analysis looked at the answers of
   the `holdout` set that version 1 misses and simulated candidate rules on them. That is why
   `holdout` is reported as inspected.
