@@ -45,16 +45,23 @@ Retrieval-augmented assistants cite sources, but a citation does not tell you wh
 next to it says what the source says. Starpi makes that visible and checkable:
 
 - **Source check on every answer.** Each statement is compared with the excerpts it cites: numbers
-  in English and German formats (480,000 = 480.000 = 480k), dates, times, weekdays, codes,
-  quotations and wording, and names in English answers. A value that is not in the cited excerpt
-  is named ("520,000 is not in [Doc: plan.md, Chunk: 1]"), the statement is highlighted, and its
-  citation is marked. It runs in the browser, is deterministic and needs no second model. On
+  in English and German formats (480,000 = 480.000 = 480k), dates, times, weekdays, codes, version
+  numbers, quotations and wording; and whether it reverses a negation of the excerpt ("is
+  supported" where the excerpt says "is not supported") or puts a name or a value next to
+  something else than the excerpt does. A value that is not in the cited excerpt is named
+  ("520,000 is not in [Doc: plan.md, Chunk: 1]"), a reversed or moved statement is shown with the
+  passage that says otherwise, the statement is highlighted, and its citation is marked. It runs in the browser, is deterministic and needs no second model. On
   labelled test answers it flagged every changed value in the held-out set and no statement of a
   faithful answer as unsupported ([how well it works](#how-well-it-works)).
 - **Answer receipts.** A JSON file per answer with SHA-256 fingerprints of the source files, the
-  exact offsets of each cited passage and the source-check verdicts. Anyone with the same files can
-  reproduce every passage, in the app or with a command-line verifier. The format is specified in
-  [`docs/spec/receipts.md`](docs/spec/receipts.md).
+  exact offsets of each cited passage, the source-check verdicts and a Merkle tree (RFC 6962) over
+  the citations, so one cited passage can be shown with its inclusion proof without the others.
+  Anyone with the same files can reproduce every passage, in the app or with a command-line
+  verifier; a deployment can sign receipts with Ed25519 or ECDSA P-256. The format is specified
+  in [`docs/spec/receipts.md`](docs/spec/receipts.md).
+- **A check for CI.** `starpi-ground` checks release notes, generated documentation or any
+  Markdown document against source files and writes SARIF 2.1.0, so a pull request shows an
+  unsupported statement in GitHub code scanning ([CI snippet](#check-documents-in-ci)).
 - **Citations the model cannot forge.** Only labels the app registered for the excerpts it sent
   become clickable, and the drawer shows the cited chunk inside its source text.
 - **Files are read on the device.** PDF, Markdown, text, JSON and CSV files are parsed, chunked
@@ -65,9 +72,10 @@ next to it says what the source says. Starpi makes that visible and checkable:
   in on-device mode it does not leave the browser.
 
 Both checks have limits, and the app says so where it shows them. The source check compares text;
-a match does not prove a statement true, and a flag means "open the source and look". Receipts are
-not signed: they show that the excerpts are reproducible from the same files, not who wrote the
-answer or what a model read.
+a match does not prove a statement true, and a flag means "open the source and look". Receipts
+show that the excerpts are reproducible from the same files, not what a model read. The app does
+not sign the receipts it exports; a signature made by a deployment shows who signed only when it
+is checked with a public key obtained from the signer, not with the key inside the receipt.
 
 <table>
   <tr>
@@ -89,20 +97,39 @@ facts and looks them up in the cited excerpts, then compares the remaining wordi
 | Verdict | When |
 | --- | --- |
 | **Supported** | Every fact is in a cited excerpt and at least half of the content words appear there. |
-| **Weak** | A value is rounded or approximate, appears only in another excerpt or in the question, or stands in the excerpt next to something else than the statement says; an English statement names someone or something the excerpt does not; the wording overlaps little; or a statement without a citation states a value that one of the excerpts contains. |
-| **Unsupported** | A number, date, time, weekday, code or quotation appears in none of the excerpts, a cited label was not one of the excerpts, or the cited excerpt did not fit into the model's context. |
+| **Weak** | A value is rounded or approximate, appears only in another excerpt or in the question, or stands in the excerpt next to something else than the statement says; a name stands in the excerpt in another place, or an English statement names someone or something the excerpt does not; the statement reverses a negation of a passage it matches only loosely; the wording overlaps little; or a statement without a citation states a value that one of the excerpts contains. |
+| **Unsupported** | A number, date, time, weekday, code or quotation appears in none of the excerpts, the statement reverses a negation of the passage it closely matches, a cited label was not one of the excerpts, or the cited excerpt did not fit into the model's context. |
 | **Unchecked** | The statement and its excerpt are in different languages, so only facts are compared, and the statement has none. |
 
 Headings, short fragments, and statements with neither a citation nor a fact are not counted.
 
-A value the excerpt does contain, but only next to other words ("75,000 EUR for infrastructure"
-when the excerpt says "95,000 EUR for infrastructure and 75,000 EUR for training"), is marked weak,
-and the panel quotes the passage where the value stands. In English answers, a name that none of
-the cited excerpts contains ("the Munich depot" when the plan says Hamburg) is marked weak too.
-When the answer and the excerpt are in different languages, only the facts are compared. The rules
-live in [`src/js/core/facts.js`](src/js/core/facts.js) and
-[`src/js/core/grounding.js`](src/js/core/grounding.js), carry a version that receipts record, and are
-pinned by golden tests.
+Version 2 of the rules (Starpi 2.0) looks for three ways in which a statement uses the excerpt's
+own words and still says something else, in English and German:
+
+- **Negations.** "Power over Ethernet is supported" against "Power over Ethernet is not
+  supported", "USB-Datenträger sind erlaubt" against "… sind verboten", "gestiegen" against
+  "gesunken". The check reads negations by their meaning, so "is unsupported", "no … without" or
+  "darf … nicht" match their excerpts, and "no later than", "not … until" and conditions are not
+  read as negations. A reversal of a closely matching passage is unsupported, otherwise weak, and
+  the panel quotes the passage.
+- **Names in the wrong place.** "Marcus Hale owns the specification" when the excerpt says
+  "Priya Raman owns this specification; Marcus Hale maintains the network configuration" is
+  marked weak, with the passage that names someone else; so is a statement that matches a passage
+  but names someone or something the passage does not ("the Munich depot" when it says Hamburg).
+- **Values next to something else.** "75,000 EUR for infrastructure" when the excerpt says "95,000
+  EUR for infrastructure and 75,000 EUR for training" is marked weak, with the passage where the
+  value stands. Version 1 checked this too; version 2 compares the passage around each value and
+  no longer counts a section heading as the context of every value below it.
+
+Each statement is checked on its own, so a receipt can recompute it; a wrong relation spread over
+two statements is not seen. In English answers, a name that none of the cited excerpts contains
+("the Munich depot" when the plan says Hamburg) is marked weak as before. When the answer and the
+excerpt are in different languages, only the facts are compared. The rules live in
+[`src/js/core/facts.js`](src/js/core/facts.js), [`src/js/core/polarity.js`](src/js/core/polarity.js),
+[`src/js/core/binding.js`](src/js/core/binding.js) and
+[`src/js/core/grounding.js`](src/js/core/grounding.js), carry a version that receipts record
+(version 1 can still be run and is still used to recompute 1.x receipts), and are pinned by golden
+tests.
 
 ### How well it works
 
@@ -186,7 +213,7 @@ browsers, Web Workers and Node.js 22.13+. It is built from the same modules the 
 npm install @starpi/core
 # or straight from the tarball attached to each GitHub release (the package README shows
 # how to check it against SHA256SUMS first):
-npm install https://github.com/umutcantezgel-cpu/Starpi/releases/download/v1.3.0/starpi-core-1.3.0.tgz
+npm install https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.0.0/starpi-core-2.0.0.tgz
 ```
 
 ```js
@@ -201,9 +228,26 @@ console.log(report.counts); // { supported: 0, weak: 0, unsupported: 1, unchecke
 console.log(report.sentences[0].reasons[0]); // { code: 'missing_fact', level: 'unsupported', fact: '520,000', cites: [0] }
 ```
 
-`buildReceipt` and `verifyReceipt` create and check receipts, `chunkText` and `BM25Index` split and
-rank text, and `npx starpi-verify-receipt receipt.json file…` verifies a receipt on the command
-line. Examples for each are in the [package README](packages/core/README.md).
+`buildReceipt`, `signReceipt` and `verifyReceipt` create, sign and check receipts, `chunkText` and
+`BM25Index` split and rank text, and `npx starpi-verify-receipt receipt.json file…` verifies a
+receipt on the command line. Examples for each are in the [package README](packages/core/README.md).
+
+### Check documents in CI
+
+`starpi-ground` runs the source check on a Markdown document against source files and fails on an
+unsupported statement. In a GitHub Actions job with `security-events: write`, the findings appear
+in code scanning at their line:
+
+```yaml
+- run: npx --yes --package=@starpi/core@2 starpi-ground --answer docs/release-notes.md --source docs/spec --format sarif --output starpi.sarif
+- uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+  if: always()
+  with:
+    sarif_file: starpi.sarif
+```
+
+Options, the text and JSON formats and an example run are in the
+[package README](packages/core/README.md#check-documents-in-ci).
 
 ## Ecosystem and downstream use
 
@@ -581,7 +625,10 @@ SBOMs and the checksums to the release.
   source check as one of the measures.
 - **Model-based checks:** an optional second opinion (entailment) for statements the deterministic
   check can only mark as weak.
-- **Signed receipts:** optional signatures for receipts produced by a deployment.
+- **Signing in the app:** receipts can be signed since 2.0.0 (`signReceipt`, `starpi-verify-receipt
+  --public-key`); a deployment setting would let the app sign every receipt it exports.
+- **Relations across statements:** the source check compares one statement at a time, so a receipt
+  can recompute it; a wrong relation spread over two statements is not seen yet.
 - **Hybrid retrieval in the browser:** on-device query embeddings, so on-device mode can use
   pgvector ranking without sending the question to the server.
 - **Benchmark history:** keep Diagnostics results per model and device class and use them for the
