@@ -19,6 +19,10 @@ export {
   THRESHOLDS,
 } from '../../../src/js/core/grounding.js';
 
+// Whole documents of any length, and SARIF 2.1.0 for code scanning (the starpi-ground command).
+export { checkDocument } from '../../../src/js/core/document.js';
+export { describeReason, REASON_MESSAGES, SARIF_SCHEMA, SARIF_VERSION, toSarif } from '../../../src/js/core/sarif.js';
+
 // Answer receipts, their Merkle tree (RFC 6962) and signatures (Ed25519, ECDSA P-256).
 export {
   buildReceipt,

@@ -15,10 +15,10 @@ const OUT = mkdtempSync(path.join(tmpdir(), 'starpi-core-'));
 const built = spawnSync(process.execPath, [path.join(ROOT, 'scripts/build-core.mjs'), '--out', OUT, '--no-types'], { encoding: 'utf8' });
 
 describe('@starpi/core', () => {
-  it('builds a bundle and the receipt verifier', () => {
+  it('builds a bundle and both commands', () => {
     assert.equal(built.status, 0, built.stderr);
     assert.ok(existsSync(path.join(OUT, 'index.js')));
-    assert.ok(readFileSync(path.join(OUT, 'verify-receipt.js'), 'utf8').startsWith('#!/usr/bin/env node'));
+    for (const bin of ['verify-receipt.js', 'ground.js']) assert.ok(readFileSync(path.join(OUT, bin), 'utf8').startsWith('#!/usr/bin/env node'), bin);
   });
 
   it('exports exactly what its entry declares, with no import outside the bundle except pdf.js', async () => {
@@ -81,6 +81,16 @@ describe('@starpi/core', () => {
     const cli = spawnSync(process.execPath, [path.join(OUT, 'verify-receipt.js'), receiptPath, filePath, '--json'], { encoding: 'utf8' });
     assert.equal(cli.status, 0, cli.stderr);
     assert.equal(JSON.parse(cli.stdout).summary.reproduced, 1);
+    assert.deepEqual(JSON.parse(cli.stdout).merkle, { size: 1, rootMatches: true, validProofs: 1 });
+
+    // starpi-ground from the bundle alone: the same verdicts as groundAnswer, as SARIF.
+    const answerPath = path.join(OUT, 'answer.md');
+    writeFileSync(answerPath, `${answer.replaceAll(label, '[Doc: renamed-copy.md, Chunk: 1]')}\n`);
+    const ground = spawnSync(process.execPath, [path.join(OUT, 'ground.js'), '--answer', answerPath, '--source', filePath, '--format', 'sarif'], { encoding: 'utf8', cwd: OUT });
+    assert.equal(ground.status, 1, ground.stderr);
+    const log = JSON.parse(ground.stdout);
+    assert.deepEqual(log.runs[0].results.map((/** @type {any} */ r) => [r.ruleId, r.level, r.locations[0].physicalLocation.artifactLocation.uri]), [['missing_fact', 'error', 'answer.md']]);
+    assert.equal(spawnSync(process.execPath, [path.join(OUT, 'ground.js')], { encoding: 'utf8' }).status, 2);
   });
 
   it('declares the files it publishes', () => {
@@ -88,7 +98,7 @@ describe('@starpi/core', () => {
     assert.equal(pkg.name, '@starpi/core');
     assert.equal(pkg.exports['.'].default, './dist/index.js');
     assert.equal(pkg.exports['.'].types, './dist/index.d.ts');
-    assert.equal(pkg.bin['starpi-verify-receipt'], 'dist/verify-receipt.js');
+    assert.deepEqual(pkg.bin, { 'starpi-ground': 'dist/ground.js', 'starpi-verify-receipt': 'dist/verify-receipt.js' });
     assert.deepEqual(pkg.dependencies ?? {}, {});
     assert.deepEqual(pkg.optionalDependencies ?? {}, {});
     assert.deepEqual(pkg.bundleDependencies ?? pkg.bundledDependencies ?? [], []);

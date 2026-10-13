@@ -39,6 +39,7 @@
   },
   "types": "./dist/index.d.ts",
   "bin": {
+    "starpi-ground": "dist/ground.js",
     "starpi-verify-receipt": "dist/verify-receipt.js"
   },
   "files": ["dist", "README.md", "LICENSE"],
