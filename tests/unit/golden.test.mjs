@@ -64,11 +64,11 @@ describe(`source check pins (${GROUNDING.id} ${GROUNDING.version})`, () => {
     );
   });
 
-  it('verdicts and reasons on every statement of the 308 labelled answers are unchanged', async () => {
+  it('verdicts and reasons of version 1 on every statement of the 308 labelled answers are unchanged', async () => {
     const corpora = await loadCorpora();
     const lines = (await loadItems()).flatMap((item) => {
       const sources = corpora[item.corpus];
-      return groundAnswer(blocksFromMarkdown(item.answer, sources), sources).sentences.map((s) => `${item.id}|${s.verdict}|${s.reasons.map((r) => `${r.code}:${r.fact ?? ''}`).join(',')}`);
+      return groundAnswer(blocksFromMarkdown(item.answer, sources), sources, { version: 1 }).sentences.map((s) => `${item.id}|${s.verdict}|${s.reasons.map((r) => `${r.code}:${r.fact ?? ''}`).join(',')}`);
     });
     assert.equal(sha(lines.join('\n')), 'e2d8d04e18bf66c0796cc5b1f4959d20214b514233eac2fd1b6b307fdb3d587c');
   });
