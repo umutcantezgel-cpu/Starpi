@@ -16,7 +16,11 @@ import { safeSlice, sentenceSpans } from './sentences.js';
 /** Currency and unit words: they stand next to a value everywhere, so they say nothing about where it belongs. */
 const UNIT_WORDS = new Set(['eur', 'euro', 'euros', 'usd', 'dollar', 'dollars', 'chf', 'gbp', 'uhr', 'am', 'pm']);
 
-export const GROUNDING = Object.freeze({ id: 'starpi-grounding', version: 1 });
+/** The current rules. Receipts record the version; earlier versions stay available (GROUNDING_VERSIONS). */
+export const GROUNDING = Object.freeze({ id: 'starpi-grounding', version: 2 });
+
+/** Every version of the rules this code can run: an answer or receipt checked with version 1 gives the same verdicts as Starpi 1.x. */
+export const GROUNDING_VERSIONS = Object.freeze([1, 2]);
 
 export const THRESHOLDS = Object.freeze({
   /** share of a statement's content words that must appear in its cited excerpts */
@@ -42,6 +46,7 @@ export const THRESHOLDS = Object.freeze({
  * @property {'p' | 'li' | 'heading' | 'row' | 'header-row' | 'other'} kind
  * @property {Segment[]} segments
  * @property {number | null} leadIn  index of the block that introduces this list item ("…:"), if any
+ * @property {number} [line]  1-based line of the Markdown source (blocksFromMarkdown only)
  */
 
 /**
@@ -242,6 +247,7 @@ export function associate(blocks) {
  * @property {boolean} citedOnly  only statements with their own marker count (extractive answers)
  * @property {'en' | 'de' | null} [lang]  language of the whole answer, for statements too short to tell
  * @property {Array<Passage[] | undefined>} [passages]  per excerpt, filled on first use
+ * @property {number} [version]  version of the rules (GROUNDING_VERSIONS); default GROUNDING.version
  */
 
 /**
@@ -527,12 +533,14 @@ function clip(text, max) {
  * Checks a whole answer.
  * @param {Block[]} blocks
  * @param {GroundingSource[]} sources  index-aligned with the `index` of cite segments
- * @param {{ given?: string[], citedOnly?: boolean }} [options]
+ * @param {{ given?: string[], citedOnly?: boolean, version?: number }} [options]  version: the rules to run (default: the current GROUNDING.version)
  * @returns {GroundingReport}
  */
 export function groundAnswer(blocks, sources, options = {}) {
+  const version = options.version ?? GROUNDING.version;
+  if (!GROUNDING_VERSIONS.includes(version)) throw new RangeError(`groundAnswer: unknown rules version ${version} (known: ${GROUNDING_VERSIONS.join(', ')})`);
   const counts = { supported: 0, weak: 0, unsupported: 0, unchecked: 0 };
-  const report = { algorithm: { ...GROUNDING }, sentences: /** @type {SentenceResult[]} */ ([]), counts, crossLanguage: false, skipped: /** @type {null | 'too_long'} */ (null) };
+  const report = { algorithm: { id: GROUNDING.id, version }, sentences: /** @type {SentenceResult[]} */ ([]), counts, crossLanguage: false, skipped: /** @type {null | 'too_long'} */ (null) };
   const chars = blocks.reduce((n, b) => n + b.segments.reduce((m, s) => m + (s.type === 'text' ? s.text.length : 0), 0), 0);
   if (chars > THRESHOLDS.maxChars) return { ...report, skipped: 'too_long' };
   const drafts = associate(blocks);
@@ -542,7 +550,7 @@ export function groundAnswer(blocks, sources, options = {}) {
   const given = options.given?.length ? indexSource(options.given.join('\n')) : null;
   const text = blocks.map((b) => b.segments.map((s) => (s.type === 'text' ? s.text : ' ')).join('')).join('\n');
   /** @type {CheckContext} */
-  const ctx = { sources, indexes, given, citedOnly: Boolean(options.citedOnly), lang: guessLanguage(text) };
+  const ctx = { sources, indexes, given, citedOnly: Boolean(options.citedOnly), lang: guessLanguage(text), version };
   for (const d of drafts) {
     const r = checkSentence(d, ctx);
     if (r.crossLanguage) report.crossLanguage = true;
@@ -616,7 +624,7 @@ export function blocksFromMarkdown(markdown, sources) {
   let lastPara = null;
   let lastParaLead = false;
   const labels = new Map(sources.map((s, i) => [s.label, i]));
-  for (const raw of markdown.split('\n')) {
+  for (const [n, raw] of markdown.split('\n').entries()) {
     const line = raw.replace(/\\([[\]*_#`])/g, '$1');
     if (!line.trim()) continue;
     /** @type {Block['kind']} */
@@ -650,7 +658,7 @@ export function blocksFromMarkdown(markdown, sources) {
     }
     if (pos < body.length) segments.push({ type: 'text', text: body.slice(pos) });
     const leadIn = kind === 'li' && lastParaLead ? lastPara : null;
-    blocks.push({ kind, segments, leadIn });
+    blocks.push({ kind, segments, leadIn, line: n + 1 });
     if (kind !== 'li') {
       lastPara = blocks.length - 1;
       lastParaLead = /:\s*$/.test(body);
