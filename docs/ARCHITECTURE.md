@@ -5316,7 +5316,7 @@ flowchart LR
 
 ### Backend API guards, backend secrets and CI supply chain
 
-The Python backend holds the service role key, so server.py binds to 127.0.0.1 unless BRAIN_API_TOKEN is set and then requires a Bearer token for /api/brain/*; without a token it refuses proxy headers and non-loopback Host headers, and it always rejects origins outside BRAIN_ALLOWED_ORIGINS. Request bodies are bounded (Content-Length required, 1 MiB default, JSON only, 30 s timeout, per-field character limits) and every response carries restrictive headers and generic errors. The service role bypasses RLS, so core/supabase_client.py returns only rows an anonymous visitor may see anyway, published rows and rows the backend wrote itself (no owner): list_documents filters with VISIBLE_ROWS, and vector matches from match_knowledge_sections are kept only for documents that pass the same filter. The operator command line (core/cli_supabase.py through core/supabase_service.py) reads without this filter and is not reachable through the API. Secrets come only from the process environment or the .env file that core/config.py loads itself (backend/.env, else the repository root; the environment wins, and within the file the last assignment wins) and never appear in repr, and CI scans the tree and pull-request commits with a checksum-verified gitleaks and audits the dependencies (npm audit fails on any advisory in a runtime dependency, pip-audit on any advisory in the backend requirements) while running with read-only permissions, SHA-pinned actions and npm ci --ignore-scripts; only the release job in release.yml, which installs no dependencies, gets contents write, and it runs after CI has passed on a push to main or when started by hand on main, always for the version in package.json (a manual run takes no inputs).
+The Python backend holds the service role key, so server.py binds to 127.0.0.1 unless BRAIN_API_TOKEN is set and then requires a Bearer token for /api/brain/*; without a token it refuses proxy headers and non-loopback Host headers, and it always rejects origins outside BRAIN_ALLOWED_ORIGINS. Request bodies are bounded (Content-Length required, 1 MiB default, JSON only, 30 s timeout, per-field character limits) and every response carries restrictive headers and generic errors. The service role bypasses RLS, so core/supabase_client.py returns only rows an anonymous visitor may see anyway, published rows and rows the backend wrote itself (no owner): list_documents filters with VISIBLE_ROWS, and vector matches from match_knowledge_sections are kept only for documents that pass the same filter. The operator command line (core/cli_supabase.py through core/supabase_service.py) reads without this filter and is not reachable through the API. Secrets come only from the process environment or the .env file that core/config.py loads itself (backend/.env, else the repository root; the environment wins, and within the file the last assignment wins) and never appear in repr, and CI scans the tree and pull-request commits with a checksum-verified gitleaks and audits the dependencies (npm audit fails on any advisory in a runtime dependency, pip-audit on any advisory in the backend requirements) and writes CycloneDX SBOMs of the app and of @starpi/core from the lockfile while running with read-only permissions, SHA-pinned actions and npm ci --ignore-scripts. In release.yml the prepare job, which installs dependencies and packs @starpi/core, runs with read-only permissions too; only the release job, which installs and runs nothing from the repository and checks SHA256SUMS before it attaches the assets, gets contents write, and it runs after CI has passed on a push to main or when started by hand on main, always for the version in package.json (a manual run takes no inputs).
 
 <!-- diagram: security-layers-backend-ci -->
 ```mermaid
@@ -5338,9 +5338,9 @@ flowchart LR
         cVisible["core/supabase_client.py VISIBLE_ROWS<br/>is_public true or owner_id null:<br/>list_documents filtered, match_knowledge_sections<br/>matches kept only for such documents,<br/>a failed lookup falls back to the in-memory search"]
         cCfg["core/config.py BrainConfig: read from the process environment,<br/>which wins over backend/.env (else the root .env)<br/>loaded at import, last assignment in the file wins,<br/>service role key only from SUPABASE_SERVICE_ROLE_KEY,<br/>never the anon key, secret fields excluded from repr"]
         cLeaks["CI job secrets: gitleaks 8.30.1, sha256 verified,<br/>scans the working tree and the commits of a pull request"]
-        cAudit["CI job audit: npm audit --omit=dev fails on any advisory<br/>in a runtime dependency, pip-audit on<br/>backend/requirements-dev.txt fails on any advisory,<br/>development tooling: warning at high severity only"]
+        cAudit["CI job audit: npm audit --omit=dev fails on any advisory<br/>in a runtime dependency, pip-audit on<br/>backend/requirements-dev.txt fails on any advisory,<br/>development tooling: warning at high severity only,<br/>npm run sbom: CycloneDX SBOMs, artifact sbom"]
         cSupply["CI and Vercel: permissions contents read,<br/>actions pinned to commit SHAs, persist-credentials false,<br/>npm ci --ignore-scripts"]
-        cRelease["release.yml: contents write for the release job only,<br/>which installs nothing and runs gh release create,<br/>after CI succeeded on a push to main or by hand on main,<br/>version always from package.json, no dispatch inputs,<br/>SHA-pinned checkout, persist-credentials false"]
+        cRelease["release.yml: the prepare job packs @starpi/core and writes<br/>the SBOMs with contents read, smoke-tests the tarball,<br/>contents write for the release job only, which installs<br/>nothing, checks SHA256SUMS and runs gh release create,<br/>after CI succeeded on a push to main or by hand on main,<br/>version always from package.json, no dispatch inputs,<br/>SHA-pinned checkout, persist-credentials false"]
     end
 
     subgraph sg_thr["Threat stopped"]
@@ -5352,6 +5352,7 @@ flowchart LR
         tKeys["Service role or provider keys<br/>in logs or in git history"]
         tSupply["Install scripts, moved action tags,<br/>a persisted token or write access<br/>in jobs that run dependency code"]
         tVuln["Dependencies with a published advisory<br/>shipped in dist/ or installed for the backend"]
+        tAsset["A release asset changed after the build,<br/>or dependencies nobody can list"]
     end
 
     iReq --> cBind
@@ -5381,6 +5382,8 @@ flowchart LR
     cSupply --> tSupply
     iRepo --> cRelease
     cRelease --> tSupply
+    cRelease --> tAsset
+    cAudit --> tAsset
 ```
 
 <sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/supabase_service.py`](../backend/core/supabase_service.py), [`backend/core/cli_supabase.py`](../backend/core/cli_supabase.py), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`vercel.json`](../vercel.json), [`SECURITY.md`](../SECURITY.md), [`backend/test_server.py`](../backend/test_server.py), [`backend/test_core.py`](../backend/test_core.py)</sub>
@@ -5943,7 +5946,7 @@ flowchart TD
 
 ### Command-line tools beside the build
 
-Five more npm scripts sit outside the build and deploy path, and CI runs none of them directly. verify:receipt checks an answer receipt against the original files with the extraction and chunking code the app uses: it matches files by their SHA-256 fingerprint, not by name, re-extracts them, compares the passage at the recorded offsets and the recorded chunk, and recomputes the source check for every statement whose cited excerpts, and the other excerpts its reasons name, are available, using only the first deliveredChars characters of an excerpt that reached the model in part. It exits 0 when every workspace excerpt was reproduced, 1 when something does not match or a file is missing, and 2 on a usage error or an invalid receipt, which includes a member or reason code the format does not define. In the text report, strings from the receipt and the given file names (labels, the creation time, the engine, file names in the checks and warnings) are printed with control and bidirectional characters escaped, so a crafted receipt cannot rewrite report lines in a terminal. A receipt is unsigned JSON, so a pass shows that the cited excerpts can be reproduced from the given files; it does not prove that the receipt is authentic, what a model saw, or that the answer is right. build:core bundles the @starpi/core package (which declares Node.js 22.13 or newer) from the app's own modules, including the same verifier as a packaged command, and pack:core runs build:core and then npm pack --dry-run, which lists the package contents without publishing anything. eval:source-check measures the source check on labelled answers, and docs:sync copies atlas diagrams into the Markdown files that embed them. The unit tests run verify-receipt.mjs, build-core.mjs and the evaluation.
+Six more npm scripts sit outside the build and deploy path; of them, CI runs pack:core directly in the frontend job and sbom in the audit job, and release.yml runs both. verify:receipt checks an answer receipt against the original files with the extraction and chunking code the app uses: it matches files by their SHA-256 fingerprint, not by name, re-extracts them, compares the passage at the recorded offsets and the recorded chunk, and recomputes the source check for every statement whose cited excerpts, and the other excerpts its reasons name, are available, using only the first deliveredChars characters of an excerpt that reached the model in part. It exits 0 when every workspace excerpt was reproduced, 1 when something does not match or a file is missing, and 2 on a usage error or an invalid receipt, which includes a member or reason code the format does not define. In the text report, strings from the receipt and the given file names (labels, the creation time, the engine, file names in the checks and warnings) are printed with control and bidirectional characters escaped, so a crafted receipt cannot rewrite report lines in a terminal. A receipt is unsigned JSON, so a pass shows that the cited excerpts can be reproduced from the given files; it does not prove that the receipt is authentic, what a model saw, or that the answer is right. build:core bundles the @starpi/core package (an npm workspace of the root package, which declares Node.js 22.13 or newer and has the app's version) from the app's own modules, including the same verifier as a packaged command, and pack:core runs npm pack --workspace=@starpi/core --dry-run, whose prepack script runs build:core with type declarations, and lists the package contents without publishing anything; release.yml packs the same way into a real tarball. sbom (scripts/sbom.mjs) writes CycloneDX SBOMs of the app and of @starpi/core from package-lock.json with npm sbom --package-lock-only, without installing anything, and scripts/lib/sbom.mjs makes them deterministic and validates them before they are written. eval:source-check measures the source check on labelled answers, and docs:sync copies atlas diagrams into the Markdown files that embed them. The unit tests run verify-receipt.mjs, build-core.mjs, sbom.mjs and the evaluation.
 
 <!-- diagram: build-pipeline-cli-tools -->
 ```mermaid
@@ -5969,8 +5972,10 @@ flowchart TD
       C4["unless --no-types: tsc -p packages/core/tsconfig.build.json<br/>into types/, then index.d.ts"]
       C1 --> C2 --> C3 --> C4
     end
-    PACK["npm run pack:core: build-core.mjs, then<br/>npm pack ./packages/core --dry-run"] --> C1
-    TCORE["core-package.test.mjs: build-core.mjs --out a temp dir<br/>--no-types, the bundle checks an answer and builds<br/>a receipt, the bundled verify-receipt.js reproduces it"] -.-> C1
+    PACK["npm run pack:core, also in the CI frontend job:<br/>npm pack --workspace=@starpi/core --dry-run,<br/>its prepack script runs build-core.mjs"] --> C1
+    SBOM["npm run sbom [--out dir]: scripts/sbom.mjs,<br/>npm sbom --package-lock-only for the app and for<br/>--workspace @starpi/core, normalized and validated<br/>by scripts/lib/sbom.mjs, CI audit job and release.yml"]
+    TSBOM["sbom.test.mjs: two runs of scripts/sbom.mjs<br/>write identical files"] -.-> SBOM
+    TCORE["core-package.test.mjs: build-core.mjs --out a temp dir<br/>--no-types, the bundle checks an answer and builds<br/>a receipt, the bundled verify-receipt.js reproduces it,<br/>package.json: files cover every entry point,<br/>public, a workspace, the app's version"] -.-> C1
     TREC["receipt.test.mjs runs verify-receipt.mjs:<br/>exit 0 with the file, 1 without it,<br/>2 for another schema and for no arguments"] -.-> V1
     EV["npm run eval:source-check [--json]: labelled answers in<br/>tests/fixtures/grounding/eval.json against the sample files<br/>and kb-sample.json, per set dev and holdout: false alarms,<br/>planted errors caught, flagged or missed"]
     TEV["source-check-eval.test.mjs: thresholds on the same<br/>summarize results, see the unit tests below"] -.->|"imports loadItems, loadCorpora, summarize"| EV
@@ -5978,11 +5983,11 @@ flowchart TD
     TDOC["docs.test.mjs: every embedded copy<br/>equals the atlas diagram"] -.- DS
 ```
 
-<sub>Sources: [`package.json`](../package.json), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/package.json`](../packages/core/package.json), [`packages/core/src/index.js`](../packages/core/src/index.js), [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`scripts/sync-diagrams.mjs`](../scripts/sync-diagrams.mjs), [`tests/unit/receipt.test.mjs`](../tests/unit/receipt.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`tests/unit/source-check-eval.test.mjs`](../tests/unit/source-check-eval.test.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs)</sub>
+<sub>Sources: [`package.json`](../package.json), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/package.json`](../packages/core/package.json), [`packages/core/src/index.js`](../packages/core/src/index.js), [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`scripts/sync-diagrams.mjs`](../scripts/sync-diagrams.mjs), [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`scripts/lib/sbom.mjs`](../scripts/lib/sbom.mjs), [`tests/unit/receipt.test.mjs`](../tests/unit/receipt.test.mjs), [`tests/unit/sbom.test.mjs`](../tests/unit/sbom.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`tests/unit/source-check-eval.test.mjs`](../tests/unit/source-check-eval.test.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs)</sub>
 
 ### CI jobs and the test layers they run
 
-The CI workflow runs six jobs on pushes and pull requests to main (and on manual dispatch). The frontend job runs lint, typecheck, the node:test unit suite of 24 files (including the documentation test and a build of @starpi/core into a temporary directory), the production build and verify-dist, then uploads dist, which the e2e job reuses to run Playwright under the production headers: the app spec, the trust spec with its axe accessibility scan, and the Mermaid render gate. The backend job lints, byte-compiles and runs the offline unittest suites on Python 3.11 and 3.12. The database job installs PostgreSQL 16 with pgvector and runs the RLS harness, whose rls_test.sql has 191 checks in the fresh and fresh_rerun scenarios and 198 in the three scenarios seeded with legacy rows. The audit job runs npm audit on the lockfile, failing on any advisory in a runtime dependency and only warning about development tooling, and pip-audit on the backend requirements, and the secrets job scans the tree, and on pull requests the new commits, with a checksum-verified gitleaks. npm run verify repeats the frontend gate locally.
+The CI workflow runs six jobs on pushes and pull requests to main (and on manual dispatch). The frontend job runs lint, typecheck, the node:test unit suite of 25 files (including the documentation test, a build of @starpi/core into a temporary directory and two runs of the SBOM generator), a typed build and dry-run pack of @starpi/core, the production build and verify-dist, then uploads dist, which the e2e job reuses to run Playwright under the production headers: the app spec, the trust spec with its axe accessibility scan, and the Mermaid render gate. The backend job lints, byte-compiles and runs the offline unittest suites on Python 3.11 and 3.12. The database job installs PostgreSQL 16 with pgvector and runs the RLS harness, whose rls_test.sql has 191 checks in the fresh and fresh_rerun scenarios and 198 in the three scenarios seeded with legacy rows. The audit job runs npm audit on the lockfile, failing on any advisory in a runtime dependency and only warning about development tooling, and pip-audit on the backend requirements, then writes CycloneDX SBOMs of the app and of @starpi/core from the lockfile and uploads them, and the secrets job scans the tree, and on pull requests the new commits, with a checksum-verified gitleaks. npm run verify repeats the frontend gate locally.
 
 <!-- diagram: test-strategy-ci-gates -->
 ```mermaid
@@ -5992,7 +5997,8 @@ flowchart LR
     subgraph jobFront["Job frontend: Node 22, npm ci --ignore-scripts"]
         lint["npm run lint<br/>ESLint, eslint.config.mjs"]
         tc["npm run typecheck<br/>tsc -p tsconfig.json --noEmit"]
-        unit["npm test<br/>node --test on the 24 tests/unit/*.test.mjs files,<br/>docs.test.mjs and core-package.test.mjs included"]
+        unit["npm test<br/>node --test on the 25 tests/unit/*.test.mjs files,<br/>docs.test.mjs, core-package.test.mjs and sbom.test.mjs included"]
+        pack["npm run pack:core<br/>typed build of @starpi/core, npm pack --dry-run"]
         build["npm run build<br/>scripts/build.mjs"]
         verify["npm run verify:dist<br/>scripts/verify-dist.mjs: dist/ is CSP-compatible,<br/>referenced assets exist, sw.js carries the recomputed version"]
         art[("artifact dist, kept 3 days")]
@@ -6019,6 +6025,7 @@ flowchart LR
         npmRt["npm audit --omit=dev --audit-level=low<br/>any advisory in a runtime dependency fails"]
         npmAll["npm audit --audit-level=high<br/>development tooling: warning only"]
         pipAud["pip-audit -r backend/requirements-dev.txt<br/>any advisory fails"]
+        sbom["npm run sbom, also after a failed audit step<br/>CycloneDX 1.5 SBOMs of the app and of @starpi/core<br/>from package-lock.json, artifact sbom, kept 30 days"]
     end
 
     subgraph jobSec["Job secrets"]
@@ -6034,12 +6041,12 @@ flowchart LR
     trig --> apt
     trig --> npmRt
     trig --> gl
-    lint --> tc --> unit --> build --> verify --> art
+    lint --> tc --> unit --> pack --> build --> verify --> art
     art -->|"built once, reused"| dl --> pw
     pw -.->|"failure"| rep
     ruff --> comp --> ut
     apt --> rls
-    npmRt --> npmAll --> pipAud
+    npmRt --> npmAll --> pipAud --> sbom
     gl --> glDir
     glDir -->|"pull_request only"| glPr
     local -.->|"same steps as"| lint
@@ -6049,12 +6056,12 @@ flowchart LR
 
 ### Unit tests grouped by concern
 
-npm test runs the 24 tests/unit/*.test.mjs files with the built-in node:test runner in the frontend CI job; 16 of them are grouped here, the other 8 in the next diagram. Security and UI contract tests cover the sanitizer (on a real jsdom DOM), server URL validation (http only for localhost and 127.0.0.1), the CSP and build settings in vercel.json, handler and icon coverage, and dictionary parity including keys built at run time and plural forms. Retrieval tests pin exact BM25 scores, chunk boundaries, parser error codes (with a generated PDF from tests/fixtures/pdf.mjs) and CSV rows, citation labels, context fences that are never cut and the merge of workspace and knowledge-base hits, and grounded offline answers. Model tests pin the prompts, the WebLLM model catalog and the benchmark metrics. Build tests pin buildVersion, assertPublicKey and the typecheck coverage of every @ts-check module, and docs.test.mjs keeps every documentation diagram single-sourced in docs/ARCHITECTURE.md and checks relative links and heading anchors in every Markdown file.
+npm test runs the 25 tests/unit/*.test.mjs files with the built-in node:test runner in the frontend CI job; 17 of them are grouped here, the other 8 in the next diagram. Security and UI contract tests cover the sanitizer (on a real jsdom DOM), server URL validation (http only for localhost and 127.0.0.1), the CSP and build settings in vercel.json, handler and icon coverage, and dictionary parity including keys built at run time and plural forms. Retrieval tests pin exact BM25 scores, chunk boundaries, parser error codes (with a generated PDF from tests/fixtures/pdf.mjs) and CSV rows, citation labels, context fences that are never cut and the merge of workspace and knowledge-base hits, and grounded offline answers. Model tests pin the prompts, the WebLLM model catalog and the benchmark metrics. Build tests pin buildVersion, assertPublicKey, the typecheck coverage of every @ts-check module and the CycloneDX SBOMs (deterministic, valid, one entry per package, @starpi/core without dependencies), and docs.test.mjs keeps every documentation diagram single-sourced in docs/ARCHITECTURE.md and checks relative links and heading anchors in every Markdown file.
 
 <!-- diagram: test-strategy-unit -->
 ```mermaid
 flowchart LR
-    runner(["npm test: node --test tests/unit/*.test.mjs, 24 files<br/>CI job frontend, also inside npm run verify<br/>16 files here, 8 in the next diagram"])
+    runner(["npm test: node --test tests/unit/*.test.mjs, 25 files<br/>CI job frontend, also inside npm run verify<br/>17 files here, 8 in the next diagram"])
 
     subgraph gSec["Security and UI contracts"]
         render["render.test.mjs, real DOM via jsdom<br/>escapeHtml, renderMarkdown drops scripts, handlers, styles,<br/>images, iframes, javascript: and data: links, data-*, class, id,<br/>https links get rel noopener noreferrer nofollow,<br/>escapeMarkdown, sanitizeModelNames on whole words"]
@@ -6081,6 +6088,7 @@ flowchart LR
         bver["build-version.test.mjs<br/>buildVersion is 12 hex chars, stable under reordering,<br/>changes with a public file, the page, an asset URL<br/>or the service worker template"]
         skey["supabase-key.test.mjs<br/>assertPublicKey accepts sb_publishable_ keys and anon JWTs,<br/>refuses sb_secret_ keys, service_role JWTs,<br/>other strings and the empty string"]
         tcov["typecheck-coverage.test.mjs<br/>every src/js module that starts with the @ts-check comment<br/>is in the include list of tsconfig.json,<br/>more than 30 such modules"]
+        sbomt["sbom.test.mjs, helpers from scripts/lib/sbom.mjs<br/>uuidV5 against the RFC 9562 example, duplicate bom-refs<br/>merged, root and workspace named by package, serial from<br/>the content, validator catches dangling edges, scripts/sbom.mjs<br/>twice gives identical files, @starpi/core lists no component"]
     end
 
     subgraph gDocs["Documentation"]
@@ -6102,10 +6110,11 @@ flowchart LR
     runner --> bver
     runner --> skey
     runner --> tcov
+    runner --> sbomt
     runner --> docs
 ```
 
-<sub>Sources: [`tests/unit/render.test.mjs`](../tests/unit/render.test.mjs), [`tests/unit/config.test.mjs`](../tests/unit/config.test.mjs), [`tests/unit/setup.mjs`](../tests/unit/setup.mjs), [`tests/unit/actions.test.mjs`](../tests/unit/actions.test.mjs), [`tests/unit/i18n.test.mjs`](../tests/unit/i18n.test.mjs), [`tests/unit/parser.test.mjs`](../tests/unit/parser.test.mjs), [`tests/unit/chunker.test.mjs`](../tests/unit/chunker.test.mjs), [`tests/unit/bm25.test.mjs`](../tests/unit/bm25.test.mjs), [`tests/unit/retrieval.test.mjs`](../tests/unit/retrieval.test.mjs), [`tests/unit/synthesizer.test.mjs`](../tests/unit/synthesizer.test.mjs), [`tests/unit/prompts.test.mjs`](../tests/unit/prompts.test.mjs), [`tests/unit/models.test.mjs`](../tests/unit/models.test.mjs), [`tests/unit/diagnostics.test.mjs`](../tests/unit/diagnostics.test.mjs), [`tests/unit/build-version.test.mjs`](../tests/unit/build-version.test.mjs), [`tests/unit/supabase-key.test.mjs`](../tests/unit/supabase-key.test.mjs), [`tests/unit/typecheck-coverage.test.mjs`](../tests/unit/typecheck-coverage.test.mjs), [`tests/fixtures/pdf.mjs`](../tests/fixtures/pdf.mjs), [`package.json`](../package.json), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`scripts/markdown.mjs`](../scripts/markdown.mjs)</sub>
+<sub>Sources: [`tests/unit/render.test.mjs`](../tests/unit/render.test.mjs), [`tests/unit/config.test.mjs`](../tests/unit/config.test.mjs), [`tests/unit/setup.mjs`](../tests/unit/setup.mjs), [`tests/unit/actions.test.mjs`](../tests/unit/actions.test.mjs), [`tests/unit/i18n.test.mjs`](../tests/unit/i18n.test.mjs), [`tests/unit/parser.test.mjs`](../tests/unit/parser.test.mjs), [`tests/unit/chunker.test.mjs`](../tests/unit/chunker.test.mjs), [`tests/unit/bm25.test.mjs`](../tests/unit/bm25.test.mjs), [`tests/unit/retrieval.test.mjs`](../tests/unit/retrieval.test.mjs), [`tests/unit/synthesizer.test.mjs`](../tests/unit/synthesizer.test.mjs), [`tests/unit/prompts.test.mjs`](../tests/unit/prompts.test.mjs), [`tests/unit/models.test.mjs`](../tests/unit/models.test.mjs), [`tests/unit/diagnostics.test.mjs`](../tests/unit/diagnostics.test.mjs), [`tests/unit/build-version.test.mjs`](../tests/unit/build-version.test.mjs), [`tests/unit/supabase-key.test.mjs`](../tests/unit/supabase-key.test.mjs), [`tests/unit/typecheck-coverage.test.mjs`](../tests/unit/typecheck-coverage.test.mjs), [`tests/unit/sbom.test.mjs`](../tests/unit/sbom.test.mjs), [`scripts/lib/sbom.mjs`](../scripts/lib/sbom.mjs), [`tests/fixtures/pdf.mjs`](../tests/fixtures/pdf.mjs), [`package.json`](../package.json), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`scripts/markdown.mjs`](../scripts/markdown.mjs)</sub>
 
 ### Unit tests for the source check, receipts and sample files
 
@@ -6114,7 +6123,7 @@ Eight of the unit test files cover the source check, answer receipts, the sample
 <!-- diagram: test-strategy-unit-trust -->
 ```mermaid
 flowchart LR
-    runner(["same npm test run, 8 of the 24 files"])
+    runner(["same npm test run, 8 of the 25 files"])
 
     subgraph gCheck["Source check"]
         facts["facts.test.mjs<br/>parseNumber with English and German separators,<br/>extractFacts: numbers with scale words, percent and currency,<br/>approximations, ISO, German and English dates, times,<br/>weekdays, codes, numbers written as words, also right after and,<br/>quotations, indexSource and lookupFact across formats<br/>and languages, 4.05. read as a decimal and as a date,<br/>codes with or without a hyphen, typographic dashes in codes,<br/>folding and inflection"]
@@ -6130,7 +6139,7 @@ flowchart LR
 
     subgraph gDemo["Sample files and the package"]
         demo["demo.test.mjs<br/>English and German sample files match the list in demo.js,<br/>the sample questions launch, budget and risks find their facts,<br/>the extractive answer has at least 2 supported and<br/>no weak or unsupported statements"]
-        core["core-package.test.mjs<br/>build-core.mjs into a temp dir with --no-types,<br/>exports equal packages/core/src/index.js, only pdfjs-dist imported,<br/>the bundle checks an answer and builds a valid receipt,<br/>the bundled verify-receipt.js reproduces it,<br/>package.json name, exports, bin, no dependencies"]
+        core["core-package.test.mjs<br/>build-core.mjs into a temp dir with --no-types,<br/>exports equal packages/core/src/index.js, only pdfjs-dist imported,<br/>the bundle checks an answer and builds a valid receipt,<br/>the bundled verify-receipt.js reproduces it,<br/>package.json name, exports, bin, no dependencies<br/>of any kind, files cover every entry point, publishConfig public,<br/>workspace of the root, same version as the app<br/>and in the lockfile, pdfjs-dist peer major as the app's"]
     end
 
     runner --> facts
@@ -6266,7 +6275,7 @@ flowchart TD
 
 ### CI workflow triggers, jobs and Dependabot
 
-The CI workflow runs on pushes and pull requests to main (the default branch) and on manual dispatch, with read-only contents permission and one concurrency group per PR or ref that cancels older runs. Five jobs start in parallel: frontend, the backend Python 3.11/3.12 matrix, database, audit and secrets. e2e runs only after frontend succeeds, because it needs the dist artifact that frontend uploads, and besides the app and trust specs it renders every Mermaid block in the repository's Markdown. Every completed CI run on main starts the separate Release workflow, whose job only runs when that CI run passed and was triggered by a push; the Release workflow can also be dispatched by hand, and then its job runs only on main. Dependabot opens weekly update PRs for npm (dev dependencies grouped, Tailwind majors ignored), pip in /backend and GitHub Actions, and those PRs go through the same workflow.
+The CI workflow runs on pushes and pull requests to main (the default branch) and on manual dispatch, with read-only contents permission and one concurrency group per PR or ref that cancels older runs. Five jobs start in parallel: frontend, the backend Python 3.11/3.12 matrix, database, audit and secrets. e2e runs only after frontend succeeds, because it needs the dist artifact that frontend uploads, and besides the app and trust specs it renders every Mermaid block in the repository's Markdown. Every completed CI run on main starts the separate Release workflow, whose jobs only run when that CI run passed and was triggered by a push; the Release workflow can also be dispatched by hand, and then its jobs run only on main. Dependabot opens weekly update PRs for npm (dev dependencies grouped, Tailwind majors ignored), pip in /backend and GitHub Actions, and those PRs go through the same workflow.
 
 <!-- diagram: ci-workflow-overview -->
 ```mermaid
@@ -6283,10 +6292,10 @@ flowchart TD
     end
     sg_dependabot -->|"update PRs against main,<br/>the default branch"| T2
     sg_on --> CFG["permissions: contents read<br/>concurrency group ci-(workflow)-(PR number or ref),<br/>cancel-in-progress: a newer run cancels the older one"]
-    CFG --> FE["frontend: Frontend (lint, typecheck, unit tests, build)<br/>15 min, uploads the dist artifact"]
+    CFG --> FE["frontend: Frontend (lint, typecheck, unit tests, build)<br/>15 min, packs @starpi/core as a dry run,<br/>uploads the dist artifact"]
     CFG --> BE["backend: Backend (Python 3.11) and Backend (Python 3.12)<br/>10 min, matrix with fail-fast false"]
     CFG --> DB["database: Database migration and RLS tests<br/>(PostgreSQL 16 + pgvector), 15 min"]
-    CFG --> AUD["audit: Dependency audit (npm audit, pip-audit)<br/>10 min, Node 22 and Python 3.12"]
+    CFG --> AUD["audit: Dependency audit (npm audit, pip-audit)<br/>10 min, Node 22 and Python 3.12,<br/>uploads the CycloneDX SBOMs as artifact sbom"]
     CFG --> SEC["secrets: Secret scanning (gitleaks)<br/>5 min, gitleaks 8.30.1"]
     FE -->|"needs: frontend succeeded"| E2E["e2e: End-to-end (Playwright, production headers)<br/>20 min, app and trust specs plus rendering of every<br/>Mermaid block in the Markdown files"]
     FE -->|"frontend failed"| SKIP["e2e is skipped"]
@@ -6299,7 +6308,7 @@ flowchart TD
     SKIP --> RES
     RES -->|"yes"| GREEN(["CI run passes"])
     RES -->|"no: a step exited non-zero<br/>or a job hit its timeout"| RED(["CI run fails"])
-    GREEN -->|"run triggered by a push to main"| REL["release.yml via workflow_run, started by every<br/>completed CI run on main, its job runs only here<br/>or on a manual dispatch on main:<br/>GitHub release for the package.json version"]
+    GREEN -->|"run triggered by a push to main"| REL["release.yml via workflow_run, started by every<br/>completed CI run on main, its jobs run only here<br/>or on a manual dispatch on main:<br/>GitHub release for the package.json version<br/>with the @starpi/core tarball, SBOMs and SHA256SUMS"]
     NOTE["every job: ubuntu-24.04, actions pinned by commit SHA,<br/>checkout with persist-credentials false"]
     CFG -.- NOTE
 ```
@@ -6308,7 +6317,7 @@ flowchart TD
 
 ### Frontend and end-to-end jobs
 
-The frontend job installs from the lockfile without install scripts, then runs lint, typecheck, the 24 unit test files, the production build and verify:dist, and uploads dist (kept 3 days, and the upload errors if there are no files); any failing step fails the job and skips e2e. e2e downloads that same dist, installs Chromium and runs Playwright against scripts/serve.mjs on port 4173 with service workers blocked, test.only forbidden on CI and no retries. Its specs exercise the app under the production headers (every response, workers included, carries the CSP) with a mocked Supabase, check the source check, receipts and accessibility with mocked model APIs and axe, and parse and render every Mermaid block in the Markdown files with mermaid 12.1.0, skipped on the mobile project. If any e2e step fails, playwright-report and test-results are uploaded for 7 days.
+The frontend job installs from the lockfile without install scripts, then runs lint, typecheck, the 25 unit test files, pack:core (a typed build of @starpi/core and npm pack --dry-run, so a broken type declaration or package file list fails the pull request, not the release), the production build and verify:dist, and uploads dist (kept 3 days, and the upload errors if there are no files); any failing step fails the job and skips e2e. e2e downloads that same dist, installs Chromium and runs Playwright against scripts/serve.mjs on port 4173 with service workers blocked, test.only forbidden on CI and no retries. Its specs exercise the app under the production headers (every response, workers included, carries the CSP) with a mocked Supabase, check the source check, receipts and accessibility with mocked model APIs and axe, and parse and render every Mermaid block in the Markdown files with mermaid 12.1.0, skipped on the mobile project. If any e2e step fails, playwright-report and test-results are uploaded for 7 days.
 
 <!-- diagram: ci-frontend-e2e -->
 ```mermaid
@@ -6319,11 +6328,12 @@ flowchart TD
       F3["npm ci --ignore-scripts"]
       F4["npm run lint: eslint ."]
       F5["npm run typecheck: tsc -p tsconfig.json --noEmit"]
-      F6["npm test: node --test tests/unit/*.test.mjs,<br/>24 files"]
+      F6["npm test: node --test tests/unit/*.test.mjs,<br/>25 files"]
+      F6b["npm run pack:core: npm pack --workspace=@starpi/core<br/>--dry-run, prepack builds it with type declarations"]
       F7["npm run build: scripts/build.mjs"]
       F8["npm run verify:dist: CSP compatibility,<br/>assets, service worker and build version"]
       F9["actions/upload-artifact v7.0.1: dist,<br/>kept 3 days, if-no-files-found error"]
-      F1 --> F2 --> F3 --> F4 --> F5 --> F6 --> F7 --> F8 --> F9
+      F1 --> F2 --> F3 --> F4 --> F5 --> F6 --> F6b --> F7 --> F8 --> F9
     end
     sg_fe -->|"any step exits non-zero"| FEFAIL(["frontend fails, later steps skipped,<br/>e2e skipped"])
     F9 -->|"needs: frontend"| G1
@@ -6347,7 +6357,7 @@ flowchart TD
 
 ### Backend, database, audit and secret-scanning jobs
 
-The backend job runs once per Python version (3.11, 3.12) with fail-fast off, and runs ruff check, ruff format --check, a byte-compile and the offline unittest suite, any of which fails its leg. The database job installs PostgreSQL 16 with pgvector and runs run_rls_tests.sh, which starts a throwaway cluster, runs seven scenarios (five apply the schema or the three migration files and run rls_test.sql, while guard and guard_order only require a file to refuse the database) plus a schema-parity diff, and exits 1 if any of them failed and 2 on a setup error; rls_test.sql has 191 checks in fresh and fresh_rerun and 198 in live, legacy_v2 and legacy_v1, which are seeded with legacy rows. The audit job needs no npm install: npm audit reads package-lock.json and fails on any advisory in a runtime dependency (--omit=dev --audit-level=low); a second npm audit over the whole tree at high severity only emits a warning annotation, because the advisories it can report are in build and test tooling that is not shipped in dist/. It then installs backend/requirements-dev.txt on Python 3.12 and runs pip-audit, pinned there, over the backend requirements; any advisory fails the job. The secrets job downloads gitleaks 8.30.1, verifies its pinned SHA-256, scans the working tree, and on pull requests also scans the commits between the base and head SHAs. A failed download, a checksum mismatch or any leak fails the job.
+The backend job runs once per Python version (3.11, 3.12) with fail-fast off, and runs ruff check, ruff format --check, a byte-compile and the offline unittest suite, any of which fails its leg. The database job installs PostgreSQL 16 with pgvector and runs run_rls_tests.sh, which starts a throwaway cluster, runs seven scenarios (five apply the schema or the three migration files and run rls_test.sql, while guard and guard_order only require a file to refuse the database) plus a schema-parity diff, and exits 1 if any of them failed and 2 on a setup error; rls_test.sql has 191 checks in fresh and fresh_rerun and 198 in live, legacy_v2 and legacy_v1, which are seeded with legacy rows. The audit job needs no npm install: npm audit reads package-lock.json and fails on any advisory in a runtime dependency (--omit=dev --audit-level=low); a second npm audit over the whole tree at high severity only emits a warning annotation, because the advisories it can report are in build and test tooling that is not shipped in dist/. It then installs backend/requirements-dev.txt on Python 3.12 and runs pip-audit, pinned there, over the backend requirements; any advisory fails the job. Last, unless the run was cancelled, npm run sbom writes the CycloneDX SBOMs of the app and of @starpi/core from the lockfile, again without an npm install (scripts/sbom.mjs imports only Node built-ins and calls npm sbom --package-lock-only), checks them and uploads them as the sbom artifact for 30 days; an invalid document fails the job. The secrets job downloads gitleaks 8.30.1, verifies its pinned SHA-256, scans the working tree, and on pull requests also scans the commits between the base and head SHAs. A failed download, a checksum mismatch or any leak fails the job.
 
 <!-- diagram: ci-backend-database-secrets -->
 ```mermaid
@@ -6382,13 +6392,20 @@ flowchart TD
       A3["npm audit --audit-level=high over the whole tree,<br/>a finding only emits a warning annotation"]
       A4["actions/setup-python v7.0.0: Python 3.12,<br/>pip install -r backend/requirements-dev.txt"]
       A5{"pip-audit -r backend/requirements-dev.txt<br/>reports an advisory?"}
+      A6{"if not cancelled: npm run sbom,<br/>npm sbom --package-lock-only, normalized,<br/>both documents valid?"}
+      A7["actions/upload-artifact v7.0.1: sbom,<br/>kept 30 days, if-no-files-found error"]
       A1 --> A2
       A2 -->|"no"| A3 --> A4 --> A5
+      A5 -->|"no"| A6
+      A6 -->|"yes"| A7
     end
     A2 -->|"yes"| AFAIL(["audit fails"])
     A4 -->|"install error"| AFAIL
     A5 -->|"yes"| AFAIL
-    A5 -->|"no"| AOK(["audit passes"])
+    A6 -->|"no"| AFAIL
+    A7 --> AOK(["audit passes"])
+    ANOTE["the SBOM steps also run after a failed audit step,<br/>the job still fails"]
+    A6 -.- ANOTE
     subgraph sg_sec["secrets job"]
       S1["checkout with fetch-depth 0"]
       S2["curl -f the gitleaks 8.30.1 linux_x64 tarball<br/>into RUNNER_TEMP, under set -euo pipefail"]
@@ -6416,7 +6433,7 @@ flowchart TD
 
 ### Release workflow after CI
 
-release.yml publishes a GitHub release for the version in package.json. It starts when the CI workflow completes on main (workflow_run) or by manual dispatch, which takes no inputs, and its only job runs for a dispatch on main or for a CI run that succeeded and was triggered by a push. The job checks out the commit CI tested (for a dispatch, the head of main), reads the version from package.json with node -p, requires it to be three dot-separated numbers, and ends successfully without a release when docs/releases/vX.Y.Z.md does not exist or the release vX.Y.Z already does; otherwise gh release create tags that commit, titles the release Starpi vX.Y.Z, uses the notes file and marks it as latest. Only this job gets contents: write, and the release concurrency group never cancels a running release. The workflow creates a release and nothing else: it deploys nothing and publishes no package.
+release.yml publishes a GitHub release for the version in package.json, with the @starpi/core tarball, the CycloneDX SBOMs of the app and of the package, and SHA256SUMS as assets. It starts when the CI workflow completes on main (workflow_run) or by manual dispatch, which takes no inputs, and its jobs run for a dispatch on main or for a CI run that succeeded and was triggered by a push. The prepare job has read-only permissions (contents, and actions to look up CI runs): it checks out the commit CI tested (for a dispatch, the head of main), reads the version from package.json with node -p, requires it to be three dot-separated numbers, and ends successfully without a release when docs/releases/vX.Y.Z.md does not exist or the release vX.Y.Z is already published. Otherwise it requires, for a dispatch, a successful push-triggered CI run of that commit, packages/core/package.json to have the same version, and a tag vX.Y.Z, if one was pushed ahead, to point at the tested commit, then installs from the lockfile without install scripts, packs @starpi/core (its prepack script runs build-core.mjs with type declarations), writes the SBOMs with npm run sbom, smoke-tests the tarball (its file list, the version in the bundle banner, an offline install into an empty project, the exported functions, the starpi-verify-receipt command) and writes SHA256SUMS over the three files, which it uploads as an artifact. The release job needs prepare, is the only job with contents: write and installs and runs nothing from the repository: it checks out the commit only for the notes file, downloads the artifact, checks SHA256SUMS, ends successfully if the release was published in the meantime, fails on a draft release left by an interrupted upload (gh uploads assets to a draft and publishes it at the end), and otherwise gh release create tags that commit (or keeps the pushed tag), titles the release Starpi vX.Y.Z, uses the notes file, marks it as latest and attaches the four files. The release concurrency group never cancels a running release. The workflow deploys nothing and does not publish to npm: the maintainer publishes the attached tarball (CONTRIBUTING.md, Releases).
 
 <!-- diagram: ci-release-workflow -->
 ```mermaid
@@ -6425,29 +6442,57 @@ flowchart TD
     T2(["workflow_dispatch,<br/>no inputs"])
     T1 --> IF{"job condition: a dispatch with github.ref<br/>refs/heads/main, or CI concluded success<br/>and was triggered by a push?"}
     T2 --> IF
-    IF -->|"no: the CI run did not succeed, or was started<br/>by a pull request or a manual dispatch of CI,<br/>or the dispatch ran on another branch"| SKIP(["job skipped, nothing released"])
-    IF -->|"yes"| CO["checkout workflow_run.head_sha, else github.sha,<br/>persist-credentials false<br/>ubuntu-24.04, 10 min, job permission contents write"]
-    CO --> VER["version: node -p the version field<br/>of the checked-out package.json"]
-    VER --> VCHK{"three dot-separated numbers, X.Y.Z?"}
+    IF -->|"no: the CI run did not succeed, or was started<br/>by a pull request or a manual dispatch of CI,<br/>or the dispatch ran on another branch"| SKIP(["jobs skipped, nothing released"])
+    subgraph sg_prep["prepare job: contents read, ubuntu-24.04, 15 min"]
+      CO["checkout workflow_run.head_sha, else github.sha,<br/>persist-credentials false"]
+      VER["version: node -p the version field<br/>of the checked-out package.json"]
+      VCHK{"three dot-separated numbers, X.Y.Z?"}
+      NOTES{"docs/releases/vX.Y.Z.md exists?"}
+      VIEW{"gh release view vX.Y.Z<br/>finds a published release?"}
+      LOCK{"for a dispatch: CI passed on a push of the commit,<br/>packages/core/package.json has X.Y.Z,<br/>and a pushed tag vX.Y.Z, if any,<br/>points at the tested commit?"}
+      BUILD["setup-node 22 without cache, npm ci --ignore-scripts,<br/>npm pack --workspace=@starpi/core into release-assets,<br/>prepack runs build-core.mjs,<br/>npm run sbom -- --out release-assets"]
+      SMOKE{"smoke test: files in the tarball, banner version,<br/>offline npm install into an empty project,<br/>exports import, starpi-verify-receipt exits 2<br/>without arguments?"}
+      SUMS["sha256sum of the tarball and both SBOMs<br/>into SHA256SUMS, upload-artifact release-assets"]
+      CO --> VER --> VCHK
+      VCHK -->|"yes"| NOTES
+      NOTES -->|"yes"| VIEW
+      VIEW -->|"no"| LOCK
+      LOCK -->|"yes"| BUILD --> SMOKE
+      SMOKE -->|"yes"| SUMS
+    end
+    IF -->|"yes"| CO
     VCHK -->|"no"| ERR(["error annotation: not a version number,<br/>exit 1, job fails"])
-    VCHK -->|"yes"| NOTES{"docs/releases/vX.Y.Z.md exists?"}
-    NOTES -->|"no"| NONE(["nothing to release for X.Y.Z, exit 0"])
-    NOTES -->|"yes"| VIEW{"gh release view vX.Y.Z<br/>finds the release?"}
-    VIEW -->|"yes"| EXISTS(["Release vX.Y.Z already exists, exit 0"])
-    VIEW -->|"no"| CREATE["gh release create vX.Y.Z with GH_TOKEN github.token<br/>--target TARGET_SHA, --title Starpi vX.Y.Z,<br/>--notes-file the release notes, --latest"]
+    NOTES -->|"no"| NONE(["nothing to release for X.Y.Z, exit 0,<br/>release job skipped"])
+    VIEW -->|"yes"| EXISTS(["Release vX.Y.Z already exists, exit 0,<br/>release job skipped"])
+    LOCK -->|"no"| ERR2(["error annotation: no green CI run,<br/>other package version or tag elsewhere,<br/>job fails"])
+    SMOKE -->|"no"| ERR3(["error annotation, job fails,<br/>nothing released"])
+    subgraph sg_rel["release job: needs prepare, contents write, 10 min"]
+      RCO["checkout of the same commit for the notes file only,<br/>nothing installed or run from it"]
+      DL["actions/download-artifact v8.0.1: release-assets"]
+      CHK{"sha256sum -c SHA256SUMS passes?"}
+      AGAIN{"gh release view vX.Y.Z --json isDraft:<br/>published, a draft, or none?"}
+      CREATE["gh release create vX.Y.Z with GH_TOKEN github.token<br/>--target TARGET_SHA, --title Starpi vX.Y.Z,<br/>--notes-file the release notes, --latest,<br/>starpi-core-X.Y.Z.tgz, starpi-X.Y.Z.cdx.json,<br/>starpi-core-X.Y.Z.cdx.json, SHA256SUMS"]
+      RCO --> DL --> CHK
+      CHK -->|"yes"| AGAIN
+      AGAIN -->|"none"| CREATE
+    end
+    SUMS --> RCO
+    CHK -->|"no"| FAIL(["job fails, nothing released"])
+    AGAIN -->|"published"| LATE(["Release vX.Y.Z already exists, exit 0"])
+    AGAIN -->|"draft"| DRAFT(["error annotation: delete the draft<br/>of an interrupted upload, re-run"])
     CREATE -->|"ok"| DONE(["Created release vX.Y.Z at TARGET_SHA"])
-    CREATE -->|"gh fails, set -euo pipefail"| FAIL(["job fails"])
+    CREATE -->|"gh fails, set -euo pipefail"| FAIL
     CONC["workflow permissions contents read,<br/>concurrency group release, cancel-in-progress false"]
     CONC -.- IF
-    NOTE["no deploy step and no npm publish:<br/>the Vercel build is triggered outside this repository"]
+    NOTE["no deploy step and no npm publish:<br/>the Vercel build is triggered outside this repository,<br/>the maintainer publishes the attached tarball to npm"]
     DONE -.- NOTE
 ```
 
-<sub>Sources: [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`package.json`](../package.json), [`docs/releases/v1.1.0.md`](../docs/releases/v1.1.0.md)</sub>
+<sub>Sources: [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`package.json`](../package.json), [`packages/core/package.json`](../packages/core/package.json), [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`CONTRIBUTING.md`](../CONTRIBUTING.md), [`docs/releases/v1.3.0.md`](../docs/releases/v1.3.0.md)</sub>
 
 ### CI workflow and Vercel build of the PWA
 
-Pushes and pull requests to main (and manual dispatch) run six CI jobs: frontend (lint, typecheck, unit tests, build, verify:dist), e2e on the built dist under the vercel.json headers, backend on Python 3.11 and 3.12, the database migration and RLS suite, a dependency audit (npm audit, pip-audit) and gitleaks secret scanning. Neither ci.yml nor release.yml has a deploy step, so the Vercel build is triggered by settings of the Vercel project outside this repo and nothing in the repo makes it wait for CI. .vercelignore leaves the backend, the tests, the workflows, env files, node_modules and build and test output out of the deployment. vercel.json installs with npm ci --ignore-scripts, builds with npm run build (which stops on a blank or secret Supabase key and on a JWT whose role is not anon) into dist and sets a strict CSP, nosniff, X-Frame-Options DENY, COOP, HSTS and Permissions-Policy on all paths, plus immutable caching for assets/ and no-cache for sw.js, the root and index.html.
+Pushes and pull requests to main (and manual dispatch) run six CI jobs: frontend (lint, typecheck, unit tests, a dry-run pack of @starpi/core, build, verify:dist), e2e on the built dist under the vercel.json headers, backend on Python 3.11 and 3.12, the database migration and RLS suite, a dependency audit (npm audit, pip-audit) with CycloneDX SBOMs and gitleaks secret scanning. Neither ci.yml nor release.yml has a deploy step, so the Vercel build is triggered by settings of the Vercel project outside this repo and nothing in the repo makes it wait for CI. .vercelignore leaves the backend, the tests, the workflows, env files, node_modules and build and test output out of the deployment. vercel.json installs with npm ci --ignore-scripts, builds with npm run build (which stops on a blank or secret Supabase key and on a JWT whose role is not anon) into dist and sets a strict CSP, nosniff, X-Frame-Options DENY, COOP, HSTS and Permissions-Policy on all paths, plus immutable caching for assets/ and no-cache for sw.js, the root and index.html.
 
 <!-- diagram: deployment-ci-vercel -->
 ```mermaid
@@ -6456,11 +6501,11 @@ flowchart TD
     PR(["pull request to main<br/>or workflow_dispatch"])
     subgraph sg_ci["GitHub Actions: .github/workflows/ci.yml"]
         Conc["permissions contents read<br/>concurrency per PR or ref, cancel-in-progress"]
-        FE["frontend job, Node 22<br/>npm ci --ignore-scripts, lint, typecheck,<br/>npm test, npm run build, npm run verify:dist<br/>uploads the dist artifact"]
+        FE["frontend job, Node 22<br/>npm ci --ignore-scripts, lint, typecheck,<br/>npm test, npm run pack:core,<br/>npm run build, npm run verify:dist<br/>uploads the dist artifact"]
         E2E["e2e job, needs frontend<br/>npm ci --ignore-scripts, downloads dist,<br/>installs Chromium, npm run test:e2e<br/>app, trust and Mermaid docs specs<br/>playwright-report uploaded on failure"]
         BE["backend job, Python 3.11 and 3.12<br/>pip install requirements-dev.txt<br/>ruff check, ruff format --check,<br/>compileall, unittest discover test_*.py"]
         DBJ["database job<br/>PostgreSQL 16 and pgvector<br/>backend/supabase/tests/run_rls_tests.sh"]
-        AUD["audit job<br/>npm audit: no advisory in runtime dependencies<br/>pip-audit on backend/requirements-dev.txt"]
+        AUD["audit job<br/>npm audit: no advisory in runtime dependencies<br/>pip-audit on backend/requirements-dev.txt<br/>npm run sbom: CycloneDX SBOMs, artifact sbom"]
         SEC["secrets job<br/>gitleaks 8.30.1, sha256 verified<br/>working tree, plus PR commits on pull_request"]
     end
     Push --> Conc
@@ -6471,7 +6516,7 @@ flowchart TD
     Conc --> AUD
     Conc --> SEC
     FE -->|"dist artifact"| E2E
-    sg_ci -.->|"CI passed on a push to main"| REL["release.yml: GitHub release only,<br/>no deploy step"]
+    sg_ci -.->|"CI passed on a push to main"| REL["release.yml: GitHub release with the<br/>@starpi/core tarball, SBOMs and SHA256SUMS,<br/>no deploy step, no npm publish"]
     Push -.->|"trigger set in the Vercel project, not in this repo<br/>no workflow deploys, nothing waits for CI"| VIg
     subgraph sg_vercel["Vercel build from vercel.json"]
         VIg[".vercelignore leaves out backend/, tests/, .github/,<br/>.env*, node_modules/, dist/, .build/,<br/>playwright-report/, test-results/"]

@@ -18,4 +18,6 @@ paths = [
   '''(^|/)test-results/''',
   '''(^|/)playwright-report/''',
   '''(^|/)package-lock\.json$''',
+  '''(^|/)sbom/''',
+  '''(^|/)release-assets/''',
 ]

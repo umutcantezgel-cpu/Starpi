@@ -6,6 +6,10 @@ labels: bug
 assignees: ''
 ---
 
+<!-- Security problems: do not open a public issue, report them privately as described in
+https://github.com/umutcantezgel-cpu/Starpi/security/policy. For the npm package, use the
+"@starpi/core package" template. -->
+
 ### Problem Description
 A clear and concise description of the bug.
 
@@ -19,7 +23,7 @@ A clear and concise description of the bug.
 A clear and concise description of what you expected to happen.
 
 ### Runtime Environment
-* **Starpi version or commit**: [such as v1.1.0 or the commit hash]
+* **Starpi version or commit**: [such as v1.3.0 or the commit hash]
 * **Mode and language**: [such as On-device, EN]
 * **Operating System**: [such as macOS Sonoma 14.5, Windows 11, Ubuntu 24.04, iOS 17.5, Android 14]
 * **Browser**: [such as Chrome 125, Safari 17.5, Edge 125]
