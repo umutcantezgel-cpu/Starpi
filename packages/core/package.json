@@ -1,7 +1,7 @@
 {
   "name": "@starpi/core",
-  "version": "0.1.0",
-  "description": "Deterministic source check for RAG answers and verifiable answer receipts (starpi.receipt/v1), with the text extraction, chunking and BM25 of Starpi.",
+  "version": "1.3.0",
+  "description": "Deterministic source check for RAG answers (a hallucination check without a second model) and verifiable answer receipts (starpi.receipt/v1), with the text extraction, chunking and BM25 of Starpi. No dependencies.",
   "type": "module",
   "license": "MIT",
   "author": "Umutcan Emre Tezgel (https://github.com/umutcantezgel-cpu)",
@@ -11,8 +11,25 @@
     "url": "git+https://github.com/umutcantezgel-cpu/Starpi.git",
     "directory": "packages/core"
   },
-  "bugs": "https://github.com/umutcantezgel-cpu/Starpi/issues",
-  "keywords": ["rag", "retrieval-augmented-generation", "citations", "grounding", "faithfulness", "provenance", "bm25", "receipts"],
+  "bugs": {
+    "url": "https://github.com/umutcantezgel-cpu/Starpi/issues"
+  },
+  "keywords": [
+    "rag",
+    "retrieval-augmented-generation",
+    "deterministic-verification",
+    "hallucination-check",
+    "rag-receipts",
+    "receipts",
+    "citations",
+    "grounding",
+    "faithfulness",
+    "provenance",
+    "bm25",
+    "webgpu",
+    "zero-dependencies"
+  ],
+  "main": "./dist/index.js",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -22,7 +39,7 @@
   },
   "types": "./dist/index.d.ts",
   "bin": {
-    "starpi-verify-receipt": "./dist/verify-receipt.js"
+    "starpi-verify-receipt": "dist/verify-receipt.js"
   },
   "files": ["dist", "README.md", "LICENSE"],
   "sideEffects": false,
@@ -36,6 +53,10 @@
     "pdfjs-dist": {
       "optional": true
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "prepack": "node ../../scripts/build-core.mjs"

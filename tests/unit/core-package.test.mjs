@@ -88,9 +88,33 @@ describe('@starpi/core', () => {
     assert.equal(pkg.name, '@starpi/core');
     assert.equal(pkg.exports['.'].default, './dist/index.js');
     assert.equal(pkg.exports['.'].types, './dist/index.d.ts');
-    assert.equal(pkg.bin['starpi-verify-receipt'], './dist/verify-receipt.js');
+    assert.equal(pkg.bin['starpi-verify-receipt'], 'dist/verify-receipt.js');
     assert.deepEqual(pkg.dependencies ?? {}, {});
+    assert.deepEqual(pkg.optionalDependencies ?? {}, {});
+    assert.deepEqual(pkg.bundleDependencies ?? pkg.bundledDependencies ?? [], []);
     for (const file of ['README.md', 'LICENSE']) assert.ok(existsSync(path.join(PKG, file)), file);
     assert.equal(readFileSync(path.join(PKG, 'LICENSE'), 'utf8'), readFileSync(path.join(ROOT, 'LICENSE'), 'utf8'));
+    // Every path a consumer resolves is inside a published directory.
+    const entryPoints = [pkg.main, pkg.types, pkg.exports['.'].default, pkg.exports['.'].types, ...Object.values(pkg.bin)];
+    for (const entry of entryPoints) {
+      const file = entry.replace(/^\.\//, '');
+      assert.ok(pkg.files.some((f) => file === f || file.startsWith(`${f}/`)), `${entry} is not covered by files`);
+    }
+  });
+
+  it('is published publicly as a workspace of the app, in lockstep with its version', () => {
+    const pkg = JSON.parse(readFileSync(path.join(PKG, 'package.json'), 'utf8'));
+    const root = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    const lock = JSON.parse(readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
+    assert.equal(pkg.publishConfig.access, 'public');
+    assert.equal(pkg.publishConfig.registry, 'https://registry.npmjs.org/');
+    assert.deepEqual(root.workspaces, ['packages/core']);
+    // release.yml attaches starpi-core-<version>.tgz to the release of the same version.
+    assert.equal(pkg.version, root.version);
+    assert.equal(lock.packages['packages/core'].version, pkg.version);
+    assert.equal(lock.packages[''].version, root.version);
+    // The optional peer pdfjs-dist moves with the version the app ships.
+    const peerMajor = pkg.peerDependencies['pdfjs-dist'].match(/^\^(\d+)\./)?.[1];
+    assert.equal(root.dependencies['pdfjs-dist'].split('.')[0], peerMajor);
   });
 });

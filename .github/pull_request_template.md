@@ -11,11 +11,14 @@ Explain what changes and why. Link related issues.
 * [ ] Service worker and PWA (`src/sw.js`, `public/`)
 * [ ] Build, CI and security headers (`scripts/`, `.github/`, `vercel.json`)
 * [ ] Python backend (`backend/`)
+* [ ] `@starpi/core` package, SBOMs and release assets (`packages/core`, `scripts/build-core.mjs`, `scripts/sbom.mjs`, `.github/workflows/release.yml`)
 
 ## Verification
 * [ ] `npm run verify` passes (lint, typecheck, unit tests, build, output verification)
 * [ ] `npm run test:e2e` passes
-* [ ] Backend: `ruff check backend` and `python -m unittest discover -s backend -p 'test_*.py'` pass (if touched)
+* [ ] `npm run pack:core` lists the expected files (if `packages/core` or the modules it bundles changed)
+* [ ] Backend: `ruff check backend`, `ruff format --check backend` and `python -m unittest discover -s backend -p 'test_*.py'` pass (if touched)
+* [ ] Dependencies: `npm audit --omit=dev` and `pip-audit -r backend/requirements-dev.txt` report nothing (if dependencies changed)
 * [ ] Database: `bash backend/supabase/tests/run_rls_tests.sh` passes (if touched)
 * [ ] Tested in a WebGPU browser (if the local model path changed)
 
@@ -32,4 +35,6 @@ Explain what changes and why. Link related issues.
 * [ ] Documentation updated where behaviour changed
 * [ ] Diagrams updated in `docs/ARCHITECTURE.md` and copies synced (`npm run docs:sync`)
 * [ ] `CHANGELOG.md` updated under `[Unreleased]`
+* [ ] Changed extraction, chunking or source-check rules bump `EXTRACTOR`, `CHUNKER` or `GROUNDING`
+* [ ] Release only: the same version in `package.json`, `packages/core/package.json`, `package-lock.json` and `CITATION.cff`, and `docs/releases/vX.Y.Z.md` written
 * [ ] Commits follow Conventional Commits

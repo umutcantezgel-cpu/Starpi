@@ -62,13 +62,13 @@ database and dependency checks.
 | [`src/js/i18n/`](../src/js/i18n), [`src/locales/`](../src/locales) | Runtime translation and the English and German dictionaries |
 | [`src/sw.js`](../src/sw.js) | Service worker for the same-origin app shell |
 | [`public/samples/`](../public/samples) | The English and German sample files (plan, risk register, kickoff PDF) |
-| [`packages/core/`](../packages/core) | `@starpi/core`: the source check, receipts, extraction, chunking and BM25 as an npm package, built from `src/js` |
-| [`scripts/`](../scripts) | Build, output verification, local server with production headers, diagram sync, receipt verifier, source-check evaluation |
+| [`packages/core/`](../packages/core) | `@starpi/core`: the source check, receipts, extraction, chunking and BM25 as an npm package (a workspace of the root package), built from `src/js` |
+| [`scripts/`](../scripts) | Build, output verification, local server with production headers, diagram sync, receipt verifier, source-check evaluation, `@starpi/core` build, CycloneDX SBOMs |
 | [`tests/unit/`](../tests/unit), [`tests/e2e/`](../tests/e2e) | Node unit tests and Playwright end-to-end tests |
 | [`backend/`](../backend) | Optional Python API, ingestion and retrieval pipelines, EC2 deployment |
 | [`backend/supabase/`](../backend/supabase) | Schema, idempotent migrations and the RLS test harness |
 | [`docs/`](.) | This walkthrough, the architecture atlas, the [receipt format](spec/receipts.md), [release notes](releases) and the README artwork |
-| [`.github/`](../.github) | CI workflow, Dependabot, issue and pull request templates |
+| [`.github/`](../.github) | CI and release workflows, Dependabot, issue and pull request templates |
 
 ## Follow a question through the code
 
@@ -165,6 +165,7 @@ reporting time to first token and decode speed through
 | Build gate | No inline code, every asset present, no `eval`, the service worker version recomputed from the build | [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs) |
 | Documentation | Every Mermaid block renders; diagram copies match the atlas; links and anchors resolve | [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs) |
 | Dependency audit | No known advisory in a runtime npm dependency (`npm audit`) or in the backend requirements (`pip-audit`); advisories in development tooling are reported | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) |
+| SBOM and package | CycloneDX SBOMs of the app and of `@starpi/core` on every CI run, deterministic and checked; the package's typed build and file list on every pull request; each release built read-only, smoke-tested and listed in `SHA256SUMS` | [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`.github/workflows/release.yml`](../.github/workflows/release.yml) |
 
 CI runs all of them, plus gitleaks, on every push and pull request to `main`
 ([atlas §11](ARCHITECTURE.md#11-build-test-and-deploy)).
@@ -173,6 +174,6 @@ CI runs all of them, plus gitleaks, on every push and pull request to `main`
 
 - [README.md](../README.md): what is different, modes, models, configuration and the roadmap.
 - [docs/spec/receipts.md](spec/receipts.md): the receipt format and how verification works.
-- [docs/ARCHITECTURE.md](ARCHITECTURE.md): 117 diagrams, one per question about the system.
+- [docs/ARCHITECTURE.md](ARCHITECTURE.md): 118 diagrams, one per question about the system.
 - [CONTRIBUTING.md](../CONTRIBUTING.md): conventions, checks and the diagram rules.
 - [CHANGELOG.md](../CHANGELOG.md): what changed, release by release.

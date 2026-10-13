@@ -74,10 +74,11 @@ flowchart TD
 | Area | Command |
 | --- | --- |
 | Frontend | `npm run verify` (lint, typecheck, unit tests, build, output verification) |
+| `@starpi/core` | `npm run pack:core` (typed build, lists the files the package would publish) |
 | End-to-end | `npm run build && npm run test:e2e` (first run: `npx playwright install chromium`) |
 | Backend | `ruff check backend && ruff format --check backend && python -m unittest discover -s backend -p 'test_*.py'` |
 | Database | `bash backend/supabase/tests/run_rls_tests.sh` |
-| Dependencies | `npm audit --omit=dev` and `pip-audit -r backend/requirements-dev.txt` |
+| Dependencies | `npm audit --omit=dev`, `pip-audit -r backend/requirements-dev.txt` and `npm run sbom` (CycloneDX SBOMs into `sbom/`) |
 
 CI runs all of them, plus gitleaks. `backend/scripts/brain_smoke.py` is a manual end-to-end
 check against live endpoints and is not part of the automated suite.
@@ -90,7 +91,8 @@ flowchart LR
     subgraph jobFront["Job frontend: Node 22, npm ci --ignore-scripts"]
         lint["npm run lint<br/>ESLint, eslint.config.mjs"]
         tc["npm run typecheck<br/>tsc -p tsconfig.json --noEmit"]
-        unit["npm test<br/>node --test on the 24 tests/unit/*.test.mjs files,<br/>docs.test.mjs and core-package.test.mjs included"]
+        unit["npm test<br/>node --test on the 25 tests/unit/*.test.mjs files,<br/>docs.test.mjs, core-package.test.mjs and sbom.test.mjs included"]
+        pack["npm run pack:core<br/>typed build of @starpi/core, npm pack --dry-run"]
         build["npm run build<br/>scripts/build.mjs"]
         verify["npm run verify:dist<br/>scripts/verify-dist.mjs: dist/ is CSP-compatible,<br/>referenced assets exist, sw.js carries the recomputed version"]
         art[("artifact dist, kept 3 days")]
@@ -117,6 +119,7 @@ flowchart LR
         npmRt["npm audit --omit=dev --audit-level=low<br/>any advisory in a runtime dependency fails"]
         npmAll["npm audit --audit-level=high<br/>development tooling: warning only"]
         pipAud["pip-audit -r backend/requirements-dev.txt<br/>any advisory fails"]
+        sbom["npm run sbom, also after a failed audit step<br/>CycloneDX 1.5 SBOMs of the app and of @starpi/core<br/>from package-lock.json, artifact sbom, kept 30 days"]
     end
 
     subgraph jobSec["Job secrets"]
@@ -132,12 +135,12 @@ flowchart LR
     trig --> apt
     trig --> npmRt
     trig --> gl
-    lint --> tc --> unit --> build --> verify --> art
+    lint --> tc --> unit --> pack --> build --> verify --> art
     art -->|"built once, reused"| dl --> pw
     pw -.->|"failure"| rep
     ruff --> comp --> ut
     apt --> rls
-    npmRt --> npmAll --> pipAud
+    npmRt --> npmAll --> pipAud --> sbom
     gl --> glDir
     glDir -->|"pull_request only"| glPr
     local -.->|"same steps as"| lint
@@ -408,6 +411,40 @@ flowchart TD
 Parts of the code were written with AI assistance and reviewed by the maintainer. Contributions
 made with AI tools are welcome under the same rules as any other: you understand the change, it
 follows these conventions, and it passes the checks.
+
+## Releases
+
+The app and `@starpi/core` are released together and share one version number.
+
+1. **Prepare the release commit.**
+   - Set the version in `package.json` and in `packages/core/package.json`, then run
+     `npm install --package-lock-only --ignore-scripts` so the lockfile records both.
+   - Update `version` and `date-released` in `CITATION.cff`.
+   - Move the `[Unreleased]` entries of `CHANGELOG.md` into a section for the version and add its
+     compare link.
+   - Write `docs/releases/vX.Y.Z.md`; the release workflow publishes it as the release notes.
+2. **Get it onto `main`.** Push the commit with an annotated tag `vX.Y.Z`. The tag must point at
+   the commit that ends up on `main`, so fast-forward `main` to it instead of merging with a
+   merge or squash commit, and push nothing else to `main` until the release exists: a newer push
+   cancels the CI run of the tagged commit. If that run was cancelled or failed, re-run it; a
+   manual run of the release workflow only works while the tagged commit is the head of `main`.
+3. **CI and the release workflow.** Once CI has passed on `main`, `release.yml` builds the
+   `@starpi/core` tarball and the SBOMs without write access, smoke-tests the tarball and creates
+   the release with `starpi-core-X.Y.Z.tgz`, `starpi-X.Y.Z.cdx.json`,
+   `starpi-core-X.Y.Z.cdx.json` and `SHA256SUMS`. If an interrupted upload left a draft release,
+   the job stops with an error; delete the draft (`gh release delete vX.Y.Z --yes`) and re-run it.
+4. **Publish `@starpi/core` to npm from the release asset**, not from a local build, so the npm
+   package is the file CI built and checksummed. The account needs publish rights on the npm
+   organisation `starpi` (the `@starpi` scope):
+
+   ```bash
+   cd "$(mktemp -d)"
+   curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/vX.Y.Z/starpi-core-X.Y.Z.tgz
+   curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/vX.Y.Z/SHA256SUMS
+   sha256sum -c --ignore-missing SHA256SUMS
+   npm publish ./starpi-core-X.Y.Z.tgz --access public
+   npm view @starpi/core@X.Y.Z dist.integrity
+   ```
 
 ## Reporting bugs
 

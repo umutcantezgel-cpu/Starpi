@@ -1,12 +1,20 @@
 name: Release
 
 # Publishes a GitHub release for the version in package.json once CI has passed on main, using
-# docs/releases/v<version>.md as the release notes. Nothing happens when the release already
-# exists or when there are no release notes for the version, so every green run on main is safe.
-# A manual run releases the head of main (the same check applies), never another branch.
+# docs/releases/v<version>.md as the release notes, with the @starpi/core tarball, the CycloneDX
+# SBOMs of the app and of the package, and SHA256SUMS as assets. Nothing happens when the release
+# already exists or when there are no release notes for the version, so every green run on main is
+# safe. A manual run releases the head of main once CI has passed on a push of it (the same checks
+# apply), never another branch.
+#
+# Two jobs keep write access away from dependency code: `prepare` installs from the lockfile and
+# builds the assets with read-only permissions; `release` has contents: write, installs and runs
+# nothing from the repository, checks the checksums and creates the release.
 
 on:
-  workflow_run:
+  # Only CI runs triggered by a push to main get past the job condition below; the checkout uses
+  # the commit CI tested, and no artifact of the CI run is downloaded.
+  workflow_run: # zizmor: ignore[dangerous-triggers]
     workflows: [CI]
     types: [completed]
     branches: [main]
@@ -20,27 +28,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Create the release for package.json's version
+  prepare:
+    name: Build the release assets (read-only)
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
-      contents: write
+      contents: read
+      actions: read # find the CI run of the commit for a manual run
+    outputs:
+      create: ${{ steps.decide.outputs.create }}
+      version: ${{ steps.decide.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
 
-      - name: Create the release if it does not exist yet
+      - name: Decide whether to release
+        id: decide
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
           TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
+          echo "create=false" >> "$GITHUB_OUTPUT"
           version="$(node -p "require('./package.json').version")"
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::'$version' is not a version number"
@@ -51,14 +66,159 @@ jobs:
             echo "No $notes: nothing to release for $version."
             exit 0
           fi
-          if gh release view "v${version}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          # A draft (left by an interrupted upload) is not visible to this read-only token; the
+          # release job, which can see it, stops on it.
+          if [[ "$(gh release view "v${version}" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || true)" == "false" ]]; then
             echo "Release v${version} already exists."
             exit 0
           fi
-          gh release create "v${version}" \
+          # A manual run releases the head of main, so CI must have passed on a push of it, as it
+          # has for every workflow_run.
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            passed="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${TARGET_SHA}&event=push&status=success&per_page=1" --jq '.total_count')"
+            if [[ "$passed" -lt 1 ]]; then
+              echo "::error::CI has not passed on a push of ${TARGET_SHA}, the head of main; wait for it or re-run it"
+              exit 1
+            fi
+          fi
+          core_version="$(node -p "require('./packages/core/package.json').version")"
+          if [[ "$core_version" != "$version" ]]; then
+            echo "::error::@starpi/core is ${core_version}, the app is ${version}; both must have the same version"
+            exit 1
+          fi
+          # A tag pushed ahead of the release must point at the commit CI tested: the assets are
+          # built from that commit, and gh release create keeps an existing tag where it is.
+          if ref_json="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v${version}" 2>/dev/null)"; then
+            tag_type="$(jq -r '.object.type' <<<"$ref_json")"
+            tag_sha="$(jq -r '.object.sha' <<<"$ref_json")"
+            if [[ "$tag_type" == "tag" ]]; then
+              tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_sha}" --jq '.object.sha')"
+            fi
+            if [[ "$tag_sha" != "$TARGET_SHA" ]]; then
+              echo "::error::Tag v${version} points at ${tag_sha}, not at ${TARGET_SHA}, the commit CI tested. Re-run the CI run of ${tag_sha} (main must still contain it), or delete the tag to release ${TARGET_SHA}"
+              exit 1
+            fi
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "create=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.decide.outputs.create == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Install dependencies (lockfile, no install scripts)
+        if: steps.decide.outputs.create == 'true'
+        run: npm ci --ignore-scripts
+
+      - name: Pack @starpi/core and write the SBOMs
+        if: steps.decide.outputs.create == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          npm pack --workspace=@starpi/core --pack-destination release-assets
+          npm run sbom -- --out release-assets
+
+      # Installs the tarball built above, offline, into an empty project: no package comes from
+      # the registry, so there is no lockfile to install from.
+      - name: Smoke-test the package tarball
+        if: steps.decide.outputs.create == 'true'
+        env:
+          VERSION: ${{ steps.decide.outputs.version }}
+        run: | # zizmor: ignore[adhoc-packages]
+          set -euo pipefail
+          tgz="$GITHUB_WORKSPACE/release-assets/starpi-core-${VERSION}.tgz"
+          listing="$(tar -tzf "$tgz")"
+          for file in package/package.json package/README.md package/LICENSE package/dist/index.js package/dist/index.d.ts package/dist/verify-receipt.js; do
+            grep -qxF "$file" <<<"$listing" || { echo "::error::$file is missing from $tgz"; exit 1; }
+          done
+          banner="$(tar -xzOf "$tgz" package/dist/index.js | sed -n 1p)"
+          [[ "$banner" == "// @starpi/core ${VERSION} (MIT)."* ]] || { echo "::error::dist/index.js was built for another version: $banner"; exit 1; }
+          consumer="$RUNNER_TEMP/consumer"
+          mkdir -p "$consumer"
+          cd "$consumer"
+          echo '{ "name": "consumer", "private": true, "type": "module" }' > package.json
+          # --offline: the package has no dependencies, so nothing may need the registry.
+          npm install --offline --ignore-scripts --no-audit --no-fund "$tgz"
+          node --input-type=module -e "
+            const core = await import('@starpi/core');
+            for (const name of ['groundAnswer', 'blocksFromMarkdown', 'buildReceipt', 'verifyReceipt', 'chunkText', 'BM25Index']) {
+              if (typeof core[name] !== 'function') throw new Error(name + ' is not exported');
+            }"
+          status=0
+          node_modules/.bin/starpi-verify-receipt >/dev/null 2>&1 || status=$?
+          [[ "$status" -eq 2 ]] || { echo "::error::starpi-verify-receipt without arguments exited $status, expected 2"; exit 1; }
+
+      - name: Checksums
+        if: steps.decide.outputs.create == 'true'
+        env:
+          VERSION: ${{ steps.decide.outputs.version }}
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          sha256sum "starpi-core-${VERSION}.tgz" "starpi-${VERSION}.cdx.json" "starpi-core-${VERSION}.cdx.json" > SHA256SUMS
+          cat SHA256SUMS
+
+      - if: steps.decide.outputs.create == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-assets
+          path: release-assets
+          retention-days: 7
+          if-no-files-found: error
+          overwrite: true
+
+  release:
+    name: Create the release for package.json's version
+    needs: prepare
+    if: needs.prepare.outputs.create == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # create the release and its tag, upload the assets
+    steps:
+      # Only for the release notes: nothing is installed or run from the checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-assets
+          path: release-assets
+
+      - name: Create the release with its assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::'$VERSION' is not a version number"
+            exit 1
+          fi
+          (cd release-assets && sha256sum -c SHA256SUMS)
+          draft="$(gh release view "v${VERSION}" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null || true)"
+          if [[ "$draft" == "false" ]]; then
+            echo "Release v${VERSION} already exists."
+            exit 0
+          fi
+          # gh uploads the assets to a draft and publishes it at the end; an interrupted run can
+          # leave the draft behind, and it must not pass as a published release.
+          if [[ "$draft" == "true" ]]; then
+            echo "::error::A draft release v${VERSION} exists, probably from an interrupted upload. Delete it (gh release delete v${VERSION} --yes) and re-run this job."
+            exit 1
+          fi
+          gh release create "v${VERSION}" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$TARGET_SHA" \
-            --title "Starpi v${version}" \
-            --notes-file "$notes" \
-            --latest
-          echo "Created release v${version} at ${TARGET_SHA}."
+            --title "Starpi v${VERSION}" \
+            --notes-file "docs/releases/v${VERSION}.md" \
+            --latest \
+            "release-assets/starpi-core-${VERSION}.tgz" \
+            "release-assets/starpi-${VERSION}.cdx.json" \
+            "release-assets/starpi-core-${VERSION}.cdx.json" \
+            release-assets/SHA256SUMS
+          echo "Created release v${VERSION} at ${TARGET_SHA}."

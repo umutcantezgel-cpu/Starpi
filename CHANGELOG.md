@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-13
+
 ### Added
 
 - **Dependency audit in CI.** A new `audit` job fails on any advisory in runtime npm dependencies
@@ -16,6 +18,35 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - **"Reproduce the published numbers"** in the README: the commands and the test that pins each
   figure.
 - `.mailmap` with the maintainer's canonical name and address.
+- **`@starpi/core` ready for npm.** The package is a workspace of the root package (so
+  `npm pack --workspace=@starpi/core` and `npm publish --workspace=@starpi/core` work), has the
+  app's version (1.3.0, raised from 0.1.0; both are released together from now on), declares
+  `publishConfig.access: public`, `main`, a `bin` path npm does not have to correct, and keywords
+  for search. Its README covers installing from npm or from the release tarball with its
+  checksum, every task with its function, chunking and BM25 search, the command line, the supply
+  chain and versioning; every example in it was run against the packed tarball.
+- **Release assets.** `release.yml` now builds the `@starpi/core` tarball and the SBOMs in a
+  `prepare` job with read-only permissions, smoke-tests the tarball (file list, version banner, an
+  offline install into an empty project, the exports, the `starpi-verify-receipt` command) and
+  writes `SHA256SUMS`; the `release` job, the only one with write access, installs and runs
+  nothing from the repository, checks the checksums and attaches `starpi-core-X.Y.Z.tgz`,
+  `starpi-X.Y.Z.cdx.json`, `starpi-core-X.Y.Z.cdx.json` and `SHA256SUMS`. A tag pushed ahead of
+  the release must point at the commit CI tested, and both packages must have the same version.
+- **CycloneDX SBOMs.** `npm run sbom` (`scripts/sbom.mjs`, `scripts/lib/sbom.mjs`) writes
+  CycloneDX 1.5 SBOMs of the app (every package in the lockfile, development tooling marked) and
+  of `@starpi/core` (no components: the package has no dependencies) from `package-lock.json`,
+  without installing anything. npm's random serial number and timestamp, directory-based names
+  and a package listed twice under one `bom-ref` are normalized, so the files are byte-identical
+  for one commit and one npm version; each document is checked before it is written. The CI
+  `audit` job uploads them as the `sbom` artifact on every run; `tests/unit/sbom.test.mjs` covers
+  the normalization and runs the command twice.
+- **CI packs `@starpi/core` on every pull request** (`npm run pack:core` in the `frontend` job:
+  a typed build and the list of published files), so a broken declaration fails before a
+  release.
+- **Documentation.** README sections *Use the checks in your own app* and *Ecosystem and
+  downstream use*; a *Supply chain* section in `SECURITY.md` (SBOMs, audit gates, pins, release
+  assets and how to check them); a *Releases* section in `CONTRIBUTING.md`; an issue template for
+  `@starpi/core`.
 
 ### Changed
 
@@ -28,17 +59,42 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - npm `overrides` pin `katex` 0.18.11 under mermaid (GHSA-238p-pmpm-9mq7) and
   `postcss-selector-parser` 7.1.6 under Tailwind CSS 3 (GHSA-rj75-hqrm-r3gf). Both are
   development dependencies; the built `dist/` is byte-identical.
-- Dependencies: `pdfjs-dist` 6.3.289 → 6.4.299, `lucide` 1.48.0 → 1.52.0; development tooling
-  `eslint` 10.11.0 → 10.12.0, `globals` 17.12.0 → 17.13.0, `jsdom` 30.1.1 → 30.1.2,
-  `mermaid` 12.0.0 → 12.1.0, `ruff` 0.16.9 → 0.16.10. The source-check evaluation output is
+- Dependencies: `pdfjs-dist` 6.3.289 → 6.4.299, `lucide` 1.47.0 → 1.52.0, `dompurify` 3.4.15 →
+  3.4.16, `@supabase/supabase-js` 2.117.0 → 2.117.2; development tooling `eslint` 10.11.0 →
+  10.12.0, `globals` 17.12.0 → 17.13.0, `jsdom` 30.1.1 → 30.1.2, `mermaid` 12.0.0 → 12.1.0,
+  `ruff` 0.16.8 → 0.16.10. The source-check evaluation output is
   unchanged.
 - The architecture atlas and `CONTRIBUTING.md` describe the `audit` job (six CI jobs), the
   explicit `--noEmit`, and name mermaid 12.1.0 and ruff 0.16.10.
+- `pack:core` runs `npm pack --workspace=@starpi/core --dry-run`; its `prepack` script builds the
+  package once, with type declarations.
+- `tests/unit/core-package.test.mjs` also checks that `files` covers every entry point, that the
+  package is public, a workspace of the root and has the app's version (in `package.json` and in
+  the lockfile), and that its `pdfjs-dist` peer range has the major version the app ships.
+- `SECURITY.md`: supported versions for the web app and for `@starpi/core`; the package, its
+  command and the release assets are in scope; release assets are checksummed, not signed (known
+  limitation).
+- Issue and pull request templates: a security pointer in the bug report, `@starpi/core` and
+  release in the affected areas, `ruff format --check`, the dependency audit, `pack:core`, rule
+  version bumps and a release checklist.
+- The architecture atlas, `CONTRIBUTING.md`, `docs/WALKTHROUGH.md` and the README describe the
+  SBOM steps, the dry-run pack, the two release jobs and 25 unit test files.
 
 ### Fixed
 
 - README: the first answer set flags 48 of 49 changed values, not 47; the floor in
   `tests/unit/source-check-eval.test.mjs` is raised to match.
+- `docs/WALKTHROUGH.md` counted 117 diagrams in the atlas; it has 118.
+
+### Security
+
+- The release job that holds `contents: write` still installs and runs no dependency code: the
+  package is built and tested in a separate read-only job, and the assets are checked against
+  `SHA256SUMS` before they are attached.
+- `npm audit` reports GHSA-vfj7-8cjw-p6xm (braces 3.0.3, denial of service through deeply nested
+  patterns, no patched release yet) in Tailwind CSS 3's file watcher and glob matching, which are
+  development dependencies. The CSS build only expands the globs of `tailwind.config.js`, and
+  nothing of them is shipped in `dist/`; the runtime audit reports no known vulnerabilities.
 
 ## [1.2.0] - 2026-09-27
 
@@ -202,7 +258,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - First public release: knowledge base on Supabase with pgvector, knowledge graph, voice input,
   cloud and on-device (WebGPU) answers, and an installable PWA.
 
-[Unreleased]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/umutcantezgel-cpu/Starpi/releases/tag/v1.0.0

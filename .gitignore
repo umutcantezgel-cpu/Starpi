@@ -41,3 +41,8 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Generated SBOMs and package tarballs (npm run sbom, npm pack, release.yml)
+sbom/
+release-assets/
+*.tgz

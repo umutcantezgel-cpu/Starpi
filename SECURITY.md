@@ -2,7 +2,10 @@
 
 ## Supported versions
 
-Security fixes are made on the `main` branch, which is what https://www.starpi.app deploys.
+| Component | Supported | How fixes ship |
+| --- | --- | --- |
+| Web app | the `main` branch, which is what https://www.starpi.app deploys | deployed from `main` |
+| `@starpi/core` (npm package and release tarball) | the latest release | a new patch release on npm and on GitHub, with its SBOM and checksums |
 
 ## Reporting a vulnerability
 
@@ -12,7 +15,8 @@ email **phoenixprojekt1@gmail.com** with the subject line `[starpi security]`. D
 public issue, discussion or pull request for security problems.
 
 Include the affected component (frontend, service worker, database policies, Python backend,
-deployment scripts), the commit or release you tested, reproduction steps, and the impact you
+deployment scripts, the `@starpi/core` package or its `starpi-verify-receipt` command), the commit
+or release you tested, reproduction steps, and the impact you
 observed.
 
 ### Coordinated disclosure
@@ -21,7 +25,7 @@ observed.
 | --- | --- |
 | Acknowledgement of your report | within 7 days |
 | Triage: confirmed or declined, with a severity assessment | within 14 days |
-| Fix released on `main` and deployed to www.starpi.app | within 90 days of the report |
+| Fix released on `main` and deployed to www.starpi.app (for `@starpi/core`: a patch release) | within 90 days of the report |
 | Public advisory (GitHub Security Advisory, CVE requested where applicable) | when the fix is released |
 
 If a fix needs longer, we agree on a new date with you before the 90 days end. Reporters are
@@ -48,7 +52,10 @@ In scope:
 - Authentication, CORS or request-handling flaws in `backend/server.py`
 - Service worker behaviour that caches private data or serves stale code
 - The source check or the receipt verifier reporting a match for text that does not match, or a
-  receipt that the verifier accepts although its file, passage or hash was changed
+  receipt that the verifier accepts although its file, passage or hash was changed, in the app or
+  in the published `@starpi/core` package
+- Release assets (the package tarball, the SBOMs, `SHA256SUMS`) that do not match what the release
+  workflow built from the tagged commit
 
 Out of scope:
 
@@ -66,11 +73,52 @@ Out of scope:
   styles; no remote images) and sanitizes all rendered Markdown.
 - The Python backend holds the `service_role` key, binds to `127.0.0.1` by default and requires
   a bearer token when exposed on another interface.
-- CI runs gitleaks on the working tree and on the commits of every pull request, and fails on
-  any known advisory in a runtime npm dependency (`npm audit`) or in the backend requirements
-  (`pip-audit`).
+- CI runs gitleaks on the working tree and on the commits of every pull request, fails on any
+  known advisory in a runtime npm dependency (`npm audit`) or in the backend requirements
+  (`pip-audit`), and writes CycloneDX SBOMs of the app and of `@starpi/core` on every run (see
+  [Supply chain](#supply-chain)).
 - Chat turns that use the on-device workspace are never synced and never sent to a cloud provider
   or an own server as chat history.
+
+## Supply chain
+
+- **SBOMs (CycloneDX 1.5, JSON).** `npm run sbom` writes two documents from `package-lock.json`,
+  without installing anything: `starpi-<version>.cdx.json` lists every npm package of the app,
+  with development tooling marked (`scope: optional`, `cdx:npm:package:development`), and
+  `starpi-core-<version>.cdx.json` describes `@starpi/core`, which lists no other component
+  because the package has no dependencies. `scripts/lib/sbom.mjs` makes them deterministic: for one
+  commit and one npm version the files are byte-identical (serial number derived from the
+  content, timestamp from the commit). Each document is checked before it is written (format,
+  unique `bom-ref`s, every dependency edge resolvable, every runtime dependency present). The CI
+  `audit` job uploads them as the `sbom` artifact on every run, and every GitHub release carries
+  them as assets. The backend's Python requirements are covered by `pip-audit`, not by an SBOM.
+- **Dependency audit gates.** `npm audit --omit=dev --audit-level=low` fails CI on any advisory in
+  a runtime dependency; advisories in development tooling, which is not shipped in `dist/`, are
+  reported as a warning. `pip-audit` fails on any advisory in the backend requirements.
+  Dependabot proposes npm, pip and GitHub Actions updates every week.
+- **Installs and pins.** Exact versions in `package.json`, a committed lockfile,
+  `npm ci --ignore-scripts` in CI and on Vercel, GitHub Actions pinned to commit SHAs,
+  `persist-credentials: false` on every checkout, and read-only permissions by default. gitleaks,
+  downloaded with a pinned SHA-256, scans the tree and the commits of every pull request.
+- **Release assets.** The release workflow builds the `@starpi/core` tarball and the SBOMs in a job
+  with read-only permissions, from the commit CI tested; it installs the tarball offline into an
+  empty project, imports it and runs `starpi-verify-receipt` before anything is published. The job
+  that creates the release is the only one with write access; it installs and runs nothing from
+  the repository, checks `SHA256SUMS` and attaches the tarball, both SBOMs and `SHA256SUMS`. The
+  npm package is published from that tarball, so its npm integrity is the SHA-512 of the release
+  asset. To check a download:
+
+  ```bash
+  sha256sum -c --ignore-missing SHA256SUMS
+  npm view @starpi/core@1.3.0 dist.integrity   # sha512-…, compare with:
+  echo "sha512-$(openssl dgst -sha512 -binary starpi-core-1.3.0.tgz | base64 -w0)"
+  ```
+- **Browser.** A Content-Security-Policy without `unsafe-inline` or `unsafe-eval` (only
+  `wasm-unsafe-eval`, for WebGPU inference), checked by `scripts/verify-dist.mjs` after every
+  build, and DOMPurify on all rendered Markdown.
+- **Answers.** Receipts record SHA-256 fingerprints and passage offsets that anyone with the same
+  files can reproduce, with the same deterministic code; see
+  [Answer receipts and the source check](#answer-receipts-and-the-source-check).
 
 ## Answer receipts and the source check
 
@@ -95,6 +143,9 @@ Out of scope:
 
 ## Known limitations
 
+- **Release assets are checksummed, not signed.** `SHA256SUMS` shows that a file is the one the
+  release lists, not who built it; the npm package has no provenance attestation yet. Both depend
+  on the integrity of the GitHub repository and the maintainer's npm account.
 - **Model downloads.** WebLLM downloads model weights from Hugging Face and the model library
   (WebAssembly) from GitHub at runtime. Starpi does not verify a hash of these files; it relies on
   HTTPS and on the pinned model ids. The Content-Security-Policy allows `wasm-unsafe-eval` for the
@@ -298,9 +349,9 @@ flowchart LR
         cVisible["core/supabase_client.py VISIBLE_ROWS<br/>is_public true or owner_id null:<br/>list_documents filtered, match_knowledge_sections<br/>matches kept only for such documents,<br/>a failed lookup falls back to the in-memory search"]
         cCfg["core/config.py BrainConfig: read from the process environment,<br/>which wins over backend/.env (else the root .env)<br/>loaded at import, last assignment in the file wins,<br/>service role key only from SUPABASE_SERVICE_ROLE_KEY,<br/>never the anon key, secret fields excluded from repr"]
         cLeaks["CI job secrets: gitleaks 8.30.1, sha256 verified,<br/>scans the working tree and the commits of a pull request"]
-        cAudit["CI job audit: npm audit --omit=dev fails on any advisory<br/>in a runtime dependency, pip-audit on<br/>backend/requirements-dev.txt fails on any advisory,<br/>development tooling: warning at high severity only"]
+        cAudit["CI job audit: npm audit --omit=dev fails on any advisory<br/>in a runtime dependency, pip-audit on<br/>backend/requirements-dev.txt fails on any advisory,<br/>development tooling: warning at high severity only,<br/>npm run sbom: CycloneDX SBOMs, artifact sbom"]
         cSupply["CI and Vercel: permissions contents read,<br/>actions pinned to commit SHAs, persist-credentials false,<br/>npm ci --ignore-scripts"]
-        cRelease["release.yml: contents write for the release job only,<br/>which installs nothing and runs gh release create,<br/>after CI succeeded on a push to main or by hand on main,<br/>version always from package.json, no dispatch inputs,<br/>SHA-pinned checkout, persist-credentials false"]
+        cRelease["release.yml: the prepare job packs @starpi/core and writes<br/>the SBOMs with contents read, smoke-tests the tarball,<br/>contents write for the release job only, which installs<br/>nothing, checks SHA256SUMS and runs gh release create,<br/>after CI succeeded on a push to main or by hand on main,<br/>version always from package.json, no dispatch inputs,<br/>SHA-pinned checkout, persist-credentials false"]
     end
 
     subgraph sg_thr["Threat stopped"]
@@ -312,6 +363,7 @@ flowchart LR
         tKeys["Service role or provider keys<br/>in logs or in git history"]
         tSupply["Install scripts, moved action tags,<br/>a persisted token or write access<br/>in jobs that run dependency code"]
         tVuln["Dependencies with a published advisory<br/>shipped in dist/ or installed for the backend"]
+        tAsset["A release asset changed after the build,<br/>or dependencies nobody can list"]
     end
 
     iReq --> cBind
@@ -341,4 +393,6 @@ flowchart LR
     cSupply --> tSupply
     iRepo --> cRelease
     cRelease --> tSupply
+    cRelease --> tAsset
+    cAudit --> tAsset
 ```

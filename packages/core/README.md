@@ -1,5 +1,9 @@
 # @starpi/core
 
+[![npm](https://img.shields.io/npm/v/@starpi/core)](https://www.npmjs.com/package/@starpi/core)
+[![CI](https://github.com/umutcantezgel-cpu/Starpi/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/umutcantezgel-cpu/Starpi/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/umutcantezgel-cpu/Starpi/blob/main/packages/core/LICENSE)
+
 The deterministic parts of [Starpi](https://github.com/umutcantezgel-cpu/Starpi), usable in any
 retrieval-augmented generation (RAG) application:
 
@@ -17,7 +21,19 @@ No dependencies; ESM; runs in browsers, Web Workers and Node.js 22.13+ (the vers
 requires). PDF extraction needs the optional peer dependency `pdfjs-dist` 6.
 
 This is the same code the Starpi app runs: the package is built from the app's modules
-(`scripts/build-core.mjs`), so its behaviour is covered by the app's tests.
+([`scripts/build-core.mjs`](https://github.com/umutcantezgel-cpu/Starpi/blob/main/scripts/build-core.mjs)),
+so its behaviour is covered by the app's tests.
+
+## At a glance
+
+| Task | Function | Section |
+| --- | --- | --- |
+| Check an answer against the excerpts it cites | `groundAnswer(blocksFromMarkdown(answer, sources), sources)` | [Check an answer](#check-an-answer-against-its-sources) |
+| Record which excerpts an answer was given | `buildReceipt({ … })` | [Receipts](#create-and-verify-receipts) |
+| Reproduce every excerpt from the original files | `verifyReceipt(receipt, files, { extractor: EXTRACTOR, extract })`, `npx starpi-verify-receipt` | [Receipts](#create-and-verify-receipts) |
+| Split text into chunks with exact offsets | `chunkText(text)` | [Chunk and search](#chunk-and-search) |
+| Rank chunks for a question | `new BM25Index()`, `.add(chunks)`, `.search(query)` | [Chunk and search](#chunk-and-search) |
+| Read Markdown, text, CSV, JSON and PDF files | `extractText(file)` | [Receipts](#create-and-verify-receipts) |
 
 ## What the checks do and do not tell you
 
@@ -34,6 +50,20 @@ same files, not who produced the answer or which excerpts a model read. The form
 npm install @starpi/core
 npm install pdfjs-dist@6   # only if you extract text from PDFs
 ```
+
+Every [GitHub release](https://github.com/umutcantezgel-cpu/Starpi/releases) also carries the
+package tarball, built and tested by CI, with its SHA-256 in `SHA256SUMS`. The npm package is that
+same file. To install from the release instead of the registry:
+
+```bash
+curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/v1.3.0/starpi-core-1.3.0.tgz
+curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/v1.3.0/SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS
+npm install ./starpi-core-1.3.0.tgz
+```
+
+`npm install https://github.com/umutcantezgel-cpu/Starpi/releases/download/v1.3.0/starpi-core-1.3.0.tgz`
+works too, without the checksum step.
 
 ## Check an answer against its sources
 
@@ -130,12 +160,37 @@ recorded offsets and the chunk bounds, and recomputes the source check.
 ### Command line
 
 ```bash
-npx -p @starpi/core starpi-verify-receipt receipt.json plan.md --json
+npx starpi-verify-receipt receipt.json plan.md --json            # with @starpi/core installed
+npx -p @starpi/core starpi-verify-receipt receipt.json plan.md   # without installing it
 npx -p @starpi/core -p pdfjs-dist@6 starpi-verify-receipt receipt.json plan.md notes.pdf   # with PDFs
 ```
 
 Exit code 0 when every workspace excerpt was reproduced, 1 when something did not match or a file
 is missing, 2 for a usage error or an invalid receipt.
+
+## Chunk and search
+
+```js
+import { readFile } from 'node:fs/promises';
+import { BM25Index, chunkText, citationLabel } from '@starpi/core';
+
+const index = new BM25Index(); // Okapi BM25, k1 = 1.2, b = 0.75
+for (const name of ['plan.md', 'risks.md']) {
+  const text = await readFile(name, 'utf8');
+  const chunks = chunkText(text); // 500 characters, 50 overlap, breaks at paragraphs, sentences or words
+  index.add(chunks.map((c) => ({ docId: name, docName: name, chunkIndex: c.index, start: c.start, end: c.end, text: c.text })));
+}
+
+for (const { chunk, score, matchedTerms } of index.search('supplier delays', 3)) {
+  console.log(citationLabel(chunk.docName, chunk.chunkIndex + 1), score.toFixed(2), matchedTerms);
+}
+// for example: [Doc: risks.md, Chunk: 1] 3.17 [ 'supplier', 'delays' ]
+```
+
+`chunk.start` and `chunk.end` are offsets into the text, so `text.slice(start, end)` is the chunk;
+receipts record the same offsets. `index.remove(docId)` drops a document again. `tokenize`
+lowercases (after Unicode NFKC), strips punctuation and drops English and German stop words and
+single characters, the same way for documents and queries.
 
 ## Other exports
 
@@ -149,6 +204,44 @@ is missing, 2 for a usage error or an invalid receipt.
 - `GROUNDING`, `EXTRACTOR`, `CHUNKER`: the rule versions recorded in receipts.
 
 Type declarations are included.
+
+## Supply chain
+
+- **No dependencies.** The package installs nothing else; `pdfjs-dist` is an optional peer that
+  you add only for PDFs. Its CycloneDX SBOM (`starpi-core-<version>.cdx.json` on each release) lists
+  no component besides the package.
+- **Built by CI, from the tagged commit.** The release workflow packs the tarball in a job without
+  write access, installs it offline into an empty project, imports it and runs the command line,
+  then attaches it with `SHA256SUMS` and the SBOMs. The npm package is that tarball, so
+  `npm view @starpi/core@<version> dist.integrity` matches the SHA-512 of the release asset.
+- Checksums are not signatures, and the package has no npm provenance attestation yet. See the
+  [security policy](https://github.com/umutcantezgel-cpu/Starpi/blob/main/SECURITY.md#supply-chain)
+  for how to report a vulnerability and what CI checks.
+
+## Versioning
+
+`@starpi/core` is released together with the Starpi app and has the same version number. A change
+to a check that can change a verdict bumps the rule version recorded in receipts (`GROUNDING`,
+`EXTRACTOR`, `CHUNKER`), so a receipt says which rules produced it. The receipt format has its own
+version (`starpi.receipt/v1`). The `pdfjs-dist` peer range follows the major version the app ships.
+Changes are listed in the
+[changelog](https://github.com/umutcantezgel-cpu/Starpi/blob/main/CHANGELOG.md).
+
+## Ecosystem and downstream use
+
+Starpi itself is the first user of this package's code: the app runs the same modules in the
+browser and in its ingestion worker. The first downstream project is **Fluid Systems**, a local AI
+assistant for production management and shift supervisors in plastics processing (injection
+moulding and extrusion), by the same maintainer. It is built on Starpi 1.2.0 and takes over the
+source check, answer receipts, text extraction, chunking and BM25: answers about the user's own
+documents are checked by the source check and can be exported as `starpi.receipt/v1` receipts.
+The sentence gate in development for its next version, which lets a sentence about machine or
+shift figures through only when every number comes from its deterministic engine or from a cited
+excerpt, builds on Starpi's citation-label and sentence rules. Fluid Systems is at demo stage (v0.1.0, simulated operating
+data) and not public yet.
+
+If you use `@starpi/core`, an [issue](https://github.com/umutcantezgel-cpu/Starpi/issues/new/choose)
+with a link is welcome.
 
 ## License
 

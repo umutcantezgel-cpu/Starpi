@@ -3,6 +3,7 @@
 <p align="center">
   <a href="https://github.com/umutcantezgel-cpu/Starpi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/umutcantezgel-cpu/Starpi/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/umutcantezgel-cpu/Starpi/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/umutcantezgel-cpu/Starpi?sort=semver"></a>
+  <a href="https://www.npmjs.com/package/@starpi/core"><img alt="npm: @starpi/core" src="https://img.shields.io/npm/v/@starpi/core?label=%40starpi%2Fcore"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <a href="https://www.starpi.app"><img alt="Live demo: www.starpi.app" src="https://img.shields.io/badge/demo-www.starpi.app-facc15"></a>
 </p>
@@ -19,7 +20,8 @@ API key and no server of your own are needed. English and German.
 </p>
 
 **Live:** [www.starpi.app](https://www.starpi.app) · **Tour of the code:** [walkthrough](docs/WALKTHROUGH.md) ·
-**How it works in detail:** [architecture atlas](docs/ARCHITECTURE.md) · [Changelog](CHANGELOG.md)
+**How it works in detail:** [architecture atlas](docs/ARCHITECTURE.md) · **The checks as a library:**
+[`@starpi/core`](packages/core/README.md) · [Changelog](CHANGELOG.md)
 
 ## Try it in 20 seconds
 
@@ -173,6 +175,49 @@ flowchart TD
     sNoMark --> sRet
     sReset(["resetMessages: new chat, deleted or restored history"]) -.-> sClear["clearGroundingHighlights"]
 ```
+
+## Use the checks in your own app
+
+The source check, answer receipts, text extraction, chunking and BM25 are published as
+[`@starpi/core`](packages/core/README.md): ESM with type declarations, no dependencies, for
+browsers, Web Workers and Node.js 22.13+. It is built from the same modules the app runs.
+
+```bash
+npm install @starpi/core
+# or straight from the tarball attached to each GitHub release (the package README shows
+# how to check it against SHA256SUMS first):
+npm install https://github.com/umutcantezgel-cpu/Starpi/releases/download/v1.3.0/starpi-core-1.3.0.tgz
+```
+
+```js
+import { blocksFromMarkdown, groundAnswer } from '@starpi/core';
+
+const sources = [{ label: '[Doc: plan.md, Chunk: 1]', doc: 'plan.md', heading: '', delivered: 'full',
+  text: 'The approved budget is 480,000 EUR. The steering group meets every Tuesday at 10:00.' }];
+const answer = 'The budget is 520,000 EUR [Doc: plan.md, Chunk: 1].';
+
+const report = groundAnswer(blocksFromMarkdown(answer, sources), sources);
+console.log(report.counts); // { supported: 0, weak: 0, unsupported: 1, unchecked: 0 }
+console.log(report.sentences[0].reasons[0]); // { code: 'missing_fact', level: 'unsupported', fact: '520,000', cites: [0] }
+```
+
+`buildReceipt` and `verifyReceipt` create and check receipts, `chunkText` and `BM25Index` split and
+rank text, and `npx starpi-verify-receipt receipt.json file…` verifies a receipt on the command
+line. Examples for each are in the [package README](packages/core/README.md).
+
+## Ecosystem and downstream use
+
+Starpi is the first user of `@starpi/core`: the app runs the same modules in the browser and in its
+ingestion worker. The first downstream project is **Fluid Systems**, a local AI assistant for
+production management and shift supervisors in plastics processing (injection moulding and
+extrusion), by the same maintainer. It is built on Starpi 1.2.0 and takes over the source check,
+answer receipts, text extraction, chunking and BM25: answers about the user's own documents are
+checked by the source check and can be exported as `starpi.receipt/v1` receipts. The sentence
+gate in development for its next version, which lets a sentence about machine or shift figures
+through only when every number comes from its deterministic engine or from a cited excerpt,
+builds on Starpi's citation-label and sentence rules. Fluid Systems is at demo stage (v0.1.0,
+simulated operating data) and not public yet. Starpi is meant as a reusable core for applications where a wrong number in an answer
+matters, not only as a demo app.
 
 ## How it works
 
@@ -432,6 +477,8 @@ Content-Security-Policy.
 | `npm run test:e2e` | Playwright tests against `dist/` with a mocked Supabase backend, including an axe accessibility scan |
 | `npm run verify` | Lint, typecheck, unit tests, build and output verification |
 | `npm run verify:receipt -- receipt.json file…` | Verify an answer receipt against the original files |
+| `npm run pack:core` | Build `@starpi/core` with its type declarations and list the files `npm pack` would publish |
+| `npm run sbom` | CycloneDX SBOMs of the app and of `@starpi/core` into `sbom/`, from `package-lock.json` |
 | `npm run docs:sync` | Copy diagrams from the atlas into the README and guides |
 
 ### Reproduce the published numbers
@@ -498,7 +545,10 @@ binds to `127.0.0.1` by default and requires `BRAIN_API_TOKEN` on any other inte
 - **Untrusted files:** parsed in a worker; pdf.js runs without `eval` or font loading.
 - **Credentials:** provider keys stay in the browser tab unless you choose to keep them.
 - **Supply chain:** exact dependency pins, `npm ci --ignore-scripts`, SHA-pinned GitHub Actions,
-  a dependency audit (`npm audit`, `pip-audit`) and gitleaks in CI.
+  a dependency audit (`npm audit`, `pip-audit`) and gitleaks in CI. CycloneDX SBOMs of the app
+  and of `@starpi/core` (`npm run sbom`, deterministic for a given commit and npm version) come
+  with every CI run and every release; the release assets are built without write access and
+  listed in `SHA256SUMS`.
 
 Details and known limitations are in [SECURITY.md](SECURITY.md).
 
@@ -508,15 +558,21 @@ Details and known limitations are in [SECURITY.md](SECURITY.md).
 
 | Job | Checks |
 | --- | --- |
-| `frontend` | ESLint, TypeScript, unit tests (including golden tests for extraction, chunking and the source check, and receipt round trips), production build, `verify-dist` |
+| `frontend` | ESLint, TypeScript, unit tests (including golden tests for extraction, chunking and the source check, and receipt round trips), a typed build and dry-run pack of `@starpi/core`, production build, `verify-dist` |
 | `e2e` | Playwright on desktop and mobile viewports under the production CSP: zero CSP violations, sample files, source check, receipts verified against the original files, axe (no serious or critical violations), privacy of on-device turns, inert XSS payloads, offline reconnect |
 | `backend` | ruff, byte-compilation and offline unit tests on Python 3.11 and 3.12 |
 | `database` | Migration and RLS suite on PostgreSQL 16 with pgvector: live, fresh and legacy schemas, idempotency, schema parity, cross-user isolation, search |
-| `audit` | `npm audit` with no advisory of any severity allowed in runtime dependencies (development tooling is reported, not blocking), `pip-audit` on the backend requirements |
+| `audit` | `npm audit` with no advisory of any severity allowed in runtime dependencies (development tooling is reported, not blocking), `pip-audit` on the backend requirements, CycloneDX SBOMs of the app and of `@starpi/core` from the lockfile, kept as the `sbom` artifact |
 | `secrets` | gitleaks on the working tree and on the commits of a pull request |
 
 The unit and end-to-end suites also check the documentation: every Mermaid block renders, diagram
 copies match the atlas, and links and anchors resolve.
+
+Once CI has passed on a push to `main`, `.github/workflows/release.yml` creates the GitHub release
+for the version in `package.json` when its notes exist in `docs/releases/`. A job without write
+access packs `@starpi/core`, smoke-tests the tarball and writes the SBOMs; the release job, the
+only one with write access, installs nothing, checks `SHA256SUMS` and attaches the tarball, both
+SBOMs and the checksums to the release.
 
 ## Roadmap
 

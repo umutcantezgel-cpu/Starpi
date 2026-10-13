@@ -16,7 +16,7 @@ Why should this capability be added to Starpi? What limitations does it resolve?
 Detail how the feature will be integrated (the relevant section of
 [docs/ARCHITECTURE.md](https://github.com/umutcantezgel-cpu/Starpi/blob/main/docs/ARCHITECTURE.md) is a good starting point):
 * Affected area: workspace and citations, retrieval, WebGPU engine and model selection, database and
-  RLS, UI and i18n, service worker, backend
+  RLS, UI and i18n, service worker, backend, the `@starpi/core` package, build and release
 * Privacy impact: does any new data leave the device, and in which mode?
 * Memory footprint and VRAM budget impacts (for model changes)
 
