@@ -18,7 +18,7 @@
 // Pure: WebCrypto (crypto.subtle) only, so it runs in the browser, in workers and in Node 20+.
 import { chunkText, CHUNKER } from '../rag/chunker.js';
 import { guessLanguage, indexSource } from './facts.js';
-import { checkSentence, GROUNDING, GROUNDING_VERSIONS, REASON_CODES, THRESHOLDS } from './grounding.js';
+import { checkSentence, GROUNDING, GROUNDING_VERSIONS, REASON_CODES, REASON_CODES_V1, THRESHOLDS } from './grounding.js';
 import { canonicalJson, sha256Hex } from './hash.js';
 import { MERKLE_ALG, merkleLeafHash, merkleTree, verifyMerkleProof } from './merkle.js';
 import { signHead, SIGNATURE_ALGS, verifyHead } from './signature.js';
@@ -154,7 +154,7 @@ export async function verifyCitationProof(citation, index, merkle) {
 }
 
 /** Reasons whose `found` quotes the excerpt: a passage, or the value the excerpt states. */
-const FOUND_FROM_EXCERPT = new Set(['fact_context', 'approximate', 'fact_elsewhere']);
+const FOUND_FROM_EXCERPT = new Set(['fact_context', 'approximate', 'fact_elsewhere', 'negation_inversion', 'name_context']);
 
 /**
  * A copy of a reason; without excerpts, also without the excerpt text it may quote.
@@ -426,7 +426,7 @@ export function validateReceipt(value) {
           const q = `${p}.reasons[${j}]`;
           if (!isObj(reason)) return fail(q, 'object');
           only(reason, q, ['code', 'level', 'fact', 'found', 'cites', 'other']);
-          oneOf(reason.code, `${q}.code`, REASON_CODES);
+          oneOf(reason.code, `${q}.code`, v2 ? REASON_CODES : REASON_CODES_V1);
           oneOf(reason.level, `${q}.level`, ['weak', 'unsupported']);
           for (const key of ['fact', 'found']) if (reason[key] !== undefined) str(reason[key], `${q}.${key}`, 500);
           for (const key of ['cites', 'other']) if (reason[key] !== undefined) cites(reason[key], `${q}.${key}`);
@@ -624,8 +624,8 @@ export async function verifyReceipt(receipt, files, tools, options = {}) {
       text: sourceTexts[i] ?? '',
       delivered: /** @type {'full' | 'partial' | 'omitted'} */ (sourceTexts[i] === null ? 'omitted' : c.delivered),
     }));
-    const indexes = sources.map((s) => (s.delivered === 'omitted' ? null : indexSource(`${s.text}\n${s.doc}\n${s.heading}`)));
-    const given = receipt.question ? indexSource(receipt.question.text) : null;
+    const indexes = sources.map((s) => (s.delivered === 'omitted' ? null : indexSource(`${s.text}\n${s.doc}\n${s.heading}`, { version })));
+    const given = receipt.question ? indexSource(receipt.question.text, { version }) : null;
     /** @type {import('./grounding.js').CheckContext} */
     const ctx = { sources, indexes, given, citedOnly: false, lang: guessLanguage(receipt.answer.text), version };
     const differences = [];

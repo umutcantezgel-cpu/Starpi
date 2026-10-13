@@ -233,7 +233,9 @@
             "quote_missing",
             "approximate",
             "from_conversation",
-            "not_delivered"
+            "not_delivered",
+            "negation_inversion",
+            "name_context"
           ]
         },
         "level": { "enum": ["weak", "unsupported"] },

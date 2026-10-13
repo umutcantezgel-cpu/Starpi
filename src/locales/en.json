@@ -250,7 +250,7 @@
     "only_unchecked": "Not compared: the answer and its excerpts are in different languages",
     "unchecked": "{n} statement(s) were not compared because the answer and the excerpt are in different languages.",
     "too_long": "This answer is too long for the source check",
-    "disclaimer": "The check compares the numbers, dates, times, codes, quotations and wording of each statement, and the names in English statements, with the excerpts it cites. A match does not prove a statement correct; a flag means: open the source and check.",
+    "disclaimer": "The check compares the numbers, dates, times, codes, quotations and wording of each statement with the excerpts it cites and, in their language, whether it keeps their negations and puts names and values where they do. A match does not prove a statement correct; a flag means: open the source and check.",
     "reason_missing_fact": "{fact} is not in {label}.",
     "reason_fact_elsewhere": "{fact} is in {other}, not in the cited {label}.",
     "reason_fact_context": "{fact} is in {label}, but next to something else: “{found}”.",
@@ -264,6 +264,8 @@
     "reason_approximate": "{fact} is rounded or approximate; {label} says {found}.",
     "reason_from_conversation": "{fact} comes from the question or the conversation, not from an excerpt.",
     "reason_not_delivered": "{label} did not fit into the model's context.",
+    "reason_negation_inversion": "{label} says the opposite: “{found}”.",
+    "reason_name_context": "{label} names someone or something else here, not {fact}: “{found}”.",
     "statement": "“{text}”"
   },
   "receipt": {

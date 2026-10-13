@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { blocksFromMarkdown, groundAnswer, REASON_CODES } from '../../src/js/core/grounding.js';
+import { blocksFromMarkdown, groundAnswer, REASON_CODES, REASON_CODES_V1 } from '../../src/js/core/grounding.js';
 import { buildReceipt, canonicalJson, RECEIPT_SCHEMA, RECEIPT_SCHEMA_V1, sha256Hex, signReceipt, validateReceipt, verifyReceipt } from '../../src/js/core/receipt.js';
 import { CHUNKER, chunkText } from '../../src/js/rag/chunker.js';
 import { EXTRACTOR, extractText } from '../../src/js/rag/parser.js';
@@ -357,8 +357,9 @@ for (const [file, format] of /** @type {const} */ ([
       const source = readFileSync(path.join(ROOT, 'src/js/core/grounding.js'), 'utf8');
       const typedef = /@typedef \{([^}]+)\} ReasonCode/.exec(source)?.[1] ?? '';
       const codes = [...typedef.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
-      assert.deepEqual([...schema.$defs.reason.properties.code.enum].sort(), codes);
       assert.deepEqual([...REASON_CODES].sort(), codes);
+      // Format v1 keeps the codes of version 1 of the rules; v2 has every code.
+      assert.deepEqual([...schema.$defs.reason.properties.code.enum].sort(), format === RECEIPT_SCHEMA ? codes : [...REASON_CODES_V1].sort());
       assert.deepEqual(schema.$defs.sentence.properties.verdict.enum, ['supported', 'weak', 'unsupported', 'unchecked']);
       assert.equal(schema.properties.schema.const, format);
     });

@@ -10,6 +10,8 @@
 // citation markers. Pure: no DOM, runs in the browser, in workers and in Node.
 import { contentTokens, extractFacts, fold, guessLanguage, indexSource, lookupFact, tokenMatches } from './facts.js';
 import { STOPWORDS_EN } from '../rag/bm25.js';
+import { misplacedName, misplacedValues, nameLexicon, unitsOf, valuePassages } from './binding.js';
+import { negationInversion, sourceClauses } from './polarity.js';
 import { CITATION_PATTERN, LOOSE_LABEL_PATTERN, parseLabel } from './labels.js';
 import { safeSlice, sentenceSpans } from './sentences.js';
 
@@ -63,11 +65,11 @@ export const THRESHOLDS = Object.freeze({
 /**
  * @typedef {'missing_fact' | 'fact_elsewhere' | 'fact_context' | 'name_missing' | 'uncited_found' | 'uncited_missing' | 'low_overlap'
  *   | 'unknown_citation' | 'label_mismatch' | 'quote_missing' | 'approximate' | 'from_conversation'
- *   | 'not_delivered'} ReasonCode
+ *   | 'not_delivered' | 'negation_inversion' | 'name_context'} ReasonCode
  */
 
-/** Every reason code, in the order of the ReasonCode type. */
-export const REASON_CODES = Object.freeze(
+/** The reason codes of version 1 of the rules (receipts of format v1 use only these). */
+export const REASON_CODES_V1 = Object.freeze(
   /** @type {ReasonCode[]} */ ([
     'missing_fact',
     'fact_elsewhere',
@@ -84,6 +86,9 @@ export const REASON_CODES = Object.freeze(
     'not_delivered',
   ]),
 );
+
+/** Every reason code, in the order of the ReasonCode type: version 1's and the two of version 2. */
+export const REASON_CODES = Object.freeze(/** @type {ReasonCode[]} */ ([...REASON_CODES_V1, 'negation_inversion', 'name_context']));
 
 /**
  * @typedef {object} Reason
@@ -167,9 +172,10 @@ function owner(spans, pos) {
 /**
  * Whether a block states nothing (only markers, punctuation and words like "Sources:").
  * @param {string} text
+ * @param {number} [version]
  */
-function isContentless(text) {
-  return contentTokens(text).length === 0 && extractFacts(text).length === 0;
+function isContentless(text, version = GROUNDING.version) {
+  return contentTokens(text).length === 0 && extractFacts(text, { version }).length === 0;
 }
 
 /**
@@ -187,8 +193,9 @@ function readable(text) {
  * markers of the block that introduces its list ("According to [A]:"), then answer-wide markers
  * ("Sources: [A], [B]").
  * @param {Block[]} blocks
+ * @param {number} [version]  version of the rules (default GROUNDING.version)
  */
-export function associate(blocks) {
+export function associate(blocks, version = GROUNDING.version) {
   /** @type {Draft[]} */
   const drafts = [];
   /** @type {Set<number>} */
@@ -200,7 +207,7 @@ export function associate(blocks) {
 
   blocks.forEach((block, b) => {
     const { text, cites, bad } = flatten(block);
-    if (isContentless(text)) {
+    if (isContentless(text, version)) {
       cites.forEach((c) => answerCites.add(c.index));
       bad.forEach((c) => answerBad.push({ label: c.label, resolved: c.resolved }));
       if (cites.length) blockCites.set(b, cites.map((c) => c.index));
@@ -248,6 +255,10 @@ export function associate(blocks) {
  * @property {'en' | 'de' | null} [lang]  language of the whole answer, for statements too short to tell
  * @property {Array<Passage[] | undefined>} [passages]  per excerpt, filled on first use
  * @property {number} [version]  version of the rules (GROUNDING_VERSIONS); default GROUNDING.version
+ * @property {Array<import('./polarity.js').SourceClause[] | undefined>} [clauses]  version 2: per excerpt, its clauses
+ * @property {Array<import('./binding.js').Unit[] | undefined>} [units]  version 2: per excerpt, its units
+ * @property {Array<import('./binding.js').ValuePassage[] | undefined>} [valuePassages]  version 2: per excerpt, its passages without heading
+ * @property {Set<string>} [names]  version 2: name-like words of all delivered excerpts
  */
 
 /**
@@ -264,10 +275,11 @@ const VALUE_SEPARATOR = /,\s|;\s|\s(?:and|und|sowie|or|oder|while|whereas|währe
  * separator between two values: "310,000 EUR for development, 95,000 EUR for infrastructure and
  * 75,000 EUR for training" gives three parts. Values with no separator between them stay together.
  * @param {string} text
+ * @param {number} [version]  version of the rules (default GROUNDING.version)
  * @returns {string[]}
  */
-export function valueParts(text) {
-  const facts = extractFacts(text).filter((f) => f.kind !== 'quote');
+export function valueParts(text, version = GROUNDING.version) {
+  const facts = extractFacts(text, { version }).filter((f) => f.kind !== 'quote');
   if (facts.length < 2) return [text];
   const cuts = [0];
   for (let k = 1; k < facts.length; k += 1) {
@@ -287,9 +299,10 @@ export function valueParts(text) {
  * The passages of an excerpt: its sentences and lines (in a PDF, a line that breaks off
  * mid-sentence is joined to the next), each split into one part per value.
  * @param {GroundingSource} source
+ * @param {number} version
  * @returns {Passage[]}
  */
-function passagesOf(source) {
+function passagesOf(source, version) {
   const wraps = /\.pdf$/i.test(source.doc);
   /** @type {string[]} */
   const sentences = [];
@@ -303,18 +316,19 @@ function passagesOf(source) {
   // word that is also in the file name ("plan" in nebula-plan.md) says nothing about the passage.
   const extra = `\n${source.heading}`;
   return sentences.flatMap((sentence) => {
-    const parts = valueParts(sentence);
-    return parts.map((text) => ({ text, index: indexSource(text), context: indexSource(`${text}${extra}`), words: wordsWithoutFacts(text).length, part: parts.length > 1 }));
+    const parts = valueParts(sentence, version);
+    return parts.map((text) => ({ text, index: indexSource(text, { version }), context: indexSource(`${text}${extra}`, { version }), words: wordsWithoutFacts(text, version).length, part: parts.length > 1 }));
   });
 }
 
 /**
  * Content words of a statement part, without its facts and without currency and unit words.
  * @param {string} text
+ * @param {number} version
  */
-function wordsWithoutFacts(text) {
+function wordsWithoutFacts(text, version) {
   let plain = text;
-  for (const f of extractFacts(text)) plain = plain.slice(0, f.start) + ' '.repeat(f.end - f.start) + plain.slice(f.end);
+  for (const f of extractFacts(text, { version })) plain = plain.slice(0, f.start) + ' '.repeat(f.end - f.start) + plain.slice(f.end);
   return contentTokens(plain).filter((w) => !UNIT_WORDS.has(w));
 }
 
@@ -332,7 +346,7 @@ function wordsWithoutFacts(text) {
  */
 function misplaced(fact, words, cited, ctx) {
   const cache = (ctx.passages ??= []);
-  const passages = cited.flatMap((i) => (cache[i] ??= passagesOf(ctx.sources[i])).map((p) => ({ ...p, source: i })));
+  const passages = cited.flatMap((i) => (cache[i] ??= passagesOf(ctx.sources[i], ctx.version ?? GROUNDING.version)).map((p) => ({ ...p, source: i })));
   // A word found in most passages (a column name repeated on every row) says nothing about where a
   // value belongs.
   const telling = words.filter((w) => passages.filter((p) => tokenMatches(w, p.index)).length * 2 <= passages.length);
@@ -389,7 +403,8 @@ export function checkSentence(draft, ctx) {
   const base = { block: draft.block, start: draft.start, end: draft.end, text: draft.text, cites: draft.cites.slice(), citeSource: draft.citeSource };
   /** @type {SentenceResult} */
   const neutral = { ...base, verdict: 'neutral', reasons: [], overlap: null, crossLanguage: false };
-  const facts = extractFacts(draft.text);
+  const version = ctx.version ?? GROUNDING.version;
+  const facts = extractFacts(draft.text, { version });
   const tokens = contentTokens(draft.text);
   const ownMarker = draft.own.length > 0 || draft.bad.length > 0;
   const badLabels = [...draft.bad, ...(draft.inheritedBad ?? [])];
@@ -491,12 +506,21 @@ export function checkSentence(draft, ctx) {
     }
   }
 
-  if (found.length && !crossLanguage && delivered.length) {
+  const sameLanguage = !crossLanguage && delivered.every((i) => {
+    const lang = ctx.indexes[i]?.lang ?? null;
+    const own = guessLanguage(draft.text) ?? ctx.lang ?? null;
+    return !lang || !own || lang === own;
+  });
+  if (version >= 2 && delivered.length && sameLanguage) {
+    for (const r of checkV2(draft.text, delivered, ctx)) reasons.push(r);
+  }
+
+  if (version < 2 && found.length && !crossLanguage && delivered.length) {
     // Each value is compared with the words next to it: the part of the statement it stands in
     // when the statement lists several values, else the whole statement.
     let offset = 0;
-    const parts = valueParts(draft.text).map((text) => {
-      const part = { start: offset, end: offset + text.length, words: wordsWithoutFacts(text) };
+    const parts = valueParts(draft.text, version).map((text) => {
+      const part = { start: offset, end: offset + text.length, words: wordsWithoutFacts(text, version) };
       offset += text.length;
       return part;
     });
@@ -518,6 +542,55 @@ export function checkSentence(draft, ctx) {
   else verdict = 'unchecked';
   if (verdict === 'weak' && !reasons.length) reasons.push({ code: 'uncited_found', level: 'weak' });
   return { ...base, cites, verdict, reasons, overlap, crossLanguage };
+}
+
+/**
+ * The checks of version 2 for one statement, in the language of its excerpts: a negation the
+ * excerpt does not have (or lacks), a name the excerpt has with another name in its place, and a
+ * value the excerpt has next to other words (fact_context, replacing version 1's rule).
+ * @param {string} text  the statement
+ * @param {number[]} delivered  delivered excerpts it cites
+ * @param {CheckContext} ctx
+ * @returns {Reason[]}
+ */
+function checkV2(text, delivered, ctx) {
+  /** @type {Reason[]} */
+  const reasons = [];
+  const lang = guessLanguage(text) ?? ctx.lang ?? null;
+  const clauses = (ctx.clauses ??= []);
+  const inversion = negationInversion(
+    text,
+    delivered.map((i) => ({ index: i, clauses: (clauses[i] ??= sourceClauses(ctx.sources[i].text)) })),
+  );
+  if (inversion) reasons.push({ code: 'negation_inversion', level: inversion.strong ? 'unsupported' : 'weak', cites: [inversion.index], found: quote(inversion.sentence) });
+
+  const units = (ctx.units ??= []);
+  const unitsAt = (/** @type {number} */ i) => (units[i] ??= unitsOf(ctx.sources[i].text, ctx.indexes[i]?.lang ?? lang));
+  ctx.names ??= nameLexicon(ctx.sources.flatMap((_, i) => (ctx.indexes[i] ? unitsAt(i) : [])));
+  const name = misplacedName(
+    text,
+    lang,
+    delivered.map((i) => ({ index: i, units: unitsAt(i) })),
+    ctx.names,
+    (n) => Boolean(ctx.given && tokenMatches(n, ctx.given)),
+  );
+  if (name) reasons.push({ code: 'name_context', level: 'weak', fact: name.name, cites: [name.index], found: quote(name.passage) });
+
+  const passages = (ctx.valuePassages ??= []);
+  const cited = delivered.map((i) => ({ index: i, passages: (passages[i] ??= valuePassages(ctx.sources[i].text, (s) => valueParts(s, 2))) }));
+  for (const part of valueParts(text, 2)) {
+    for (const v of misplacedValues(part, cited)) reasons.push({ code: 'fact_context', level: 'weak', fact: v.fact.surface, cites: [v.index], found: quote(v.passage) });
+  }
+  return reasons;
+}
+
+/**
+ * A passage of an excerpt as a reason quotes it: without the separator it was cut at and without
+ * its closing punctuation, which the message adds after the quotation marks.
+ * @param {string} passage
+ */
+function quote(passage) {
+  return clip(passage.replace(/^[\s,;:–-]+/u, '').replace(/[\s.,;:!?]+$/u, ''), 160);
 }
 
 /**
@@ -543,11 +616,11 @@ export function groundAnswer(blocks, sources, options = {}) {
   const report = { algorithm: { id: GROUNDING.id, version }, sentences: /** @type {SentenceResult[]} */ ([]), counts, crossLanguage: false, skipped: /** @type {null | 'too_long'} */ (null) };
   const chars = blocks.reduce((n, b) => n + b.segments.reduce((m, s) => m + (s.type === 'text' ? s.text.length : 0), 0), 0);
   if (chars > THRESHOLDS.maxChars) return { ...report, skipped: 'too_long' };
-  const drafts = associate(blocks);
+  const drafts = associate(blocks, version);
   if (drafts.length > THRESHOLDS.maxSentences) return { ...report, skipped: 'too_long' };
 
-  const indexes = sources.map((s) => (s.delivered === 'omitted' ? null : indexSource(`${s.text}\n${s.doc}\n${s.heading}`)));
-  const given = options.given?.length ? indexSource(options.given.join('\n')) : null;
+  const indexes = sources.map((s) => (s.delivered === 'omitted' ? null : indexSource(`${s.text}\n${s.doc}\n${s.heading}`, { version })));
+  const given = options.given?.length ? indexSource(options.given.join('\n'), { version }) : null;
   const text = blocks.map((b) => b.segments.map((s) => (s.type === 'text' ? s.text : ' ')).join('')).join('\n');
   /** @type {CheckContext} */
   const ctx = { sources, indexes, given, citedOnly: Boolean(options.citedOnly), lang: guessLanguage(text), version };
