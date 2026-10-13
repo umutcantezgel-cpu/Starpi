@@ -18,7 +18,9 @@ const bySet = {};
 before(async () => {
   const items = await loadItems();
   const corpora = await loadCorpora();
-  for (const set of new Set(items.map((i) => i.set))) bySet[set] = summarize(items.filter((i) => i.set === set), corpora);
+  // Version 1 of the rules, as published; version 2 is pinned after its one final measurement
+  // (docs/eval/v2-protocol.md).
+  for (const set of new Set(items.map((i) => i.set))) bySet[set] = summarize(items.filter((i) => i.set === set), corpora, { version: 1 });
 });
 
 describe('source check evaluation', () => {
