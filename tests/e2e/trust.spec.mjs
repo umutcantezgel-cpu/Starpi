@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
+import { signReceipt } from '../../src/js/core/receipt.js';
 import { expect, mockSupabase, test } from './fixtures.mjs';
 
 const BUDGET_MD = '# Budget\n\nThe approved budget for Project Nebula is 480,000 EUR. The steering group meets every Tuesday at 10:00.';
@@ -156,8 +157,9 @@ test.describe('answer receipts', () => {
     const receiptPath = testInfo.outputPath('receipt.json');
     await download.saveAs(receiptPath);
     const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
-    expect(receipt.schema).toBe('starpi.receipt/v1');
+    expect(receipt.schema).toBe('starpi.receipt/v2');
     expect(receipt.citations[0].document.fileSha256).toBe(createHash('sha256').update(BUDGET_MD).digest('hex'));
+    await expect(dialog.locator('#receiptRoot')).toHaveText(receipt.merkle.root.slice(0, 16));
 
     const mdPath = testInfo.outputPath('budget.md');
     const { writeFileSync } = await import('node:fs');
@@ -165,8 +167,30 @@ test.describe('answer receipts', () => {
     await dialog.locator('#receiptFile').setInputFiles(receiptPath);
     await dialog.locator('#receiptSources').setInputFiles(mdPath);
     await dialog.locator('[data-action="verify-receipt"]').click();
-    await expect(dialog.locator('#receiptVerifyResult')).toContainText('1/1 workspace excerpts reproduced from your files');
-    await expect(dialog.locator('#receiptVerifyResult')).toContainText('exact passage found in budget.md');
+    const result = dialog.locator('#receiptVerifyResult');
+    await expect(result).toContainText('1/1 workspace excerpts reproduced from your files');
+    await expect(result).toContainText('exact passage found in budget.md');
+    await expect(result).toContainText('Merkle root reproduced from the citations; 2/2 inclusion proofs valid.');
+    await expect(result).toContainText('Not signed.');
+
+    // Signed outside the app (as a deployment would), checked in the app with the signer's key.
+    const keys = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']));
+    const signed = await signReceipt(receipt, keys.privateKey);
+    const signedPath = testInfo.outputPath('receipt.signed.json');
+    const keyPath = testInfo.outputPath('signer.jwk');
+    writeFileSync(signedPath, JSON.stringify(signed));
+    writeFileSync(keyPath, JSON.stringify(await crypto.subtle.exportKey('jwk', keys.publicKey)));
+    await dialog.locator('#receiptFile').setInputFiles(signedPath);
+    await dialog.locator('#receiptPublicKey').setInputFiles(keyPath);
+    await dialog.locator('[data-action="verify-receipt"]').click();
+    await expect(result).toContainText(`Signed with the public key you chose (ES256, key ${signed.signature?.keyId.slice(0, 16)}…) and unchanged since.`);
+    const other = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']));
+    writeFileSync(keyPath, JSON.stringify(await crypto.subtle.exportKey('jwk', other.publicKey)));
+    await dialog.locator('#receiptPublicKey').setInputFiles(keyPath);
+    await dialog.locator('[data-action="verify-receipt"]').click();
+    await expect(result).toContainText('not with the public key you chose');
+    await dialog.locator('#receiptPublicKey').setInputFiles([]);
+    await dialog.locator('#receiptFile').setInputFiles(receiptPath);
 
     writeFileSync(mdPath, BUDGET_MD.replace('480,000', '520,000'));
     await dialog.locator('#receiptSources').setInputFiles(mdPath);

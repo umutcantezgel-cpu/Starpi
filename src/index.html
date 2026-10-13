@@ -743,10 +743,14 @@
       <div class="p-4 sm:p-5 space-y-5 overflow-y-auto custom-scrollbar text-[13px] text-slate-700">
         <section id="receiptExport" class="space-y-3">
           <p data-i18n="receipt.intro">A receipt lists the excerpts this answer cited, with a SHA-256 fingerprint of each file and the exact position of each passage. Anyone who has the same files can check that every excerpt is an exact, unchanged passage.</p>
-          <dl class="grid grid-cols-2 gap-2 text-xs">
+          <dl class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
             <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 min-w-0">
               <dt class="text-slate-600 text-[11px] font-medium" data-i18n="receipt.id">Receipt ID</dt>
               <dd id="receiptId" class="font-mono font-semibold text-slate-900 truncate">–</dd>
+            </div>
+            <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 min-w-0">
+              <dt class="text-slate-600 text-[11px] font-medium" data-i18n="receipt.root">Merkle root</dt>
+              <dd id="receiptRoot" class="font-mono font-semibold text-slate-900 truncate">–</dd>
             </div>
             <div class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 min-w-0">
               <dt class="text-slate-600 text-[11px] font-medium" data-i18n="receipt.contents">Contents</dt>
@@ -756,11 +760,11 @@
           <div class="grid sm:grid-cols-2 gap-2 text-[12px] leading-relaxed">
             <div class="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
               <p class="font-semibold text-emerald-950 mb-1" data-i18n="receipt.proves_title">What it proves</p>
-              <p class="text-emerald-950" data-i18n="receipt.proves">Each workspace excerpt is an exact, unchanged passage of the file with the recorded fingerprint, at the recorded position. The source check can be recomputed from it.</p>
+              <p class="text-emerald-950" data-i18n="receipt.proves">Each workspace excerpt is an exact, unchanged passage of the file with the recorded fingerprint, at the recorded position, and belongs to this receipt through its Merkle proof. The source check can be recomputed from it.</p>
             </div>
             <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p class="font-semibold text-slate-900 mb-1" data-i18n="receipt.not_proves_title">What it does not prove</p>
-              <p class="text-slate-700" data-i18n="receipt.not_proves">That Starpi wrote the answer (receipts are not signed), which excerpts the model actually read, that the answer is correct, or anything about knowledge-base excerpts.</p>
+              <p class="text-slate-700" data-i18n="receipt.not_proves">That Starpi wrote the answer (the app does not sign receipts), which excerpts the model actually read, that the answer is correct, or anything about knowledge-base excerpts.</p>
             </div>
           </div>
           <div class="space-y-1.5">
@@ -789,6 +793,10 @@
           <div>
             <label for="receiptSources" class="field-label" data-i18n="receipt.verify_pick_files">Original files</label>
             <input type="file" id="receiptSources" multiple accept=".pdf,.txt,.md,.markdown,.json,.csv,.log" class="field">
+          </div>
+          <div>
+            <label for="receiptPublicKey" class="field-label" data-i18n="receipt.verify_pick_key">Signer's public key (optional, JWK or PEM)</label>
+            <input type="file" id="receiptPublicKey" accept=".jwk,.json,.pem,.pub,application/json" class="field">
           </div>
           <button type="button" data-action="verify-receipt" class="btn btn-secondary">
             <i data-lucide="file-check" class="w-3.5 h-3.5 text-emerald-700"></i>

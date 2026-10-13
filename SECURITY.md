@@ -102,7 +102,8 @@ Out of scope:
   downloaded with a pinned SHA-256, scans the tree and the commits of every pull request.
 - **Release assets.** The release workflow builds the `@starpi/core` tarball and the SBOMs in a job
   with read-only permissions, from the commit CI tested; it installs the tarball offline into an
-  empty project, imports it and runs `starpi-verify-receipt` before anything is published. The job
+  empty project, imports it and runs `starpi-verify-receipt` and `starpi-ground` before anything is
+  published. The job
   that creates the release is the only one with write access; it installs and runs nothing from
   the repository, checks `SHA256SUMS` and attaches the tarball, both SBOMs and `SHA256SUMS`. The
   npm package is published from that tarball, so its npm integrity is the SHA-512 of the release
@@ -131,11 +132,17 @@ Out of scope:
   the device only as a file you download. Verification reads the receipt and the original files on
   the device, in the ingest worker; nothing is uploaded.
 - **What it proves.** That each workspace excerpt is an unchanged passage of the file with the
-  recorded fingerprint. Receipts are **not signed**: they do not prove that Starpi produced the
-  answer, which excerpts a model read, or that the answer is correct. See
+  recorded fingerprint and, in format v2, that each citation belongs to the receipt through its
+  Merkle inclusion proof. The app does **not sign** the receipts it writes. A deployment can sign
+  receipts with `signReceipt` from `@starpi/core` (Ed25519 or ECDSA P-256); a signature checked with
+  the signer's public key shows that the receipt is unchanged since that key signed it, while a
+  signature checked only with the key embedded in the receipt shows integrity, not authorship.
+  Receipts do not prove which excerpts a model read, or that the answer is correct. See
   [docs/spec/receipts.md](docs/spec/receipts.md).
 - **Untrusted receipts.** A receipt is JSON from anywhere. It is checked against size and field
-  limits before use (`validateReceipt`), and everything shown from it is set as text, never as HTML.
+  limits before use (`validateReceipt`, with its own list of members per format version), and
+  everything shown from it is set as text, never as HTML. A public key for signature checks is
+  read only as a JWK or PEM public key; a file with a private key is refused.
 - **The source check is a heuristic.** It compares numbers, dates, times, weekdays, codes,
   quotations and wording, and names in English statements, with the cited excerpts. It can miss a
   wrong statement that uses the excerpt's words, and it can flag a correct paraphrase; it is an aid
