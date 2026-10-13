@@ -14,7 +14,10 @@ export {
   checkSentence,
   contextCoverage,
   GROUNDING,
+  GROUNDING_VERSIONS,
   groundAnswer,
+  REASON_CODES,
+  REASON_CODES_V1,
   resolveLabel,
   THRESHOLDS,
 } from '../../../src/js/core/grounding.js';

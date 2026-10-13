@@ -8,9 +8,12 @@ The deterministic parts of [Starpi](https://github.com/umutcantezgel-cpu/Starpi)
 retrieval-augmented generation (RAG) application:
 
 - **Source check:** compares every statement of an answer with the excerpts it cites: numbers in
-  English and German formats (480,000 = 480.000 = 480k), dates, times, weekdays, codes, quotations
-  and wording, and names in English statements. It reports `supported`, `weak`, `unsupported` or
-  `unchecked` per statement, with a reason that names the missing value.
+  English and German formats (480,000 = 480.000 = 480k), dates, times, weekdays, codes, version
+  numbers, quotations and wording; and, in English and German, whether a statement reverses a
+  negation of its excerpt ("is supported" against "is not supported", "erlaubt" against
+  "verboten") and whether it puts a name or a value next to something else than the excerpt
+  does. It reports `supported`, `weak`, `unsupported` or `unchecked` per statement, with a reason
+  that names the missing value or quotes the passage that says otherwise.
 - **Answer receipts** (`starpi.receipt/v2`): a JSON record of the cited excerpts with SHA-256
   fingerprints of the source files and passage offsets, a Merkle tree (RFC 6962) with an
   inclusion proof per citation, optional Ed25519 or ECDSA P-256 signatures, and a verifier that
@@ -45,8 +48,9 @@ so its behaviour is covered by the app's tests.
 ## What the checks do and do not tell you
 
 The source check is a heuristic. It compares text; it does not understand it. A statement it marks
-`supported` can still be wrong (for example with the right number attached to the wrong thing), and
-a correct paraphrase can be marked `weak`. Use a flag as "open the source and look", not as a
+`supported` can still be wrong (for example when it reverses a meaning with words the check does
+not know, or combines two correct passages into a wrong one), and a correct paraphrase can be
+marked `weak`. Use a flag as "open the source and look", not as a
 verdict on truth. Receipts show that the excerpts are reproducible from the same files, not which
 excerpts a model read. A signed receipt shows who signed it only when you check the signature with
 the signer's public key, obtained from the signer; the key inside the receipt proves only that it
@@ -65,13 +69,13 @@ package tarball, built and tested by CI, with its SHA-256 in `SHA256SUMS`. The n
 same file. To install from the release instead of the registry:
 
 ```bash
-curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/v1.3.0/starpi-core-1.3.0.tgz
-curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/v1.3.0/SHA256SUMS
+curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.0.0/starpi-core-2.0.0.tgz
+curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.0.0/SHA256SUMS
 sha256sum -c --ignore-missing SHA256SUMS
-npm install ./starpi-core-1.3.0.tgz
+npm install ./starpi-core-2.0.0.tgz
 ```
 
-`npm install https://github.com/umutcantezgel-cpu/Starpi/releases/download/v1.3.0/starpi-core-1.3.0.tgz`
+`npm install https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.0.0/starpi-core-2.0.0.tgz`
 works too, without the checksum step.
 
 ## Check an answer against its sources
@@ -95,11 +99,38 @@ console.log(report.counts); // { supported: 1, weak: 0, unsupported: 1, unchecke
 console.log(report.sentences[0].reasons); // [{ code: 'missing_fact', level: 'unsupported', fact: '520,000', cites: [0] }]
 ```
 
-A value the excerpt contains only next to other words ("75,000 EUR for infrastructure" when the
-excerpt says "95,000 EUR for infrastructure and 75,000 EUR for training") is reported as
-`fact_context`, with the passage where it stands in `found`. In English statements, a name (a
-capitalised word inside the sentence, such as "Munich" or "Sarah") that none of the cited excerpts
-contains is reported as `name_missing`.
+Statements that use the excerpt's own words and still say something else:
+
+```js
+const spec = [{ label: '[Doc: spec.md, Chunk: 1]', doc: 'spec.md', heading: '', delivered: 'full',
+  text: 'Power over Ethernet is not supported. Priya Raman owns this specification; Marcus Hale maintains the network configuration.' }];
+const claims = 'Power over Ethernet is supported [Doc: spec.md, Chunk: 1]. Marcus Hale owns the specification [Doc: spec.md, Chunk: 1].';
+
+for (const s of groundAnswer(blocksFromMarkdown(claims, spec), spec).sentences) console.log(s.verdict, s.reasons);
+// unsupported [{ code: 'negation_inversion', level: 'unsupported', cites: [0], found: 'Power over Ethernet is not supported' }]
+// weak [{ code: 'name_context', level: 'weak', fact: 'Marcus Hale', cites: [0], found: 'Priya Raman owns this specification' }]
+```
+
+- `negation_inversion`: the statement drops, adds or reverses the negation of the excerpt clause
+  it matches, also through opposites (enabled and disabled, allowed and prohibited, increased and
+  decreased, erlaubt and verboten, gestiegen and gesunken). `unsupported` when the clause matches
+  the statement closely, `weak` otherwise. Negations written differently ("unsupported", "no …
+  without", "may not", "darf … nicht") count as the same meaning; "no later than", "not … until"
+  and conditions ("if not", "reicht das nicht") are not negations.
+- `name_context`: the passage the statement matches names someone or something else; the
+  statement's name stands elsewhere in the excerpts or in none of them. Names the question gave
+  (`given`) are not checked.
+- `fact_context`: the excerpt has the value only next to other words ("75,000 EUR for
+  infrastructure" when the excerpt says "95,000 EUR for infrastructure and 75,000 EUR for
+  training"), with the passage where it stands in `found`.
+- `name_missing`: in English statements, a name (a capitalised word inside the sentence, such as
+  "Munich" or "Sarah") that none of the cited excerpts contains.
+
+These checks compare a statement with excerpts in its own language. They look at one statement at
+a time, so a receipt can recompute them; a wrong relation spread over two statements is not seen.
+`groundAnswer(blocks, sources, { version: 1 })` runs the rules of `@starpi/core` 1.x: no
+`negation_inversion` or `name_context`, the earlier `fact_context`, and no version numbers as
+facts. `GROUNDING_VERSIONS` lists the versions this release can run.
 
 Citations are recognised as `[Doc: <name>, Chunk: <n>]` labels (see `citationLabel`). Statements
 inherit citations from their paragraph, from a lead-in line ending in a colon, or from a "Sources:"
@@ -111,8 +142,8 @@ Verdicts and reason codes:
 
 | Verdict | Reason codes |
 | --- | --- |
-| `unsupported` | `missing_fact`, `uncited_missing`, `quote_missing`, `unknown_citation`, `not_delivered` |
-| `weak` | `approximate`, `fact_elsewhere`, `fact_context`, `name_missing`, `uncited_found`, `from_conversation`, `low_overlap`, `label_mismatch`, a partial quotation |
+| `unsupported` | `missing_fact`, `uncited_missing`, `quote_missing`, `unknown_citation`, `not_delivered`, `negation_inversion` (close match) |
+| `weak` | `approximate`, `fact_elsewhere`, `fact_context`, `name_missing`, `name_context`, `negation_inversion`, `uncited_found`, `from_conversation`, `low_overlap`, `label_mismatch`, a partial quotation |
 | `supported` | none: every fact is in a cited excerpt and at least half of the content words appear there |
 | `unchecked` | none: statement and excerpt are in different languages (facts only) and the statement has no facts |
 | `neutral` | not counted: headings, short fragments, statements with neither a citation nor a fact |
@@ -314,7 +345,9 @@ single characters, the same way for documents and queries.
 - `canonicalJson`: RFC 8785 compatible serialization for the values receipts contain.
 - `BM25Index`, `tokenize`, `STOPWORDS_EN`, `STOPWORDS_DE`: Okapi BM25 (k1 = 1.2, b = 0.75).
 - `sentenceSpans`, `splitSentences`: deterministic sentence splitting with offsets.
-- `GROUNDING`, `EXTRACTOR`, `CHUNKER`: the rule versions recorded in receipts.
+- `GROUNDING`, `EXTRACTOR`, `CHUNKER`: the rule versions recorded in receipts; `GROUNDING_VERSIONS`
+  lists the source-check versions `groundAnswer` can run, `REASON_CODES` (and `REASON_CODES_V1`)
+  the reason codes.
 
 Type declarations are included.
 
@@ -335,8 +368,10 @@ Type declarations are included.
 
 `@starpi/core` is released together with the Starpi app and has the same version number. A change
 to a check that can change a verdict bumps the rule version recorded in receipts (`GROUNDING`,
-`EXTRACTOR`, `CHUNKER`), so a receipt says which rules produced it. The receipt format has its own
-version (`starpi.receipt/v1`). The `pdfjs-dist` peer range follows the major version the app ships.
+`EXTRACTOR`, `CHUNKER`), so a receipt says which rules produced it, and `verifyReceipt` recomputes
+the source check with the version a receipt records. The receipt format has its own version
+(`starpi.receipt/v2` since 2.0.0; v1 receipts are still read and can still be written). The
+`pdfjs-dist` peer range follows the major version the app ships.
 Changes are listed in the
 [changelog](https://github.com/umutcantezgel-cpu/Starpi/blob/main/CHANGELOG.md).
 

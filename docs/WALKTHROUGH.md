@@ -63,7 +63,7 @@ database and dependency checks.
 | [`src/sw.js`](../src/sw.js) | Service worker for the same-origin app shell |
 | [`public/samples/`](../public/samples) | The English and German sample files (plan, risk register, kickoff PDF) |
 | [`packages/core/`](../packages/core) | `@starpi/core`: the source check, receipts, extraction, chunking and BM25 as an npm package (a workspace of the root package), built from `src/js` |
-| [`scripts/`](../scripts) | Build, output verification, local server with production headers, diagram sync, receipt verifier, source-check evaluation, `@starpi/core` build, CycloneDX SBOMs |
+| [`scripts/`](../scripts) | Build, output verification, local server with production headers, diagram sync, receipt verifier, `starpi-ground` (documents against sources, SARIF), source-check evaluation, `@starpi/core` build, CycloneDX SBOMs |
 | [`tests/unit/`](../tests/unit), [`tests/e2e/`](../tests/e2e) | Node unit tests and Playwright end-to-end tests |
 | [`backend/`](../backend) | Optional Python API, ingestion and retrieval pipelines, EC2 deployment |
 | [`backend/supabase/`](../backend/supabase) | Schema, idempotent migrations and the RLS test harness |
@@ -100,13 +100,17 @@ database and dependency checks.
 7. **Check.** [`rag/grounding-view.js`](../src/js/rag/grounding-view.js) `applyGrounding()` reads
    the rendered answer, assigns each statement the citations that belong to it, and
    [`core/grounding.js`](../src/js/core/grounding.js) compares each one with the excerpts it cites:
-   the facts through [`core/facts.js`](../src/js/core/facts.js), then the wording. For model
+   the facts through [`core/facts.js`](../src/js/core/facts.js), then the wording, then (rules
+   version 2) reversed negations through [`core/polarity.js`](../src/js/core/polarity.js) and names
+   and values next to something else through [`core/binding.js`](../src/js/core/binding.js). For model
    answers it uses `contextCoverage()` to compare only with what actually reached the model. The
    *Source check* panel lists what did not match and why, marks the citations of those statements
    and highlights them ([atlas §12](ARCHITECTURE.md#12-source-check-answer-receipts-and-sample-files)).
 8. **Receipt.** `storeReceiptDraft()` in [`rag/receipts.js`](../src/js/rag/receipts.js) keeps what
    is needed for a receipt in memory; the *Receipt* dialog builds it with `buildReceipt()` in
-   [`core/receipt.js`](../src/js/core/receipt.js) and verifies receipts in the ingest worker.
+   [`core/receipt.js`](../src/js/core/receipt.js), with a Merkle tree over the citations from
+   [`core/merkle.js`](../src/js/core/merkle.js), and verifies receipts in the ingest worker, with
+   signatures checked by [`core/signature.js`](../src/js/core/signature.js).
 9. **Store.** [`chat-store.js`](../src/js/chat-store.js) `persistMessage()` syncs the turn to
    Supabase only when an anonymous session exists and the hardened schema is installed. A turn that
    uses the on-device workspace, or any turn in the on-device mode, stays in `localStorage` and is
@@ -157,9 +161,9 @@ reporting time to first token and decode speed through
 
 | Layer | What it proves | Where |
 | --- | --- | --- |
-| Unit tests (Node) | Facts and the source check in English and German, receipts (round trip, tampering, the command-line verifier, the JSON Schema), golden pins for extraction, chunking and the source check, chunking, BM25 maths, parsing, prompts, retrieval, citations, the sample files, i18n key parity, icon and emoji rules, docs diagrams and links | [`tests/unit/`](../tests/unit) |
+| Unit tests (Node) | Facts and the source check in English and German (both rules versions), receipts (round trip, tampering, Merkle trees against RFC 6962 test vectors, Ed25519 and ES256 signatures, v1 receipts of 1.3.0, the command-line verifier, the JSON Schemas), `starpi-ground` and its SARIF, golden pins for extraction, chunking and the source check, chunking, BM25 maths, parsing, prompts, retrieval, citations, the sample files, i18n key parity, icon and emoji rules, docs diagrams and links | [`tests/unit/`](../tests/unit) |
 | End-to-end (Playwright, desktop and mobile) | The built app under the production headers: zero CSP violations, sample files, the source check on model answers, a downloaded receipt verified against the original file, axe accessibility scan, inert XSS payloads, privacy of workspace turns, offline reconnect, settings storage, citations, language switch | [`tests/e2e/`](../tests/e2e) |
-| Source-check evaluation | Labelled answers, faithful or with one planted error: no statement of a faithful answer is flagged as unsupported, and nearly every changed number, date, time, weekday or code is flagged | [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`tests/fixtures/grounding/eval.json`](../tests/fixtures/grounding/eval.json) |
+| Source-check evaluation | Labelled answers, faithful or with one planted error, in four sets (two of them held out, see the [protocol](eval/v2-protocol.md)): no statement of a faithful answer is flagged as unsupported, and no published result may get worse | [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`tests/fixtures/grounding/`](../tests/fixtures/grounding) |
 | Backend (unittest) | Request guards, body limits, timeouts, shutdown, `.env` parsing, pipelines with mocked upstreams | [`backend/test_*.py`](../backend) |
 | Database | 191 RLS, privilege, search and size-limit assertions per scenario (198 with legacy rows) on fresh, upgraded and legacy schemas, plus schema parity | [`backend/supabase/tests/`](../backend/supabase/tests) |
 | Build gate | No inline code, every asset present, no `eval`, the service worker version recomputed from the build | [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs) |

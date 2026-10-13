@@ -111,8 +111,8 @@ Out of scope:
 
   ```bash
   sha256sum -c --ignore-missing SHA256SUMS
-  npm view @starpi/core@1.3.0 dist.integrity   # sha512-…, compare with:
-  echo "sha512-$(openssl dgst -sha512 -binary starpi-core-1.3.0.tgz | base64 -w0)"
+  npm view @starpi/core@2.0.0 dist.integrity   # sha512-…, compare with:
+  echo "sha512-$(openssl dgst -sha512 -binary starpi-core-2.0.0.tgz | base64 -w0)"
   ```
 - **Browser.** A Content-Security-Policy without `unsafe-inline` or `unsafe-eval` (only
   `wasm-unsafe-eval`, for WebGPU inference), checked by `scripts/verify-dist.mjs` after every
@@ -144,9 +144,14 @@ Out of scope:
   everything shown from it is set as text, never as HTML. A public key for signature checks is
   read only as a JWK or PEM public key; a file with a private key is refused.
 - **The source check is a heuristic.** It compares numbers, dates, times, weekdays, codes,
-  quotations and wording, and names in English statements, with the cited excerpts. It can miss a
-  wrong statement that uses the excerpt's words, and it can flag a correct paraphrase; it is an aid
-  for reading the sources, not a guarantee.
+  version numbers, quotations and wording with the cited excerpts and, in the excerpt's language,
+  reversed negations and names and values next to something else; names in English statements
+  are also checked against all cited excerpts. Its lists of negations and opposites and its way of
+  recognising names are fixed rules for English and German. It can miss a wrong statement that
+  uses the excerpt's words, and it can flag a correct paraphrase; it is an aid for reading the
+  sources, not a guarantee. Its rules are deterministic and pure: regular expressions and loops
+  over the answer and the cited excerpts, bounded by the check's limits (20,000 characters and 300
+  statements per answer).
 
 ## Known limitations
 

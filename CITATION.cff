@@ -2,12 +2,12 @@ cff-version: 1.2.0
 message: "If you use Starpi in your work, please cite it as below."
 type: software
 title: "Starpi"
-abstract: "Knowledge assistant in the browser that shows how far each answer can be trusted: retrieval-augmented generation with verifiable citations, a deterministic source check that compares every statement with the excerpts it cites, and answer receipts that anyone can verify against the original files. Files are read on the device; answers come from WebGPU inference in a Web Worker, an own server or a cloud model."
+abstract: "Knowledge assistant in the browser that shows how far each answer can be trusted: retrieval-augmented generation with verifiable citations, a deterministic source check that compares every statement with the excerpts it cites (facts, reversed negations, and names and values in the wrong place), answer receipts with a Merkle tree and optional signatures that anyone can verify against the original files, and a command that checks documents in CI and writes SARIF. Files are read on the device; answers come from WebGPU inference in a Web Worker, an own server or a cloud model."
 authors:
   - family-names: Tezgel
     given-names: Umutcan Emre
     alias: umutcantezgel-cpu
-version: 1.3.0
+version: 2.0.0
 date-released: "2026-10-13"
 license: MIT
 repository-code: "https://github.com/umutcantezgel-cpu/Starpi"
@@ -17,6 +17,8 @@ keywords:
   - grounding
   - faithfulness
   - provenance
+  - sarif
+  - merkle-tree
   - webgpu
   - bm25
   - webllm

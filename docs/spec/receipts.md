@@ -145,9 +145,12 @@ are left out. Each sentence has:
 
 Reason codes: `missing_fact`, `fact_elsewhere`, `fact_context`, `name_missing`, `uncited_found`,
 `uncited_missing`, `low_overlap`, `unknown_citation`, `label_mismatch`, `quote_missing`,
-`approximate`, `from_conversation` and `not_delivered`. For `fact_context`, `found` holds the
-passage of the cited excerpt where the value stands (at most 160 characters). Their wording in the
-app is in `src/locales/*.json` under `grounding.reason_*`.
+`approximate`, `from_conversation` and `not_delivered`, and in format v2 also
+`negation_inversion` (the statement reverses a negation of the excerpt) and `name_context` (the
+passage the statement matches names someone or something else; `fact` is the statement's name).
+For `fact_context`, `negation_inversion` and `name_context`, `found` holds the passage of the cited
+excerpt the reason refers to (at most 160 characters). A v1 receipt with a v2 reason code is
+refused. Their wording in the app is in `src/locales/*.json` under `grounding.reason_*`.
 
 ## Hashing and offsets
 
@@ -276,14 +279,20 @@ version:
 | Receipt format ([`src/js/core/receipt.js`](../../src/js/core/receipt.js)) | `schema` | `starpi.receipt/v2`; v1 is still read and verified |
 | Text extraction (`extractText`, [`src/js/rag/parser.js`](../../src/js/rag/parser.js)) | `document.extractor` | `starpi-extract` 1, plus the pdf.js version for PDFs |
 | Chunking (`chunkText`, [`src/js/rag/chunker.js`](../../src/js/rag/chunker.js)) | `document.chunker` | `starpi-chunk` 1, size 500, overlap 50 |
-| Source check ([`src/js/core/grounding.js`](../../src/js/core/grounding.js)) | `grounding.algorithm` | `starpi-grounding` 1 |
+| Source check ([`src/js/core/grounding.js`](../../src/js/core/grounding.js)) | `grounding.algorithm` | `starpi-grounding` 2; version 1 can still be run |
 
 Golden tests (`tests/unit/golden.test.mjs`) pin the output of the last three: extraction and chunking of
-the sample files, and the verdicts and reasons of the source check on every statement of the 308
-labelled answers in `tests/fixtures/grounding/eval.json`. A change that alters their output must
-bump the version, so an old receipt is reported as "made with other rules" instead of
-failing without explanation. An incompatible change of the receipt format itself gets a new
-`schema` value.
+the sample files, and the verdicts and reasons of the source check on every statement of the
+labelled answers in `tests/fixtures/grounding/` (version 1 on the 308 answers of `eval.json`,
+version 2 on the answer sets listed in [`docs/eval/v2-protocol.md`](../eval/v2-protocol.md)). A
+change that alters their output must bump the version, so an old receipt is reported as "made
+with other rules" instead of failing without explanation. An incompatible change of the receipt
+format itself gets a new `schema` value.
+
+The source check keeps every earlier version it can still run (`GROUNDING_VERSIONS`): the
+verifier recomputes a receipt with the version the receipt records, so a receipt made by Starpi
+1.x (`starpi-grounding` 1) is recomputed with the rules of 1.x. Only a version the verifier does
+not know is recomputed with the current rules, with a warning.
 
 ### Version 1
 
