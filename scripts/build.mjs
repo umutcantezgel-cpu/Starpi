@@ -1,9 +1,11 @@
 #!/usr/bin/env node
-// Production build: Tailwind (v3 CLI) -> esbuild bundle (JS, worker, CSS, fonts) -> hashed assets,
-// rewritten index.html, generated service worker and a build manifest consumed by verify-dist.mjs.
+// Production build: Tailwind (v3 CLI) -> esbuild bundle (JS, workers, CSS, fonts) -> hashed assets
+// plus the ONNX Runtime binary, rewritten index.html, generated service worker and a build manifest
+// consumed by verify-dist.mjs.
 //
 // Usage: node scripts/build.mjs [--watch] [--serve]
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,8 +33,27 @@ const APP_VERSION = JSON.parse(await readFile(path.join(ROOT, 'package.json'), '
 
 const WORKER_PLACEHOLDER = '__STARPI_WEBLLM_WORKER_URL__';
 const INGEST_WORKER_PLACEHOLDER = '__STARPI_INGEST_WORKER_URL__';
+const WASM_WORKER_PLACEHOLDER = '__STARPI_WASM_WORKER_URL__';
+const ORT_WASM_PLACEHOLDER = '__STARPI_ORT_WASM_URL__';
 
 assertPublicKey(SUPABASE_ANON_KEY);
+
+/**
+ * Transformers.js imports onnxruntime-web/webgpu, whose bundle uses new Function() (blocked by the
+ * CSP and by verify-dist), and takes its Tensor class from a second copy of onnxruntime-common.
+ * Starpi runs ONNX models on the processor only, so both resolve to the WASM build, which has the
+ * same exports: one ONNX Runtime with one Tensor class ships.
+ * @type {import('esbuild').Plugin}
+ */
+const ortWasmOnly = {
+  name: 'ort-wasm-only',
+  setup(build) {
+    build.onResolve({ filter: /^(onnxruntime-web\/webgpu|onnxruntime-common)$/ }, async (args) => {
+      const resolved = await build.resolve('onnxruntime-web/wasm', { kind: args.kind, resolveDir: args.resolveDir });
+      return resolved.errors.length > 0 ? { errors: resolved.errors } : { path: resolved.path, namespace: resolved.namespace, sideEffects: resolved.sideEffects };
+    });
+  },
+};
 
 function runTailwind() {
   const bin = path.join(ROOT, 'node_modules', '.bin', 'tailwindcss');
@@ -53,6 +74,7 @@ const esbuildOptions = {
     main: 'src/js/main.js',
     'webllm-worker': 'src/js/webgpu/worker.js',
     'ingest-worker': 'src/js/rag/ingest.worker.js',
+    'wasm-worker': 'src/js/wasm/worker.js',
     app: 'src/styles/entry.css',
   },
   outdir: ASSETS,
@@ -70,6 +92,7 @@ const esbuildOptions = {
   metafile: true,
   logLevel: 'silent',
   loader: { '.woff2': 'file', '.woff': 'file' },
+  plugins: [ortWasmOnly],
   define: {
     __STARPI_SUPABASE_URL__: JSON.stringify(SUPABASE_URL),
     __STARPI_SUPABASE_ANON_KEY__: JSON.stringify(SUPABASE_ANON_KEY),
@@ -94,39 +117,46 @@ async function postProcess(result) {
   const mainJs = entries['src/js/main.js'];
   const workerJs = entries['src/js/webgpu/worker.js'];
   const ingestWorkerJs = entries['src/js/rag/ingest.worker.js'];
+  const wasmWorkerJs = entries['src/js/wasm/worker.js'];
   const appCss = entries['src/styles/entry.css'];
-  if (!mainJs || !workerJs || !ingestWorkerJs || !appCss) throw new Error(`missing entry outputs: ${JSON.stringify(entries)}`);
+  if (!mainJs || !workerJs || !ingestWorkerJs || !wasmWorkerJs || !appCss) throw new Error(`missing entry outputs: ${JSON.stringify(entries)}`);
+  // Copied first: its hashed URL goes into the WASM worker below.
+  const ortWasm = await copyOrtWasm(result.metafile);
 
   const outputs = Object.keys(result.metafile.outputs).map((f) => path.join(ROOT, f));
   const jsOutputs = outputs.filter((f) => f.endsWith('.js'));
 
-  // The worker URL is only known after bundling; patch it into the chunk that references it.
-  let patchedWebllm = 0;
-  let patchedIngest = 0;
+  // Worker and runtime URLs are only known after bundling; patch them into the chunks that
+  // reference them. Every placeholder must be found at least once.
+  const urls = new Map([
+    [WORKER_PLACEHOLDER, workerJs],
+    [INGEST_WORKER_PLACEHOLDER, ingestWorkerJs],
+    [WASM_WORKER_PLACEHOLDER, wasmWorkerJs],
+    [ORT_WASM_PLACEHOLDER, ortWasm],
+  ]);
+  const patched = new Set();
   for (const file of jsOutputs) {
     let code = await readFile(file, 'utf8');
     let changed = false;
-    if (code.includes(WORKER_PLACEHOLDER)) {
-      code = code.replaceAll(WORKER_PLACEHOLDER, workerJs);
-      patchedWebllm += 1;
-      changed = true;
-    }
-    if (code.includes(INGEST_WORKER_PLACEHOLDER)) {
-      code = code.replaceAll(INGEST_WORKER_PLACEHOLDER, ingestWorkerJs);
-      patchedIngest += 1;
+    for (const [placeholder, url] of urls) {
+      if (!code.includes(placeholder)) continue;
+      code = code.replaceAll(placeholder, url);
+      patched.add(placeholder);
       changed = true;
     }
     if (changed) {
       await writeFile(file, code);
     }
   }
-  if (patchedWebllm === 0) throw new Error('worker URL placeholder not found in any output chunk');
-  if (patchedIngest === 0) throw new Error('ingest worker URL placeholder not found in any output chunk');
+  for (const placeholder of urls.keys()) {
+    if (!patched.has(placeholder)) throw new Error(`${placeholder} not found in any output chunk`);
+  }
 
   const publicFiles = await copyPublic();
   const assetUrls = outputs
     .filter((f) => !f.endsWith('.map') && !f.endsWith('.LEGAL.txt'))
     .map((f) => '/' + path.relative(DIST, f).split(path.sep).join('/'));
+  assetUrls.push(ortWasm);
 
   const html = (await readFile(path.join(SRC, 'index.html'), 'utf8'))
     .replace('%STARPI_APP_CSS%', appCss)
@@ -140,7 +170,8 @@ async function postProcess(result) {
   const version = buildVersion({ html, assetUrls, publicFiles: publicBytes, swTemplate });
 
   // Precache the app shell: the page, its CSS and JS, the ingest worker (the workspace must work
-  // offline), the Latin font and the public files. WebLLM and pdf.js are cached on first use.
+  // offline), the Latin font and the public files. WebLLM, pdf.js, the WASM worker (Transformers.js)
+  // and the ONNX Runtime binary are cached on first use.
   const latinFont = assetUrls.find((u) => /plus-jakarta-sans-latin-wght-normal-[\w-]+\.woff2$/.test(u));
   const shell = ['/', appCss, mainJs, ingestWorkerJs, ...(latinFont ? [latinFont] : []), ...directImports(result.metafile, mainJs), ...publicFiles];
   const sw = swTemplate
@@ -152,9 +183,27 @@ async function postProcess(result) {
 
   await writeFile(
     path.join(DIST, 'build-manifest.json'),
-    JSON.stringify({ version, entries: { mainJs, workerJs, ingestWorkerJs, appCss }, assets: assetUrls, public: [...publicFiles].sort(), precache: shell }, null, 2),
+    JSON.stringify(
+      { version, entries: { mainJs, workerJs, ingestWorkerJs, wasmWorkerJs, ortWasm, appCss }, assets: assetUrls, public: [...publicFiles].sort(), precache: shell },
+      null,
+      2,
+    ),
   );
-  return { version, mainJs, workerJs, ingestWorkerJs, appCss };
+  return { version, mainJs, workerJs, ingestWorkerJs, wasmWorkerJs, ortWasm, appCss };
+}
+
+/**
+ * Copies the ONNX Runtime binary from the package whose glue was bundled, so their versions always
+ * match, to a content-hashed /assets URL.
+ * @param {import('esbuild').Metafile} metafile
+ */
+async function copyOrtWasm(metafile) {
+  const glue = Object.keys(metafile.inputs).find((p) => /(^|\/)onnxruntime-web\/dist\/ort\.wasm\.bundle\.min\.mjs$/.test(p));
+  if (!glue) throw new Error('onnxruntime-web/wasm was not bundled (is the ort-wasm-only plugin active?)');
+  const bytes = await readFile(path.join(ROOT, path.dirname(glue), 'ort-wasm-simd-threaded.wasm'));
+  const url = `/assets/ort-wasm-simd-threaded-${createHash('sha256').update(bytes).digest('hex').slice(0, 16)}.wasm`;
+  await writeFile(path.join(DIST, url.slice(1)), bytes);
+  return url;
 }
 
 /** Static chunks imported by the main entry (needed to boot offline). */

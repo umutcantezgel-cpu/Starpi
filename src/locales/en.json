@@ -73,6 +73,7 @@
     "mode_server": "Own server",
     "label_cloud": "Cloud assistant",
     "label_client": "On-device model (WebGPU)",
+    "label_wasm": "On-device model (processor, WASM)",
     "label_server": "Own server",
     "label_synthesizer": "Quoted from the sources",
     "model_generic": "The on-device model",
@@ -83,6 +84,7 @@
     "vram_loading": "Loading model",
     "vram_ready": "{model} ({precision}) · about {gb} GB VRAM",
     "vram_ready_no_size": "{model} ({precision})",
+    "ram_ready": "{model} · CPU (WASM)",
     "progress": {
       "init": "Preparing the on-device model…",
       "download": "Downloading weights…",
@@ -91,9 +93,11 @@
       "finalizing": "Finishing up…"
     },
     "confirm_download": "The on-device model \"{model}\" will be downloaded once (about {mb} MB) and stored in this browser.\n\nDownload now?",
+    "confirm_download_wasm": "The on-device model \"{model}\" will be downloaded once (about {mb} MB, plus {runtime} MB for the runtime) and stored in this browser. It runs on the processor and answers more slowly than a GPU model.\n\nDownload now?",
     "confirm_save_data": "Note: data saver is enabled on this device.",
     "notice_ready_title": "On-device mode is active: {model}",
     "notice_ready_body": "The model runs on this device's GPU. Questions and chat history stay on this device.",
+    "notice_ready_body_wasm": "The model runs on this device's processor. Questions and chat history stay on this device.",
     "notice_unavailable_title": "On-device mode is not available",
     "notice_failed_title": "The on-device model could not be loaded",
     "notice_cancelled_title": "Loading cancelled",

@@ -85,7 +85,33 @@ for (const [file, text] of [['index.html', html], ['sw.js', sw], ['build-manifes
   if (NVIDIA_KEY.test(text)) problems.push(`NVIDIA API key in ${file}`);
 }
 
-// 5. The production CSP is configured.
+// 5. The processor (WASM) runtime loads on first use only: the worker and the self-hosted ONNX
+// Runtime binary exist, the service worker keeps the binary once cached, and neither of them nor
+// any code of Transformers.js or ONNX Runtime is part of the precached app shell.
+const { wasmWorkerJs, ortWasm } = manifest.entries;
+if (!wasmWorkerJs || !(await exists(wasmWorkerJs))) problems.push(`the WASM worker is missing: ${wasmWorkerJs}`);
+if (typeof ortWasm !== 'string' || !/^\/assets\/ort-wasm-simd-threaded-[0-9a-f]{16}\.wasm$/.test(ortWasm)) {
+  problems.push(`unexpected ONNX Runtime binary URL: ${ortWasm}`);
+} else if (!(await exists(ortWasm))) {
+  problems.push(`the ONNX Runtime binary is missing: ${ortWasm}`);
+} else {
+  const magic = (await readFile(path.join(DIST, ortWasm.slice(1)))).subarray(0, 4);
+  if (!magic.equals(Buffer.from([0x00, 0x61, 0x73, 0x6d]))) problems.push(`${ortWasm} is not a WebAssembly binary`);
+  if (!manifest.assets.includes(ortWasm)) problems.push('the ONNX Runtime binary is not listed in the build assets');
+}
+for (const url of [wasmWorkerJs, ortWasm]) {
+  if (manifest.precache.includes(url)) problems.push(`${url} is precached; the WASM runtime loads on first use`);
+}
+const scripts = manifest.assets.filter((/** @type {string} */ a) => a.endsWith('.js'));
+const sources = new Map(await Promise.all(scripts.map(async (/** @type {string} */ a) => /** @type {const} */ ([a, await readFile(path.join(DIST, a), 'utf8')]))));
+if (![...sources.values()].some((code) => code.includes(ortWasm))) problems.push('no script references the ONNX Runtime binary');
+// Markers of Transformers.js (its download path template) and of ONNX Runtime (its binary's name).
+for (const url of manifest.precache.filter((/** @type {string} */ u) => u.endsWith('.js'))) {
+  const code = sources.get(url) ?? '';
+  if (code.includes('{model}/resolve/{revision}/') || code.includes('ort-wasm-simd-threaded.wasm')) problems.push(`${url} is precached but contains the WASM runtime`);
+}
+
+// 6. The production CSP is configured.
 const vercel = JSON.parse(await readFile(path.join(ROOT, 'vercel.json'), 'utf8'));
 const csp = vercel.headers
   ?.flatMap((/** @type {{ headers: Array<{ key: string, value: string }> }} */ h) => h.headers)

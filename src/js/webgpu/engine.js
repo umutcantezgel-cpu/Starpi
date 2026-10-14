@@ -1,22 +1,32 @@
 // @ts-check
-// Lifecycle controller for the on-device WebLLM engine (running in webgpu/worker.js).
+// Lifecycle controller for the on-device engine: WebLLM on the GPU (running in webgpu/worker.js), or
+// Transformers.js on the processor (WASM, running in wasm/worker.js) when the model ref asks for it.
 //
 // State machine: idle -> loading -> ready, with error as a terminal state until the next load.
 // Every load gets a sequence number; cancel/unload bump it, so late results of superseded loads are
 // discarded and their worker is terminated. Teardown always ends in worker.terminate(), which frees
 // GPU memory even if the engine is stuck mid-download or its device was lost.
+import { WASM_CACHE_NAME, WASM_RUNTIME_MB } from '../models/wasm-catalog.js';
+import { wasmCacheStatus, WasmEngineClient } from '../wasm/client.js';
 import { ALL_MODEL_IDS, chooseModel, detectMobile } from './models.js';
 
-/** Replaced at build time with the hashed worker URL (scripts/build.mjs). */
+/** Replaced at build time with the hashed worker URLs (scripts/build.mjs). */
 const WORKER_URL = '__STARPI_WEBLLM_WORKER_URL__';
+const WASM_WORKER_URL = '__STARPI_WASM_WORKER_URL__';
 
 /** @typedef {import('./models.js').ModelChoice} ModelChoice */
 /** @typedef {import('./models.js').ModelPreference} ModelPreference */
 /** @typedef {import('./models.js').HardwareProfile} HardwareProfile */
 /** @typedef {typeof import('@mlc-ai/web-llm')} WebLLM */
-/** @typedef {import('@mlc-ai/web-llm').WebWorkerMLCEngine} WorkerEngine */
 /** @typedef {import('@mlc-ai/web-llm').InitProgressReport} InitProgressReport */
 /** @typedef {import('@mlc-ai/web-llm').ChatCompletionMessageParam} ChatCompletionMessageParam */
+
+/**
+ * The part of WebLLM's engine API this module uses; WasmEngineClient implements the same.
+ * @typedef {{ choices: Array<{ delta?: { content?: string | null } }>, usage?: { prompt_tokens?: number, completion_tokens?: number, extra?: BenchmarkRun['engineStats'] } }} StreamChunk
+ * @typedef {{ messages: ChatCompletionMessageParam[], temperature: number, max_tokens: number, stream: true, ignore_eos?: boolean, stream_options?: { include_usage: boolean } }} StreamRequest
+ * @typedef {{ chat: { completions: { create(req: StreamRequest): Promise<AsyncIterable<StreamChunk>> } }, interruptGenerate(): void, unload(): Promise<void>, resetChat(): Promise<void> }} LocalEngine
+ */
 
 /**
  * @typedef {'unsupported' | 'no-adapter' | 'quota' | 'network' | 'code-download' | 'device-lost' | 'out-of-memory' | 'cancelled' | 'busy' | 'not-loaded' | 'unknown'} EngineErrorKind
@@ -60,7 +70,7 @@ export function classifyProgress(text) {
  * @property {'idle' | 'loading' | 'ready' | 'error'} status
  * @property {ModelChoice | null} model
  * @property {EngineError | null} error
- * @property {{ progress: number, text: string, phase: LoadPhase } | null} progress
+ * @property {{ progress: number, text: string, phase: LoadPhase, label?: string } | null} progress label: the model being loaded
  */
 
 /** @type {EngineState} */
@@ -68,7 +78,7 @@ let state = { status: 'idle', model: null, error: null, progress: null };
 /** @type {Set<(s: EngineState) => void>} */
 const listeners = new Set();
 
-/** @type {WorkerEngine | null} */
+/** @type {LocalEngine | null} */
 let engine = null;
 /** @type {Worker | null} */
 let worker = null;
@@ -148,28 +158,41 @@ const REPORTED_LIMITS = [
   'maxStorageBuffersPerShaderStage',
 ];
 
+/** @typedef {{ powerPreference?: 'high-performance' | 'low-power' }} AdapterOptions */
+/** @typedef {{ supported: true, hw: HardwareProfile, adapter: AdapterDetails } | { supported: false, error: EngineError }} WebGPUProbe */
+/** @typedef {{ hw: HardwareProfile, webgpu: WebGPUProbe }} DeviceProbe */
+
+/** What the navigator tells about the device, with or without WebGPU. */
+function navigatorHints() {
+  const nav = /** @type {Navigator & { deviceMemory?: number, userAgentData?: { mobile?: boolean } }} */ (navigator);
+  return {
+    isMobile: detectMobile({ userAgent: nav.userAgent ?? '', userAgentDataMobile: nav.userAgentData?.mobile }),
+    deviceMemoryGB: typeof nav.deviceMemory === 'number' ? nav.deviceMemory : null,
+  };
+}
+
 /**
  * Checks WebGPU availability and reads the adapter capabilities used for model selection and the
  * diagnostics panel.
- * @returns {Promise<{ supported: true, hw: HardwareProfile, adapter: AdapterDetails } | { supported: false, error: EngineError }>}
+ * @param {AdapterOptions} [options] the adapter request; loading a model asks for the fast GPU
+ * @returns {Promise<WebGPUProbe>}
  */
-export async function probeWebGPU() {
+export async function probeWebGPU(options = { powerPreference: 'high-performance' }) {
   /** @typedef {{ limits?: Record<string, unknown> & { maxBufferSize?: number }, features?: { has(name: string): boolean } & Iterable<string>, info?: Partial<AdapterDetails['info']> }} AdapterLike */
-  /** @typedef {{ requestAdapter?: (opts?: { powerPreference?: 'high-performance' | 'low-power' }) => Promise<AdapterLike | null> }} GpuLike */
+  /** @typedef {{ requestAdapter?: (opts?: AdapterOptions) => Promise<AdapterLike | null> }} GpuLike */
   const gpu = /** @type {{ gpu?: GpuLike }} */ (/** @type {unknown} */ (navigator)).gpu;
   if (!gpu?.requestAdapter) {
     return { supported: false, error: new EngineError('unsupported', 'navigator.gpu is not available in this browser') };
   }
   let adapter;
   try {
-    adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+    adapter = await gpu.requestAdapter(options);
   } catch (err) {
     return { supported: false, error: new EngineError('no-adapter', 'requestAdapter() failed', err) };
   }
   if (!adapter) {
     return { supported: false, error: new EngineError('no-adapter', 'requestAdapter() returned no adapter (GPU blocked or disabled)') };
   }
-  const nav = /** @type {Navigator & { deviceMemory?: number, userAgentData?: { mobile?: boolean } }} */ (navigator);
   /** @type {Record<string, number>} */
   const limits = {};
   for (const name of REPORTED_LIMITS) {
@@ -185,12 +208,59 @@ export async function probeWebGPU() {
       features: adapter.features ? [...adapter.features].sort() : [],
     },
     hw: {
-      isMobile: detectMobile({ userAgent: nav.userAgent ?? '', userAgentDataMobile: nav.userAgentData?.mobile }),
-      deviceMemoryGB: typeof nav.deviceMemory === 'number' ? nav.deviceMemory : null,
+      ...navigatorHints(),
       maxBufferSize: Number(adapter.limits?.maxBufferSize ?? 0),
       hasF16: Boolean(adapter.features?.has?.('shader-f16')),
     },
   };
+}
+
+/**
+ * A device without usable WebGPU: only processor (WASM) models run.
+ * @param {EngineError} error why WebGPU is not available
+ * @returns {DeviceProbe}
+ */
+function withoutWebGPU(error) {
+  return { webgpu: { supported: false, error }, hw: { ...navigatorHints(), maxBufferSize: 0, hasF16: false, webgpu: false } };
+}
+
+/**
+ * The device profile for model selection: the adapter's capabilities, or a profile without WebGPU
+ * when the browser offers no adapter.
+ * @param {AdapterOptions} [options]
+ * @returns {Promise<DeviceProbe>}
+ */
+export async function probeDevice(options) {
+  const webgpu = await probeWebGPU(options);
+  if (!webgpu.supported) return withoutWebGPU(webgpu.error);
+  const { limits, info } = webgpu.adapter;
+  return {
+    webgpu,
+    hw: { ...webgpu.hw, webgpu: true, maxStorageBufferBindingSize: limits.maxStorageBufferBindingSize ?? 0, vendor: info.vendor, architecture: info.architecture },
+  };
+}
+
+/** A menu must not wait long for an adapter that never answers. */
+const PICKER_PROBE_TIMEOUT_MS = 2_500;
+/** @type {Promise<DeviceProbe> | null} */
+let pickerProbe = null;
+
+/**
+ * The device profile for the model picker, probed once. It asks for the browser's default adapter
+ * (filling a menu should not wake a discrete GPU) and counts as "no WebGPU" when the adapter does
+ * not answer within 2.5 s. Loading a model always probes afresh.
+ * @returns {Promise<DeviceProbe>}
+ */
+export function getDeviceProbe() {
+  pickerProbe ??= Promise.race([
+    probeDevice({}),
+    /** @type {Promise<DeviceProbe>} */ (
+      new Promise((resolve) => {
+        setTimeout(() => resolve(withoutWebGPU(new EngineError('no-adapter', 'requestAdapter() did not answer in time'))), PICKER_PROBE_TIMEOUT_MS);
+      })
+    ),
+  ]);
+  return pickerProbe;
 }
 
 /**
@@ -255,7 +325,8 @@ async function requestPersistence() {
  * @param {LoadOptions} options
  */
 async function agreeToDownload(choice, options) {
-  await checkQuota(Math.max(choice.approxDownloadMB, 1));
+  // A processor model may also need the ONNX Runtime binary, which is cached like the app's assets.
+  await checkQuota(Math.max(choice.approxDownloadMB + (choice.runtime === 'wasm' ? WASM_RUNTIME_MB : 0), 1));
   if (options.confirmDownload && !(await options.confirmDownload(choice))) return false;
   await requestPersistence();
   return true;
@@ -306,15 +377,17 @@ export function loadModel(options) {
   const current = () => seq === loadSeq;
 
   const run = async () => {
-    const probe = await probeWebGPU();
-    if (!probe.supported) throw probe.error;
-    const choice = chooseModel(probe.hw, options.preference);
-    if (choice.runtime !== 'webgpu') throw new EngineError('unsupported', 'Processor (WASM) models are not available in this build');
+    const { hw, webgpu } = await probeDevice();
+    const choice = chooseModel(hw, options.preference);
+    // A WebGPU preset picked on a device without WebGPU: say why instead of switching runtimes.
+    if (choice.runtime === 'webgpu' && !webgpu.supported) throw webgpu.error;
 
-    if (engine && state.model?.modelId === choice.modelId) return true;
+    if (engine && state.model?.runtime === choice.runtime && state.model.modelId === choice.modelId) return true;
     // Settle the cheap questions first: without a cached model, a start-up load stops here silently,
-    // and an interactive load asks for consent before anything is downloaded.
-    const missing = await certainlyNotCached(choice.modelId);
+    // and an interactive load asks for consent before anything is downloaded. A processor model
+    // that is not fully cached (or whose cache cannot be read) always needs consent.
+    const wasm = choice.wasm;
+    const missing = wasm ? (await wasmCacheStatus(wasm)) !== 'full' : await certainlyNotCached(choice.modelId);
     if (missing) {
       if (options.onlyIfCached) return false;
       if (!(await agreeToDownload(choice, options))) return false;
@@ -322,7 +395,25 @@ export function loadModel(options) {
     }
     await teardown();
     if (!current()) return false;
-    setState({ status: 'loading', error: null, model: null, progress: { progress: 0, text: '', phase: 'init' } });
+    setState({ status: 'loading', error: null, model: null, progress: { progress: 0, text: '', phase: 'init', label: choice.label } });
+
+    if (wasm) {
+      const w = new Worker(new URL(WASM_WORKER_URL, location.href), { type: 'module', name: 'starpi-wasm' });
+      worker = w;
+      const created = await Promise.race([
+        WasmEngineClient.load(w, wasm, ({ progress, stage }) => {
+          if (current()) setState({ progress: { progress, text: '', phase: stage === 'session' ? 'finalizing' : missing ? 'download' : 'cache', label: choice.label } });
+        }),
+        aborted,
+      ]);
+      if (!current()) {
+        w.terminate();
+        return false;
+      }
+      engine = created;
+      setState({ status: 'ready', error: null, progress: null, model: choice });
+      return true;
+    }
 
     const webllm = await Promise.race([loadWebLLM(), aborted]);
     if (!current()) return false;
@@ -347,7 +438,7 @@ export function loadModel(options) {
         choice.modelId,
         {
           initProgressCallback: (/** @type {InitProgressReport} */ report) => {
-            if (current()) setState({ progress: { progress: report.progress, text: report.text, phase: classifyProgress(report.text) } });
+            if (current()) setState({ progress: { progress: report.progress, text: report.text, phase: classifyProgress(report.text), label: choice.label } });
           },
         },
         choice.chatOptions,
@@ -358,7 +449,8 @@ export function loadModel(options) {
       w.terminate();
       return false;
     }
-    engine = created;
+    // WebLLM's engine is typed for its whole API; this module only uses the LocalEngine part.
+    engine = /** @type {LocalEngine} */ (/** @type {unknown} */ (created));
     setState({
       status: 'ready',
       error: null,
@@ -463,6 +555,7 @@ export const BENCHMARK_PROMPT =
 /**
  * @typedef {object} BenchmarkRun
  * @property {string} modelId
+ * @property {ModelChoice['runtime']} runtime
  * @property {boolean} f16
  * @property {number} promptTokens
  * @property {number} completionTokens
@@ -471,6 +564,17 @@ export const BENCHMARK_PROMPT =
  * @property {number} finishedAt     performance.now() after the last chunk
  * @property {{ prefill_tokens_per_s?: number, decode_tokens_per_s?: number, time_to_first_token_s?: number } | null} engineStats
  */
+
+/**
+ * Reads a stream to its end without using its output.
+ * @param {AsyncIterable<StreamChunk>} stream
+ */
+async function drain(stream) {
+  const chunks = stream[Symbol.asyncIterator]();
+  while (!(await chunks.next()).done) {
+    // only the work matters
+  }
+}
 
 /**
  * Measures the loaded model: one short warm-up request, then a fixed prompt with exactly
@@ -489,7 +593,7 @@ export async function runBenchmark(options = {}) {
   try {
     options.onPhase?.('warmup', 0, total);
     await e.resetChat();
-    await e.chat.completions.create({ messages: [{ role: 'user', content: 'Hello' }], max_tokens: 8, temperature: 0 });
+    await drain(await e.chat.completions.create({ messages: [{ role: 'user', content: 'Hello' }], max_tokens: 8, temperature: 0, stream: true }));
     await e.resetChat();
 
     options.onPhase?.('prefill', 0, total);
@@ -518,6 +622,7 @@ export async function runBenchmark(options = {}) {
     await e.resetChat();
     return {
       modelId: model.modelId,
+      runtime: model.runtime,
       f16: model.f16,
       promptTokens: usage?.prompt_tokens ?? 0,
       completionTokens: usage?.completion_tokens ?? chunks,
@@ -533,9 +638,17 @@ export async function runBenchmark(options = {}) {
   }
 }
 
-/** Unloads the engine and deletes every cached artifact of the models this app can use. */
+/**
+ * Unloads the engine and deletes every cached artifact of the models this app can use. The ONNX
+ * Runtime binary is app code (a hashed /assets file) and stays.
+ */
 export async function deleteCachedModels() {
   await unloadModel();
+  try {
+    await globalThis.caches?.delete(WASM_CACHE_NAME);
+  } catch (err) {
+    console.warn('[starpi] could not delete cached processor models', err);
+  }
   const webllm = await loadWebLLM();
   for (const id of ALL_MODEL_IDS) {
     try {
