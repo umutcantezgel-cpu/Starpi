@@ -170,15 +170,20 @@ every flowchart label and keep colours and `init` directives out.
 - **Types:** modules carry `// @ts-check` and JSDoc types, and `tsconfig.json` must list every one
   of them (a unit test checks this). `npm run typecheck` runs in strict mode and `any` is not
   accepted.
-- **Pure core:** `src/js/core/` (citation labels, sentences, facts, the source check, receipts)
+- **Pure core:** `src/js/core/` (citation labels, sentences, facts, the source check with its
+  negation and binding rules, receipts with their Merkle tree and signatures, documents and SARIF)
   uses no DOM, network or storage APIs, so it runs in the browser, in workers and in Node. Keep
   it that way; the ESLint configuration only allows globals available in all three.
 - **Versioned rules:** answer receipts record the version of the text extraction, chunking and
   source-check rules. The golden tests (`tests/unit/golden.test.mjs`) fail when a change alters
-  the extracted text or chunks of the sample files, or any verdict or reason on the 308 labelled
-  answers; then bump `EXTRACTOR`, `CHUNKER` or `GROUNDING` and update the pin, so older receipts
-  are reported as made with other rules instead of as a mismatch. A change the pins do not cover
-  needs the bump all the same.
+  the extracted text or chunks of the sample files, or any verdict or reason of either version of
+  the source-check rules on the labelled answers in `tests/fixtures/grounding/`; then bump
+  `EXTRACTOR`, `CHUNKER` or `GROUNDING` and update the pin, so older receipts are reported as made
+  with other rules instead of as a mismatch. A new source-check version keeps the previous ones
+  runnable (`GROUNDING_VERSIONS`), so receipts made with them are recomputed with their own rules.
+  A change the pins do not cover needs the bump all the same. Measure a rule change on the
+  development sets (`npm run eval:source-check`); the held-out sets are measured once per release
+  of new rules ([protocol](docs/eval/v2-protocol.md)).
 - **Tailwind** is pinned to v3 to keep the current design; class names must be complete strings
   so the compiler can find them.
 - **User-facing text** lives in `src/locales/en.json` (default) and `src/locales/de.json`, never
