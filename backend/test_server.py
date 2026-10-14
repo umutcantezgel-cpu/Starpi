@@ -284,6 +284,9 @@ class BodyValidationTests(ServerTestCase):
             b"\xff\xfe": "invalid_json",
             b"[1, 2]": "json_body_must_be_object",
             b'"text"': "json_body_must_be_object",
+            # NaN and Infinity are no JSON; JSON.parse in the Vercel Functions refuses them too.
+            b'{"query": NaN}': "invalid_json",
+            b'{"query": -Infinity}': "invalid_json",
         }
         for body, error in cases.items():
             with self.subTest(body=body):
@@ -291,6 +294,12 @@ class BodyValidationTests(ServerTestCase):
                 self.assertEqual(resp.status, 400)
                 self.assertEqual(resp.json["error"], error)
         self.assertEqual(self.query_calls, [])
+
+    def test_leading_byte_order_mark_is_ignored(self) -> None:
+        resp = self.request(
+            "POST", "/api/brain/query", b'\xef\xbb\xbf{"query": "hi"}', {"Content-Type": "application/json"}
+        )
+        self.assertEqual(resp.status, 200)
 
     def test_field_types_and_presence(self) -> None:
         cases = [
@@ -650,6 +659,15 @@ class NvidiaTokenTests(NvidiaRouteTestCase):
         limited = self.chat(headers={**auth, "X-Forwarded-For": "198.51.100.10, 203.0.113.1"})
         self.assertEqual((limited.status, limited.json), (429, {"error": "rate_limited"}))
         self.assertEqual(self.chat(headers={**auth, "X-Forwarded-For": "203.0.113.2"}).status, 200)
+
+
+class RateLimitKeyTests(unittest.TestCase):
+    def test_trusts_the_last_forwarded_hop_only_behind_the_local_proxy(self) -> None:
+        self.assertEqual(server.rate_limit_key("127.0.0.1", "198.51.100.9, 203.0.113.1", True), "203.0.113.1")
+        self.assertEqual(server.rate_limit_key("127.0.0.1", " , ", True), "127.0.0.1")
+        self.assertEqual(server.rate_limit_key("127.0.0.1", None, True), "127.0.0.1")
+        # Talking to the server directly, a client could pick a new key for every request.
+        self.assertEqual(server.rate_limit_key("192.0.2.5", "203.0.113.1", False), "192.0.2.5")
 
 
 class NvidiaRateLimitTests(NvidiaRouteTestCase):

@@ -11,9 +11,15 @@ delivers the first byte of a stream; after that byte there is no failover. Keys 
 429 for its Retry-After, 401/403 for half an hour, 408/5xx, timeouts, network errors and empty streams
 briefly. Upstream bodies are never read or echoed, and log lines name a key by its index only.
 
-One difference to the Vercel Functions: httpx applies one read timeout to every read of a request,
-so a key gets up to ``idleTimeoutMs`` (not ``attemptTimeoutMs``) for its first byte, and the failover
-budget only keeps new attempts from starting.
+Differences to the Vercel Functions:
+
+- httpx applies its read timeout (``idleTimeoutMs``) to each read, not to an attempt as a whole: the
+  response headers and the first chunk may each take up to that long, so a slow key can commit after
+  the browser's first-byte timeout, and the failover budget only keeps new attempts from starting.
+  Likewise ``streamMaxMs`` is checked when a chunk arrives, so a stream can overrun it by up to one
+  read timeout; the browser then ends it with its own timeout.
+- All request threads share one client with a bounded connection pool. A request that finds no free
+  connection within ``POOL_TIMEOUT_SECONDS`` is refused with 503 ``proxy_busy`` and parks no key.
 """
 
 from __future__ import annotations
@@ -51,6 +57,10 @@ ASCII_WHITESPACE = " \t\n\v\f\r"
 IMF_FIXDATE = re.compile(r"[A-Z][a-z]{2}, [0-9]{2} [A-Z][a-z]{2} [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} GMT")
 RETRY_AFTER_MAX_SECONDS = 300
 CONNECT_TIMEOUT_SECONDS = 3.0
+# Waiting for a free connection of the shared client is this server's limit, not a key's: a short
+# wait, and then the request is refused as busy instead of parking a healthy key.
+POOL_TIMEOUT_SECONDS = 2.0
+BUSY_RETRY_AFTER_SECONDS = 5
 
 
 class NvidiaValidationError(ValueError):
@@ -99,15 +109,23 @@ def utf16_length(text: str) -> int:
     return len(text.encode("utf-16-le", "surrogatepass")) // 2
 
 
+def _finite(value: int | float) -> bool:
+    # An integer too large for a float is Infinity after JSON.parse in JavaScript.
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def _is_number(value: Any) -> bool:
-    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+    return isinstance(value, int | float) and not isinstance(value, bool) and _finite(value)
 
 
 def _is_integer(value: Any) -> bool:
     # 1.0 counts as an integer, as it does after JSON.parse in JavaScript; True does not.
-    if isinstance(value, bool):
+    if isinstance(value, bool) or not _is_number(value):
         return False
-    return isinstance(value, int) or (isinstance(value, float) and value.is_integer())
+    return isinstance(value, int) or value.is_integer()
 
 
 def _valid_messages(messages: Any) -> list[dict[str, str]] | None:
@@ -340,6 +358,11 @@ class _Retry:
 
 
 @dataclass(slots=True)
+class _Busy:
+    """No connection of the shared client became free in time: this server is busy, the key is fine."""
+
+
+@dataclass(slots=True)
 class _Fatal:
     """An upstream answer that another key would get as well: no failover."""
 
@@ -373,7 +396,9 @@ class NvidiaRouter:
         self.pool = KeyPool(len(keys), clock)
         # One client for all request threads; a stream returns its connection when it is closed.
         self._client = httpx.Client(
-            timeout=httpx.Timeout(PROXY["idleTimeoutMs"] / 1000, connect=CONNECT_TIMEOUT_SECONDS),
+            timeout=httpx.Timeout(
+                PROXY["idleTimeoutMs"] / 1000, connect=CONNECT_TIMEOUT_SECONDS, pool=POOL_TIMEOUT_SECONDS
+            ),
             transport=transport,
         )
 
@@ -400,6 +425,8 @@ class NvidiaRouter:
             outcome = self._attempt(index, payload, started + PROXY["streamMaxMs"] / 1000)
             if isinstance(outcome, UpstreamStream):
                 return outcome
+            if isinstance(outcome, _Busy):
+                raise NvidiaRouterError(HTTPStatus.SERVICE_UNAVAILABLE, "proxy_busy", BUSY_RETRY_AFTER_SECONDS)
             if isinstance(outcome, _Fatal):
                 logger.warning("nvidia: key %d/%d got %d, not retried", index + 1, self.pool.size, outcome.status)
                 raise NvidiaRouterError(HTTPStatus.BAD_GATEWAY, outcome.error)
@@ -420,7 +447,7 @@ class NvidiaRouter:
     def _exhausted(self) -> NvidiaRouterError:
         return NvidiaRouterError(HTTPStatus.SERVICE_UNAVAILABLE, "all_keys_exhausted", self.pool.retry_after())
 
-    def _attempt(self, index: int, payload: bytes, stream_deadline: float) -> UpstreamStream | _Retry | _Fatal:
+    def _attempt(self, index: int, payload: bytes, stream_deadline: float) -> UpstreamStream | _Retry | _Busy | _Fatal:
         cooldown = PROXY["cooldownMs"]
         transient = cooldown["transient"] / 1000
         request = self._client.build_request(
@@ -435,6 +462,8 @@ class NvidiaRouter:
         )
         try:
             response = self._client.send(request, stream=True)
+        except httpx.PoolTimeout:
+            return _Busy()
         except httpx.TimeoutException:
             return _Retry(transient, "timed out", timeout=True)
         except httpx.HTTPError:

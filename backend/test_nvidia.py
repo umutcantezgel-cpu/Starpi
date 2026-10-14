@@ -377,6 +377,16 @@ class RouterTests(unittest.TestCase):
             (ctx.exception.status, ctx.exception.error, ctx.exception.headers), (504, "upstream_timeout", {})
         )
 
+    def test_busy_connection_pool_refuses_without_parking_a_key(self) -> None:
+        router = make_router(Upstream(fail(httpx.PoolTimeout("no free connection"))))
+        with self.assertRaises(nvidia.NvidiaRouterError) as ctx:
+            router.open_stream(BODY)
+        self.assertEqual(
+            (ctx.exception.status, ctx.exception.error, ctx.exception.headers),
+            (503, "proxy_busy", {"Retry-After": str(nvidia.BUSY_RETRY_AFTER_SECONDS)}),
+        )
+        self.assertFalse(router.pool.is_cooling(0))
+
     def test_4xx_not_retried_and_body_not_echoed(self) -> None:
         cases = [
             (Refusal(400), "upstream_rejected"),
