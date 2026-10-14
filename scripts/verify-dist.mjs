@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Post-build gate: fails if dist/ would violate the production CSP or reference missing files.
 // Checks: no inline scripts/handlers/styles, only same-origin script/style URLs, every referenced
-// asset exists, the service worker has no unresolved placeholders, and no eval-like constructs ship.
+// asset exists, the service worker has no unresolved placeholders, and no eval-like constructs or
+// NVIDIA API keys ship.
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +22,8 @@ async function exists(urlPath) {
   }
 }
 
-const manifest = JSON.parse(await readFile(path.join(DIST, 'build-manifest.json'), 'utf8'));
+const manifestText = await readFile(path.join(DIST, 'build-manifest.json'), 'utf8');
+const manifest = JSON.parse(manifestText);
 const html = await readFile(path.join(DIST, 'index.html'), 'utf8');
 
 // 1. index.html must be compatible with script-src 'self' / style-src 'self'.
@@ -69,11 +71,18 @@ const css = await readFile(path.join(DIST, manifest.entries.appCss.slice(1)), 'u
 if (!css.includes('::highlight(starpi-review)')) problems.push('app CSS lacks the ::highlight(starpi-review) rule');
 
 // 4. JavaScript bundles: no unresolved placeholders, no eval-like constructs (CSP has no 'unsafe-eval').
+// NVIDIA API keys live only in the server environment, so no shipped file may contain one (the class
+// includes the backslash, so keys pasted with Markdown escapes are found too).
+const NVIDIA_KEY = /nvapi-[A-Za-z0-9_\\-]{20,}/;
 for (const asset of manifest.assets.filter((/** @type {string} */ a) => a.endsWith('.js'))) {
   const code = await readFile(path.join(DIST, asset), 'utf8');
   if (code.includes('__STARPI_')) problems.push(`unresolved placeholder in ${asset}`);
   if (/\bnew Function\s*\(/.test(code)) problems.push(`new Function() in ${asset}`);
   if (/(^|[^.\w$])eval\s*\(/.test(code)) problems.push(`eval() in ${asset}`);
+  if (NVIDIA_KEY.test(code)) problems.push(`NVIDIA API key in ${asset}`);
+}
+for (const [file, text] of [['index.html', html], ['sw.js', sw], ['build-manifest.json', manifestText]]) {
+  if (NVIDIA_KEY.test(text)) problems.push(`NVIDIA API key in ${file}`);
 }
 
 // 5. The production CSP is configured.
