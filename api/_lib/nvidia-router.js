@@ -209,6 +209,8 @@ export function createKeyRouter({ keys, fetch: send, now = () => Date.now(), log
           break;
         }
         attempts++;
+        // The last attempt may get less than its full time; a timeout then says nothing about the key.
+        const shortened = budget < timing.attemptTimeoutMs;
         const outcome = await attempt(index, payload, signal, Math.min(timing.attemptTimeoutMs, budget));
         if (outcome.kind === 'commit') return { ok: true, first: outcome.first, reader: outcome.reader, abort: outcome.abort, attempts };
         if (outcome.kind === 'closed') return CLIENT_CLOSED;
@@ -217,7 +219,7 @@ export function createKeyRouter({ keys, fetch: send, now = () => Date.now(), log
           return { ok: false, status: 502, error: outcome.error };
         }
         if (outcome.timeout) timeouts++;
-        cool(index, outcome.cooldownMs, outcome.reason);
+        if (!(outcome.timeout && shortened)) cool(index, outcome.cooldownMs, outcome.reason);
       }
       if (timeouts === attempts && (attempts > 0 || outOfTime)) return { ok: false, status: 504, error: 'upstream_timeout' };
       return exhausted();

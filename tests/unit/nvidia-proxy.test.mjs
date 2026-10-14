@@ -374,6 +374,15 @@ describe('createKeyRouter', () => {
     assert.deepEqual(fetch.calls.map((c) => c.key), [key(1), key(2), key(3), key(1)]);
   });
 
+  it('does not park a key whose attempt only timed out because the budget ran short', async () => {
+    // Real clock: 15 ms of budget is less than the 40 ms attempt time, and the stalled key times out.
+    const fetch = fakeFetch(stalled());
+    const { router } = makeRouter(1, fetch);
+    const result = await router.open(BODY, { deadline: Date.now() + 15 });
+    assert.deepEqual(result, { ok: false, status: 504, error: 'upstream_timeout' });
+    assert.deepEqual(router.coolingUntil(), [0], 'the key was parked for a timeout it could not avoid');
+  });
+
   it('stops failing over at the deadline', async () => {
     const clock = fakeClock();
     // Each upstream answer takes 150 ms on the fake clock; the budget is 400 ms.

@@ -421,6 +421,7 @@ const NVIDIA_ERRORS = /** @type {Record<string, string>} */ ({
   nvidia_not_configured: 'provider.nvidia_not_configured',
   rate_limited: 'provider.nvidia_rate_limited',
   all_keys_exhausted: 'provider.nvidia_busy',
+  proxy_busy: 'provider.nvidia_busy',
   model_not_allowed: 'provider.nvidia_model_unavailable',
   model_unavailable: 'provider.nvidia_model_unavailable',
   invalid_field: 'provider.nvidia_invalid_request',
