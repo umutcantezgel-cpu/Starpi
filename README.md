@@ -488,14 +488,43 @@ deployment.
 
 ## On-device models
 
-Model ids are validated against the pinned WebLLM catalog in the unit tests. On adapters without
-the `shader-f16` feature the `q4f32_1` variant is selected automatically.
+On-device presets come in tiers by the GPU memory they need: **T1** fits phones and small GPUs
+(under 2 GB of VRAM), **T2** needs about 2–4 GB and **T3** at least 4 GB. Automatic selection
+picks a T1 or T2 preset from the device class and never a T3 preset, because browsers report no
+VRAM and cap `navigator.deviceMemory` at 8 GB; on a strong GPU a T3 preset is only suggested.
 
-| Preset | WebLLM model (f16 / f32 fallback) | Approx. download | VRAM (f16 / f32) | Context window |
-| --- | --- | --- | --- | --- |
-| `llama-1b` (mobile default) | `Llama-3.2-1B-Instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 0.7 GB | 879 MB / 1,129 MB | 2,048 |
-| `qwen-1.5b` | `Qwen2.5-1.5B-Instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 1.0 GB | 1,630 MB / 1,889 MB | 2,048 |
-| `qwen-3b` (desktop default, ≥ 8 GB RAM) | `Qwen2.5-3B-Instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 1.9 GB | 2,505 MB / 2,894 MB | 4,096 |
+WebLLM model ids are validated against the pinned WebLLM catalog in the unit tests. On adapters
+without the `shader-f16` feature the `q4f32_1` variant is selected automatically, and phones
+request at most 2,048 tokens of context.
+
+| Tier | Preset | WebLLM model (f16 / f32 fallback) | Approx. download | VRAM (f16 / f32) | Context window |
+| --- | --- | --- | --- | --- | --- |
+| T1 | `smollm2-360m` | `SmolLM2-360M-Instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 0.3 GB | 376 MB / 580 MB | 2,048 |
+| T1 | `qwen-0.5b` | `Qwen2.5-0.5B-Instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 0.3 GB | 945 MB / 1,060 MB | 2,048 |
+| T1 | `llama-1b` (phones and small GPUs) | `Llama-3.2-1B-Instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 0.7 GB | 879 MB / 1,129 MB | 2,048 |
+| T1 | `qwen-1.5b` (memory not reported) | `Qwen2.5-1.5B-Instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 1.0 GB | 1,630 MB / 1,889 MB | 2,048 |
+| T1 | `smollm2-1.7b` | `SmolLM2-1.7B-Instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 1.0 GB | 1,774 MB / 2,692 MB | 2,048 |
+| T2 | `gemma-2b` | `gemma-2-2b-it-q4f16_1-MLC` / `…q4f32_1-MLC` | 1.5 GB | 1,895 MB / 2,509 MB | 4,096 |
+| T2 | `llama-3b` | `Llama-3.2-3B-Instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 1.9 GB | 2,264 MB / 2,952 MB | 4,096 |
+| T2 | `phi-3.5-mini` | `Phi-3.5-mini-instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 2.2 GB | 3,672 MB / 5,483 MB | 4,096 |
+| T2 | `qwen-3b` (desktop default, ≥ 8 GB RAM) | `Qwen2.5-3B-Instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 1.9 GB | 2,505 MB / 2,894 MB | 4,096 |
+| T3 | `mistral-7b` | `Mistral-7B-Instruct-v0.3-q4f16_1-MLC` / `…q4f32_1-MLC` | 4.1 GB | 4,573 MB / 5,619 MB | 4,096 |
+| T3 | `qwen-7b` (suggested for strong GPUs) | `Qwen2.5-7B-Instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 4.3 GB | 5,107 MB / 5,900 MB | 4,096 |
+| T3 | `llama-8b` | `Llama-3.1-8B-Instruct-q4f16_1-MLC` / `…q4f32_1-MLC` | 4.6 GB | 5,001 MB / 6,101 MB | 4,096 |
+| T3 | `gemma-9b` | `gemma-2-9b-it-q4f16_1-MLC` / `…q4f32_1-MLC` | 5.3 GB | 6,422 MB / 8,383 MB | 4,096 |
+
+Processor (WASM) presets are ONNX models with 8-bit weights. Each Hugging Face repository is
+pinned to a commit, and the unit tests check the list of files and their sizes:
+
+| Tier | Preset | Hugging Face repository @ revision | Weights (ONNX, q8) | Approx. download | Context window |
+| --- | --- | --- | --- | --- | --- |
+| T1 | `smollm2-135m` | `HuggingFaceTB/SmolLM2-135M-Instruct` @ `12fd25f` | `onnx/model_quantized.onnx` | 0.14 GB | 2,048 |
+| T1 | `smollm2-360m` (processor on phones) | `HuggingFaceTB/SmolLM2-360M-Instruct` @ `a10cc15` | `onnx/model_quantized.onnx` | 0.37 GB | 2,048 |
+| T1 | `qwen-0.5b` (processor default) | `onnx-community/Qwen2.5-0.5B-Instruct` @ `22942cb` | `onnx/model_quantized.onnx` | 0.52 GB | 2,048 |
+
+Model licenses: the Llama presets are under the Llama 3.1 and 3.2 community licenses, the Gemma
+presets under the Gemma terms of use and Qwen 2.5 3B under the Qwen research license; the other
+presets are under Apache-2.0 or MIT.
 
 Nothing is downloaded without confirmation. Before asking, the app checks whether the model is
 already cached and whether the storage quota suffices; persistent storage is requested only after
@@ -561,7 +590,7 @@ npm run eval:source-check -- --unblind --grounding 1   # the same with the rules
 | Figure | Produced by | Pinned by |
 | --- | --- | --- |
 | Source check results ([How well it works](#how-well-it-works)) | `npm run eval:source-check` on the answer sets in [`tests/fixtures/grounding/`](tests/fixtures/grounding) (`--unblind` adds the held-out sets) | `tests/unit/source-check-eval.test.mjs` fails if any result gets worse; `tests/unit/golden.test.mjs` pins every verdict |
-| VRAM, download size and context window ([On-device models](#on-device-models)) | `vram_required_MB` in the WebLLM catalog pinned by `package-lock.json`; the context window the app requests (`chooseModel`) | `tests/unit/models.test.mjs` fails if the table and the catalog differ |
+| Tier, VRAM, download size and context window ([On-device models](#on-device-models)) | `vram_required_MB` in the WebLLM catalog pinned by `package-lock.json`; the context window the app requests (`chooseModel`); the pinned Hugging Face revisions and file sizes of the processor (WASM) presets | `tests/unit/models.test.mjs` and `tests/unit/wasm-catalog.test.mjs` fail if the tables and the catalogs differ |
 | Time to first token, prefill and decode speed | **Diagnostics** tab on your device: a warm-up request, then a fixed prompt with exactly 128 generated tokens (`ignore_eos`, temperature 0) on a reset chat | Not published: the result depends on the GPU, the driver and the browser |
 
 ### Configuration

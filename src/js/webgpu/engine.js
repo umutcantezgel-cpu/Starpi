@@ -5,7 +5,7 @@
 // Every load gets a sequence number; cancel/unload bump it, so late results of superseded loads are
 // discarded and their worker is terminated. Teardown always ends in worker.terminate(), which frees
 // GPU memory even if the engine is stuck mid-download or its device was lost.
-import { chooseModel, detectMobile, MODEL_CATALOG } from './models.js';
+import { ALL_MODEL_IDS, chooseModel, detectMobile } from './models.js';
 
 /** Replaced at build time with the hashed worker URL (scripts/build.mjs). */
 const WORKER_URL = '__STARPI_WEBLLM_WORKER_URL__';
@@ -58,7 +58,7 @@ export function classifyProgress(text) {
 /**
  * @typedef {object} EngineState
  * @property {'idle' | 'loading' | 'ready' | 'error'} status
- * @property {(ModelChoice & { vramMB: number | null }) | null} model
+ * @property {ModelChoice | null} model
  * @property {EngineError | null} error
  * @property {{ progress: number, text: string, phase: LoadPhase } | null} progress
  */
@@ -309,6 +309,7 @@ export function loadModel(options) {
     const probe = await probeWebGPU();
     if (!probe.supported) throw probe.error;
     const choice = chooseModel(probe.hw, options.preference);
+    if (choice.runtime !== 'webgpu') throw new EngineError('unsupported', 'Processor (WASM) models are not available in this build');
 
     if (engine && state.model?.modelId === choice.modelId) return true;
     // Settle the cheap questions first: without a cached model, a start-up load stops here silently,
@@ -362,7 +363,7 @@ export function loadModel(options) {
       status: 'ready',
       error: null,
       progress: null,
-      model: { ...choice, vramMB: typeof record.vram_required_MB === 'number' ? Math.round(record.vram_required_MB) : null },
+      model: { ...choice, vramMB: typeof record.vram_required_MB === 'number' ? Math.round(record.vram_required_MB) : choice.vramMB },
     });
     return true;
   };
@@ -536,8 +537,7 @@ export async function runBenchmark(options = {}) {
 export async function deleteCachedModels() {
   await unloadModel();
   const webllm = await loadWebLLM();
-  const ids = Object.values(MODEL_CATALOG).flatMap((m) => [m.f16, m.f32]);
-  for (const id of ids) {
+  for (const id of ALL_MODEL_IDS) {
     try {
       await webllm.deleteModelAllInfoInCache(id);
     } catch (err) {
