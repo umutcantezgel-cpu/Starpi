@@ -55,6 +55,42 @@ const ortWasmOnly = {
   },
 };
 
+/** Placeholders for URLs that are only known after bundling, mapped to the output that replaces them. */
+const URL_PLACEHOLDERS = Object.freeze({
+  [WORKER_PLACEHOLDER]: 'src/js/webgpu/worker.js',
+  [INGEST_WORKER_PLACEHOLDER]: 'src/js/rag/ingest.worker.js',
+  [WASM_WORKER_PLACEHOLDER]: 'src/js/wasm/worker.js',
+  [ORT_WASM_PLACEHOLDER]: 'ort-wasm-simd-threaded.wasm',
+});
+/** URLs to put in place of the placeholders in the current bundling pass (empty in the first). */
+let urlValues = /** @type {Map<string, string>} */ (new Map());
+/** Placeholders met in the current pass. */
+const seenPlaceholders = new Set();
+
+/**
+ * Writes the worker and runtime URLs into the sources while esbuild loads them, so every output is
+ * hashed with its final content. Patching the bundles afterwards would change a file without
+ * changing its name, and browsers keep /assets/* for a year (immutable).
+ * @type {import('esbuild').Plugin}
+ */
+const assetUrlPlugin = {
+  name: 'starpi-asset-urls',
+  setup(build) {
+    build.onLoad({ filter: /[\\/]src[\\/]js[\\/].+\.js$/ }, async (args) => {
+      const code = await readFile(args.path, 'utf8');
+      const found = Object.keys(URL_PLACEHOLDERS).filter((placeholder) => code.includes(placeholder));
+      if (found.length === 0) return undefined;
+      let contents = code;
+      for (const placeholder of found) {
+        seenPlaceholders.add(placeholder);
+        const url = urlValues.get(placeholder);
+        if (url) contents = contents.replaceAll(placeholder, url);
+      }
+      return { contents, loader: 'js' };
+    });
+  },
+};
+
 function runTailwind() {
   const bin = path.join(ROOT, 'node_modules', '.bin', 'tailwindcss');
   const result = spawnSync(
@@ -92,7 +128,7 @@ const esbuildOptions = {
   metafile: true,
   logLevel: 'silent',
   loader: { '.woff2': 'file', '.woff': 'file' },
-  plugins: [ortWasmOnly],
+  plugins: [ortWasmOnly, assetUrlPlugin],
   define: {
     __STARPI_SUPABASE_URL__: JSON.stringify(SUPABASE_URL),
     __STARPI_SUPABASE_ANON_KEY__: JSON.stringify(SUPABASE_ANON_KEY),
@@ -110,8 +146,11 @@ function outputsByEntry(metafile) {
   return map;
 }
 
-/** @param {import('esbuild').BuildResult} result */
-async function postProcess(result) {
+/**
+ * @param {import('esbuild').BuildResult} result
+ * @param {Map<string, string>} urls the URLs this pass wrote into the sources
+ */
+async function postProcess(result, urls) {
   if (!result.metafile) throw new Error('esbuild did not return a metafile');
   const entries = outputsByEntry(result.metafile);
   const mainJs = entries['src/js/main.js'];
@@ -120,37 +159,12 @@ async function postProcess(result) {
   const wasmWorkerJs = entries['src/js/wasm/worker.js'];
   const appCss = entries['src/styles/entry.css'];
   if (!mainJs || !workerJs || !ingestWorkerJs || !wasmWorkerJs || !appCss) throw new Error(`missing entry outputs: ${JSON.stringify(entries)}`);
-  // Copied first: its hashed URL goes into the WASM worker below.
-  const ortWasm = await copyOrtWasm(result.metafile);
+  const ortWasm = /** @type {string} */ (urls.get(ORT_WASM_PLACEHOLDER));
+  for (const placeholder of Object.keys(URL_PLACEHOLDERS)) {
+    if (!seenPlaceholders.has(placeholder)) throw new Error(`${placeholder} not found in any source file`);
+  }
 
   const outputs = Object.keys(result.metafile.outputs).map((f) => path.join(ROOT, f));
-  const jsOutputs = outputs.filter((f) => f.endsWith('.js'));
-
-  // Worker and runtime URLs are only known after bundling; patch them into the chunks that
-  // reference them. Every placeholder must be found at least once.
-  const urls = new Map([
-    [WORKER_PLACEHOLDER, workerJs],
-    [INGEST_WORKER_PLACEHOLDER, ingestWorkerJs],
-    [WASM_WORKER_PLACEHOLDER, wasmWorkerJs],
-    [ORT_WASM_PLACEHOLDER, ortWasm],
-  ]);
-  const patched = new Set();
-  for (const file of jsOutputs) {
-    let code = await readFile(file, 'utf8');
-    let changed = false;
-    for (const [placeholder, url] of urls) {
-      if (!code.includes(placeholder)) continue;
-      code = code.replaceAll(placeholder, url);
-      patched.add(placeholder);
-      changed = true;
-    }
-    if (changed) {
-      await writeFile(file, code);
-    }
-  }
-  for (const placeholder of urls.keys()) {
-    if (!patched.has(placeholder)) throw new Error(`${placeholder} not found in any output chunk`);
-  }
 
   const publicFiles = await copyPublic();
   const assetUrls = outputs
@@ -232,13 +246,42 @@ function reportWarnings(result) {
   return true;
 }
 
+/**
+ * The URLs of this pass's workers and of the ONNX Runtime binary (copied into dist here).
+ * @param {import('esbuild').Metafile} metafile
+ */
+async function resolveUrls(metafile) {
+  const entries = outputsByEntry(metafile);
+  /** @type {Map<string, string>} */
+  const urls = new Map();
+  for (const [placeholder, entry] of Object.entries(URL_PLACEHOLDERS)) {
+    const url = placeholder === ORT_WASM_PLACEHOLDER ? await copyOrtWasm(metafile) : entries[entry];
+    if (!url) throw new Error(`no output for ${entry}`);
+    urls.set(placeholder, url);
+  }
+  return urls;
+}
+
+/**
+ * Bundles until the URLs written into the sources are the URLs of the outputs: a worker's name
+ * depends on its content, which can contain another URL (the WASM worker holds the ONNX Runtime's),
+ * so this takes three passes.
+ */
 async function buildOnce() {
-  await rm(DIST, { recursive: true, force: true });
   await mkdir(TMP, { recursive: true });
   runTailwind();
-  const result = await esbuild.build(esbuildOptions);
-  if (reportWarnings(result)) throw new Error('esbuild emitted warnings; the build treats warnings as errors');
-  return postProcess(result);
+  urlValues = new Map();
+  for (let pass = 1; ; pass++) {
+    await rm(DIST, { recursive: true, force: true });
+    seenPlaceholders.clear();
+    const result = await esbuild.build(esbuildOptions);
+    if (reportWarnings(result)) throw new Error('esbuild emitted warnings; the build treats warnings as errors');
+    if (!result.metafile) throw new Error('esbuild did not return a metafile');
+    const urls = await resolveUrls(result.metafile);
+    if ([...urls].every(([placeholder, url]) => urlValues.get(placeholder) === url)) return postProcess(result, urls);
+    if (pass === 4) throw new Error('worker URLs did not settle after 4 bundling passes');
+    urlValues = urls;
+  }
 }
 
 async function main() {
