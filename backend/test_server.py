@@ -17,7 +17,10 @@ from http.server import ThreadingHTTPServer
 from typing import Any
 from unittest import mock
 
+import httpx
+
 import server
+from core import nvidia
 from core.config import BrainConfig
 
 ALLOWED_ORIGIN = "https://starpi.app"
@@ -40,6 +43,9 @@ def make_settings(**overrides: Any) -> BrainConfig:
         allowed_origins=[ALLOWED_ORIGIN],
         api_token="",
         max_body_bytes=1_048_576,
+        # A developer's NVIDIA_API_KEYS must never reach the tests.
+        nvidia_keys=[],
+        nvidia_rate_limit_per_minute=20,
     )
     return dataclasses.replace(base, **overrides)
 
@@ -442,6 +448,220 @@ class CorsTests(ServerTestCase):
 
     def test_preflight_for_unknown_path_is_404(self) -> None:
         self.assertEqual(self.request("OPTIONS", "/nope", headers={"Origin": ALLOWED_ORIGIN}).status, 404)
+
+
+NVIDIA_MODEL = nvidia.CATALOG["defaultModel"]
+NVIDIA_REQUEST = {"model": NVIDIA_MODEL, "messages": [{"role": "user", "content": "Hi"}], "max_tokens": 16}
+NVIDIA_SSE = [b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n', b"data: [DONE]\n\n"]
+UPSTREAM_SECRET = b"UPSTREAM-SECRET-BODY"
+
+
+def nvidia_key(n: int) -> str:
+    """A valid-format key built at runtime (a call, so CPython cannot fold it into a .pyc constant)."""
+    return "nvapi-" + str(n).rjust(64, "t")
+
+
+class UpstreamBody(httpx.SyncByteStream):
+    """A fake NVIDIA response body: yields ``chunks`` (an iterable, so a generator can pace them),
+    then raises ``error`` if given; records whether it was closed."""
+
+    def __init__(self, chunks: Any, error: Exception | None = None) -> None:
+        self.chunks = chunks
+        self.error = error
+        self.closed = threading.Event()
+
+    def __iter__(self) -> Any:
+        yield from self.chunks
+        if self.error is not None:
+            raise self.error
+
+    def close(self) -> None:
+        self.closed.set()
+
+
+class NvidiaRouteTestCase(ServerTestCase):
+    """Starts the server with a two-key NVIDIA router whose upstream is ``self.upstream``."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.upstream_requests: list[httpx.Request] = []
+        self.answers: list[Any] = [self.event_stream(NVIDIA_SSE)]
+        self.httpd.nvidia_router = nvidia.NvidiaRouter(
+            [nvidia_key(1), nvidia_key(2)], transport=httpx.MockTransport(self.upstream)
+        )
+
+    def upstream(self, request: httpx.Request) -> httpx.Response:
+        self.upstream_requests.append(request)
+        answer = self.answers[min(len(self.upstream_requests), len(self.answers)) - 1]
+        return answer() if callable(answer) else answer
+
+    @staticmethod
+    def event_stream(chunks: Any, error: Exception | None = None) -> Any:
+        return lambda: httpx.Response(
+            200, headers={"content-type": "text/event-stream"}, stream=UpstreamBody(chunks, error)
+        )
+
+    @staticmethod
+    def refusal(status: int, headers: dict[str, str] | None = None) -> Any:
+        return lambda: httpx.Response(status, headers=headers, content=UPSTREAM_SECRET)
+
+    def chat(self, payload: Any = None, headers: dict[str, str] | None = None) -> Response:
+        return self.post_json(
+            "/api/chat/nvidia",
+            NVIDIA_REQUEST if payload is None else payload,
+            {"Origin": ALLOWED_ORIGIN, **(headers or {})},
+        )
+
+
+class NvidiaRouteTests(NvidiaRouteTestCase):
+    def test_models_endpoint_lists_allowlist_and_configured_flag(self) -> None:
+        resp = self.request("GET", "/api/models/nvidia", headers={"Origin": ALLOWED_ORIGIN})
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.headers["cache-control"], "no-store")
+        self.assertEqual(resp.json, nvidia.public_catalog(True))
+        self.assertNotIn(b"nvapi-", resp.raw)
+
+    def test_models_endpoint_is_not_configured_without_keys(self) -> None:
+        self.httpd.nvidia_router = None
+        self.assertFalse(self.request("GET", "/api/models/nvidia").json["configured"])
+
+    def test_chat_requires_an_allowed_origin(self) -> None:
+        no_origin = self.post_json("/api/chat/nvidia", NVIDIA_REQUEST)
+        self.assertEqual((no_origin.status, no_origin.json), (403, {"error": "origin_required"}))
+        foreign = self.chat(headers={"Origin": "https://evil.example"})
+        self.assertEqual((foreign.status, foreign.json), (403, {"error": "origin_not_allowed"}))
+        self.assertEqual(self.upstream_requests, [])
+        self.assertEqual(self.chat().status, 200)
+
+    def test_chat_streams_sse_without_content_length_and_with_security_headers(self) -> None:
+        resp = self.chat()
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.raw, b"".join(NVIDIA_SSE))
+        self.assertEqual(resp.headers["content-type"], "text/event-stream; charset=utf-8")
+        self.assertEqual(resp.headers["cache-control"], "no-store, no-transform")
+        self.assertEqual(resp.headers["x-content-type-options"], "nosniff")
+        self.assertEqual(resp.headers["x-accel-buffering"], "no")
+        self.assertEqual(resp.headers["connection"], "close")
+        self.assertEqual(resp.headers["access-control-allow-origin"], ALLOWED_ORIGIN)
+        self.assertNotIn("content-length", resp.headers)
+        [request] = self.upstream_requests
+        self.assertEqual(json.loads(request.content), nvidia.validate_chat_request(NVIDIA_REQUEST))
+
+    def test_chat_fails_over_on_429_transparently(self) -> None:
+        self.answers = [self.refusal(429, {"retry-after": "30"}), self.event_stream(NVIDIA_SSE)]
+        with self.assertLogs("core.nvidia", "WARNING"):
+            resp = self.chat()
+        self.assertEqual((resp.status, resp.raw), (200, b"".join(NVIDIA_SSE)))
+        self.assertEqual(len(self.upstream_requests), 2)
+
+    def test_chat_validation_errors_are_400_and_never_reach_upstream(self) -> None:
+        cases = [
+            ({**NVIDIA_REQUEST, "model": "evil/model"}, {"error": "model_not_allowed"}),
+            ({**NVIDIA_REQUEST, "messages": []}, {"error": "invalid_field", "field": "messages"}),
+            ({**NVIDIA_REQUEST, "temperature": 9}, {"error": "invalid_field", "field": "temperature"}),
+            ([NVIDIA_REQUEST], {"error": "json_body_must_be_object"}),
+        ]
+        for payload, error in cases:
+            with self.subTest(error=error):
+                resp = self.chat(payload)
+                self.assertEqual((resp.status, resp.json), (400, error))
+        self.assertEqual(self.upstream_requests, [])
+
+    def test_chat_without_keys_is_503_nvidia_not_configured(self) -> None:
+        self.httpd.nvidia_router = None
+        resp = self.chat()
+        self.assertEqual((resp.status, resp.json), (503, {"error": "nvidia_not_configured"}))
+
+    def test_all_keys_exhausted_maps_to_503_with_retry_after(self) -> None:
+        self.answers = [self.refusal(429, {"retry-after": "9"})]
+        with self.assertLogs("core.nvidia", "WARNING"):
+            resp = self.chat()
+        self.assertEqual((resp.status, resp.json), (503, {"error": "all_keys_exhausted"}))
+        self.assertEqual(resp.headers["retry-after"], "9")
+
+    def test_rejected_upstream_is_502_and_body_and_key_never_appear(self) -> None:
+        self.answers = [self.refusal(400)]
+        with self.assertLogs("core.nvidia", "WARNING") as logs:
+            resp = self.chat()
+        self.assertEqual((resp.status, resp.json), (502, {"error": "upstream_rejected"}))
+        self.assertNotIn(UPSTREAM_SECRET, resp.raw)
+        self.assertNotIn("nvapi-", "\n".join(logs.output))
+        self.assertEqual(len(self.upstream_requests), 1)
+
+    def test_mid_stream_failure_ends_with_sse_error_event(self) -> None:
+        self.answers = [self.event_stream(NVIDIA_SSE[:1], httpx.ReadError("connection reset"))]
+        resp = self.chat()
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.raw, NVIDIA_SSE[0] + nvidia.sse_error("upstream_interrupted"))
+
+    def test_client_disconnect_closes_the_upstream(self) -> None:
+        def endless() -> Any:
+            for i in range(5000):
+                time.sleep(0.002)
+                yield f"data: {i}\n\n".encode()
+
+        body = UpstreamBody(endless())
+        self.answers = [lambda: httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=body)]
+        payload = json.dumps(NVIDIA_REQUEST).encode()
+        head = (
+            f"POST /api/chat/nvidia HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: {ALLOWED_ORIGIN}\r\n"
+            f"Content-Type: application/json\r\nContent-Length: {len(payload)}\r\n\r\n"
+        ).encode()
+        with socket.create_connection(("127.0.0.1", self.port), timeout=5) as sock:
+            sock.sendall(head + payload)
+            self.assertIn(b"200 OK", sock.recv(4096))
+        self.assertTrue(body.closed.wait(5), "the upstream stream stayed open after the client left")
+
+    def test_wrong_methods_are_405_with_allow(self) -> None:
+        chat = self.request("GET", "/api/chat/nvidia")
+        self.assertEqual((chat.status, chat.headers["allow"]), (405, "POST, OPTIONS"))
+        models = self.post_json("/api/models/nvidia", {})
+        self.assertEqual((models.status, models.headers["allow"]), (405, "GET, OPTIONS"))
+
+    def test_body_above_nvidia_limit_is_413(self) -> None:
+        # Below BRAIN_MAX_BODY_BYTES, above the NVIDIA route's own limit.
+        limit = nvidia.LIMITS["maxBodyBytes"]
+        headers = {"Content-Type": "application/json", "Content-Length": str(limit + 1), "Origin": ALLOWED_ORIGIN}
+        resp = self.raw_request("POST", "/api/chat/nvidia", headers)
+        self.assertEqual((resp.status, resp.json), (413, {"error": "payload_too_large", "max_bytes": limit}))
+        self.assertEqual(self.upstream_requests, [])
+
+    def test_preflight_for_allowed_origin_lists_post(self) -> None:
+        resp = self.request(
+            "OPTIONS", "/api/chat/nvidia", headers={"Origin": ALLOWED_ORIGIN, "Access-Control-Request-Method": "POST"}
+        )
+        self.assertEqual(resp.status, 204)
+        self.assertEqual(resp.headers["access-control-allow-methods"], "POST, OPTIONS")
+
+
+class NvidiaTokenTests(NvidiaRouteTestCase):
+    settings_overrides = {"api_token": TOKEN}
+
+    def test_bearer_token_replaces_the_origin(self) -> None:
+        auth = self.post_json("/api/chat/nvidia", NVIDIA_REQUEST, {"Authorization": f"Bearer {TOKEN}"})
+        self.assertEqual((auth.status, auth.raw), (200, b"".join(NVIDIA_SSE)))
+        wrong = self.post_json("/api/chat/nvidia", NVIDIA_REQUEST, {"Authorization": f"Bearer {TOKEN}x"})
+        self.assertEqual((wrong.status, wrong.json), (403, {"error": "origin_required"}))
+
+    def test_rate_limit_counts_the_last_forwarded_hop(self) -> None:
+        self.httpd.nvidia_limiter = nvidia.RateLimiter(1)
+        auth = {"Authorization": f"Bearer {TOKEN}"}
+        self.assertEqual(self.chat(headers={**auth, "X-Forwarded-For": "198.51.100.9, 203.0.113.1"}).status, 200)
+        limited = self.chat(headers={**auth, "X-Forwarded-For": "198.51.100.10, 203.0.113.1"})
+        self.assertEqual((limited.status, limited.json), (429, {"error": "rate_limited"}))
+        self.assertEqual(self.chat(headers={**auth, "X-Forwarded-For": "203.0.113.2"}).status, 200)
+
+
+class NvidiaRateLimitTests(NvidiaRouteTestCase):
+    settings_overrides = {"nvidia_rate_limit_per_minute": 2}
+
+    def test_chat_rate_limit_is_429_with_retry_after(self) -> None:
+        self.assertEqual(self.chat().status, 200)
+        self.assertEqual(self.chat().status, 200)
+        limited = self.chat()
+        self.assertEqual((limited.status, limited.json), (429, {"error": "rate_limited"}))
+        self.assertTrue(1 <= int(limited.headers["retry-after"]) <= 60)
+        self.assertEqual(len(self.upstream_requests), 2)
 
 
 class StartupTests(unittest.TestCase):
