@@ -401,6 +401,22 @@ function findVersions(text) {
 }
 
 /**
+ * The version reading of a date-shaped dotted triple with a two-digit last part ("4.2.10",
+ * "12.3.45"): findVersions leaves it to the dates unless a version word stands before it, so the
+ * same text can be a version on one side and a date on the other. Version 2 gives such a date its
+ * version reading as well.
+ * @param {string} surface
+ * @returns {string | null}
+ */
+function dottedVersion(surface) {
+  const m = /^(\d{1,2})\.(\d{1,2})\.(\d{2})$/.exec(surface.trim());
+  return m ? `v:${m.slice(1).map((x) => String(Number(x))).join('.')}` : null;
+}
+
+/** Date-shaped dotted triples in a text, for dottedVersion. */
+const DOTTED_TRIPLE = /(?<![\p{L}\p{N}.])\d{1,2}\.\d{1,2}\.\d{2}(?![\p{L}\p{N}]|\.\d)/gu;
+
+/**
  * Codes that mix letters and digits (Q3, A320, 5G, v2), also with a hyphen between a short letter
  * prefix and the digits (R-02, ISO-27001, COVID-19); the hyphen is not part of the value, so
  * "R-02", "R 02" and "R02" match. Numbers with a unit or ordinal suffix ("480k", "10kg", "3rd") are
@@ -512,7 +528,8 @@ export function extractFacts(sentence, options = {}) {
     }
   }
   for (const d of findDates(text)) {
-    facts.push({ kind: 'date', surface: d.surface, start: d.start, end: d.end, values: d.claim, nums: [], approx: false, sig: 0 });
+    const version = (options.version ?? 2) >= 2 ? dottedVersion(d.surface) : null;
+    facts.push({ kind: 'date', surface: d.surface, start: d.start, end: d.end, values: version ? [...d.claim, version] : d.claim, nums: [], approx: false, sig: 0 });
     text = mask(text, [[d.start, d.end]]);
   }
   for (const t of findTimes(text)) {
@@ -608,6 +625,10 @@ export function indexSource(text, options = {}) {
     for (const v of findVersions(masked)) {
       v.source.forEach((x) => values.add(x));
       masked = mask(masked, [[v.start, v.end]]);
+    }
+    for (const m of masked.matchAll(DOTTED_TRIPLE)) {
+      const version = dottedVersion(m[0]);
+      if (version) values.add(version);
     }
   }
   // A date offers its year and a time its hour as plain numbers ("in 2026", "at 10"); the day and

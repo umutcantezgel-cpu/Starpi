@@ -140,8 +140,9 @@ test.describe('source check on model answers', () => {
     await expect(bar).toContainText('1/3 statements match their cited excerpts');
     await expect(bar).toContainText(`${label} says the opposite: “Power over Ethernet is not supported”.`);
     await expect(bar).toContainText(`${label} names someone or something else here, not Marcus Hale: “Priya Raman owns this specification”.`);
-    // Only the unsupported statement flags its citation; the weak one is listed for review.
-    await expect(answer.locator('.message-content .citation-chip-flag')).toHaveCount(1);
+    // Both are weak: listed for review, without flagging a citation.
+    await expect(bar).toContainText('2 partly');
+    await expect(answer.locator('.message-content .citation-chip-flag')).toHaveCount(0);
   });
 
   test('accepts the same facts in another format', async ({ page, diagnostics: _diagnostics }) => {

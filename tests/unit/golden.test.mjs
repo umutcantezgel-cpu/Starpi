@@ -12,7 +12,7 @@ import { blocksFromMarkdown, GROUNDING, groundAnswer } from '../../src/js/core/g
 import { CHUNKER, chunkText } from '../../src/js/rag/chunker.js';
 import { EXTRACTOR, extractText } from '../../src/js/rag/parser.js';
 import { makePdf } from '../fixtures/pdf.mjs';
-import { loadCorpora, loadItems, loadV2Items } from '../../scripts/eval-source-check.mjs';
+import { loadCorpora, loadItems, loadParaphrases, loadV2Items } from '../../scripts/eval-source-check.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const sha = (/** @type {string} */ s) => createHash('sha256').update(s).digest('hex');
@@ -73,14 +73,14 @@ describe(`source check pins (${GROUNDING.id} ${GROUNDING.version})`, () => {
     assert.equal(sha(lines.join('\n')), 'e2d8d04e18bf66c0796cc5b1f4959d20214b514233eac2fd1b6b307fdb3d587c');
   });
 
-  it('verdicts and reasons of version 2 on every statement of the development sets are unchanged', async () => {
+  it('verdicts and reasons of version 2 on every statement of the development sets and the paraphrases are unchanged', async () => {
     const corpora = await loadCorpora();
-    const items = [...(await loadItems()).filter((i) => i.set === 'dev'), ...(await loadV2Items())];
+    const items = [...(await loadItems()).filter((i) => i.set === 'dev'), ...(await loadV2Items()), ...(await loadParaphrases())];
     const lines = items.flatMap((item) => {
       const sources = corpora[item.corpus];
       return groundAnswer(blocksFromMarkdown(item.answer, sources), sources, { version: 2 }).sentences.map((s) => `${item.id}|${s.verdict}|${s.reasons.map((r) => `${r.code}:${r.fact ?? ''}`).join(',')}`);
     });
-    assert.equal(lines.length, 762);
-    assert.equal(sha(lines.join('\n')), 'e9696a1dc9046c12d50a9f2f46766a6722298736a0dbc2a9094dedc2470d2a43');
+    assert.equal(lines.length, 1618);
+    assert.equal(sha(lines.join('\n')), '01ffc269346989005df32f525f74b519cbd535f02c760a77476b9eb736e2ecc7');
   });
 });

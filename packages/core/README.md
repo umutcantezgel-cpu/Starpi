@@ -107,16 +107,19 @@ const spec = [{ label: '[Doc: spec.md, Chunk: 1]', doc: 'spec.md', heading: '', 
 const claims = 'Power over Ethernet is supported [Doc: spec.md, Chunk: 1]. Marcus Hale owns the specification [Doc: spec.md, Chunk: 1].';
 
 for (const s of groundAnswer(blocksFromMarkdown(claims, spec), spec).sentences) console.log(s.verdict, s.reasons);
-// unsupported [{ code: 'negation_inversion', level: 'unsupported', cites: [0], found: 'Power over Ethernet is not supported' }]
+// weak [{ code: 'negation_inversion', level: 'weak', cites: [0], found: 'Power over Ethernet is not supported' }]
 // weak [{ code: 'name_context', level: 'weak', fact: 'Marcus Hale', cites: [0], found: 'Priya Raman owns this specification' }]
 ```
 
 - `negation_inversion`: the statement drops, adds or reverses the negation of the excerpt clause
   it matches, also through opposites (enabled and disabled, allowed and prohibited, increased and
-  decreased, erlaubt and verboten, gestiegen and gesunken). `unsupported` when the clause matches
-  the statement closely, `weak` otherwise. Negations written differently ("unsupported", "no …
-  without", "may not", "darf … nicht") count as the same meaning; "no later than", "not … until"
-  and conditions ("if not", "reicht das nicht") are not negations.
+  decreased, reachable and unreachable, erlaubt and verboten, gestiegen and gesunken). Always
+  `weak`: reading negations by their words cannot tell every restatement of a negated rule
+  ("prohibited until the update" → "only allowed after the update") from its reversal. Negations
+  written differently ("unsupported", "no longer", "neither … nor", "may not", "darf … nicht")
+  count as the same meaning; "no later than", "not … until", "only if", conditions ("reicht das
+  nicht, …") and questions are not reversals, and clauses with different numbers are not
+  compared.
 - `name_context`: the passage the statement matches names someone or something else; the
   statement's name stands elsewhere in the excerpts or in none of them. Names the question gave
   (`given`) are not checked.
@@ -142,7 +145,7 @@ Verdicts and reason codes:
 
 | Verdict | Reason codes |
 | --- | --- |
-| `unsupported` | `missing_fact`, `uncited_missing`, `quote_missing`, `unknown_citation`, `not_delivered`, `negation_inversion` (close match) |
+| `unsupported` | `missing_fact`, `uncited_missing`, `quote_missing`, `unknown_citation`, `not_delivered` |
 | `weak` | `approximate`, `fact_elsewhere`, `fact_context`, `name_missing`, `name_context`, `negation_inversion`, `uncited_found`, `from_conversation`, `low_overlap`, `label_mismatch`, a partial quotation |
 | `supported` | none: every fact is in a cited excerpt and at least half of the content words appear there |
 | `unchecked` | none: statement and excerpt are in different languages (facts only) and the statement has no facts |
