@@ -344,7 +344,8 @@ export function initGraph() {
   onAction('select-entity', (el) => selectEntity(el.dataset.arg ?? ''));
   onAction('ask-entity', (el) => {
     switchTab('chat');
-    return submitChat(t('graph.ask_prompt', { name: el.dataset.arg ?? '' }));
+    // A question about an entity of the knowledge base: always answered from the sources and checked.
+    return submitChat(t('graph.ask_prompt', { name: el.dataset.arg ?? '' }), { chatMode: 'grounded' });
   });
 
   const canvas = byId('graphCanvas');

@@ -101,6 +101,18 @@ function record(value) {
  * @property {boolean} overflow                 the answer outgrew MAX_STREAM_CHARS
  */
 
+/** Reasoning tags splitReasoning() looks for; a stray one inside the reasoning would end the block early. */
+const REASONING_TAGS = /<\/?(?:think|thought|denkprozess)>/gi;
+
+/**
+ * The reasoning without reasoning tags. Applied to the whole text, not per delta, because a tag can
+ * arrive split over two deltas.
+ * @param {string} reasoning
+ */
+function visibleReasoning(reasoning) {
+  return reasoning.replace(REASONING_TAGS, '');
+}
+
 /**
  * Folds OpenAI-compatible `chat.completion.chunk` events into an answer. Reasoning deltas
  * (`reasoning_content`, or `reasoning` on some servers) are kept apart from the content and
@@ -149,19 +161,21 @@ export function createChatStreamAssembler() {
       const before = content.length + reasoning.length;
       if (typeof delta.content === 'string') content += delta.content;
       const thought = typeof delta.reasoning_content === 'string' ? delta.reasoning_content : typeof delta.reasoning === 'string' ? delta.reasoning : '';
-      // A closing tag inside the reasoning would end the <think> block early.
-      reasoning += thought.replaceAll('</think>', '');
+      reasoning += thought;
       const after = content.length + reasoning.length;
       if (after > MAX_STREAM_CHARS) overflow = true;
       return after !== before;
     },
     fail,
-    text: () => (reasoning.trim() ? `<think>${reasoning}</think>\n\n${content}` : content),
+    text() {
+      const thoughts = visibleReasoning(reasoning);
+      return thoughts.trim() ? `<think>${thoughts}</think>\n\n${content}` : content;
+    },
     get content() {
       return content;
     },
     get reasoning() {
-      return reasoning;
+      return visibleReasoning(reasoning);
     },
     get finishReason() {
       return finishReason;

@@ -80,10 +80,12 @@ test.describe('chat mode toggle', () => {
     await expect(modeButton(page, 'grounded')).toContainText('Verifizierter Quellen-Modus');
     await expect(page.locator('#privacyNotice')).toContainText('Freier Chat');
 
-    // Quick prompts ask about the sources, so they run in source mode whatever the toggle says.
+    // Quick prompts ask about the sources, so they run in source mode, and the toggle and the
+    // privacy notice switch along to say so.
     await page.click('[data-action="quick-prompt"][data-arg="chat.prompt_docs_question"]');
     await expect(page.locator('#chatMessages')).toContainText('Verfügbare Dokumente (2)');
-    await expect(modeButton(page, 'free')).toHaveAttribute('aria-pressed', 'true');
+    await expect(modeButton(page, 'grounded')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#privacyNotice')).not.toContainText('Freier Chat');
   });
 });
 

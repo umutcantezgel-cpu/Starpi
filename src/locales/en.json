@@ -406,7 +406,7 @@
   "workspace": {
     "title": "On-device workspace",
     "badge": "Private · memory only",
-    "description": "Files are parsed, split into chunks and indexed with BM25 in a background worker on this device, and removed when you reload the page. Nothing is uploaded or synced; only when the cloud assistant or your own server writes an answer are the matching excerpts sent along with the question. Answers cite them as [Doc: file, Chunk: n].",
+    "description": "Files are parsed, split into chunks and indexed with BM25 in a background worker on this device, and removed when you reload the page. Nothing is uploaded or synced. Only when a model outside this device answers (the cloud assistant, NVIDIA NIM cloud through Starpi's server, or your own server) does file text go along with the question: in source mode the matching excerpts, in free chat the text of a file attached to that question (up to about 12,000 characters). Answers cite excerpts as [Doc: file, Chunk: n].",
     "drop_label": "Add files to the on-device workspace",
     "drop_title": "Drop files here or click to choose",
     "drop_hint": "PDF, TXT, Markdown, JSON or CSV · up to 25 MB each",
@@ -574,7 +574,7 @@
     "mode_local": "On-device (automatic) · WebGPU or the processor in this browser, nothing leaves the device",
     "mode_server": "Own server · MLX, Ollama or vLLM",
     "mode_nvidia": "NVIDIA NIM cloud (fast & free) · through Starpi's server, no key of your own",
-    "mode_hint": "The cloud assistant sends your question and the matching excerpts to the provider you configure. Without a key, Starpi quotes the knowledge base directly.",
+    "mode_hint": "Models outside this device (the cloud assistant, NVIDIA NIM cloud, your own server) receive your question: in source mode with the matching excerpts, in free chat with earlier messages and an attached file. Models in this browser keep everything on the device. Without a model, Starpi quotes the knowledge base directly.",
     "save": "Save settings",
     "saved_toast": "Settings saved.",
     "save_failed": "Some settings could not be saved: this browser blocks or limits storage (for example in a private window). They may be lost when you reload the page.",
