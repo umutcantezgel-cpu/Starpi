@@ -5,6 +5,80 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-14
+
+### Breaking changes
+
+- **Receipts are written in format `starpi.receipt/v2`** (Merkle tree, inclusion proofs, optional
+  signature). Verifiers of 1.x refuse them; `buildReceipt(draft, { schema: RECEIPT_SCHEMA_V1 })`
+  still writes v1, and v1 receipts are still read and verified.
+- **The source check runs version 2 of its rules** (`GROUNDING` = `starpi-grounding` 2) by
+  default. Verdicts change: new reasons can mark statements weak, version numbers are compared as
+  codes, and the value-context check reads the passage around each value instead of the section.
+  `groundAnswer(blocks, sources, { version: 1 })` runs the rules of 1.x unchanged (byte-identical
+  output, pinned by the golden tests), and receipts are recomputed with the version they record.
+- **Two new reason codes**, `negation_inversion` and `name_context`, in reports, receipts, the
+  JSON Schema and SARIF; code that switches over reason codes needs to handle them. A receipt in
+  format v1 with one of them is refused.
+
+### Added
+
+- **Source check version 2** (`src/js/core/polarity.js`, `src/js/core/binding.js`), in English and
+  German, deterministic and without dependencies, each statement checked on its own so receipts
+  recompute it:
+  - `negation_inversion` (weak): the statement drops, adds or reverses the negation of the excerpt
+    clause it matches, also through opposites (enabled/disabled, allowed/prohibited,
+    increased/decreased, un-/in-/dis- words, erlaubt/verboten, gestiegen/gesunken). Negations
+    written differently count as the same meaning; "no later than", "not … until", "only after",
+    ranges, questions and clauses with different numbers are not read as reversals.
+  - `name_context` (weak): the passage the statement matches names someone or something else;
+    titles ("Frau", "Mr"), the German genitive and hyphenated names are matched, names the
+    question gave are not checked.
+  - `fact_context` in version 2: the value's own passage without the section heading; a list part
+    without a subject of its own shares the first part's words; version numbers ("firmware
+    4.2.1", also date-shaped ones such as "4.2.10") are codes.
+- **Receipts v2** (`src/js/core/merkle.js`, `src/js/core/signature.js`, `src/js/core/hash.js`): an
+  RFC 6962 Merkle tree over the citations with an inclusion proof per citation
+  (`verifyCitationProof`), Ed25519 or ECDSA P-256 signatures with WebCrypto (`signReceipt`,
+  `verifyReceiptSignature`, `importPublicKey`, `publicKeyId`), statuses `valid`, `invalid`,
+  `unsigned`, `key_mismatch` and `unsupported_algorithm`, and `trusted` only for a key the caller
+  supplied. `docs/spec/receipt-v2.schema.json` and a rewritten `docs/spec/receipts.md`.
+- **`starpi-ground`**, a second command of `@starpi/core`: checks a Markdown document of any length
+  against source files and writes text, JSON or SARIF 2.1.0 (`--format`, `--output`, `--fail-on`,
+  `--cite`), exit codes 0, 1 and 2; `checkDocument` and `toSarif` in the API. A GitHub Actions
+  snippet with `upload-sarif` is in both READMEs.
+- **App:** the source-check panel names the new reasons in English and German; the receipt
+  dialog shows the Merkle root, verifies inclusion proofs and, with an optional public key, the
+  signature. `starpi-verify-receipt --public-key` does the same on the command line.
+- **Evaluation for 2.0:** `tests/fixtures/grounding/sources-v2.json` (technical specifications in
+  English and German), `eval-v2-dev.json` (107 answers), `eval-v2-holdout.json` (104 answers,
+  frozen by SHA-256 before any version 2 rule was written), `paraphrases.json` (854 faithful
+  paraphrases from a red-team review), `docs/eval/v2-protocol.md` and `docs/eval/v2-results.md`
+  (the one final measurement). `scripts/eval-source-check.mjs` gains `--sets`, `--grounding`,
+  `--variants` and `--unblind`, and refuses a changed held-out file.
+- `@starpi/core` exports `GROUNDING_VERSIONS`, `REASON_CODES`, `REASON_CODES_V1`, the receipt,
+  Merkle and signature functions, `checkDocument`, `toSarif`, `describeReason` and
+  `REASON_MESSAGES`.
+- Tests: `merkle.test.mjs` (RFC 6962 vectors, an independent implementation for 0 to 64 leaves),
+  `receipt-v2.test.mjs` (round trips, tampering, both signature algorithms, the receipt written by
+  1.3.0), `ground.test.mjs`, `grounding-v2.test.mjs`; golden pins of version 2 on every answer
+  set; end-to-end tests for the new reasons and for a v2 receipt with an ES256 signature.
+
+### Changed
+
+- The release workflow smoke-tests both commands of the packed tarball and a SARIF run.
+- The panel's note says what the check compares; the README, the package README, the receipt
+  specification, `SECURITY.md`, the walkthrough and the architecture atlas describe version 2.
+- `@starpi/core` and the app are 2.0.0; `CITATION.cff` follows.
+
+### Results
+
+Measured once on the held-out set written for 2.0 (`docs/eval/v2-results.md`): version 2
+detects 17 of 23 wrong names (version 1: 10), 20 of 24 correct values attached to the wrong thing
+(13) and 16 of 23 reversed statements (0), and marks no statement of a faithful answer unsupported
+in any set; statements of faithful answers marked weak there rise from 4 to 8 of 144. The targets
+of 8 of 10 are reached for values, not for names (74 %) or negations (70 %).
+
 ## [1.3.0] - 2026-10-13
 
 ### Added
@@ -258,7 +332,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - First public release: knowledge base on Supabase with pgvector, knowledge graph, voice input,
   cloud and on-device (WebGPU) answers, and an installable PWA.
 
-[Unreleased]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/umutcantezgel-cpu/Starpi/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.3.0...v2.0.0
 [1.3.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.0.0...v1.1.0
