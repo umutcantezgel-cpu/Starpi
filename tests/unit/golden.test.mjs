@@ -73,14 +73,14 @@ describe(`source check pins (${GROUNDING.id} ${GROUNDING.version})`, () => {
     assert.equal(sha(lines.join('\n')), 'e2d8d04e18bf66c0796cc5b1f4959d20214b514233eac2fd1b6b307fdb3d587c');
   });
 
-  it('verdicts and reasons of version 2 on every statement of the development sets and the paraphrases are unchanged', async () => {
+  it('verdicts and reasons of version 2 on every statement of every answer set are unchanged', async () => {
     const corpora = await loadCorpora();
-    const items = [...(await loadItems()).filter((i) => i.set === 'dev'), ...(await loadV2Items()), ...(await loadParaphrases())];
+    const items = [...(await loadItems()), ...(await loadV2Items({ unblind: true })), ...(await loadParaphrases())];
     const lines = items.flatMap((item) => {
       const sources = corpora[item.corpus];
       return groundAnswer(blocksFromMarkdown(item.answer, sources), sources, { version: 2 }).sentences.map((s) => `${item.id}|${s.verdict}|${s.reasons.map((r) => `${r.code}:${r.fact ?? ''}`).join(',')}`);
     });
-    assert.equal(lines.length, 1618);
-    assert.equal(sha(lines.join('\n')), '01ffc269346989005df32f525f74b519cbd535f02c760a77476b9eb736e2ecc7');
+    assert.equal(lines.length, 2930);
+    assert.equal(sha(lines.join('\n')), '6f82eccfce1d87d3c7ceead38f4df482f268d7938e2e47d7dedd882e8ebf0a06');
   });
 });

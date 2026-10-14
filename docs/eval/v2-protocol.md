@@ -117,6 +117,8 @@ name check and of comparing only clauses with the same numbers.
   reason is lowered to weak, all four sets are measured again, and both measurements are published.
   Nothing else is changed after the final measurement.
 - Statements of faithful answers marked weak are reported per set; there is no cap.
+- The result is in [`v2-results.md`](v2-results.md). Since then the unit tests pin version 2 on
+  every set, the held-out sets included.
 
 ## What the numbers do not show
 
