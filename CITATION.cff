@@ -2,13 +2,13 @@ cff-version: 1.2.0
 message: "If you use Starpi in your work, please cite it as below."
 type: software
 title: "Starpi"
-abstract: "Knowledge assistant in the browser that shows how far each answer can be trusted: retrieval-augmented generation with verifiable citations, a deterministic source check that compares every statement with the excerpts it cites (facts, reversed negations, and names and values in the wrong place), answer receipts with a Merkle tree and optional signatures that anyone can verify against the original files, and a command that checks documents in CI and writes SARIF. Files are read on the device; answers come from WebGPU inference in a Web Worker, an own server or a cloud model."
+abstract: "Knowledge assistant in the browser that shows how far each answer can be trusted: retrieval-augmented generation with verifiable citations, a deterministic source check that compares every statement with the excerpts it cites (facts, reversed negations, and names and values in the wrong place), answer receipts with a Merkle tree and optional signatures that anyone can verify against the original files, and a command that checks documents in CI and writes SARIF. Files are read on the device; answers come from a model chosen for the device (WebGPU or WebAssembly inference in a Web Worker), NVIDIA NIM cloud models through a server-side proxy with a pool of keys, an own server or a cloud model, in a verified source mode or a free chat mode."
 authors:
   - family-names: Tezgel
     given-names: Umutcan Emre
     alias: umutcantezgel-cpu
-version: 2.0.0
-date-released: "2026-10-13"
+version: 2.1.0
+date-released: "2026-10-14"
 license: MIT
 repository-code: "https://github.com/umutcantezgel-cpu/Starpi"
 url: "https://www.starpi.app"
@@ -20,6 +20,8 @@ keywords:
   - sarif
   - merkle-tree
   - webgpu
+  - webassembly
+  - nvidia-nim
   - bm25
   - webllm
   - citations

@@ -247,7 +247,7 @@ browsers, Web Workers and Node.js 22.13+. It is built from the same modules the 
 npm install @starpi/core
 # or straight from the tarball attached to each GitHub release (the package README shows
 # how to check it against SHA256SUMS first):
-npm install https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.0.0/starpi-core-2.0.0.tgz
+npm install https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.1.0/starpi-core-2.1.0.tgz
 ```
 
 ```js
