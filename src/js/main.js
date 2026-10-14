@@ -12,6 +12,7 @@ import { refreshIcons } from './icons.js';
 import { initIngest } from './ingest.js';
 import { initLibrary, loadDocuments } from './library.js';
 import { initMessages } from './messages.js';
+import { initModelPicker } from './model-picker.js';
 import { initCitations } from './rag/citations.js';
 import { initReceipts } from './rag/receipts.js';
 import { changeEngine, initSettings, renderPrivacyNotice } from './settings.js';
@@ -65,6 +66,8 @@ async function boot() {
 
   initMessages();
   initSettings();
+  // After the settings: the pickers show the stored choice, then the device's model groups.
+  initModelPicker();
   initEngineUi();
   initChat();
   initLibrary();

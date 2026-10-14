@@ -221,8 +221,9 @@ test.describe('NVIDIA cloud', () => {
     });
     await useNvidia(page, MODEL.id);
     await page.goto('/');
-    await expect(page.locator('#engineSelector')).toHaveValue('nvidia');
-    await expect(page.locator('#cfgComputeMode')).toHaveValue('nvidia');
+    // Both pickers name the stored model once the device is known.
+    await expect(page.locator('#engineSelector[data-ready="true"]')).toHaveValue(`nvidia:${MODEL.id}`);
+    await expect(page.locator('#cfgComputeMode[data-ready="true"]')).toHaveValue(`nvidia:${MODEL.id}`);
     await modeButton(page, 'free').click();
     await expect(page.locator('#privacyNotice')).toContainText("go through Starpi's server to NVIDIA");
     await ask(page, 'Write hello world in Python.');

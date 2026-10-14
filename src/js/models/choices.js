@@ -7,7 +7,7 @@
 // probe the pickers only hold the static modes 'council', 'client', 'nvidia' and 'local'.
 import { MODEL_CATALOG, normalizePreference } from '../webgpu/models.js';
 import { recommendModels } from './device.js';
-import { NVIDIA_MODELS } from './nvidia-catalog.js';
+import { NVIDIA_DEFAULT_MODEL, NVIDIA_MODELS } from './nvidia-catalog.js';
 import { WASM_CATALOG } from './wasm-catalog.js';
 
 /**
@@ -49,7 +49,38 @@ import { WASM_CATALOG } from './wasm-catalog.js';
  * @property {boolean} [disabled]
  *
  * @typedef {{ id: 'recommended' | 'local' | 'nvidia' | 'other', items: PickerItem[] }} PickerGroup
+ *
+ * @typedef {object} NvidiaCatalogSummary What the proxy reported (providers.js getNvidiaCatalog).
+ * @property {boolean} reachable false without a proxy (a static host, a 404 or a network error)
+ * @property {boolean} configured
+ * @property {string | null} defaultModel
+ * @property {ReadonlyArray<{ id: string }>} models
+ *
+ * @typedef {{ text: string } | { key: string, gb?: number }} OptionPart A model name (data, shown as
+ *   is) or an i18n key; `gb` is the download size for the key's {gb} placeholder.
  */
+
+/** i18n keys of the option group labels. */
+export const GROUP_KEYS = Object.freeze({
+  recommended: 'models.group_recommended',
+  local: 'models.group_local',
+  nvidia: 'models.group_nvidia',
+  other: 'models.group_other',
+});
+
+/** i18n keys naming where a model runs. */
+const RUNTIME_KEYS = Object.freeze({
+  webgpu: 'models.runtime_webgpu',
+  wasm: 'models.runtime_wasm',
+  nvidia: 'models.runtime_nvidia',
+});
+
+/** @type {Readonly<Record<PickerWarning, string>>} */
+const WARNING_KEYS = Object.freeze({
+  'needs-webgpu': 'models.warn_needs_webgpu',
+  heavy: 'models.warn_heavy',
+  'not-configured': 'models.warn_not_configured',
+});
 
 /**
  * Reads a picker value. Bare 'client' and 'nvidia' (static options before the probe) keep the
@@ -80,6 +111,42 @@ export function choiceValue(current, hw) {
   if (current.mode === 'client') return current.local === 'auto' ? recommendModels(hw).local : current.local;
   if (current.mode === 'nvidia') return `nvidia:${current.nvidia}`;
   return current.mode;
+}
+
+/**
+ * The NVIDIA part of the picker state: 'pending' until the proxy answers, then 'absent' (no proxy
+ * here), 'unconfigured' (a proxy without keys) or 'configured'.
+ * @param {NvidiaCatalogSummary | null} catalog null while the proxy has not answered
+ * @param {AssistantState} current
+ * @returns {NvidiaStatus}
+ */
+export function nvidiaStatus(catalog, current) {
+  /** @type {NvidiaStatus['state']} */
+  const state = !catalog ? 'pending' : !catalog.reachable ? 'absent' : catalog.configured ? 'configured' : 'unconfigured';
+  return {
+    state,
+    ids: catalog ? catalog.models.map((m) => m.id) : [],
+    defaultModel: catalog?.defaultModel ?? NVIDIA_DEFAULT_MODEL,
+    currentMode: current.mode,
+    currentId: current.nvidia,
+  };
+}
+
+/**
+ * The text of an option, in order: model name, where it runs, download size, the recommendation and
+ * a warning. Items without a model name have a single i18n key.
+ * @param {PickerItem} item
+ * @returns {OptionPart[]}
+ */
+export function optionParts(item) {
+  if (item.labelKey) return [{ key: item.labelKey }];
+  /** @type {OptionPart[]} */
+  const parts = [{ text: item.label ?? item.value }];
+  if (item.runtime !== 'mode') parts.push({ key: RUNTIME_KEYS[item.runtime] });
+  if (item.sizeMB) parts.push({ key: 'models.download_size', gb: item.sizeMB / 1000 });
+  if (item.recommended) parts.push({ key: item.recommended === 'pro' ? 'models.pro_pick' : 'models.recommended' });
+  if (item.warning) parts.push({ key: WARNING_KEYS[item.warning] });
+  return parts;
 }
 
 /**

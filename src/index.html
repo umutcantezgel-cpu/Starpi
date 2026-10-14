@@ -104,7 +104,7 @@
           <span class="sr-only" data-i18n="settings.mode_label">Assistant mode</span>
           <select id="engineSelector" data-change="change-engine" class="bg-transparent text-slate-800 font-medium text-base sm:text-xs focus:outline-none cursor-pointer max-w-[10rem] md:max-w-[7.5rem] lg:max-w-none">
             <option value="council" selected data-i18n="engine.mode_cloud">Cloud assistant</option>
-            <option value="client" data-i18n="engine.mode_local">On-device (WebGPU)</option>
+            <option value="client" data-i18n="engine.mode_local">On-device (automatic)</option>
             <option value="nvidia" data-i18n="engine.mode_nvidia">NVIDIA NIM cloud (fast &amp; free)</option>
             <option value="local" data-i18n="engine.mode_server">Own server</option>
           </select>
@@ -146,7 +146,7 @@
               <span class="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0" id="vramStatusDot"></span>
               <span id="vramStatusText" class="truncate" data-i18n="engine.vram_none">No model loaded</span>
             </span>
-            <button type="button" data-action="unload-webgpu" id="btnUnloadWebgpu" class="btn btn-ghost py-1 px-2 text-rose-600" data-i18n-title="engine.unload_title" title="Unload the model and free GPU memory" data-i18n-aria="engine.unload_title" aria-label="Unload the model and free GPU memory">
+            <button type="button" data-action="unload-webgpu" id="btnUnloadWebgpu" class="btn btn-ghost py-1 px-2 text-rose-600" data-i18n-title="engine.unload_title" title="Unload the model and free its memory" data-i18n-aria="engine.unload_title" aria-label="Unload the model and free its memory">
               <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
               <span class="hidden sm:inline" data-i18n="engine.unload">Unload</span>
             </button>
@@ -562,10 +562,12 @@
             <label for="cfgComputeMode" class="field-label" data-i18n="settings.mode_label">Assistant mode</label>
             <select id="cfgComputeMode" data-change="change-engine" class="field">
               <option value="council" selected data-i18n="settings.mode_cloud">Cloud assistant · your own provider key</option>
-              <option value="client" data-i18n="settings.mode_local">On-device · WebGPU in this browser, nothing leaves the device</option>
+              <option value="client" data-i18n="settings.mode_local">On-device (automatic) · WebGPU or the processor in this browser, nothing leaves the device</option>
               <option value="nvidia" data-i18n="settings.mode_nvidia">NVIDIA NIM cloud (fast &amp; free) · through Starpi's server, no key of your own</option>
               <option value="local" data-i18n="settings.mode_server">Own server · MLX, Ollama or vLLM</option>
             </select>
+            <div id="cfgDeviceBadges" class="hidden flex flex-wrap gap-1.5 mt-2"></div>
+            <p id="cfgModelHint" class="text-[11px] text-slate-500 mt-1.5" data-i18n="settings.model_hint">Local models are downloaded once, only after you confirm, and cached by this browser. GPUs without shader-f16 use the f32 variant; without WebGPU, processor (WASM) models run instead.</p>
             <p class="text-xs text-slate-500 mt-1.5 leading-relaxed" data-i18n="settings.mode_hint">The cloud assistant sends your question and the matching excerpts to the provider you configure. Without a key, Starpi quotes the knowledge base directly.</p>
           </div>
           <div class="flex justify-end">
@@ -639,16 +641,6 @@
               <label for="cfgLlmUrl" class="field-label" data-i18n="settings.server_label">Own server base URL</label>
               <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="http://localhost:8000/v1" spellcheck="false" class="field font-mono">
               <p class="text-[11px] text-slate-500 mt-1" data-i18n="settings.server_hint">A Chat Completions endpoint (/v1/chat/completions). Allowed: https:// addresses, http://localhost and http://127.0.0.1.</p>
-            </div>
-            <div>
-              <label for="cfgWebgpuModel" class="field-label" data-i18n="settings.model_label">On-device model</label>
-              <select id="cfgWebgpuModel" class="field">
-                <option value="auto" data-i18n="settings.model_auto">Automatic (based on this device)</option>
-                <option value="webgpu:llama-1b" data-i18n="settings.model_llama_1b">Llama 3.2 1B · about 0.7 GB · phones</option>
-                <option value="webgpu:qwen-1.5b" data-i18n="settings.model_qwen_1_5b">Qwen 2.5 1.5B · about 1.0 GB · balanced</option>
-                <option value="webgpu:qwen-3b" data-i18n="settings.model_qwen_3b">Qwen 2.5 3B · about 1.9 GB · desktops</option>
-              </select>
-              <p id="cfgWebgpuHint" class="text-[11px] text-slate-500 mt-1" data-i18n="settings.model_hint">Models are downloaded once and cached by the browser. GPUs without shader-f16 use the f32 variant automatically.</p>
             </div>
             <div class="pt-3 border-t border-slate-100 flex flex-wrap gap-2">
               <button type="button" data-action="delete-model-cache" class="btn btn-danger">
