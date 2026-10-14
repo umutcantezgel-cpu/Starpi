@@ -83,6 +83,8 @@
     "src/js/synthesizer.js",
     "src/js/ui.js",
     "src/js/voice.js",
+    "src/js/wasm/client.js",
+    "src/js/wasm/worker.js",
     "src/js/webgpu/engine.js",
     "src/js/webgpu/models.js"
   ]

@@ -55,6 +55,7 @@
   ],
   "dependencies": {
     "@fontsource-variable/plus-jakarta-sans": "5.3.0",
+    "@huggingface/transformers": "4.3.0",
     "@mlc-ai/web-llm": "0.2.85",
     "@supabase/supabase-js": "2.117.2",
     "dompurify": "3.4.16",

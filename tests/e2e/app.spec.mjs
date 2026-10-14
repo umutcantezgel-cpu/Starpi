@@ -1,5 +1,8 @@
+import { WASM_CATALOG } from '../../src/js/models/wasm-catalog.js';
 import { makePdf } from '../fixtures/pdf.mjs';
 import { expect, mockSupabase, test } from './fixtures.mjs';
+
+const WASM_LABELS = Object.values(WASM_CATALOG).map((src) => src.label);
 
 /** @param {import('@playwright/test').Page} page @param {string} tab */
 async function openTab(page, tab) {
@@ -189,7 +192,9 @@ test.describe('local mode without WebGPU', () => {
     });
   });
 
-  test('explains why on-device inference is unavailable and keeps answering', async ({ page, diagnostics }) => {
+  test('explains why a WebGPU model is unavailable and keeps answering', async ({ page, diagnostics }) => {
+    // A WebGPU preset picked explicitly (as stored by the settings): no silent switch to the processor.
+    await page.addInitScript(() => localStorage.setItem('starpi_webgpu_model', 'webgpu:llama-1b'));
     const calls = await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await page.goto('/');
     await page.selectOption('#engineSelector', 'client');
@@ -201,6 +206,32 @@ test.describe('local mode without WebGPU', () => {
     // Local mode: the question is ranked in the browser, never sent to the search RPC or chat table.
     expect(calls.some((c) => c.url.startsWith('/rest/v1/rpc/search_knowledge'))).toBe(false);
     expect(calls.some((c) => c.url.startsWith('/rest/v1/chat_history') && c.method === 'POST')).toBe(false);
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('offers a processor model instead and downloads nothing without consent', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    /** @type {string[]} */
+    const dialogs = [];
+    page.on('dialog', (dialog) => {
+      dialogs.push(dialog.message());
+      void dialog.dismiss();
+    });
+    await page.goto('/');
+    await page.selectOption('#engineSelector', 'client');
+    await expect.poll(() => dialogs.length).toBe(1);
+    // 'auto' resolves to a processor (WASM) model on a device without WebGPU; which one depends on its memory.
+    expect(WASM_LABELS.filter((label) => dialogs[0].includes(`"${label}"`))).toHaveLength(1);
+    expect(dialogs[0]).toContain('plus 15 MB for the runtime');
+    await expect(page.locator('#webgpuProgressContainer')).toBeHidden();
+    await expect(page.locator('#privacyNotice')).toContainText('On-device mode');
+
+    // Declined again when asking: the answer is quoted from the sources, and the fixture reports
+    // any request to huggingface.co.
+    await ask(page, 'Wann ist der Launch von Projekt Beta?');
+    await expect(page.locator('#chatMessages')).toContainText('3. März geplant');
+    expect(dialogs).toHaveLength(2);
+    expect(dialogs[1]).toBe(dialogs[0]);
     expect(diagnostics).toEqual([]);
   });
 

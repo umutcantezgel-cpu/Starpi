@@ -102,7 +102,7 @@ normalized (UTF-8, `\n` line ends, no control characters); for a PDF they always
 | `id` | hex SHA-256 | Hash of the canonical JSON of the receipt without `id` and `signature` (see [Canonical JSON](#canonical-json-and-the-receipt-id)). |
 | `createdAt` | string | ISO 8601 time from the device clock. Not trusted: the clock of the device that wrote the receipt. |
 | `generator` | object | `name` (`starpi`) and `version` (the app version). |
-| `answer` | object | `text` (the answer as shown, reasoning blocks removed), `sha256` of that text, `engine` (`cloud`, `client`, `local` or `synthesizer`), `locale` (`en` or `de`). |
+| `answer` | object | `text` (the answer as shown, reasoning blocks removed), `sha256` of that text, `engine` (`cloud`, `client`, `wasm`, `local`, `nvidia` or `synthesizer`), `locale` (`en` or `de`). |
 | `question` | object or null | `{ "text": … }`, or `null` when the question was left out on export. |
 | `citations` | array | One entry per excerpt the answer was given, in context order (at most 64). |
 | `grounding` | object or null | The source-check result, or `null` when no check ran. |

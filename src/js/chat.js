@@ -32,6 +32,7 @@ import { budgetPrompt } from './webgpu/models.js';
 const ENGINE_LABELS = /** @type {Record<string, string>} */ ({
   cloud: 'engine.label_cloud',
   client: 'engine.label_client',
+  wasm: 'engine.label_wasm',
   local: 'engine.label_server',
   synthesizer: 'engine.label_synthesizer',
 });
@@ -142,7 +143,7 @@ async function retrieve(query, mode, focusDocId, workspaceOnly) {
 /**
  * @typedef {object} Answer
  * @property {string} text
- * @property {'cloud' | 'client' | 'local' | 'synthesizer'} engine
+ * @property {'cloud' | 'client' | 'wasm' | 'local' | 'synthesizer'} engine
  * @property {boolean} [rendered] already rendered by a streaming bubble
  * @property {HTMLElement} [element] the message element of a streamed answer
  * @property {string} [deliveredContext] the context actually sent, when it was trimmed to fit the model
@@ -205,10 +206,12 @@ async function answerWithLocalModel(req) {
   const model = engine.getEngineState().model;
   if (!ready || !model || req.signal.aborted) return null;
 
+  // Receipts and history name the runtime: on the GPU ('client') or on the processor ('wasm').
+  const engineId = model.runtime === 'wasm' ? 'wasm' : 'client';
   const locale = getLocale();
   const budget = budgetPrompt({
     contextWindow: model.chatOptions.context_window_size,
-    maxOutputTokens: 512,
+    maxOutputTokens: model.maxOutputTokens,
     system: buildInstructions(locale, 'local'),
     context: req.context,
     history: req.history.slice(-4),
@@ -216,7 +219,7 @@ async function answerWithLocalModel(req) {
   });
 
   req.removeLoading();
-  const stream = createStreamingMessage(ENGINE_LABELS.client);
+  const stream = createStreamingMessage(ENGINE_LABELS[engineId]);
   const onAbort = () => engine.interrupt();
   req.signal.addEventListener('abort', onAbort, { once: true });
   try {
@@ -226,7 +229,7 @@ async function answerWithLocalModel(req) {
         ...budget.history,
         { role: 'user', content: budget.user },
       ],
-      maxTokens: 512,
+      maxTokens: model.maxOutputTokens,
       temperature: 0.2,
       onDelta: (delta) => stream.update(delta),
     });
@@ -235,9 +238,9 @@ async function answerWithLocalModel(req) {
       return null;
     }
     const durationMs = Math.round(performance.now() - req.started);
-    const trace = describeTrace({ query: req.query, method: req.method, hits: req.hits, engineLabel: t(ENGINE_LABELS.client), durationMs });
+    const trace = describeTrace({ query: req.query, method: req.method, hits: req.hits, engineLabel: t(ENGINE_LABELS[engineId]), durationMs });
     stream.finalize(text, { citations: req.citations, trace, durationMs });
-    return { text, engine: 'client', rendered: true, element: stream.element, deliveredContext: budget.context };
+    return { text, engine: engineId, rendered: true, element: stream.element, deliveredContext: budget.context };
   } catch (err) {
     stream.remove();
     const message = err instanceof Error ? err.message : String(err);

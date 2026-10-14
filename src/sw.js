@@ -3,10 +3,12 @@
 // Scope of responsibility is deliberately narrow:
 // - Only same-origin GET requests are handled. Supabase, model weights (Hugging Face), provider APIs
 //   and every other cross-origin request bypass the worker entirely, so private API responses are
-//   never written to CacheStorage and WebLLM keeps sole ownership of its own model caches.
+//   never written to CacheStorage, and WebLLM and Transformers.js (its "transformers-cache") keep
+//   sole ownership of their own model caches.
 // - The app shell ("/", its CSS and JS, the ingest worker, the Latin font and the public files) is
 //   precached per build. Hashed /assets/* files are immutable: they live in one unversioned cache,
-//   are served cache-first and are pruned on activation when no longer part of the build.
+//   are served cache-first and are pruned on activation when no longer part of the build. The WASM
+//   worker and the ONNX Runtime binary are such files, cached on first use and never precached.
 // - Navigations are network-first with a short deadline; the cached shell answers when the network
 //   fails or stalls. Only the HTML of "/" is ever stored as the shell.
 // - Activation deletes only caches created by this worker ("starpi-" prefix).

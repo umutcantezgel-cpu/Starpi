@@ -73,6 +73,7 @@
     "mode_server": "Eigener Server",
     "label_cloud": "Cloud-Assistent",
     "label_client": "Lokales Modell (WebGPU)",
+    "label_wasm": "Lokales Modell (Prozessor, WASM)",
     "label_server": "Eigener Server",
     "label_synthesizer": "Zitiert aus den Quellen",
     "model_generic": "Das lokale Modell",
@@ -83,6 +84,7 @@
     "vram_loading": "Modell wird geladen",
     "vram_ready": "{model} ({precision}) · ca. {gb} GB VRAM",
     "vram_ready_no_size": "{model} ({precision})",
+    "ram_ready": "{model} · Prozessor (WASM)",
     "progress": {
       "init": "Lokales Modell wird vorbereitet…",
       "download": "Modellgewichte werden heruntergeladen…",
@@ -91,9 +93,11 @@
       "finalizing": "Wird abgeschlossen…"
     },
     "confirm_download": "Das lokale Modell „{model}“ wird einmalig heruntergeladen (ca. {mb} MB) und in diesem Browser gespeichert.\n\nJetzt herunterladen?",
+    "confirm_download_wasm": "Das lokale Modell „{model}“ wird einmalig heruntergeladen (ca. {mb} MB, dazu {runtime} MB Laufzeit) und in diesem Browser gespeichert. Es rechnet auf dem Prozessor und antwortet langsamer als ein GPU-Modell.\n\nJetzt herunterladen?",
     "confirm_save_data": "Hinweis: Auf diesem Gerät ist der Datensparmodus aktiv.",
     "notice_ready_title": "Lokaler Modus aktiv: {model}",
     "notice_ready_body": "Das Modell rechnet auf der GPU dieses Geräts. Fragen und Chatverlauf bleiben auf diesem Gerät.",
+    "notice_ready_body_wasm": "Das Modell rechnet auf dem Prozessor dieses Geräts. Fragen und Chatverlauf bleiben auf diesem Gerät.",
     "notice_unavailable_title": "Lokaler Modus nicht verfügbar",
     "notice_failed_title": "Das lokale Modell konnte nicht geladen werden",
     "notice_cancelled_title": "Laden abgebrochen",

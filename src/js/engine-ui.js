@@ -1,10 +1,12 @@
 // @ts-check
-// Binds the WebGPU engine state machine to the UI (progress banner, VRAM badge, status dot) and
-// provides the user-facing load/cancel/unload actions. Failures never switch the user to a cloud
-// provider silently: local mode keeps answering from the knowledge base until the user decides.
+// Binds the on-device engine state machine (WebGPU or processor) to the UI (progress banner, memory
+// badge, status dot) and provides the user-facing load/cancel/unload actions. Failures never switch
+// the user to a cloud provider silently: local mode keeps answering from the knowledge base until
+// the user decides.
 import { byId, onAction, setHidden } from './dom.js';
 import { formatNumber, onLocaleChange, setText, t } from './i18n/index.js';
 import { appendNotice } from './messages.js';
+import { WASM_RUNTIME_MB } from './models/wasm-catalog.js';
 import { getMode, getModelPreference } from './state.js';
 import { setEngineDot } from './ui.js';
 import * as engine from './webgpu/engine.js';
@@ -15,7 +17,7 @@ function render(s) {
   setHidden(banner, s.status !== 'loading');
   if (s.status === 'loading') {
     const phase = s.progress?.phase ?? 'init';
-    setText(byId('webgpuProgressText'), `engine.progress.${phase}`, { model: s.model?.label ?? '' });
+    setText(byId('webgpuProgressText'), `engine.progress.${phase}`, { model: s.progress?.label ?? s.model?.label ?? '' });
     const percent = byId('webgpuPercentText');
     if (percent) percent.textContent = `${formatNumber(Math.round((s.progress?.progress ?? 0) * 100))}%`;
   }
@@ -26,12 +28,15 @@ function render(s) {
   const btn = byId('btnUnloadWebgpu');
   if (s.status === 'ready' && s.model) {
     if (dot) dot.className = 'w-1.5 h-1.5 rounded-full bg-emerald-500';
-    const key = s.model.vramMB ? 'engine.vram_ready' : 'engine.vram_ready_no_size';
-    setText(text, key, {
-      model: s.model.label,
-      precision: s.model.f16 ? 'f16' : 'f32',
-      gb: s.model.vramMB ? formatNumber(s.model.vramMB / 1024, { maximumFractionDigits: 1 }) : '',
-    });
+    if (s.model.runtime === 'wasm') {
+      setText(text, 'engine.ram_ready', { model: s.model.label });
+    } else {
+      setText(text, s.model.vramMB ? 'engine.vram_ready' : 'engine.vram_ready_no_size', {
+        model: s.model.label,
+        precision: s.model.f16 ? 'f16' : 'f32',
+        gb: s.model.vramMB ? formatNumber(s.model.vramMB / 1024, { maximumFractionDigits: 1 }) : '',
+      });
+    }
     setHidden(btn, false);
   } else {
     if (dot) dot.className = 'w-1.5 h-1.5 rounded-full bg-slate-400';
@@ -47,7 +52,11 @@ function render(s) {
 /** @param {import('./webgpu/models.js').ModelChoice} choice */
 function confirmDownload(choice) {
   const conn = /** @type {{ connection?: { saveData?: boolean } }} */ (/** @type {unknown} */ (navigator)).connection;
-  const message = t('engine.confirm_download', { model: choice.label, mb: formatNumber(choice.approxDownloadMB) });
+  const mb = formatNumber(choice.approxDownloadMB);
+  const message =
+    choice.runtime === 'wasm'
+      ? t('engine.confirm_download_wasm', { model: choice.label, mb, runtime: formatNumber(WASM_RUNTIME_MB) })
+      : t('engine.confirm_download', { model: choice.label, mb });
   return window.confirm(conn?.saveData ? `${message}\n\n${t('engine.confirm_save_data')}` : message);
 }
 
@@ -78,7 +87,13 @@ export async function startLocalEngine(opts) {
     });
     const s = engine.getEngineState();
     if (ok && s.model && opts.interactive) {
-      appendNotice({ icon: 'check-circle', tone: 'success', title: 'engine.notice_ready_title', body: 'engine.notice_ready_body', params: { model: s.model.label } });
+      appendNotice({
+        icon: 'check-circle',
+        tone: 'success',
+        title: 'engine.notice_ready_title',
+        body: s.model.runtime === 'wasm' ? 'engine.notice_ready_body_wasm' : 'engine.notice_ready_body',
+        params: { model: s.model.label },
+      });
     }
     return ok;
   } catch (err) {

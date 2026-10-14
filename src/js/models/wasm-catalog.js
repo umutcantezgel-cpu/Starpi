@@ -112,6 +112,23 @@ export function wasmFileUrl(src, file) {
 }
 
 /**
+ * The pinned download URL for a request of Transformers.js, or null when the request is not for a
+ * file of this model. Requests at the 'main' revision are pinned too: Transformers.js 4.3 checks
+ * that tokenizer_config.json exists at 'main' even when a revision is given.
+ * @param {WasmSource} src
+ * @param {string} url
+ * @returns {string | null}
+ */
+export function pinnedWasmUrl(src, url) {
+  const prefix = `https://huggingface.co/${src.repo}/resolve/`;
+  if (!url.startsWith(prefix)) return null;
+  const [revision, ...path] = url.slice(prefix.length).split('/');
+  // Plain path segments only: no '.', '..', hidden files, queries or fragments.
+  const plain = path.length > 0 && path.every((segment) => /^[\w-][\w.-]*$/.test(segment));
+  return plain && (revision === src.revision || revision === 'main') ? wasmFileUrl(src, path.join('/')) : null;
+}
+
+/**
  * The catalog entry with exactly this repository, revision and dtype, or null. The worker loads
  * nothing else.
  * @param {{ repo?: unknown, revision?: unknown, dtype?: unknown } | null | undefined} source

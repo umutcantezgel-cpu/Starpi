@@ -522,15 +522,22 @@ pinned to a commit, and the unit tests check the list of files and their sizes:
 | T1 | `smollm2-360m` (processor on phones) | `HuggingFaceTB/SmolLM2-360M-Instruct` @ `a10cc15` | `onnx/model_quantized.onnx` | 0.37 GB | 2,048 |
 | T1 | `qwen-0.5b` (processor default) | `onnx-community/Qwen2.5-0.5B-Instruct` @ `22942cb` | `onnx/model_quantized.onnx` | 0.52 GB | 2,048 |
 
+Without WebGPU, automatic selection picks one of these. They run with Transformers.js and ONNX
+Runtime Web in a worker, on one thread (the app is not cross-origin isolated, so WebAssembly
+threads are unavailable), and answer with at most 384 tokens. The 14 MB ONNX Runtime binary is
+served from the app's own `/assets` and loaded on first use; every model file is downloaded from
+huggingface.co at the pinned revision, so a stored model also loads offline.
+
 Model licenses: the Llama presets are under the Llama 3.1 and 3.2 community licenses, the Gemma
 presets under the Gemma terms of use and Qwen 2.5 3B under the Qwen research license; the other
 presets are under Apache-2.0 or MIT.
 
 Nothing is downloaded without confirmation. Before asking, the app checks whether the model is
 already cached and whether the storage quota suffices; persistent storage is requested only after
-you agree. Weights are cached by WebLLM, not by the service worker; **Settings › Advanced › Delete
-downloaded model data** removes them. The **Diagnostics** tab reports the WebGPU adapter and
-measures time to first token and decode speed on the loaded model.
+you agree. Weights are cached by WebLLM and by Transformers.js (Cache API `transformers-cache`), not
+by the service worker; **Settings › Advanced › Delete downloaded model data** removes both. The
+**Diagnostics** tab reports the WebGPU adapter and measures time to first token and decode speed on
+the loaded model.
 
 ## Browser support
 
@@ -540,7 +547,7 @@ measures time to first token and decode speed on the loaded model.
 | Chrome 121+ on Android 12+ | Yes | The compact 1B model with a 2,048-token context is selected by default. |
 | Safari 26 (macOS, iOS, iPadOS) | Yes | iOS may evict cached model data under storage pressure. |
 | Firefox 141+ | Windows; other platforms are rolling out | `about:support` › Graphics shows whether WebGPU is available. |
-| Any browser without WebGPU | No | Everything else works: sample files, workspace, source check, receipts, cloud and own-server modes. |
+| Any browser without WebGPU | Processor (WASM) models only, slower | Everything else works: sample files, workspace, source check, receipts, cloud and own-server modes. |
 
 Own-server mode from `https://www.starpi.app` to `http://localhost` triggers Chrome's Local
 Network Access permission prompt (Chrome 142+), and Ollama must allow the origin
