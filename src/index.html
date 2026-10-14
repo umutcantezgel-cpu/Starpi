@@ -105,6 +105,7 @@
           <select id="engineSelector" data-change="change-engine" class="bg-transparent text-slate-800 font-medium text-base sm:text-xs focus:outline-none cursor-pointer max-w-[10rem] md:max-w-[7.5rem] lg:max-w-none">
             <option value="council" selected data-i18n="engine.mode_cloud">Cloud assistant</option>
             <option value="client" data-i18n="engine.mode_local">On-device (WebGPU)</option>
+            <option value="nvidia" data-i18n="engine.mode_nvidia">NVIDIA NIM cloud (fast &amp; free)</option>
             <option value="local" data-i18n="engine.mode_server">Own server</option>
           </select>
         </label>
@@ -562,6 +563,7 @@
             <select id="cfgComputeMode" data-change="change-engine" class="field">
               <option value="council" selected data-i18n="settings.mode_cloud">Cloud assistant · your own provider key</option>
               <option value="client" data-i18n="settings.mode_local">On-device · WebGPU in this browser, nothing leaves the device</option>
+              <option value="nvidia" data-i18n="settings.mode_nvidia">NVIDIA NIM cloud (fast &amp; free) · through Starpi's server, no key of your own</option>
               <option value="local" data-i18n="settings.mode_server">Own server · MLX, Ollama or vLLM</option>
             </select>
             <p class="text-xs text-slate-500 mt-1.5 leading-relaxed" data-i18n="settings.mode_hint">The cloud assistant sends your question and the matching excerpts to the provider you configure. Without a key, Starpi quotes the knowledge base directly.</p>

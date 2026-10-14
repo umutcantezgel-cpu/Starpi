@@ -1,8 +1,9 @@
 // @ts-check
 // Chat flow in two modes. Verified source mode: retrieval (on-device workspace BM25 + knowledge
-// base) -> answer (cloud provider / on-device model / own server / extractive synthesizer) -> render
-// with verifiable citations, the source check and a receipt -> persist. Free chat: the conversation
-// and an attached file go to the configured model, without retrieval, source check or receipt.
+// base) -> answer (cloud provider / on-device model / own server / NVIDIA cloud / extractive
+// synthesizer) -> render with verifiable citations, the source check and a receipt -> persist. Free
+// chat: the conversation and an attached file go to the configured model, without retrieval, source
+// check or receipt.
 import { currentSessionId, deleteSession, loadCurrentSession, persistMessage, refreshSyncStatus, startNewSession } from './chat-store.js';
 import { chatToJson, chatToMarkdown, exportFileName } from './chat-export.js';
 import { splitReasoning } from './chat-stream.js';
@@ -13,8 +14,19 @@ import { refreshIcons } from './icons.js';
 import { startLocalEngine } from './engine-ui.js';
 import { formatDate, getLocale, hasKey, setText, t } from './i18n/index.js';
 import { appendLoading, appendMessage, appendNotice, createStreamingMessage, markFreeAnswer, resetMessages } from './messages.js';
-import { attachmentSection, buildChatPrompt, buildInstructions, buildSystemPrompt, chatInstructions, contextSection, excerptForChat, historyWindow } from './prompts.js';
-import { callGemini, callLocalServer, callOpenRouter, hasGeminiKey, hasOpenRouterKey } from './providers.js';
+import { findNvidiaModel, NVIDIA_LIMITS } from './models/nvidia-catalog.js';
+import {
+  attachmentSection,
+  buildChatPrompt,
+  buildInstructions,
+  buildSystemPrompt,
+  chatInstructions,
+  contextSection,
+  excerptForChat,
+  fitNvidiaMessages,
+  historyWindow,
+} from './prompts.js';
+import { callGemini, callLocalServer, callNvidia, callOpenRouter, getNvidiaCatalog, hasGeminiKey, hasOpenRouterKey, ProviderError, resolveNvidiaModel } from './providers.js';
 import { registerCitations } from './rag/citations.js';
 import { applyGrounding } from './rag/grounding-view.js';
 import { receiptButton, storeReceiptDraft } from './rag/receipts.js';
@@ -22,7 +34,7 @@ import { addToWorkspace, firstChunks, getDocumentText, listWorkspace, searchWork
 import { sanitizeModelNames } from './render.js';
 import { assignCitations, buildContext, distinctSources, mergeHits, rankHitsLocally, workspaceHit } from './retrieval.js';
 import { isUserAbort } from './signals.js';
-import { getChatMode, getLlmUrl, getMode, onChatModeChange, setChatMode } from './state.js';
+import { getChatMode, getLlmUrl, getMode, getNvidiaModel, onChatModeChange, setChatMode } from './state.js';
 import { getConnection, listDocuments, recentKnowledge, searchKnowledge } from './supabase.js';
 import { describeChatTrace, describeTrace, isGreeting, synthesizeAnswer } from './synthesizer.js';
 import { setAssistantStatus } from './ui.js';
@@ -54,6 +66,7 @@ const ENGINE_LABELS = /** @type {Record<string, string>} */ ({
   client: 'engine.label_client',
   wasm: 'engine.label_wasm',
   local: 'engine.label_server',
+  nvidia: 'engine.label_nvidia',
   synthesizer: 'engine.label_synthesizer',
 });
 
@@ -170,12 +183,14 @@ async function retrieve(query, mode, focusDocId, workspaceOnly) {
 /**
  * @typedef {object} Answer
  * @property {string} text
- * @property {'cloud' | 'client' | 'wasm' | 'local' | 'synthesizer'} engine
+ * @property {'cloud' | 'client' | 'wasm' | 'local' | 'nvidia' | 'synthesizer'} engine
  * @property {string} [model] id of the model that answered, when known
  * @property {boolean} [rendered] already rendered by a streaming bubble
  * @property {HTMLElement} [element] the message element of a streamed answer
  * @property {string} [deliveredContext] the context actually sent, when it was trimmed to fit the model
- * @property {string} [note]
+ * @property {string} [note] why the configured model gave no answer (shown as a notice)
+ * @property {boolean} [notConfigured] the configured model is not set up (rather than failing)
+ * @property {string} [traceNote] about an answer that did arrive (cut off, another model): details only
  */
 
 /**
@@ -226,23 +241,25 @@ function remoteMessages(req, target) {
  * @param {AnswerRequest} req
  * @param {string} engineLabel
  * @param {number} durationMs
+ * @param {string} [note]
  */
-function traceFor(req, engineLabel, durationMs) {
+function traceFor(req, engineLabel, durationMs, note) {
   const { plan } = req;
   return plan.kind === 'free'
-    ? describeChatTrace({ engineLabel, durationMs, attachment: plan.attachment?.name ?? null })
-    : describeTrace({ query: req.query, method: req.method, hits: req.hits, engineLabel, durationMs });
+    ? describeChatTrace({ engineLabel, durationMs, attachment: plan.attachment?.name ?? null, note })
+    : describeTrace({ query: req.query, method: req.method, hits: req.hits, engineLabel, durationMs, note });
 }
 
 /**
  * The label of the engine that answered, as an i18n key with parameters: a model name is only ever
- * a parameter, never part of a key.
+ * a parameter, never part of a key. NVIDIA models are named as the bundled catalog names them.
  * @param {string | undefined} engineId
  * @param {string | undefined} model
  * @returns {{ badge: string, badgeParams: Record<string, string> | undefined }}
  */
 function engineLabel(engineId, model) {
-  return { badge: (engineId && ENGINE_LABELS[engineId]) || '', badgeParams: model ? { model } : undefined };
+  const name = model && engineId === 'nvidia' ? (findNvidiaModel(model)?.label ?? model) : model;
+  return { badge: (engineId && ENGINE_LABELS[engineId]) || '', badgeParams: name ? { model: name } : undefined };
 }
 
 /**
@@ -382,6 +399,62 @@ async function answerWithOwnServer(req) {
 }
 
 /**
+ * A provider message as the reason in a notice, which adds its own full stop.
+ * @param {unknown} err
+ */
+function reasonOf(err) {
+  return (err instanceof Error ? err.message : String(err)).replace(/\.\s*$/, '');
+}
+
+/**
+ * NVIDIA cloud through Starpi's proxy, streamed into a bubble. In source mode the answer then goes
+ * through the same source check and receipt as every other engine. Messages follow the same rules as
+ * other remote models (turns that stayed on this device are not sent) and are fitted to the proxy's
+ * limits; the model's reasoning stays in the details.
+ * @param {AnswerRequest} req
+ * @returns {Promise<Answer | null>}
+ */
+async function answerWithNvidia(req) {
+  const catalog = await getNvidiaCatalog();
+  if (!catalog.configured) {
+    return { text: '', engine: 'synthesizer', notConfigured: true, note: reasonOf(t(catalog.reachable ? 'provider.nvidia_not_configured' : 'provider.nvidia_not_available')) };
+  }
+  const { model, replaced } = resolveNvidiaModel(catalog, getNvidiaModel());
+  if (!model) return { text: '', engine: 'synthesizer', notConfigured: true, note: reasonOf(t('provider.nvidia_no_models')) };
+  if (req.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+
+  const { plan } = req;
+  const free = plan.kind === 'free';
+  const sent = remoteMessages(req, 'cloud');
+  const messages = fitNvidiaMessages(sent, NVIDIA_LIMITS, LIMITS.historyTurnChars);
+  const maxTokens = findNvidiaModel(model)?.defaultMaxTokens ?? catalog.models.find((m) => m.id === model)?.defaultMaxTokens ?? NVIDIA_LIMITS.defaultMaxTokens;
+  const label = engineLabel('nvidia', model);
+
+  req.removeLoading();
+  const stream = createStreamingMessage(label.badge, label.badgeParams);
+  try {
+    const r = await callNvidia(messages, { model, maxTokens, temperature: free ? 0.7 : 0.2, signal: req.signal, onDelta: (text) => stream.update(text) });
+    const modelName = label.badgeParams?.model ?? model;
+    const traceNote = [r.truncated ? t('chat.note_truncated') : '', replaced ? t('chat.note_model_replaced', { model: modelName }) : ''].filter(Boolean).join(' ') || undefined;
+    const durationMs = Math.round(performance.now() - req.started);
+    const trace = traceFor(req, t(label.badge, label.badgeParams), durationMs, traceNote);
+    stream.finalize(r.text, { citations: req.citations, trace, durationMs, traceRoles: free ? FREE_TRACE_ROLES : undefined });
+    // The source check compares with what reached the model: a context cut to fit is passed on.
+    const system = messages[0]?.role === 'system' ? messages[0].content : '';
+    const cut = plan.kind === 'grounded' && sent[0]?.role === 'system' && system !== sent[0].content;
+    return { text: r.text, engine: 'nvidia', model, rendered: true, element: stream.element, traceNote, deliveredContext: cut ? system : undefined };
+  } catch (err) {
+    stream.remove();
+    if (req.signal.aborted) throw err;
+    const notConfigured = err instanceof ProviderError && err.notConfigured;
+    // The proxy lost its keys or is gone: ask again before the next question.
+    if (notConfigured) void getNvidiaCatalog({ refresh: true });
+    if (!(err instanceof ProviderError)) console.warn('[starpi] NVIDIA cloud answer failed', err);
+    return { text: '', engine: 'synthesizer', notConfigured, note: err instanceof ProviderError ? reasonOf(err) : reasonOf(t('provider.nvidia_bad_response')) };
+  }
+}
+
+/**
  * Asks the model of the current mode. null: no model answered (none is set up, or it is not
  * ready); an answer without text but with a note: a configured model failed.
  * @param {ComputeMode} mode
@@ -397,8 +470,7 @@ async function generateAnswer(mode, req) {
     case 'local':
       return answerWithOwnServer(req);
     case 'nvidia':
-      // The NVIDIA cloud client is not connected yet: no model answers, so the fallbacks apply.
-      return null;
+      return answerWithNvidia(req);
   }
 }
 
@@ -586,7 +658,7 @@ async function answerGrounded(x) {
   // their names stay on this device like the files themselves.
   const namesWorkspace = answer.engine === 'synthesizer' && listWorkspace().some((d) => answerText.includes(d.name));
   const label = engineLabel(answer.engine, answer.model);
-  const trace = describeTrace({ query: prompt, method, hits: used, engineLabel: t(label.badge, label.badgeParams), durationMs, note });
+  const trace = describeTrace({ query: prompt, method, hits: used, engineLabel: t(label.badge, label.badgeParams), durationMs, note: note ?? answer.traceNote });
 
   if (sid === currentSessionId()) {
     /** @type {HTMLElement | null} */
@@ -689,7 +761,8 @@ async function answerFree(x) {
   if (!answer?.text) {
     removeLoading();
     // The free chat has no sources to quote instead: it says why there is no answer.
-    if (answer?.note) appendNotice({ icon: 'triangle-alert', tone: 'warn', title: 'chat.provider_failed_title', body: 'chat.free_failed_body', params: { reason: answer.note } });
+    if (answer?.note && answer.notConfigured) appendNotice({ icon: 'info', tone: 'info', title: 'chat.free_no_model_title', body: 'chat.free_not_configured_body', params: { reason: answer.note } });
+    else if (answer?.note) appendNotice({ icon: 'triangle-alert', tone: 'warn', title: 'chat.provider_failed_title', body: 'chat.free_failed_body', params: { reason: answer.note } });
     else appendNotice({ icon: 'info', tone: 'info', title: 'chat.free_no_model_title', body: 'chat.free_no_model_body' });
     return;
   }
@@ -697,7 +770,7 @@ async function answerFree(x) {
   const durationMs = Math.round(performance.now() - started);
   const answerText = splitReasoning(answer.text).answer || answer.text;
   const label = engineLabel(answer.engine, answer.model);
-  const trace = traceFor(req, t(label.badge, label.badgeParams), durationMs);
+  const trace = traceFor(req, t(label.badge, label.badgeParams), durationMs, answer.traceNote);
   // An answer about an attached file stays on this device like the file.
   const turnLocal = localOnly || Boolean(file);
   if (sid === currentSessionId()) {

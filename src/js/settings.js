@@ -1,6 +1,6 @@
 // @ts-check
 // Settings tab: compute mode, provider keys (session or device storage), own-server URL,
-// WebGPU model preference, and connection tests.
+// WebGPU model preference, the NVIDIA cloud status, and connection tests.
 import { deleteChatHistory } from './chat-store.js';
 import { isChatBusy, resetConversation } from './chat.js';
 import { STORAGE_KEYS } from './config.js';
@@ -10,7 +10,7 @@ import { renderEngineState, startLocalEngine } from './engine-ui.js';
 import { refreshIcons } from './icons.js';
 import { formatNumber, getLocale, setText, t } from './i18n/index.js';
 import { readinessPrompt } from './prompts.js';
-import { callGemini, callOpenRouter, hasGeminiKey, hasOpenRouterKey, normalizeServerUrl, probeLocalServer } from './providers.js';
+import { callGemini, callOpenRouter, getNvidiaCatalog, hasGeminiKey, hasOpenRouterKey, normalizeServerUrl, probeLocalServer } from './providers.js';
 import { sanitizeModelNames } from './render.js';
 import { getChatMode, getLlmUrl, getMode, getModelPreference, onChatModeChange, setLlmUrl, setMode, setModelPreference } from './state.js';
 import { readLocal, readSecret, removeSecret, writeLocal, writeSecret } from './storage.js';
@@ -61,6 +61,10 @@ export function renderPrivacyNotice() {
       // keep empty host
     }
     params = { host: host || '–' };
+  } else if (mode === 'nvidia') {
+    // What is sent once the proxy answers; without one nothing goes to NVIDIA (the status line says so).
+    icon = 'cloud';
+    key = free ? 'privacy.free_nvidia' : 'privacy.nvidia';
   } else if (hasGeminiKey() || hasOpenRouterKey()) {
     icon = 'cloud';
     key = free ? 'privacy.free_cloud' : 'privacy.cloud';
@@ -117,6 +121,13 @@ export async function changeEngine(value, opts) {
     setEngineDot(reachable ? 'ok' : 'warn');
     // Not by colour alone: the status line says it too.
     setAssistantStatus(reachable ? 'status.ready' : 'status.server_unreachable');
+  } else if (mode === 'nvidia') {
+    setEngineDot('busy');
+    const catalog = await getNvidiaCatalog({ refresh: true });
+    // Another mode may have been picked while the proxy was asked.
+    if (getMode() !== 'nvidia') return stored;
+    setEngineDot(catalog.configured ? 'ok' : 'warn');
+    setAssistantStatus(catalog.configured ? 'status.ready' : 'status.nvidia_unavailable');
   } else {
     setEngineDot(hasGeminiKey() || hasOpenRouterKey() ? 'ok' : 'off');
   }
