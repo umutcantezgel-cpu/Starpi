@@ -19,6 +19,7 @@ flowchart TD
     supa["Supabase REST<br/>SUPABASE_SERVICE_ROLE_KEY, bypasses RLS,<br/>so document lists and vector matches are filtered<br/>to is_public true or owner_id null"]
     llm["Chat models<br/>query answers: GEMINI_API_KEYS pool, then<br/>OPENROUTER_API_KEYS pool, then LLM_BASE_URL<br/>ingest structuring: LLM_BASE_URL only"]
     emb["Embedding endpoint<br/>EMBEDDING_BASE_URL, 1536 dimensions"]
+    nvapi["NVIDIA API, only with NVIDIA_API_KEYS:<br/>POST /api/chat/nvidia relayed with a pooled key"]
 
     client -->|"HTTPS"| proxy
     proxy -->|"reverse_proxy 127.0.0.1:9200"| server
@@ -26,6 +27,7 @@ flowchart TD
     server -->|"documents, sections, RPCs"| supa
     server -->|"structuring and answers"| llm
     server -->|"section and query embeddings"| emb
+    server -.->|"optional NVIDIA routes"| nvapi
 ```
 
 `BRAIN_API_TOKEN` is a server credential. Do not embed it in the PWA or any other code shipped to
@@ -46,7 +48,8 @@ token is what actually protects the API.
 | 80, 443 | Reverse proxy (80 only for the ACME certificate challenge) |
 | 9200 | Loopback only. Never open it in the security group |
 
-There is no separate web UI port; the PWA is hosted elsewhere.
+There is no separate web UI port; the PWA is hosted elsewhere, or by the reverse proxy on 443
+when it serves the NVIDIA routes on the app's origin ([NVIDIA routes](#nvidia-routes)).
 
 ## Deployment
 
@@ -62,6 +65,16 @@ There is no separate web UI port; the PWA is hosted elsewhere.
    `api.example.com { reverse_proxy 127.0.0.1:9200 }`.
 5. Check: `curl https://api.example.com/api/health` and
    `curl -H "Authorization: Bearer $TOKEN" https://api.example.com/api/brain/documents`.
+
+## NVIDIA routes
+
+`server.py` also serves `GET /api/models/nvidia` and `POST /api/chat/nvidia` with a key pool from
+`NVIDIA_API_KEYS` in `.env`. The app calls these two routes only on its own origin, so the API on
+`api.example.com` is not reachable for it. To use the routes from the app, serve the built app
+(`dist/`) and the two paths from one host name, with the token set and the app's origin in
+`BRAIN_ALLOWED_ORIGINS`; the Caddy example is in
+[the backend README](../README.md#nvidia-routes-on-the-apps-origin). A deployment on Vercel needs
+none of this: there the Vercel Functions in `api/` serve the same routes.
 
 What the two scripts do, including their failure paths:
 

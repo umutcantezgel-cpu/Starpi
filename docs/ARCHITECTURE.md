@@ -12,8 +12,9 @@ idealised design. When the code changes, change the diagram in the same pull req
   some of them as exact copies under the same `<!-- diagram: <id> -->` marker: `npm run docs:sync`
   refreshes the copies, and `tests/unit/docs.test.mjs` fails when a copy differs from this file.
 - **Conventions:** dashed nodes and edges are optional, manual or outside Starpi's control. Mode names
-  follow the UI: *on-device* is the `client` mode, *cloud assistant* is `council` and *own server* is
-  `local`.
+  follow the UI: *on-device* is the `client` mode (a WebGPU or a processor (WASM) model), *cloud
+  assistant* is `council`, *own server* is `local` and *NVIDIA NIM cloud* is `nvidia`. The chat modes
+  are *verified source mode* (`grounded`) and *free chat* (`free`).
 
 ## Contents
 
@@ -23,8 +24,8 @@ idealised design. When the code changes, change the diagram in the same pull req
    - [What leaves the device: one chat turn](#what-leaves-the-device-one-chat-turn)
    - [Backend trust boundary: server.py request guards](#backend-trust-boundary-serverpy-request-guards)
    - [Frontend import graph (1 of 4): main.js and its application imports](#frontend-import-graph-1-of-4-mainjs-and-its-application-imports)
-   - [Frontend import graph (2 of 4): imports made by the feature views](#frontend-import-graph-2-of-4-imports-made-by-the-feature-views)
-   - [Frontend import graph (3 of 4): chat pipeline, workspace client and WebGPU](#frontend-import-graph-3-of-4-chat-pipeline-workspace-client-and-webgpu)
+   - [Frontend import graph (2 of 4): imports made by the feature views and the model pickers](#frontend-import-graph-2-of-4-imports-made-by-the-feature-views-and-the-model-pickers)
+   - [Frontend import graph (3 of 4): chat pipeline, workspace client and on-device engine](#frontend-import-graph-3-of-4-chat-pipeline-workspace-client-and-on-device-engine)
    - [Frontend import graph (4 of 4): demo, source check, receipts and core/](#frontend-import-graph-4-of-4-demo-source-check-receipts-and-core)
    - [Shared infrastructure modules, their importers and npm packages](#shared-infrastructure-modules-their-importers-and-npm-packages)
    - [Bundle entry points, Web Workers and lazy imports](#bundle-entry-points-web-workers-and-lazy-imports)
@@ -33,7 +34,7 @@ idealised design. When the code changes, change the diagram in the same pull req
    - [Boot-time changeEngine: cached model only, never a download](#boot-time-changeengine-cached-model-only-never-a-download)
    - [connect(), connection subscribers and restoreHistory](#connect-connection-subscribers-and-restorehistory)
    - [restoreHistory: merging synced and on-device messages](#restorehistory-merging-synced-and-on-device-messages)
-   - [saveSettings: server URL, API keys, model preference](#savesettings-server-url-api-keys-model-preference)
+   - [saveSettings: server URL, API keys and a pending assistant pick](#savesettings-server-url-api-keys-and-a-pending-assistant-pick)
    - [changeEngine, clearKeys and deleteModelCache](#changeengine-clearkeys-and-deletemodelcache)
    - [deleteHistory: deleting the chat history](#deletehistory-deleting-the-chat-history)
    - [testProvider: Gemini and OpenRouter connection tests](#testprovider-gemini-and-openrouter-connection-tests)
@@ -42,6 +43,8 @@ idealised design. When the code changes, change the diagram in the same pull req
    - [retrieve(): knowledge-base decision tree per mode](#retrieve-knowledge-base-decision-tree-per-mode)
    - [Workspace hits and mergeHits: slots per source and the pinned file](#workspace-hits-and-mergehits-slots-per-source-and-the-pinned-file)
    - [Answer dispatch, synthesizer fallback, rendering and persistence](#answer-dispatch-synthesizer-fallback-rendering-and-persistence)
+   - [Free chat and verified source mode: one turn in each chat mode](#free-chat-and-verified-source-mode-one-turn-in-each-chat-mode)
+   - [NVIDIA cloud in the browser: catalog, streamed request and errors](#nvidia-cloud-in-the-browser-catalog-streamed-request-and-errors)
    - [After rendering: source check, receipt draft and conversation turns](#after-rendering-source-check-receipt-draft-and-conversation-turns)
    - [synthesizeAnswer: the extractive fallback](#synthesizeanswer-the-extractive-fallback)
    - [Answer modes: what leaves the device](#answer-modes-what-leaves-the-device)
@@ -49,6 +52,7 @@ idealised design. When the code changes, change the diagram in the same pull req
    - [Settings: server URL rules and key storage](#settings-server-url-rules-and-key-storage)
    - [Privacy notice under the chat input](#privacy-notice-under-the-chat-input)
    - [On-device model selection](#on-device-model-selection)
+   - [Device tiers and the model pickers](#device-tiers-and-the-model-pickers)
    - [On-device prompt budgeting](#on-device-prompt-budgeting)
 4. [On-device workspace and citations](#4-on-device-workspace-and-citations)
    - [On-device workspace: from file drop to the document list](#on-device-workspace-from-file-drop-to-the-document-list)
@@ -69,10 +73,11 @@ idealised design. When the code changes, change the diagram in the same pull req
    - [Asking about an attached file](#asking-about-an-attached-file)
    - [Voice input with the Web Speech API](#voice-input-with-the-web-speech-api)
 5. [On-device inference](#5-on-device-inference)
-   - [WebGPU engine status machine](#webgpu-engine-status-machine)
+   - [On-device engine status machine](#on-device-engine-status-machine)
    - [loadModel: probe, choice, cache and storage checks](#loadmodel-probe-choice-cache-and-storage-checks)
    - [loadModel: WebLLM import, model record and partial cache](#loadmodel-webllm-import-model-record-and-partial-cache)
    - [loadModel: worker creation, progress phases and generation guards](#loadmodel-worker-creation-progress-phases-and-generation-guards)
+   - [Processor (WASM) runtime: loading, pinned downloads, generation and Stop](#processor-wasm-runtime-loading-pinned-downloads-generation-and-stop)
    - [Diagnostics tab: WebGPU probe](#diagnostics-tab-webgpu-probe)
    - [Inference benchmark run](#inference-benchmark-run)
 6. [Knowledge base views](#6-knowledge-base-views)
@@ -135,7 +140,7 @@ idealised design. When the code changes, change the diagram in the same pull req
     - [Frontend and end-to-end jobs](#frontend-and-end-to-end-jobs)
     - [Backend, database, audit and secret-scanning jobs](#backend-database-audit-and-secret-scanning-jobs)
     - [Release workflow after CI](#release-workflow-after-ci)
-    - [CI workflow and Vercel build of the PWA](#ci-workflow-and-vercel-build-of-the-pwa)
+    - [CI workflow and Vercel build of the PWA and the NVIDIA functions](#ci-workflow-and-vercel-build-of-the-pwa-and-the-nvidia-functions)
     - [Backend runtime on EC2](#backend-runtime-on-ec2)
     - [Backend deployment to EC2 with remote_sync.sh and deploy_ec2.sh](#backend-deployment-to-ec2-with-remote_syncsh-and-deploy_ec2sh)
     - [Supabase schema: fresh install or ordered migrations](#supabase-schema-fresh-install-or-ordered-migrations)
@@ -150,24 +155,30 @@ idealised design. When the code changes, change the diagram in the same pull req
     - [Re-checking a receipt in the app and on the command line](#re-checking-a-receipt-in-the-app-and-on-the-command-line)
     - [starpi-ground: from arguments to exit code](#starpi-ground-from-arguments-to-exit-code)
     - [Sample files and the source-check demo](#sample-files-and-the-source-check-demo)
+13. [NVIDIA cloud proxy](#13-nvidia-cloud-proxy)
+    - [NVIDIA proxy: request guards and limits](#nvidia-proxy-request-guards-and-limits)
+    - [NVIDIA proxy: key rotation and failover before the first byte](#nvidia-proxy-key-rotation-and-failover-before-the-first-byte)
+    - [NVIDIA proxy: relaying the stream to the browser](#nvidia-proxy-relaying-the-stream-to-the-browser)
+    - [NVIDIA proxy in the Python backend](#nvidia-proxy-in-the-python-backend)
+    - [One model allowlist for the app, the functions and the backend](#one-model-allowlist-for-the-app-the-functions-and-the-backend)
 
 ## 1. System overview
 
-Where each part of Starpi runs, which trust boundary it sits behind, and how the frontend modules depend on each other. The browser tab is the trusted zone; Supabase, model providers, the optional backend, model downloads and the browser's speech recognition are reached across explicit boundaries.
+Where each part of Starpi runs, which trust boundary it sits behind, and how the frontend modules depend on each other. The browser tab is the trusted zone; Supabase, model providers, Starpi's NVIDIA proxy, the optional backend, model downloads and the browser's speech recognition are reached across explicit boundaries.
 
 ### System context and trust boundaries
 
-The browser tab is the trusted zone: the main thread, the two Web Workers (starpi-webllm for WebLLM inference, starpi-ingest for parsing, hashing and BM25), the service worker and per-origin storage all live there, and Vercel serves only static files with the vercel.json headers (CSP, HSTS, COOP, X-Frame-Options, Permissions-Policy). Supabase is reached only with the public key (a publishable sb_publishable_ key or a JWT with role anon; scripts/lib/supabase-key.mjs makes the build refuse an empty key, sb_secret_ keys, JWTs with any other role and anything that is neither) plus an anonymous session JWT, so role grants and RLS decide what each caller can read or write, and the RPC functions are SECURITY INVOKER. The optional Python backend is not called by the browser bundle and is the only component that holds the service_role key; because that key bypasses RLS, the backend itself limits its document list and its search matches to rows that are public or have no owner (rows it wrote itself), so private rows of browser sessions do not leave through it. The source check and the answer receipts are computed in the tab, a receipt loaded for verification is checked in the ingestion worker, and neither is sent anywhere; a receipt leaves the tab only as a JSON file the user downloads. Dashed nodes are third-party services outside Starpi control, including the browser's speech recognition, which in client mode voice.js uses only where the browser offers on-device recognition (processLocally). Because cross-origin requests bypass sw.js, model files are cached only in WebLLM's own Cache API buckets. A new sw.js version takes over at install only when no window of the app is open; otherwise it waits until those windows close or a page posts a SKIP_WAITING message (the app itself sends none), and a navigation answered with the cached shell after the 3.5 s deadline does not store the late network response as the new shell.
+The browser tab is the trusted zone: the main thread, the three Web Workers (starpi-webllm for WebLLM inference on WebGPU, starpi-wasm for Transformers.js on the processor, started only for a processor model, and starpi-ingest for parsing, hashing and BM25), the service worker and per-origin storage all live there. Vercel serves the static files with the vercel.json headers (CSP, HSTS, COOP, X-Frame-Options, Permissions-Policy) and runs two Node.js functions, api/models/nvidia.js and api/chat/nvidia.js, which keep the NVIDIA_API_KEYS pool in the server environment: the browser calls them on its own origin without any key, and they forward a validated request to NVIDIA's API with a key from the pool. Supabase is reached only with the public key (a publishable sb_publishable_ key or a JWT with role anon; scripts/lib/supabase-key.mjs makes the build refuse an empty key, sb_secret_ keys, JWTs with any other role and anything that is neither) plus an anonymous session JWT, so role grants and RLS decide what each caller can read or write, and the RPC functions are SECURITY INVOKER. The optional Python backend is the only component that holds the service_role key; the browser bundle never calls its /api/brain/* routes and reaches its two NVIDIA routes only when an operator serves them on the app's own origin, because the NVIDIA client uses same-origin URLs only. Because the service_role key bypasses RLS, the backend itself limits its document list and its search matches to rows that are public or have no owner (rows it wrote itself), so private rows of browser sessions do not leave through it. The source check and the answer receipts are computed in the tab, a receipt loaded for verification is checked in the ingestion worker, and neither is sent anywhere; a receipt leaves the tab only as a JSON file the user downloads. Dashed nodes are third-party services outside Starpi control, including the browser's speech recognition, which in client mode voice.js uses only where the browser offers on-device recognition (processLocally). Because cross-origin requests bypass sw.js, model files are cached only in the Cache API buckets of WebLLM and of Transformers.js (transformers-cache); the self-hosted ONNX Runtime binary is a hashed /assets file. A new sw.js version takes over at install only when no window of the app is open; otherwise it waits until those windows close or a page posts a SKIP_WAITING message (the app itself sends none), and a navigation answered with the cached shell after the 3.5 s deadline does not store the late network response as the new shell.
 
 <!-- diagram: system-context-overview -->
 ```mermaid
 flowchart LR
     subgraph device["User device: browser tab on www.starpi.app, CSP enforced"]
         subgraph mainThread["Main thread, src/js"]
-            boot["main.js boot()<br/>chat.js, settings.js, demo.js, UI modules"]
+            boot["main.js boot()<br/>chat.js, settings.js, model-picker.js,<br/>demo.js, UI modules"]
             sbClient["supabase.js createClient<br/>public key compiled in: publishable or anon JWT,<br/>build refuses sb_secret_ keys, non-anon JWTs<br/>and any other key, fetchWithTimeout 12 s, db retry off"]
-            provJs["providers.js<br/>callGemini, callOpenRouter,<br/>callLocalServer, probeLocalServer"]
-            engineJs["webgpu/engine.js<br/>loadModel, generate, unloadModel"]
+            provJs["providers.js<br/>callGemini, callOpenRouter,<br/>callLocalServer, probeLocalServer,<br/>getNvidiaCatalog, callNvidia"]
+            engineJs["webgpu/engine.js<br/>loadModel, generate, unloadModel,<br/>getDeviceProbe, WebGPU or WASM runtime"]
             wsJs["rag/workspace.js<br/>request(type, payload)"]
             trustJs["rag/grounding-view.js, rag/receipts.js<br/>source check and receipt drafts,<br/>computed and kept in memory"]
             voiceJs["voice.js<br/>Web Speech API, processLocally<br/>required in client mode"]
@@ -175,20 +186,25 @@ flowchart LR
         subgraph llmWorker["Web Worker starpi-webllm"]
             mlc["webgpu/worker.js<br/>WebWorkerMLCEngineHandler<br/>inference on WebGPU"]
         end
+        subgraph wasmWorker["Web Worker starpi-wasm"]
+            wasmw["wasm/worker.js<br/>Transformers.js 4.3.0, ONNX Runtime WASM,<br/>one thread, catalog models only,<br/>env.fetch pinned to the model revision"]
+        end
         subgraph ingestWorker["Web Worker starpi-ingest"]
             ingest["rag/ingest.worker.js<br/>extractText with pdf.js, chunkText,<br/>BM25Index in worker memory only,<br/>SHA-256 of file and text, verify-receipt"]
         end
         sw["sw.js service worker<br/>same-origin GET only,<br/>cross-origin requests bypass it,<br/>a new version skips waiting only<br/>when no window is open"]
         subgraph browserStores["Per-origin browser storage"]
-            ls[("localStorage<br/>starpi_local_chats_v1, starpi_chat_session_id,<br/>starpi_compute_mode, starpi_webgpu_model,<br/>starpi_llm_url, starpi_remember_keys,<br/>starpi_locale, starpi-auth session")]
+            ls[("localStorage<br/>starpi_local_chats_v1, starpi_chat_session_id,<br/>starpi_compute_mode, starpi_webgpu_model,<br/>starpi_nvidia_model, starpi_chat_mode,<br/>starpi_llm_url, starpi_remember_keys,<br/>starpi_locale, starpi-auth session")]
             ss[("sessionStorage<br/>Gemini and OpenRouter keys for this tab,<br/>in localStorage instead if remember is on")]
             swCache[("CacheStorage<br/>starpi-shell-VERSION, starpi-assets")]
             modelCache[("Cache API owned by WebLLM<br/>webllm/model, webllm/config, webllm/wasm")]
+            tfCache[("Cache API owned by Transformers.js<br/>transformers-cache")]
         end
     end
 
-    subgraph vercel["Vercel static hosting"]
+    subgraph vercel["Vercel: static hosting and two functions"]
         host["dist/: index.html, hashed /assets/*, sw.js,<br/>build-manifest.json, public files such as /samples/*<br/>vercel.json headers on every path:<br/>CSP script-src self and wasm-unsafe-eval,<br/>connect-src self, data:, https:, wss://*.supabase.co,<br/>http://localhost:* and http://127.0.0.1:*<br/>HSTS, COOP same-origin, X-Frame-Options DENY,<br/>nosniff, Referrer-Policy,<br/>Permissions-Policy microphone self only"]
+        fn["api/models/nvidia.js, api/chat/nvidia.js<br/>Node.js functions, NVIDIA_API_KEYS only in<br/>the server environment, same-origin check,<br/>rate limit, model allowlist, size caps"]
     end
 
     subgraph supabase["Supabase project: access decided by roles and RLS"]
@@ -201,15 +217,16 @@ flowchart LR
     end
 
     subgraph backendHost["Optional backend host, operator-controlled"]
-        caller["HTTP client of /api/brain/*"]
-        brain["backend/server.py<br/>default bind 127.0.0.1:9200<br/>not called by the browser bundle"]
+        caller["HTTP client of /api/brain/*, or the app<br/>when the NVIDIA routes share its origin"]
+        brain["backend/server.py<br/>default bind 127.0.0.1:9200<br/>/api/brain/* never called by the browser bundle"]
     end
 
     subgraph thirdParty["Third-party services outside Starpi control"]
         gemini["Google Gemini<br/>gemini-2.5-flash:generateContent"]
         openrouter["OpenRouter<br/>/api/v1/chat/completions"]
         ownServer["Own Chat Completions server<br/>https anywhere, http only on<br/>localhost or 127.0.0.1"]
-        hf["Hugging Face<br/>huggingface.co/mlc-ai weights"]
+        nvidia["NVIDIA API<br/>integrate.api.nvidia.com/v1/chat/completions"]
+        hf["Hugging Face<br/>huggingface.co/mlc-ai weights,<br/>WASM model repositories at pinned revisions"]
         ghLibs["raw.githubusercontent.com<br/>binary-mlc-llm-libs wasm"]
         speech["Browser speech recognition<br/>vendor servers in most browsers"]
         backendApis["Backend upstreams<br/>LLM_BASE_URL, EMBEDDING_BASE_URL,<br/>GEMINI_API_KEYS, OPENROUTER_API_KEYS"]
@@ -225,9 +242,14 @@ flowchart LR
     sbClient -->|"persistSession, storageKey starpi-auth"| ls
     engineJs -->|"CreateWebWorkerMLCEngine,<br/>messages in, stream deltas out"| mlc
     engineJs -->|"certainlyNotCached, hasModelInCache,<br/>deleteModelAllInfoInCache"| modelCache
+    engineJs -->|"WasmEngineClient: load, generate,<br/>interrupt, unload messages"| wasmw
+    engineJs -->|"wasmCacheStatus,<br/>delete on Delete downloaded model data"| tfCache
     mlc -->|"read and write shards"| modelCache
     mlc -->|"GET weights if not cached,<br/>interactive loads only, after confirmDownload"| hf
     mlc -->|"GET model_lib wasm"| ghLibs
+    wasmw -->|"read and write model files"| tfCache
+    wasmw -->|"GET pinned files if not cached,<br/>interactive loads only, after confirmDownload"| hf
+    wasmw -->|"GET /assets/ort-wasm-simd-threaded-hash.wasm,<br/>same origin"| host
     wsJs -->|"postMessage ingest, search, head,<br/>context, text, remove, verify-receipt,<br/>File structured-cloned"| ingest
     trustJs -->|"verifyReceiptFiles"| wsJs
     sbClient -->|"getSession, GET /auth/v1/settings,<br/>signInAnonymously unless<br/>anonymous sign-ins are off"| auth
@@ -235,23 +257,26 @@ flowchart LR
     rest -->|"SQL as anon or authenticated"| tables
     rest -->|"rpc"| rpcFns
     rpcFns -->|"run as the caller role"| tables
-    provJs -->|"x-goog-api-key header,<br/>prompt with retrieved excerpts"| gemini
+    provJs -->|"x-goog-api-key header,<br/>prompt with retrieved excerpts<br/>or the free-chat conversation"| gemini
     provJs -->|"Bearer key, messages,<br/>failover over free models"| openrouter
     provJs -->|"messages, no key sent,<br/>GET /models probe"| ownServer
+    provJs -->|"same-origin GET /api/models/nvidia,<br/>POST /api/chat/nvidia without a key,<br/>answer streamed back as SSE"| fn
+    fn -->|"Bearer key from the pool,<br/>failover before the first byte"| nvidia
     voiceJs -->|"microphone audio, handled by the browser"| speech
-    caller -->|"Bearer BRAIN_API_TOKEN when set,<br/>else loopback Host only"| brain
+    caller -->|"Bearer BRAIN_API_TOKEN when set,<br/>else loopback Host only,<br/>/api/chat/nvidia: an allowed Origin or the token"| brain
     brain -->|"service_role key bypasses RLS:<br/>knowledge_documents, knowledge_sections,<br/>rpc match_knowledge_sections,<br/>reads kept to is_public or no owner"| rest
     brain -->|"chat/completions, embeddings,<br/>generateContent"| backendApis
+    brain -->|"/api/chat/nvidia: Bearer key<br/>from its own NVIDIA_API_KEYS pool"| nvidia
 
     classDef external stroke-dasharray: 5 5
-    class gemini,openrouter,ownServer,hf,ghLibs,speech,backendApis external
+    class gemini,openrouter,ownServer,nvidia,hf,ghLibs,speech,backendApis external
 ```
 
-<sub>Sources: [`README.md`](../README.md), [`src/js/main.js`](../src/js/main.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/voice.js`](../src/js/voice.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/sw.js`](../src/sw.js), [`vercel.json`](../vercel.json), [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/rag.py`](../backend/core/rag.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
+<sub>Sources: [`README.md`](../README.md), [`src/js/main.js`](../src/js/main.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/voice.js`](../src/js/voice.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/sw.js`](../src/sw.js), [`vercel.json`](../vercel.json), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`api/models/nvidia.js`](../api/models/nvidia.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/rag.py`](../backend/core/rag.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
 
 ### What leaves the device: connection state
 
-boot() awaits connect(), which is safe to call repeatedly because concurrent callers share one attempt. When navigator.onLine is false, connect() marks the connection offline without sending a request. Otherwise ensureSession() reuses a stored session; without one it first reads the public auth settings (GET /auth/v1/settings with the public key) and, when they say anonymous sign-ins are off, returns auth_disabled without sending a sign-in request; when that settings request times out (12 s), it returns the timeout error and skips the sign-in as well, so the attempt does not wait a second time for a project that does not answer; otherwise, also when the settings say nothing about anonymous sign-ins or the request fails in another way, it calls signInAnonymously(). A probe then reads knowledge_documents for the is_public column. The result sets status, signedIn (no authError) and hardened (probe ok), a result that is not offline resets the back-off, and every change reaches the onConnectionChange listeners that main.js registers. Every Supabase request goes through fetchWithTimeout (12 s) with postgrest retries switched off, and run() switches a ready connection to offline as soon as any request fails with a network error or a timeout; it changes only the status, so signedIn and hardened keep their values. scheduleReconnect() repeats connect() on the window online event or after 30 s, doubling up to 5 min. While the status is offline, chat retrieval and knownTitles() send no Supabase request, and chat_history is written and read only when canSyncChats() sees both signedIn and hardened; after run() went offline that can still be true, and a failed insert then keeps the message in localStorage. Deleting the history in settings is the exception: deleteChatHistory() clears the local chats and skips the remote delete only when the status is ready and canSyncChats() is false; while the status is offline or pending it still calls deleteOwnChats(), which sends the delete when a stored session exists, and a failure is reported as a partial delete instead of a success.
+boot() awaits connect(), which is safe to call repeatedly because concurrent callers share one attempt. When navigator.onLine is false, connect() marks the connection offline without sending a request. Otherwise ensureSession() reuses a stored session; without one it first reads the public auth settings (GET /auth/v1/settings with the public key) and, when they say anonymous sign-ins are off, returns auth_disabled without sending a sign-in request; when that settings request times out (12 s), it returns the timeout error and skips the sign-in as well, so the attempt does not wait a second time for a project that does not answer; otherwise, also when the settings say nothing about anonymous sign-ins or the request fails in another way, it calls signInAnonymously(). A probe then reads knowledge_documents for the is_public column. The result sets status, signedIn (no authError) and hardened (probe ok), a result that is not offline resets the back-off, and every change reaches the onConnectionChange listeners that main.js registers. Every Supabase request goes through fetchWithTimeout (12 s) with postgrest retries switched off, and run() switches a ready connection to offline as soon as any request fails with a network error or a timeout; it changes only the status, so signedIn and hardened keep their values. scheduleReconnect() repeats connect() on the window online event or after 30 s, doubling up to 5 min. While the status is offline, chat retrieval and knownTitles() send no Supabase request, and chat_history is written and read only when canSyncChats() sees both signedIn and hardened; after run() went offline that can still be true, and a failed insert then keeps the message in localStorage. Deleting chats is the exception: deleteChatHistory() in the settings and deleteSession() behind the chat menu's Delete this chat first wait for message writes still under way, clear the local chats (all of them, or the one session) and skip the remote delete only when the status is ready and canSyncChats() is false; while the status is offline or pending they still call deleteOwnChats() or deleteChatSession(sid), which send the delete when a stored session exists, and a failure is reported as a partial delete instead of a success.
 
 <!-- diagram: system-context-egress-connection -->
 ```mermaid
@@ -310,21 +335,22 @@ flowchart TD
     syncQ -->|"yes"| chatSb
     syncQ -->|"no"| chatLs
 
-    delQ{"settings: deleteChatHistory()<br/>clears local chats first;<br/>status ready and<br/>canSyncChats() false?"}
+    delQ{"settings deleteChatHistory() or chat menu<br/>deleteSession(sid): pending writes awaited,<br/>local chats or that session cleared first;<br/>status ready and canSyncChats() false?"}
     delQ -->|"yes: no remote delete,<br/>reported as done"| chatLs
-    delQ -->|"no, also while offline or pending:<br/>deleteOwnChats() with a stored session,<br/>failure reported as a partial delete"| chatSb
+    delQ -->|"no, also while offline or pending:<br/>deleteOwnChats() or deleteChatSession(sid)<br/>with a stored session,<br/>failure reported as a partial delete"| chatSb
 ```
 
 <sub>Sources: [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/main.js`](../src/js/main.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/config.js`](../src/js/config.js), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
 
 ### What leaves the device: one chat turn
 
-Workspace search always stays in the ingestion worker. A sample question offered by demo.js (data-scope workspace, so submitChat gets workspaceOnly) and any question while the connection is offline use workspace hits only. Otherwise, in client mode Supabase receives only question-free reads (recentKnowledge(30), ranked in the browser), while council and own-server modes also send the question, cut to 1000 characters, to the search_knowledge RPC and fall back to recentKnowledge(30) when it returns no rows or fails. Council and own-server modes then send the question with the retrieved excerpts, workspace excerpts included, to the provider or server; OpenRouter and the own server also get shareableHistory(), the last 4 conversation turns not marked localOnly, and Gemini gets no history. Each answer path has its own guards (provider keys, OpenRouter stopping early on 401 or 403, the WebGPU probe and the WebLLM cache checks before the quota check and the download confirmation, normalizeServerUrl), and every failure or empty answer ends in the extractive synthesizeAnswer, whose knownTitles() reads document titles only. When excerpts were used, the source check and the receipt draft are computed on the device. Both turns are marked localOnly in the conversation for client mode, a used workspace hit, an attached file, or an extractive synthesizer answer that contains the name of a file in the workspace (for example a greeting or document list that names the on-device files); that last case also keeps the stored answer local-only, while its question has already been stored by the retrieval rule. The question is stored only after retrieval (or by the catch if the turn throws first). A message stays in localStorage with metadata.local_only set to its local-only flag when it is local-only or when sync is not possible, and without the flag when the chat_history insert fails; loadCurrentSession() reads local rows without the flag back as local-only, and restoreHistory() carries the flag into the conversation.
+submitChat first fixes the chat mode: quick prompts, sample questions and graph entity questions always run in verified source mode and switch the composer toggle to it, and every other question follows the toggle (starpi_chat_mode, grounded by default). In source mode, workspace search always stays in the ingestion worker. A sample question offered by demo.js (data-scope workspace, so submitChat gets workspaceOnly) and any question while the connection is offline use workspace hits only. Otherwise, in client mode Supabase receives only question-free reads (recentKnowledge(30), ranked in the browser), while council, own-server and NVIDIA modes also send the question, cut to 1000 characters, to the search_knowledge RPC and fall back to recentKnowledge(30) when it returns no rows or fails. These three modes then send the question with the retrieved excerpts, workspace excerpts included, to the provider, the own server or Starpi's NVIDIA proxy; OpenRouter, the own server and NVIDIA also get shareableHistory(), the last 4 conversation turns not marked localOnly, and Gemini gets no history. In free chat nothing is retrieved and the question goes to no knowledge-base search: the model receives the conversation instead, up to 16 turns and 24,000 characters of turns not marked localOnly, each cut to 4,000 characters (Gemini gets them too), plus a file attached to that question as fenced data, whole up to 12,000 characters, otherwise its beginning and the passages that match the question, picked in the ingestion worker. NVIDIA requests go to the app's own origin without any key, fitted to the proxy's limits by fitNvidiaMessages. Each answer path has its own guards (provider keys, OpenRouter stopping early on 401 or 403, the NVIDIA catalog reporting a proxy with keys, the device probe and the cache checks before the quota check and the download confirmation, normalizeServerUrl). In source mode every failure or empty answer ends in the extractive synthesizeAnswer, whose knownTitles() reads document titles only, and when excerpts were used the source check and the receipt draft are computed on the device for every engine; in free chat a failure ends in a notice, and an answer is marked as not checked against sources. Both turns are marked localOnly in the conversation for client mode, a used workspace hit, an attached file, or an extractive synthesizer answer that contains the name of a file in the workspace (for example a greeting or document list that names the on-device files); that last case also keeps the stored answer local-only, while its question has already been stored by the retrieval rule. In source mode the question is stored only after retrieval (or by the catch if the turn throws first), in free chat at once. A message stays in localStorage with metadata.local_only set to its local-only flag when it is local-only or when sync is not possible, and without the flag when the chat_history insert fails; loadCurrentSession() reads local rows without the flag back as local-only, and restoreHistory() carries the flag into the conversation.
 
 <!-- diagram: system-context-egress-guards -->
 ```mermaid
 flowchart TD
     submit["submitChat(): input cut to 8000 chars,<br/>waits for a file still being read,<br/>mode = getMode()"]
+    cm{"chat mode: grounded for quick prompts,<br/>sample and entity questions,<br/>else getChatMode()"}
     wsSearch["retrieveWorkspace: searchWorkspace<br/>in starpi-ingest, an attached file's<br/>chunks first, stays on the device"]
     scopeQ{"workspaceOnly:<br/>a demo sample question?"}
     offQ{"getConnection().status<br/>is offline?"}
@@ -333,13 +359,14 @@ flowchart TD
     recent["recentKnowledge(30)<br/>no user text sent,<br/>rankHitsLocally in the browser"]
     fts["rpc search_knowledge<br/>query_text sliced to 1000 chars,<br/>match_count 6"]
     ftsQ{"rows returned?"}
-    submit --> wsSearch --> scopeQ
+    submit --> cm
+    cm -->|"grounded"| wsSearch --> scopeQ
     scopeQ -->|"yes"| wsOnly
     scopeQ -->|"no"| offQ
     offQ -->|"yes"| wsOnly
     offQ -->|"no"| modeR
     modeR -->|"yes"| recent
-    modeR -->|"no: council or local"| fts
+    modeR -->|"no: council, local or nvidia"| fts
     fts --> ftsQ
     ftsQ -->|"no rows or error"| recent
     qStore["no hits used for a greeting without a file<br/>storeQuestion(usesWorkspace),<br/>usesWorkspace = a used workspace hit"]
@@ -348,11 +375,18 @@ flowchart TD
     wsOnly --> qStore
     qStore --> modeA
 
+    fStore["free chat: storeQuestion(false) at once,<br/>no retrieval, no knowledge-base search"]
+    fFile{"file attached<br/>to this question?"}
+    fAtt["attachmentForChat in starpi-ingest:<br/>the text up to 12000 chars, else its first<br/>chunks and the passages matching the question"]
+    cm -->|"free"| fStore --> fFile
+    fFile -->|"yes"| fAtt --> modeA
+    fFile -->|"no"| modeA
+
     modeA{"answer mode"}
     gemQ{"hasGeminiKey?"}
-    gemCall["callGemini to Google, 20 s<br/>key in x-goog-api-key header,<br/>system prompt with excerpts<br/>and the question, no history"]
+    gemCall["callGemini to Google, 20 s<br/>key in x-goog-api-key header<br/>source mode: system prompt with excerpts<br/>and the question, no history<br/>free chat: system, history, question"]
     orQ{"hasOpenRouterKey?"}
-    orCall["callOpenRouter, Bearer key, 20 s per model<br/>system prompt with excerpts,<br/>shareableHistory, question,<br/>up to 3 free models, stops early on 401 or 403"]
+    orCall["callOpenRouter, Bearer key, 20 s per model<br/>system prompt with excerpts or the attached file,<br/>shareableHistory, question,<br/>up to 3 free models, stops early on 401 or 403"]
     modeA -->|"council"| gemQ
     gemQ -->|"yes"| gemCall
     gemQ -->|"no"| orQ
@@ -360,9 +394,9 @@ flowchart TD
     orQ -->|"yes"| orCall
 
     readyQ{"engine.isReady()?"}
-    loadQ{"startLocalEngine interactive, loadModel:<br/>WebGPU adapter? model cached per<br/>certainlyNotCached and hasModelInCache?"}
-    dl["checkQuota, confirmDownload dialog,<br/>storage.persist, then weights from<br/>Hugging Face and wasm from GitHub"]
-    gen["engine.generate in starpi-webllm<br/>prompt and last 4 turns<br/>never leave the device"]
+    loadQ{"startLocalEngine interactive, loadModel:<br/>WebGPU preset with an adapter, or a WASM model,<br/>model files already cached?"}
+    dl["checkQuota, confirmDownload dialog,<br/>storage.persist, then WebGPU weights from<br/>Hugging Face and wasm from GitHub, or pinned<br/>WASM files from Hugging Face and the<br/>ONNX Runtime binary from /assets"]
+    gen["engine.generate in starpi-webllm or starpi-wasm<br/>prompt and history never leave the device"]
     modeA -->|"client"| readyQ
     readyQ -->|"yes"| gen
     readyQ -->|"no"| loadQ
@@ -371,35 +405,47 @@ flowchart TD
     dl -->|"accepted"| gen
 
     urlQ{"normalizeServerUrl:<br/>https, or http on localhost or<br/>127.0.0.1, no credentials in URL?"}
-    srv["callLocalServer, no key, 90 s<br/>GET base/models, 4 s, until a model id is known,<br/>POST base/chat/completions: system prompt<br/>with excerpts, shareableHistory, question"]
+    srv["callLocalServer, no key, 90 s<br/>GET base/models, 4 s, until a model id is known,<br/>POST base/chat/completions: system prompt with<br/>excerpts or the attached file, shareableHistory, question"]
     modeA -->|"local"| urlQ
     urlQ -->|"valid"| srv
 
-    synth["knownTitles(): listDocuments select,<br/>no question text, cached 60 s,<br/>none while offline,<br/>then synthesizeAnswer, extractive quotes"]
-    orQ -->|"no key"| synth
-    orCall -->|"all attempts failed"| synth
-    loadQ -->|"unsupported, no-adapter<br/>or other load error"| synth
-    dl -->|"declined, quota, code-download<br/>or network error"| synth
-    gen -->|"error or empty text"| synth
-    urlQ -->|"ProviderError"| synth
-    srv -->|"HTTP error, timeout or empty"| synth
+    nvCat{"getNvidiaCatalog: same-origin<br/>GET /api/models/nvidia, cached,<br/>proxy has keys and offers a model?"}
+    nvCall["callNvidia: same-origin POST /api/chat/nvidia,<br/>no Authorization header, fitNvidiaMessages:<br/>system with excerpts or the attached file,<br/>shareableHistory, question, max_tokens<br/>= the model's defaultMaxTokens"]
+    nvProxy["Starpi proxy, Vercel function or backend:<br/>a pooled key, NVIDIA API, the stream relayed back"]
+    modeA -->|"nvidia"| nvCat
+    nvCat -->|"yes"| nvCall --> nvProxy
 
-    check["when excerpts were used: applyGrounding<br/>source check and storeReceiptDraft<br/>on this device, receipt JSON saved<br/>only when the user downloads it"]
+    noAns["no model answer: in source mode knownTitles():<br/>listDocuments select, no question text, cached 60 s,<br/>none while offline, then synthesizeAnswer, extractive quotes<br/>in free chat: a notice says why, nothing more is sent"]
+    orQ -->|"no key"| noAns
+    orCall -->|"all attempts failed"| noAns
+    loadQ -->|"unsupported, no-adapter<br/>or other load error"| noAns
+    dl -->|"declined, quota, code-download<br/>or network error"| noAns
+    gen -->|"error or empty text"| noAns
+    urlQ -->|"ProviderError"| noAns
+    srv -->|"HTTP error, timeout or empty"| noAns
+    nvCat -->|"no proxy, no keys or no model"| noAns
+    nvProxy -->|"error code, timeout or a stream<br/>that ended without answer text"| noAns
+
+    check["source mode, when excerpts were used: applyGrounding<br/>source check and storeReceiptDraft for every<br/>engine on this device, receipt JSON saved<br/>only when the user downloads it<br/>free chat: markFreeAnswer, no check, no receipt"]
     gemCall -->|"answer"| check
     orCall -->|"answer"| check
     gen -->|"answer"| check
     srv -->|"answer"| check
-    synth -->|"answer"| check
+    nvProxy -->|"answer, a partial one after Stop"| check
+    noAns -->|"source-mode answer"| check
     turns["conversation.push: both turns localOnly<br/>for client mode, a used workspace hit, a file<br/>or a synthesizer answer naming a workspace file,<br/>question cut to 4000 chars"]
     check --> turns
-    turns -.->|"shareableHistory drops localOnly<br/>turns, keeps the last 4"| orCall
+    turns -.->|"shareableHistory drops localOnly turns,<br/>keeps the last 4 in source mode,<br/>16 turns and 24000 chars in free chat"| orCall
     turns -.->|"shareableHistory"| srv
+    turns -.->|"shareableHistory"| nvCall
+    turns -.->|"free chat only"| gemCall
 
-    persistQ{"persistMessage localOnly?<br/>question: client mode, a file<br/>or a used workspace hit<br/>answer: client mode, a used<br/>workspace hit or a synthesizer<br/>answer naming a workspace file"}
+    persistQ{"persistMessage localOnly?<br/>question: client mode, a file<br/>or a used workspace hit<br/>answer: client mode, a file in free chat,<br/>a used workspace hit or a synthesizer<br/>answer naming a workspace file"}
     syncQ{"canSyncChats():<br/>signedIn and hardened?"}
     lsStore[("localStorage starpi_local_chats_v1<br/>last 200 messages of 10 sessions")]
     insert["insert into chat_history<br/>RLS: owner_id = auth.uid()<br/>then refreshSyncStatus counts<br/>chat_history rows for the sync text"]
     qStore -->|"question"| persistQ
+    fStore -->|"question"| persistQ
     submit -.->|"question via storeQuestion(false)<br/>in the catch if the turn throws first"| persistQ
     turns -->|"answer"| persistQ
     persistQ -->|"yes: local_only true"| lsStore
@@ -409,11 +455,11 @@ flowchart TD
     insert -->|"error: kept without the flag,<br/>read back as local-only"| lsStore
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/config.js`](../src/js/config.js), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
+<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
 
 ### Backend trust boundary: server.py request guards
 
-run_server refuses to bind to a non-loopback address unless BRAIN_API_TOKEN is set and exits with SystemExit(2). _route then checks every request in a fixed order: without a token it rejects requests carrying reverse-proxy headers (fail closed), it rejects any Origin not in BRAIN_ALLOWED_ORIGINS, and without a token it rejects non-loopback Host headers (DNS rebinding guard); only then does it resolve the route, answer OPTIONS, check the method and, for /api/brain/*, compare the Bearer token with hmac.compare_digest. Request bodies are bounded by _read_json_object and _string_field. The handlers use Supabase with the service_role key, which bypasses RLS, so supabase_client.py filters every read with VISIBLE_ROWS to rows that are public or have no owner (rows the backend wrote itself; they are not public by default): the document list selects only such rows, and vector matches are kept only when their document passes the same filter, so private rows of browser sessions (owner set, not public) are not returned. When Supabase is not configured or the remote call fails, the handlers fall back to an in-memory store.
+run_server refuses to bind to a non-loopback address unless BRAIN_API_TOKEN is set and exits with SystemExit(2). _route then checks every request in a fixed order: without a token it rejects requests carrying reverse-proxy headers (fail closed), it rejects any Origin not in BRAIN_ALLOWED_ORIGINS, and without a token it rejects non-loopback Host headers (DNS rebinding guard); only then does it resolve the route, answer OPTIONS, check the method and, for /api/brain/*, compare the Bearer token with hmac.compare_digest. POST /api/chat/nvidia spends a shared key pool, so it also needs an Origin listed in BRAIN_ALLOWED_ORIGINS or the Bearer token (403 origin_required otherwise), and it is rate limited per client address before the body is read. Request bodies are bounded by _read_json_object (256 KiB on the NVIDIA route) and _string_field. The handlers use Supabase with the service_role key, which bypasses RLS, so supabase_client.py filters every read with VISIBLE_ROWS to rows that are public or have no owner (rows the backend wrote itself; they are not public by default): the document list selects only such rows, and vector matches are kept only when their document passes the same filter, so private rows of browser sessions (owner set, not public) are not returned. When Supabase is not configured or the remote call fails, the handlers fall back to an in-memory store. The NVIDIA routes touch neither Supabase nor that store: they list the shared model allowlist or relay one validated chat request to NVIDIA with a key from NVIDIA_API_KEYS.
 
 <!-- diagram: system-context-backend-guards -->
 ```mermaid
@@ -421,7 +467,7 @@ flowchart TD
     start["run_server()<br/>BRAIN_SERVER_HOST default 127.0.0.1,<br/>BRAIN_SERVER_PORT default 9200,<br/>CLI port and --host override"]
     bindQ{"host is loopback<br/>or BRAIN_API_TOKEN set?"}
     refuse["log error, SystemExit(2)"]
-    listen["BrainHTTPServer serve_forever<br/>warning if token shorter than 32 chars,<br/>30 s socket timeout per connection,<br/>SECURITY_HEADERS on every response"]
+    listen["BrainHTTPServer serve_forever<br/>warning if token shorter than 32 chars,<br/>30 s socket timeout per connection,<br/>SECURITY_HEADERS on every response,<br/>NVIDIA key router and rate limiter built at start"]
     start --> bindQ
     bindQ -->|"no"| refuse
     bindQ -->|"yes"| listen
@@ -446,7 +492,7 @@ flowchart TD
     pre["204 with CORS preflight headers<br/>for an allowed Origin, else Allow only"]
     methQ{"method listed<br/>for this path?"}
     r405["405 method_not_allowed"]
-    protQ{"path starts with<br/>/api/brain/?"}
+    protQ{"which path?"}
     health["_handle_health<br/>status, supabase_live"]
     routeQ -->|"no"| r404
     routeQ -->|"yes"| optQ
@@ -454,8 +500,8 @@ flowchart TD
     optQ -->|"no"| methQ
     methQ -->|"no"| r405
     methQ -->|"yes"| protQ
-    protQ -->|"no: /api/health"| health
-    protQ -->|"yes"| bearerQ
+    protQ -->|"/api/health"| health
+    protQ -->|"/api/brain/*"| bearerQ
 
     bearerQ{"token unset, or Bearer matches<br/>via hmac.compare_digest?"}
     r401["401 unauthorized<br/>WWW-Authenticate Bearer"]
@@ -469,23 +515,36 @@ flowchart TD
     body -->|"no"| r4xx
     body -->|"yes"| handlers
 
+    nvModels["_handle_nvidia_models<br/>public allowlist and configured,<br/>never keys or a key count"]
+    nvCaller{"_check_nvidia_caller:<br/>an Origin in BRAIN_ALLOWED_ORIGINS<br/>or the Bearer token?"}
+    r403n["403 origin_required"]
+    nvChat["_handle_nvidia_chat: rate limit per client,<br/>keys configured, body at most 256 KiB,<br/>validate_chat_request, open_stream with<br/>failover before the first byte, SSE relayed"]
+    r4n["429 rate_limited, 503 nvidia_not_configured,<br/>400, 411, 413, 415 body and field errors,<br/>502, 503 or 504 when no key delivers a stream"]
+    protQ -->|"GET /api/models/nvidia"| nvModels
+    protQ -->|"POST /api/chat/nvidia"| nvCaller
+    nvCaller -->|"no"| r403n
+    nvCaller -->|"yes"| nvChat
+    nvChat -->|"refused"| r4n
+
     supa["Supabase /rest/v1 with service_role key<br/>bypasses RLS, so reads filter to<br/>is_public or owner_id null"]
     mem[("in-memory store<br/>_local_docs, _local_sections<br/>used when not db.is_live<br/>or the Supabase call fails")]
     upstream["EMBEDDING_BASE_URL: section and query embeddings<br/>LLM_BASE_URL: structuring on ingest<br/>answers: Gemini key pool, then OpenRouter<br/>key pool, then LLM_BASE_URL"]
+    nvUp["NVIDIA API, Bearer key from NVIDIA_API_KEYS,<br/>upstream body never read on errors or echoed"]
     docs -->|"select newest 200,<br/>is_public or no owner"| supa
     handlers -->|"insert, rollback delete,<br/>rpc match_knowledge_sections, then<br/>_visible_matches drops private documents"| supa
     handlers -->|"structure, embed, answer"| upstream
+    nvChat -->|"validated body, stream true"| nvUp
     docs -.-> mem
     handlers -.-> mem
     r500["500 internal_error"]
     handlers -.->|"unhandled exception"| r500
 ```
 
-<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/rag.py`](../backend/core/rag.py), [`backend/core/ingestion_pipeline.py`](../backend/core/ingestion_pipeline.py), [`backend/core/structurer.py`](../backend/core/structurer.py), [`backend/core/embeddings.py`](../backend/core/embeddings.py)</sub>
+<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/rag.py`](../backend/core/rag.py), [`backend/core/ingestion_pipeline.py`](../backend/core/ingestion_pipeline.py), [`backend/core/structurer.py`](../backend/core/structurer.py), [`backend/core/embeddings.py`](../backend/core/embeddings.py)</sub>
 
 ### Frontend import graph (1 of 4): main.js and its application imports
 
-main.js is the only main-thread entry point and has 19 imports: the 14 application modules drawn here (with the names it imports from each) and 5 infrastructure modules (dom, i18n, icons, state, supabase) drawn in frontend-modules-infrastructure. Application modules are every module reachable from main.js except the 10 infrastructure modules drawn in frontend-modules-infrastructure; there are 36 of them, including the ten core/ modules the page reaches and rag/bm25.js and rag/chunker.js, which core/ reuses from the ingestion worker. The 94 imports between them are split across four diagrams: the 14 made by main.js here, the 20 made by settings.js, graph.js, ingest.js, bench/bench-ui.js and voice.js in frontend-modules-views, the 23 made by chat.js, engine-ui.js, messages.js, rag/citations.js and webgpu/engine.js in frontend-modules-chat, and the 37 made by demo.js, synthesizer.js, retrieval.js, rag/grounding-view.js, rag/receipts.js and the core/ modules in frontend-modules-trust. An import and a re-export of the same module count as one edge. The import graph has no cycles.
+main.js is the only main-thread entry point and has 20 imports: the 15 application modules drawn here (with the names it imports from each) and 5 infrastructure modules (dom, i18n, icons, state, supabase) drawn in frontend-modules-infrastructure. Application modules are every module reachable from main.js except the 10 infrastructure modules drawn in frontend-modules-infrastructure; there are 45 of them, including the ten core/ modules the page reaches, rag/bm25.js and rag/chunker.js, which core/ reuses from the ingestion worker, and models/wasm-catalog.js, which the processor (WASM) worker shares. The 121 imports between them are split across four diagrams: the 15 made by main.js here, the 31 made by settings.js, model-picker.js, models/choices.js, graph.js, ingest.js, bench/bench-ui.js and voice.js in frontend-modules-views, the 38 made by chat.js, engine-ui.js, messages.js, prompts.js, providers.js, rag/citations.js, webgpu/engine.js, webgpu/models.js and wasm/client.js in frontend-modules-chat, and the 37 made by demo.js, synthesizer.js, retrieval.js, rag/grounding-view.js, rag/receipts.js and the core/ modules in frontend-modules-trust. An import and a re-export of the same module count as one edge. The import graph has no cycles.
 
 <!-- diagram: frontend-modules-overview -->
 ```mermaid
@@ -494,6 +553,7 @@ flowchart LR
 
     subgraph views["Feature views: their imports in frontend-modules-views"]
         settings["settings.js<br/>initSettings, changeEngine,<br/>renderPrivacyNotice"]
+        picker["model-picker.js<br/>initModelPicker"]
         library["library.js<br/>initLibrary, loadDocuments"]
         graphview["graph.js<br/>initGraph, loadKnowledgeGraph"]
         ingest["ingest.js<br/>initIngest"]
@@ -516,6 +576,7 @@ flowchart LR
     end
 
     main --> settings
+    main --> picker
     main --> library
     main --> graphview
     main --> ingest
@@ -533,15 +594,16 @@ flowchart LR
 
 <sub>Sources: [`src/js/main.js`](../src/js/main.js)</sub>
 
-### Frontend import graph (2 of 4): imports made by the feature views
+### Frontend import graph (2 of 4): imports made by the feature views and the model pickers
 
-Every import between application modules made by settings.js, graph.js, ingest.js, bench/bench-ui.js and voice.js (20 of the 81); library.js imports only infrastructure modules (dialog, dom, i18n, render, supabase). Views that call into chat.js use narrow imports (graph.js submitChat, ingest.js invalidateKnownTitles, bench-ui.js isChatBusy, settings.js isChatBusy and resetConversation), and chat.js imports no view back. settings.js deletes the chat history through deleteChatHistory in chat-store.js and refuses to start while isChatBusy() reports an answer still being written (settings.delete_history_busy), graph.js and ingest.js reuse describeDataError from library.js, settings.js and bench-ui.js drive the on-device engine both through engine-ui.js and directly through webgpu/engine.js, and voice.js reports speech errors with appendNotice from messages.js.
+Every import between application modules made by settings.js, model-picker.js, models/choices.js, graph.js, ingest.js, bench/bench-ui.js and voice.js (31 of the 121); library.js imports only infrastructure modules (dialog, dom, i18n, render, supabase). Views that call into chat.js use narrow imports (graph.js submitChat, ingest.js invalidateKnownTitles, bench-ui.js isChatBusy, settings.js isChatBusy and resetConversation), and chat.js imports no view back. settings.js deletes the chat history through deleteChatHistory in chat-store.js and refuses to start while isChatBusy() reports an answer still being written (settings.delete_history_busy), graph.js and ingest.js reuse describeDataError from library.js, settings.js and bench-ui.js drive the on-device engine both through engine-ui.js and directly through webgpu/engine.js, and voice.js reports speech errors with appendNotice from messages.js. model-picker.js fills both assistant pickers from assistantGroups in models/choices.js once getDeviceProbe() and getNvidiaCatalog() have answered, and settings.js applies a picked value through parseAssistantChoice, checked against the NVIDIA_MODELS allowlist, and then calls syncPickerValue; model-picker.js imports neither settings.js nor chat.js, because settings.js imports it. models/choices.js is pure: it reads the three model catalogs and recommendModels from models/device.js and returns i18n keys, never translated text.
 
 <!-- diagram: frontend-modules-views -->
 ```mermaid
 flowchart LR
-    subgraph views["Feature views"]
+    subgraph views["Feature views and the model pickers"]
         settings["settings.js"]
+        picker["model-picker.js"]
         graphview["graph.js"]
         ingest["ingest.js"]
         benchui["bench/bench-ui.js"]
@@ -557,10 +619,18 @@ flowchart LR
     prompts["prompts.js"]
     providers["providers.js"]
     engine["webgpu/engine.js"]
+    models["webgpu/models.js"]
     diag["bench/diagnostics.js"]
     citations["rag/citations.js"]
     workspace["rag/workspace.js"]
     retrieval["retrieval.js"]
+
+    subgraph catalogs["Model choice, pure (models/)"]
+        choices["models/choices.js"]
+        device["models/device.js"]
+        nvcat["models/nvidia-catalog.js"]
+        wasmcat["models/wasm-catalog.js"]
+    end
 
     graphview -->|"submitChat"| chat
     ingest -->|"invalidateKnownTitles"| chat
@@ -576,7 +646,18 @@ flowchart LR
     settings -->|"* as engine"| engine
     benchui -->|"* as engine"| engine
     settings -->|"readinessPrompt"| prompts
-    settings -->|"callGemini, callOpenRouter,<br/>hasGeminiKey, hasOpenRouterKey,<br/>normalizeServerUrl, probeLocalServer"| providers
+    settings -->|"callGemini, callOpenRouter,<br/>hasGeminiKey, hasOpenRouterKey,<br/>normalizeServerUrl, probeLocalServer,<br/>getNvidiaCatalog"| providers
+    settings -->|"currentPickerValue,<br/>syncPickerValue"| picker
+    settings -->|"parseAssistantChoice"| choices
+    settings -->|"NVIDIA_MODELS"| nvcat
+    picker -->|"assistantGroups, choiceValue,<br/>GROUP_KEYS, nvidiaStatus, optionParts"| choices
+    picker -->|"hardwareBadges"| device
+    picker -->|"getNvidiaCatalog,<br/>onNvidiaCatalog"| providers
+    picker -->|"getDeviceProbe"| engine
+    choices -->|"MODEL_CATALOG,<br/>normalizePreference"| models
+    choices -->|"recommendModels"| device
+    choices -->|"NVIDIA_DEFAULT_MODEL,<br/>NVIDIA_MODELS"| nvcat
+    choices -->|"WASM_CATALOG"| wasmcat
     benchui -->|"computeBenchmarkMetrics,<br/>formatBytes, BYTE_LIMITS"| diag
     ingest -->|"registerCitations,<br/>citationButton"| citations
     ingest -->|"addToWorkspace, searchWorkspace,<br/>listWorkspace, onWorkspaceChange,<br/>getDocumentText, removeFromWorkspace,<br/>clearWorkspace"| workspace
@@ -584,28 +665,31 @@ flowchart LR
     voice -->|"appendNotice"| messages
 ```
 
-<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/voice.js`](../src/js/voice.js), [`src/js/library.js`](../src/js/library.js)</sub>
+<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/models/device.js`](../src/js/models/device.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/voice.js`](../src/js/voice.js), [`src/js/library.js`](../src/js/library.js)</sub>
 
-### Frontend import graph (3 of 4): chat pipeline, workspace client and WebGPU
+### Frontend import graph (3 of 4): chat pipeline, workspace client and on-device engine
 
-The 23 imports between application modules made by chat.js, engine-ui.js, messages.js, rag/citations.js and webgpu/engine.js. chat.js is the hub: 15 of its 23 imports are drawn here, and the other 8 go to infrastructure (config, dom, i18n, icons, render, signals, state, supabase). chat-store.js, prompts.js, providers.js, ui.js, rag/workspace.js and webgpu/models.js import no other application module. After an answer is rendered, chat.js runs the source check through applyGrounding in rag/grounding-view.js, with contextCoverage from core/grounding.js telling which part of each excerpt reached the model, and keeps a receipt draft through rag/receipts.js, passing for a partly delivered excerpt how many of its leading characters reached the model (deliveredChars); the imports of those modules, and of synthesizer.js and retrieval.js, are in frontend-modules-trust. rag/citations.js takes CITATION_PATTERN and citationLabel from retrieval.js, which re-exports them from core/labels.js, and reads source text back from the workspace worker through getChunkContext.
+The 38 imports between application modules made by chat.js, engine-ui.js, messages.js, prompts.js, providers.js, rag/citations.js, webgpu/engine.js, webgpu/models.js and wasm/client.js. chat.js is the hub: 18 of its 26 imports are drawn here, and the other 8 go to infrastructure (config, dom, i18n, icons, render, signals, state, supabase). chat-store.js, chat-stream.js, chat-export.js, code-blocks.js, ui.js, rag/workspace.js, models/device.js, models/nvidia-catalog.js and models/wasm-catalog.js import no other application module. chat-stream.js holds the pure SSE parser and stream assembler that callNvidia in providers.js uses and the splitReasoning that chat.js and messages.js use; models/nvidia-catalog.js is the one NVIDIA allowlist with the proxy's limits and timings, which prompts.js (fitNvidiaMessages), providers.js and chat.js read and the Vercel functions import too (section 13). messages.js adds the copy buttons of code blocks through code-blocks.js, and chat.js writes the chat export through chat-export.js. After an answer in source mode is rendered, chat.js runs the source check through applyGrounding in rag/grounding-view.js, with contextCoverage from core/grounding.js telling which part of each excerpt reached the model, and keeps a receipt draft through rag/receipts.js, passing for a partly delivered excerpt how many of its leading characters reached the model (deliveredChars); the imports of those modules, and of synthesizer.js and retrieval.js, are in frontend-modules-trust. rag/citations.js takes CITATION_PATTERN and citationLabel from retrieval.js, which re-exports them from core/labels.js, and reads source text back from the workspace worker through getChunkContext. webgpu/engine.js runs a WebGPU preset in its WebLLM worker or a processor (WASM) model through WasmEngineClient from wasm/client.js, and both it and webgpu/models.js read the processor catalog in models/wasm-catalog.js.
 
 <!-- diagram: frontend-modules-chat -->
 ```mermaid
 flowchart TD
-    chat["chat.js<br/>submitChat, retrieve, shareableHistory,<br/>answerWith* helpers"]
+    chat["chat.js<br/>submitChat, answerGrounded, answerFree,<br/>retrieve, shareableHistory, answerWith* helpers"]
 
     subgraph pipeline["Chat pipeline"]
-        chatstore["chat-store.js<br/>persistMessage, loadCurrentSession"]
-        prompts["prompts.js<br/>buildSystemPrompt, buildInstructions"]
-        providers["providers.js<br/>callGemini, callOpenRouter, callLocalServer"]
-        synth["synthesizer.js<br/>synthesizeAnswer, describeTrace, isGreeting"]
+        chatstore["chat-store.js<br/>persistMessage, loadCurrentSession, deleteSession"]
+        chatexport["chat-export.js<br/>chatToJson, chatToMarkdown, exportFileName"]
+        prompts["prompts.js<br/>buildSystemPrompt, buildChatPrompt,<br/>historyWindow, fitNvidiaMessages"]
+        providers["providers.js<br/>callGemini, callOpenRouter, callLocalServer,<br/>getNvidiaCatalog, callNvidia"]
+        chatstream["chat-stream.js<br/>createSseParser, createChatStreamAssembler,<br/>splitReasoning, splitStreamingText"]
+        synth["synthesizer.js<br/>synthesizeAnswer, describeTrace,<br/>describeChatTrace, isGreeting"]
         retrieval["retrieval.js<br/>rankHitsLocally, mergeHits,<br/>assignCitations, buildContext"]
     end
 
     subgraph rendering["Rendering and engine UI"]
         engineui["engine-ui.js<br/>startLocalEngine, renderEngineState"]
-        messages["messages.js<br/>appendMessage, createStreamingMessage"]
+        messages["messages.js<br/>appendMessage, createStreamingMessage,<br/>markFreeAnswer"]
+        codeblocks["code-blocks.js<br/>decorateCodeBlocks, initCodeBlocks"]
         ui["ui.js<br/>setAssistantStatus, setEngineDot"]
     end
 
@@ -613,21 +697,28 @@ flowchart TD
         groundview["rag/grounding-view.js<br/>applyGrounding, clearGroundingHighlights"]
         receipts["rag/receipts.js<br/>storeReceiptDraft, receiptButton"]
         coregrounding["core/grounding.js<br/>contextCoverage"]
+        coresentences["core/sentences.js<br/>safeSlice"]
     end
 
     subgraph ragmain["On-device workspace, main thread (rag/)"]
         citations["rag/citations.js<br/>registerCitations, linkifyCitations"]
-        workspace["rag/workspace.js<br/>searchWorkspace, firstChunks, getChunkContext"]
+        workspace["rag/workspace.js<br/>searchWorkspace, firstChunks,<br/>getDocumentText, getChunkContext"]
     end
 
-    subgraph gpu["WebGPU (webgpu/)"]
+    subgraph gpu["On-device engine (webgpu/, wasm/) and catalogs (models/)"]
         engine["webgpu/engine.js<br/>loadModel, generate, isReady"]
         models["webgpu/models.js<br/>chooseModel, budgetPrompt"]
+        wasmclient["wasm/client.js<br/>WasmEngineClient, wasmCacheStatus"]
+        wasmcat["models/wasm-catalog.js<br/>WASM_CATALOG, WASM_CACHE_NAME"]
+        nvcat["models/nvidia-catalog.js<br/>NVIDIA_LIMITS, NVIDIA_CLIENT_TIMEOUTS"]
+        device["models/device.js<br/>recommendModels"]
     end
 
     chat --> chatstore
+    chat -->|"chatToJson, chatToMarkdown,<br/>exportFileName"| chatexport
     chat --> prompts
     chat --> providers
+    chat -->|"splitReasoning"| chatstream
     chat --> synth
     chat --> retrieval
     chat -->|"startLocalEngine"| engineui
@@ -637,26 +728,39 @@ flowchart TD
     chat -->|"storeReceiptDraft,<br/>receiptButton"| receipts
     chat -->|"contextCoverage"| coregrounding
     chat -->|"registerCitations"| citations
-    chat -->|"searchWorkspace, firstChunks,<br/>addToWorkspace, listWorkspace"| workspace
+    chat -->|"searchWorkspace, firstChunks,<br/>getDocumentText, addToWorkspace,<br/>listWorkspace"| workspace
     chat -->|"* as engine"| engine
     chat -->|"budgetPrompt"| models
+    chat -->|"findNvidiaModel, NVIDIA_LIMITS"| nvcat
 
     engineui -->|"appendNotice"| messages
     engineui -->|"setEngineDot"| ui
     engineui -->|"* as engine"| engine
+    engineui -->|"WASM_RUNTIME_MB"| wasmcat
 
     messages -->|"linkifyCitations,<br/>citationSources"| citations
     messages -->|"clearGroundingHighlights"| groundview
+    messages -->|"splitReasoning,<br/>splitStreamingText"| chatstream
+    messages -->|"decorateCodeBlocks,<br/>initCodeBlocks"| codeblocks
+    prompts -->|"safeSlice"| coresentences
+    prompts -->|"NVIDIA_LIMITS"| nvcat
+    providers -->|"createSseParser,<br/>createChatStreamAssembler,<br/>splitStreamingText"| chatstream
+    providers -->|"findNvidiaModel, NVIDIA_LIMITS,<br/>NVIDIA_CLIENT_TIMEOUTS"| nvcat
     citations -->|"CITATION_PATTERN, citationLabel,<br/>re-exported from core/labels.js"| retrieval
     citations -->|"getChunkContext"| workspace
-    engine -->|"chooseModel, detectMobile,<br/>MODEL_CATALOG"| models
+    engine -->|"ALL_MODEL_IDS, chooseModel,<br/>detectMobile"| models
+    engine -->|"WasmEngineClient,<br/>wasmCacheStatus"| wasmclient
+    engine -->|"WASM_CACHE_NAME,<br/>WASM_RUNTIME_MB"| wasmcat
+    models -->|"recommendModels,<br/>re-exports detectMobile"| device
+    models -->|"WASM_CATALOG"| wasmcat
+    wasmclient -->|"WASM_CACHE_NAME, wasmFileUrl"| wasmcat
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js)</sub>
+<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat-export.js`](../src/js/chat-export.js), [`src/js/chat-stream.js`](../src/js/chat-stream.js), [`src/js/code-blocks.js`](../src/js/code-blocks.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/sentences.js`](../src/js/core/sentences.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`src/js/models/device.js`](../src/js/models/device.js)</sub>
 
 ### Frontend import graph (4 of 4): demo, source check, receipts and core/
 
-The remaining 37 of the 94 imports: every import made by demo.js, synthesizer.js, retrieval.js, rag/grounding-view.js, rag/receipts.js and the core/ modules. The ten core/ modules the page reaches import no infrastructure module and use no DOM, so the same code runs in the page, in the ingestion worker and in Node: core/labels.js holds the citation label format that retrieval.js re-exports, core/sentences.js the sentence splitting that synthesizer.js re-exports and safeSlice, with which retrieval.js shortens excerpts and core/grounding.js the passage it quotes in a reason without splitting a surrogate pair, core/facts.js and core/grounding.js the source check, core/polarity.js its version 2 negation check and core/binding.js its version 2 checks of names and values in another place, and core/receipt.js builds and verifies starpi.receipt/v2 receipts (and still reads v1), with core/merkle.js for the Merkle tree over the citations, core/signature.js for Ed25519 and ES256 signatures and core/hash.js for SHA-256, canonical JSON, hex and base64url. core/facts.js reuses tokenize and the stopword lists of rag/bm25.js, core/grounding.js reuses its English stopword list, core/polarity.js and core/binding.js its combined STOPWORDS, and core/receipt.js reuses chunkText and CHUNKER from rag/chunker.js, so both worker modules are part of the main-thread graph too. Outside this graph, rag/ingest.worker.js imports core/receipt.js to hash files and verify receipts and core/signature.js to import a signer's public key, scripts/verify-receipt.mjs imports core/receipt.js, core/signature.js and rag/parser.js in Node, scripts/ground.mjs imports core/document.js and core/sarif.js, the two core/ modules the page never loads, and packages/core/src/index.js re-exports nine of the twelve core/ modules (core/polarity.js, core/binding.js and core/hash.js come in through them, canonicalJson and sha256Hex through core/receipt.js), rag/parser.js, rag/chunker.js and rag/bm25.js as the @starpi/core package. demo.js fetches the sample files from /samples/ into the workspace and shows a fixed answer with one deliberate error through applyGrounding, in the language of the sample set that is complete in the workspace (the interface language first, and also when neither set is complete).
+The remaining 37 of the 121 imports: every import made by demo.js, synthesizer.js, retrieval.js, rag/grounding-view.js, rag/receipts.js and the core/ modules. The ten core/ modules the page reaches import no infrastructure module and use no DOM, so the same code runs in the page, in the ingestion worker and in Node: core/labels.js holds the citation label format that retrieval.js re-exports, core/sentences.js the sentence splitting that synthesizer.js re-exports and safeSlice, with which retrieval.js shortens excerpts, prompts.js shortens history turns and fenced blocks (frontend-modules-chat) and core/grounding.js the passage it quotes in a reason without splitting a surrogate pair, core/facts.js and core/grounding.js the source check, core/polarity.js its version 2 negation check and core/binding.js its version 2 checks of names and values in another place, and core/receipt.js builds and verifies starpi.receipt/v2 receipts (and still reads v1), with core/merkle.js for the Merkle tree over the citations, core/signature.js for Ed25519 and ES256 signatures and core/hash.js for SHA-256, canonical JSON, hex and base64url. core/facts.js reuses tokenize and the stopword lists of rag/bm25.js, core/grounding.js reuses its English stopword list, core/polarity.js and core/binding.js its combined STOPWORDS, and core/receipt.js reuses chunkText and CHUNKER from rag/chunker.js, so both worker modules are part of the main-thread graph too. Outside this graph, rag/ingest.worker.js imports core/receipt.js to hash files and verify receipts and core/signature.js to import a signer's public key, scripts/verify-receipt.mjs imports core/receipt.js, core/signature.js and rag/parser.js in Node, scripts/ground.mjs imports core/document.js and core/sarif.js, the two core/ modules the page never loads, and packages/core/src/index.js re-exports nine of the twelve core/ modules (core/polarity.js, core/binding.js and core/hash.js come in through them, canonicalJson and sha256Hex through core/receipt.js), rag/parser.js, rag/chunker.js and rag/bm25.js as the @starpi/core package. demo.js fetches the sample files from /samples/ into the workspace and shows a fixed answer with one deliberate error through applyGrounding, in the language of the sample set that is complete in the workspace (the interface language first, and also when neither set is complete).
 
 <!-- diagram: frontend-modules-trust -->
 ```mermaid
@@ -735,7 +839,7 @@ flowchart LR
 
 ### Shared infrastructure modules, their importers and npm packages
 
-Every import of config.js (9 importers), supabase.js (7), state.js (5), storage.js (4) and signals.js (3) is drawn. The most widely imported modules, i18n/index.js (19 importers), dom.js (16), icons.js (12) and render.js (8), show their importer count in the label instead of individual edges, and dialog.js, which gives the citation, document, entity and receipt dialogs their focus handling, names its 4 importers in its label. config.js, signals.js and storage.js import nothing; config.js takes APP_VERSION and the Supabase URL and key from build-time defines, state.js reaches into webgpu/models.js for normalizePreference, and supabase.js passes a fetch wrapped with withTimeoutSignal to createClient. The main thread's static npm dependencies (lucide, dompurify, marked, @supabase/supabase-js) come in only through icons.js, render.js and supabase.js, and i18n/index.js bundles both locale JSON files via import attributes. JSDoc typedef imports are not counted.
+Every import of config.js (9 importers), supabase.js (7), state.js (6), storage.js (4) and signals.js (3) is drawn. The most widely imported modules, i18n/index.js (21 importers), dom.js (18), icons.js (13) and render.js (8), show their importer count in the label instead of individual edges, and dialog.js, which gives the citation, document, entity and receipt dialogs their focus handling, names its 4 importers in its label. config.js, signals.js and storage.js import nothing; config.js takes APP_VERSION and the Supabase URL and key from build-time defines, state.js reaches into webgpu/models.js for normalizePreference and into models/nvidia-catalog.js for normalizeNvidiaModel, and supabase.js passes a fetch wrapped with withTimeoutSignal to createClient. The main thread's static npm dependencies (lucide, dompurify, marked, @supabase/supabase-js) come in only through icons.js, render.js and supabase.js, and i18n/index.js bundles both locale JSON files via import attributes; @huggingface/transformers is bundled into the processor (WASM) worker only. JSDoc typedef imports are not counted.
 
 <!-- diagram: frontend-modules-infrastructure -->
 ```mermaid
@@ -750,30 +854,32 @@ flowchart LR
         library["library.js"]
         providers["providers.js"]
         settings["settings.js"]
+        picker["model-picker.js"]
         engineui["engine-ui.js"]
         ui["ui.js"]
         voice["voice.js"]
     end
 
     subgraph infra["Infrastructure"]
-        state["state.js<br/>getMode, getModelPreference, getLlmUrl"]
+        state["state.js<br/>getMode, getModelPreference, getNvidiaModel,<br/>getChatMode, getLlmUrl"]
         supabase["supabase.js<br/>connect, searchKnowledge,<br/>insertChatMessage, canSyncChats"]
         storage["storage.js<br/>readLocal, writeLocal, readSecret"]
         signals["signals.js<br/>withTimeoutSignal, isUserAbort"]
         config["config.js<br/>APP_VERSION, LIMITS, STORAGE_KEYS,<br/>TIMEOUTS_MS, no imports"]
-        dom["dom.js<br/>byId, onAction, setHidden<br/>imported by 16 modules"]
+        dom["dom.js<br/>byId, onAction, setHidden, downloadText<br/>imported by 18 modules"]
         dialog["dialog.js<br/>openDialog, closeDialog, isDialogOpen<br/>imported by graph.js, library.js,<br/>rag/citations.js, rag/receipts.js"]
-        icons["icons.js<br/>refreshIcons<br/>imported by 12 modules"]
+        icons["icons.js<br/>refreshIcons<br/>imported by 13 modules"]
         render["render.js<br/>renderMarkdown, escapeHtml<br/>imported by 8 modules"]
     end
 
     subgraph i18ngrp["i18n"]
-        i18n["i18n/index.js<br/>t, setText, formatNumber<br/>imported by 19 modules"]
+        i18n["i18n/index.js<br/>t, setText, formatNumber<br/>imported by 21 modules"]
         de[("src/locales/de.json")]
         en[("src/locales/en.json")]
     end
 
     models["webgpu/models.js<br/>normalizePreference"]
+    nvcat["models/nvidia-catalog.js<br/>normalizeNvidiaModel"]
 
     subgraph pkgs["npm packages"]
         lucide["lucide"]
@@ -803,6 +909,7 @@ flowchart LR
     settings --> storage
     settings --> state
     settings --> config
+    picker -->|"getMode, getModelPreference,<br/>getNvidiaModel, onModeChange"| state
     engineui --> state
     voice -->|"getMode"| state
     ui -->|"SUPABASE_PROJECT_REF"| config
@@ -810,6 +917,7 @@ flowchart LR
     state --> config
     state --> storage
     state -->|"normalizePreference"| models
+    state -->|"normalizeNvidiaModel"| nvcat
     supabase --> config
     supabase -->|"withTimeoutSignal"| signals
     supabase -->|"createClient"| sbjs
@@ -824,11 +932,11 @@ flowchart LR
     i18n -->|"JSON import attribute"| en
 ```
 
-<sub>Sources: [`src/js/config.js`](../src/js/config.js), [`src/js/dom.js`](../src/js/dom.js), [`src/js/dialog.js`](../src/js/dialog.js), [`src/js/icons.js`](../src/js/icons.js), [`src/js/render.js`](../src/js/render.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/signals.js`](../src/js/signals.js), [`src/js/state.js`](../src/js/state.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/main.js`](../src/js/main.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/library.js`](../src/js/library.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/voice.js`](../src/js/voice.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`scripts/build.mjs`](../scripts/build.mjs)</sub>
+<sub>Sources: [`src/js/config.js`](../src/js/config.js), [`src/js/dom.js`](../src/js/dom.js), [`src/js/dialog.js`](../src/js/dialog.js), [`src/js/icons.js`](../src/js/icons.js), [`src/js/render.js`](../src/js/render.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/signals.js`](../src/js/signals.js), [`src/js/state.js`](../src/js/state.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/main.js`](../src/js/main.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/library.js`](../src/js/library.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/voice.js`](../src/js/voice.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`scripts/build.mjs`](../scripts/build.mjs)</sub>
 
 ### Bundle entry points, Web Workers and lazy imports
 
-scripts/build.mjs bundles three JS entry points with esbuild (splitting: true): main.js, rag/ingest.worker.js and webgpu/worker.js (plus the CSS entry). Nothing imports the workers: rag/workspace.js and webgpu/engine.js start them with new Worker(new URL(...)) using the placeholders __STARPI_INGEST_WORKER_URL__ and __STARPI_WEBLLM_WORKER_URL__, which build.mjs replaces with the hashed bundle names, and the build fails if either placeholder is missing from the output. Because the page and the ingestion worker both import core/receipt.js and core/signature.js, and through them core/merkle.js, core/hash.js, core/grounding.js, core/polarity.js, core/binding.js, core/facts.js, core/labels.js, core/sentences.js, rag/bm25.js and rag/chunker.js, esbuild puts these twelve modules in one chunk that both entries import statically, and @mlc-ai/web-llm is one chunk shared by the WebLLM worker and the page. The service worker precaches the page, its CSS, main.js, the chunks main.js imports statically, the ingestion worker, the Latin font and the public files; WebLLM and pdf.js are cached on first use. Solid edges are static imports: main.js's edges go to the modules shown in its bundle (its other imports are in frontend-modules-overview), the edges into rag/workspace.js and webgpu/engine.js are every static import of those two modules, and the edges into the shared chunk show one path from the page and one from the ingestion worker (rag/grounding-view.js, retrieval.js and synthesizer.js also import core/ modules, see frontend-modules-trust). Dotted edges are the two Worker spawns, the service worker registration, and the lazy import() calls for @mlc-ai/web-llm (in engine.js) and pdf.js (in parser.js, inside the ingestion worker). scripts/verify-receipt.mjs and scripts/ground.mjs are not part of the app build; they run the same receipt, source-check, extraction and chunking code in Node, and core/document.js and core/sarif.js, which only scripts/ground.mjs and the package use, are in no app bundle. A separate build, scripts/build-core.mjs, bundles packages/core/src/index.js (which re-exports nine of the shared-chunk modules, reaching core/polarity.js, core/binding.js and core/hash.js through them, plus core/document.js, core/sarif.js and rag/parser.js) into packages/core/dist/index.js, scripts/verify-receipt.mjs into packages/core/dist/verify-receipt.js and scripts/ground.mjs into packages/core/dist/ground.js, the @starpi/core package, with pdfjs-dist left external.
+scripts/build.mjs bundles four JS entry points with esbuild (splitting: true): main.js, rag/ingest.worker.js, webgpu/worker.js and wasm/worker.js (plus the CSS entry). Nothing imports the workers: rag/workspace.js and webgpu/engine.js start them with new Worker(new URL(...)) using the placeholders __STARPI_INGEST_WORKER_URL__, __STARPI_WEBLLM_WORKER_URL__ and __STARPI_WASM_WORKER_URL__, and wasm/worker.js points ONNX Runtime at its binary through __STARPI_ORT_WASM_URL__. An esbuild onLoad plugin writes the hashed URLs into the sources while they are bundled, and the build bundles again until those URLs match the outputs (the WASM worker holds the ONNX Runtime URL, so this takes three passes); the build fails if a placeholder is in no source file. A second plugin resolves onnxruntime-web/webgpu and onnxruntime-common, which Transformers.js imports, to onnxruntime-web/wasm, so one ONNX Runtime without new Function ships, and build.mjs copies its ort-wasm-simd-threaded.wasm binary to a content-hashed /assets URL. Because the page and the ingestion worker both import core/receipt.js and core/signature.js, and through them core/merkle.js, core/hash.js, core/grounding.js, core/polarity.js, core/binding.js, core/facts.js, core/labels.js, core/sentences.js, rag/bm25.js and rag/chunker.js, esbuild puts these twelve modules in one chunk that both entries import statically; models/wasm-catalog.js is a small chunk shared by the page and the WASM worker, and @mlc-ai/web-llm is one chunk shared by the WebLLM worker and the page. The service worker precaches the page, its CSS, main.js, the chunks main.js imports statically, the ingestion worker, the Latin font and the public files; WebLLM, pdf.js, the WASM worker with Transformers.js and the ONNX Runtime binary are cached on first use. Solid edges are static imports: main.js's edges go to the modules shown in its bundle (its other imports are in frontend-modules-overview), the edges into rag/workspace.js and webgpu/engine.js are every static import of those two modules, and the edges into the shared chunk show one path from the page and one from the ingestion worker (rag/grounding-view.js, retrieval.js, synthesizer.js and prompts.js also import core/ modules, see frontend-modules-trust and frontend-modules-chat). Dotted edges are the three Worker spawns, the service worker registration, the ONNX Runtime binary that the WASM worker fetches, and the lazy import() calls for @mlc-ai/web-llm (in engine.js) and pdf.js (in parser.js, inside the ingestion worker). scripts/verify-receipt.mjs and scripts/ground.mjs are not part of the app build; they run the same receipt, source-check, extraction and chunking code in Node, and core/document.js and core/sarif.js, which only scripts/ground.mjs and the package use, are in no app bundle. A separate build, scripts/build-core.mjs, bundles packages/core/src/index.js (which re-exports nine of the shared-chunk modules, reaching core/polarity.js, core/binding.js and core/hash.js through them, plus core/document.js, core/sarif.js and rag/parser.js) into packages/core/dist/index.js, scripts/verify-receipt.mjs into packages/core/dist/verify-receipt.js and scripts/ground.mjs into packages/core/dist/ground.js, the @starpi/core package, with pdfjs-dist left external.
 
 <!-- diagram: frontend-modules-workers -->
 ```mermaid
@@ -842,9 +950,11 @@ flowchart TD
         receipts["rag/receipts.js"]
         engineui["engine-ui.js"]
         settings["settings.js"]
+        picker["model-picker.js"]
         benchui["bench/bench-ui.js"]
         workspace["rag/workspace.js<br/>getWorker() on first request()<br/>error or messageerror: worker_crashed, reset()<br/>clearWorkspace() terminates the worker"]
         engine["webgpu/engine.js<br/>loadModel(), loadWebLLM()<br/>teardown() calls terminate()"]
+        wasmclient["wasm/client.js<br/>WasmEngineClient"]
     end
 
     subgraph shared["Shared chunk, imported statically by main and ingest-worker"]
@@ -853,6 +963,8 @@ flowchart TD
         bm25["rag/bm25.js<br/>BM25Index, tokenize, stopword lists"]
         chunker["rag/chunker.js<br/>chunkText, CHUNKER"]
     end
+
+    wasmcat["models/wasm-catalog.js<br/>chunk shared by main and wasm-worker"]
 
     subgraph ingestbundle["esbuild entry ingest-worker, Worker starpi-ingest"]
         iw["rag/ingest.worker.js<br/>ingest, search, context, head,<br/>text, remove, clear, verify-receipt"]
@@ -865,6 +977,12 @@ flowchart TD
         ww["webgpu/worker.js<br/>WebWorkerMLCEngineHandler"]
     end
 
+    subgraph wasmbundle["esbuild entry wasm-worker, Worker starpi-wasm"]
+        wsw["wasm/worker.js<br/>load, generate, unload, interrupt"]
+        tfjs["@huggingface/transformers 4.3.0<br/>with onnxruntime-web/wasm in place of<br/>onnxruntime-web/webgpu and onnxruntime-common"]
+    end
+
+    ort[("/assets/ort-wasm-simd-threaded-hash.wasm<br/>copied from onnxruntime-web, 14.3 MB")]
     webllm["@mlc-ai/web-llm<br/>chunk shared by webllm-worker and main"]
     sw["src/sw.js<br/>written to dist/sw.js by build.mjs<br/>with build version, precache and asset lists"]
     cli["scripts/verify-receipt.mjs<br/>Node command line, not in the app build,<br/>bundled by scripts/build-core.mjs<br/>as packages/core/dist/verify-receipt.js"]
@@ -879,10 +997,11 @@ flowchart TD
     main -->|"initReceipts"| receipts
     main --> engineui
     main --> settings
+    main -->|"initModelPicker"| picker
     main --> benchui
     main -.->|"serviceWorker.register('/sw.js'), scope /"| sw
 
-    chat -->|"searchWorkspace, firstChunks,<br/>addToWorkspace, listWorkspace"| workspace
+    chat -->|"searchWorkspace, firstChunks,<br/>getDocumentText, addToWorkspace,<br/>listWorkspace"| workspace
     ingest --> workspace
     citations -->|"getChunkContext"| workspace
     demo --> workspace
@@ -890,7 +1009,11 @@ flowchart TD
     chat --> engine
     engineui --> engine
     settings --> engine
+    picker -->|"getDeviceProbe"| engine
     benchui --> engine
+    engine -->|"WasmEngineClient, wasmCacheStatus"| wasmclient
+    engine --> wasmcat
+    wasmclient --> wasmcat
 
     chat -->|"contextCoverage"| coreCheck
     receipts -->|"buildReceipt"| coreReceipt
@@ -898,10 +1021,14 @@ flowchart TD
     coreReceipt -->|"chunkText, CHUNKER"| chunker
     coreCheck -->|"tokenize, stopword lists"| bm25
 
-    workspace -.->|"new Worker(), type module,<br/>URL patched by build.mjs"| iw
-    engine -.->|"new Worker() in loadModel(),<br/>after cache check"| ww
+    workspace -.->|"new Worker(), type module,<br/>URL written by build.mjs"| iw
+    engine -.->|"new Worker() in loadModel(),<br/>WebGPU preset, after cache check"| ww
+    engine -.->|"new Worker() in loadModel(),<br/>processor model, after cache check"| wsw
     engine -.->|"import() in loadWebLLM()"| webllm
     ww --> webllm
+    wsw -->|"AutoTokenizer, AutoModelForCausalLM,<br/>env, TextStreamer"| tfjs
+    wsw -->|"findWasmSource, pinnedWasmUrl,<br/>WASM_CACHE_NAME"| wasmcat
+    tfjs -.->|"wasmPaths, fetched on first load"| ort
 
     iw -->|"sha256Hex, validateReceipt, verifyReceipt,<br/>importPublicKey from core/signature.js"| coreReceipt
     iw -->|"BM25Index"| bm25
@@ -922,7 +1049,7 @@ flowchart TD
     corepkg -->|"re-exports extractText,<br/>EXTRACTOR, ParseError and more"| parser
 ```
 
-<sub>Sources: [`scripts/build.mjs`](../scripts/build.mjs), [`src/js/main.js`](../src/js/main.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/document.js`](../src/js/core/document.js), [`src/js/core/sarif.js`](../src/js/core/sarif.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/sw.js`](../src/sw.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`scripts/ground.mjs`](../scripts/ground.mjs), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/src/index.js`](../packages/core/src/index.js)</sub>
+<sub>Sources: [`scripts/build.mjs`](../scripts/build.mjs), [`src/js/main.js`](../src/js/main.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/document.js`](../src/js/core/document.js), [`src/js/core/sarif.js`](../src/js/core/sarif.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/sw.js`](../src/sw.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`scripts/ground.mjs`](../scripts/ground.mjs), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/src/index.js`](../packages/core/src/index.js)</sub>
 
 ## 2. Boot and settings
 
@@ -930,7 +1057,7 @@ What happens between the first byte of `index.html` and a usable chat, and how t
 
 ### boot(): module start-up order
 
-main.js boot() runs initI18n first, so the stored starpi_locale (or en) is applied before any module renders text. It then installs the delegated click/change dispatcher, registers the switch-tab and toggle-sidebar actions, calls syncSidebarAccess(false) so that below 768 px the closed off-canvas sidebar is inert, registers set-locale and the lazy onTabOpen hooks, and runs the twelve init* functions (initDemo and initReceipts last), refreshIcons, detectAndDisplayDevice and registerServiceWorker. registerServiceWorker registers the reload-app and dismiss-update actions, fetches /build-manifest.json on every controllerchange and shows the update banner only when its entries.mainJs differs from the page's own /assets/ module script, and registers /sw.js on window load (section 7 shows the update flow). sw.js calls skipWaiting only when no window is open at install time or on a SKIP_WAITING message, which main.js never sends, so an updated worker usually waits until every Starpi tab is closed. boot() subscribes to onConnectionChange before calling connect(), so the listener also renders the later attempts that connect() schedules itself after an offline result, while restoreHistory() runs only once. changeEngine is started with void, so it is neither awaited nor covered by boot().catch, while connect() and restoreHistory() are awaited in sequence. A throw or rejection inside boot() skips the remaining steps, and reportUnexpected only logs it with console.error.
+main.js boot() runs initI18n first, so the stored starpi_locale (or en) is applied before any module renders text. It then installs the delegated click/change dispatcher, registers the switch-tab and toggle-sidebar actions, calls syncSidebarAccess(false) so that below 768 px the closed off-canvas sidebar is inert, registers set-locale and the lazy onTabOpen hooks, and runs the thirteen init* functions (initModelPicker right after initSettings, initDemo and initReceipts last), refreshIcons, detectAndDisplayDevice and registerServiceWorker. registerServiceWorker registers the reload-app and dismiss-update actions, fetches /build-manifest.json on every controllerchange and shows the update banner only when its entries.mainJs differs from the page's own /assets/ module script, and registers /sw.js on window load (section 7 shows the update flow). sw.js calls skipWaiting only when no window is open at install time or on a SKIP_WAITING message, which main.js never sends, so an updated worker usually waits until every Starpi tab is closed. boot() subscribes to onConnectionChange before calling connect(), so the listener also renders the later attempts that connect() schedules itself after an offline result, while restoreHistory() runs only once. changeEngine is started with void, so it is neither awaited nor covered by boot().catch, while connect() and restoreHistory() are awaited in sequence. initModelPicker leaves the static options of both assistant pickers in place and rebuilds them once the page is idle (requestIdleCallback, at most 2 s), after the device probe and again when the NVIDIA proxy answers. A throw or rejection inside boot() skips the remaining steps, and reportUnexpected only logs it with console.error.
 
 <!-- diagram: boot-sequence-overview -->
 ```mermaid
@@ -957,10 +1084,10 @@ sequenceDiagram
     Main->>Dom: onAction set-locale
     Main->>UI: onTabOpen library, graph, bench
     Note over UI: loadDocuments, loadKnowledgeGraph and refreshDiagnostics<br/>only run when switchTab opens that tab
-    Main->>Mods: initMessages, initSettings, initEngineUi, initChat
+    Main->>Mods: initMessages, initSettings, initModelPicker, initEngineUi, initChat
     Main->>Mods: initLibrary, initIngest, initGraph, initVoice
     Main->>Mods: initBenchUi, initCitations, initDemo, initReceipts
-    Note over Mods: initMessages clones the welcome bubble.<br/>initSettings fills the form, key hints and the privacy notice.<br/>initEngineUi subscribes render to onEngineChange and onLocaleChange.<br/>initDemo and initReceipts only register actions,<br/>initReceipts also two receipt-option change listeners
+    Note over Mods: initMessages clones the welcome bubble.<br/>initSettings fills the form, key hints and the privacy notice<br/>and selects the stored mode in the static pickers.<br/>initModelPicker: on idle getDeviceProbe and getNvidiaCatalog,<br/>then both pickers rebuilt as option groups.<br/>initEngineUi subscribes render to onEngineChange and onLocaleChange.<br/>initDemo and initReceipts only register actions,<br/>initReceipts also two receipt-option change listeners
     Main->>Icons: refreshIcons()
     Main->>UI: detectAndDisplayDevice()
     Main->>SW: registerServiceWorker()
@@ -975,7 +1102,7 @@ sequenceDiagram
     Main->>Sb: onConnectionChange(listener)
     Note over Main,Sb: listener runs renderConnection, renderPrivacyNotice<br/>and void refreshSyncStatus on every connection update
     Main->>Set: void changeEngine(getMode(), interactive false)
-    Note over Main,Set: not awaited and not covered by boot().catch.<br/>Only an already cached model is loaded, never a model download
+    Note over Main,Set: not awaited and not covered by boot().catch.<br/>Only an already cached model is loaded, never a model download,<br/>NVIDIA mode asks GET /api/models/nvidia afresh
     Main->>Sb: await connect()
     opt browser offline, or probe network or timeout error
         Sb->>Sb: scheduleReconnect(), connect() again on the online event or after 30 s, doubling up to 5 min
@@ -991,11 +1118,11 @@ sequenceDiagram
     end
 ```
 
-<sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/dom.js`](../src/js/dom.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/icons.js`](../src/js/icons.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/state.js`](../src/js/state.js), [`scripts/build.mjs`](../scripts/build.mjs), [`src/sw.js`](../src/sw.js)</sub>
+<sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/dom.js`](../src/js/dom.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/icons.js`](../src/js/icons.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/state.js`](../src/js/state.js), [`scripts/build.mjs`](../scripts/build.mjs), [`src/sw.js`](../src/sw.js)</sub>
 
 ### Boot-time changeEngine: cached model only, never a download
 
-At boot changeEngine applies the stored compute mode with interactive false (normalizeMode maps legacy values and falls back to council) and resolves to whether setMode could store it, which boot() discards. In client mode startLocalEngine calls engine.loadModel with onlyIfCached true and no confirmDownload callback. After probeWebGPU and chooseModel, certainlyNotCached looks for the model's tensor-cache.json in the webllm/model cache of the Cache API: when that cache or the file is missing, loadModel resolves false before the WebLLM library is imported and the engine status stays unchanged (idle at boot). Otherwise (the index is there, or the Cache API is missing or fails) the engine tears down any old worker, switches to loading, imports WebLLM, checks that the model id is in the WebLLM build and asks hasModelInCache; a model that is not fully cached also resolves false, with status idle. In both cases no model data is downloaded and changeEngine turns the engine dot off. Missing WebGPU or adapter, a failed WebLLM import (kind code-download when the error message is one of the browser texts for a failed module import), a model missing from the WebLLM build (kind unknown) or a failed load of a cached model rejects with an EngineError and status error, which engine-ui turns into a chat notice (notice_unavailable_title for the kinds unsupported and no-adapter, otherwise notice_failed_title). Local mode probes GET /models on the own server URL with a 4 s timeout and shows the result in both the engine dot and the assistant status line, and council mode only checks whether a Gemini or OpenRouter key exists.
+At boot changeEngine applies the stored compute mode (state.js has already mapped legacy values and fallen back to council) with interactive false: parseAssistantChoice reads the bare mode, which keeps the stored on-device and NVIDIA models, and changeEngine resolves to whether setMode could store it, which boot() discards. In client mode startLocalEngine calls engine.loadModel with onlyIfCached true and no confirmDownload callback. loadModel probes the device with the high-performance adapter and a 10 s deadline (a browser without WebGPU, an adapter that fails or does not answer in time gives a profile without WebGPU) and chooseModel resolves the stored preference, where auto picks a processor (WASM) model on a device without WebGPU. A WebGPU preset on a device without WebGPU rejects with the probe's EngineError. For a WebGPU model certainlyNotCached looks for the model's tensor-cache.json in the webllm/model cache, and for a WASM model wasmCacheStatus looks for its config, tokenizer and weights in transformers-cache; when they are missing, loadModel resolves false before the WebLLM library is imported or a worker starts, and the engine status stays unchanged (idle at boot). Otherwise the engine tears down any old worker and switches to loading: a WASM model starts the starpi-wasm worker and loads from transformers-cache, while a WebGPU model imports WebLLM, checks that the model id is in the WebLLM build and asks hasModelInCache, and a model that is not fully cached resolves false with status idle. In no case is model data downloaded, and a load that resolves false with status idle turns the engine dot off. Missing WebGPU for a WebGPU preset, a failed WebLLM import (kind code-download when the error message is one of the browser texts for a failed module import), a model missing from the WebLLM build (kind unknown) or a failed load of a cached model rejects with an EngineError and status error, which engine-ui turns into a chat notice (notice_unavailable_title for the kinds unsupported and no-adapter, otherwise notice_failed_title). Local mode probes GET /models on the own server URL with a 4 s timeout, NVIDIA mode asks the proxy for its catalog afresh (GET /api/models/nvidia on the app's origin, 6 s), and both show the result in the engine dot and the assistant status line; council mode only checks whether a Gemini or OpenRouter key exists.
 
 <!-- diagram: boot-sequence-engine-restore -->
 ```mermaid
@@ -1006,15 +1133,16 @@ sequenceDiagram
     participant St as state.js
     participant EUI as engine-ui.js
     participant Eng as webgpu/engine.js
-    participant CS as Cache API webllm/model
+    participant CS as Cache API webllm/model or transformers-cache
     participant Msg as messages.js
     participant UI as ui.js
     participant Prov as providers.js
 
     Main->>Set: changeEngine(getMode(), interactive false)
-    Set->>St: setMode(value), getMode()
+    Set->>Set: parseAssistantChoice(mode): a bare mode, stored models kept
+    Set->>St: setMode(choice.mode), getMode()
     Note over St: normalizeMode maps legacy values and falls back<br/>to council, then writes starpi_compute_mode.<br/>Returns false when writeLocal could not store it
-    Set->>Set: syncModeSelectors(mode), renderPrivacyNotice()
+    Set->>Set: syncPickerValue(), renderPrivacyNotice()
     Set->>EUI: renderEngineState(getEngineState())
     alt mode is client
         alt engine.isReady()
@@ -1023,46 +1151,49 @@ sequenceDiagram
             Set->>EUI: startLocalEngine(interactive false)
             EUI->>Eng: loadModel(preference, onlyIfCached true)
             Note over EUI,Eng: no confirmDownload callback, so never a download prompt.<br/>A load already in flight is shared
-            Eng->>Eng: probeWebGPU()
-            alt navigator.gpu missing, requestAdapter fails or returns null
+            Eng->>Eng: probeDevice with the high-performance adapter, 10 s deadline,<br/>no adapter or no answer gives a profile without WebGPU
+            Eng->>Eng: chooseModel(hw, preference), auto without WebGPU picks a WASM model
+            alt a WebGPU preset and no WebGPU
                 Eng-->>EUI: rejects EngineError unsupported or no-adapter, status error
                 EUI->>Msg: appendNotice engine.notice_unavailable_title
                 EUI-->>Set: false
-            else WebGPU supported
-                Eng->>Eng: chooseModel(hw, preference)
-                Eng->>CS: certainlyNotCached(modelId): caches.has webllm/model,<br/>then match the model's tensor-cache.json
-                alt cache or index certainly missing
-                    Eng-->>EUI: false, status unchanged, WebLLM not imported
+            else model runs on this device
+                Eng->>CS: WebGPU: certainlyNotCached(modelId), tensor-cache.json in webllm/model<br/>WASM: wasmCacheStatus, config, tokenizer and weights in transformers-cache
+                alt files missing, or a WASM model not fully cached
+                    Eng-->>EUI: false, status unchanged, no import and no worker
                     EUI-->>Set: false
-                else index found, or the Cache API is missing or throws
+                else cached, or the WebGPU check cannot tell
                     Eng->>Eng: teardown(), setState status loading
-                    Eng->>Eng: loadWebLLM() imports the WebLLM library
-                    alt import fails, or the model id is not in the WebLLM build
-                        Eng-->>EUI: rejects EngineError via classifyEngineError, e.g. code-download or unknown, status error
-                        EUI->>Msg: appendNotice engine.notice_failed_title, body engine.error.kind
-                        EUI-->>Set: false
-                    else WebLLM imported and model id listed
-                        Eng->>Eng: hasModelInCache(modelId), a failed check counts as not cached
-                        alt not fully cached
-                            Eng->>Eng: setState status idle
-                            Eng-->>EUI: false
+                    alt WASM model
+                        Eng->>Eng: new Worker starpi-wasm, WasmEngineClient.load from transformers-cache
+                        Note over Eng: pinned files only, answered from the cache, see wasm-runtime-load
+                    else WebGPU model
+                        Eng->>Eng: loadWebLLM() imports the WebLLM library
+                        alt import fails, or the model id is not in the WebLLM build
+                            Eng-->>EUI: rejects EngineError via classifyEngineError, e.g. code-download or unknown, status error
+                            EUI->>Msg: appendNotice engine.notice_failed_title, body engine.error.kind
                             EUI-->>Set: false
-                        else cached
-                            Eng->>Eng: CreateWebWorkerMLCEngine in starpi-webllm Worker
-                            alt load fails
-                                Eng-->>EUI: rejects EngineError from classifyEngineError, status error
-                                EUI->>Msg: appendNotice engine.notice_failed_title, or notice_unavailable_title<br/>for kind unsupported, body engine.error.kind
-                                EUI-->>Set: false
-                            else loaded
-                                Eng-->>EUI: true, status ready
-                                EUI-->>Set: true, no ready notice when not interactive
+                        else WebLLM imported and model id listed
+                            Eng->>Eng: hasModelInCache(modelId), a failed check counts as not cached
+                            opt not fully cached
+                                Eng->>Eng: setState status idle
+                                Eng-->>EUI: false
                             end
+                            Eng->>Eng: CreateWebWorkerMLCEngine in starpi-webllm Worker
                         end
+                    end
+                    alt load fails
+                        Eng-->>EUI: rejects EngineError from classifyEngineError, status error
+                        EUI->>Msg: appendNotice engine.notice_failed_title, or notice_unavailable_title<br/>for kind unsupported, body engine.error.kind
+                        EUI-->>Set: false
+                    else loaded
+                        Eng-->>EUI: true, status ready
+                        EUI-->>Set: true, no ready notice when not interactive
                     end
                 end
             end
             Note over EUI,Eng: code-download only when the error message matches a known browser text<br/>for a failed module import. The app does not keep a failed import,<br/>but the browser may keep the failure until the page is reloaded
-            Note over EUI,Eng: every setState notifies onEngineChange, so render()<br/>updates banner, VRAM badge and engine dot
+            Note over EUI,Eng: every setState notifies onEngineChange, so render()<br/>updates banner, memory badge and engine dot
             opt not loaded and engine status is idle
                 Set->>UI: setEngineDot(off)
             end
@@ -1074,13 +1205,22 @@ sequenceDiagram
         Prov-->>Set: reachable true or false
         Set->>UI: setEngineDot(ok or warn)
         Set->>UI: setAssistantStatus(status.ready or status.server_unreachable)
+    else mode is nvidia
+        Set->>UI: setEngineDot(busy)
+        Set->>Prov: getNvidiaCatalog(refresh true)
+        Note over Prov: same-origin GET /api/models/nvidia, no-store, 6 s.<br/>A 404, a reply that is not JSON or a network error means no proxy.<br/>Listeners such as the model pickers hear the result
+        Prov-->>Set: catalog with configured and reachable
+        opt mode is still nvidia
+            Set->>UI: setEngineDot(ok if configured, else warn)
+            Set->>UI: setAssistantStatus(status.ready or status.nvidia_unavailable)
+        end
     else mode is council
         Set->>UI: setEngineDot(ok if a Gemini or OpenRouter key, else off)
     end
     Set-->>Main: stored flag from setMode, discarded because boot uses void
 ```
 
-<sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/state.js`](../src/js/state.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/config.js`](../src/js/config.js)</sub>
+<sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/models/device.js`](../src/js/models/device.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/state.js`](../src/js/state.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/config.js`](../src/js/config.js)</sub>
 
 ### connect(), connection subscribers and restoreHistory
 
@@ -1155,7 +1295,7 @@ sequenceDiagram
 
 ### restoreHistory: merging synced and on-device messages
 
-restoreHistory first awaits loadCurrentSession. It reads the current session's messages from localStorage, where rows without a boolean metadata.local_only flag count as on-device turns, and, only when canSyncChats() (signedIn and hardened), the newest 200 chat_history rows of the session, returned oldest first. With rows on both sides, mergeByTime drops local rows without created_at that repeat a synced row's role and content, and sorts the rest by created_at with a stable sort, rows without a valid time last. A failed query only logs console.warn and falls back to the local rows. The messages are replayed with title-only sources and the stored engine badge, the conversation keeps each turn's localOnly flag so that on-device turns are never sent as history to OpenRouter or the own server, every bubble shown after the welcome while the history loaded (such as an engine notice) is appended again after the restored messages, and turns already in memory are kept after the restored turns.
+restoreHistory first awaits loadCurrentSession. It reads the current session's messages from localStorage, where rows without a boolean metadata.local_only flag count as on-device turns, and, only when canSyncChats() (signedIn and hardened), the newest 200 chat_history rows of the session, returned oldest first. With rows on both sides, mergeByTime drops local rows without created_at that repeat a synced row's role and content, and sorts the rest by created_at with a stable sort, rows without a valid time last. A failed query only logs console.warn and falls back to the local rows. The messages are replayed with title-only sources and the stored engine badge (metadata.engine, with the model name of an NVIDIA answer from metadata.model), a free-chat answer (metadata.chat_mode free) gets its not-checked note again, the conversation keeps each turn's localOnly flag, engine, model, chat mode and time so that on-device turns are never sent as history to a cloud provider, NVIDIA or the own server and the chat export has them, every bubble shown after the welcome while the history loaded (such as an engine notice) is appended again after the restored messages, and turns already in memory are kept after the restored turns.
 
 <!-- diagram: boot-sequence-restore-history -->
 ```mermaid
@@ -1197,20 +1337,23 @@ sequenceDiagram
     Chat->>Chat: shownSinceBoot = chatMessages children after the welcome, live = conversation
     Chat->>Msg: resetMessages() keeps a fresh welcome bubble only
     loop each restored row
-        Chat->>Msg: appendMessage(role, content, sources, badge from metadata.engine)
-        Chat->>Chat: conversation.push(role, content, localOnly = metadata.local_only is true)
+        Chat->>Msg: appendMessage(role, content, sources, badge from metadata.engine and metadata.model)
+        opt metadata.chat_mode is free and the row is an answer
+            Chat->>Msg: markFreeAnswer: Free chat, not checked against sources
+        end
+        Chat->>Chat: conversation.push(role, content, localOnly = metadata.local_only is true,<br/>engine, model, chat mode, created_at)
     end
     Note over Chat,Msg: restored answers get title-only sources and no citation scope,<br/>so Doc and Chunk labels are not clickable, and no source check or receipt button
     Chat->>Chat: append shownSinceBoot, push the live turns
-    Note over Chat: shareableHistory leaves localOnly turns out of the history<br/>sent to OpenRouter or the own server and keeps the last 4 of the rest
+    Note over Chat: shareableHistory leaves localOnly turns out of the history sent to<br/>a cloud provider, NVIDIA or the own server: the last 4 of the rest in source mode,<br/>up to 16 turns and 24000 characters in free chat
     Chat-->>Main: done
 ```
 
 <sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/config.js`](../src/js/config.js)</sub>
 
-### saveSettings: server URL, API keys, model preference
+### saveSettings: server URL, API keys and a pending assistant pick
 
-saveSettings first validates the own-server URL with normalizeServerUrl and stops with an alert (and focus on the field) when it is invalid, insecure or contains credentials. The URL, the remember toggle and the model preference go to localStorage; each key is written only when a new one was typed, or re-written to the other storage when an existing key's remember setting changed, and writeSecret always deletes both copies first and then uses localStorage (remember) or sessionStorage. Inputs are cleared and only masked hints with the last four characters are shown. When the model preference changed and the engine status is not idle, the engine is unloaded before changeEngine applies the selected mode interactively; changeEngine resolves with whether setMode stored the mode, and saveSettings then alerts settings.saved_toast only when every write it made returned true, otherwise settings.save_failed.
+saveSettings first validates the own-server URL with normalizeServerUrl and stops with an alert (and focus on the field) when it is invalid, insecure or contains credentials. The URL and the remember toggle go to localStorage; each key is written only when a new one was typed, or re-written to the other storage when an existing key's remember setting changed, and writeSecret always deletes both copies first and then uses localStorage (remember) or sessionStorage. Inputs are cleared and only masked hints with the last four characters are shown. The assistant pickers apply a pick as soon as it is made, so Save calls changeEngine only when the settings picker shows another value than the stored choice (currentPickerValue), for example a pick made with the arrow keys that has not settled yet; re-applying the recommendation the picker shows for auto would turn the stored auto into a fixed model. changeEngine resolves with whether every write it made was stored, and saveSettings then alerts settings.saved_toast only when every write returned true, otherwise settings.save_failed.
 
 <!-- diagram: settings-flow-save -->
 ```mermaid
@@ -1232,11 +1375,9 @@ flowchart TD
     Keep --> ClearInput["input.value cleared<br/>stored keys are never written back to inputs"]
     ClearInput -->|"next key"| Loop
     ClearInput -->|"both done"| Hints["renderKeyHints(): masked hint settings.key_saved<br/>with the last 4 chars, or settings.key_none"]
-    Hints --> Pref["previous = getModelPreference()<br/>stored = setModelPreference(cfgWebgpuModel or auto) and stored<br/>normalized to a catalog key or auto<br/>localStorage starpi_webgpu_model"]
-    Pref --> PrefChanged{"engine status not idle<br/>and preference changed?"}
-    PrefChanged -->|"yes"| Unload["await engine.unloadModel()"]
-    PrefChanged -->|"no"| Change
-    Unload --> Change["stored = await changeEngine(cfgComputeMode or council,<br/>interactive true) and stored<br/>changeEngine resolves with the setMode result"]
+    Hints --> Pending{"cfgComputeMode value differs from<br/>currentPickerValue(), the stored choice<br/>with auto shown as its recommendation?"}
+    Pending -->|"no: the pick was applied<br/>when it was made"| AllOk
+    Pending -->|"yes, e.g. arrow keys not settled"| Change["stored = await changeEngine(value, interactive true) and stored<br/>stores the mode and the picked on-device or NVIDIA model,<br/>see the next diagram"]
     Change -->|"resolves, in client mode only after any<br/>download confirm and the model load"| AllOk{"stored?<br/>every write returned true"}
     AllOk -->|"yes"| Toast(["window.alert settings.saved_toast"])
     AllOk -->|"no"| Failed(["window.alert settings.save_failed<br/>some settings could not be saved,<br/>they may be lost on reload"])
@@ -1254,21 +1395,35 @@ flowchart TD
     StoreErr -.->|"any false"| Failed
 ```
 
-<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js)</sub>
+<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js)</sub>
 
 ### changeEngine, clearKeys and deleteModelCache
 
-changeEngine stores the normalized mode in localStorage through setMode, syncs both mode selectors and the privacy notice, sets the status dot per mode and resolves with whether that write succeeded (saveSettings uses it, boot and both change-engine selects, engineSelector and cfgComputeMode, ignore it): client reuses a ready engine or calls startLocalEngine (interactive loads may ask to download, non-interactive loads only use a cached model), local probes GET /models on the own server with a 4 s timeout and also writes status.ready or status.server_unreachable to the assistant status line, council is ok only when a Gemini or OpenRouter key is stored. Client and council mode leave the assistant status line as it is. clearKeys removes both keys from localStorage and sessionStorage and refreshes hints and privacy notice but not the engine dot. deleteModelCache asks for confirmation, unloads the engine and deletes the cached f16 and f32 variants of every catalog model, alerting done or failed.
+changeEngine takes a picker value: a mode (council, local, or before the device probe the bare client and nvidia, which keep the stored models), an on-device model (webgpu:key or wasm:key) or an NVIDIA model (nvidia:id). parseAssistantChoice refuses any other value, such as an NVIDIA id outside the allowlist, and the pickers then show the stored choice again (syncPickerValue). While an answer is being written, a switch to another mode or model is refused, with the models.switch_busy alert when the user picked it, because unloading the model would cut the answer off. Otherwise changeEngine stores the on-device preference (and unloads another on-device model that is loaded or loading), the NVIDIA model and the mode, selects the stored choice in both pickers, refreshes the privacy notice and the engine state, sets the status dot per mode and resolves with whether every write was stored (saveSettings uses it; boot and the two pickers, engineSelector and cfgComputeMode, ignore it): client reuses a ready engine or calls startLocalEngine (interactive loads may ask to download, non-interactive loads only use a cached model), local probes GET /models on the own server with a 4 s timeout and also writes status.ready or status.server_unreachable to the assistant status line, nvidia asks the proxy for its catalog afresh and writes status.ready or status.nvidia_unavailable unless another mode was picked meanwhile, and council is ok only when a Gemini or OpenRouter key is stored. Client and council mode leave the assistant status line as it is. A pick with the mouse or by touch applies at once; a change that follows a key press within 500 ms (Chrome fires change at every arrow step on a closed select) applies once the keys rest for 700 ms, on Enter or when the picker loses focus. clearKeys removes both keys from localStorage and sessionStorage and refreshes hints and privacy notice but not the engine dot. deleteModelCache asks for confirmation, unloads the engine, deletes the transformers-cache of the processor models and the cached f16 and f32 variants of every WebGPU catalog model, alerting done or failed; the ONNX Runtime binary is app code under /assets and stays.
 
 <!-- diagram: settings-flow-engine-keys-cache -->
 ```mermaid
 flowchart TD
-    CE(["changeEngine(value, opts)<br/>saveSettings and change-engine selects: interactive true<br/>boot: interactive false"]) --> SetMode["stored = setMode: normalizeMode (legacy aliases, unknown becomes council)<br/>writeLocal starpi_compute_mode, false when not stored"]
-    SetMode --> SyncUi["syncModeSelectors (engineSelector, cfgComputeMode)<br/>renderPrivacyNotice, renderEngineState"]
+    Pick(["change on engineSelector or cfgComputeMode:<br/>pickFromSelect"]) --> KeyQ{"a key was pressed on the<br/>picker within the last 500 ms?"}
+    KeyQ -->|"no: mouse or touch"| CE
+    KeyQ -->|"yes: arrow keys"| Settle["timer 700 ms, restarted at every step,<br/>Enter or blur applies at once"]
+    Settle --> CE
+    CE(["changeEngine(value, opts)<br/>pickers and saveSettings: interactive true<br/>boot: interactive false"]) --> Parse{"parseAssistantChoice(value, NVIDIA_MODELS ids):<br/>council, local, client, nvidia,<br/>webgpu:key, wasm:key or nvidia:id?"}
+    Parse -->|"no"| Revert(["syncPickerValue, return false"])
+    Parse -->|"yes"| Busy{"a switch of mode or model<br/>while isChatBusy()?"}
+    Busy -->|"yes"| Refuse(["syncPickerValue, alert models.switch_busy<br/>when interactive, return false"])
+    Busy -->|"no"| Local{"an on-device model picked?"}
+    Local -->|"yes"| SetPref["stored = setModelPreference: starpi_webgpu_model<br/>changed and the engine not idle, unless it is<br/>ready with that model: unloadModel()"]
+    Local -->|"no"| Nv
+    SetPref --> Nv{"an NVIDIA model picked?"}
+    Nv -->|"yes"| SetNv["stored = setNvidiaModel: starpi_nvidia_model,<br/>normalized against the allowlist"]
+    Nv -->|"no"| SetMode
+    SetNv --> SetMode["stored = setMode: normalizeMode (legacy aliases, unknown becomes council)<br/>writeLocal starpi_compute_mode, false when not stored"]
+    SetMode --> SyncUi["syncPickerValue (both pickers),<br/>renderPrivacyNotice, renderEngineState"]
     SyncUi --> Mode{"mode?"}
     Mode -->|"client"| Ready{"engine.isReady()?"}
     Ready -->|"yes"| DotOk1["setEngineDot ok"]
-    Ready -->|"no"| Start["startLocalEngine: engine.loadModel with getModelPreference()<br/>interactive: confirm before a download, ready notice<br/>not interactive: onlyIfCached, no download, stops before<br/>the WebLLM import when the model is certainly not cached<br/>EngineError other than cancelled: error notice<br/>any error: returns false"]
+    Ready -->|"no"| Start["startLocalEngine: engine.loadModel with getModelPreference()<br/>interactive: confirm before a download, ready notice<br/>not interactive: onlyIfCached, no download, stops before<br/>the WebLLM import or the worker when the model is not cached<br/>EngineError other than cancelled: error notice<br/>any error: returns false"]
     Start --> Loaded{"not loaded, not interactive<br/>and engine status idle?"}
     Loaded -->|"yes"| DotOff1["setEngineDot off"]
     Loaded -->|"no"| DotEngine["dot follows the engine state (engine-ui render):<br/>ready ok, loading busy, error warn, idle off"]
@@ -1276,15 +1431,20 @@ flowchart TD
     Probe --> ProbeOk{"response ok?"}
     ProbeOk -->|"yes"| DotOk2["setEngineDot ok<br/>setAssistantStatus status.ready<br/>first model id kept for callLocalServer"]
     ProbeOk -->|"no, invalid URL, non-2xx or error"| DotWarn["setEngineDot warn<br/>setAssistantStatus status.server_unreachable"]
+    Mode -->|"nvidia"| NvCat["setEngineDot busy<br/>getNvidiaCatalog(refresh true):<br/>same-origin GET /api/models/nvidia"]
+    NvCat --> NvMode{"mode still nvidia<br/>when it answers?"}
+    NvMode -->|"no"| Ret
+    NvMode -->|"yes"| NvDot["setEngineDot ok when configured, else warn<br/>setAssistantStatus status.ready<br/>or status.nvidia_unavailable"]
     Mode -->|"council"| HasKey{"Gemini or OpenRouter key stored?"}
     HasKey -->|"yes"| DotOk3["setEngineDot ok"]
     HasKey -->|"no"| DotOff2["setEngineDot off"]
-    Ret(["return stored<br/>saveSettings: save_failed when false<br/>boot and both change-engine selects ignore it"])
+    Ret(["return stored<br/>saveSettings: save_failed when false<br/>boot and both pickers ignore it"])
     DotOk1 --> Ret
     DotOff1 --> Ret
     DotEngine --> Ret
     DotOk2 --> Ret
     DotWarn --> Ret
+    NvDot --> Ret
     DotOk3 --> Ret
     DotOff2 --> Ret
 
@@ -1294,17 +1454,17 @@ flowchart TD
 
     Del(["delete-model-cache click: deleteModelCache()"]) --> Confirm{"window.confirm<br/>settings.delete_models_confirm?"}
     Confirm -->|"cancel"| NoOp(["nothing happens"])
-    Confirm -->|"ok"| DelCache["engine.deleteCachedModels(): unloadModel, loadWebLLM,<br/>then deleteModelAllInfoInCache for the f16 and f32 id<br/>of every MODEL_CATALOG entry (per-id failures only logged)"]
+    Confirm -->|"ok"| DelCache["engine.deleteCachedModels(): unloadModel,<br/>caches.delete transformers-cache (a failure only logged),<br/>loadWebLLM, then deleteModelAllInfoInCache for the f16<br/>and f32 id of every MODEL_CATALOG entry (per-id failures only logged)"]
     DelCache --> Threw{"threw?"}
     Threw -->|"no"| DelDone(["window.alert settings.delete_models_done"])
     Threw -->|"yes"| DelFail(["window.alert settings.delete_models_failed with reason"])
 ```
 
-<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/state.js`](../src/js/state.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/config.js`](../src/js/config.js), [`src/js/main.js`](../src/js/main.js)</sub>
+<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/state.js`](../src/js/state.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/config.js`](../src/js/config.js), [`src/js/main.js`](../src/js/main.js)</sub>
 
 ### deleteHistory: deleting the chat history
 
-The delete-chat-history button first checks isChatBusy(): while an answer is still running (or a question waits for an attached file) it only alerts settings.delete_history_busy and deletes nothing, because the running turn would be stored again after the delete. Otherwise it asks for confirmation and then calls deleteChatHistory in chat-store.js. It overwrites the local chat store with an empty object, which removes every session kept in this browser (a failed write is not reported), and starts a new session id. It resolves true without any remote delete only when the connection status is ready and canSyncChats() is false (no session or an older schema, so nothing was synced). In every other case, including offline and a still pending connection, it calls deleteOwnChats, which reads the auth session and deletes every chat_history row whose owner_id is the signed-in user, across all of that user's sessions; row level security limits the delete to own rows. If reading the session throws, deleteOwnChats returns a failed Result without sending the delete; if it yields no user id, nothing is deleted in Supabase and the Result still counts as ok. Offline, the delete request is still sent when a user id is found and its failure is reported. After deleteChatHistory the chat on screen is reset whatever it returned, and the alert says settings.delete_history_done, or settings.delete_history_partial when deleteOwnChats returned a failed Result.
+The delete-chat-history button first checks isChatBusy(): while an answer is still running (or a question waits for an attached file) it only alerts settings.delete_history_busy and deletes nothing, because the running turn would be stored again after the delete. Otherwise it asks for confirmation and then calls deleteChatHistory in chat-store.js. It first waits for message writes still under way and marks their sessions as deleted, so a write that ends later cannot store a deleted chat again, then overwrites the local chat store with an empty object, which removes every session kept in this browser (a failed write is not reported), and starts a new session id. It resolves true without any remote delete only when the connection status is ready and canSyncChats() is false (no session or an older schema, so nothing was synced). In every other case, including offline and a still pending connection, it calls deleteOwnChats, which reads the auth session and deletes every chat_history row whose owner_id is the signed-in user, across all of that user's sessions; row level security limits the delete to own rows. If reading the session throws, deleteOwnChats returns a failed Result without sending the delete; if it yields no user id, nothing is deleted in Supabase and the Result still counts as ok. Offline, the delete request is still sent when a user id is found and its failure is reported. After deleteChatHistory the chat on screen is reset whatever it returned, and the alert says settings.delete_history_done, or settings.delete_history_partial when deleteOwnChats returned a failed Result. Delete this chat in the chat menu does the same for the current session only: it is refused with chat.delete_busy while an answer is being written, asks chat.delete_confirm, and deleteSession(sid) waits for that session's writes, removes it from the local store, starts a new session and deletes its synced rows with deleteChatSession (owner_id and session_id), reporting chat.deleted_title or chat.delete_partial_title as a notice.
 
 <!-- diagram: settings-flow-delete-history -->
 ```mermaid
@@ -1313,7 +1473,7 @@ flowchart TD
     Busy -->|"yes"| BusyAlert(["window.alert settings.delete_history_busy<br/>nothing is deleted"])
     Busy -->|"no"| Confirm{"window.confirm<br/>settings.delete_history_confirm?"}
     Confirm -->|"cancel"| NoOp(["nothing happens"])
-    Confirm -->|"ok"| Wipe["deleteChatHistory(): writeLocalJson starpi_local_chats_v1<br/>as an empty object, all sessions in this browser<br/>a failed write is not reported"]
+    Confirm -->|"ok"| Wipe["deleteChatHistory(): await message writes still under way,<br/>their sessions marked deleted, then writeLocalJson<br/>starpi_local_chats_v1 as an empty object, all sessions<br/>in this browser, a failed write is not reported"]
     Wipe --> NewSid["startNewSession(): new starpi_ UUID<br/>written to starpi_chat_session_id"]
     NewSid --> CanSync{"connection status ready<br/>and canSyncChats() false?<br/>(no session or an older schema)"}
     CanSync -->|"yes, nothing was synced"| LocalOnly["resolves true, no remote delete"]
@@ -1333,6 +1493,7 @@ flowchart TD
     Reset --> Ok{"deleteChatHistory resolved true?"}
     Ok -->|"yes"| Done(["window.alert settings.delete_history_done"])
     Ok -->|"no"| Partial(["window.alert settings.delete_history_partial<br/>browser chats deleted, synced history not"])
+    One(["chat menu delete-chat: deleteCurrentChat()<br/>chat.delete_busy alert while busy, chat.delete_confirm"]) -.->|"same steps for the current session only:<br/>deleteSession(sid), deleteChatSession with<br/>owner_id and session_id, then a notice<br/>chat.deleted_title or chat.delete_partial_title"| Wipe
 ```
 
 <sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/config.js`](../src/js/config.js), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`src/locales/en.json`](../src/locales/en.json)</sub>
@@ -1392,11 +1553,11 @@ sequenceDiagram
 
 ## 3. Answering a question
 
-One chat turn from submit to persisted answer: retrieval and how workspace and knowledge-base hits share the slots, citation assignment, the answer path chosen by the mode, the fallbacks when a path fails, the source check and receipt draft after rendering, and exactly which data leaves the device in each mode, followed by the settings, the privacy notice and the on-device model selection and prompt budget that shape a turn.
+One chat turn from submit to persisted answer: the chat mode (verified source mode or free chat), retrieval and how workspace and knowledge-base hits share the slots, citation assignment, the answer path chosen by the mode, including the browser client of Starpi's NVIDIA proxy, the fallbacks when a path fails, the source check and receipt draft after rendering, and exactly which data leaves the device in each mode, followed by the settings, the privacy notice, the on-device model selection with its device tiers, and the prompt budget that shape a turn.
 
 ### submitChat: from input to persisted answer
 
-submitChat returns early with status.busy while a request runs. If an attached file is still being read, it marks itself busy, shows status.reading_file and waits for the read, so a question is not sent before its file is ready (if the read fails, the question goes without it); it then returns when there is neither text nor an attachment. It shows the user turn at once but stores it only after retrieval with storeQuestion(usesWorkspace), so the question stays on the device in client mode, with an attached file or when a used hit comes from the workspace; if the turn throws before that, the catch stores it with usesWorkspace false. Retrieval merges on-device BM25 workspace chunks with Supabase knowledge hits, a greeting-only message uses none of them, and citations are assigned and registered. The mode captured at submit picks council (Gemini then OpenRouter), client (on-device WebGPU, streamed) or local (own server); a model that fails shows a chat.provider_failed notice, and a null or empty answer falls back to the extractive synthesizer. Only while the chat session is unchanged is the answer rendered, source-checked, given a receipt button and added to the conversation; a finished answer is persisted under the original session id whether or not the session changed, and it stays in localStorage when the mode is client, a workspace excerpt was used, an extractive answer contains the name of a workspace file (a greeting or document list, for example), sync is unavailable or the insert fails. When the turn ends, setBusy(false) puts the focus back in the input if the Stop button or nothing had it.
+submitChat returns early with status.busy while a request runs. If an attached file is still being read, it marks itself busy, shows status.reading_file and waits for the read, so a question is not sent before its file is ready (if the read fails, the question goes without it); it then returns when there is neither text nor an attachment. Next it fixes the chat mode: a quick prompt, a sample question or a graph entity question passes chatMode grounded, which also switches the composer toggle, and any other question follows getChatMode(). Free chat continues in answerFree (chat-dual-mode) without retrieval, citations, source check or receipt. In verified source mode it shows the user turn at once but stores it only after retrieval with storeQuestion(usesWorkspace), so the question stays on the device in client mode, with an attached file or when a used hit comes from the workspace; if the turn throws before that, the catch stores it with usesWorkspace false. Retrieval merges on-device BM25 workspace chunks with Supabase knowledge hits, a greeting-only message uses none of them, and citations are assigned and registered. The mode captured at submit picks council (Gemini then OpenRouter), client (the on-device WebGPU or WASM model, streamed), local (own server) or nvidia (Starpi's NVIDIA proxy, streamed); a model that fails shows a chat.provider_failed notice, and a null or empty answer falls back to the extractive synthesizer. Only while the chat session is unchanged is the answer rendered, source-checked, given a receipt button and added to the conversation; a finished answer is persisted under the original session id whether or not the session changed, and it stays in localStorage when the mode is client, a workspace excerpt was used, an extractive answer contains the name of a workspace file (a greeting or document list, for example), sync is unavailable or the insert fails. When the turn ends, setBusy(false) puts the focus back in the input if the Stop button or nothing had it.
 
 <!-- diagram: chat-request-lifecycle -->
 ```mermaid
@@ -1410,7 +1571,7 @@ sequenceDiagram
     participant SB as supabase.js
     participant Ret as retrieval.js
     participant Cit as rag/citations.js
-    participant Eng as providers.js or WebGPU engine
+    participant Eng as providers.js or on-device engine
     participant Syn as synthesizer.js
     participant Chk as core/grounding.js, grounding-view.js and receipts.js
 
@@ -1426,14 +1587,19 @@ sequenceDiagram
         Chat-->>User: return without a message
     end
     Note over Chat: clear and autosize the input, removeAttachment.<br/>Captures sid, history, mode and localOnly = mode is client.<br/>A file without text asks chat.summarize_file
+    Note over Chat: chatMode = options.chatMode, grounded for quick prompts,<br/>sample and entity questions, which switch the toggle,<br/>else getChatMode() from starpi_chat_mode
     Chat->>Msg: appendMessage user shownText
     Note over Chat,Store: storeQuestion is prepared, the question is not stored yet
     Note over Chat: new AbortController, setBusy(true): Stop shown, Send disabled,<br/>aria-busy on chatMessages, status.generating
-    Chat->>Msg: appendLoading()
+    Chat->>Msg: appendLoading(chat.thinking, or chat.thinking_free in free chat)
+    opt chat mode is free
+        Chat->>Chat: answerFree: no retrieval, question stored at once,<br/>answer marked as not checked, see chat-dual-mode
+    end
+    Note over Chat: the rest of this diagram is verified source mode, answerGrounded
     Chat->>WS: retrieveWorkspace: searchWorkspace(prompt, 6),<br/>an attached file pins up to 3 chunks, any error gives no hits
     alt workspaceOnly sample question or connection offline
         Note over Chat,SB: no Supabase request, workspace hits only
-    else mode council or local
+    else mode council, local or nvidia
         Chat->>SB: searchKnowledge(prompt), rpc search_knowledge
         opt RPC error or zero rows
             Chat->>SB: recentKnowledge(30), ranked with rankHitsLocally,<br/>on failure workspace hits only and kbUnavailable
@@ -1454,6 +1620,8 @@ sequenceDiagram
         Chat->>Eng: answerWithLocalModel, removes loading, streams its own bubble
     else mode local
         Chat->>Eng: answerWithOwnServer, callLocalServer(getLlmUrl())
+    else mode nvidia
+        Chat->>Eng: answerWithNvidia, getNvidiaCatalog then callNvidia,<br/>removes loading, streams its own bubble
     end
     Eng-->>Chat: Answer, empty text with note, or null
     opt the answer carries a note
@@ -1465,7 +1633,7 @@ sequenceDiagram
     end
     alt signal aborted and answer not rendered
         Note over Chat,Msg: throw AbortError, the catch (storeQuestion(false) is a no-op)<br/>removes loading, isUserAbort so no notice
-    else a call threw, e.g. a council or local error rethrown after abort
+    else a call threw, e.g. a council, local or NVIDIA error rethrown after abort
         Note over Chat: the catch calls storeQuestion(false), a no-op here<br/>because the question was stored after retrieval
         Chat->>Msg: removeLoading, appendNotice chat.error_title unless isUserAbort
     else answer ready
@@ -1490,11 +1658,11 @@ sequenceDiagram
     Note over Chat: finally removeLoading, setBusy(false), activeAbort = null.<br/>setBusy(false) focuses the input when Stop or nothing had focus
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/signals.js`](../src/js/signals.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/config.js`](../src/js/config.js)</sub>
+<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/signals.js`](../src/js/signals.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/config.js`](../src/js/config.js), [`src/js/state.js`](../src/js/state.js)</sub>
 
 ### retrieve(): knowledge-base decision tree per mode
 
-retrieve() first collects the workspace hits (next diagram) and sets the limit to 6 hits, or 9 with an attached file. A demo sample question (quick-prompt with data-scope workspace, workspaceOnly) takes the first hits of the workspace without a Supabase search; while the connection status is offline, retrieve() also skips Supabase and returns the workspace hits with the method "knowledge base not reachable, skipped" and kbUnavailable true. Council and local modes send the question to the search_knowledge RPC. Since migration 20260924120000 the RPC returns the rows that contain every search term and, when no visible row does, the rows that share at least two terms (or the only one), ranked by the number of shared terms. On zero rows or any error, PGRST202 (missing_function) included, the browser ranks the 30 newest documents from recentKnowledge; if that fetch fails too, only workspace hits remain and kbUnavailable is set. Client mode never sends the question: it always ranks recentKnowledge(30) locally. Every result goes through mergeHits, and the method line counts the workspace hits that survived the merge ("BM25 in the on-device workspace (n)") and joins the remote label with " + ". A network or timeout error from any Supabase request while the connection is ready switches it to offline and schedules a reconnect, so later turns skip Supabase until it answers again.
+retrieve() first collects the workspace hits (next diagram) and sets the limit to 6 hits, or 9 with an attached file. A demo sample question (quick-prompt with data-scope workspace, workspaceOnly) takes the first hits of the workspace without a Supabase search; while the connection status is offline, retrieve() also skips Supabase and returns the workspace hits with the method "knowledge base not reachable, skipped" and kbUnavailable true. retrieve() runs only in verified source mode. Council, local and NVIDIA modes send the question to the search_knowledge RPC. Since migration 20260924120000 the RPC returns the rows that contain every search term and, when no visible row does, the rows that share at least two terms (or the only one), ranked by the number of shared terms. On zero rows or any error, PGRST202 (missing_function) included, the browser ranks the 30 newest documents from recentKnowledge; if that fetch fails too, only workspace hits remain and kbUnavailable is set. Client mode never sends the question: it always ranks recentKnowledge(30) locally. Every result goes through mergeHits, and the method line counts the workspace hits that survived the merge ("BM25 in the on-device workspace (n)") and joins the remote label with " + ". A network or timeout error from any Supabase request while the connection is ready switches it to offline and schedules a reconnect, so later turns skip Supabase until it answers again.
 
 <!-- diagram: chat-request-retrieve -->
 ```mermaid
@@ -1507,7 +1675,7 @@ flowchart TD
     Off -->|"yes"| OffHits["merge([]), no Supabase request<br/>method retrieval.offline, kbUnavailable true"]
     Off -->|"no, pending or ready"| ModeChk{"mode is client?"}
 
-    ModeChk -->|"no, council or local"| Fts["searchKnowledge(query), question sent to Supabase<br/>rpc search_knowledge, query_text max 1000 chars, match_count 6"]
+    ModeChk -->|"no, council, local or nvidia"| Fts["searchKnowledge(query), question sent to Supabase<br/>rpc search_knowledge, query_text max 1000 chars, match_count 6"]
     Fts --> Rpc["RPC, german text search, RLS decides what is visible:<br/>rows with every term, else rows sharing at least 2 terms<br/>or the only one, ranked by shared terms,<br/>blank query gives no rows"]
     Rpc --> FtsOk{"search.ok and<br/>rows returned?"}
     FtsOk -->|"yes"| FtsHits["merge(rows)<br/>method retrieval.fts, Postgres full-text search"]
@@ -1581,12 +1749,12 @@ flowchart TD
 
 ### Answer dispatch, synthesizer fallback, rendering and persistence
 
-The mode captured at submit selects the path: council sends Gemini one prompt without history and falls back to OpenRouter when there is no Gemini key or the Gemini call fails, client loads the WebGPU model interactively (it may ask to download) and streams into its own bubble marked rendered, and local calls the own server at getLlmUrl(). OpenRouter and the own server get shareableHistory: the last 4 turns that are not marked localOnly, so turns from on-device mode, with workspace excerpts or with an attached file are never sent as history. Council and local failures become an empty-text answer with a note unless the request was aborted, in which case the error is rethrown to the submitChat catch; in client mode a generation error always becomes a note, while a model that is not loaded, a blank answer or an abort before generating returns null. A note is shown at once as a chat.provider_failed notice, and a null or empty answer is replaced by synthesizeAnswer with modelAvailable false after a note. The answer is shown, source-checked and added to the conversation only if the session id is unchanged. persistMessage keeps it in localStorage with metadata.local_only when localOnly is set (client mode, any used hit from the workspace, the same usesWorkspace that storeQuestion applied to the question right after retrieval, or an extractive answer whose text contains a workspace file name, which does not change how the question was stored) or when canSyncChats() is false; a failed chat_history insert also falls back to localStorage, without the flag, and such rows are read back as on-device turns.
+In verified source mode the mode captured at submit selects the path: council sends Gemini one prompt without history and falls back to OpenRouter when there is no Gemini key or the Gemini call fails, client loads the on-device model interactively (a WebGPU preset or a processor model; it may ask to download) and streams into its own bubble marked rendered, local calls the own server at getLlmUrl(), and nvidia asks Starpi's NVIDIA proxy, which also streams into its own bubble. OpenRouter, the own server and NVIDIA get shareableHistory: the last 4 turns that are not marked localOnly, so turns from on-device mode, with workspace excerpts or with an attached file are never sent as history; the NVIDIA messages are then fitted to the proxy's limits with fitNvidiaMessages, and when that cuts the system message the cut context becomes deliveredContext for the source check. Council, local and NVIDIA failures become an empty-text answer with a note unless the request was aborted, in which case the error is rethrown to the submitChat catch (an NVIDIA answer that was partly streamed before Stop is kept instead, marked as cut off in its trace); in client mode a generation error always becomes a note, while a model that is not loaded, a blank answer or an abort before generating returns null. An NVIDIA proxy without keys or without the route gives a note too, and refreshes the cached catalog when a request found it gone. A note is shown at once as a chat.provider_failed notice, and a null or empty answer is replaced by synthesizeAnswer with modelAvailable false after a note. The answer is shown, source-checked and added to the conversation only if the session id is unchanged; the stored metadata records the engine (cloud, client, wasm, local, nvidia or synthesizer), the model id when known, the chat mode, the trace and the duration. persistMessage keeps it in localStorage with metadata.local_only when localOnly is set (client mode, any used hit from the workspace, the same usesWorkspace that storeQuestion applied to the question right after retrieval, or an extractive answer whose text contains a workspace file name, which does not change how the question was stored) or when canSyncChats() is false; a failed chat_history insert also falls back to localStorage, without the flag, and such rows are read back as on-device turns.
 
 <!-- diagram: chat-request-answer-dispatch -->
 ```mermaid
 flowchart TD
-    Entry(["submitChat after retrieve, storeQuestion(usesWorkspace)<br/>and buildContext: prompt, context, history, signal"]) --> Mode{"mode captured<br/>at submit"}
+    Entry(["answerGrounded after retrieve, storeQuestion(usesWorkspace)<br/>and buildContext: prompt, context, history, signal"]) --> Mode{"mode captured<br/>at submit"}
 
     subgraph cloud["council: answerWithCloud"]
         GemKey{"hasGeminiKey()?"}
@@ -1599,14 +1767,22 @@ flowchart TD
 
     subgraph client["client: answerWithLocalModel"]
         Ready{"engine.isReady() or<br/>startLocalEngine interactive true?<br/>may confirm a download"}
-        Gen["budgetPrompt, removeLoading, createStreamingMessage<br/>engine.generate 512 tokens, temperature 0.2<br/>abort calls engine.interrupt"]
-        Fin["stream.finalize with citations and trace<br/>engine client, rendered, element,<br/>deliveredContext = budgeted context"]
+        Gen["budgetPrompt, removeLoading, createStreamingMessage<br/>engine.generate in the WebGPU or WASM worker,<br/>model maxOutputTokens: 512 WebGPU, 384 WASM,<br/>temperature 0.2, abort calls engine.interrupt"]
+        Fin["stream.finalize with citations and trace<br/>engine client or wasm, model id, rendered,<br/>element, deliveredContext = budgeted context"]
         LocalFail["stream.remove, text empty, engine synthesizer<br/>note chat.note_local_failed, also after abort"]
     end
 
     subgraph server["local: answerWithOwnServer"]
         Srv["callLocalServer(getLlmUrl())<br/>system target server + shareableHistory + prompt"]
         SrvFail["text empty, engine synthesizer<br/>note chat.note_server_failed"]
+    end
+
+    subgraph nv["nvidia: answerWithNvidia"]
+        NvCat{"getNvidiaCatalog(): proxy configured<br/>and resolveNvidiaModel finds a model?<br/>the stored one, else the default or the first"}
+        NvNo["text empty, engine synthesizer, notConfigured<br/>note provider.nvidia_not_configured,<br/>nvidia_not_available or nvidia_no_models"]
+        NvCall["fitNvidiaMessages(system + shareableHistory + prompt),<br/>removeLoading, createStreamingMessage with<br/>engine.label_nvidia and the model name,<br/>callNvidia: max_tokens = model defaultMaxTokens,<br/>temperature 0.2, deltas into the bubble"]
+        NvFin["stream.finalize, trace notes chat.note_truncated<br/>and chat.note_model_replaced when they apply,<br/>engine nvidia, model id, rendered, element,<br/>deliveredContext = the system message if it was cut"]
+        NvFail["stream.remove, text empty, engine synthesizer<br/>note = the i18n text of the error code, notConfigured<br/>refreshes the catalog, never server text"]
     end
 
     Share["shareableHistory: turns without localOnly,<br/>last 4, role and content only"]
@@ -1627,19 +1803,28 @@ flowchart TD
     Gen -->|"throws"| LocalFail
     Mode -->|"local"| Srv
     Srv -->|"throws, not aborted"| SrvFail
+    Mode -->|"nvidia"| NvCat
+    NvCat -->|"no"| NvNo
+    NvCat -->|"yes"| NvCall
+    NvCall -->|"answer text, also a partial one<br/>after Stop, a timeout or an interruption"| NvFin
+    NvCall -->|"error code, timeout, nothing usable,<br/>not aborted"| NvFail
     Share -.-> Or
     Share -.-> Srv
+    Share -.-> NvCall
 
     Gem -->|"text, engine cloud"| Check
     Or -->|"text, engine cloud"| Check
     Srv -->|"text, engine local"| Check
     Fin --> Check
+    NvFin --> Check
     GemFailed -->|"no key at all, null"| Check
     Ready -->|"not ready, no model or aborted, null"| Check
     Gen -->|"blank text, stream.remove, null"| Check
     CloudFail --> Notice
     LocalFail --> Notice
     SrvFail --> Notice
+    NvNo --> Notice
+    NvFail --> Notice
     Notice --> Check
 
     Check -->|"yes"| Synth["synthesizeAnswer, engine synthesizer<br/>known titles: workspace file names + knownTitles()<br/>modelAvailable = no note and, in council mode,<br/>a Gemini or OpenRouter key stored"]
@@ -1649,12 +1834,13 @@ flowchart TD
     Gem -.->|"throws while aborted"| Catch
     Or -.->|"throws while aborted"| Catch
     Srv -.->|"throws while aborted"| Catch
-    AbortChk -->|"no"| Trace["splitReasoning, describeTrace with the note<br/>metadata engine, thoughts, duration_ms"]
+    NvCall -.->|"Stop before any answer text"| Catch
+    AbortChk -->|"no"| Trace["splitReasoning, describeTrace with the note or trace note<br/>metadata engine, model, chat_mode grounded,<br/>thoughts, duration_ms"]
     Trace --> Names["namesWorkspace: engine synthesizer and the<br/>answer text contains a workspace file name"]
     Names --> SidChk{"sid equals<br/>currentSessionId()?"}
-    SidChk -->|"yes, not rendered"| Render["removeLoading, appendMessage assistant<br/>linkifyCitations only for registered labels<br/>citationSources row, engine badge"]
+    SidChk -->|"yes, not rendered"| Render["removeLoading, appendMessage assistant<br/>linkifyCitations only for registered labels<br/>citationSources row, code copy buttons, engine badge"]
     SidChk -->|"yes, already rendered"| After
-    Render --> After["source check, receipt button and<br/>conversation.push, see the next diagram"]
+    Render --> After["source check, receipt button and<br/>conversation.push, see chat-request-source-check"]
     SidChk -->|"no, user switched chat"| Persist
     After --> Persist["void persistMessage under the original sid<br/>localOnly = mode client, a used hit has workspace,<br/>or a synthesizer answer names a workspace file"]
     Persist --> EmptyChk{"content empty?"}
@@ -1666,11 +1852,150 @@ flowchart TD
     Insert -->|"ok"| Status["refreshSyncStatus"]
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/signals.js`](../src/js/signals.js), [`src/js/render.js`](../src/js/render.js), [`src/js/config.js`](../src/js/config.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/code-blocks.js`](../src/js/code-blocks.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/signals.js`](../src/js/signals.js), [`src/js/render.js`](../src/js/render.js), [`src/js/config.js`](../src/js/config.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
+
+### Free chat and verified source mode: one turn in each chat mode
+
+The composer toggle (data-action set-chat-mode, Free chat or Verified source mode) stores the chat mode in starpi_chat_mode; a missing or unknown value counts as grounded, and the toggle, its hint, the placeholder and the privacy notice follow every change. Quick prompts, sample questions and graph entity questions pass chatMode grounded to submitChat, which switches the toggle before the turn starts. answerGrounded retrieves, cites and builds the fenced context, asks the model of the mode and then, for every engine (cloud, own server, NVIDIA, the WebGPU or WASM model on the device, or the extractive synthesizer), runs the source check and keeps a receipt draft whose answer.engine names that engine. answerFree retrieves nothing: it stores the question at once, reads an attached file through attachmentForChat (the whole text up to 12,000 characters, else its first two chunks and its passages among the top 12 workspace matches, joined by excerptForChat) and gives the model the free-chat system prompt (buildChatPrompt, with the file fenced as data whose instructions must not be followed) and the conversation. Remote models get the turns not marked localOnly, at most 16 turns and 24,000 characters with each turn cut to 4,000, and Gemini gets them too, while the on-device model gets the last 16 turns, local-only ones included, each budgeted to 2,000 characters. The on-device model and NVIDIA answer at temperature 0.7 in free chat (0.2 in source mode), and on the device a free answer may run longer: up to a third of the context window and at most 768 tokens on WebGPU, while WASM models keep their 384. A free answer gets no citations, no source check and no receipt, carries the note "Free chat · not checked against sources", and its trace names the engine, the duration and the attached file. Without a model, or when the model fails, the free chat shows a notice instead of quoting the sources, because it has none. A question with an attached file stays on the device with its answer in both modes, and client mode keeps every turn on the device.
+
+<!-- diagram: chat-dual-mode -->
+```mermaid
+flowchart TD
+    Toggle(["composer toggle set-chat-mode: setChatMode,<br/>starpi_chat_mode grounded or free, default grounded"])
+    Q(["submitChat(text, options)"])
+    CM{"options.chatMode is grounded?<br/>quick prompt, sample or entity question"}
+    Sw["setChatMode(grounded) when the toggle shows free:<br/>toggle, hint, placeholder and privacy notice follow"]
+    Get{"getChatMode()"}
+    Toggle -.->|"onChatModeChange"| Get
+    Q --> CM
+    CM -->|"yes"| Sw --> G
+    CM -->|"no"| Get
+    Get -->|"grounded"| G
+    Get -->|"free"| F
+
+    G["answerGrounded: retrieve, assignCitations,<br/>buildContext max 9000 chars,<br/>storeQuestion(usesWorkspace) after retrieval"]
+    F["answerFree: storeQuestion(false) at once,<br/>nothing retrieved, no citations"]
+    Att{"file attached<br/>to this question?"}
+    AttFile["attachmentForChat: text RPC in starpi-ingest,<br/>whole up to 12000 chars, else its first 2 chunks<br/>and its passages among the top 12 matches,<br/>joined by excerptForChat"]
+    F --> Att
+    Att -->|"yes"| AttFile --> FGen
+    Att -->|"no"| FGen
+
+    GGen["generateAnswer(mode) with plan grounded:<br/>buildSystemPrompt or buildInstructions, answer only<br/>from the fenced excerpts and cite their labels,<br/>history: last 4 shareable turns, on the device<br/>the last 4 turns, temperature 0.2"]
+    FGen["generateAnswer(mode) with plan free:<br/>buildChatPrompt or chatInstructions, file fenced as data,<br/>history: up to 16 shareable turns, 24000 chars, 4000 each,<br/>Gemini included, on the device the last 16 turns, 2000 each,<br/>temperature 0.7 on the device and on NVIDIA"]
+    G --> GGen
+
+    subgraph engines["Engines of both modes"]
+        ECloud["council: Gemini, then OpenRouter"]
+        EDev["client: WebGPU preset in starpi-webllm<br/>or WASM model in starpi-wasm"]
+        ESrv["local: own server"]
+        ENv["nvidia: Starpi's proxy, streamed"]
+    end
+    GGen --> engines
+    FGen --> engines
+
+    GChk{"source mode:<br/>answer text?"}
+    FChk{"free chat:<br/>answer text?"}
+    engines -->|"source mode"| GChk
+    engines -->|"free chat"| FChk
+
+    GSyn["synthesizeAnswer: quotes from the excerpts,<br/>after a chat.provider_failed notice for a note"]
+    GCheck["source check and receipt draft for every engine:<br/>contextCoverage, applyGrounding, storeReceiptDraft,<br/>answer.engine cloud, client, wasm, local,<br/>nvidia or synthesizer"]
+    GChk -->|"no"| GSyn --> GCheck
+    GChk -->|"yes"| GCheck
+
+    FNote(["notice and no answer: chat.free_no_model_title<br/>with free_no_model_body without a model or<br/>free_not_configured_body when it is not set up,<br/>chat.provider_failed_title with free_failed_body on a failure"])
+    FMark["markFreeAnswer: chat.free_note under the answer,<br/>no citations, source check or receipt,<br/>describeChatTrace: engine, duration, attached file"]
+    FChk -->|"no"| FNote
+    FChk -->|"yes"| FMark
+
+    Push["pushTurns while the session is current:<br/>role, content, localOnly, engine, model,<br/>chat mode, created time"]
+    GCheck --> Push
+    FMark --> Push
+    Persist["persistMessage, metadata engine, model,<br/>chat_mode, thoughts, duration_ms"]
+    Push --> Persist
+    Rule{"localOnly?<br/>source mode: client mode, a file or a used workspace hit,<br/>the answer also when it is extractive and names a workspace file<br/>free chat: client mode or a file, question and answer alike"}
+    Persist --> Rule
+    Rule -->|"yes"| LS[("localStorage starpi_local_chats_v1,<br/>never sent as history to a remote model")]
+    Rule -->|"no"| Sync["chat_history when canSyncChats(),<br/>else localStorage"]
+```
+
+<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
+
+### NVIDIA cloud in the browser: catalog, streamed request and errors
+
+The browser side of NVIDIA mode lives in providers.js and holds no NVIDIA key. getNvidiaCatalog asks GET /api/models/nvidia on the app's own origin (no-store, 6 s), caches the answer for five minutes when the proxy has keys and for 30 seconds otherwise, shares one request between concurrent callers and tells its listeners, so the model pickers show what the proxy offers; a 404, a page that is not JSON, a network error or a timeout means there is no proxy, and the NVIDIA group stays hidden. answerWithNvidia asks for the stored model when the proxy offers it, else for the proxy's default or its first model (the trace then says the model was replaced), fits the messages to the proxy's limits with fitNvidiaMessages and calls callNvidia, which posts only model, messages, max_tokens (the model's defaultMaxTokens) and temperature, without an Authorization header. Its first-byte (35 s), idle (40 s) and total (255 s) timers are each longer than the proxy's own limits, so the proxy's error normally arrives first. A refused request maps the flat error code, or else the status, to a provider.nvidia_* text with the Retry-After seconds where they help; text from the server or from NVIDIA is never shown. The event stream is parsed incrementally by createSseParser and folded by createChatStreamAssembler: content deltas form the answer, reasoning_content (or reasoning) deltas form a leading think block that the bubble shows as a reasoning line while it streams and keeps in its details, and an error event keeps only its code. On Stop, a timeout, an interrupted stream or the 200,000-character limit, the text that already arrived is kept and marked as cut off; without any answer text Stop ends the turn silently and the other cases give an error note. A complete stream counts as cut off when its finish reason is length, or when it ended without [DONE] and without a finish reason.
+
+<!-- diagram: nvidia-browser-client -->
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Pick as model-picker.js and settings.js
+    participant Chat as chat.js answerWithNvidia
+    participant Prov as providers.js
+    participant Fit as prompts.js fitNvidiaMessages
+    participant SSE as chat-stream.js
+    participant Msg as messages.js streaming bubble
+    participant Proxy as same-origin /api/models/nvidia and /api/chat/nvidia
+
+    Pick->>Prov: getNvidiaCatalog() when the page is idle, refresh true when NVIDIA mode is picked
+    Note over Prov: cached 5 min when configured, 30 s otherwise,<br/>concurrent callers share one request
+    Prov->>Proxy: fetchNvidiaModels: GET /api/models/nvidia, Accept JSON, no-store, 6 s
+    alt 404, a reply that is not JSON, network error or timeout
+        Proxy-->>Prov: no proxy at this address
+        Prov-->>Pick: reachable false: NVIDIA group hidden, a stored NVIDIA model shown as not set up
+    else JSON
+        Proxy-->>Prov: configured, version, defaultModel, limits, models
+        Prov->>Prov: parseNvidiaCatalog drops unknown fields, invalid and repeated ids, keeps at most 64 models
+        Prov-->>Pick: listeners: the offered models, disabled and marked not set up without keys
+    end
+
+    Chat->>Prov: getNvidiaCatalog() and resolveNvidiaModel with the stored model
+    Note over Chat,Prov: not configured or no model: a note, the turn falls back,<br/>see chat-request-answer-dispatch
+    Chat->>Fit: system, shareable history and question, NVIDIA_LIMITS, 4000 chars per earlier turn
+    Note over Fit: oldest pairs go first, then the system context is cut without breaking a fence,<br/>never the question: at most 40 messages, 24000 chars each,<br/>64000 in all, JSON body below 256 KiB minus 2 KiB
+    Fit-->>Chat: fitted messages
+    Chat->>Msg: createStreamingMessage, engine.label_nvidia with the model name
+    Chat->>Prov: callNvidia with model, defaultMaxTokens, temperature, signal, onDelta
+    Prov->>Proxy: POST /api/chat/nvidia, JSON model, messages, max_tokens, temperature,<br/>Accept text/event-stream, no Authorization header, no-store
+    Note over Prov: timers: first byte 35 s, idle 40 s per read, total 255 s
+    alt response not ok
+        Proxy-->>Prov: flat JSON error code, Retry-After on 429 and 503
+        Prov->>Prov: nvidiaHttpError: code to a provider.nvidia_* key, else by status:<br/>429 rate limited, 503 busy, 504 timeout, 404 or not JSON not available
+        Note over Prov: the body is read only as JSON for its code, server text is never shown,<br/>Retry-After seconds clamped to 1 s up to 1 h
+        Prov-->>Chat: ProviderError with the translated text,<br/>notConfigured for not configured or not available
+    else application/json, a reply that was not streamed
+        Prov->>Prov: nvidiaJsonAnswer: one chat.completion, reasoning as a leading think block
+        Prov-->>Chat: text, truncated when finish_reason is length
+    else text/event-stream
+        loop each read until DONE, an error event, the size limit, Stop or a timer
+            Proxy-->>Prov: bytes, decoded by TextDecoderStream
+            Prov->>SSE: createSseParser push: LF, CRLF or CR line ends, a blank line dispatches,<br/>more than 1000000 pending chars throws
+            SSE->>SSE: assembler push: delta.content to the answer, reasoning_content or reasoning<br/>to the reasoning, finish_reason, DONE, an error event keeps its code only
+            SSE-->>Prov: the text so far, reasoning first as a think block, reasoning tags stripped
+            Prov->>Msg: onDelta: render once per animation frame,<br/>a reasoning line while no answer text has arrived
+        end
+        alt Stop pressed
+            Prov->>Proxy: reader cancelled, the proxy then cancels its upstream request
+            Prov-->>Chat: the partial answer marked truncated, or AbortError without answer text
+        else a timer fired
+            Prov-->>Chat: the partial answer marked truncated, or provider.nvidia_timeout
+        else read error, error event or more than 200000 chars
+            Prov-->>Chat: the partial answer marked truncated, or provider.nvidia_timeout<br/>for stream_timeout and provider.nvidia_interrupted otherwise
+        else only reasoning or nothing arrived
+            Prov-->>Chat: provider.nvidia_only_reasoning or provider.empty_answer
+        else complete
+            Prov-->>Chat: text, truncated when finish_reason is length<br/>or neither DONE nor a finish reason arrived
+        end
+    end
+    Chat->>Msg: finalize: the answer, the reasoning in the details,<br/>chat.note_truncated in the trace when cut off
+```
+
+<sub>Sources: [`src/js/providers.js`](../src/js/providers.js), [`src/js/chat-stream.js`](../src/js/chat-stream.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
 
 ### After rendering: source check, receipt draft and conversation turns
 
-While the session is unchanged, submitChat takes the rendered message element (the appended bubble, or the streamed bubble of an on-device answer) and, when the answer has a citation scope, runs the source check and adds a receipt button. The check first needs the part of each excerpt that reached the model: extractive answers count every excerpt as delivered in full, and for model answers contextCoverage parses the context that was actually sent (the budgeted context for the on-device model, otherwise the buildContext string) back into its excerpt blocks and marks each excerpt full, partial or omitted. applyGrounding compares the numbers, dates, times, weekdays, codes, quotations and wording of each statement in the rendered answer with the excerpts it cites and, with the current rules (starpi-grounding 2), whether in the excerpts' language it keeps their negations and puts names and values where they do; it shows the result under the answer, and a match does not prove a statement correct. A value or name that the check does not find in the excerpts but finds in the question or one of the last user turns is marked from_conversation, a weak verdict; the model's own earlier answers do not count as given. When nothing was compared (the answer is too long, or answer and excerpts are in different languages and no statement was counted), the bar is neutral (grounding-none, a plain shield icon) instead of green. The receipt draft stays in memory, records for a partly delivered excerpt how many of its first characters reached the model (deliveredChars), and becomes a starpi.receipt/v2 JSON file, with a Merkle tree over its citations but without a signature (the app signs nothing), only when the user exports it from the receipt dialog: it shows that cited workspace excerpts can be reproduced from the same files, not that the receipt is authentic, what a model saw, or that its reasoning is right. Finally both turns are pushed to the in-memory conversation with localOnly set for client mode, workspace excerpts, an attached file or an extractive answer that names a workspace file.
+In verified source mode, while the session is unchanged, answerGrounded takes the rendered message element (the appended bubble, or the streamed bubble of an on-device or NVIDIA answer) and, when the answer has a citation scope, runs the source check and adds a receipt button. The check first needs the part of each excerpt that reached the model: extractive answers count every excerpt as delivered in full, and for model answers contextCoverage parses the context that was actually sent (the budgeted context for the on-device model, the system message as fitNvidiaMessages cut it for NVIDIA when it had to, otherwise the buildContext string) back into its excerpt blocks and marks each excerpt full, partial or omitted. applyGrounding compares the numbers, dates, times, weekdays, codes, quotations and wording of each statement in the rendered answer with the excerpts it cites and, with the current rules (starpi-grounding 2), whether in the excerpts' language it keeps their negations and puts names and values where they do; it shows the result under the answer, and a match does not prove a statement correct. A value or name that the check does not find in the excerpts but finds in the question or one of the last user turns is marked from_conversation, a weak verdict; the model's own earlier answers do not count as given. When nothing was compared (the answer is too long, or answer and excerpts are in different languages and no statement was counted), the bar is neutral (grounding-none, a plain shield icon) instead of green. The receipt draft stays in memory, records for a partly delivered excerpt how many of its first characters reached the model (deliveredChars), and becomes a starpi.receipt/v2 JSON file, with a Merkle tree over its citations but without a signature (the app signs nothing), only when the user exports it from the receipt dialog: it shows that cited workspace excerpts can be reproduced from the same files, not that the receipt is authentic, what a model saw, or that its reasoning is right. Finally both turns are pushed to the in-memory conversation with localOnly set for client mode, workspace excerpts, an attached file or an extractive answer that names a workspace file.
 
 <!-- diagram: chat-request-source-check -->
 ```mermaid
@@ -1684,7 +2009,7 @@ flowchart TD
     Cov --> Blk{"block n found<br/>with text?"}
     Blk -->|"no"| Om["omitted, empty text"]
     Blk -->|"closing fence, text not cut"| Fu["full"]
-    Blk -->|"closing fence missing, or text shortened<br/>by buildContext or budgetPrompt, ending in an ellipsis"| Pa["partial, ellipsis removed"]
+    Blk -->|"closing fence missing, or text shortened by<br/>buildContext, budgetPrompt or fitNvidiaMessages,<br/>ending in an ellipsis"| Pa["partial, ellipsis removed"]
     Full --> Apply
     Om --> Apply
     Fu --> Apply
@@ -1699,20 +2024,20 @@ flowchart TD
     NoRep --> Draft
     Quiet --> Draft
     Bar --> Draft
-    Draft["storeReceiptDraft: createdAt, APP_VERSION, answer text,<br/>engine and locale, question, grounding report,<br/>citations with delivered state, deliveredChars<br/>for a partly delivered excerpt, workspace file<br/>and text SHA-256 and chunk offsets"]
+    Draft["storeReceiptDraft: createdAt, APP_VERSION, answer text,<br/>engine cloud, client, wasm, local, nvidia or synthesizer, locale, question, grounding report,<br/>citations with delivered state, deliveredChars<br/>for a partly delivered excerpt, workspace file<br/>and text SHA-256 and chunk offsets"]
     Draft --> Mem[("in-memory Map, ids r1, r2 and so on<br/>at most 50 drafts, never stored")]
     Draft --> Btn["receiptButton(id) appended to .message-provenance<br/>data-action open-receipt, then refreshIcons"]
     Btn -.->|"export in the receipt dialog"| Json["buildReceipt: JSON starpi.receipt/v2,<br/>Merkle root over the citations, not signed by the app,<br/>id from a hash of its body,<br/>at most 20 reasons per statement"]
     Btn --> Push
     Push["conversation.push user turn, first 4000 chars,<br/>and assistant turn, both with localOnly =<br/>mode client, usesWorkspace, namesWorkspace<br/>or a file attached"]
-    Push --> Out(["persistMessage follows, see the previous diagram"])
+    Push --> Out(["persistMessage follows, see chat-request-answer-dispatch"])
 ```
 
 <sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/messages.js`](../src/js/messages.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
 
 ### synthesizeAnswer: the extractive fallback
 
-synthesizeAnswer never generates text: it builds Markdown from the used hits and their citations. Its document list joins the titles of the used hits with the known titles (workspace file names plus knownTitles(), which calls listDocuments unless the connection is offline and caches the titles for 60 s only after a successful read) and shows up to 8 of them followed by "and n more". A greeting-only message gets synth.greeting with that list, and a request for the list itself (DOC_LIST_REQUEST, such as "Which documents are available?") gets the list, or the unreachable text when the knowledge base could not be searched and no title is known. Otherwise it quotes up to 4 sentences that share a search term with the question, each with the label of its excerpt; the last sentence of an excerpt cut at 1600 chars is left out. When no sentence shares a term (for example "Summarize the attached file"), it quotes the first 2 quotable sentences of each passage, at most 4, the attached file first. Only when nothing is quotable does it answer with the unreachable or the no-hits text. When modelAvailable is false, every answer ends with synth.footer_no_model.
+synthesizeAnswer never generates text: it builds Markdown from the used hits and their citations, and only verified source mode uses it (free chat has no excerpts to quote). Its document list joins the titles of the used hits with the known titles (workspace file names plus knownTitles(), which calls listDocuments unless the connection is offline and caches the titles for 60 s only after a successful read) and shows up to 8 of them followed by "and n more". A greeting-only message gets synth.greeting with that list, and a request for the list itself (DOC_LIST_REQUEST, such as "Which documents are available?") gets the list, or the unreachable text when the knowledge base could not be searched and no title is known. Otherwise it quotes up to 4 sentences that share a search term with the question, each with the label of its excerpt; the last sentence of an excerpt cut at 1600 chars is left out. When no sentence shares a term (for example "Summarize the attached file"), it quotes the first 2 quotable sentences of each passage, at most 4, the attached file first. Only when nothing is quotable does it answer with the unreachable or the no-hits text. When modelAvailable is false, every answer ends with synth.footer_no_model.
 
 <!-- diagram: chat-request-synthesizer -->
 ```mermaid
@@ -1749,80 +2074,95 @@ flowchart TD
 
 ### Answer modes: what leaves the device
 
-Every mode first runs BM25 over the on-device workspace in the ingest worker when it holds files. Unless the question is a demo sample question or the connection is offline, council and own-server mode then send the question (first 1000 chars) to the Supabase search_knowledge RPC and fall back to recentKnowledge(30) on zero rows or an error, while client mode only fetches the 30 newest documents without the question and ranks them in the browser; a greeting-only message goes through the same retrieval before its excerpts are dropped. The excerpts, workspace excerpts included, go to Gemini (no history) or OpenRouter in council mode and to the own server (no key) in own-server mode; OpenRouter and the own server also get the last 4 history turns not marked localOnly. Client mode keeps everything in the WebLLM worker and only downloads model files. Every failure except a user abort falls back to the extractive synthesizer, which may read document titles with listDocuments. The question is stored once retrieval shows whether workspace excerpts are used and stays in localStorage in client mode, with an attached file or when a used excerpt came from the workspace (a turn that fails before that uses the first two rules only); the answer stays local in client mode, when a used excerpt came from the workspace or when an extractive answer contains a workspace file name (a greeting or document list, whose question may still be synced), so a workspace turn never reaches chat_history. Everything else goes to chat_history only when canSyncChats() is true and the insert succeeds, otherwise to localStorage. Source-check results and receipt drafts stay in memory.
+In verified source mode every mode first runs BM25 over the on-device workspace in the ingest worker when it holds files. Unless the question is a demo sample question or the connection is offline, council, own-server and NVIDIA mode then send the question (first 1000 chars) to the Supabase search_knowledge RPC and fall back to recentKnowledge(30) on zero rows or an error, while client mode only fetches the 30 newest documents without the question and ranks them in the browser; a greeting-only message goes through the same retrieval before its excerpts are dropped. The excerpts, workspace excerpts included, go to Gemini (no history) or OpenRouter in council mode, to the own server (no key) in own-server mode, and through Starpi's NVIDIA proxy to NVIDIA in NVIDIA mode, where the browser sends no key and the proxy adds one from its pool; OpenRouter, the own server and NVIDIA also get the last 4 history turns not marked localOnly. Free chat searches nothing: the question, up to 16 earlier turns not marked localOnly (24,000 characters in all, Gemini included) and the text of a file attached to that question go to the model of the mode. Client mode keeps everything in the WebLLM or WASM worker and only downloads model files: WebGPU weights from Hugging Face and the model library from GitHub, or the pinned files of a WASM model from Hugging Face and the ONNX Runtime binary from the app's own /assets. In source mode every failure except a user abort falls back to the extractive synthesizer, which may read document titles with listDocuments; in free chat it ends in a notice. The question is stored once retrieval shows whether workspace excerpts are used (in free chat at once) and stays in localStorage in client mode, with an attached file or when a used excerpt came from the workspace (a turn that fails before that uses the first two rules only); the answer stays local in client mode, with an attached file in free chat, when a used excerpt came from the workspace or when an extractive answer contains a workspace file name (a greeting or document list, whose question may still be synced), so a workspace turn never reaches chat_history. Everything else goes to chat_history only when canSyncChats() is true and the insert succeeds, otherwise to localStorage. Source-check results and receipt drafts stay in memory.
 
 <!-- diagram: modes-privacy-data-egress -->
 ```mermaid
 flowchart TD
-    Ask(["submitChat: question trimmed to 8000 chars<br/>mode = getMode(), stored in starpi_compute_mode"])
-    UserTurn{"storeQuestion(usesWorkspace), question localOnly?<br/>client mode, a file attached,<br/>or any used excerpt from the workspace"}
+    Ask(["submitChat: question trimmed to 8000 chars<br/>mode = getMode(), stored in starpi_compute_mode<br/>chat mode: grounded for quick prompts and sample<br/>questions, else starpi_chat_mode"])
+    CMode{"chat mode?"}
+    UserTurn{"storeQuestion, question localOnly?<br/>client mode, a file attached,<br/>or any used excerpt from the workspace"}
     Skip{"demo sample question,<br/>or connection offline?"}
     RetMode{"retrieve(): mode is client?"}
     Ctx["mergeHits + assignCitations + buildContext<br/>at most 6 hits, 9 with an attachment, both sources keep slots<br/>excerpt max 1600 chars, context max 9000 chars<br/>a greeting-only message uses no excerpts"]
     Dispatch{"answer path by mode"}
     CKeys{"hasGeminiKey()?<br/>else hasOpenRouterKey()?"}
     Abort(["Stop pressed before a rendered answer:<br/>error to the submitChat catch,<br/>answer not shown or persisted"])
-    Persist{"answer localOnly?<br/>client mode, any used excerpt<br/>came from the workspace, or a synthesizer<br/>answer names a workspace file"}
+    Persist{"answer localOnly?<br/>client mode, a file in free chat,<br/>any used excerpt from the workspace,<br/>or a synthesizer answer naming a workspace file"}
     Sync{"not localOnly: canSyncChats()?<br/>signed in and hardened schema"}
 
     subgraph dev["Stays in this browser"]
-        WsSearch["retrieveWorkspace: BM25 in the ingest worker, every mode<br/>an attached file pins up to 3 chunks<br/>worker error: no workspace hits"]
+        WsSearch["retrieveWorkspace: BM25 in the ingest worker, source mode<br/>an attached file pins up to 3 chunks<br/>worker error: no workspace hits"]
+        FreeCtx["free chat: no search, the attached file's text<br/>from the ingest worker, up to 12000 chars"]
         Keys[("provider keys<br/>readSecret: sessionStorage, then localStorage")]
-        Hist["shareableHistory: last 4 turns<br/>not marked localOnly"]
-        LGen["client: WebLLM worker on WebGPU<br/>budgeted excerpts + last 4 history messages<br/>+ question stay in the browser"]
-        Synth["synthesizeAnswer: extractive quotes<br/>with citation labels, no model"]
-        Check["source check and receipt draft,<br/>in memory only"]
+        Hist["shareableHistory: turns not marked localOnly,<br/>last 4 in source mode,<br/>16 turns and 24000 chars in free chat"]
+        LGen["client: WebLLM worker on WebGPU or WASM worker<br/>on the processor, budgeted excerpts or file text,<br/>history and question stay in the browser"]
+        Synth["source mode: synthesizeAnswer, extractive quotes<br/>with citation labels, no model<br/>free chat: a notice, no answer"]
+        Check["source check and receipt draft, source mode only,<br/>for every engine, in memory only"]
         LS[("localStorage<br/>starpi_local_chats_v1")]
     end
 
     subgraph net["Sent over the network"]
         FTS["Supabase rpc search_knowledge<br/>question as query_text, first 1000 chars<br/>match_count 6"]
         Recent["Supabase recentKnowledge(30)<br/>30 newest documents, question not sent<br/>rankHitsLocally in the browser"]
-        Gem["council: Gemini gemini-2.5-flash generateContent<br/>one user part: system + excerpts incl. workspace<br/>+ question, no chat history"]
-        OR["council: OpenRouter chat/completions<br/>system + excerpts incl. workspace<br/>+ shareable history + question"]
-        Srv["local: own server getLlmUrl()/chat/completions<br/>system + excerpts incl. workspace<br/>+ shareable history + question, no key<br/>GET /models first while no model id is known"]
-        HF["WebLLM model files: huggingface.co weights,<br/>raw.githubusercontent.com wasm<br/>only when not cached, after a confirm, no user text"]
+        Gem["council: Gemini gemini-2.5-flash generateContent<br/>source mode: one user part, system + excerpts incl. workspace<br/>+ question, no chat history<br/>free chat: system with the attached file, history, question"]
+        OR["council: OpenRouter chat/completions<br/>system + excerpts incl. workspace or the attached file<br/>+ shareable history + question"]
+        Srv["local: own server getLlmUrl()/chat/completions<br/>system + excerpts incl. workspace or the attached file<br/>+ shareable history + question, no key<br/>GET /models first while no model id is known"]
+        NvCat["nvidia: GET /api/models/nvidia on the app's origin,<br/>the offered models, no user text"]
+        NV["nvidia: POST /api/chat/nvidia on the app's origin, no key,<br/>system + excerpts incl. workspace or the attached file<br/>+ shareable history + question, fitted to the proxy limits,<br/>Starpi's proxy forwards it with a pooled key to NVIDIA"]
+        HF["model files only when not cached, after a confirm, no user text:<br/>huggingface.co WebGPU weights and pinned WASM files,<br/>raw.githubusercontent.com model library,<br/>ONNX Runtime binary from the app's /assets"]
         Titles["Supabase listDocuments, no question sent<br/>skipped while offline, titles cached 60 s"]
         CH[("Supabase chat_history insert")]
     end
 
-    Ask --> WsSearch --> Skip
+    Ask --> CMode
+    CMode -->|"grounded"| WsSearch --> Skip
+    CMode -->|"free"| FreeCtx
     Skip -->|"yes: no Supabase search"| Ctx
     Skip -->|"no"| RetMode
-    RetMode -->|"no, council or local"| FTS
+    RetMode -->|"no, council, local or nvidia"| FTS
     RetMode -->|"yes"| Recent
     FTS -->|"rows found"| Ctx
     FTS -.->|"zero rows or error"| Recent
     Recent -->|"ranked hits, none if it fails"| Ctx
     WsSearch -->|"workspace excerpts"| Ctx
     Ctx -->|"after retrieval and the greeting check,<br/>before assignCitations"| UserTurn
+    FreeCtx -->|"at once"| UserTurn
     Ask -.->|"turn throws before that:<br/>catch runs storeQuestion(false)"| UserTurn
     UserTurn -->|"yes"| LS
     UserTurn -->|"no"| Sync
     Ctx --> Dispatch
+    FreeCtx --> Dispatch
     Dispatch -->|"council"| CKeys
     Dispatch -->|"client"| LGen
     Dispatch -->|"local"| Srv
+    Dispatch -->|"nvidia"| NvCat
+    NvCat -->|"proxy with keys"| NV
+    NvCat -.->|"no proxy or no keys"| Synth
     CKeys -->|"Gemini key"| Gem
     CKeys -->|"only OpenRouter key"| OR
     CKeys -->|"no key"| Synth
     Gem -.->|"fails, OpenRouter key set"| OR
     Gem -.->|"fails, no OpenRouter key"| Synth
     OR -.->|"all attempts fail,<br/>or HTTP 401 or 403"| Synth
+    NV -.->|"error code or timeout<br/>without answer text"| Synth
     Hist -.->|"history"| OR
     Hist -.->|"history"| Srv
+    Hist -.->|"history"| NV
+    Hist -.->|"free chat only"| Gem
     HF -.->|"only when not cached"| LGen
     LGen -.->|"not loaded, declined,<br/>empty or throws"| Synth
     Srv -.->|"throws, not aborted"| Synth
     Keys -.->|"Gemini key only,<br/>x-goog-api-key header"| Gem
     Keys -.->|"OpenRouter key only,<br/>Authorization Bearer"| OR
-    Synth -.->|"known titles"| Titles
+    Synth -.->|"known titles, source mode"| Titles
     Dispatch -.->|"user abort"| Abort
     Dispatch -.->|"answer with citations,<br/>same session"| Check
     Gem --> Persist
     OR --> Persist
     LGen --> Persist
     Srv --> Persist
+    NV --> Persist
     Synth --> Persist
     Persist -->|"yes"| LS
     Persist -->|"no"| Sync
@@ -1831,18 +2171,18 @@ flowchart TD
     CH -.->|"insert fails"| LS
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/config.js`](../src/js/config.js), [`src/js/state.js`](../src/js/state.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/demo.js`](../src/js/demo.js)</sub>
+<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/config.js`](../src/js/config.js), [`src/js/state.js`](../src/js/state.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/demo.js`](../src/js/demo.js), [`api/chat/nvidia.js`](../api/chat/nvidia.js)</sub>
 
 ### Council mode: Gemini then OpenRouter failover
 
-answerWithCloud tries Gemini 2.5 Flash first when a Gemini key exists; on any failure that is not a user abort (HTTP error, empty answer, 20 s timeout, network) it keeps the reason, with provider and model names replaced by sanitizeModelNames and cut to 160 chars, and continues with OpenRouter if an OpenRouter key is set. callOpenRouter tries up to 3 free models in a fixed order, moves on after empty answers and most errors, and stops early on HTTP 401 or 403; when every attempt fails the answer is empty with the note chat.note_cloud_failed and the OpenRouter reason. Without an OpenRouter key a failed Gemini call gives the same note with the Gemini reason, so only a council turn with no key at all returns null. A note appears in a chat.provider_failed notice above the answer and in the answer trace. In all these cases submitChat falls back to synthesizeAnswer with modelAvailable false, so the answer ends with synth.footer_no_model. After Stop the error is rethrown and no answer is persisted; the submitChat catch stays silent only for a DOMException AbortError, so Stop pressed during retrieval with only an OpenRouter key, where the model loop never starts, shows chat.error_title with provider.cloud_unreachable.
+answerWithCloud tries Gemini 2.5 Flash first when a Gemini key exists, in source mode with one user part that holds the system prompt, the excerpts and the question, and in free chat with the free-chat system prompt as systemInstruction and up to 16 shareable turns before the question; on any failure that is not a user abort (HTTP error, empty answer, 20 s timeout, network) it keeps the reason, with provider and model names replaced by sanitizeModelNames and cut to 160 chars, and continues with OpenRouter if an OpenRouter key is set. callOpenRouter tries up to 3 free models in a fixed order, moves on after empty answers and most errors, and stops early on HTTP 401 or 403; when every attempt fails the answer is empty with the note chat.note_cloud_failed and the OpenRouter reason. Without an OpenRouter key a failed Gemini call gives the same note with the Gemini reason, so only a council turn with no key at all returns null. A note appears in a chat.provider_failed notice above the answer and in the answer trace. In all these cases verified source mode falls back to synthesizeAnswer with modelAvailable false, so the answer ends with synth.footer_no_model, while free chat shows a notice and no answer. After Stop the error is rethrown and no answer is persisted; the submitChat catch stays silent only for a DOMException AbortError, so Stop pressed during retrieval with only an OpenRouter key, where the model loop never starts, shows chat.error_title with provider.cloud_unreachable.
 
 <!-- diagram: modes-privacy-cloud-failover -->
 ```mermaid
 flowchart TD
-    Start(["answerWithCloud: system = buildSystemPrompt<br/>target cloud, excerpts in the context block<br/>geminiFailure = null"])
+    Start(["answerWithCloud: source mode buildSystemPrompt<br/>target cloud, excerpts in the context block,<br/>free chat buildChatPrompt with the attached file<br/>geminiFailure = null"])
     GK{"hasGeminiKey()?"}
-    GCall["callGemini: POST v1beta/models/gemini-2.5-flash:generateContent<br/>one user part: system + question, no history<br/>x-goog-api-key header, timeout 20 s"]
+    GCall["callGemini: POST v1beta/models/gemini-2.5-flash:generateContent<br/>source mode: one user part, system + question, no history<br/>free chat: systemInstruction, up to 16 shareable turns<br/>as user and model contents, then the question<br/>x-goog-api-key header, timeout 20 s"]
     GOk{"res.ok and<br/>candidate text?"}
     GAb{"req.signal.aborted?"}
     GWarn["geminiFailure = sanitizeModelNames(message),<br/>first 160 chars, console.warn:<br/>Gemini failed, trying the next provider"]
@@ -1865,7 +2205,7 @@ flowchart TD
     Cloud(["answer engine cloud"])
     Note(["text empty, engine synthesizer<br/>note chat.note_cloud_failed with the OpenRouter<br/>or Gemini reason, sanitized, max 160 chars"])
     Rethrow(["rethrow to the submitChat catch, no answer persisted<br/>a DOMException AbortError shows no notice,<br/>any other error chat.error_title, e.g. Stop during<br/>retrieval with only an OpenRouter key:<br/>provider.cloud_unreachable"])
-    Synth(["submitChat: appendNotice chat.provider_failed_title<br/>when there is a note, then synthesizeAnswer<br/>modelAvailable false: synth.footer_no_model"])
+    Synth(["source mode: appendNotice chat.provider_failed_title<br/>when there is a note, then synthesizeAnswer<br/>modelAvailable false: synth.footer_no_model<br/>free chat: a notice why, no answer"])
 
     Start --> GK
     GK -->|"yes"| GCall
@@ -1901,11 +2241,11 @@ flowchart TD
     Null --> Synth
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/config.js`](../src/js/config.js), [`src/js/signals.js`](../src/js/signals.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/render.js`](../src/js/render.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/config.js`](../src/js/config.js), [`src/js/signals.js`](../src/js/signals.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/render.js`](../src/js/render.js), [`src/locales/en.json`](../src/locales/en.json), [`src/js/prompts.js`](../src/js/prompts.js)</sub>
 
 ### Settings: server URL rules and key storage
 
-saveSettings first validates the own-server URL with normalizeServerUrl: it must parse, use https unless it is http on localhost or 127.0.0.1 (exactly the plain-http hosts the vercel.json CSP connect-src allows, so http://[::1] is rejected), and carry no credentials; hash and query are removed and trailing slashes stripped, and any violation shows an alert and saves nothing. The remember toggle (starpi_remember_keys) decides where keys go: writeSecret deletes a key from both stores and writes it to localStorage when remembered, otherwise to sessionStorage for this tab only, flipping the toggle moves already stored keys, readSecret checks sessionStorage first and clear-keys removes both keys from both stores. The connection tests use a key typed into the field as typed, without storing it. A changed model preference unloads a non-idle engine before changeEngine applies the mode; after that finishes, the saved toast appears only when every storage write, the mode included, returned true, otherwise settings.save_failed. A stored URL is validated again on every own-server request, and probeLocalServer remembers the first model id the server lists, which callLocalServer then sends as model.
+saveSettings first validates the own-server URL with normalizeServerUrl: it must parse, use https unless it is http on localhost or 127.0.0.1 (exactly the plain-http hosts the vercel.json CSP connect-src allows, so http://[::1] is rejected), and carry no credentials; hash and query are removed and trailing slashes stripped, and any violation shows an alert and saves nothing. The remember toggle (starpi_remember_keys) decides where keys go: writeSecret deletes a key from both stores and writes it to localStorage when remembered, otherwise to sessionStorage for this tab only, flipping the toggle moves already stored keys, readSecret checks sessionStorage first and clear-keys removes both keys from both stores. The connection tests use a key typed into the field as typed, without storing it. The assistant pickers store a pick when it is made; Save applies the settings picker again only when it shows another value than the stored choice (a pick whose arrow keys have not settled), and the saved toast appears only when every storage write, that pick included, returned true, otherwise settings.save_failed. NVIDIA keys never reach the browser, so there is nothing to store for them. A stored URL is validated again on every own-server request, and probeLocalServer remembers the first model id the server lists, which callLocalServer then sends as model.
 
 <!-- diagram: modes-privacy-settings-storage -->
 ```mermaid
@@ -1927,9 +2267,9 @@ flowchart TD
     LSk[("localStorage<br/>kept across browser restarts")]
     SSk[("sessionStorage<br/>this tab only")]
     Hints["after both keys: fields cleared,<br/>renderKeyHints shows only the last 4 characters"]
-    Pref["setModelPreference(cfgWebgpuModel)<br/>preference changed and engine not idle: unloadModel()"]
-    Engine["await changeEngine(mode, interactive true)<br/>local mode: probeLocalServer GET url/models, 4 s,<br/>remembers the first listed model id,<br/>status.server_unreachable when it fails<br/>client mode: may load the model first<br/>resolves with whether setMode stored the mode"]
-    AllOk{"every write returned true?<br/>URL, remember flag, keys,<br/>model preference, mode"}
+    Pref{"cfgComputeMode shows another value<br/>than currentPickerValue()?<br/>a pick not applied yet"}
+    Engine["await changeEngine(value, interactive true)<br/>stores mode and on-device or NVIDIA model,<br/>local mode: probeLocalServer GET url/models, 4 s,<br/>remembers the first listed model id,<br/>status.server_unreachable when it fails<br/>client mode: may load the model first<br/>resolves with whether its writes were stored"]
+    AllOk{"every write returned true?<br/>URL, remember flag, keys,<br/>and a pending pick"}
     Saved(["alert settings.saved_toast"])
     SaveFail(["alert settings.save_failed<br/>storage missing, blocked or full"])
     Read["readSecret: sessionStorage first,<br/>then localStorage"]
@@ -1954,7 +2294,9 @@ flowchart TD
     Keep --> Hints
     LSk --> Hints
     SSk --> Hints
-    Hints --> Pref --> Engine --> AllOk
+    Hints --> Pref
+    Pref -->|"yes"| Engine --> AllOk
+    Pref -->|"no"| AllOk
     AllOk -->|"yes"| Saved
     AllOk -->|"no"| SaveFail
     SetUrl -.-> PerCall
@@ -1965,127 +2307,117 @@ flowchart TD
     Clear -.->|"removes"| SSk
 ```
 
-<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`src/js/chat.js`](../src/js/chat.js), [`vercel.json`](../vercel.json)</sub>
+<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`src/js/chat.js`](../src/js/chat.js), [`vercel.json`](../vercel.json), [`src/js/model-picker.js`](../src/js/model-picker.js)</sub>
 
 ### Privacy notice under the chat input
 
-renderPrivacyNotice chooses the footer from the mode alone, plus in council mode whether any provider key is stored, and re-renders on settings init, every changeEngine, clear-keys and every Supabase connection update: each connect attempt, the automatic reconnects after an offline result and the switch to offline after a failed request. Every notice says where the question goes: nowhere in on-device mode, and to the knowledge-base search in the other three, plus the own server or the cloud provider. Outside on-device mode, a second line, privacy.history_synced, says that questions and answers are saved to the private chat history whenever canSyncChats() is true. The texts do not mention the exceptions: a demo sample question or an offline connection skips the knowledge-base search, and turns that use workspace excerpts, like extractive answers that name workspace files, stay in the browser. When chats stay in the browser no line says so; privacy.history_local exists in the dictionaries but no code renders it.
+renderPrivacyNotice chooses the footer from the mode and the chat mode, plus in council mode whether any provider key is stored, and re-renders on settings init, every changeEngine, every change of the chat mode toggle, clear-keys and every Supabase connection update: each connect attempt, the automatic reconnects after an offline result and the switch to offline after a failed request. In verified source mode every notice says where the question goes: nowhere in on-device mode, and to the knowledge-base search in the other three modes, plus the own server, the cloud provider or, through Starpi's server, NVIDIA together with the matching excerpts and earlier messages of the chat. In free chat each notice says that no sources are searched and what goes to the model: the question, an attached file and earlier messages of this chat, or nothing at all when council mode has no key. NVIDIA mode shows its notice before the proxy has answered; without a proxy nothing goes to NVIDIA, and the status line says status.nvidia_unavailable. Outside on-device mode, a second line, privacy.history_synced, says that questions and answers are saved to the private chat history whenever canSyncChats() is true. The texts do not mention the exceptions: a demo sample question or an offline connection skips the knowledge-base search, and turns that use workspace excerpts or an attached file, like extractive answers that name workspace files, stay in the browser. When chats stay in the browser no line says so; privacy.history_local exists in the dictionaries but no code renders it.
 
 <!-- diagram: modes-privacy-notice -->
 ```mermaid
 flowchart TD
-    Trig(["renderPrivacyNotice() fills the privacyNotice footer<br/>on initSettings, every changeEngine, clear-keys<br/>and every Supabase connection update,<br/>reconnect attempts and the switch to offline included"])
+    Trig(["renderPrivacyNotice() fills the privacyNotice footer<br/>on initSettings, every changeEngine, onChatModeChange,<br/>clear-keys and every Supabase connection update,<br/>reconnect attempts and the switch to offline included"])
     Mode{"getMode()"}
-    NLocal["client: lock icon, privacy.local<br/>your question and the model<br/>stay on this device"]
-    NServer["local: server icon, privacy.server<br/>your question goes to host<br/>and to the knowledge-base search<br/>host = new URL(getLlmUrl()).host, a dash if unparsable"]
+    NLocal["client: lock icon<br/>source mode privacy.local: your question<br/>and the model stay on this device<br/>free chat privacy.free_local: the same,<br/>no sources are searched"]
+    NServer["local: server icon, host = new URL(getLlmUrl()).host,<br/>a dash if unparsable<br/>source mode privacy.server: your question goes<br/>to host and to the knowledge-base search<br/>free chat privacy.free_server: question,<br/>attached file and earlier messages go to host"]
+    NNv["nvidia: cloud icon<br/>source mode privacy.nvidia: knowledge-base search,<br/>then question, matching excerpts and earlier messages<br/>through Starpi's server to NVIDIA<br/>free chat privacy.free_nvidia: question, attached file<br/>and earlier messages through Starpi's server to NVIDIA"]
     Keys{"council: hasGeminiKey()<br/>or hasOpenRouterKey()?"}
-    NCloud["cloud icon, privacy.cloud<br/>your question goes to the knowledge-base search,<br/>and with matching excerpts to your provider"]
-    NExt["library icon, privacy.extractive<br/>question goes to the knowledge-base search,<br/>answers quote it directly"]
+    NCloud["cloud icon<br/>source mode privacy.cloud: knowledge-base search,<br/>and with matching excerpts to your provider<br/>free chat privacy.free_cloud: question, attached file<br/>and earlier messages go to your provider"]
+    NExt["source mode: library icon, privacy.extractive<br/>question goes to the knowledge-base search,<br/>answers quote it directly<br/>free chat: info icon, privacy.free_no_model:<br/>no model is set up, nothing is sent"]
     SyncChk{"canSyncChats()?<br/>signed in and hardened schema"}
     Hist["second line privacy.history_synced:<br/>questions and answers are saved to your<br/>private chat history, delete it in Settings"]
     NoHist["no history line,<br/>privacy.history_local is never rendered"]
-    RLocal["requests: recentKnowledge(30) unless offline<br/>or a sample question, model files when not cached,<br/>listDocuments for the synthesizer,<br/>none carries the question, chats stay local"]
-    RServer["requests: search_knowledge with the question<br/>unless offline or a sample question, GET /models<br/>while no model id is known, own server with<br/>question, excerpts and shareable history,<br/>listDocuments when the synthesizer answers,<br/>chat_history except turns with workspace excerpts<br/>and extractive answers naming workspace files"]
-    RCloud["requests: search_knowledge with the question<br/>unless offline or a sample question, Gemini or OpenRouter<br/>with question and excerpts, OpenRouter also history,<br/>listDocuments when the synthesizer answers,<br/>chat_history except turns with workspace excerpts<br/>and extractive answers naming workspace files"]
-    RExt["requests: search_knowledge with the question<br/>unless offline or a sample question, listDocuments,<br/>chat_history except turns with workspace excerpts<br/>and extractive answers naming workspace files"]
+    RLocal["requests: in source mode recentKnowledge(30) unless<br/>offline or a sample question, listDocuments for the<br/>synthesizer, model files when not cached,<br/>none carries the question, chats stay local"]
+    RServer["requests: search_knowledge with the question in source mode<br/>unless offline or a sample question, GET /models<br/>while no model id is known, own server with<br/>question, excerpts or file and shareable history,<br/>chat_history except turns with workspace excerpts,<br/>attached files and extractive answers naming workspace files"]
+    RNv["requests: GET /api/models/nvidia, search_knowledge with<br/>the question in source mode unless offline or a sample question,<br/>POST /api/chat/nvidia with question, excerpts or file<br/>and shareable history when the proxy has keys,<br/>chat_history with the same exceptions"]
+    RCloud["requests: search_knowledge with the question in source mode<br/>unless offline or a sample question, Gemini or OpenRouter<br/>with question and excerpts or file, OpenRouter also history,<br/>Gemini history only in free chat,<br/>chat_history with the same exceptions"]
+    RExt["requests: in source mode search_knowledge with the question<br/>unless offline or a sample question, listDocuments,<br/>chat_history with the same exceptions"]
 
     Trig --> Mode
     Mode -->|"client"| NLocal
     Mode -->|"local"| NServer
+    Mode -->|"nvidia"| NNv
     Mode -->|"council"| Keys
     Keys -->|"yes"| NCloud
     Keys -->|"no"| NExt
     NLocal --> NoHist
     NServer --> SyncChk
+    NNv --> SyncChk
     NCloud --> SyncChk
     NExt --> SyncChk
     SyncChk -->|"yes"| Hist
     SyncChk -->|"no"| NoHist
     NLocal -.->|"actual requests"| RLocal
     NServer -.->|"actual requests"| RServer
+    NNv -.->|"actual requests"| RNv
     NCloud -.->|"actual requests"| RCloud
     NExt -.->|"actual requests"| RExt
 ```
 
-<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/locales/en.json`](../src/locales/en.json), [`src/js/main.js`](../src/js/main.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/state.js`](../src/js/state.js), [`src/js/demo.js`](../src/js/demo.js)</sub>
+<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/locales/en.json`](../src/locales/en.json), [`src/js/main.js`](../src/js/main.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/state.js`](../src/js/state.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/demo.js`](../src/js/demo.js)</sub>
 
 ### On-device model selection
 
-A manual preference always wins (unknown stored values become auto); in auto mode, mobile devices (userAgentData.mobile, else a user-agent regex) get Llama 3.2 1B, Qwen 2.5 3B needs maxBufferSize of at least 1 GiB and navigator.deviceMemory of at least 8 GB, Qwen 2.5 1.5B is picked when the buffer is large enough but the memory is hidden, and everything else gets Llama 3.2 1B. Adapters with shader-f16 load the q4f16_1 build, others the q4f32_1 build, and only a non-mobile qwen-3b gets a 4096-token context window (prefill chunk 512), every other choice 2048 (prefill 128 on mobile, else 256). The 700, 1000 and 1900 MB figures are the catalogue download estimates used for the confirm dialog and the 1.2x quota check, while the VRAM badge shows WebLLM vram_required_MB for the chosen build (values from the pinned @mlc-ai/web-llm 0.2.85). The same modelId reuses the loaded engine. A model that is certainly not cached is settled before anything is torn down or the WebLLM library is imported: a start-up load resolves false, an interactive one checks the quota, asks, and requests persistent storage; a partly cached model gets the same consent after the import. A declined download resolves false, and every error ends in status error with a notice from startLocalEngine unless the load was cancelled.
+Both assistant pickers, engineSelector in the header and cfgComputeMode in the settings, offer the on-device presets as values webgpu:key and wasm:key; picking one runs changeEngine, which stores the ref in starpi_webgpu_model (the value auto stays until the user picks a model) and loads the model interactively. normalizePreference keeps auto and known refs, turns a bare 2.0 key such as qwen-3b into webgpu:qwen-3b and any other value into auto. loadModel probes the device with the high-performance adapter and a 10 s deadline and chooseModel resolves the preference: a manual ref always wins, and auto follows recommendModels (device-tier-selector), which picks a processor (WASM) model when there is no WebGPU and never a T3 preset. A WebGPU preset with no WebGPU is not swapped for a processor model: the load fails with the probe's error (unsupported or no-adapter). WebGPU presets load the q4f16_1 build when the adapter has shader-f16, else the q4f32_1 build; T1 presets use a 2,048-token context window, T2 and T3 presets 4,096, phones at most 2,048, and the prefill chunk is 128 on phones, else 512 at 4,096 tokens and 256 below; each answers with up to 512 tokens. WASM models run with a 2,048-token window, a prefill chunk of 256 and up to 384 tokens, need no GPU memory and report none. The approximate download (300 MB to 5.3 GB for the 13 WebGPU presets, 140 to 520 MB for the 3 WASM models, plus 15 MB of ONNX Runtime counted for every WASM download) drives the confirm dialog and the 1.2x quota check, and the WebGPU badge shows WebLLM vram_required_MB for the chosen build (values from the pinned @mlc-ai/web-llm 0.2.85). The same runtime and model id reuse the loaded engine. A model that is certainly not cached is settled before anything is torn down, the WebLLM library is imported or a worker starts: a start-up load resolves false, an interactive one checks the quota, asks (a T3 preset first warns that it needs several GB of GPU memory), and requests persistent storage; a WASM model counts as missing unless its config, tokenizer and weights are all in transformers-cache, and a partly cached WebGPU model gets the same consent after the import. A declined download resolves false, and every error ends in status error with a notice from startLocalEngine unless the load was cancelled.
 
 <!-- diagram: model-selection-choose-model -->
 ```mermaid
 flowchart TD
-    SetPref["save-settings: setModelPreference(cfgWebgpuModel)<br/>auto, llama-1b, qwen-1.5b or qwen-3b<br/>preference changed and engine not idle: unloadModel()"]
-    Pref["preference = normalizePreference(starpi_webgpu_model)<br/>unknown or removed values become auto"]
-    Start(["startLocalEngine: loadModel with getModelPreference()<br/>mode restore at boot: onlyIfCached, no download<br/>chat answer, benchmark, mode change: interactive"])
-    Probe{"probeWebGPU: navigator.gpu present and<br/>requestAdapter high-performance returns an adapter?"}
-    Unsup["EngineError unsupported or no-adapter"]
-    HW["HardwareProfile<br/>deviceMemoryGB = navigator.deviceMemory, else null<br/>maxBufferSize = adapter.limits.maxBufferSize<br/>hasF16 = adapter.features has shader-f16"]
-    MobQ{"detectMobile: userAgentData.mobile<br/>is a boolean?"}
-    MobUAD["isMobile = userAgentData.mobile"]
-    MobUA["isMobile = userAgent matches Android,<br/>iPhone, iPad, iPod or Mobile, any case"]
+    Pick["model picker: engineSelector or cfgComputeMode<br/>value webgpu:key or wasm:key,<br/>applied at once, arrow keys after 700 ms of rest<br/>changeEngine: setModelPreference, starpi_webgpu_model,<br/>another model loaded or loading: unloadModel()"]
+    Pref["preference = normalizePreference(starpi_webgpu_model)<br/>auto, webgpu:key or wasm:key, a bare 2.0 key<br/>becomes webgpu:key, unknown values become auto"]
+    Start(["startLocalEngine: loadModel with getModelPreference()<br/>mode restore at boot: onlyIfCached, no download<br/>chat answer, benchmark, a pick: interactive"])
+    Probe["probeDevice with the high-performance adapter, 10 s deadline<br/>hw: isMobile, deviceMemoryGB, maxBufferSize, hasF16,<br/>webgpu, maxStorageBufferBindingSize, vendor, architecture<br/>no adapter or no answer: webgpu false, maxBufferSize 0"]
     PrefQ{"chooseModel: preference is auto?"}
-    Manual["key = preference, reason manual<br/>no hardware check for the key"]
-    IsMob{"isMobile?"}
-    Big{"maxBufferSize at least 1 GiB<br/>and deviceMemoryGB at least 8?"}
-    Unk{"maxBufferSize at least 1 GiB<br/>and deviceMemoryGB null?"}
-    L1["llama-1b: Llama 3.2 1B<br/>approxDownloadMB 700<br/>WebLLM VRAM f16 879 MB, f32 1129 MB"]
-    Q15["qwen-1.5b: Qwen 2.5 1.5B<br/>approxDownloadMB 1000<br/>WebLLM VRAM f16 1630 MB, f32 1889 MB"]
-    Q3["qwen-3b: Qwen 2.5 3B<br/>approxDownloadMB 1900<br/>WebLLM VRAM f16 2505 MB, f32 2894 MB"]
-    F16{"hasF16?"}
+    Auto["ref = recommendModels(hw).local, reason auto<br/>never a T3 preset, a WASM model without WebGPU,<br/>see device-tier-selector"]
+    Manual["ref = preference, reason manual<br/>no hardware check for the ref"]
+    Runtime{"ref is wasm:key?"}
+    Wasm["WASM choice: modelId = the Hugging Face repo,<br/>pinned revision, dtype q8, tier t1, f16 false,<br/>vramMB null, context 2048, prefill 256,<br/>maxOutputTokens 384, approxDownloadMB 140 to 520"]
+    NoGpu{"WebGPU preset and<br/>the probe found no WebGPU?"}
+    Unsup["EngineError from the probe:<br/>unsupported or no-adapter"]
+    F16{"hasF16 and webgpu?"}
     Id16["modelId = spec.f16, a q4f16_1 build<br/>e.g. Qwen2.5-3B-Instruct-q4f16_1-MLC"]
     Id32["modelId = spec.f32, a q4f32_1 build<br/>e.g. Qwen2.5-3B-Instruct-q4f32_1-MLC"]
-    Large{"large: key is qwen-3b<br/>and not mobile?"}
-    Ctx4["chatOptions: context_window_size 4096<br/>prefill_chunk_size 512"]
-    Ctx2["chatOptions: context_window_size 2048<br/>prefill_chunk_size 128 on mobile, else 256"]
-    Same{"engine loaded with<br/>the same modelId?"}
+    Ctx["chatOptions: context_window_size = 2048 for T1,<br/>4096 for T2 and T3, at most 2048 on phones<br/>prefill_chunk_size 128 on phones, else 512<br/>at 4096 and 256 below, maxOutputTokens 512"]
+    Same{"engine loaded with the same<br/>runtime and modelId?"}
     Reuse(["reuse it, resolve true"])
-    Missing{"certainlyNotCached(modelId)?<br/>Cache API webllm/model has<br/>no tensor-cache.json for it"}
-    Silent(["resolve false, state unchanged,<br/>WebLLM library not imported"])
-    Agree["agreeToDownload: checkQuota needs<br/>1.2 x approxDownloadMB free when the quota is known,<br/>confirmDownload with approxDownloadMB,<br/>then navigator.storage.persist, best effort"]
+    Missing{"WASM: wasmCacheStatus is not full<br/>WebGPU: certainlyNotCached, no tensor-cache.json<br/>for the model in webllm/model"}
+    Silent(["resolve false, state unchanged,<br/>no import, no worker"])
+    Agree["agreeToDownload: checkQuota needs 1.2 x<br/>approxDownloadMB, plus 15 MB of ONNX Runtime<br/>for WASM, free when the quota is known,<br/>confirmDownload: engine.confirm_large for T3,<br/>engine.confirm_download or confirm_download_wasm,<br/>engine.confirm_save_data with Save-Data,<br/>then navigator.storage.persist, best effort"]
+    LoadW["teardown, status loading, new Worker starpi-wasm,<br/>WasmEngineClient.load, see wasm-runtime-load"]
     Load["teardown, status loading, import web-llm<br/>modelId not in prebuiltAppConfig: EngineError unknown"]
     Partial{"not certainly missing, but<br/>hasModelInCache false?<br/>index cached, shards missing"}
     Declined(["status idle, resolve false"])
     Create["CreateWebWorkerMLCEngine(worker, modelId,<br/>initProgressCallback, chatOptions)"]
+    ReadyW(["status ready, badge engine.ram_ready<br/>with the model label, memory not reported"])
     Ready(["status ready, vramMB = round(record.vram_required_MB)<br/>badge engine.vram_ready: label, f16 or f32,<br/>about vramMB / 1024 GB VRAM<br/>engine.vram_ready_no_size without a size"])
     Fail(["loadModel catch: teardown, status error, rethrow<br/>startLocalEngine: notice engine.error.kind<br/>unless cancelled, resolves false"])
 
-    SetPref --> Pref --> Start --> Probe
-    Probe -->|"no"| Unsup --> Fail
-    Probe -->|"yes"| HW --> MobQ
-    MobQ -->|"yes"| MobUAD
-    MobQ -->|"no"| MobUA
-    MobUAD --> PrefQ
-    MobUA --> PrefQ
+    Pick --> Pref --> Start --> Probe --> PrefQ
+    PrefQ -->|"yes"| Auto
     PrefQ -->|"no"| Manual
-    PrefQ -->|"yes"| IsMob
-    IsMob -->|"yes"| L1
-    IsMob -->|"no"| Big
-    Big -->|"yes"| Q3
-    Big -->|"no"| Unk
-    Unk -->|"yes, memory hidden"| Q15
-    Unk -->|"no: under 8 GB or<br/>maxBufferSize under 1 GiB"| L1
-    Manual --> F16
-    L1 --> F16
-    Q15 --> F16
-    Q3 --> F16
+    Auto --> Runtime
+    Manual --> Runtime
+    Runtime -->|"yes"| Wasm --> Same
+    Runtime -->|"no, webgpu:key"| NoGpu
+    NoGpu -->|"yes"| Unsup --> Fail
+    NoGpu -->|"no"| F16
     F16 -->|"yes"| Id16
     F16 -->|"no"| Id32
-    Id16 --> Large
-    Id32 --> Large
-    Large -->|"yes"| Ctx4
-    Large -->|"no"| Ctx2
-    Ctx4 --> Same
-    Ctx2 --> Same
+    Id16 --> Ctx
+    Id32 --> Ctx
+    Ctx --> Same
     Same -->|"yes"| Reuse
     Same -->|"no"| Missing
     Missing -->|"yes, onlyIfCached"| Silent
     Missing -->|"yes, interactive"| Agree
-    Agree -->|"agreed"| Load
     Agree -.->|"declined"| Silent
     Agree -.->|"quota too small"| Fail
-    Missing -->|"no, or not known"| Load
+    Agree -->|"agreed, WASM"| LoadW
+    Agree -->|"agreed, WebGPU"| Load
+    Missing -->|"no, WASM fully cached"| LoadW
+    Missing -->|"no or not known, WebGPU"| Load
+    LoadW --> ReadyW
+    LoadW -.->|"network, quota or worker error"| Fail
     Load --> Partial
     Partial -->|"yes: onlyIfCached,<br/>or agreeToDownload declined"| Declined
     Partial -->|"no, or agreed"| Create
@@ -2095,11 +2427,82 @@ flowchart TD
     Create -.->|"network, quota, device-lost,<br/>out-of-memory or other error"| Fail
 ```
 
-<sub>Sources: [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/state.js`](../src/js/state.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/config.js`](../src/js/config.js), [`src/index.html`](../src/index.html), [`package.json`](../package.json)</sub>
+<sub>Sources: [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/models/device.js`](../src/js/models/device.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/state.js`](../src/js/state.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/config.js`](../src/js/config.js), [`src/locales/en.json`](../src/locales/en.json), [`package.json`](../package.json)</sub>
+
+### Device tiers and the model pickers
+
+Until the device is known, both pickers show static options: the bare modes council, client (the automatic on-device model), nvidia and local. When the page is idle, model-picker.js calls getDeviceProbe once: it asks for the browser's default adapter, because filling a menu should not wake a discrete GPU, and counts the device as having no WebGPU when no adapter answers within 2.5 s. classifyDevice sorts the device into one of six classes, and recommendModels maps the class to the preset auto resolves to and, on a desktop-pro device, to a larger suggestion that is never picked automatically. auto never picks a T3 preset, because browsers report no GPU memory and navigator.deviceMemory is capped at 8 GB and hidden by Safari and Firefox; without WebGPU it picks a processor (WASM) model by memory. assistantGroups lists every value once, in four groups: Recommended for your device (the auto pick, the pro suggestion and, when the proxy has keys, the NVIDIA default model), In this browser (WebGPU/WASM) with the other WebGPU presets by tier and the WASM models, NVIDIA NIM cloud (fast & free) with the allowlisted models the proxy offers, and Other assistants (the cloud assistant with your own keys, the own server). WebGPU presets are marked needs WebGPU on a device without it and T3 presets needs a strong GPU unless the device is desktop-pro; NVIDIA models are disabled and marked not set up on this server when the proxy has no keys, and without a proxy the group is left out unless a stored NVIDIA model has to stay visible. Each option reads model name, where it runs, download size, recommended or more quality, and a warning; only model names come from the catalogs, everything else is translated. Both pickers are rebuilt with data-ready true and select the stored choice, auto shown as the model it resolves to, and the settings show badges for GPU support, memory and device class; a language switch or a new proxy answer rebuilds them. A pick applies at once through changeEngine, a change made with the arrow keys once they rest for 700 ms, and a switch while an answer is being written is refused. Nothing is downloaded without consent: the first-run mode stays council, and every model download waits for confirmDownload when the model loads.
+
+<!-- diagram: device-tier-selector -->
+```mermaid
+flowchart TD
+    Static(["index.html: static options council, client,<br/>nvidia, local, selected by initSettings"])
+    Idle["initModelPicker: requestIdleCallback, at most 2 s"]
+    Probe["getDeviceProbe(): probeDevice with the default adapter,<br/>probed once, no adapter within 2.5 s counts as no WebGPU<br/>hw: isMobile, deviceMemoryGB or null, maxBufferSize, hasF16,<br/>webgpu, maxStorageBufferBindingSize, vendor"]
+    Cat["getNvidiaCatalog(): pending until the proxy answers,<br/>then absent, unconfigured or configured"]
+    Static --> Idle
+    Idle --> Probe
+    Idle --> Cat
+
+    Cls{"classifyDevice(hw)"}
+    CPU["cpu-only: no WebGPU"]
+    MOB["mobile: phone or tablet"]
+    LOW["low: maxBufferSize under 1 GiB<br/>or deviceMemory under 8 GB"]
+    PRO["desktop-pro: shader-f16,<br/>maxStorageBufferBindingSize at least 1 GiB,<br/>vendor apple, nvidia or amd"]
+    LAP["laptop: memory hidden"]
+    DESK["desktop: memory reported, 8 GB or more"]
+    Probe --> Cls
+    Cls -->|"webgpu false"| CPU
+    Cls -->|"isMobile"| MOB
+    Cls -->|"small buffer or memory"| LOW
+    Cls -->|"strong GPU"| PRO
+    Cls -->|"deviceMemory null"| LAP
+    Cls -->|"otherwise"| DESK
+
+    Rec["recommendModels: local = what auto picks, never T3<br/>cpu-only: wasm:smollm2-135m under 2 GB,<br/>wasm:smollm2-360m on phones or under 4 GB, else wasm:qwen-0.5b<br/>mobile and low: webgpu:llama-1b<br/>laptop, desktop, desktop-pro: webgpu:qwen-1.5b with memory<br/>hidden, else webgpu:qwen-3b<br/>pro = webgpu:qwen-7b on desktop-pro only, a suggestion"]
+    CPU --> Rec
+    MOB --> Rec
+    LOW --> Rec
+    PRO --> Rec
+    LAP --> Rec
+    DESK --> Rec
+
+    Groups["assistantGroups(hw, nvidiaStatus): every value once<br/>1 Recommended for your device: auto pick marked recommended,<br/>pro pick marked more quality, NVIDIA default when configured<br/>2 In this browser (WebGPU/WASM): the 13 WebGPU presets<br/>T1 to T3 and the 3 WASM models, the promoted ones removed<br/>3 NVIDIA NIM cloud (fast and free): offered models in catalog order<br/>4 Other assistants: cloud assistant, own server"]
+    Warn["warnings: needs WebGPU on cpu-only,<br/>needs a strong GPU for T3 unless desktop-pro,<br/>not set up on this server: NVIDIA model disabled"]
+    NvState{"NVIDIA status"}
+    NvHide["absent, no proxy: group left out,<br/>only a stored NVIDIA model stays, disabled"]
+    NvOff["unconfigured: offered models disabled"]
+    NvOn["configured: offered models enabled,<br/>default promoted to Recommended"]
+    Rec --> Groups
+    Cat --> NvState
+    NvState -->|"pending"| NvPend["pending: only a stored NVIDIA model, enabled"] --> Groups
+    NvState -->|"absent"| NvHide --> Groups
+    NvState -->|"unconfigured"| NvOff --> Groups
+    NvState -->|"configured"| NvOn --> Groups
+    Warn -.- Groups
+
+    Render["renderModelPickers: engineSelector and cfgComputeMode<br/>rebuilt as optgroups, data-ready true,<br/>option text: name, where it runs, download size,<br/>recommendation, warning, joined by middle dots<br/>value = choiceValue: auto shown as its recommendation<br/>settings badges: GPU support, memory, device class"]
+    Groups --> Render
+    Again["rebuilt on a language switch and on every new<br/>catalog, a mode change only moves the selection"]
+    Again -.-> Render
+
+    PickQ{"user picks a value"}
+    Render --> PickQ
+    PickQ -->|"mouse or touch"| CE
+    PickQ -->|"arrow keys"| Settle["applied after 700 ms of rest,<br/>on Enter or on blur"] --> CE
+    CE["changeEngine(value, interactive true)<br/>refused with models.switch_busy while<br/>an answer is being written"]
+    CE --> Load{"on-device model and<br/>not cached?"}
+    Load -->|"yes"| Consent(["confirmDownload before any download,<br/>declined: nothing downloaded"])
+    Load -->|"no"| Use(["model loaded from the cache,<br/>or NVIDIA, cloud or own server used"])
+    First["first run: mode council, no model loaded<br/>or downloaded until the user picks one"]
+    First -.-> Static
+```
+
+<sub>Sources: [`src/js/models/device.js`](../src/js/models/device.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/state.js`](../src/js/state.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json)</sub>
 
 ### On-device prompt budgeting
 
-budgetPrompt reserves 512 output tokens plus 128 tokens of chat-template overhead and converts the rest of the context window to characters at 3 chars per token (4224 chars for a 2048 window, 10368 for 4096). It trims in a fixed order: system instructions up to 15% (594 en or 623 de chars, never cut), the question up to 35% of what is left, the retrieved context up to 80% of what is left, then history from the newest message backwards, each capped at 600 chars, until one no longer fits. The on-device model gets the last 4 history messages, on-device turns included. The budgeted instructions plus contextSection, whose header is not counted, form one system message, followed by the kept history and the question, generated with 512 max tokens at temperature 0.2. Cutting the context can remove closing excerpt fences; the budgeted context is returned as deliveredContext, so the source check marks cut excerpts partial and dropped ones omitted. A model that is not ready or an empty answer falls back to the extractive synthesizer, and an error does too after a chat.provider_failed notice.
+budgetPrompt reserves the answer's output tokens (in source mode the model's maxOutputTokens: 512 for a WebGPU preset, 384 for a WASM model) plus 128 tokens of chat-template overhead and converts the rest of the context window to characters at 3 chars per token (for a WebGPU preset 4224 chars in a 2048 window, 10368 in 4096). It trims in a fixed order: system instructions up to 15% (594 en or 623 de chars, never cut), the question up to 35% of what is left, the retrieved context up to 80% of what is left, then history from the newest message backwards, each capped at 600 chars, until one no longer fits. The on-device model gets the last 4 history messages, on-device turns included. The budgeted instructions plus contextSection, whose header is not counted, form one system message, followed by the kept history and the question, generated with the reserved max tokens at temperature 0.2. Free chat uses the same budget with chatInstructions, the attached file's text in place of the excerpts (fenced with attachmentSection after budgeting), the last 16 history messages at up to 2,000 chars each and temperature 0.7; on WebGPU it reserves a third of the context window for the answer, at most 768 tokens, while WASM models keep 384. Cutting the context can remove closing excerpt fences; the budgeted context is returned as deliveredContext, so the source check marks cut excerpts partial and dropped ones omitted. A model that is not ready or an empty answer falls back to the extractive synthesizer, and an error does too after a chat.provider_failed notice.
 
 <!-- diagram: model-selection-prompt-budget -->
 ```mermaid
@@ -2107,8 +2510,9 @@ flowchart TD
     In(["answerWithLocalModel"])
     Ready{"engine.isReady(), or startLocalEngine<br/>interactive resolves true,<br/>model set and not aborted?"}
     Null(["return null: submitChat uses synthesizeAnswer"])
-    Inputs["budgetPrompt input<br/>contextWindow = model.chatOptions.context_window_size<br/>maxOutputTokens 512<br/>system = buildInstructions(locale, local): identity + 4 rules<br/>context = buildContext excerpts, max 9000 chars<br/>history = last 4 history messages, user = the question"]
-    Reserve["reserveTokens = 512 + 128 chat template overhead = 640"]
+    Inputs["budgetPrompt input, source mode<br/>contextWindow = model.chatOptions.context_window_size<br/>maxOutputTokens = model maxOutputTokens: 512 WebGPU, 384 WASM<br/>system = buildInstructions(locale, local): identity + 4 rules<br/>context = buildContext excerpts, max 9000 chars<br/>history = last 4 history messages, user = the question"]
+    FreeIn["free chat instead: system = chatInstructions,<br/>context = the attached file text, history = last 16 messages,<br/>turnChars 2000, maxOutputTokens min(768, window / 3)<br/>on WebGPU, 384 on WASM, temperature 0.7"]
+    Reserve["reserveTokens = maxOutputTokens + 128 chat template overhead,<br/>640 for a WebGPU preset in source mode"]
     Budget["remaining = max(256, contextWindow - 640) x 3 chars per token<br/>2048 window: 4224 chars, 4096 window: 10368 chars"]
     Take["take(text, max): allowed = min(max, remaining)<br/>longer text keeps allowed - 1 chars + ellipsis<br/>remaining shrinks by the kept length"]
     S1["Step 1 system: at most 15% of remaining, 633 or 1555<br/>594 en or 623 de chars, never cut"]
@@ -2119,16 +2523,17 @@ flowchart TD
     Keep["unshift the message,<br/>remaining shrinks by its length"]
     More{"older message left?"}
     Drop["stop: this message and all<br/>older ones are dropped"]
-    Sys["system message = budget.system + blank line +<br/>contextSection(locale, budget.context):<br/>header line + context, or the no matching excerpts line<br/>header and blank line are not counted in the budget"]
+    Sys["system message = budget.system + blank line +<br/>contextSection(locale, budget.context):<br/>header line + context, or the no matching excerpts line,<br/>in free chat attachmentSection with the file name<br/>header and blank line are not counted in the budget"]
     Msgs["messages: system, then budget.history<br/>in chronological order, then user budget.user"]
-    Gen["engine.generate: maxTokens 512, temperature 0.2, stream<br/>deltas go to createStreamingMessage<br/>Stop calls engine.interrupt()"]
+    Gen["engine.generate: the reserved maxTokens,<br/>temperature 0.2, 0.7 in free chat, stream<br/>in starpi-webllm or starpi-wasm<br/>deltas go to createStreamingMessage<br/>Stop calls engine.interrupt()"]
     Out{"non-empty text?"}
-    Done(["finalize the bubble with citations and trace<br/>answer engine client, rendered, element,<br/>deliveredContext = budget.context for the source check"])
+    Done(["finalize the bubble with citations and trace<br/>answer engine client or wasm, model id, rendered,<br/>element, deliveredContext = budget.context<br/>for the source check"])
     Fallback(["empty: stream.remove, null<br/>throws: stream.remove, note chat.note_local_failed,<br/>chat.provider_failed notice<br/>submitChat uses synthesizeAnswer"])
 
     In --> Ready
     Ready -->|"no"| Null
-    Ready -->|"yes"| Inputs --> Reserve --> Budget --> S1 --> S2 --> S3 --> S4 --> Fits
+    Ready -->|"yes"| Inputs --> Reserve --> Budget
+    FreeIn -.->|"replaces in free chat"| Inputs --> S1 --> S2 --> S3 --> S4 --> Fits
     Take -.->|"applies to"| S1
     Take -.->|"applies to"| S2
     Take -.->|"applies to"| S3
@@ -2141,11 +2546,11 @@ flowchart TD
     Out -->|"no, or generate throws"| Fallback
 ```
 
-<sub>Sources: [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/config.js`](../src/js/config.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js)</sub>
+<sub>Sources: [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/config.js`](../src/js/config.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/messages.js`](../src/js/messages.js)</sub>
 
 ## 4. On-device workspace and citations
 
-Files added to the workspace are parsed, chunked and indexed in a dedicated worker and are never uploaded. Only the on-device mode keeps their matching excerpts on the device as well: the cloud assistant and an own server receive the excerpts, labelled with their file name, together with the question. Retrieved chunks are labelled `[Doc: <name>, Chunk: <n>]`; only labels the app registered itself become clickable citations. The worker also records a SHA-256 fingerprint of each file and of its extracted text; answer receipts copy them, so that a cited excerpt can later be reproduced from the same file.
+Files added to the workspace are parsed, chunked and indexed in a dedicated worker and are never uploaded. Only the on-device mode keeps their matching excerpts on the device as well: the cloud assistant, an own server and NVIDIA cloud receive the excerpts, labelled with their file name, together with the question, and in free chat the text of a file attached to that question. Retrieved chunks are labelled `[Doc: <name>, Chunk: <n>]`; only labels the app registered itself become clickable citations. The worker also records a SHA-256 fingerprint of each file and of its extracted text; answer receipts copy them, so that a cited excerpt can later be reproduced from the same file.
 
 ### On-device workspace: from file drop to the document list
 
@@ -2365,7 +2770,7 @@ flowchart TD
 
 ### Workspace RPCs: search, head, context, text, remove, clear
 
-Every workspace call goes through request(), which posts {id, type, payload} to the worker and settles on the reply with the same id. searchWorkspace resolves to an empty list without sending anything when there are no documents or the query is blank; the worker clamps topK to 1..50 (default 5), head counts to 1..10 (default 3) and the context pad to 0..2000 (default 300, workspace.js sends 400). chat.js asks for the top 6 (LIMITS.retrievalRows) and for the first 3 chunks of an attached file when none of the hits comes from it; the workspace search form and the demo's check answer ask for 5. context and text reply with code empty for an unknown docId while head replies with an empty list, and chat.js swallows any retrieval rejection. clearWorkspace rejects pending calls with cleared and terminates the worker instead of sending the worker's clear request. The remaining request type besides ingest, verify-receipt, is shown in workspace-ingestion-verify-receipt.
+Every workspace call goes through request(), which posts {id, type, payload} to the worker and settles on the reply with the same id. searchWorkspace resolves to an empty list without sending anything when there are no documents or the query is blank; the worker clamps topK to 1..50 (default 5), head counts to 1..10 (default 3) and the context pad to 0..2000 (default 300, workspace.js sends 400). chat.js asks for the top 6 (LIMITS.retrievalRows) and for the first 3 chunks of an attached file when none of the hits comes from it; in free chat it reads an attached file's whole text and, for a file over 12,000 characters, its first 2 chunks and the top 12 hits; the workspace search form and the demo's check answer ask for 5. context and text reply with code empty for an unknown docId while head replies with an empty list, and chat.js swallows any retrieval rejection. clearWorkspace rejects pending calls with cleared and terminates the worker instead of sending the worker's clear request. The remaining request type besides ingest, verify-receipt, is shown in workspace-ingestion-verify-receipt.
 
 <!-- diagram: workspace-ingestion-rpcs -->
 ```mermaid
@@ -2397,6 +2802,16 @@ sequenceDiagram
         WS-->>CHAT: pinned in front of the hits, see chat-request-workspace-merge
     end
     Note over CHAT,WS: any rejection here is caught, logged with console.warn,<br/>and the chat continues without workspace hits
+    opt free chat with an attached file: attachmentForChat
+        CHAT->>WS: getDocumentText(docId)
+        WS->>W: text, docId
+        W-->>WS: name and full text
+        opt text longer than 12000 chars
+            CHAT->>WS: firstChunks(docId, 2) and searchWorkspace(prompt, 12)
+            Note over CHAT: excerptForChat joins the ranges of that file within 12000 chars
+        end
+        Note over CHAT,WS: a rejection is logged and the question goes without the file
+    end
     CIT->>WS: getChunkContext(docId, start, end)
     WS->>W: context, pad 400 (worker uses Number(pad) or 300, clamped to 0..2000)
     alt docId in documents
@@ -2420,7 +2835,7 @@ sequenceDiagram
     Note over W,IX: the worker also handles a clear request, but nothing sends it.<br/>rag/receipts.js sends verify-receipt through verifyReceiptFiles,<br/>see workspace-ingestion-verify-receipt
 ```
 
-<sub>Sources: [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/config.js`](../src/js/config.js)</sub>
+<sub>Sources: [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/config.js`](../src/js/config.js), [`src/js/prompts.js`](../src/js/prompts.js)</sub>
 
 ### verify-receipt: re-checking an answer receipt against the original files
 
@@ -2968,7 +3383,7 @@ sequenceDiagram
 
 ### Asking about an attached file
 
-submitChat first waits for a file that is still being read (status.reading_file), then takes the pending attachment, hides the chip and uses chat.summarize_file as the prompt when no text was typed. The user message (prompt plus [name], the file's name in the workspace, numbered when it was taken) is stored by storeQuestion once retrieval has run (or by the catch if the turn throws first), and because a file is attached it is localOnly and stays in localStorage in every mode. retrieveWorkspace runs a BM25 search (top 6) and pins up to 3 chunks of the attached document in front: its matching chunks, or its first 3 chunks when none of the hits comes from it. mergeHits then fills up to 9 slots (6 plus 3) with the pinned chunks, other workspace hits and knowledge base hits (full-text RPC with a local-ranking fallback, local ranking only in on-device mode, none while the connection is offline); a workspace-only sample question skips the knowledge base and mergeHits and takes the first 9 workspace hits. The fenced context, including the file excerpts, goes to the model of the active mode; the answer is rendered with its citation scope and the source check, and stays local in client mode, when a used hit comes from the workspace (normally the file's own excerpts), or when it was quoted without a model (synthesizer) and its text contains the name of a file in the workspace, such as a list of the available documents. If no used hit comes from the workspace (the workspace search failed, or the file was removed meanwhile and no other file matched) and the answer names no workspace file, only the question is kept local and the answer is synced like any other when chats sync. Opening a workspace citation reads the surrounding text from the worker with getChunkContext and falls back to citation.note_missing when the document is gone.
+submitChat first waits for a file that is still being read (status.reading_file), then takes the pending attachment, hides the chip and uses chat.summarize_file as the prompt when no text was typed. The user message (prompt plus [name], the file's name in the workspace, numbered when it was taken) is stored by storeQuestion once retrieval has run (or by the catch if the turn throws first), and because a file is attached it is localOnly and stays in localStorage in every mode. retrieveWorkspace runs a BM25 search (top 6) and pins up to 3 chunks of the attached document in front: its matching chunks, or its first 3 chunks when none of the hits comes from it. mergeHits then fills up to 9 slots (6 plus 3) with the pinned chunks, other workspace hits and knowledge base hits (full-text RPC with a local-ranking fallback, local ranking only in on-device mode, none while the connection is offline); a workspace-only sample question skips the knowledge base and mergeHits and takes the first 9 workspace hits. The fenced context, including the file excerpts, goes to the model of the active mode; the answer is rendered with its citation scope and the source check, and stays local in client mode, when a used hit comes from the workspace (normally the file's own excerpts), or when it was quoted without a model (synthesizer) and its text contains the name of a file in the workspace, such as a list of the available documents. If no used hit comes from the workspace (the workspace search failed, or the file was removed meanwhile and no other file matched) and the answer names no workspace file, only the question is kept local and the answer is synced like any other when chats sync. In free chat the file takes another way: the question is stored at once, still local because of the file, attachmentForChat reads the whole text from the worker, or for a file over 12,000 characters its first 2 chunks and its passages among the top 12 hits, and the text goes to the model fenced as an attached file, without retrieval, citations or source check; the answer is marked as not checked and stays local like its question. Opening a workspace citation reads the surrounding text from the worker with getChunkContext and falls back to citation.note_missing when the document is gone.
 
 <!-- diagram: attachments-voice-ask -->
 ```mermaid
@@ -2995,6 +3410,13 @@ sequenceDiagram
     Note over Chat: prompt = text or chat.summarize_file with the name<br/>shown text = prompt plus [name], the workspace name of the file
     Chat->>Msg: appendMessage user, not stored yet
     Chat->>Msg: appendLoading bubble, after setBusy(true) shows stopBtn
+    opt free chat
+        Chat->>Store: storeQuestion(false), local because a file is attached
+        Chat->>WS: attachmentForChat: getDocumentText, over 12000 chars<br/>firstChunks(docId, 2) and searchWorkspace(prompt, 12)
+        Chat->>LLM: free-chat prompt with the file fenced as data, no citations
+        LLM-->>Chat: answer marked Free chat, not checked, stored local
+        Note over Chat,LLM: the rest of this diagram is verified source mode
+    end
     Chat->>WS: retrieveWorkspace calls searchWorkspace(prompt, 6)
     alt workspace empty or blank query
         WS-->>Chat: empty list, no worker request
@@ -3016,7 +3438,7 @@ sequenceDiagram
         Note over Chat,KB: no knowledge base request, the first 9 workspace hits
     else connection offline
         Note over Chat,KB: no knowledge base request, kbUnavailable
-    else mode council or local
+    else mode council, local or nvidia
         Chat->>KB: searchKnowledge(prompt), on an error or zero rows recentKnowledge(30) ranked locally
     else mode client
         Chat->>KB: recentKnowledge(30) ranked locally, question not sent
@@ -3028,7 +3450,7 @@ sequenceDiagram
     Chat->>Ret: assignCitations, workspace label [Doc: name, Chunk: chunkIndex + 1]
     Chat->>Cit: registerCitations gives the citation scope
     Chat->>Ret: buildContext fences the excerpts, max 9000 chars
-    Chat->>LLM: prompt plus context incl. the file excerpts (Gemini or OpenRouter, WebGPU, own server)
+    Chat->>LLM: prompt plus context incl. the file excerpts (Gemini or OpenRouter, WebGPU or WASM, own server, NVIDIA)
     LLM-->>Chat: answer text, or none or empty (e.g. no cloud key, a failed model),<br/>then synthesizeAnswer is used with focusName = that name
     alt answer ready
         Chat->>Msg: answer shown with its citation scope, source check and receipt button (same session only)
@@ -3047,7 +3469,7 @@ sequenceDiagram
     end
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/config.js`](../src/js/config.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/config.js`](../src/js/config.js), [`src/locales/en.json`](../src/locales/en.json), [`src/js/prompts.js`](../src/js/prompts.js)</sub>
 
 ### Voice input with the Web Speech API
 
@@ -3092,11 +3514,11 @@ flowchart TD
 
 ## 5. On-device inference
 
-The WebLLM engine runs in its own Web Worker. Loads are sequenced so a superseded load can never change the engine status, and a load settles the cheap questions first: when a model is certainly not cached, a start-up load stops before the WebLLM library is imported, and an interactive load asks for download consent before the library is imported or any model data is downloaded. The benchmark runs on the loaded engine, after an interactive load when none is ready, to measure time to first token and decode speed.
+The on-device engine runs a WebGPU preset with WebLLM or a processor (WASM) model with Transformers.js, each in its own Web Worker. Loads are sequenced so a superseded load can never change the engine status, and a load settles the cheap questions first: when a model is not cached, a start-up load stops before the WebLLM library is imported or a worker starts, and an interactive load asks for download consent before the library is imported or any model data is downloaded. The benchmark runs on the loaded engine, after an interactive load when none is ready, to measure time to first token and decode speed.
 
-### WebGPU engine status machine
+### On-device engine status machine
 
-webgpu/engine.js keeps a single status of idle, loading, ready or error and notifies onEngineChange listeners on every setState. loadModel does the WebGPU probe, the model choice and the Cache Storage check before it enters loading. A failed probe, or a failed quota check for a model that is certainly not cached, goes straight to error. A non-interactive load that finds nothing cached and a declined download for such a model resolve false without any setState, so the status stays what it was. Otherwise loadModel tears down and enters loading, and it returns to idle from there when a model that the cheap check could not rule out turns out not to be fully cached and the load is non-interactive or the download is declined, or when unloadModel cancels it by bumping loadSeq. Load failures and fatal generation errors (device-lost, out-of-memory) tear the worker down and land in error, from which a new loadModel or unloadModel recovers. generate and runBenchmark are guarded by the ready status and a single generating flag, and every caller checks isReady before loading.
+webgpu/engine.js keeps a single status of idle, loading, ready or error for both runtimes, a WebGPU preset in the WebLLM worker or a processor (WASM) model in the Transformers.js worker, and notifies onEngineChange listeners on every setState. loadModel does the device probe, the model choice and the cache check before it enters loading. A WebGPU preset on a device without WebGPU, or a failed quota check for a model that is not cached, goes straight to error. A non-interactive load that finds the model not cached (a WASM model counts as not cached unless all of its files are) and a declined download for such a model resolve false without any setState, so the status stays what it was. Otherwise loadModel tears down and enters loading, and it returns to idle from there when a WebGPU model that the cheap check could not rule out turns out not to be fully cached and the load is non-interactive or the download is declined, or when unloadModel cancels it by bumping loadSeq. Load failures and fatal generation errors (device-lost, out-of-memory) tear the worker down and land in error, from which a new loadModel or unloadModel recovers. generate and runBenchmark are guarded by the ready status and a single generating flag for both runtimes, and every caller checks isReady before loading.
 
 <!-- diagram: webgpu-lifecycle-states -->
 ```mermaid
@@ -3105,17 +3527,17 @@ stateDiagram-v2
     state "error (EngineError kept in state.error)" as error_state
     idle --> loading : loadModel, probe ok, cache check and consent passed, teardown, seq still current
     error_state --> loading : loadModel retry, same checks passed, teardown
-    ready --> loading : loadModel for a different modelId, checks passed, teardown first
-    ready --> ready : loadModel for the same modelId, engine reused, resolves true
-    idle --> idle : certainly not cached and onlyIfCached, or download declined, resolves false without setState
-    idle --> error_state : probeWebGPU unsupported or no-adapter, or checkQuota quota (never enters loading)
-    error_state --> error_state : loadModel again, probe or checkQuota fails, or certainly not cached with onlyIfCached or a declined download keeps the old error
-    loading --> idle : not ruled out but hasModelInCache false, onlyIfCached or declined, seq current
+    ready --> loading : loadModel for another runtime or modelId, checks passed, teardown first
+    ready --> ready : loadModel for the same runtime and modelId, engine reused, resolves true
+    idle --> idle : not cached and onlyIfCached, or download declined, resolves false without setState
+    idle --> error_state : WebGPU preset without WebGPU (unsupported or no-adapter), or checkQuota quota (never enters loading)
+    error_state --> error_state : loadModel again, probe or checkQuota fails, or not cached with onlyIfCached or a declined download keeps the old error
+    loading --> idle : WebGPU model not ruled out but hasModelInCache false, onlyIfCached or declined, seq current
     loading --> idle : unloadModel cancels (loadSeq+1, abortPending cancelled, teardown)
-    loading --> ready : CreateWebWorkerMLCEngine resolved and seq current
+    loading --> ready : CreateWebWorkerMLCEngine or WasmEngineClient.load resolved and seq current
     loading --> error_state : run threw with seq current, teardown, classifyEngineError
     ready --> error_state : generate or runBenchmark failed with device-lost or out-of-memory (loadSeq+1, teardown)
-    ready --> idle : unloadModel (unload button, changed model preference, deleteCachedModels)
+    ready --> idle : unloadModel (unload button, another on-device model picked, deleteCachedModels)
     error_state --> idle : unloadModel
     note right of loading
         A run whose seq is no longer loadSeq resolves false without setState.
@@ -3140,11 +3562,11 @@ stateDiagram-v2
     end note
 ```
 
-<sub>Sources: [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js)</sub>
+<sub>Sources: [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js)</sub>
 
 ### loadModel: probe, choice, cache and storage checks
 
-Concurrent loadModel calls share one loadPromise, and every new load takes a sequence number plus an aborted promise that unloadModel can reject. The engine probes navigator.gpu (missing API gives unsupported, a failing or empty requestAdapter gives no-adapter), and models.js chooseModel picks the model for the hardware and preference, taking the q4f32_1 build only when the adapter lacks shader-f16; there is no runtime f16 to f32 retry. An engine that already runs that model is reused. Otherwise certainlyNotCached looks in the Cache Storage cache webllm/model for the model's tensor-cache.json entry, without importing WebLLM; it answers true only when the cache or the entry is missing, and false when there is no Cache API or the check throws. For a model that is certainly not cached, a non-interactive load resolves false at once, and an interactive load runs agreeToDownload: checkQuota (a 1.2 factor on the approximate download size), then the window.confirm download dialog, and only after consent requestPersistence. Neither exit calls setState, and every throw ends in the loadPromise catch.
+Concurrent loadModel calls share one loadPromise, and every new load takes a sequence number plus an aborted promise that unloadModel can reject. The engine probes the device with the high-performance adapter and a 10 s deadline: a missing navigator.gpu, a failing or empty requestAdapter or no answer in time gives a profile without WebGPU and keeps the probe's EngineError (unsupported or no-adapter). models.js chooseModel picks the model for the hardware and preference; a WebGPU preset then needs WebGPU, and a processor (WASM) model needs none. WebGPU presets take the q4f32_1 build only when the adapter lacks shader-f16; there is no runtime f16 to f32 retry. An engine that already runs the same runtime and model id is reused. Otherwise the cache check runs without importing WebLLM or starting a worker: for a WebGPU preset certainlyNotCached looks in the Cache Storage cache webllm/model for the model's tensor-cache.json entry and answers true only when the cache or the entry is missing (false when there is no Cache API or the check throws), and for a WASM model wasmCacheStatus counts the model as missing unless config.json, tokenizer.json and the ONNX weights are all in transformers-cache, also when that cache cannot be read. For a missing model, a non-interactive load resolves false at once, and an interactive load runs agreeToDownload: checkQuota (a 1.2 factor on the approximate download size, plus 15 MB of ONNX Runtime for a WASM model), then the window.confirm download dialog, and only after consent requestPersistence. Neither exit calls setState, and every throw ends in the loadPromise catch.
 
 <!-- diagram: webgpu-lifecycle-load-prepare -->
 ```mermaid
@@ -3154,7 +3576,7 @@ sequenceDiagram
     participant Eng as webgpu/engine.js loadModel
     participant GPU as navigator.gpu
     participant Mod as webgpu/models.js
-    participant CS as Cache Storage webllm/model
+    participant CS as Cache Storage webllm/model or transformers-cache
     participant Sto as navigator.storage
 
     UI->>Eng: loadModel(preference, onlyIfCached, confirmDownload)
@@ -3163,39 +3585,47 @@ sequenceDiagram
         Eng-->>UI: the shared loadPromise
     end
     Eng->>Eng: seq = ++loadSeq, aborted promise via abortPending
-    Eng->>GPU: probeWebGPU()
+    Eng->>GPU: probeDevice: requestAdapter(high-performance), raced against 10 s
     alt navigator.gpu.requestAdapter missing
-        Eng->>Eng: throw EngineError unsupported
-    else requestAdapter(high-performance) throws or returns null
-        GPU-->>Eng: error or null
-        Eng->>Eng: throw EngineError no-adapter
+        Eng->>Eng: no WebGPU, keeps EngineError unsupported
+    else requestAdapter throws, returns null or does not answer in 10 s
+        Eng->>Eng: no WebGPU, keeps EngineError no-adapter
+    else adapter
+        GPU-->>Eng: adapter, limits, features, info
     end
-    GPU-->>Eng: adapter
-    Eng->>Eng: hw = isMobile via detectMobile, navigator.deviceMemory,<br/>adapter maxBufferSize, hasF16 from shader-f16
+    Eng->>Eng: hw = isMobile via detectMobile, navigator.deviceMemory,<br/>maxBufferSize, hasF16 from shader-f16, webgpu,<br/>maxStorageBufferBindingSize, vendor, architecture
     Eng->>Mod: chooseModel(hw, preference)
-    Mod-->>Eng: choice with the q4f16_1 id if hasF16, else the q4f32_1 id
+    Mod-->>Eng: WASM choice, or WebGPU choice with the q4f16_1 id if hasF16, else the q4f32_1 id
     Note over Eng,Mod: f32 is chosen up front from the adapter features,<br/>a failed f16 load is never retried as f32
-    alt engine set with the same modelId
+    alt WebGPU choice and no WebGPU
+        Eng->>Eng: throw the kept EngineError, no switch to a WASM model
+    end
+    alt engine set with the same runtime and modelId
         Eng-->>UI: true (reuse)
     end
-    Eng->>CS: certainlyNotCached(modelId)
-    Note over Eng,CS: caches.has webllm/model, then cache.match for<br/>huggingface.co/mlc-ai/modelId/resolve/main/tensor-cache.json
-    alt no webllm/model cache, or no tensor-cache.json entry
-        CS-->>Eng: missing true
-    else entry found, no Cache API, or the check throws
-        CS-->>Eng: missing false, hasModelInCache decides after the import
+    alt WASM choice
+        Eng->>CS: wasmCacheStatus: caches.has transformers-cache, then match<br/>config.json, tokenizer.json and the weights at the pinned revision
+        CS-->>Eng: missing unless all three are there, also when the cache cannot be read
+    else WebGPU choice
+        Eng->>CS: certainlyNotCached(modelId)
+        Note over Eng,CS: caches.has webllm/model, then cache.match for<br/>huggingface.co/mlc-ai/modelId/resolve/main/tensor-cache.json
+        alt no webllm/model cache, or no tensor-cache.json entry
+            CS-->>Eng: missing true
+        else entry found, no Cache API, or the check throws
+            CS-->>Eng: missing false, hasModelInCache decides after the import
+        end
     end
     opt missing
         alt onlyIfCached
-            Eng-->>UI: false, no setState, WebLLM not imported
+            Eng-->>UI: false, no setState, no import and no worker
         else agreeToDownload(choice, options)
-            Eng->>Sto: checkQuota(max(approxDownloadMB, 1)), no check without estimate()
+            Eng->>Sto: checkQuota(max(approxDownloadMB, plus 15 MB for WASM, 1)), no check without estimate()
             Sto-->>Eng: quota, usage
             alt quota above 0 and free MB below 1.2 x requiredMB
                 Eng->>Eng: throw EngineError quota (requiredMB, freeMB)
             end
             Eng->>UI: confirmDownload(choice) via window.confirm, when given
-            Note over UI: engine.confirm_download, plus engine.confirm_save_data<br/>when navigator.connection.saveData is set
+            Note over UI: engine.confirm_large first for a T3 preset,<br/>engine.confirm_download, or confirm_download_wasm with the runtime MB,<br/>engine.confirm_save_data when navigator.connection.saveData is set
             alt declined
                 UI-->>Eng: false
                 Eng-->>UI: false, no setState
@@ -3204,15 +3634,15 @@ sequenceDiagram
             Eng->>Eng: return false if seq is stale
         end
     end
-    Note over Eng: then teardown and status loading, see<br/>loadModel: WebLLM import, model record and partial cache
+    Note over Eng: then teardown and status loading, see loadModel: WebLLM import,<br/>model record and partial cache, or wasm-runtime-load for a WASM model
     Note over UI,Eng: every throw lands in the loadPromise catch. A stale seq resolves false,<br/>else teardown, classifyEngineError, status error and reject
 ```
 
-<sub>Sources: [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js)</sub>
+<sub>Sources: [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js)</sub>
 
 ### loadModel: WebLLM import, model record and partial cache
 
-After the cache check the load tears down any previous engine, checks its sequence number again and enters loading with phase init. loadWebLLM keeps one import promise for the WebLLM module and drops it when the import rejects, so the next load imports again; classifyEngineError turns a failed dynamic import (a message with "dynamically imported module" or "Importing a module script failed") into code-download unless quota, device-lost or out-of-memory matches first, and the engine.error.code-download message asks the user to reload the page (a code comment in loadWebLLM notes that the browser may keep the failed import until a reload). The model id must exist in prebuiltAppConfig.model_list. hasModelInCache runs only when certainlyNotCached did not already report the model missing. A model it reports as not cached (for example an index without all shards) gets the same consent as a fresh download, but because the load is already in loading, a non-interactive load or a declined download sets idle before resolving false.
+For a WebGPU preset (a WASM model continues in wasm-runtime-load), after the cache check the load tears down any previous engine, checks its sequence number again and enters loading with phase init and the model's label. loadWebLLM keeps one import promise for the WebLLM module and drops it when the import rejects, so the next load imports again; classifyEngineError turns a failed dynamic import (a message with "dynamically imported module" or "Importing a module script failed") into code-download unless quota, device-lost or out-of-memory matches first, and the engine.error.code-download message asks the user to reload the page (a code comment in loadWebLLM notes that the browser may keep the failed import until a reload). The model id must exist in prebuiltAppConfig.model_list. hasModelInCache runs only when certainlyNotCached did not already report the model missing. A model it reports as not cached (for example an index without all shards) gets the same consent as a fresh download, but because the load is already in loading, a non-interactive load or a declined download sets idle before resolving false.
 
 <!-- diagram: webgpu-lifecycle-load-import -->
 ```mermaid
@@ -3223,9 +3653,9 @@ sequenceDiagram
     participant Lib as web-llm module
     participant Sto as navigator.storage
 
-    Note over Eng: probe, model choice and cache check done, engine not reused
+    Note over Eng: probe, model choice and cache check done, engine not reused,<br/>a WebGPU preset, a WASM model goes to wasm-runtime-load
     Eng->>Eng: teardown(), return false if seq is stale
-    Eng->>Eng: setState loading, error null, model null, progress 0, phase init
+    Eng->>Eng: setState loading, error null, model null, progress 0, phase init, label
     Eng->>Lib: Promise.race(loadWebLLM(), aborted)
     Note over Eng,Lib: loadWebLLM shares one import promise across loads
     alt import rejects
@@ -3269,7 +3699,7 @@ sequenceDiagram
 
 ### loadModel: worker creation, progress phases and generation guards
 
-loadModel creates a dedicated module worker (worker.js with WebWorkerMLCEngineHandler) with new Worker and passes it to CreateWebWorkerMLCEngine, which builds the WebWorkerMLCEngine client and sends reload to the worker; loadModel races that promise against the abort promise. Each progress report is mapped by classifyProgress onto init, download, cache, shaders or finalizing and rendered by engine-ui.js as `engine.progress.<phase>` with a percentage. Cancelling or unloading terminates the worker and returns to idle, an engine created after its load was superseded is terminated, success stores vramMB and resolves true, and failures are classified and shown as a localized notice. generate and runBenchmark reject with not-loaded unless the engine is ready and with busy while a generation runs; during a run a device-lost or out-of-memory error tears the engine down into error (teardown tries unload for up to 2 s before terminate), and other errors leave it ready. On any generate error chat.js removes the streamed message, shows chat.note_local_failed as the reason in a chat.provider_failed_title notice and answers with the synthesizer; stop-generation aborts the chat request, which calls interrupt and so interruptGenerate.
+For a WebGPU preset, loadModel creates a dedicated module worker (worker.js with WebWorkerMLCEngineHandler) with new Worker and passes it to CreateWebWorkerMLCEngine, which builds the WebWorkerMLCEngine client and sends reload to the worker; loadModel races that promise against the abort promise. Each progress report is mapped by classifyProgress onto init, download, cache, shaders or finalizing and rendered by engine-ui.js as `engine.progress.<phase>` with a percentage. Cancelling or unloading terminates the worker and returns to idle, an engine created after its load was superseded is terminated, success stores vramMB and resolves true, and failures are classified and shown as a localized notice. generate and runBenchmark, the same for a WASM model behind WasmEngineClient, reject with not-loaded unless the engine is ready and with busy while a generation runs; during a run a device-lost or out-of-memory error tears the engine down into error (teardown tries unload for up to 2 s before terminate), and other errors leave it ready. On any generate error chat.js removes the streamed message, shows chat.note_local_failed as the reason in a chat.provider_failed_title notice and, in source mode, answers with the synthesizer; stop-generation aborts the chat request, which calls interrupt and so interruptGenerate, which for a WASM model also skips generations still queued in its worker.
 
 <!-- diagram: webgpu-lifecycle-load-worker -->
 ```mermaid
@@ -3281,6 +3711,7 @@ sequenceDiagram
     participant Lib as web-llm module
     participant W as worker.js starpi-webllm
 
+    Note over Eng,W: a WebGPU preset, a WASM model loads in wasm-runtime-load
     Eng->>W: new Worker(WORKER_URL, type module, name starpi-webllm)
     Eng->>Lib: race CreateWebWorkerMLCEngine(w, modelId, initProgressCallback, chatOptions) vs aborted
     Lib->>W: reload(modelId, chatOptions) to WebWorkerMLCEngineHandler
@@ -3333,10 +3764,92 @@ sequenceDiagram
             Eng-->>C: text or BenchmarkRun, generating reset
         end
     end
-    Note over C: on error chat.js removes the streamed message, puts chat.note_local_failed as the reason<br/>into a chat.provider_failed_title notice and answers with the synthesizer,<br/>bench-ui.js shows engine.error.kind
+    Note over C: on error chat.js removes the streamed message, puts chat.note_local_failed as the reason<br/>into a chat.provider_failed_title notice and, in source mode, answers with the synthesizer,<br/>bench-ui.js shows engine.error.kind. A ready WASM engine takes the same calls through WasmEngineClient
 ```
 
-<sub>Sources: [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/index.html`](../src/index.html)</sub>
+<sub>Sources: [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/index.html`](../src/index.html), [`src/js/wasm/client.js`](../src/js/wasm/client.js)</sub>
+
+### Processor (WASM) runtime: loading, pinned downloads, generation and Stop
+
+A processor (WASM) model runs Transformers.js 4.3.0 in its own module worker, starpi-wasm, behind WasmEngineClient, which offers the part of WebLLM's engine API that webgpu/engine.js uses, so loading, streaming, Stop, the benchmark and unloading work the same for both runtimes. Before the worker starts, wasmCacheStatus and the download consent have settled whether anything may be downloaded (loadModel: probe, choice, cache and storage checks). The worker loads only an exact catalog entry (repository, revision and dtype q8) and sends every download of Transformers.js through its own env.fetch, which accepts only files of that repository at the pinned revision (a request for the main revision, which Transformers.js 4.3 makes for tokenizer_config.json, is pinned too), answers from transformers-cache when the file is stored, so a stored model also loads offline, and otherwise fetches the pinned URL from huggingface.co; Transformers.js stores what it downloads in transformers-cache. ONNX Runtime is the WASM build bundled into the worker. Its binary comes from the app's own /assets under a content-hashed name, it runs on one thread because the app is not cross-origin isolated, and its WASM cache is off, because a cached runtime would become a blob: module that script-src 'self' blocks. Progress reports become the share of the catalog's file sizes, in the phase download or cache, and finalizing once every file is there. Requests run one after another in the worker; generate streams one delta per token, and every forward pass first waits for one macrotask, so a Stop message is handled while a generation runs: interruptGenerate posts interrupt with the newest request id, which stops the running generation at its next token and skips generations still queued up to that id, and the client ends its stream at once. Errors cross the worker boundary as name and message only, and a worker that fails to start rejects every pending request as a failed module import, which classifyEngineError reports as code-download.
+
+<!-- diagram: wasm-runtime-load -->
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Eng as webgpu/engine.js loadModel
+    participant Cli as wasm/client.js WasmEngineClient
+    participant W as wasm/worker.js starpi-wasm
+    participant TF as Transformers.js and ONNX Runtime
+    participant CS as Cache API transformers-cache
+    participant HF as huggingface.co
+    participant App as same origin /assets
+
+    Note over Eng: WASM choice, wasmCacheStatus and any consent done,<br/>see loadModel: probe, choice, cache and storage checks
+    Eng->>Eng: teardown(), setState loading, phase init, label
+    Eng->>W: new Worker(WASM_WORKER_URL, type module, name starpi-wasm)
+    Note over W: at start: allowLocalModels false, useBrowserCache true,<br/>cacheKey transformers-cache, useWasmCache false,<br/>wasmPaths = the hashed ONNX Runtime binary, numThreads 1, proxy false
+    Eng->>Cli: race WasmEngineClient.load(worker, source, onProgress) vs aborted
+    Cli->>W: load with id, repo, revision and dtype
+    W->>W: findWasmSource: an exact catalog entry or an error, unload the previous model
+    W->>TF: AutoTokenizer and AutoModelForCausalLM from_pretrained,<br/>pinned revision, dtype q8, device wasm
+    loop every file Transformers.js requests
+        TF->>W: env.fetch(url)
+        W->>W: pinnedWasmUrl: this repository, the pinned revision or main mapped to it,<br/>plain path segments, anything else throws a TypeError
+        W->>CS: caches.match the pinned URL
+        alt stored
+            CS-->>W: the file, also offline
+        else not stored
+            W->>HF: GET the pinned URL
+            HF-->>W: the file, kept by Transformers.js in transformers-cache
+        end
+        W-->>Cli: progress with file, loaded bytes and done
+        Cli-->>Eng: share of the catalog file sizes, stage files, then session
+        Eng->>Eng: phase download when the model was missing, else cache,<br/>finalizing once every file is there
+    end
+    TF->>App: GET /assets/ort-wasm-simd-threaded-hash.wasm, 14.3 MB
+    App-->>TF: ONNX Runtime binary, allowed by script-src wasm-unsafe-eval
+    W->>W: yieldBetweenTokens: every forward pass first awaits setTimeout 0
+    W-->>Cli: ready
+    alt unloadModel cancelled the load
+        Eng->>Eng: the aborted race rejects, teardown terminates the worker
+    else seq is stale
+        Eng->>W: terminate, resolve false
+    else load error, e.g. a blocked URL, a network error or quota
+        W-->>Cli: error with name and message only
+        Cli-->>Eng: rejects, classifyEngineError, status error
+    else ready
+        Eng->>Eng: engine = client, status ready, model = choice,<br/>badge engine.ram_ready, no memory figure
+    end
+
+    Note over Eng,W: generation, the same calls as for WebLLM
+    Eng->>Cli: chat.completions.create with messages, max_tokens, temperature, stream true
+    Cli->>W: generate with id, role and content of each message, maxTokens, temperature, ignoreEos
+    alt id at most interruptedUpTo, stopped while it was queued
+        W-->>Cli: done with zero tokens
+    else runs after the requests before it
+        W->>TF: apply_chat_template, generate with TextStreamer<br/>and InterruptableStoppingCriteria, sampling when temperature is above 0
+        loop each token
+            W-->>Cli: delta text
+            Cli-->>Eng: chunk with choices delta content
+        end
+        W-->>Cli: done with prompt_tokens and completion_tokens
+    end
+    opt Stop pressed: engine.interrupt()
+        Eng->>Cli: interruptGenerate()
+        Cli->>W: interrupt upTo the newest id, handled at once, outside the queue
+        W->>TF: stopping criteria interrupted, the generation ends at its next token
+        Cli-->>Eng: the stream ends at once
+    end
+    opt unload, another model picked or Delete downloaded model data
+        Eng->>Cli: unload(), 2 s at most
+        Cli->>W: unload, dispose the model, unloaded
+        Eng->>W: terminate
+    end
+    Note over Cli,W: a worker that fails to start rejects every pending request<br/>with Importing a module script failed, reported as code-download
+```
+
+<sub>Sources: [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`scripts/build.mjs`](../scripts/build.mjs), [`vercel.json`](../vercel.json), [`package.json`](../package.json)</sub>
 
 ### Diagnostics tab: WebGPU probe
 
@@ -3390,7 +3903,7 @@ sequenceDiagram
 
 ### Inference benchmark run
 
-executeBenchmark ignores clicks while a run is active, refuses to start while a chat request is running (isChatBusy), and when the engine is not ready loads the model interactively, stopping if that load resolves false (the download dialog appears as for a chat load, and its notices go to the chat tab). runBenchmark refuses unless the engine is ready and no generation is running, then resets the chat, sends a non-streamed warm-up of at most 8 tokens, resets again and times one streamed request for exactly 128 tokens (ignore_eos, include_usage), recording startedAt, firstTokenAt and finishedAt, and resets the chat only after a successful run. computeBenchmarkMetrics derives time to first token, decode throughput over the tokens after the first, total latency and the engine-reported prefill rate. Errors show engine.error.kind in the progress card, and device-lost or out-of-memory also tear the engine down.
+executeBenchmark ignores clicks while a run is active, refuses to start while a chat request is running (isChatBusy), and when the engine is not ready loads the model interactively, stopping if that load resolves false (the download dialog appears as for a chat load, and its notices go to the chat tab). runBenchmark refuses unless the engine is ready and no generation is running, then resets the chat, sends a warm-up of at most 8 tokens and reads its stream to the end, resets again and times one streamed request for exactly 128 tokens (ignore_eos, include_usage), recording startedAt, firstTokenAt and finishedAt, and resets the chat only after a successful run. computeBenchmarkMetrics derives time to first token, decode throughput over the tokens after the first, total latency and the engine-reported prefill rate. The loaded model may be a processor (WASM) model when it was picked on a device with WebGPU; its result line then shows WASM instead of f16 or f32. Errors show engine.error.kind in the progress card, and device-lost or out-of-memory also tear the engine down.
 
 <!-- diagram: benchmark-run -->
 ```mermaid
@@ -3401,7 +3914,7 @@ sequenceDiagram
     participant Chat as chat.js
     participant EUI as engine-ui.js
     participant Eng as webgpu/engine.js
-    participant W as WebLLM engine in worker.js
+    participant W as WebLLM engine in worker.js, or WasmEngineClient
     participant Diag as diagnostics.js
 
     User->>UI: run-benchmark, executeBenchmark()
@@ -3425,7 +3938,7 @@ sequenceDiagram
             Note over Eng: not ready rejects not-loaded, generating rejects busy,<br/>both before the try, else generating = true
             Eng->>UI: onPhase warmup 0 of 128
             Eng->>W: resetChat()
-            Eng->>W: create Hello, max_tokens 8, temperature 0, not streamed
+            Eng->>W: create Hello, max_tokens 8, temperature 0, stream read to its end
             Eng->>W: resetChat()
             Eng->>UI: onPhase prefill
             Note over Eng: startedAt = performance.now()
@@ -3437,12 +3950,12 @@ sequenceDiagram
             Note over Eng: finishedAt = performance.now()
             alt run completed
                 Eng->>W: resetChat()
-                Eng-->>UI: BenchmarkRun with modelId, f16, token counts,<br/>startedAt, firstTokenAt, finishedAt, engineStats
+                Eng-->>UI: BenchmarkRun with modelId, runtime, f16, token counts,<br/>startedAt, firstTokenAt, finishedAt, engineStats
                 Note over UI,Eng: completionTokens = usage or content chunk count<br/>promptTokens = usage or 0, no token gives firstTokenAt = finishedAt
                 UI->>Diag: computeBenchmarkMetrics(run)
                 Note over Diag: ttftMs = firstTokenAt - startedAt<br/>decode tok/s = (completionTokens - 1) / ((finishedAt - firstTokenAt) / 1000), else 0<br/>totalMs = finishedAt - startedAt, all clamped at 0<br/>prefill tok/s = engineStats.prefill_tokens_per_s or null
                 Diag-->>UI: BenchmarkMetrics
-                UI->>UI: benchResultTTFT, TPS, Prefill, Latency, result_meta
+                UI->>UI: benchResultTTFT, TPS, Prefill, Latency, result_meta<br/>with WASM in place of f16 or f32 for a processor model
                 UI->>UI: showProgress 128 of 128 phase_done
             else any step throws
                 Note over Eng: errors after generating = true pass handleGenerationError<br/>and skip the final resetChat<br/>device-lost or out-of-memory tear the engine down (status error)
@@ -3454,7 +3967,7 @@ sequenceDiagram
     end
 ```
 
-<sub>Sources: [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/bench/diagnostics.js`](../src/js/bench/diagnostics.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/chat.js`](../src/js/chat.js)</sub>
+<sub>Sources: [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/bench/diagnostics.js`](../src/js/bench/diagnostics.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js)</sub>
 
 ## 6. Knowledge base views
 
@@ -3630,7 +4143,7 @@ flowchart TD
 
 ### Knowledge graph tab: selection and ask-entity
 
-A canvas click selects the first node within 25 px; the buttons in the entity list select the same way by id; the redraw rebuilds the list, and renderEntityList moves keyboard focus from the replaced button to the new button of the same entity. selectEntity redraws the graph and shows the details: type badge, description, outgoing edges (listing target names) and incoming edges (listing source names); a click on empty canvas clears the selection. The ask-entity button switches to the chat tab and submits graph.ask_prompt through submitChat, which drops the question with status.busy while an earlier question is still in progress (being answered, or waiting for a file that is still being read). Otherwise submitChat clears the chat input box, so an unsent draft there is lost, and a file attached in the chat input goes along with the question. From there the question takes the normal chat path of the current mode (section 3), so the entity name goes wherever a typed question would.
+A canvas click selects the first node within 25 px; the buttons in the entity list select the same way by id; the redraw rebuilds the list, and renderEntityList moves keyboard focus from the replaced button to the new button of the same entity. selectEntity redraws the graph and shows the details: type badge, description, outgoing edges (listing target names) and incoming edges (listing source names); a click on empty canvas clears the selection. The ask-entity button switches to the chat tab and submits graph.ask_prompt through submitChat, which drops the question with status.busy while an earlier question is still in progress (being answered, or waiting for a file that is still being read). Otherwise submitChat clears the chat input box, so an unsent draft there is lost, and a file attached in the chat input goes along with the question. submitChat gets chatMode grounded, so the question is always answered in verified source mode, and the composer toggle switches to it when it showed free chat. From there the question takes the normal source-mode path of the current mode (section 3), so the entity name goes wherever a typed question would.
 
 <!-- diagram: knowledge-views-graph-interactions -->
 ```mermaid
@@ -3661,12 +4174,13 @@ sequenceDiagram
     User->>G: ask-entity, data-arg = entity name
     G->>UI: switchTab(chat)
     UI-->>User: chat tab shown, sidebar closed when the window is under 768 px wide
-    G->>Chat: submitChat(t graph.ask_prompt with the name)
+    G->>Chat: submitChat(t graph.ask_prompt with the name, chatMode grounded)
     alt busy: an earlier question is being answered or waits for its file
         Chat-->>User: status.busy, the question is dropped
     else idle
         Note over Chat: waits for a file still being read,<br/>clears the chat input box, sends a file attached there with the question
-        Chat-->>User: regular chat flow answers in the chat tab
+        Note over Chat: chatMode grounded: the toggle switches to verified source mode
+        Chat-->>User: regular source-mode flow answers in the chat tab
     end
 ```
 
@@ -3736,7 +4250,7 @@ Runtime translation without a reload, every piece of state the app keeps in the 
 
 ### Locale boot and EN/DE switch
 
-boot() calls initI18n first, which reads localStorage starpi_locale (only en or de are accepted, anything else or a storage error means en), sets the html lang attribute and translates the whole document. The EN/DE buttons dispatch the set-locale action to setLocale, which persists the choice (a failed write is ignored and the switch still applies to the page), updates html lang, re-runs applyTranslations (which also re-translates every element set through setText and updates aria-pressed) and then calls each onLocaleChange listener without reloading the page. Only engine-ui.js, graph.js, ingest.js and bench-ui.js subscribe, because they render locale-formatted numbers or, in graph.js, an empty or error status text built with t() that no stored attribute can refresh; numbers already formatted into other setText params keep their old format until the view re-renders.
+boot() calls initI18n first, which reads localStorage starpi_locale (only en or de are accepted, anything else or a storage error means en), sets the html lang attribute and translates the whole document. The EN/DE buttons dispatch the set-locale action to setLocale, which persists the choice (a failed write is ignored and the switch still applies to the page), updates html lang, re-runs applyTranslations (which also re-translates every element set through setText and updates aria-pressed) and then calls each onLocaleChange listener without reloading the page. Only engine-ui.js, model-picker.js, graph.js, ingest.js and bench-ui.js subscribe, because they render locale-formatted numbers, option text that t() builds for the assistant pickers, or, in graph.js, an empty or error status text built with t() that no stored attribute can refresh; numbers already formatted into other setText params keep their old format until the view re-renders.
 
 <!-- diagram: i18n-boot-and-switch -->
 ```mermaid
@@ -3747,7 +4261,7 @@ sequenceDiagram
     participant I18n as i18n/index.js
     participant LS as localStorage
     participant Doc as document
-    participant Subs as engine-ui, graph, ingest, bench-ui
+    participant Subs as engine-ui, model-picker, graph, ingest, bench-ui
     participant Dom as dom.js delegation
 
     Note over I18n,LS: importing the module already sets current = readStoredLocale()
@@ -3758,7 +4272,7 @@ sequenceDiagram
     I18n->>Doc: html lang = current
     I18n->>Doc: applyTranslations(document)
     Main->>Dom: installDelegation, then onAction set-locale
-    Main->>Subs: initEngineUi, initIngest, initGraph, initBenchUi
+    Main->>Subs: initModelPicker, initEngineUi, initIngest, initGraph, initBenchUi
     Subs->>I18n: onLocaleChange(listener)
     Note over Subs,I18n: ui.js, messages.js, receipts.js and others only call setText and t,<br/>setText stores data-i18n and data-i18n-params on the element
     User->>Dom: click EN or DE button
@@ -3772,11 +4286,11 @@ sequenceDiagram
     loop each listener, errors logged and skipped
         I18n->>Subs: listener(locale)
     end
-    Note over Subs: engine-ui render(getEngineState()) for percent and GB<br/>graph renderGraph() if tab-graph is visible, which rewrites the empty or error status text<br/>ingest renderWorkspace() for formatted counts<br/>bench-ui renderLimits() and refreshIcons
+    Note over Subs: engine-ui render(getEngineState()) for percent and GB<br/>model-picker renderModelPickers(): group labels, option text, badges<br/>graph renderGraph() if tab-graph is visible, which rewrites the empty or error status text<br/>ingest renderWorkspace() for formatted counts<br/>bench-ui renderLimits() and refreshIcons
     Note over Doc,Subs: numbers already formatted into other setText params keep the old format<br/>until re-rendered, voice.js reads getIntlLocale() when recognition starts
 ```
 
-<sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/voice.js`](../src/js/voice.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/index.html`](../src/index.html)</sub>
+<sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/voice.js`](../src/js/voice.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/index.html`](../src/index.html), [`src/js/model-picker.js`](../src/js/model-picker.js)</sub>
 
 ### How an element gets its translated text
 
@@ -3885,19 +4399,21 @@ flowchart TD
 
 ### localStorage, sessionStorage and the auth session
 
-App preferences live in localStorage under the STORAGE_KEYS names from config.js, and the language under starpi_locale, which i18n/index.js writes directly; state.js normalizes and rewrites compute mode and model preference on every load and removes the legacy starpi_ai_tier key, and writeLocal and writeSecret return false when the storage area is missing, blocked or full, which only Save settings acts on (it alerts settings.save_failed instead of settings.saved_toast). Provider API keys go to sessionStorage by default and to localStorage only when starpi_remember_keys is 1; readSecret checks sessionStorage first, Test connection uses a typed but unsaved key as typed, and Delete keys removes them from both. Chat messages go to starpi_local_chats_v1 (10 sessions, 200 messages each, every row stamped with created_at) in client mode, for questions with an attached file, for the question and answer of a turn that uses workspace excerpts, for an answer quoted without a model (engine synthesizer) whose text names a file in the workspace, or whenever they cannot be synced. persistMessage marks such rows with metadata.local_only (true for messages kept on the device on purpose, false when only syncing is unavailable); a row kept after a failed insert has no flag and, like rows from older versions, counts as an on-device turn on restore, and on-device turns are never sent to a cloud provider or the own server as history. New chat only rotates starpi_chat_session_id. Delete chat history is refused with the settings.delete_history_busy alert while an answer is being written; after the confirm it empties the local archive and starts a new session, and unless the connection is ready but chats cannot sync, it calls deleteOwnChats, which deletes this anonymous user's chat_history rows when a stored session exists and reports success when none does, so offline or while still connecting the delete is attempted rather than skipped. A failed delete, for example offline, ends with the settings.delete_history_partial alert instead of settings.delete_history_done. supabase-js keeps the anonymous session under starpi-auth, and no in-app action clears it or starpi_locale.
+App preferences live in localStorage under the STORAGE_KEYS names from config.js, and the language under starpi_locale, which i18n/index.js writes directly; state.js normalizes and rewrites compute mode and on-device model preference on every load (a 2.0 value such as qwen-3b becomes webgpu:qwen-3b, an unknown one auto), normalizes the stored NVIDIA model against the allowlist and the chat mode to grounded or free in memory, and removes the legacy starpi_ai_tier key, and writeLocal and writeSecret return false when the storage area is missing, blocked or full, which only Save settings acts on (it alerts settings.save_failed instead of settings.saved_toast). A pick in either assistant picker stores the mode and, for a model, starpi_webgpu_model or starpi_nvidia_model; the chat mode toggle and every quick prompt or sample question that switches it write starpi_chat_mode. Provider API keys go to sessionStorage by default and to localStorage only when starpi_remember_keys is 1; readSecret checks sessionStorage first, Test connection uses a typed but unsaved key as typed, and Delete keys removes them from both. NVIDIA keys never reach the browser. Chat messages go to starpi_local_chats_v1 (10 sessions, 200 messages each, every row stamped with created_at) in client mode, for questions with an attached file and in free chat for their answers too, for the question and answer of a turn that uses workspace excerpts, for an answer quoted without a model (engine synthesizer) whose text names a file in the workspace, or whenever they cannot be synced; every row's metadata records the chat mode, and an answer's its engine and model. persistMessage marks such rows with metadata.local_only (true for messages kept on the device on purpose, false when only syncing is unavailable); a row kept after a failed insert has no flag and, like rows from older versions, counts as an on-device turn on restore, and on-device turns are never sent to a cloud provider, NVIDIA or the own server as history. New chat only rotates starpi_chat_session_id. Delete chat history and Delete this chat are refused while an answer is being written; after the confirm they wait for message writes still under way, empty the local archive or drop the one session, start a new session, and unless the connection is ready but chats cannot sync, call deleteOwnChats or deleteChatSession, which delete this anonymous user's chat_history rows, all of them or those of the session, when a stored session exists and report success when none does, so offline or while still connecting the delete is attempted rather than skipped. A failed delete, for example offline, ends with settings.delete_history_partial or chat.delete_partial_title instead of the success message. supabase-js keeps the anonymous session under starpi-auth, and no in-app action clears it or starpi_locale.
 
 <!-- diagram: client-storage-web-storage -->
 ```mermaid
 flowchart LR
     subgraph sg_local["localStorage via storage.js (per origin, survives reload and restart,<br/>helpers never throw, writes return false when not stored)"]
-        k_mode[("starpi_compute_mode<br/>council, client or local")]
-        k_model[("starpi_webgpu_model<br/>auto, llama-1b, qwen-1.5b or qwen-3b")]
+        k_mode[("starpi_compute_mode<br/>council, client, local or nvidia")]
+        k_model[("starpi_webgpu_model<br/>auto, webgpu:key or wasm:key")]
+        k_nv[("starpi_nvidia_model<br/>an allowlisted NVIDIA model id")]
+        k_chatmode[("starpi_chat_mode<br/>grounded or free")]
         k_url[("starpi_llm_url<br/>own server URL, written on Save only")]
         k_remember[("starpi_remember_keys<br/>1 or 0")]
         k_keys_l[("starpi_gemini_key, starpi_openrouter_key<br/>only when remember is on")]
         k_sid[("starpi_chat_session_id<br/>starpi_ plus a UUID")]
-        k_chats[("starpi_local_chats_v1<br/>10 newest sessions, 200 messages each,<br/>rows with created_at and metadata.local_only")]
+        k_chats[("starpi_local_chats_v1<br/>10 newest sessions, 200 messages each,<br/>rows with created_at and metadata.local_only,<br/>chat_mode, engine and model")]
         k_legacy[("starpi_ai_tier<br/>legacy key")]
     end
     subgraph sg_i18n["localStorage via i18n/index.js (direct, errors ignored)"]
@@ -3912,7 +4428,8 @@ flowchart LR
     k_remote[("Supabase chat_history<br/>rows owned by this anonymous user")]
 
     a_load(["Page load: state.js and chat-store.js"])
-    a_mode(["changeEngine: boot restore or change-engine select"])
+    a_mode(["changeEngine: boot restore, a pick in either<br/>assistant picker, or Save with a pending pick"])
+    a_toggle(["Chat mode toggle, or a quick prompt,<br/>sample or entity question switching it"])
     a_save(["Save settings<br/>alert settings.save_failed when any write returns false"])
     a_clear(["Delete keys (clear-keys)"])
     a_read(["readSecret in providers.js and settings.js,<br/>skipped for a typed key under test"])
@@ -3920,19 +4437,23 @@ flowchart LR
     a_new(["New chat"])
     a_send(["Send a message: persistMessage"])
     a_restore(["restoreHistory at boot, not repeated after a reconnect"])
-    a_delete(["Delete chat history (delete-chat-history):<br/>refused with the settings.delete_history_busy alert<br/>while an answer is being written, otherwise after window.confirm"])
+    a_delete(["Delete chat history (settings) or Delete this chat<br/>(chat menu): refused while an answer is being written,<br/>otherwise after window.confirm, pending writes awaited"])
     a_connect(["connect() at boot, offline at once while navigator.onLine is false,<br/>retried after going offline (browser offline, or the probe or a later request<br/>fails with network or timeout): online event or 30 s doubling up to 5 min"])
     a_close(["Close the tab"])
     a_site(["Browser: clear site data"])
 
     a_load -->|"normalize legacy aliases, rewrite"| k_mode
-    a_load -->|"normalize, rewrite"| k_model
+    a_load -->|"normalize, a 2.0 key becomes webgpu:key, rewrite"| k_model
+    a_load -.->|"read and normalized in memory only"| k_nv
+    a_load -.->|"read, unknown counts as grounded"| k_chatmode
     a_load -->|"removeLocal"| k_legacy
     a_load -->|"new id if missing or not starpi_ plus<br/>6-120 word or hyphen chars"| k_sid
     a_mode -->|"setMode"| k_mode
+    a_mode -->|"setModelPreference for an on-device pick"| k_model
+    a_mode -->|"setNvidiaModel for an NVIDIA pick"| k_nv
+    a_toggle -->|"setChatMode"| k_chatmode
     a_save -->|"setLlmUrl"| k_url
-    a_save -->|"setModelPreference"| k_model
-    a_save -->|"changeEngine, setMode"| k_mode
+    a_save -->|"changeEngine only for a pick not applied yet"| a_mode
     a_save -->|"1 or 0"| k_remember
     a_save -->|"writeSecret removes from both, writes the typed key<br/>or moves the stored key when remember changes"| k_keys_l
     a_save --> k_keys_s
@@ -3942,13 +4463,13 @@ flowchart LR
     a_read -.->|"then localStorage"| k_keys_l
     a_locale -->|"setLocale"| k_locale
     a_new -->|"startNewSession, old archive entry stays"| k_sid
-    a_send -->|"appendLocal: local_only true for client mode, a workspace turn,<br/>the question of an attached file or a synthesizer answer<br/>naming a workspace file, false when canSyncChats is false,<br/>no flag after a failed insert"| k_chats
+    a_send -->|"appendLocal: local_only true for client mode, a workspace turn,<br/>the question of an attached file, in free chat its answer too,<br/>or a synthesizer answer naming a workspace file,<br/>false when canSyncChats is false, no flag after a failed insert"| k_chats
     a_send -->|"insertChatMessage when canSyncChats<br/>and the message is not local-only"| k_remote
     a_restore -.->|"loadCurrentSession: missing flag counts as local_only,<br/>mergeByTime with the newest 200 synced rows"| k_chats
     a_restore -.->|"loadChatSession only when canSyncChats,<br/>a failed load falls back to the local rows"| k_remote
-    a_delete -->|"writeLocalJson to an empty object"| k_chats
-    a_delete -->|"startNewSession"| k_sid
-    a_delete -->|"deleteOwnChats unless the connection is ready<br/>and canSyncChats is false, also offline or while connecting;<br/>rows of the stored session user only, none without a session;<br/>a failure, e.g. offline, alerts settings.delete_history_partial"| k_remote
+    a_delete -->|"writeLocalJson: an empty object,<br/>or the archive without that session"| k_chats
+    a_delete -->|"startNewSession, for Delete this chat<br/>when it was the current session"| k_sid
+    a_delete -->|"deleteOwnChats or deleteChatSession unless the connection<br/>is ready and canSyncChats is false, also offline or while connecting;<br/>rows of the stored session user only, none without a session;<br/>a failure, e.g. offline, is reported as a partial delete"| k_remote
     a_connect -->|"getSession, else signInAnonymously unless<br/>/auth/v1/settings reports it disabled or times out"| k_auth
     a_close -.->|"discards"| k_keys_s
     a_site -.->|"removes, no Starpi action does"| k_locale
@@ -3956,21 +4477,24 @@ flowchart LR
     a_site -.->|"removes"| k_chats
 ```
 
-<sub>Sources: [`src/js/config.js`](../src/js/config.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/main.js`](../src/js/main.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/supabase.js`](../src/js/supabase.js)</sub>
+<sub>Sources: [`src/js/config.js`](../src/js/config.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/main.js`](../src/js/main.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js)</sub>
 
 ### Caches and the on-device workspace
 
-The service worker only caches same-origin GET responses, in two caches: starpi-shell-VERSION holds the precached app shell of one build and the latest HTML of /, and the unversioned starpi-assets holds hashed /assets/* files fetched on a cache miss, such as the lazily loaded WebLLM and pdf.js chunks. Activation deletes every other starpi- cache and removes from starpi-assets each entry that is not in the new build's ASSETS list, so unchanged chunks survive an update. Supabase, provider and model download traffic bypasses the worker; WebLLM caches model files itself in webllm/model, webllm/wasm and webllm/config, which survive reloads until Delete downloaded model data unloads the engine and deletes all six catalog model ids. Workspace documents and their BM25 index exist only in the ingestion worker memory and vanish on Clear workspace, a worker crash or a reload (the citation dialog then shows citation.note_missing).
+The service worker only caches same-origin GET responses, in two caches: starpi-shell-VERSION holds the precached app shell of one build and the latest HTML of /, and the unversioned starpi-assets holds hashed /assets/* files fetched on a cache miss, such as the lazily loaded WebLLM and pdf.js chunks, the WASM worker and the ONNX Runtime binary. Activation deletes every other starpi- cache and removes from starpi-assets each entry that is not in the new build's ASSETS list, so unchanged chunks survive an update. Supabase, provider, NVIDIA proxy POST and model download traffic bypasses the worker; WebLLM caches model files itself in webllm/model, webllm/wasm and webllm/config, and Transformers.js keeps the files of processor (WASM) models in transformers-cache, whose name does not start with starpi-, so activation never deletes it. Both survive reloads until Delete downloaded model data unloads the engine, deletes transformers-cache and deletes the f16 and f32 builds of all 13 WebGPU presets (26 model ids). Workspace documents and their BM25 index exist only in the ingestion worker memory and vanish on Clear workspace, a worker crash or a reload (the citation dialog then shows citation.note_missing).
 
 <!-- diagram: client-storage-caches-memory -->
 ```mermaid
 flowchart TD
     subgraph sg_sw["Cache API owned by sw.js (prefix starpi-, VERSION = 12-hex build hash)"]
         c_shell[("starpi-shell-VERSION<br/>precached /, app CSS, main JS and its static imports,<br/>ingest worker, Latin font, public files,<br/>plus the latest HTML of /")]
-        c_assets[("starpi-assets, not versioned<br/>/assets/* fetched on a cache miss,<br/>e.g. lazy WebLLM and pdf.js chunks, other fonts")]
+        c_assets[("starpi-assets, not versioned<br/>/assets/* fetched on a cache miss,<br/>e.g. lazy WebLLM and pdf.js chunks, other fonts,<br/>the WASM worker and the ONNX Runtime binary")]
     end
     subgraph sg_webllm["Cache API owned by WebLLM (cacheBackend cache, never touched by sw.js)"]
         c_model[("webllm/model, webllm/wasm, webllm/config<br/>weights and tokenizer, model library, mlc-chat-config.json")]
+    end
+    subgraph sg_tf["Cache API owned by Transformers.js (env.cacheKey, never touched by sw.js)"]
+        c_tf[("transformers-cache<br/>config, tokenizer and ONNX weights<br/>of the WASM models at their pinned revision")]
     end
     subgraph sg_worker["Memory of ingest.worker.js (worker starpi-ingest, started on first request)"]
         m_docs[("documents Map ws-instanceId-N with full text,<br/>file and text SHA-256, and one BM25Index of all chunks")]
@@ -3985,6 +4509,8 @@ flowchart TD
     net["bypasses sw.js, never stored by the service worker"]
     probe["loadModel: certainlyNotCached looks for tensor-cache.json<br/>in webllm/model, then hasModelInCache"]
     load["model download in the starpi-webllm worker<br/>(Hugging Face weights, GitHub model library)<br/>after checkQuota, the download confirm and storage.persist()"]
+    wprobe["loadModel: wasmCacheStatus matches config,<br/>tokenizer and weights in transformers-cache"]
+    wload["WASM model load in the starpi-wasm worker:<br/>env.fetch answers from transformers-cache,<br/>else the pinned file from Hugging Face,<br/>after the same checks and confirm"]
     ingest["add files: drop zone or file picker, chat attachment or demo samples<br/>(addToWorkspace; a file with the same SHA-256 and chunk settings<br/>returns the existing document with duplicate true)"]
 
     u_delete(["Delete downloaded model data, after window.confirm"])
@@ -3998,14 +4524,17 @@ flowchart TD
     req -.->|"navigation fails or stalls for 3.5 s:<br/>the cached / answers any navigated path"| c_shell
     req -.->|"/assets/* or a PRECACHE path: cache-first over all caches,<br/>e.g. demo samples from /samples/"| c_shell
     req -->|"/assets/* miss: a cacheable response is stored"| c_assets
-    req -->|"non-GET, cross-origin (Supabase, Hugging Face, GitHub, providers)<br/>or another same-origin path such as /sw.js"| net
+    req -->|"non-GET (e.g. POST /api/chat/nvidia), cross-origin<br/>(Supabase, Hugging Face, GitHub, providers)<br/>or another same-origin path such as /sw.js or /api/models/nvidia"| net
     activate -->|"older starpi-shell caches deleted"| c_shell
     activate -->|"entries not in ASSETS deleted"| c_assets
     probe -.->|"reads"| c_model
     load --> c_model
+    wprobe -.->|"reads"| c_tf
+    wload --> c_tf
     ingest --> m_docs
     ingest --> m_list
-    u_delete -->|"unloadModel, deleteModelAllInfoInCache for the 6 catalog ids,<br/>failures only logged"| c_model
+    u_delete -->|"unloadModel, deleteModelAllInfoInCache for the 26 WebGPU ids,<br/>failures only logged"| c_model
+    u_delete -->|"caches.delete transformers-cache,<br/>a failure only logged"| c_tf
     u_remove -->|"remove request, list filtered"| m_docs
     u_remove --> m_list
     u_clear -->|"clearWorkspace: pending requests fail with cleared,<br/>worker.terminate"| m_docs
@@ -4016,11 +4545,11 @@ flowchart TD
     u_reload -->|"memory gone"| m_list
 ```
 
-<sub>Sources: [`src/sw.js`](../src/sw.js), [`scripts/build.mjs`](../scripts/build.mjs), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/demo.js`](../src/js/demo.js)</sub>
+<sub>Sources: [`src/sw.js`](../src/sw.js), [`scripts/build.mjs`](../scripts/build.mjs), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js)</sub>
 
 ### In-memory answer stores
 
-The cited excerpts, receipt drafts and review highlights of answers exist only in main-thread memory; a stored answer keeps only its text, its source titles and ranks, and metadata with the engine, trace and duration. The citation registry in rag/citations.js holds the citations of at most 200 chat retrievals, workspace searches or demo answers, the receipt registry in rag/receipts.js holds at most 50 receipt drafts, and in both the oldest entry is evicted first. New chat does not clear either registry; a citation whose scope was evicted no longer opens, and a Receipt button whose draft was evicted does nothing. The source check adds the ranges of statements that need review to one CSS highlight named starpi-review, only where the browser has the Highlight API, and messages.js resetMessages clears it. chat.js keeps the conversation turns with a localOnly flag (set for client mode, workspace excerpts, an attached file or an answer quoted without a model that names a workspace file): OpenRouter and the own server get only the last 4 turns not marked localOnly, Gemini gets no history, and the on-device model gets the last 4 turns including local-only ones. providers.js remembers the first model id the own server lists per server URL. A reload loses all of it; restored history gets neither citation scopes nor receipts back.
+The cited excerpts, receipt drafts and review highlights of answers exist only in main-thread memory; a stored answer keeps only its text, its source titles and ranks, and metadata with the engine, model, chat mode, trace and duration. The citation registry in rag/citations.js holds the citations of at most 200 chat retrievals, workspace searches or demo answers, the receipt registry in rag/receipts.js holds at most 50 receipt drafts, and in both the oldest entry is evicted first. New chat does not clear either registry; a citation whose scope was evicted no longer opens, and a Receipt button whose draft was evicted does nothing. The source check adds the ranges of statements that need review to one CSS highlight named starpi-review, only where the browser has the Highlight API, and messages.js resetMessages clears it. chat.js keeps the conversation turns with a localOnly flag (set for client mode, workspace excerpts, an attached file or an answer quoted without a model that names a workspace file) and with the engine, model, chat mode and time that the chat export writes: in source mode OpenRouter, the own server and NVIDIA get only the last 4 turns not marked localOnly, Gemini gets no history, and the on-device model gets the last 4 turns including local-only ones; in free chat the remote models, Gemini included, get up to 16 turns not marked localOnly within 24,000 characters, and the on-device model the last 16 turns. providers.js remembers the first model id the own server lists per server URL and the NVIDIA proxy's catalog (five minutes with keys, 30 seconds without), and chat-store.js tracks message writes still under way, so a delete can wait for them. A reload loses all of it; restored history gets neither citation scopes nor receipts back.
 
 <!-- diagram: client-storage-answer-memory -->
 ```mermaid
@@ -4029,8 +4558,10 @@ flowchart TD
         m_scopes[("rag/citations.js scopes Map c1..cN<br/>MAX_SCOPES 200, oldest evicted")]
         m_drafts[("rag/receipts.js drafts Map r1..rN<br/>MAX_DRAFTS 50, oldest evicted")]
         m_hl[("rag/grounding-view.js Highlight starpi-review<br/>in CSS.highlights, ranges of unsupported statements")]
-        m_conv[("chat.js conversation, turns with a localOnly flag:<br/>set for client mode, workspace excerpts, an attached file<br/>or a synthesizer answer naming a workspace file")]
+        m_conv[("chat.js conversation, turns with a localOnly flag:<br/>set for client mode, workspace excerpts, an attached file<br/>or a synthesizer answer naming a workspace file,<br/>plus engine, model, chat mode and time")]
         m_models[("providers.js serverModels<br/>first string model id listed, up to 200 chars,<br/>per normalized own-server URL")]
+        m_nvcat[("providers.js catalogCache<br/>NVIDIA proxy catalog, 5 min with keys,<br/>30 s without, one request shared")]
+        m_writes[("chat-store.js pendingWrites per session,<br/>deletedSessions of this tab")]
     end
 
     w_retrieve["chat retrieval with excerpts,<br/>before the answer is generated"]
@@ -4042,8 +4573,11 @@ flowchart TD
 
     r_open(["open-citation: citation dialog,<br/>getChunkContext for workspace citations"])
     r_receipt(["open-receipt: preview and download as JSON"])
-    r_cloud(["OpenRouter or own-server request:<br/>shareableHistory, the last 4 turns not marked localOnly"])
-    r_local(["on-device model: the last 4 turns, local-only ones included,<br/>trimmed by budgetPrompt"])
+    r_cloud(["OpenRouter, own-server or NVIDIA request: shareableHistory,<br/>the last 4 turns not marked localOnly, in free chat up to 16<br/>within 24000 chars, Gemini too in free chat"])
+    r_local(["on-device model: the last 4 turns, 16 in free chat,<br/>local-only ones included, trimmed by budgetPrompt"])
+    r_export(["export-chat: Markdown or JSON starpi.chat/v1<br/>with role, content, time, engine, model, chat mode"])
+    r_pick(["model pickers and NVIDIA answers:<br/>offered models, configured or not"])
+    r_delete(["Delete chat history, Delete this chat:<br/>wait for the writes, then no write stores<br/>a deleted session again"])
     r_check(["applyGrounding: the question and the user turns<br/>among the last 4 turns count as given text"])
     r_server(["callLocalServer probes first while no model id is known<br/>for the URL, then sends the model field when one is known"])
 
@@ -4064,6 +4598,9 @@ flowchart TD
     m_conv -.-> r_local
     m_conv -.-> r_check
     m_models -.-> r_server
+    m_conv -.-> r_export
+    m_nvcat -.-> r_pick
+    m_writes -.-> r_delete
     u_new -->|"emptied"| m_conv
     u_new -->|"clearGroundingHighlights"| m_hl
     u_new -.->|"not cleared"| m_scopes
@@ -4072,17 +4609,17 @@ flowchart TD
     u_restore -->|"rebuilt from the restored rows,<br/>turns finished while loading appended"| m_conv
 ```
 
-<sub>Sources: [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js)</sub>
+<sub>Sources: [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat-export.js`](../src/js/chat-export.js)</sub>
 
 ### Service worker fetch handler
 
-sw.js only handles same-origin GET requests; everything else (Supabase, Hugging Face model weights, provider APIs, non-GET) bypasses the worker and is never stored by it (WebLLM keeps model files in its own caches). Navigations are network-first with a deadline of NAVIGATION_DEADLINE_MS (3,500 ms): the network response is returned when it comes first, and after the deadline or a network error the cached / from starpi-shell-VERSION answers whatever path was navigated; with no cached shell the page waits for the network or the navigation fails. Only a navigation of / whose response is cacheable, not redirected and text/html is stored, under /, and only while the cached shell has not been served for that navigation: a response that arrives after the deadline answered from the cache is returned to no one and not stored, because the assets of that HTML were never loaded. /assets/* files and PRECACHE entries are cache-first across all caches, and a miss is stored in starpi-assets only for /assets/* paths, while other same-origin paths such as /sw.js and /build-manifest.json go straight to the network. At runtime only ok, basic, status 200 responses without no-store in Cache-Control are cached; the install-time precache relies on cache.addAll, which rejects any response that is not ok.
+sw.js only handles same-origin GET requests; everything else (Supabase, Hugging Face model files, provider APIs, non-GET requests such as the NVIDIA chat POST) bypasses the worker and is never stored by it (WebLLM and Transformers.js keep model files in their own caches). Navigations are network-first with a deadline of NAVIGATION_DEADLINE_MS (3,500 ms): the network response is returned when it comes first, and after the deadline or a network error the cached / from starpi-shell-VERSION answers whatever path was navigated; with no cached shell the page waits for the network or the navigation fails. Only a navigation of / whose response is cacheable, not redirected and text/html is stored, under /, and only while the cached shell has not been served for that navigation: a response that arrives after the deadline answered from the cache is returned to no one and not stored, because the assets of that HTML were never loaded. /assets/* files and PRECACHE entries are cache-first across all caches, and a miss is stored in starpi-assets only for /assets/* paths, the WASM worker and the ONNX Runtime binary included, while other same-origin paths such as /sw.js, /build-manifest.json and GET /api/models/nvidia go straight to the network. At runtime only ok, basic, status 200 responses without no-store in Cache-Control are cached; the install-time precache relies on cache.addAll, which rejects any response that is not ok.
 
 <!-- diagram: service-worker-fetch -->
 ```mermaid
 flowchart TD
     F(["fetch event in sw.js"]) --> M{"request.method is GET?"}
-    M -->|"no"| NET["Not handled: no respondWith,<br/>the browser goes to the network"]
+    M -->|"no, e.g. POST /api/chat/nvidia"| NET["Not handled: no respondWith,<br/>the browser goes to the network"]
     M -->|"yes"| O{"url.origin equals<br/>self.location.origin?"}
     O -->|"no: Supabase, Hugging Face,<br/>provider APIs"| NET
     O -->|"yes"| NAV{"request.mode is navigate?"}
@@ -4101,8 +4638,8 @@ flowchart TD
     FB -->|"hit"| RET3(["return the cached shell<br/>for any navigated path"])
     FB -->|"miss"| ERR1(["rethrow: navigation fails"])
     NAV -->|"no"| AS{"pathname starts with /assets/<br/>or is listed in PRECACHE?"}
-    AS -->|"no: e.g. /sw.js,<br/>/build-manifest.json"| NET
-    AS -->|"yes: e.g. hashed chunks, fonts,<br/>/manifest.webmanifest, /icons/ and /samples/ files"| CF["cacheFirstAsset:<br/>caches.match(event.request)<br/>across all caches"]
+    AS -->|"no: e.g. /sw.js, /build-manifest.json,<br/>GET /api/models/nvidia"| NET
+    AS -->|"yes: e.g. hashed chunks, fonts, the WASM worker,<br/>the ONNX Runtime binary, /manifest.webmanifest,<br/>/icons/ and /samples/ files"| CF["cacheFirstAsset:<br/>caches.match(event.request)<br/>across all caches"]
     CF -->|"hit"| RET4(["return the cached response"])
     CF -->|"miss"| NF2["fetch(event.request)"]
     NF2 --> C2{"cacheable(response) and<br/>pathname starts with /assets/?"}
@@ -4121,7 +4658,7 @@ flowchart TD
 
 ### Service worker install, waiting and activate
 
-scripts/build.mjs injects three values into dist/sw.js: VERSION, a 12-character hash from buildVersion over the rewritten index.html, the sorted asset URLs, every public file and the sw.js template itself; the deduplicated app-shell PRECACHE list; and ASSETS, the URL of every esbuild output except .map and .LEGAL.txt files. The caches are named starpi-shell-VERSION and starpi-assets, and verify-dist.mjs, run by npm run verify and in CI, fails when the version does not match the dist contents, the ingest worker is not precached or /index.html is precached. Install precaches the shell (only / bypasses the HTTP cache) and a failed request fails the install. It then calls skipWaiting only when clients.matchAll finds no window client, controlled or not, because an open page may run an older build whose code reloads itself when the worker changes, which would clear its in-memory workspace. On a first install there is no active worker, so the new one activates anyway; on an update with a page open it waits until no open page uses the old worker, or until a page posts a SKIP_WAITING message, which the current main.js never sends. Activate deletes only caches whose names start with starpi- other than the two current ones, which leaves the WebLLM caches alone, removes starpi-assets entries that the new build no longer lists, and claims the open clients, whose pages then decide themselves whether to offer a reload.
+scripts/build.mjs injects three values into dist/sw.js: VERSION, a 12-character hash from buildVersion over the rewritten index.html, the sorted asset URLs, every public file and the sw.js template itself; the deduplicated app-shell PRECACHE list; and ASSETS, the URL of every esbuild output except .map and .LEGAL.txt files, plus the hashed ONNX Runtime binary. The caches are named starpi-shell-VERSION and starpi-assets, and verify-dist.mjs, run by npm run verify and in CI, fails when the version does not match the dist contents, the ingest worker is not precached, /index.html is precached, or the WASM worker or the ONNX Runtime binary is precached. Install precaches the shell (only / bypasses the HTTP cache) and a failed request fails the install. It then calls skipWaiting only when clients.matchAll finds no window client, controlled or not, because an open page may run an older build whose code reloads itself when the worker changes, which would clear its in-memory workspace. On a first install there is no active worker, so the new one activates anyway; on an update with a page open it waits until no open page uses the old worker, or until a page posts a SKIP_WAITING message, which the current main.js never sends. Activate deletes only caches whose names start with starpi- other than the two current ones, which leaves the WebLLM caches and transformers-cache alone, removes starpi-assets entries that the new build no longer lists, and claims the open clients, whose pages then decide themselves whether to offer a reload.
 
 <!-- diagram: service-worker-lifecycle -->
 ```mermaid
@@ -4129,11 +4666,11 @@ flowchart TD
     subgraph sg_build["scripts/build.mjs writes dist/sw.js and dist/build-manifest.json"]
       V["VERSION = buildVersion: first 12 hex chars of sha256 over<br/>the rewritten index.html, the sorted asset URLs without .map<br/>and .LEGAL.txt, each public file URL and bytes, the src/sw.js template"]
       P["PRECACHE: /, app CSS, main JS, ingest worker,<br/>Latin font, static imports of main, public files, deduplicated"]
-      AL["ASSETS: every esbuild output URL under /assets/,<br/>without .map and .LEGAL.txt"]
-      BM["build-manifest.json: version, entries mainJs, workerJs,<br/>ingestWorkerJs, appCss, assets, public, precache"]
+      AL["ASSETS: every esbuild output URL under /assets/,<br/>without .map and .LEGAL.txt, plus the ONNX Runtime binary"]
+      BM["build-manifest.json: version, entries mainJs, workerJs,<br/>ingestWorkerJs, wasmWorkerJs, ortWasm, appCss,<br/>assets, public, precache"]
     end
     subgraph sg_verify["scripts/verify-dist.mjs (npm run verify:dist, CI)"]
-      VD{"version recomputes from dist, sw.js carries it without placeholders,<br/>every precache file exists, ingest worker precached,<br/>/index.html not precached?"}
+      VD{"version recomputes from dist, sw.js carries it without placeholders,<br/>every precache file exists, ingest worker precached,<br/>/index.html, the WASM worker and the ONNX Runtime<br/>binary not precached?"}
     end
     BM --> VD
     VD -->|"no"| VF(["verify-dist fails"])
@@ -4470,7 +5007,7 @@ Every exported query of supabase.js resolves to a Result ({ ok, data } or { ok, 
 ```mermaid
 flowchart TD
     subgraph sg_callers["Callers"]
-        cRetrieve["chat.js retrieve(), skipped for workspace-only<br/>questions and while status offline:<br/>searchKnowledge except in client mode,<br/>recentKnowledge(30) in client mode or after<br/>no search hit or a search error"]
+        cRetrieve["chat.js retrieve(), verified source mode only,<br/>skipped for workspace-only questions and while status offline:<br/>searchKnowledge except in client mode,<br/>recentKnowledge(30) in client mode or after<br/>no search hit or a search error"]
         cTitles["chat.js knownTitles(), cached 60 s,<br/>empty list while offline or on error"]
         cLibrary["library.js loadDocuments()<br/>and the document modal"]
         cIngest["ingest.js submitIngest()"]
@@ -4486,7 +5023,7 @@ flowchart TD
         fInsDoc["insertDocument(input)<br/>document with source_name = title, then one section:<br/>section_index 0, token_count = word count, embedding null"]
         fGraph["listEntities(): id, name, entity_type, description,<br/>ordered by name, limit 500<br/>listRelations(): limit 2000"]
         fInsEnt["insertEntity(): name, entity_type, description"]
-        fChat["insertChatMessage, loadChatSession,<br/>countChatMessages, deleteOwnChats"]
+        fChat["insertChatMessage, loadChatSession,<br/>countChatMessages, deleteOwnChats,<br/>deleteChatSession"]
     end
 
     subgraph sg_db["PostgREST with the anon key, RLS as anon or the anonymous user"]
@@ -4532,7 +5069,7 @@ flowchart TD
 
 ### Chat sync: chat_history and the localStorage fallback
 
-Chats go to chat_history only when canSyncChats() is true, which is signedIn and hardened; the status is not part of the check, so after a request failure has switched a ready connection to offline, inserts are still tried and land in localStorage when they fail. persistMessage stores nothing for empty content, keeps localOnly messages in localStorage with metadata.local_only, and falls back to localStorage without that flag when the insert fails, so loadCurrentSession later treats the message as on-device. loadChatSession reads the newest 200 rows of the current session and returns them oldest first; loadCurrentSession merges them with the local messages by created_at. Deleting the history from Settings is refused while an answer is still being written (settings.delete_history_busy) and needs a confirmation. deleteChatHistory then clears every local chat and starts a new session. It skips the server and reports success only when the status is ready and chats cannot sync; otherwise, also while offline or still connecting, deleteOwnChats() tries to delete every chat_history row of the anonymous user in all sessions (without a session user it reports success without a request), and a failed delete, for example a network error while offline, shows settings.delete_history_partial instead of settings.delete_history_done. refreshSyncStatus counts the user's rows for the sync text.
+Chats go to chat_history only when canSyncChats() is true, which is signedIn and hardened; the status is not part of the check, so after a request failure has switched a ready connection to offline, inserts are still tried and land in localStorage when they fail. persistMessage stores nothing for empty content, keeps localOnly messages in localStorage with metadata.local_only, and falls back to localStorage without that flag when the insert fails, so loadCurrentSession later treats the message as on-device. loadChatSession reads the newest 200 rows of the current session and returns them oldest first; loadCurrentSession merges them with the local messages by created_at. Deleting the history from Settings is refused while an answer is still being written (settings.delete_history_busy) and needs a confirmation. deleteChatHistory then waits for message writes still under way, marks their sessions as deleted so a late write cannot store them again, clears every local chat and starts a new session. It skips the server and reports success only when the status is ready and chats cannot sync; otherwise, also while offline or still connecting, deleteOwnChats() tries to delete every chat_history row of the anonymous user in all sessions (without a session user it reports success without a request), and a failed delete, for example a network error while offline, shows settings.delete_history_partial instead of settings.delete_history_done. Delete this chat in the chat menu runs deleteSession for the current session the same way: it waits for that session's writes, removes the session from localStorage, starts a new session, and deleteChatSession deletes the user's rows with that session_id, reported as chat.deleted_title or chat.delete_partial_title. refreshSyncStatus counts the user's rows for the sync text.
 
 <!-- diagram: supabase-chat-sync -->
 ```mermaid
@@ -4577,7 +5114,7 @@ flowchart TD
         dBusyMsg(["alert settings.delete_history_busy,<br/>nothing deleted"])
         dConfirm{"confirm settings.delete_history_confirm?"}
         dCancel(["nothing deleted"])
-        dClear["starpi_local_chats_v1 set to an empty object,<br/>startNewSession()"]
+        dClear["settleWrites: await pending writes, their sessions<br/>marked deleted, then starpi_local_chats_v1 set<br/>to an empty object, startNewSession()"]
         dGate{"status ready and not canSyncChats()?"}
         dUid{"deleteOwnChats(): user id<br/>from getSession()?"}
         dReq["run() delete from chat_history where owner_id = user id,<br/>every session, RLS chat_history_delete_own"]
@@ -4596,6 +5133,8 @@ flowchart TD
         dReq --> dDone
         dTrue --> dAlert
         dDone --> dAlert
+        dOne(["chat menu Delete this chat: deleteSession(sid),<br/>the same steps for that session only,<br/>deleteChatSession: owner_id and session_id"])
+        dOne -.-> dClear
     end
 
     subgraph sg_status["refreshSyncStatus(), text of chatSyncStatusText"]
@@ -5115,11 +5654,11 @@ flowchart TD
 
 ## 9. Security layers
 
-The defences a hostile document, model answer, receipt file or network response has to get through, from the HTTP headers to DOMPurify, the citation registry, the source-check panel and the database policies.
+The defences a hostile document, model answer, receipt file or network response has to get through, from the HTTP headers to DOMPurify, the citation registry, the source-check panel and the database policies, and the guards of the server-side NVIDIA proxy (section 13 shows them in detail).
 
 ### Untrusted content on its way to the DOM
 
-Every untrusted input reaches the page through one of a few controls. Values inside HTML templates are escaped with escapeHtml, values inside generated Markdown with escapeMarkdown, and Markdown itself goes through renderMarkdown, where DOMPurify strips data-*, aria-*, style, class and id attributes and forbids images, media, forms, buttons and frames. A link hook keeps only http:, https: and mailto: links and opens them with rel noopener noreferrer nofollow. Other values are written as textContent (the citation drawer, the document title in the modal, workspace search snippets, graph entity buttons and the graph status line, connection-test replies and errors) or drawn on the graph canvas with fillText, and localized UI and notices go through setText. Citation buttons are built with DOM APIs only for labels registered from real excerpts, never inside a link, code, pre or another button. Clicks and changes go through one delegated listener each (data-action and data-change), and the few other handlers (such as form submit, keys, drag and drop, the graph canvas) are attached with addEventListener, so no inline handlers are needed. Prompt fencing in buildContext only mitigates prompt injection.
+Every untrusted input reaches the page through one of a few controls. Values inside HTML templates are escaped with escapeHtml, values inside generated Markdown with escapeMarkdown, and Markdown itself goes through renderMarkdown, where DOMPurify strips data-*, aria-*, style, class and id attributes and forbids images, media, forms, buttons and frames. A link hook keeps only http:, https: and mailto: links and opens them with rel noopener noreferrer nofollow. Other values are written as textContent (the citation drawer, the document title in the modal, workspace search snippets, graph entity buttons and the graph status line, connection-test replies and errors) or drawn on the graph canvas with fillText, and localized UI and notices go through setText. Citation buttons are built with DOM APIs only for labels registered from real excerpts, never inside a link, code, pre or another button, and the copy buttons of code blocks are added after sanitizing with createElement; the source check skips pre and every button that is not a citation. Errors of the NVIDIA proxy reach the page only as i18n texts chosen by their error code, never as text from the server or from NVIDIA, and a model's streamed reasoning is rendered through the same renderMarkdown. Clicks and changes go through one delegated listener each (data-action and data-change), and the few other handlers (such as form submit, keys, drag and drop, the graph canvas) are attached with addEventListener, so no inline handlers are needed. Prompt fencing in buildContext only mitigates prompt injection.
 
 <!-- diagram: security-layers-render -->
 ```mermaid
@@ -5193,7 +5732,7 @@ flowchart LR
     cFence -.-> tPrompt
 ```
 
-<sub>Sources: [`src/js/render.js`](../src/js/render.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/dom.js`](../src/js/dom.js), [`src/js/library.js`](../src/js/library.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/supabase.js`](../src/js/supabase.js)</sub>
+<sub>Sources: [`src/js/render.js`](../src/js/render.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/dom.js`](../src/js/dom.js), [`src/js/library.js`](../src/js/library.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/code-blocks.js`](../src/js/code-blocks.js), [`src/js/providers.js`](../src/js/providers.js)</sub>
 
 ### Source-check panel and answer receipts
 
@@ -5274,7 +5813,7 @@ flowchart LR
 
 ### Worker isolation, RLS, key handling, CSP and the build gate
 
-Workspace files are parsed only inside the starpi-ingest Web Worker, with an extension allowlist, byte, character and page limits, and pdf.js without font loading; the app never uploads or syncs them (a file reaches the knowledge base only if the user copies it into the ingest form and saves it), and only matching excerpts go to the cloud provider or own server that writes an answer. The question and answer of a turn that uses them, like any question with an attached file and any answer written without a model that names a workspace file, stay in localStorage with metadata local_only true, and turns marked local_only are never sent to OpenRouter or an own server as chat history (Gemini gets no history at all). Supabase access uses the public key (a publishable key or a legacy anon JWT; build.mjs refuses sb_secret_ keys and other JWT roles) plus an anonymous session, so RLS, grants and CHECK size limits decide what a browser can read or write, and chats sync only when canSyncChats() confirms a session and the hardened schema. Provider keys stay in sessionStorage unless the user opts to remember them and travel only in headers, own-server URLs must be https (plain http only on localhost or 127.0.0.1, the http hosts connect-src allows) without credentials, the vercel.json CSP and headers block script injection, remote image beacons, plugins and framing while connect-src still allows any https host, and sw.js caches only same-origin GET responses. In CI, verify-dist.mjs runs after npm run build (it is not part of the build command Vercel runs) and fails the job if dist/ would break or weaken that policy, if its build version does not match its contents, or if the precache list lacks the ingest worker or includes /index.html.
+Workspace files are parsed only inside the starpi-ingest Web Worker, with an extension allowlist, byte, character and page limits, and pdf.js without font loading; the app never uploads or syncs them (a file reaches the knowledge base only if the user copies it into the ingest form and saves it), and only matching excerpts, or in free chat the text of a file attached to the question, go to the cloud provider, own server or NVIDIA model that writes an answer. The question and answer of a turn that uses them, like any question with an attached file, its answer in free chat, and any answer written without a model that names a workspace file, stay in localStorage with metadata local_only true, and turns marked local_only are never sent to OpenRouter, an own server or NVIDIA as chat history (Gemini gets history only in free chat, and never these turns). Supabase access uses the public key (a publishable key or a legacy anon JWT; build.mjs refuses sb_secret_ keys and other JWT roles) plus an anonymous session, so RLS, grants and CHECK size limits decide what a browser can read or write, and chats sync only when canSyncChats() confirms a session and the hardened schema. Provider keys stay in sessionStorage unless the user opts to remember them and travel only in headers; NVIDIA keys exist only in the server environment of the Vercel functions or the backend, the browser calls their same-origin routes without any key, and those routes accept only same-origin pages, limit requests per client address and pass only allowlisted models and fields within fixed sizes (section 13). Own-server URLs must be https (plain http only on localhost or 127.0.0.1, the http hosts connect-src allows) without credentials, the processor (WASM) worker downloads only files of its catalog repositories at their pinned revisions, the vercel.json CSP and headers block script injection, remote image beacons, plugins and framing while connect-src still allows any https host, and sw.js caches only same-origin GET responses. In CI, verify-dist.mjs runs after npm run build (it is not part of the build command Vercel runs) and fails the job if dist/ would break or weaken that policy, if its build version does not match its contents, if the precache list lacks the ingest worker or includes /index.html, the WASM worker or the ONNX Runtime binary, or if any bundle, index.html, sw.js or the build manifest contains an NVIDIA key.
 
 <!-- diagram: security-layers-platform -->
 ```mermaid
@@ -5282,9 +5821,10 @@ flowchart LR
     subgraph sg_in["Untrusted input"]
         iFile["Workspace files<br/>drop zone, file input, chat attachment"]
         iDb["Supabase access<br/>public key built into the bundle,<br/>anonymous session JWT, reads and writes"]
-        iKey["Provider keys<br/>Gemini, OpenRouter"]
+        iKey["Provider keys: Gemini and OpenRouter in the tab,<br/>NVIDIA keys only in the server environment"]
         iUrl["Own server URL cfgLlmUrl,<br/>stored as starpi_llm_url"]
         iNet["Responses from Supabase,<br/>providers and model downloads"]
+        iProxy["Requests to the NVIDIA routes<br/>from other sites, scripts and floods"]
         iSlip["Markup that slips past<br/>escaping and sanitizing"]
         iDist["dist/ build output<br/>index.html, bundles, app CSS,<br/>sw.js, build-manifest.json"]
         iOrigin["Other sites and networks<br/>framing pages, opener windows,<br/>network attackers"]
@@ -5294,20 +5834,22 @@ flowchart LR
         cWorker["ingest.worker.js, Web Worker starpi-ingest<br/>parse, chunk and BM25 off the main thread,<br/>full text kept in worker memory, never uploaded or synced by the app,<br/>failures return ParseError codes, ok false"]
         cParse["parser.js extractText<br/>extension allowlist txt, md, markdown, csv, log, json, pdf<br/>MAX_FILE_BYTES 25 MiB, MAX_TEXT_CHARS 5000000,<br/>at most MAX_PDF_PAGES 2000 read, normalizeText drops NUL and control chars"]
         cPdf["pdf.js legacy build inside the worker<br/>disableFontFace, useSystemFonts false,<br/>isOffscreenCanvasSupported false,<br/>PasswordException becomes encrypted_pdf,<br/>other document errors invalid_pdf,<br/>pdf.js failing to load becomes pdf_reader"]
-        cLocal["chat.js and chat-store.js persistMessage localOnly:<br/>on-device mode, question and answer of a turn<br/>using workspace excerpts, question stored after retrieval,<br/>questions with an attached file and answers without a model<br/>that name a workspace file stay in localStorage<br/>with metadata local_only true, rows without the flag count as local"]
-        cHist["chat.js shareableHistory: turns marked localOnly<br/>are never sent as history, the last 4 others go<br/>to OpenRouter and the own server, none to Gemini,<br/>matching excerpts still reach the provider"]
+        cLocal["chat.js and chat-store.js persistMessage localOnly:<br/>on-device mode, question and answer of a turn<br/>using workspace excerpts, question stored after retrieval,<br/>questions with an attached file, their answers in free chat,<br/>and answers without a model that name a workspace file<br/>stay in localStorage with metadata local_only true,<br/>rows without the flag count as local"]
+        cHist["chat.js shareableHistory: turns marked localOnly<br/>are never sent as history; source mode: the last 4 others<br/>to OpenRouter, the own server and NVIDIA, none to Gemini;<br/>free chat: up to 16 within 24000 chars, Gemini included;<br/>matching excerpts or the attached file still reach the model"]
         cRls["Postgres RLS and grants<br/>visible = is_public or owner_id = auth.uid()<br/>published rows read-only for browser roles,<br/>chat_history: own rows, select, insert and delete,<br/>brain_settings service role only, RPCs SECURITY INVOKER"]
         cCheck["CHECK size limits on browser-writable columns<br/>violations fail with SQLSTATE 23514"]
         cSync["canSyncChats: signedIn and hardened,<br/>otherwise chats stay in localStorage"]
         cBuildKey["build.mjs assertPublicKey, lib/supabase-key.mjs<br/>sb_publishable_ key or a JWT with role anon,<br/>empty, sb_secret_, not a JWT or another role:<br/>the build fails"]
         cSecret["storage.js writeSecret<br/>sessionStorage for this tab,<br/>localStorage only with remember keys,<br/>inputs cleared after save, clearKeys"]
-        cHeader["providers.js: Gemini key in x-goog-api-key header,<br/>OpenRouter key as Authorization Bearer, never in a URL"]
+        cHeader["providers.js: Gemini key in x-goog-api-key header,<br/>OpenRouter key as Authorization Bearer, never in a URL,<br/>NVIDIA requests carry no key, same origin only"]
+        cProxy["api/_lib guards on the NVIDIA routes:<br/>same-origin check, per-IP rate limit, keys configured,<br/>JSON body at most 256 KiB, model and field allowlist,<br/>no-store, keys by index and bodies never logged"]
         cNorm["providers.js normalizeServerUrl<br/>https anywhere, http only for localhost and 127.0.0.1,<br/>the plain-http hosts in connect-src, no user or password,<br/>query and hash dropped"]
+        cPin["wasm/worker.js env.fetch: only catalog repositories<br/>at the pinned revision, plain path segments,<br/>everything else refused before any request"]
         cSw["sw.js fetch handler<br/>only same-origin GET requests handled,<br/>cross-origin requests bypass the worker,<br/>cached only when 200, basic and not no-store"]
         cCsp["vercel.json Content-Security-Policy<br/>default-src self, script-src self wasm-unsafe-eval, style-src self,<br/>font-src self, img-src self data: blob:, worker-src self,<br/>manifest-src self, media-src none,<br/>connect-src self data: https: wss://*.supabase.co<br/>http://localhost:* http://127.0.0.1:*<br/>object-src, frame-src, base-uri, form-action, frame-ancestors none"]
         cHdr["vercel.json headers: X-Frame-Options DENY, nosniff,<br/>COOP same-origin, HSTS max-age 63072000,<br/>Referrer-Policy strict-origin-when-cross-origin,<br/>Permissions-Policy microphone self only,<br/>camera, geolocation, payment, usb, serial, hid off"]
-        cVerify["scripts/verify-dist.mjs in CI after npm run build:<br/>CSP compatibility, no inline script, style block, style attribute,<br/>on* handler or javascript: URL, scripts and stylesheets<br/>only from /assets/, referenced and precached files exist,<br/>no __STARPI_ placeholder in sw.js or the bundles,<br/>no eval or new Function, CSP without unsafe-inline or unsafe-eval"]
-        cVerify2["scripts/verify-dist.mjs: version and offline shell<br/>buildVersion over index.html, asset URLs, public files<br/>and the sw.js template equals the manifest version,<br/>sw.js carries it, public files listed, ingest worker<br/>precached, /index.html not precached,<br/>app CSS contains ::highlight(starpi-review)"]
+        cVerify["scripts/verify-dist.mjs in CI after npm run build:<br/>CSP compatibility, no inline script, style block, style attribute,<br/>on* handler or javascript: URL, scripts and stylesheets<br/>only from /assets/, referenced and precached files exist,<br/>no __STARPI_ placeholder in sw.js or the bundles,<br/>no eval or new Function, CSP without unsafe-inline or unsafe-eval,<br/>no nvapi- key in bundles, index.html, sw.js or the manifest"]
+        cVerify2["scripts/verify-dist.mjs: version and offline shell<br/>buildVersion over index.html, asset URLs, public files<br/>and the sw.js template equals the manifest version,<br/>sw.js carries it, public files listed, ingest worker<br/>precached, /index.html not precached,<br/>WASM worker and ONNX Runtime binary present, not precached,<br/>app CSS contains ::highlight(starpi-review)"]
     end
 
     subgraph sg_thr["Threat stopped"]
@@ -5317,8 +5859,10 @@ flowchart LR
         tTenant["Reading or changing other users' chats<br/>and private rows, editing published rows"]
         tSize["Oversized writes into the database"]
         tSecretKey["A key that bypasses RLS<br/>shipped to every browser"]
-        tKey["Keys persisted on shared devices<br/>or exposed in URLs and logs"]
+        tKey["Keys persisted on shared devices,<br/>exposed in URLs and logs or shipped in a bundle"]
+        tQuota["Quota abuse of the shared NVIDIA key pool<br/>and use as an open proxy"]
         tUrl["Cleartext http to remote hosts,<br/>credentials in URLs, non-http schemes"]
+        tModel["Model files from another repository<br/>or a moved branch"]
         tCache["Private API responses<br/>kept in CacheStorage"]
         tXss["Injected or inline script, eval"]
         tExfil["Image beacons and plugins: remote images,<br/>object, embed, frames, form posts"]
@@ -5333,7 +5877,7 @@ flowchart LR
     cWorker --> tLeak
     cParse --> tFreeze
     cPdf --> tPdf
-    iFile -->|"attached-file questions,<br/>workspace turns: question and answer,<br/>answers without a model naming<br/>a workspace file"| cLocal
+    iFile -->|"attached-file questions and free-chat answers,<br/>workspace turns: question and answer,<br/>answers without a model naming<br/>a workspace file"| cLocal
     iFile -->|"workspace and attached-file turns,<br/>turns whose answer without a model<br/>names a workspace file"| cHist
     cLocal --> tLeak
     cHist --> tLeak
@@ -5347,10 +5891,16 @@ flowchart LR
     cCheck --> tSize
     iKey --> cSecret
     iKey --> cHeader
+    iKey -->|"NVIDIA keys"| cVerify
     cSecret --> tKey
     cHeader --> tKey
+    cVerify -->|"nvapi- check"| tKey
+    iProxy --> cProxy
+    cProxy --> tQuota
     iUrl --> cNorm
     cNorm --> tUrl
+    iNet --> cPin
+    cPin --> tModel
     iNet --> cSw
     cSw --> tCache
     iSlip --> cCsp
@@ -5364,18 +5914,18 @@ flowchart LR
     cVerify2 --> tRegress
 ```
 
-<sub>Sources: [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/config.js`](../src/js/config.js), [`src/js/state.js`](../src/js/state.js), [`src/sw.js`](../src/sw.js), [`vercel.json`](../vercel.json), [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`scripts/lib/build-version.mjs`](../scripts/lib/build-version.mjs), [`src/locales/en.json`](../src/locales/en.json), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql), [`backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql`](../backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`package.json`](../package.json), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)</sub>
+<sub>Sources: [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/config.js`](../src/js/config.js), [`src/js/state.js`](../src/js/state.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`api/_lib/guards.js`](../api/_lib/guards.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`api/_lib/nvidia-request.js`](../api/_lib/nvidia-request.js), [`src/sw.js`](../src/sw.js), [`vercel.json`](../vercel.json), [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`scripts/lib/build-version.mjs`](../scripts/lib/build-version.mjs), [`src/locales/en.json`](../src/locales/en.json), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql), [`backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql`](../backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`package.json`](../package.json), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)</sub>
 
 ### Backend API guards, backend secrets and CI supply chain
 
-The Python backend holds the service role key, so server.py binds to 127.0.0.1 unless BRAIN_API_TOKEN is set and then requires a Bearer token for /api/brain/*; without a token it refuses proxy headers and non-loopback Host headers, and it always rejects origins outside BRAIN_ALLOWED_ORIGINS. Request bodies are bounded (Content-Length required, 1 MiB default, JSON only, 30 s timeout, per-field character limits) and every response carries restrictive headers and generic errors. The service role bypasses RLS, so core/supabase_client.py returns only rows an anonymous visitor may see anyway, published rows and rows the backend wrote itself (no owner): list_documents filters with VISIBLE_ROWS, and vector matches from match_knowledge_sections are kept only for documents that pass the same filter. The operator command line (core/cli_supabase.py through core/supabase_service.py) reads without this filter and is not reachable through the API. Secrets come only from the process environment or the .env file that core/config.py loads itself (backend/.env, else the repository root; the environment wins, and within the file the last assignment wins) and never appear in repr, and CI scans the tree and pull-request commits with a checksum-verified gitleaks and audits the dependencies (npm audit fails on any advisory in a runtime dependency, pip-audit on any advisory in the backend requirements) and writes CycloneDX SBOMs of the app and of @starpi/core from the lockfile while running with read-only permissions, SHA-pinned actions and npm ci --ignore-scripts. In release.yml the prepare job, which installs dependencies and packs @starpi/core, runs with read-only permissions too; only the release job, which installs and runs nothing from the repository and checks SHA256SUMS before it attaches the assets, gets contents write, and it runs after CI has passed on a push to main or when started by hand on main, always for the version in package.json (a manual run takes no inputs).
+The Python backend holds the service role key, so server.py binds to 127.0.0.1 unless BRAIN_API_TOKEN is set and then requires a Bearer token for /api/brain/*; without a token it refuses proxy headers and non-loopback Host headers, and it always rejects origins outside BRAIN_ALLOWED_ORIGINS. Request bodies are bounded (Content-Length required, 1 MiB default and 256 KiB on the NVIDIA chat route, JSON only, 30 s timeout, per-field character limits) and every response carries restrictive headers and generic errors. The NVIDIA chat route spends a shared key pool, so it needs an allowed Origin or the Bearer token, counts requests per client address (the right-most X-Forwarded-For hop only behind the local reverse proxy that a token implies) and validates with the same rules and shared test vectors as the Vercel functions. The service role bypasses RLS, so core/supabase_client.py returns only rows an anonymous visitor may see anyway, published rows and rows the backend wrote itself (no owner): list_documents filters with VISIBLE_ROWS, and vector matches from match_knowledge_sections are kept only for documents that pass the same filter. The operator command line (core/cli_supabase.py through core/supabase_service.py) reads without this filter and is not reachable through the API. Secrets, NVIDIA_API_KEYS included, come only from the process environment or the .env file that core/config.py loads itself (backend/.env, else the repository root; the environment wins, and within the file the last assignment wins) and never appear in repr, and CI scans the tree and pull-request commits with a checksum-verified gitleaks, whose custom rule starpi-nvidia-api-key also finds NVIDIA keys pasted with Markdown escapes (a unit test scans every tracked file with the same pattern), and audits the dependencies (npm audit fails on any advisory in a runtime dependency, pip-audit on any advisory in the backend requirements) and writes CycloneDX SBOMs of the app and of @starpi/core from the lockfile while running with read-only permissions, SHA-pinned actions and npm ci --ignore-scripts. In release.yml the prepare job, which installs dependencies and packs @starpi/core, runs with read-only permissions too; only the release job, which installs and runs nothing from the repository and checks SHA256SUMS before it attaches the assets, gets contents write, and it runs after CI has passed on a push to main or when started by hand on main, always for the version in package.json (a manual run takes no inputs).
 
 <!-- diagram: security-layers-backend-ci -->
 ```mermaid
 flowchart LR
     subgraph sg_in["Untrusted input"]
-        iReq["HTTP requests to the brain API<br/>/api/health, /api/brain/documents,<br/>/api/brain/ingest, /api/brain/query"]
-        iSecret["Backend secrets<br/>SUPABASE_SERVICE_ROLE_KEY, BRAIN_API_TOKEN,<br/>LLM, embedding and provider keys"]
+        iReq["HTTP requests to the brain API<br/>/api/health, /api/brain/documents,<br/>/api/brain/ingest, /api/brain/query,<br/>/api/models/nvidia, /api/chat/nvidia"]
+        iSecret["Backend secrets<br/>SUPABASE_SERVICE_ROLE_KEY, BRAIN_API_TOKEN,<br/>LLM, embedding and provider keys, NVIDIA_API_KEYS"]
         iRepo["Commits, pull requests,<br/>npm and pip dependencies"]
     end
 
@@ -5385,11 +5935,12 @@ flowchart LR
         cOrigin["Origin header not in BRAIN_ALLOWED_ORIGINS: 403,<br/>Access-Control-Allow-Origin only for allowed origins"]
         cHost["_check_host, only without a token:<br/>Host header that is not loopback: 403"]
         cAuth["_check_auth for /api/brain/* when a token is set:<br/>Authorization Bearer checked with hmac.compare_digest, else 401"]
-        cBody["_read_json_object: Transfer-Encoding or no Content-Length 411,<br/>invalid or repeated Content-Length 400, above BRAIN_MAX_BODY_BYTES<br/>default 1 MiB 413, not application/json 415, stalled body 408 after 30 s<br/>fields: text 200000, query 4000, source_name 256, source_type 64 characters"]
+        cBody["_read_json_object: Transfer-Encoding or no Content-Length 411,<br/>invalid or repeated Content-Length 400, above BRAIN_MAX_BODY_BYTES<br/>default 1 MiB, 256 KiB for /api/chat/nvidia, 413, not application/json 415,<br/>stalled body 408 after 30 s, BOM ignored, NaN and Infinity refused<br/>fields: text 200000, query 4000, source_name 256, source_type 64 characters"]
+        cNvidia["NVIDIA chat route: _check_nvidia_caller, an Origin in<br/>BRAIN_ALLOWED_ORIGINS or the Bearer token, else 403,<br/>RateLimiter per client, NVIDIA_RATE_LIMIT_PER_MINUTE,<br/>validate_chat_request: allowlist and size limits,<br/>upstream bodies never read on errors, keys logged by index"]
         cResp["Every response: nosniff, Cache-Control no-store,<br/>Referrer-Policy no-referrer, CSP default-src none,<br/>unhandled errors return a generic 500 internal_error,<br/>request log without headers or query string"]
         cVisible["core/supabase_client.py VISIBLE_ROWS<br/>is_public true or owner_id null:<br/>list_documents filtered, match_knowledge_sections<br/>matches kept only for such documents,<br/>a failed lookup falls back to the in-memory search"]
         cCfg["core/config.py BrainConfig: read from the process environment,<br/>which wins over backend/.env (else the root .env)<br/>loaded at import, last assignment in the file wins,<br/>service role key only from SUPABASE_SERVICE_ROLE_KEY,<br/>never the anon key, secret fields excluded from repr"]
-        cLeaks["CI job secrets: gitleaks 8.30.1, sha256 verified,<br/>scans the working tree and the commits of a pull request"]
+        cLeaks["CI job secrets: gitleaks 8.30.1, sha256 verified,<br/>scans the working tree and the commits of a pull request,<br/>custom rule starpi-nvidia-api-key, escaped keys too,<br/>nvidia-catalog.test.mjs scans tracked files with it"]
         cAudit["CI job audit: npm audit --omit=dev fails on any advisory<br/>in a runtime dependency, pip-audit on<br/>backend/requirements-dev.txt fails on any advisory,<br/>development tooling: warning at high severity only,<br/>npm run sbom: CycloneDX SBOMs, artifact sbom"]
         cSupply["CI and Vercel: permissions contents read,<br/>actions pinned to commit SHAs, persist-credentials false,<br/>npm ci --ignore-scripts"]
         cRelease["release.yml: the prepare job packs @starpi/core and writes<br/>the SBOMs with contents read, smoke-tests the tarball,<br/>contents write for the release job only, which installs<br/>nothing, checks SHA256SUMS and runs gh release create,<br/>after CI succeeded on a push to main or by hand on main,<br/>version always from package.json, no dispatch inputs,<br/>SHA-pinned checkout, persist-credentials false"]
@@ -5399,6 +5950,7 @@ flowchart LR
         tRemote["Unauthenticated remote use of<br/>the service role backend"]
         tRebind["Web pages the local user visits calling the API,<br/>DNS rebinding, remote clients forwarded as local"]
         tAbuse["Oversized, slow or malformed request bodies"]
+        tQuota["Quota abuse of the shared NVIDIA key pool<br/>by other sites or bare scripts"]
         tInfo["Error details, cached responses<br/>or credentials in logs"]
         tPrivate["Private rows of browser sessions<br/>read through the service role,<br/>which bypasses RLS"]
         tKeys["Service role or provider keys<br/>in logs or in git history"]
@@ -5415,6 +5967,8 @@ flowchart LR
     iReq --> cBody
     iReq --> cResp
     iReq -->|"documents, query"| cVisible
+    iReq -->|"/api/chat/nvidia"| cNvidia
+    cNvidia --> tQuota
     cBind --> tRemote
     cAuth --> tRemote
     cProxy --> tRebind
@@ -5438,15 +5992,15 @@ flowchart LR
     cAudit --> tAsset
 ```
 
-<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/supabase_service.py`](../backend/core/supabase_service.py), [`backend/core/cli_supabase.py`](../backend/core/cli_supabase.py), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`vercel.json`](../vercel.json), [`SECURITY.md`](../SECURITY.md), [`backend/test_server.py`](../backend/test_server.py), [`backend/test_core.py`](../backend/test_core.py)</sub>
+<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/supabase_service.py`](../backend/core/supabase_service.py), [`backend/core/cli_supabase.py`](../backend/core/cli_supabase.py), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`vercel.json`](../vercel.json), [`SECURITY.md`](../SECURITY.md), [`backend/test_server.py`](../backend/test_server.py), [`backend/test_core.py`](../backend/test_core.py), [`backend/test_nvidia.py`](../backend/test_nvidia.py), [`.gitleaks.toml`](../.gitleaks.toml), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>
 
 ## 10. Optional backend
 
-`backend/` is a dependency-light Python service for server-side ingestion and pgvector retrieval. It is the only component that holds the service role key, so its request guards fail closed, and because that key bypasses row level security, the document list and vector search of the API filter out private rows themselves.
+`backend/` is a dependency-light Python service for server-side ingestion and pgvector retrieval, which can also serve the two NVIDIA proxy routes of the Vercel functions (section 13). It is the only component that holds the service role key, so its request guards fail closed, and because that key bypasses row level security, the document list and vector search of the API filter out private rows themselves.
 
 ### BrainAPIHandler: guards, routing and error responses
 
-Methods without a do_ handler (HEAD, PUT, DELETE and so on) and malformed requests are answered by the send_error override (for example 501 not_implemented) before any guard runs. Every other request passes the guards in a fixed order: without BRAIN_API_TOKEN any of the reverse proxy headers Forwarded, X-Forwarded-For, X-Forwarded-Host, X-Forwarded-Proto or X-Real-IP gives 401 api_token_required_behind_proxy, then an Origin header that is empty or not in BRAIN_ALLOWED_ORIGINS gives 403, then (again only without a token) a non-loopback Host gives 403, and only after that are routes matched (404, OPTIONS preflight, 405 with Allow); Bearer auth with hmac.compare_digest applies to /api/brain/* only when a token is configured. Before an ApiError response the unread body is drained only when its Content-Length is at most 65536 bytes, unexpected exceptions are logged with a traceback and become 500 internal_error if nothing was sent yet, and every response, including the send_error ones, carries nosniff, no-store, no-referrer, a deny-all CSP and Vary Origin.
+Methods without a do_ handler (HEAD, PUT, DELETE and so on) and malformed requests are answered by the send_error override (for example 501 not_implemented) before any guard runs. Every other request passes the guards in a fixed order: without BRAIN_API_TOKEN any of the reverse proxy headers Forwarded, X-Forwarded-For, X-Forwarded-Host, X-Forwarded-Proto or X-Real-IP gives 401 api_token_required_behind_proxy, then an Origin header that is empty or not in BRAIN_ALLOWED_ORIGINS gives 403, then (again only without a token) a non-loopback Host gives 403, and only after that are routes matched (404, OPTIONS preflight, 405 with Allow); Bearer auth with hmac.compare_digest applies to /api/brain/* only when a token is configured, and POST /api/chat/nvidia needs an Origin listed in BRAIN_ALLOWED_ORIGINS or that Bearer token (403 origin_required otherwise). Before an ApiError response the unread body is drained only when its Content-Length is at most 65536 bytes, unexpected exceptions are logged with a traceback and become 500 internal_error if nothing was sent yet, and every response, including the send_error ones, carries nosniff, no-store, no-referrer, a deny-all CSP and Vary Origin. The NVIDIA chat stream is the one response without Content-Length: it is sent as HTTP/1.0 with Connection close and ends when the connection closes.
 
 <!-- diagram: backend-request-routing -->
 ```mermaid
@@ -5468,11 +6022,16 @@ flowchart TD
     IsOpt -->|"no"| MethOk{"method listed for this path?"}
     MethOk -->|"no"| E405["405 method_not_allowed<br/>with Allow header"]
     MethOk -->|"yes"| Prot{"path starts with /api/brain/<br/>and BRAIN_API_TOKEN is set?"}
-    Prot -->|"no, e.g. /api/health"| Handler
+    Prot -->|"no"| NvPath{"path is /api/chat/nvidia?"}
+    NvPath -->|"no, e.g. /api/health,<br/>/api/models/nvidia"| Handler
+    NvPath -->|"yes"| Caller{"_check_nvidia_caller<br/>Origin in allowed_origins,<br/>or a matching Bearer token?"}
+    Caller -->|"no"| E403N["403 origin_required"]
+    Caller -->|"yes"| Handler
     Prot -->|"yes"| Bearer{"_check_auth<br/>scheme Bearer, case-insensitive, and<br/>hmac.compare_digest matches the token?"}
     Bearer -->|"no"| E401["401 unauthorized<br/>with WWW-Authenticate Bearer"]
-    Bearer -->|"yes"| Handler["handler method from ROUTES<br/>_handle_health, _handle_documents,<br/>_handle_ingest, _handle_query"]
+    Bearer -->|"yes"| Handler["handler method from ROUTES<br/>_handle_health, _handle_documents,<br/>_handle_ingest, _handle_query,<br/>_handle_nvidia_models, _handle_nvidia_chat"]
     Handler -->|"returns"| OK["200 JSON body"]
+    Handler -->|"/api/chat/nvidia committed"| Stream["_send_stream_head: 200 text/event-stream,<br/>SECURITY_HEADERS, no-store, X-Accel-Buffering no,<br/>Connection close, no Content-Length,<br/>first chunk, the rest, an SSE error event<br/>when the stream fails, then close"]
     Handler -->|"raises ApiError<br/>in body or field checks"| AE
     E401P --> AE
     E403O --> AE
@@ -5480,6 +6039,7 @@ flowchart TD
     E404 --> AE
     E405 --> AE
     E401 --> AE
+    E403N --> AE
     AE["_dispatch catches ApiError<br/>_discard_unread_body drains the body only if it is unread<br/>and Content-Length is 1 to 65536 bytes, 1 s timeout<br/>larger bodies are not drained"] --> Send
     Handler -->|"BrokenPipeError or ConnectionResetError"| Disc["log client disconnected<br/>close connection, no response"]
     Handler -->|"any other exception"| Started{"logger.exception with traceback,<br/>connection marked to close<br/>response already started?"}
@@ -5490,14 +6050,14 @@ flowchart TD
     P204A --> Send
     P204B --> Send
     StdErr --> Send
-    Send["_send adds headers to every response<br/>Content-Type application/json when there is a body<br/>Content-Length except on 204<br/>X-Content-Type-Options nosniff, Cache-Control no-store<br/>Referrer-Policy no-referrer<br/>Content-Security-Policy default-src 'none' and frame-ancestors 'none'<br/>Vary Origin, Access-Control-Allow-Origin for an allowed Origin"]
+    Send["_send adds headers to every other response<br/>Content-Type application/json when there is a body<br/>Content-Length except on 204<br/>X-Content-Type-Options nosniff, Cache-Control no-store<br/>Referrer-Policy no-referrer<br/>Content-Security-Policy default-src 'none' and frame-ancestors 'none'<br/>Vary Origin, Access-Control-Allow-Origin for an allowed Origin"]
 ```
 
-<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py)</sub>
+<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py)</sub>
 
 ### BrainAPIHandler: JSON body validation and handler dispatch
 
-GET handlers answer directly: /api/health reports supabase_live, which only says that the Supabase URL and service role key are set, and /api/brain/documents lists at most 200 documents that are published or have no owner, falling back to the in-memory store (still HTTP 200) when Supabase is not configured or answers with an HTTP error, invalid JSON or a non-list body. POST /api/brain/ingest and /api/brain/query read the body through _read_json_object: Transfer-Encoding or a missing Content-Length gives 411, a duplicate or non-numeric Content-Length 400, more than BRAIN_MAX_BODY_BYTES (default 1 MiB) 413 and a non-JSON Content-Type 415, all before any byte of the body is read. A body that stalls past the 30 s socket timeout gives 408 and closes the connection, then short bodies, invalid JSON, non-object JSON and bad string fields give 400 before ingest_raw_information or query_brain runs; exception types that the storage and model fallbacks do not catch end as 500 internal_error.
+GET handlers answer directly: /api/health reports supabase_live, which only says that the Supabase URL and service role key are set, /api/brain/documents lists at most 200 documents that are published or have no owner, falling back to the in-memory store (still HTTP 200) when Supabase is not configured or answers with an HTTP error, invalid JSON or a non-list body, and /api/models/nvidia lists the model allowlist and whether NVIDIA_API_KEYS holds a valid key, never a key or a key count. POST /api/brain/ingest, /api/brain/query and /api/chat/nvidia read the body through _read_json_object: Transfer-Encoding or a missing Content-Length gives 411, a duplicate or non-numeric Content-Length 400, more than BRAIN_MAX_BODY_BYTES (default 1 MiB, and never more than 256 KiB on the NVIDIA route) 413 and a non-JSON Content-Type 415, all before any byte of the body is read. A body that stalls past the 30 s socket timeout gives 408 and closes the connection, then short bodies, invalid JSON (a leading byte order mark is ignored, NaN and Infinity are refused, as JSON.parse does), non-object JSON and bad string fields give 400 before ingest_raw_information or query_brain runs; exception types that the storage and model fallbacks do not catch end as 500 internal_error. The NVIDIA chat route counts the request against the per-client limit and checks that keys are configured before it reads the body, then validates it with validate_chat_request and opens the upstream stream through NvidiaRouter (section 13).
 
 <!-- diagram: backend-request-body -->
 ```mermaid
@@ -5508,13 +6068,20 @@ flowchart TD
     Docs -->|"yes"| R200
     Docs -->|"not live, httpx.HTTPError,<br/>ValueError or non-list body"| DocsMem["warning if live, newest 200 documents<br/>of the in-memory store, storage memory"]
     DocsMem --> R200
+    H -->|"GET /api/models/nvidia"| NvModels["_handle_nvidia_models: public_catalog,<br/>configured = a router was built from NVIDIA_API_KEYS,<br/>version, defaultModel, limits, models"]
+    NvModels --> R200
+    H -->|"POST /api/chat/nvidia"| Rate{"nvidia_limiter.hit(client key):<br/>NVIDIA_RATE_LIMIT_PER_MINUTE per<br/>fixed one-minute window exceeded?"}
+    Rate -->|"yes"| E429["429 rate_limited<br/>with Retry-After"]
+    Rate -->|"no"| Conf{"nvidia_router configured?"}
+    Conf -->|"no"| E503["503 nvidia_not_configured"]
+    Conf -->|"yes, max_bytes 256 KiB"| TE
     H -->|"POST /api/brain/ingest<br/>or /api/brain/query"| TE{"_read_json_object<br/>Transfer-Encoding header present?"}
     TE -->|"yes"| E411["411 length_required"]
     TE -->|"no"| CL{"Content-Length header present?"}
     CL -->|"no"| E411
     CL -->|"yes"| CLv{"exactly one Content-Length<br/>made of ASCII digits only?"}
     CLv -->|"no"| E400L["400 invalid_content_length"]
-    CLv -->|"yes"| Max{"length above max_body_bytes?<br/>BRAIN_MAX_BODY_BYTES, default 1048576<br/>more than 18 significant digits counts as 10^18"}
+    CLv -->|"yes"| Max{"length above the limit?<br/>BRAIN_MAX_BODY_BYTES, default 1048576,<br/>at most 262144 on /api/chat/nvidia<br/>more than 18 significant digits counts as 10^18"}
     Max -->|"yes"| E413["413 payload_too_large<br/>with max_bytes"]
     Max -->|"no"| CT{"Content-Type media type<br/>is application/json?"}
     CT -->|"no"| E415["415 unsupported_media_type"]
@@ -5522,11 +6089,16 @@ flowchart TD
     Read -->|"TimeoutError, body stalled past 30 s"| E408["408 request_timeout<br/>Connection close"]
     Read -->|"bytes received"| Short{"fewer bytes than Content-Length?"}
     Short -->|"yes"| E400B["400 incomplete_body"]
-    Short -->|"no"| Json{"UTF-8 decode and json.loads succeed?<br/>RecursionError counts as a failure"}
+    Short -->|"no"| Json{"UTF-8 decode, a leading BOM ignored,<br/>and json.loads with NaN and Infinity refused?<br/>RecursionError counts as a failure"}
     Json -->|"no"| E400J["400 invalid_json"]
     Json -->|"yes"| Obj{"top level is a JSON object?"}
     Obj -->|"no"| E400O["400 json_body_must_be_object"]
-    Obj -->|"yes"| Fields{"_string_field checks<br/>ingest: text required, max 200000 chars,<br/>source_name max 256, source_type max 64<br/>query: query required, max 4000 chars"}
+    Obj -->|"yes, ingest or query"| Fields{"_string_field checks<br/>ingest: text required, max 200000 chars,<br/>source_name max 256, source_type max 64<br/>query: query required, max 4000 chars"}
+    Obj -->|"yes, /api/chat/nvidia"| NvVal{"validate_chat_request: model allowlisted,<br/>messages, max_tokens, temperature, top_p valid?<br/>shared vectors with the Vercel functions"}
+    NvVal -->|"no"| E400N["400 invalid_field with field,<br/>or 400 model_not_allowed"]
+    NvVal -->|"yes"| Open["NvidiaRouter.open_stream: failover<br/>before the first byte, section 13"]
+    Open -->|"NvidiaRouterError"| E5xx["502 model_unavailable or upstream_rejected,<br/>503 all_keys_exhausted or proxy_busy<br/>with Retry-After, 504 upstream_timeout"]
+    Open -->|"stream"| SSE["200 text/event-stream without Content-Length,<br/>first chunk, the rest, an SSE error event<br/>when the stream fails, upstream closed at the end<br/>or when the client goes away"]
     Fields -->|"not a string, too long,<br/>or required and missing or blank"| E400F["400 invalid_field<br/>with field and detail"]
     Fields -->|"ingest"| Ing["ingest_raw_information<br/>source_name Web-Upload when missing or blank<br/>source_type text when missing or blank"]
     Fields -->|"query"| Qry["query_brain(user_query)"]
@@ -5545,21 +6117,25 @@ flowchart TD
     E400J --> AE
     E400O --> AE
     E400F --> AE
+    E429 --> AE
+    E503 --> AE
+    E400N --> AE
+    E5xx --> AE
     AE["raised as ApiError<br/>_dispatch drains any unread body<br/>and sends the JSON error"]
 ```
 
-<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py)</sub>
+<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py)</sub>
 
 ### Brain API startup checks
 
-Importing core.config loads backend/.env (or, only when that file does not exist, the repo-root .env), where quoted values end at the matching quote, unquoted values drop a whitespace # comment and the last assignment of a key wins, without overriding existing environment variables, and validates BRAIN_LOG_LEVEL, falling back to INFO with a warning that never echoes the raw value; importing core.supabase_client creates db, which counts as live when SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are both set, without any network call. main() validates --log-level and the optional port with argparse (exit 2), and run_server refuses (SystemExit 2) to bind a non-loopback address when BRAIN_API_TOKEN is empty and warns about tokens shorter than 32 characters. A bind error such as a port in use is not caught; otherwise the server installs a SIGTERM handler for systemd, warns when Supabase is not configured and serves until SIGTERM or Ctrl+C. Request threads are not daemonic (daemon_threads False), so server_close in the finally block waits for requests in flight before the process exits.
+Importing core.config loads backend/.env (or, only when that file does not exist, the repo-root .env), where quoted values end at the matching quote, unquoted values drop a whitespace # comment and the last assignment of a key wins, without overriding existing environment variables, and validates BRAIN_LOG_LEVEL, falling back to INFO with a warning that never echoes the raw value; importing core.supabase_client creates db, which counts as live when SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are both set, without any network call, and importing core.nvidia reads the model allowlist from core/nvidia_catalog.json. NVIDIA_RATE_LIMIT_PER_MINUTE that is not a positive integer falls back to 20 with a warning. main() validates --log-level and the optional port with argparse (exit 2), and run_server refuses (SystemExit 2) to bind a non-loopback address when BRAIN_API_TOKEN is empty and warns about tokens shorter than 32 characters. Creating the server builds the NVIDIA key router from NVIDIA_API_KEYS, logging only the number of malformed entries and of keys (no router without a valid key), and the per-client rate limiter. A bind error such as a port in use is not caught; otherwise the server installs a SIGTERM handler for systemd, warns when Supabase is not configured and serves until SIGTERM or Ctrl+C. Request threads are not daemonic (daemon_threads False), so server_close in the finally block waits for requests in flight before the process exits.
 
 <!-- diagram: backend-request-startup -->
 ```mermaid
 flowchart TD
     Start(["python server.py [port] [--host HOST] [--log-level LEVEL]"]) --> Env["import core.config<br/>loads backend/.env, else the repo-root .env<br/>parse_env_line: an export prefix is dropped,<br/>a quoted value ends at its matching quote,<br/>an unquoted value drops a whitespace # comment<br/>last assignment of a key in the file wins<br/>variables already in the environment win<br/>an unreadable file is logged and skipped"]
     Env --> Cfg["config = BrainConfig()<br/>BRAIN_SERVER_HOST default 127.0.0.1<br/>BRAIN_SERVER_PORT default 9200"]
-    Cfg --> Int{"BRAIN_SERVER_PORT or BRAIN_MAX_BODY_BYTES<br/>set but not an integer?"}
+    Cfg --> Int{"BRAIN_SERVER_PORT, BRAIN_MAX_BODY_BYTES or<br/>NVIDIA_RATE_LIMIT_PER_MINUTE not an integer,<br/>or the rate limit below 1?"}
     Int -->|"yes"| IntW["warning, default value used"]
     Int -->|"no"| LL
     IntW --> LL{"_env_log_level<br/>BRAIN_LOG_LEVEL value?"}
@@ -5569,7 +6145,7 @@ flowchart TD
     LInfo --> Db
     LWarn --> Db
     LSet --> Db
-    Db["server.py imports core.supabase_client<br/>db = SupabaseBrainClient()<br/>is_live = SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY<br/>both set, no network call"] --> Args
+    Db["server.py imports core.supabase_client<br/>db = SupabaseBrainClient()<br/>is_live = SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY<br/>both set, no network call<br/>core.nvidia loads core/nvidia_catalog.json"] --> Args
     Args{"main(): argparse<br/>--log-level upper-cased, one of LOG_LEVELS,<br/>default config.log_level<br/>port, if given, an integer?"}
     Args -->|"no"| ArgErr["argparse error, exit status 2"]
     Args -->|"yes"| Basic["logging.basicConfig(level)"]
@@ -5579,12 +6155,12 @@ flowchart TD
     Loop -->|"no"| TokLen{"token set but shorter<br/>than 32 characters?"}
     TokLen -->|"yes"| TokW["warning"]
     TokLen -->|"no"| Bind
-    TokW --> Bind["create_server: BrainHTTPServer (ThreadingHTTPServer)<br/>daemon_threads False, request threads not daemonic<br/>AF_INET6 when the host contains a colon<br/>server_bind skips the reverse DNS lookup"]
+    TokW --> Bind["create_server: BrainHTTPServer (ThreadingHTTPServer)<br/>daemon_threads False, request threads not daemonic<br/>build_router(NVIDIA_API_KEYS): warning with the count of<br/>malformed entries, info NVIDIA key pool: n keys,<br/>None without a valid key, RateLimiter per client<br/>AF_INET6 when the host contains a colon<br/>server_bind skips the reverse DNS lookup"]
     Bind -->|"OSError, e.g. address in use"| BindErr["not caught: traceback, exit status 1"]
     Bind --> Sig{"running in the main thread?"}
     Sig -->|"yes"| SigT["install SIGTERM handler: logs Received SIGTERM,<br/>httpd.shutdown in a daemon thread"]
     Sig -->|"no"| Listen
-    SigT --> Listen["log Brain API listening<br/>with supabase_live and token_auth"]
+    SigT --> Listen["log Brain API listening<br/>with supabase_live, token_auth and nvidia"]
     Listen --> Live{"db.is_live?"}
     Live -->|"no"| MemW["warning: Supabase is not configured,<br/>documents are kept in memory only"]
     Live -->|"yes"| Serve
@@ -5592,7 +6168,7 @@ flowchart TD
     Serve -->|"SIGTERM shutdown or KeyboardInterrupt"| Close["finally: server_close<br/>joins the non-daemon request threads,<br/>so requests in flight finish first"]
 ```
 
-<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py)</sub>
+<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py)</sub>
 
 ### ingest_raw_information: structuring, chunking and embeddings
 
@@ -5852,7 +6428,7 @@ How the static bundle is built and verified, which command-line tools sit beside
 
 ### npm run build (scripts/build.mjs)
 
-When build.mjs loads, it reads APP_VERSION from package.json and calls assertPublicKey from scripts/lib/supabase-key.mjs on the Supabase key. A blank key, a secret key (sb_secret_), a string that is neither a publishable key (sb_publishable_) nor a JWT with a readable payload, and a JWT whose role is not anon each throw an uncaught error before anything else runs. buildOnce then removes dist/, compiles Tailwind into .build/tailwind.css and bundles four esbuild entries (main, webllm-worker, ingest-worker, app CSS) into content-hashed files with code splitting, inlining the Supabase URL, the key and APP_VERSION. After bundling it patches the two worker URL placeholders into the chunks that reference them, copies public/ and rewrites the two %STARPI_ placeholders in index.html. buildVersion from scripts/lib/build-version.mjs then hashes the page, the asset URLs, every public file and the sw.js template into a 12-character version, and dist/sw.js receives that version, the precache list (the page, its CSS and JS, the ingest worker, the Latin font and the public files) and the list of hashed assets. build-manifest.json records the version, the entries, the assets, the public files and the precache list. Tailwind or esbuild errors, esbuild warnings, a missing entry output and any placeholder left unpatched or unresolved each abort the build with exit code 1.
+When build.mjs loads, it reads APP_VERSION from package.json and calls assertPublicKey from scripts/lib/supabase-key.mjs on the Supabase key. A blank key, a secret key (sb_secret_), a string that is neither a publishable key (sb_publishable_) nor a JWT with a readable payload, and a JWT whose role is not anon each throw an uncaught error before anything else runs. buildOnce then compiles Tailwind into .build/tailwind.css and bundles five esbuild entries (main, webllm-worker, ingest-worker, wasm-worker, app CSS) into content-hashed files with code splitting, inlining the Supabase URL, the key and APP_VERSION. Two esbuild plugins shape the bundle: ort-wasm-only resolves onnxruntime-web/webgpu and onnxruntime-common, which Transformers.js imports, to onnxruntime-web/wasm, and starpi-asset-urls writes the worker URLs and the ONNX Runtime binary URL into the sources while esbuild loads them, so every output is hashed with its final content. Because a worker's name depends on its content, which can hold another URL (the WASM worker holds the binary's), the build removes dist/ and bundles again until the written URLs equal the outputs, which takes three passes, and fails after four; each pass copies the ONNX Runtime binary from the onnxruntime-web package that was bundled to /assets/ort-wasm-simd-threaded-hash.wasm. It then copies public/ and rewrites the two %STARPI_ placeholders in index.html. buildVersion from scripts/lib/build-version.mjs hashes the page, the asset URLs (the binary included), every public file and the sw.js template into a 12-character version, and dist/sw.js receives that version, the precache list (the page, its CSS and JS, the ingest worker, the Latin font and the public files, never the WASM worker or the binary) and the list of hashed assets. build-manifest.json records the version, the entries, the assets, the public files and the precache list. Tailwind or esbuild errors, esbuild warnings, a missing entry output, a placeholder in no source file, URLs that do not settle and any placeholder left unresolved each abort the build with exit code 1.
 
 <!-- diagram: build-pipeline-build -->
 ```mermaid
@@ -5862,50 +6438,59 @@ flowchart TD
     APPV --> AK{"assertPublicKey at module load,<br/>scripts/lib/supabase-key.mjs"}
     AK -->|"blank, or starts with sb_secret_"| FAILTOP(["uncaught Error outside main():<br/>Node prints it with the stack, exit code 1"])
     AK -->|"JWT payload not readable,<br/>or JWT role is not anon, e.g. service_role"| FAILTOP
-    AK -->|"sb_publishable_ key or anon JWT:<br/>main() calls buildOnce"| CLEAN["remove dist/, create .build/"]
-    CLEAN --> TW["tailwindcss -c tailwind.config.js<br/>-i src/styles/app.css -o .build/tailwind.css --minify<br/>content: src/index.html and src/js JS files"]
+    AK -->|"sb_publishable_ key or anon JWT:<br/>main() calls buildOnce"| TMPD["create .build/"]
+    TMPD --> TW["tailwindcss -c tailwind.config.js<br/>-i src/styles/app.css -o .build/tailwind.css --minify<br/>content: src/index.html and src/js JS files"]
     TW -->|"exit status not 0"| FAIL
-    TW -->|"ok"| ESB
+    TW -->|"ok, pass 1 without URLs"| PASS["remove dist/, clear the placeholders seen"]
+    PASS --> ESB
     subgraph sg_esb["esbuild.build into dist/assets"]
       E1["main: src/js/main.js"]
       E2["webllm-worker: src/js/webgpu/worker.js"]
       E3["ingest-worker: src/js/rag/ingest.worker.js"]
+      E5["wasm-worker: src/js/wasm/worker.js"]
       E4["app: src/styles/entry.css<br/>Plus Jakarta Sans font faces + .build/tailwind.css"]
+      ORT["plugin ort-wasm-only: onnxruntime-web/webgpu and<br/>onnxruntime-common resolve to onnxruntime-web/wasm,<br/>one ONNX Runtime without new Function"]
+      URLS["plugin starpi-asset-urls: onLoad of src/js files writes<br/>this pass's URLs over __STARPI_WEBLLM_WORKER_URL__,<br/>__STARPI_INGEST_WORKER_URL__, __STARPI_WASM_WORKER_URL__<br/>and __STARPI_ORT_WASM_URL__, none in pass 1"]
       ESB["bundle, splitting, esm, minify, target es2022,<br/>chrome113, safari17, firefox121, linked sourcemaps<br/>and legal comments, entries name-hash, chunks chunk-hash,<br/>fonts as files, define inlines __STARPI_SUPABASE_URL__,<br/>__STARPI_SUPABASE_ANON_KEY__ and __STARPI_VERSION__"]
       E1 --> ESB
       E2 --> ESB
       E3 --> ESB
+      E5 --> ESB
       E4 --> ESB
+      ORT -.- ESB
+      URLS -.- ESB
     end
     ESB -->|"build error"| FAIL
     ESB --> WARN{"esbuild warnings?"}
     WARN -->|"yes: warnings are errors"| FAIL
-    WARN -->|"no"| META{"metafile present and all four<br/>entry outputs found?"}
+    WARN -->|"no"| RES["resolveUrls: hashed URLs of the three workers,<br/>copyOrtWasm: ort-wasm-simd-threaded.wasm from the<br/>onnxruntime-web dist that was bundled, written to<br/>/assets/ort-wasm-simd-threaded-sha256 16 hex.wasm"]
+    RES -->|"no output for an entry,<br/>onnxruntime-web/wasm not bundled"| FAIL
+    RES --> SETTLED{"every URL equals the one<br/>written into this pass?"}
+    SETTLED -->|"no, pass 4"| FAIL
+    SETTLED -->|"no, passes 1 to 3: next pass<br/>with these URLs, settles in pass 3"| PASS
+    SETTLED -->|"yes"| META{"metafile present and all five<br/>entry outputs found, every<br/>placeholder seen in a source file?"}
     META -->|"no"| FAIL
-    META -->|"yes"| PATCH["replace __STARPI_WEBLLM_WORKER_URL__ and<br/>__STARPI_INGEST_WORKER_URL__ in the output JS<br/>with the hashed worker URLs"]
-    PATCH --> PCHK{"each placeholder found in<br/>at least one chunk?"}
-    PCHK -->|"no"| FAIL
-    PCHK -->|"yes"| PUB["copyPublic: public/ copied into dist/,<br/>file list kept for the version and the precache"]
+    META -->|"yes"| PUB["copyPublic: public/ copied into dist/,<br/>file list kept for the version and the precache"]
     PUB --> HTML["src/index.html: %STARPI_APP_CSS% and<br/>%STARPI_MAIN_JS% set to the hashed URLs"]
     HTML --> HCHK{"any %STARPI_ left?"}
     HCHK -->|"yes"| FAIL
     HCHK -->|"no"| WHTML["write dist/index.html"]
-    WHTML --> VER["buildVersion, scripts/lib/build-version.mjs:<br/>sha256 over index.html, the sorted asset URLs<br/>without .map and .LEGAL.txt, each public file as<br/>URL plus bytes, then the src/sw.js template,<br/>first 12 hex chars"]
-    VER --> SHELL["precache shell: /, app CSS, main JS, ingest worker,<br/>the Latin plus-jakarta-sans woff2 when present,<br/>static imports of main, public files,<br/>/index.html is not listed"]
+    WHTML --> VER["buildVersion, scripts/lib/build-version.mjs:<br/>sha256 over index.html, the sorted asset URLs<br/>without .map and .LEGAL.txt plus the ONNX Runtime binary,<br/>each public file as URL plus bytes, then the src/sw.js<br/>template, first 12 hex chars"]
+    VER --> SHELL["precache shell: /, app CSS, main JS, ingest worker,<br/>the Latin plus-jakarta-sans woff2 when present,<br/>static imports of main, public files,<br/>/index.html, the WASM worker and the binary are not listed"]
     SHELL --> SW["src/sw.js: __STARPI_BUILD_VERSION__ gets the version,<br/>__STARPI_PRECACHE__ the deduplicated shell,<br/>__STARPI_ASSETS__ the sorted asset URLs"]
     SW --> SCHK{"any __STARPI_ left?"}
     SCHK -->|"yes"| FAIL
     SCHK -->|"no"| WSW["write dist/sw.js"]
-    WSW --> MAN["write dist/build-manifest.json:<br/>version, entries, assets, public, precache"]
+    WSW --> MAN["write dist/build-manifest.json: version, entries<br/>mainJs, workerJs, ingestWorkerJs, wasmWorkerJs,<br/>ortWasm, appCss, then assets, public, precache"]
     MAN --> DONE(["log built main JS, app CSS,<br/>version and duration"])
     FAIL(["main().catch prints the message,<br/>process.exit(1)"])
 ```
 
-<sub>Sources: [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/build-version.mjs`](../scripts/lib/build-version.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`package.json`](../package.json), [`tailwind.config.js`](../tailwind.config.js), [`src/styles/entry.css`](../src/styles/entry.css), [`src/index.html`](../src/index.html), [`src/sw.js`](../src/sw.js), [`src/js/config.js`](../src/js/config.js), [`vercel.json`](../vercel.json)</sub>
+<sub>Sources: [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/build-version.mjs`](../scripts/lib/build-version.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`package.json`](../package.json), [`tailwind.config.js`](../tailwind.config.js), [`src/styles/entry.css`](../src/styles/entry.css), [`src/index.html`](../src/index.html), [`src/sw.js`](../src/sw.js), [`src/js/config.js`](../src/js/config.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`vercel.json`](../vercel.json)</sub>
 
 ### Build output gate (verify-dist.mjs)
 
-verify-dist.mjs reads build-manifest.json and index.html and runs every check, collecting problems instead of stopping at the first one; only a missing or unparsable file crashes it early. It enforces CSP-compatible HTML (no inline scripts, styles or handlers, only /assets/ scripts and stylesheets, no javascript: URLs) and checks that every referenced and precached file exists. For the service worker it requires the build version and no placeholder in sw.js, a non-empty list of public files, and a version that buildVersion recomputes to the same value from dist/index.html, the listed assets, the listed public files and the src/sw.js template. The ingest worker must be precached, /index.html must not be, and the app CSS must keep the ::highlight(starpi-review) rule that the source check uses. No JS asset may keep a placeholder, new Function or bare eval, and vercel.json must carry a Content-Security-Policy without unsafe-inline or unsafe-eval. Any problem prints the list and exits 1.
+verify-dist.mjs reads build-manifest.json and index.html and runs every check, collecting problems instead of stopping at the first one; only a missing or unparsable file crashes it early. It enforces CSP-compatible HTML (no inline scripts, styles or handlers, only /assets/ scripts and stylesheets, no javascript: URLs) and checks that every referenced and precached file exists. For the service worker it requires the build version and no placeholder in sw.js, a non-empty list of public files, and a version that buildVersion recomputes to the same value from dist/index.html, the listed assets, the listed public files and the src/sw.js template. The ingest worker must be precached, /index.html must not be, and the app CSS must keep the ::highlight(starpi-review) rule that the source check uses. No JS asset may keep a placeholder, new Function or bare eval, and no JS asset, nor index.html, sw.js or build-manifest.json, may contain an NVIDIA API key (nvapi- followed by at least 20 key characters, backslashes included, so keys pasted with Markdown escapes are found too). The processor (WASM) runtime must load on first use only: the WASM worker and the ONNX Runtime binary must exist, the binary under a 16-hex-digit hashed /assets name, with the WebAssembly magic bytes, listed in the assets and referenced by a script, and neither of them, nor any precached script that carries Transformers.js or ONNX Runtime, may be in the precache. vercel.json must carry a Content-Security-Policy without unsafe-inline or unsafe-eval. Any problem prints the list and exits 1.
 
 <!-- diagram: build-pipeline-verify-dist -->
 ```mermaid
@@ -5945,10 +6530,18 @@ flowchart TD
       J1["no __STARPI_ placeholder"]
       J2["no new Function( call"]
       J3["no bare eval( call,<br/>obj.eval( is not matched"]
-      J1 --> J2 --> J3
+      J4["no NVIDIA API key: nvapi- and 20 or more<br/>key characters or backslashes, also checked<br/>in index.html, sw.js and build-manifest.json"]
+      J1 --> J2 --> J3 --> J4
     end
-    J3 --> P1
-    subgraph sg_csp["5. production CSP in vercel.json"]
+    J4 --> W1
+    subgraph sg_wasm["5. processor (WASM) runtime loads on first use"]
+      W1["entries.wasmWorkerJs exists"]
+      W2["entries.ortWasm matches /assets/ort-wasm-simd-threaded-<br/>16 hex digits .wasm, exists, starts with the<br/>WebAssembly magic bytes, is in manifest.assets"]
+      W3["neither is in the precache, a script references the binary,<br/>no precached script carries the Transformers.js<br/>download path or the binary name"]
+      W1 --> W2 --> W3
+    end
+    W3 --> P1
+    subgraph sg_csp["6. production CSP in vercel.json"]
       P1["a Content-Security-Policy header exists"]
       P2["no 'unsafe-inline' or 'unsafe-eval'<br/>('wasm-unsafe-eval' passes)"]
       P1 --> P2
@@ -5962,7 +6555,7 @@ flowchart TD
 
 ### Dev watch mode and the local static server
 
-npm run dev runs the build with --watch --serve: after the first build (whose failure exits 1) it watches src/ and public/ with a 120 ms debounce, where rebuild errors are logged and never stop the watcher, and it spawns serve.mjs on port 3000. The same serve.mjs backs npm run preview and the Playwright webServer on port 4173, and it only serves an existing dist/ on 127.0.0.1. It applies the vercel.json header rules in file order, with (.*) as the only wildcard: every path gets the CSP and security headers, hashed assets are immutable, and /, /index.html, /sw.js and /manifest.webmanifest add their own rules, so previews and the e2e suite, workers included, run under the production CSP. Files resolve as path, path.html or path/index.html inside dist/; misses return 404, HEAD returns no body, and exceptions return 500. Extensions missing from its MIME table, such as the .pdf, .csv and .md sample files, are served as application/octet-stream.
+npm run dev runs the build with --watch --serve: after the first build (whose failure exits 1) it watches src/ and public/ with a 120 ms debounce, where rebuild errors are logged and never stop the watcher, and it spawns serve.mjs on port 3000 with --functions. npm run preview runs the same server with --functions, and the Playwright webServer runs it on STARPI_E2E_PORT (default 4173) without --functions, so the end-to-end tests never reach NVIDIA even when NVIDIA_API_KEYS is set and mock /api/* themselves. serve.mjs only serves an existing dist/ on 127.0.0.1. It applies the vercel.json header rules in file order, with (.*) as the only wildcard: every path gets the CSP and security headers, hashed assets are immutable, and /, /index.html, /sw.js and /manifest.webmanifest add their own rules, so previews and the e2e suite, workers included, run under the production CSP. With --functions, /api/chat/nvidia and /api/models/nvidia run the Vercel function modules from api/ in the same process: only for a Host that is localhost, an IP address or a host named in NVIDIA_ALLOWED_ORIGINS (a page whose name was rebound to this machine gets 403 host_not_allowed and never the developer's keys), with forwarding headers from the client dropped and x-real-ip set from the socket, the request body passed as a stream, the response streamed with backpressure and the function's request aborted when the client goes away. Files resolve as path, path.html or path/index.html inside dist/; misses return 404, HEAD returns no body, and exceptions return 500, or close the connection when a streamed response has already begun. Extensions missing from its MIME table, such as the .pdf, .csv and .md sample files, are served as application/octet-stream, while .wasm is application/wasm.
 
 <!-- diagram: build-pipeline-dev-server -->
 ```mermaid
@@ -5970,35 +6563,44 @@ flowchart TD
     DEV(["npm run dev:<br/>build.mjs --watch --serve"]) --> B1["buildOnce: same steps as npm run build"]
     B1 -->|"first build fails"| X1(["process.exit(1)"])
     B1 -->|"ok"| WATCH["fs.watch src/ and public/ recursively"]
-    WATCH --> SPAWN["--serve: spawn node scripts/serve.mjs --port 3000"]
+    WATCH --> SPAWN["--serve: spawn node scripts/serve.mjs<br/>--port 3000 --functions"]
     WATCH -->|"file change"| DEB["debounce 120 ms, then buildOnce<br/>(dist/ is removed and rebuilt)"]
     DEB -->|"ok"| LOGR["log rebuilt with the new version"]
     DEB -->|"error"| LOGE["console.error, keep watching"]
-    PREV(["npm run preview:<br/>serve.mjs --port 3000"]) --> SRV
+    PREV(["npm run preview:<br/>serve.mjs --port 3000 --functions"]) --> SRV
     SPAWN --> SRV
-    PW(["Playwright webServer: serve.mjs --port 4173,<br/>reuses a running server only outside CI,<br/>waits up to 30 s for /"]) --> SRV
+    PW(["Playwright webServer: serve.mjs --port STARPI_E2E_PORT,<br/>default 4173, without --functions,<br/>reuses a running server only outside CI,<br/>waits up to 30 s for /"]) --> SRV
     SRV["serve.mjs on 127.0.0.1 serves the existing dist/,<br/>it never builds"] --> RULES["header rules from vercel.json via toRegExp:<br/>(.*) is the only wildcard, the rest is literal,<br/>every matching rule applies in file order"]
     RULES --> REQ{"request pathname"}
     REQ -->|"every path, rule /(.*)"| H1["CSP, nosniff, X-Frame-Options, Referrer-Policy,<br/>COOP, HSTS, Permissions-Policy"]
     REQ -->|"/, /index.html, /sw.js,<br/>/manifest.webmanifest"| H2["plus the exact-source rule: Cache-Control,<br/>Service-Worker-Allowed or Content-Type"]
     REQ -->|"/assets/(.*)"| H3["plus Cache-Control: public,<br/>max-age=31536000, immutable"]
-    H1 --> RES
-    H2 --> RES
-    H3 --> RES
+    H1 --> FN
+    H2 --> FN
+    H3 --> FN
+    FN{"--functions and the path is<br/>/api/chat/nvidia or /api/models/nvidia?"}
+    FN -->|"yes"| HOST{"Host is localhost, an IP address<br/>or a host of NVIDIA_ALLOWED_ORIGINS?"}
+    HOST -->|"no, e.g. a rebound DNS name"| F403(["403 host_not_allowed"])
+    HOST -->|"yes"| METH{"the module exports<br/>the request method?"}
+    METH -->|"no, e.g. HEAD"| F405(["405 Method not allowed"])
+    METH -->|"yes"| RUN["Request: client forwarding headers dropped,<br/>x-real-ip from the socket, body as a stream,<br/>aborted when the client closes"]
+    RUN --> HANDLER["POST or GET handler from api/,<br/>handleChat or handleModels with<br/>runtimeDeps from the environment"]
+    HANDLER --> FOUT(["status and headers of the function,<br/>body streamed with backpressure,<br/>reader cancelled when the client goes away"])
+    FN -->|"no"| RES
     RES{"resolveFile: path, path.html or<br/>path/index.html inside dist/?<br/>/ maps to /index.html"}
     RES -->|"none, or outside dist/"| NF(["404 Not found"])
-    RES -->|"found"| CT["Content-Type from the MIME table unless a rule<br/>already set it, application/octet-stream for other<br/>extensions such as .pdf, .csv and .md"]
+    RES -->|"found"| CT["Content-Type from the MIME table unless a rule<br/>already set it, .wasm application/wasm,<br/>application/octet-stream for other extensions<br/>such as .pdf, .csv and .md"]
     CT --> HEAD{"HEAD request?"}
     HEAD -->|"yes"| HEND(["end without a body"])
     HEAD -->|"no"| STREAM(["stream the file"])
-    RES -->|"exception, e.g. malformed<br/>percent-encoding"| E500(["500 with the error text"])
+    RES -->|"exception, e.g. malformed<br/>percent-encoding"| E500(["500 with the error text,<br/>or the connection closed when<br/>a function response had begun"])
 ```
 
-<sub>Sources: [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/serve.mjs`](../scripts/serve.mjs), [`package.json`](../package.json), [`playwright.config.mjs`](../playwright.config.mjs), [`vercel.json`](../vercel.json)</sub>
+<sub>Sources: [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/serve.mjs`](../scripts/serve.mjs), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`api/models/nvidia.js`](../api/models/nvidia.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`package.json`](../package.json), [`playwright.config.mjs`](../playwright.config.mjs), [`tests/e2e/fixtures.mjs`](../tests/e2e/fixtures.mjs), [`vercel.json`](../vercel.json)</sub>
 
 ### Command-line tools beside the build
 
-Six more npm scripts sit outside the build and deploy path; of them, CI runs pack:core directly in the frontend job and sbom in the audit job, and release.yml runs both. verify:receipt checks an answer receipt against the original files with the extraction and chunking code the app uses: it matches files by their SHA-256 fingerprint, not by name, re-extracts them, compares the passage at the recorded offsets and the recorded chunk, and recomputes the source check, with the rules version the receipt records, for every statement whose cited excerpts, and the other excerpts its reasons name, are available, using only the first deliveredChars characters of an excerpt that reached the model in part. For a starpi.receipt/v2 receipt it also recomputes the Merkle root, checks every inclusion proof and checks the signature, if there is one, against the public key given with --public-key (a JWK or PEM file) or else the key embedded in the receipt. It exits 0 when every workspace excerpt was reproduced and the tree and any signature are valid, 1 when something does not match, a file is missing, the root or an inclusion proof fails, the signature is invalid, made with another key or cannot be checked, or a --public-key was given and the receipt is not validly signed with it, and 2 on a usage error, a key file importPublicKey refuses or an invalid receipt, which includes a member or reason code the format does not define. In the text report, strings from the receipt and the given file names (labels, the creation time, the engine, file names in the checks and warnings) are printed with control and bidirectional characters escaped, so a crafted receipt cannot rewrite report lines in a terminal. The app does not sign receipts, so a pass on one of them shows that the cited excerpts can be reproduced from the given files; it does not prove that the receipt is authentic, what a model saw, or that the answer is right. build:core bundles the @starpi/core package (an npm workspace of the root package, which declares Node.js 22.13 or newer and has the app's version) from the app's own modules, including the same verifier and starpi-ground (scripts/ground.mjs, which has no npm script of its own, see source-check-ground-cli) as packaged commands, and pack:core runs npm pack --workspace=@starpi/core --dry-run, whose prepack script runs build:core with type declarations, and lists the package contents without publishing anything; release.yml packs the same way into a real tarball. sbom (scripts/sbom.mjs) writes CycloneDX SBOMs of the app and of @starpi/core from package-lock.json with npm sbom --package-lock-only, without installing anything, and scripts/lib/sbom.mjs makes them deterministic and validates them before they are written. eval:source-check measures the source check on labelled answers with either version of the rules, leaving out the held-out sets (holdout and v2holdout) unless --unblind is given and refusing a v2 held-out file whose SHA-256 differs from the one committed before the version 2 rules were written (docs/eval/v2-protocol.md), and docs:sync copies atlas diagrams into the Markdown files that embed them. The unit tests run verify-receipt.mjs, ground.mjs, build-core.mjs, sbom.mjs and the evaluation.
+Eight more npm scripts sit outside the build and deploy path; of them, CI runs pack:core directly in the frontend job and sbom in the audit job, and release.yml runs both. verify:receipt checks an answer receipt against the original files with the extraction and chunking code the app uses: it matches files by their SHA-256 fingerprint, not by name, re-extracts them, compares the passage at the recorded offsets and the recorded chunk, and recomputes the source check, with the rules version the receipt records, for every statement whose cited excerpts, and the other excerpts its reasons name, are available, using only the first deliveredChars characters of an excerpt that reached the model in part. For a starpi.receipt/v2 receipt it also recomputes the Merkle root, checks every inclusion proof and checks the signature, if there is one, against the public key given with --public-key (a JWK or PEM file) or else the key embedded in the receipt. It exits 0 when every workspace excerpt was reproduced and the tree and any signature are valid, 1 when something does not match, a file is missing, the root or an inclusion proof fails, the signature is invalid, made with another key or cannot be checked, or a --public-key was given and the receipt is not validly signed with it, and 2 on a usage error, a key file importPublicKey refuses or an invalid receipt, which includes a member or reason code the format does not define. In the text report, strings from the receipt and the given file names (labels, the creation time, the engine, file names in the checks and warnings) are printed with control and bidirectional characters escaped, so a crafted receipt cannot rewrite report lines in a terminal. The app does not sign receipts, so a pass on one of them shows that the cited excerpts can be reproduced from the given files; it does not prove that the receipt is authentic, what a model saw, or that the answer is right. build:core bundles the @starpi/core package (an npm workspace of the root package, which declares Node.js 22.13 or newer and has the app's version) from the app's own modules, including the same verifier and starpi-ground (scripts/ground.mjs, which has no npm script of its own, see source-check-ground-cli) as packaged commands, and pack:core runs npm pack --workspace=@starpi/core --dry-run, whose prepack script runs build:core with type declarations, and lists the package contents without publishing anything; release.yml packs the same way into a real tarball. sbom (scripts/sbom.mjs) writes CycloneDX SBOMs of the app and of @starpi/core from package-lock.json with npm sbom --package-lock-only, without installing anything, and scripts/lib/sbom.mjs makes them deterministic and validates them before they are written. eval:source-check measures the source check on labelled answers with either version of the rules, leaving out the held-out sets (holdout and v2holdout) unless --unblind is given and refusing a v2 held-out file whose SHA-256 differs from the one committed before the version 2 rules were written (docs/eval/v2-protocol.md), and docs:sync copies atlas diagrams into the Markdown files that embed them. nvidia:sync writes backend/core/nvidia_catalog.json, the Python backend's copy of the NVIDIA allowlist, limits and timings, from src/js/models/nvidia-catalog.js, and with --check only exits 1 when the copy is outdated; nvidia-catalog.test.mjs fails on an outdated copy too. nvidia:ping is a maintainer tool that CI never runs, because it spends real quota: it reads NVIDIA_API_KEYS the way the proxy does (exit 2 without a valid key), asks GET /v1/models once which allowlisted ids exist, sends one small streamed request per model, moving to the next key on 429, and prints only id, status, first-byte time and whether reasoning and content arrived, never a key, header or body; it exits 1 when a model fails, an id is not listed or the list cannot be read. The unit tests run verify-receipt.mjs, ground.mjs, build-core.mjs, sbom.mjs and the evaluation.
 
 <!-- diagram: build-pipeline-cli-tools -->
 ```mermaid
@@ -6036,13 +6638,16 @@ flowchart TD
     TEV["source-check-eval.test.mjs: thresholds on the same<br/>summarize results for rules versions 1 and 2,<br/>see the unit tests below"] -.->|"imports loadItems, loadV2Items,<br/>loadParaphrases, loadCorpora, summarize"| EV
     DS["npm run docs:sync: copy each diagram of docs/ARCHITECTURE.md<br/>into the Markdown files that embed its id,<br/>with --check change nothing and exit 1 on an outdated copy,<br/>an unknown id exits 1 in both modes"]
     TDOC["docs.test.mjs: every embedded copy<br/>equals the atlas diagram"] -.- DS
+    NS["npm run nvidia:sync: scripts/sync-nvidia-catalog.mjs<br/>writes backend/core/nvidia_catalog.json from catalogJson()<br/>of src/js/models/nvidia-catalog.js,<br/>with --check change nothing and exit 1 on an outdated copy"]
+    TNS["nvidia-catalog.test.mjs: the copy equals catalogJson()"] -.- NS
+    NP["npm run nvidia:ping: scripts/nvidia-ping.mjs, maintainer only,<br/>not in CI, real quota: NVIDIA_API_KEYS parsed like the proxy,<br/>exit 2 without a valid key, GET /v1/models once,<br/>one streamed request per allowlisted model, max_tokens 256,<br/>next key on 429, prints id, status, first-byte ms,<br/>reasoning and content flags only, exit 1 on any failure"]
 ```
 
-<sub>Sources: [`package.json`](../package.json), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`scripts/ground.mjs`](../scripts/ground.mjs), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/package.json`](../packages/core/package.json), [`packages/core/src/index.js`](../packages/core/src/index.js), [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`tests/fixtures/grounding/eval-v2-holdout.sha256`](../tests/fixtures/grounding/eval-v2-holdout.sha256), [`docs/eval/v2-protocol.md`](eval/v2-protocol.md), [`scripts/sync-diagrams.mjs`](../scripts/sync-diagrams.mjs), [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`scripts/lib/sbom.mjs`](../scripts/lib/sbom.mjs), [`tests/unit/receipt.test.mjs`](../tests/unit/receipt.test.mjs), [`tests/unit/receipt-v2.test.mjs`](../tests/unit/receipt-v2.test.mjs), [`tests/unit/sbom.test.mjs`](../tests/unit/sbom.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`tests/unit/source-check-eval.test.mjs`](../tests/unit/source-check-eval.test.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs)</sub>
+<sub>Sources: [`package.json`](../package.json), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`scripts/ground.mjs`](../scripts/ground.mjs), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/package.json`](../packages/core/package.json), [`packages/core/src/index.js`](../packages/core/src/index.js), [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`tests/fixtures/grounding/eval-v2-holdout.sha256`](../tests/fixtures/grounding/eval-v2-holdout.sha256), [`docs/eval/v2-protocol.md`](eval/v2-protocol.md), [`scripts/sync-diagrams.mjs`](../scripts/sync-diagrams.mjs), [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`scripts/lib/sbom.mjs`](../scripts/lib/sbom.mjs), [`tests/unit/receipt.test.mjs`](../tests/unit/receipt.test.mjs), [`tests/unit/receipt-v2.test.mjs`](../tests/unit/receipt-v2.test.mjs), [`tests/unit/sbom.test.mjs`](../tests/unit/sbom.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`tests/unit/source-check-eval.test.mjs`](../tests/unit/source-check-eval.test.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`scripts/sync-nvidia-catalog.mjs`](../scripts/sync-nvidia-catalog.mjs), [`scripts/nvidia-ping.mjs`](../scripts/nvidia-ping.mjs), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>
 
 ### CI jobs and the test layers they run
 
-The CI workflow runs six jobs on pushes and pull requests to main (and on manual dispatch). The frontend job runs lint, typecheck, the node:test unit suite of 29 files (including the documentation test, a build of @starpi/core into a temporary directory and two runs of the SBOM generator), a typed build and dry-run pack of @starpi/core, the production build and verify-dist, then uploads dist, which the e2e job reuses to run Playwright under the production headers: the app spec, the trust spec with its axe accessibility scan, and the Mermaid render gate. The backend job lints, byte-compiles and runs the offline unittest suites on Python 3.11 and 3.12. The database job installs PostgreSQL 16 with pgvector and runs the RLS harness, whose rls_test.sql has 191 checks in the fresh and fresh_rerun scenarios and 198 in the three scenarios seeded with legacy rows. The audit job runs npm audit on the lockfile, failing on any advisory in a runtime dependency and only warning about development tooling, and pip-audit on the backend requirements, then writes CycloneDX SBOMs of the app and of @starpi/core from the lockfile and uploads them, and the secrets job scans the tree, and on pull requests the new commits, with a checksum-verified gitleaks. npm run verify repeats the frontend gate locally.
+The CI workflow runs six jobs on pushes and pull requests to main (and on manual dispatch). The frontend job runs lint, typecheck, the node:test unit suite of 38 files with 479 tests (including the documentation test, a build of @starpi/core into a temporary directory, two runs of the SBOM generator and the NVIDIA proxy with injected fetch and real timers), a typed build and dry-run pack of @starpi/core, the production build and verify-dist, then uploads dist, which the e2e job reuses to run Playwright under the production headers: the app spec, the trust spec with its axe accessibility scan, the model picker and chat mode specs with a mocked NVIDIA proxy, and the Mermaid render gate, 94 test runs on two projects. The backend job lints, byte-compiles and runs the offline unittest suites, 146 tests including the NVIDIA router and routes, on Python 3.11 and 3.12. The database job installs PostgreSQL 16 with pgvector and runs the RLS harness, whose rls_test.sql has 191 checks in the fresh and fresh_rerun scenarios and 198 in the three scenarios seeded with legacy rows. The audit job runs npm audit on the lockfile, failing on any advisory in a runtime dependency and only warning about development tooling, and pip-audit on the backend requirements, then writes CycloneDX SBOMs of the app and of @starpi/core from the lockfile and uploads them, and the secrets job scans the tree, and on pull requests the new commits, with a checksum-verified gitleaks. npm run verify repeats the frontend gate locally.
 
 <!-- diagram: test-strategy-ci-gates -->
 ```mermaid
@@ -6052,7 +6657,7 @@ flowchart LR
     subgraph jobFront["Job frontend: Node 22, npm ci --ignore-scripts"]
         lint["npm run lint<br/>ESLint, eslint.config.mjs"]
         tc["npm run typecheck<br/>tsc -p tsconfig.json --noEmit"]
-        unit["npm test<br/>node --test on the 29 tests/unit/*.test.mjs files,<br/>docs.test.mjs, core-package.test.mjs and sbom.test.mjs included"]
+        unit["npm test<br/>node --test on the 38 tests/unit/*.test.mjs files, 479 tests,<br/>docs.test.mjs, core-package.test.mjs, sbom.test.mjs<br/>and nvidia-proxy.test.mjs included"]
         pack["npm run pack:core<br/>typed build of @starpi/core, npm pack --dry-run"]
         build["npm run build<br/>scripts/build.mjs"]
         verify["npm run verify:dist<br/>scripts/verify-dist.mjs: dist/ is CSP-compatible,<br/>referenced assets exist, sw.js carries the recomputed version"]
@@ -6061,14 +6666,14 @@ flowchart LR
 
     subgraph jobE2e["Job e2e, needs frontend"]
         dl["download artifact dist,<br/>npx playwright install --with-deps chromium"]
-        pw["npm run test:e2e<br/>app.spec.mjs, 16 tests, and trust.spec.mjs, 13 tests,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.1.0"]
+        pw["npm run test:e2e<br/>app.spec.mjs 17 tests, trust.spec.mjs 13,<br/>models.spec.mjs 8 and modes.spec.mjs 8,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.1.0,<br/>94 test runs in all"]
         rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
     end
 
     subgraph jobBack["Job backend, matrix Python 3.11 and 3.12"]
         ruff["ruff check backend,<br/>ruff format --check backend"]
         comp["python -m compileall -q backend"]
-        ut["python -m unittest discover -s backend -p test_*.py<br/>test_core.py: chunker, embeddings, config, structurer,<br/>supabase_client incl. private rows kept out of reads,<br/>ingestion pipeline, rag<br/>test_server.py: routing, body validation, timeouts, proxy and<br/>token auth, length limits, CORS, startup,<br/>shutdown waits for requests in flight, Content-Length parsing<br/>offline: httpx.Client mocked, fakes behind a 127.0.0.1 server"]
+        ut["python -m unittest discover -s backend -p test_*.py, 146 tests<br/>test_core.py: chunker, embeddings, config, structurer,<br/>supabase_client incl. private rows kept out of reads,<br/>ingestion pipeline, rag<br/>test_server.py: routing, body validation, timeouts, proxy and<br/>token auth, length limits, CORS, startup, the NVIDIA routes,<br/>shutdown waits for requests in flight, Content-Length parsing<br/>test_nvidia.py: keys, shared validation vectors, Retry-After,<br/>key pool, failover, stream ends, rate limiter<br/>offline: httpx.Client and MockTransport, fakes behind a 127.0.0.1 server"]
     end
 
     subgraph jobDb["Job database"]
@@ -6107,20 +6712,20 @@ flowchart LR
     local -.->|"same steps as"| lint
 ```
 
-<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`package.json`](../package.json), [`backend/test_core.py`](../backend/test_core.py), [`backend/test_server.py`](../backend/test_server.py), [`backend/supabase/tests/run_rls_tests.sh`](../backend/supabase/tests/run_rls_tests.sh), [`backend/supabase/tests/rls_test.sql`](../backend/supabase/tests/rls_test.sql), [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`playwright.config.mjs`](../playwright.config.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`tests/e2e/app.spec.mjs`](../tests/e2e/app.spec.mjs), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs)</sub>
+<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`package.json`](../package.json), [`backend/test_core.py`](../backend/test_core.py), [`backend/test_server.py`](../backend/test_server.py), [`backend/test_nvidia.py`](../backend/test_nvidia.py), [`backend/supabase/tests/run_rls_tests.sh`](../backend/supabase/tests/run_rls_tests.sh), [`backend/supabase/tests/rls_test.sql`](../backend/supabase/tests/rls_test.sql), [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`playwright.config.mjs`](../playwright.config.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs), [`tests/e2e/app.spec.mjs`](../tests/e2e/app.spec.mjs), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/models.spec.mjs`](../tests/e2e/models.spec.mjs), [`tests/e2e/modes.spec.mjs`](../tests/e2e/modes.spec.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs)</sub>
 
 ### Unit tests grouped by concern
 
-npm test runs the 29 tests/unit/*.test.mjs files with the built-in node:test runner in the frontend CI job; 17 of them are grouped here, the other 12 in the next diagram. Security and UI contract tests cover the sanitizer (on a real jsdom DOM), server URL validation (http only for localhost and 127.0.0.1), the CSP and build settings in vercel.json, handler and icon coverage, and dictionary parity including keys built at run time and plural forms. Retrieval tests pin exact BM25 scores, chunk boundaries, parser error codes (with a generated PDF from tests/fixtures/pdf.mjs) and CSV rows, citation labels, context fences that are never cut and the merge of workspace and knowledge-base hits, and grounded offline answers. Model tests pin the prompts, the WebLLM model catalog and the benchmark metrics. Build tests pin buildVersion, assertPublicKey, the typecheck coverage of every @ts-check module and the CycloneDX SBOMs (deterministic, valid, one entry per package, @starpi/core without dependencies), and docs.test.mjs keeps every documentation diagram single-sourced in docs/ARCHITECTURE.md and checks relative links and heading anchors in every Markdown file.
+npm test runs the 38 tests/unit/*.test.mjs files (479 tests) with the built-in node:test runner in the frontend CI job; 26 of them are grouped here, the other 12 in the next diagram. Security and UI contract tests cover the sanitizer (on a real jsdom DOM), server URL validation (http only for localhost and 127.0.0.1), the CSP and build settings in vercel.json, handler and icon coverage, and dictionary parity including keys built at run time and plural forms. Retrieval tests pin exact BM25 scores, chunk boundaries, parser error codes (with a generated PDF from tests/fixtures/pdf.mjs) and CSV rows, citation labels, context fences that are never cut and the merge of workspace and knowledge-base hits, and grounded offline answers. Model tests pin the prompts of both chat modes and the fitting of NVIDIA requests, the 13 WebGPU presets and their test-coupled README table, the device classes and recommendations, the picker groups, the pinned WASM catalog with its README table, its download pins and the WASM-only ONNX Runtime bundle, and the benchmark metrics. Chat tests pin the SSE parser and stream assembler, the NVIDIA browser client with its error mapping and partial answers, the chat export and the code copy buttons. The NVIDIA proxy tests run the guards, the validation vectors shared with the Python backend, the key router with injected fetch and real but short timers, the stream relay and the Vercel wiring, and the catalog tests keep the backend's JSON copy exact and scan every tracked file for NVIDIA keys. Build tests pin buildVersion, assertPublicKey, the typecheck coverage of every @ts-check module and every server module under api/, and the CycloneDX SBOMs (deterministic, valid, one entry per package, @starpi/core without dependencies), and docs.test.mjs keeps every documentation diagram single-sourced in docs/ARCHITECTURE.md and checks relative links and heading anchors in every Markdown file.
 
 <!-- diagram: test-strategy-unit -->
 ```mermaid
 flowchart LR
-    runner(["npm test: node --test tests/unit/*.test.mjs, 29 files<br/>CI job frontend, also inside npm run verify<br/>17 files here, 12 in the next diagram"])
+    runner(["npm test: node --test tests/unit/*.test.mjs, 38 files, 479 tests<br/>CI job frontend, also inside npm run verify<br/>26 files here, 12 in the next diagram"])
 
     subgraph gSec["Security and UI contracts"]
         render["render.test.mjs, real DOM via jsdom<br/>escapeHtml, renderMarkdown drops scripts, handlers, styles,<br/>images, iframes, javascript: and data: links, data-*, class, id,<br/>https links get rel noopener noreferrer nofollow,<br/>escapeMarkdown, sanitizeModelNames on whole words"]
-        config["config.test.mjs, constants from setup.mjs<br/>normalizeServerUrl: https anywhere, http only on localhost<br/>and 127.0.0.1, http://[::1] rejected, normalizeMode, classifyError,<br/>vercel.json CSP: script-src self wasm-unsafe-eval, no unsafe-*,<br/>object-src, frame-ancestors, base-uri none, img-src without https:,<br/>output dist, npm ci --ignore-scripts, microphone self"]
+        config["config.test.mjs, constants from setup.mjs<br/>normalizeServerUrl: https anywhere, http only on localhost<br/>and 127.0.0.1, http://[::1] rejected, normalizeMode,<br/>normalizeChatMode, callGemini in both chat modes, classifyError,<br/>vercel.json CSP: script-src self wasm-unsafe-eval, no unsafe-*,<br/>object-src, frame-ancestors, base-uri none, img-src without https:,<br/>output dist, npm ci --ignore-scripts, microphone self"]
         actions["actions.test.mjs, static scan of src/<br/>every data-action and data-change has a handler and vice versa,<br/>no inline on* attributes, lucide icons bundled exactly as used,<br/>no emoji, icon-only buttons named, aria-labels translatable"]
         i18n["i18n.test.mjs<br/>en.json and de.json: same keys and placeholders, no empty values,<br/>German differs, every key used in src/ resolves without fallback,<br/>also keys built at run time, e.g. engine errors, a source check<br/>reason for every code in REASON_CODES, receipt checks,<br/>sample questions, voice errors, t() interpolation, key fallback,<br/>singular for a count of 1, plural otherwise"]
     end
@@ -6130,19 +6735,34 @@ flowchart LR
         chunker["chunker.test.mjs<br/>500-character windows with 50 overlap,<br/>paragraph, sentence, word boundaries,<br/>surrogate pairs kept, linear time, invalid options"]
         bm25["bm25.test.mjs<br/>tokenize, exact Okapi BM25 with k1 1.2 and b 0.75,<br/>idf, saturation, ties, topK, removal equals never added"]
         retrieval["retrieval.test.mjs<br/>rankHitsLocally, distinctSources, citation labels,<br/>excerpt truncation, buildContext fencing and size limit,<br/>no fence left open at any budget, cut excerpts end with an ellipsis,<br/>mergeHits: slot split, a strong knowledge-base hit kept,<br/>pinned hits of an attached file kept"]
-        synth["synthesizer.test.mjs<br/>splitSentences, answers only with source sentences<br/>and cites each, admits no match, lists documents,<br/>isGreeting, escapes titles against Markdown links,<br/>describeTrace"]
+        synth["synthesizer.test.mjs<br/>splitSentences, answers only with source sentences<br/>and cites each, admits no match, lists documents,<br/>isGreeting, escapes titles against Markdown links,<br/>describeTrace, describeChatTrace"]
     end
 
-    subgraph gModel["Prompts, models and diagnostics"]
-        prompts["prompts.test.mjs<br/>identity per language, grounding, prompt-injection<br/>and citation rules, context block, readiness prompt,<br/>WebLLM load progress phases"]
-        models["models.test.mjs<br/>only models in the pinned WebLLM prebuilt list,<br/>f32 fallback per model, chooseModel, detectMobile, budgetPrompt"]
+    subgraph gModel["Prompts, models, device tiers and diagnostics"]
+        prompts["prompts.test.mjs<br/>identity per language, grounding, prompt-injection<br/>and citation rules, context block, readiness prompt,<br/>free-chat rules, the attached file fenced as data,<br/>historyWindow, excerptForChat, fitNvidiaMessages:<br/>oldest pairs first, UTF-8 byte budget, excerpts cut last<br/>with their closing lines, cutFenced, WebLLM load progress"]
+        models["models.test.mjs<br/>13 presets only from the pinned WebLLM prebuilt list,<br/>f32 fallback, VRAM and tier classes, context limits,<br/>README WebGPU table, normalizePreference migrates 2.0 keys,<br/>chooseModel: WASM without WebGPU, explicit runtimes kept,<br/>never T3 automatically, detectMobile, budgetPrompt turnChars"]
+        device["device.test.mjs<br/>classifyDevice for every class, recommendModels<br/>per class, hardwareBadges with keys in every locale,<br/>pure model modules touch no browser globals"]
+        choices["choices.test.mjs<br/>parseAssistantChoice refuses values the pickers never offer,<br/>choiceValue, group order with every preset once,<br/>recommended and pro picks, NVIDIA group per proxy state,<br/>optionParts order, keys in both locales,<br/>model names never in the locale files"]
+        wasmcat["wasm-catalog.test.mjs<br/>pinned revisions and every downloaded file,<br/>sizes and context, cache name outside starpi-,<br/>pinnedWasmUrl refuses other repos and revisions,<br/>README WASM table, Transformers.js pinned exactly,<br/>a WASM-only ONNX Runtime bundle the CSP allows"]
         diag["diagnostics.test.mjs<br/>computeBenchmarkMetrics: TTFT and decode throughput<br/>from timestamps, no throughput it did not measure,<br/>formatBytes, BYTE_LIMITS"]
+    end
+
+    subgraph gChat["Chat streaming, export and the NVIDIA client"]
+        cstream["chat-stream.test.mjs<br/>createSseParser at every chunk boundary, CRLF and CR,<br/>multi-line data, a final unterminated event, too long throws,<br/>assembler: content, reasoning in a think block, tags split<br/>over deltas, finish_reason and DONE, only an error code kept,<br/>size limit, splitReasoning, splitStreamingText"]
+        nvclient["nvidia-client.test.mjs<br/>callNvidia posts only model, messages, max_tokens and temperature,<br/>no Authorization, streamed answer, reasoning, a JSON reply,<br/>every error code to its i18n key, never server text,<br/>Retry-After clamped, no proxy at a 404, truncated answers,<br/>partial answer on Stop, idle and first-byte timeouts,<br/>catalog parsing, resolveNvidiaModel, shared and cached requests"]
+        cexport["chat-export.test.mjs<br/>chatToJson schema starpi.chat/v1 without internal fields,<br/>chatToMarkdown with engine labels and closed code fences,<br/>exportFileName dated and safe"]
+        codeb["code-blocks.test.mjs, jsdom<br/>one copy button per code block, idempotent,<br/>source-check blocks unchanged, clipboard copy<br/>without the trailing newline, selection fallback"]
+    end
+
+    subgraph gNv["NVIDIA proxy and catalog"]
+        nvproxy["nvidia-proxy.test.mjs<br/>parseKeys, parseOrigins, the shared validation vectors,<br/>no catalog extra overrides a validated field, key router:<br/>round robin, failover on 429, 5xx, 408, network, timeouts and<br/>empty streams, cooldowns, 401 and 403 parked, 503 and 504,<br/>no failover on 4xx, a budget-shortened timeout parks nothing,<br/>deadline, client abort, keys logged by index; relayStream ends;<br/>handleChat guards in order, rate limit, SSE headers;<br/>handleModels; Vercel exports, 405, vercel.json timings"]
+        nvcat["nvidia-catalog.test.mjs<br/>unique ids with the default, frozen, the proxy answers<br/>before the browser gives up, normalizeNvidiaModel,<br/>publicCatalog without upstream extras, README T4 table<br/>matches the catalog, backend JSON copy exact,<br/>gitleaks rule finds plain and escaped keys,<br/>no NVIDIA key in any tracked file"]
     end
 
     subgraph gBuild["Build scripts and type checking"]
         bver["build-version.test.mjs<br/>buildVersion is 12 hex chars, stable under reordering,<br/>changes with a public file, the page, an asset URL<br/>or the service worker template"]
         skey["supabase-key.test.mjs<br/>assertPublicKey accepts sb_publishable_ keys and anon JWTs,<br/>refuses sb_secret_ keys, service_role JWTs,<br/>other strings and the empty string"]
-        tcov["typecheck-coverage.test.mjs<br/>every src/js module that starts with the @ts-check comment<br/>is in the include list of tsconfig.json,<br/>more than 30 such modules"]
+        tcov["typecheck-coverage.test.mjs<br/>every src/js module that starts with the @ts-check comment<br/>is in the include list of tsconfig.json,<br/>more than 30 such modules, and every server module under api/"]
         sbomt["sbom.test.mjs, helpers from scripts/lib/sbom.mjs<br/>uuidV5 against the RFC 9562 example, duplicate bom-refs<br/>merged, root and workspace named by package, serial from<br/>the content, validator catches dangling edges, scripts/sbom.mjs<br/>twice gives identical files, @starpi/core lists no component"]
     end
 
@@ -6161,7 +6781,16 @@ flowchart LR
     runner --> synth
     runner --> prompts
     runner --> models
+    runner --> device
+    runner --> choices
+    runner --> wasmcat
     runner --> diag
+    runner --> cstream
+    runner --> nvclient
+    runner --> cexport
+    runner --> codeb
+    runner --> nvproxy
+    runner --> nvcat
     runner --> bver
     runner --> skey
     runner --> tcov
@@ -6169,7 +6798,7 @@ flowchart LR
     runner --> docs
 ```
 
-<sub>Sources: [`tests/unit/render.test.mjs`](../tests/unit/render.test.mjs), [`tests/unit/config.test.mjs`](../tests/unit/config.test.mjs), [`tests/unit/setup.mjs`](../tests/unit/setup.mjs), [`tests/unit/actions.test.mjs`](../tests/unit/actions.test.mjs), [`tests/unit/i18n.test.mjs`](../tests/unit/i18n.test.mjs), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`tests/unit/parser.test.mjs`](../tests/unit/parser.test.mjs), [`tests/unit/chunker.test.mjs`](../tests/unit/chunker.test.mjs), [`tests/unit/bm25.test.mjs`](../tests/unit/bm25.test.mjs), [`tests/unit/retrieval.test.mjs`](../tests/unit/retrieval.test.mjs), [`tests/unit/synthesizer.test.mjs`](../tests/unit/synthesizer.test.mjs), [`tests/unit/prompts.test.mjs`](../tests/unit/prompts.test.mjs), [`tests/unit/models.test.mjs`](../tests/unit/models.test.mjs), [`tests/unit/diagnostics.test.mjs`](../tests/unit/diagnostics.test.mjs), [`tests/unit/build-version.test.mjs`](../tests/unit/build-version.test.mjs), [`tests/unit/supabase-key.test.mjs`](../tests/unit/supabase-key.test.mjs), [`tests/unit/typecheck-coverage.test.mjs`](../tests/unit/typecheck-coverage.test.mjs), [`tests/unit/sbom.test.mjs`](../tests/unit/sbom.test.mjs), [`scripts/lib/sbom.mjs`](../scripts/lib/sbom.mjs), [`tests/fixtures/pdf.mjs`](../tests/fixtures/pdf.mjs), [`package.json`](../package.json), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`scripts/markdown.mjs`](../scripts/markdown.mjs)</sub>
+<sub>Sources: [`tests/unit/render.test.mjs`](../tests/unit/render.test.mjs), [`tests/unit/config.test.mjs`](../tests/unit/config.test.mjs), [`tests/unit/setup.mjs`](../tests/unit/setup.mjs), [`tests/unit/actions.test.mjs`](../tests/unit/actions.test.mjs), [`tests/unit/i18n.test.mjs`](../tests/unit/i18n.test.mjs), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`tests/unit/parser.test.mjs`](../tests/unit/parser.test.mjs), [`tests/unit/chunker.test.mjs`](../tests/unit/chunker.test.mjs), [`tests/unit/bm25.test.mjs`](../tests/unit/bm25.test.mjs), [`tests/unit/retrieval.test.mjs`](../tests/unit/retrieval.test.mjs), [`tests/unit/synthesizer.test.mjs`](../tests/unit/synthesizer.test.mjs), [`tests/unit/prompts.test.mjs`](../tests/unit/prompts.test.mjs), [`tests/unit/models.test.mjs`](../tests/unit/models.test.mjs), [`tests/unit/device.test.mjs`](../tests/unit/device.test.mjs), [`tests/unit/choices.test.mjs`](../tests/unit/choices.test.mjs), [`tests/unit/wasm-catalog.test.mjs`](../tests/unit/wasm-catalog.test.mjs), [`tests/unit/diagnostics.test.mjs`](../tests/unit/diagnostics.test.mjs), [`tests/unit/chat-stream.test.mjs`](../tests/unit/chat-stream.test.mjs), [`tests/unit/nvidia-client.test.mjs`](../tests/unit/nvidia-client.test.mjs), [`tests/unit/chat-export.test.mjs`](../tests/unit/chat-export.test.mjs), [`tests/unit/code-blocks.test.mjs`](../tests/unit/code-blocks.test.mjs), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs), [`backend/test_fixtures/nvidia_validation.json`](../backend/test_fixtures/nvidia_validation.json), [`tests/unit/build-version.test.mjs`](../tests/unit/build-version.test.mjs), [`tests/unit/supabase-key.test.mjs`](../tests/unit/supabase-key.test.mjs), [`tests/unit/typecheck-coverage.test.mjs`](../tests/unit/typecheck-coverage.test.mjs), [`tests/unit/sbom.test.mjs`](../tests/unit/sbom.test.mjs), [`scripts/lib/sbom.mjs`](../scripts/lib/sbom.mjs), [`tests/fixtures/pdf.mjs`](../tests/fixtures/pdf.mjs), [`package.json`](../package.json), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`scripts/markdown.mjs`](../scripts/markdown.mjs)</sub>
 
 ### Unit tests for the source check, receipts and sample files
 
@@ -6178,7 +6807,7 @@ Twelve of the unit test files cover the source check, answer receipts, starpi-gr
 <!-- diagram: test-strategy-unit-trust -->
 ```mermaid
 flowchart LR
-    runner(["same npm test run, 12 of the 29 files"])
+    runner(["same npm test run, 12 of the 38 files"])
 
     subgraph gCheck["Source check"]
         facts["facts.test.mjs<br/>parseNumber with English and German separators,<br/>extractFacts: numbers with scale words, percent and currency,<br/>approximations, ISO, German and English dates, times,<br/>weekdays, codes, numbers written as words, also right after and,<br/>quotations, indexSource and lookupFact across formats<br/>and languages, 4.05. read as a decimal and as a date,<br/>codes with or without a hyphen, typographic dashes in codes,<br/>folding and inflection"]
@@ -6219,14 +6848,14 @@ flowchart LR
 
 ### End-to-end tests with mocked Supabase and diagnostics
 
-Playwright serves the built dist/ through scripts/serve.mjs, which applies the vercel.json headers to every path, and runs app.spec.mjs (16 tests) and trust.spec.mjs (13 tests) on a desktop and a mobile Chromium project. mockSupabase answers every *.supabase.co request with two independent flags, hardened (otherwise a pre-migration project) and anonymousAuth, reports through auth/v1/settings whether anonymous sign-ins are on, and seeds a document with hostile markup; the diagnostics fixture fails a test on any CSP violation, page error, unexpected console error or request to a host other than 127.0.0.1 and the mocked Supabase. The workspace tests check that a question answered from workspace files or about an attached file stays in localStorage with its answer while chats sync, that a citation made before Clear workspace never opens a file added afterwards, and that a batch reports every file, refuses the same file twice and renames a different file with the same name. Two settings tests check that the save dialog confirms only what the browser stored, an offline-start test checks that the app reconnects on the online event and then syncs chats, and docs-diagrams.spec.mjs renders every Mermaid block in the repository Markdown with mermaid 12.1.0, skipped on the mobile project.
+Playwright serves the built dist/ through scripts/serve.mjs on STARPI_E2E_PORT (default 4173) without --functions, which applies the vercel.json headers to every path, and runs app.spec.mjs (17 tests), trust.spec.mjs (13 tests), models.spec.mjs (8 tests), modes.spec.mjs (8 tests) and the Mermaid render gate on a desktop and a mobile Chromium project, 94 test runs in all. mockSupabase answers every *.supabase.co request with two independent flags, hardened (otherwise a pre-migration project) and anonymousAuth, reports through auth/v1/settings whether anonymous sign-ins are on, and seeds a document with hostile markup; mockNvidia stands in for Starpi's NVIDIA proxy on /api/models/nvidia and /api/chat/nvidia with the published catalog, streamed answers in the proxy's SSE form or a given error, and records each request body and its Authorization header, which must be absent; without it the server answers 404, which the app reads as no proxy. The diagnostics fixture fails a test on any CSP violation, page error, unexpected console error or request to a host other than 127.0.0.1 and the mocked Supabase, so no test reaches NVIDIA or downloads a model. The workspace tests check that a question answered from workspace files or about an attached file stays in localStorage with its answer while chats sync, that a citation made before Clear workspace never opens a file added afterwards, and that a batch reports every file, refuses the same file twice and renames a different file with the same name. Two settings tests check that the save dialog confirms only what the browser stored, an offline-start test checks that the app reconnects on the online event and then syncs chats, and three tests without WebGPU check that a WebGPU preset is refused with a reason, that the processor model offered instead downloads nothing without consent, and that the diagnostics report the missing support. models.spec.mjs emulates a desktop with or without a WebGPU adapter and checks the picker groups, the recommendation, the T3 warning, the WASM fallback and the 2.0 migration, the settings mirror with badges in both languages, the NVIDIA group per proxy state, the refusal to switch during an answer and the settling of arrow keys. modes.spec.mjs checks the chat mode toggle, free chat with code copy and history, an attached file sent once and never as history, the chat export and delete, and NVIDIA answers in both modes, including a receipt with engine nvidia, the fallback when the proxy has no keys and a rate-limit notice without server text. docs-diagrams.spec.mjs renders every Mermaid block in the repository Markdown with mermaid 12.1.0, skipped on the mobile project.
 
 <!-- diagram: test-strategy-e2e -->
 ```mermaid
 flowchart TD
     job(["CI job e2e: npm run test:e2e<br/>against the dist artifact from job frontend"])
-    cfg["playwright.config.mjs: testDir tests/e2e, timeout 45 s, retries 0,<br/>forbidOnly in CI, serviceWorkers block, trace retain-on-failure"]
-    serve["webServer: node scripts/serve.mjs --port 4173 on 127.0.0.1<br/>serves dist/ with the vercel.json headers on every path,<br/>so pages and workers run under the real CSP"]
+    cfg["playwright.config.mjs: testDir tests/e2e, timeout 45 s, retries 0,<br/>forbidOnly in CI, serviceWorkers block, trace retain-on-failure,<br/>port STARPI_E2E_PORT, default 4173"]
+    serve["webServer: node scripts/serve.mjs --port on 127.0.0.1,<br/>without --functions: /api/* gives 404 unless mocked,<br/>serves dist/ with the vercel.json headers on every path,<br/>so pages and workers run under the real CSP"]
     desk["project desktop-chromium<br/>Desktop Chrome, 1280 x 800"]
     mob["project mobile-chromium<br/>Pixel 7"]
     job --> cfg
@@ -6236,10 +6865,11 @@ flowchart TD
 
     subgraph fx["tests/e2e/fixtures.mjs"]
         mock["mockSupabase with hardened and anonymousAuth flags<br/>routes *.supabase.co: auth/v1/settings with anonymous_users,<br/>signup, knowledge_documents, sections, rpc/search_knowledge,<br/>entities, relations, chat_history, any other path 404 PGRST000<br/>not hardened: 42703 on is_public, PGRST202, PGRST205<br/>no anonymous auth: signup 422 anonymous_provider_disabled<br/>MALICIOUS_DOC and its section: img onerror, script, onmouseover,<br/>javascript: link, remote beacon image"]
+        mocknv["mockNvidia: GET /api/models/nvidia with publicCatalog,<br/>configured or not, POST /api/chat/nvidia as an SSE stream<br/>of reasoning and content deltas, or a given error,<br/>records bodies and the Authorization header<br/>useNvidia: stored mode nvidia and a model"]
         diagx["diagnostics fixture<br/>securitypolicyviolation logged as CSP_VIOLATION,<br/>pageerror and console.error collected, 4xx resource logs ignored,<br/>requests outside 127.0.0.1 and *.supabase.co aborted and recorded,<br/>the test fails unless the list is empty"]
     end
 
-    subgraph app["app.spec.mjs, 16 tests, both projects"]
+    subgraph app["app.spec.mjs, 17 tests, both projects"]
         direction LR
         s1["Migration pending, anonymous sign-ins disabled:<br/>CSP and nosniff on index.html, sw.js, manifest and a script,<br/>hashed assets immutable, Migration pending badge,<br/>answer without a model, with a citation, This device only,<br/>no chat_history requests, no emoji, icons aria-hidden"]
         s2["Hostile database content: card shows the markup as text,<br/>no img and no javascript: link in the modal, window.__xss undefined"]
@@ -6248,7 +6878,7 @@ flowchart TD
         sSave["Saving settings, 2 tests: own server http://127.0.0.1:11434/v1,<br/>dialog Settings saved. and starpi_llm_url stored,<br/>Storage.setItem throwing: dialog Some settings could not be saved"]
         s5["Hardened schema: two chat_history POSTs with<br/>Bearer test-access-token, no owner_id in the body,<br/>search_knowledge RPC used"]
         sOff["Offline start: *.supabase.co aborted as internetdisconnected,<br/>badge Offline, online event, badge Live,<br/>then question and answer give two chat_history POSTs,<br/>net::ERR_INTERNET_DISCONNECTED console errors required,<br/>removed, then no other diagnostics"]
-        s6["No WebGPU, 2 tests: on-device mode explained, question<br/>ranked in the browser, no search RPC or chat POST,<br/>benchmark shows WebGPU not supported"]
+        s6["No WebGPU, 3 tests: webgpu:llama-1b marked needs WebGPU,<br/>picked anyway: on-device mode explained, question ranked<br/>in the browser, no search RPC or chat POST; the recommended<br/>wasm: model asks once with the 15 MB runtime, declined:<br/>nothing loads, answer quoted; benchmark shows WebGPU not supported"]
         s7["i18n: English default, German without a reload,<br/>German kept after reload, starpi_locale stored"]
         s8["Workspace: notes.md and a makePdf plan.pdf indexed in the worker,<br/>1 page and 1 chunk, BM25 scores, cited answer opens the drawer<br/>on the chunk, file text never sent to Supabase,<br/>question and answer kept in starpi_local_chats_v1,<br/>no chat_history POST although chats sync"]
         s9["Attached orion-roadmap.md while chats sync:<br/>question and answer kept in starpi_local_chats_v1,<br/>no chat_history POST"]
@@ -6257,24 +6887,60 @@ flowchart TD
         s11["Unsupported photo.png rejected with a clear message"]
     end
 
+    subgraph models["models.spec.mjs, 8 tests, both projects"]
+        direction LR
+        m1["8 GB desktop with WebGPU: Recommended for your device<br/>first with webgpu:qwen-3b, recommended, mode stays council,<br/>a WASM pick asks once, declined, stored as the choice"]
+        m2["T3 gemma-9b: needs a strong GPU, the confirm<br/>starts with the free GPU memory warning"]
+        m3["no WebGPU: a wasm: model recommended,<br/>webgpu:qwen-1.5b marked needs WebGPU,<br/>stored 2.0 value qwen-1.5b migrated"]
+        m4["settings picker mirrors the header, its own labels,<br/>badges WebGPU with f16, 8 GB RAM, desktop,<br/>German group labels and option text after a switch"]
+        m5["NVIDIA proxy with keys: offered models in their group,<br/>the default in Recommended, every value once,<br/>a pick stores mode nvidia and the model"]
+        m6["no proxy: 404, NVIDIA group hidden, a stored<br/>NVIDIA model shown disabled, status line says so"]
+        m7["switch refused with models.switch_busy while<br/>an answer streams, the picker shows the stored choice"]
+        m8["arrow keys: applied once they rest,<br/>not at every step"]
+    end
+
+    subgraph modes["modes.spec.mjs, 8 tests, both projects"]
+        direction LR
+        c1["toggle: grounded by default, free remembered across<br/>reloads, placeholder and privacy notice follow,<br/>German labels, a quick prompt switches back to grounded"]
+        c2["free chat with a mocked OpenRouter: code block<br/>with Copy and Copied, free note, no source check or receipt,<br/>history sent, no search_knowledge request"]
+        c3["free chat with an attached file: fenced as FILE once,<br/>never resent as history, nothing synced"]
+        c4["chat menu: Markdown and JSON export starpi.chat/v1,<br/>Delete this chat removes the session from<br/>chat_history and this browser"]
+        c5["NVIDIA free chat: streamed answer, reasoning only in the<br/>details, model, messages, max_tokens and temperature 0.7 only,<br/>no Authorization header, history without the reasoning"]
+        c6["NVIDIA source mode: excerpts sent at temperature 0.2,<br/>source check ok, receipt with answer.engine nvidia"]
+        c7["proxy without keys: notice not set up,<br/>answer quoted from the sources, no chat request"]
+        c8["429 with Retry-After 7: please wait 7 s,<br/>server text never shown"]
+    end
+
     trust["trust.spec.mjs, 13 tests, both projects:<br/>sample files, source check, receipts, privacy,<br/>session without sign-in, axe scan and keyboard,<br/>see the next diagram"]
 
     docs["docs-diagrams.spec.mjs, skipped on the mobile project<br/>every mermaid block in repository Markdown parses and renders<br/>with the pinned mermaid 12.1.0, securityLevel strict,<br/>in a blank page via setContent: no app page, no diagnostics fixture"]
 
     serve --> app
+    serve --> models
+    serve --> modes
     serve --> trust
     desk --> app
     mob --> app
+    desk --> models
+    mob --> models
+    desk --> modes
+    mob --> modes
     desk --> trust
     mob --> trust
     desk --> docs
     mock -->|"per test: mockSupabase"| app
+    mock -->|"per test"| models
+    mock -->|"per test"| modes
     mock -->|"every test: hardened"| trust
+    mocknv -->|"NVIDIA tests"| models
+    mocknv -->|"NVIDIA tests"| modes
     diagx -->|"every test"| app
+    diagx -->|"every test"| models
+    diagx -->|"every test"| modes
     diagx -->|"every test"| trust
 ```
 
-<sub>Sources: [`playwright.config.mjs`](../playwright.config.mjs), [`tests/e2e/fixtures.mjs`](../tests/e2e/fixtures.mjs), [`tests/e2e/app.spec.mjs`](../tests/e2e/app.spec.mjs), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs), [`tests/fixtures/pdf.mjs`](../tests/fixtures/pdf.mjs), [`scripts/serve.mjs`](../scripts/serve.mjs), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)</sub>
+<sub>Sources: [`playwright.config.mjs`](../playwright.config.mjs), [`tests/e2e/fixtures.mjs`](../tests/e2e/fixtures.mjs), [`tests/e2e/app.spec.mjs`](../tests/e2e/app.spec.mjs), [`tests/e2e/models.spec.mjs`](../tests/e2e/models.spec.mjs), [`tests/e2e/modes.spec.mjs`](../tests/e2e/modes.spec.mjs), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs), [`tests/fixtures/pdf.mjs`](../tests/fixtures/pdf.mjs), [`scripts/serve.mjs`](../scripts/serve.mjs), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)</sub>
 
 ### End-to-end tests for the source check, receipts and accessibility
 
@@ -6340,7 +7006,7 @@ flowchart TD
 
 ### CI workflow triggers, jobs and Dependabot
 
-The CI workflow runs on pushes and pull requests to main (the default branch) and on manual dispatch, with read-only contents permission and one concurrency group per PR or ref that cancels older runs. Five jobs start in parallel: frontend, the backend Python 3.11/3.12 matrix, database, audit and secrets. e2e runs only after frontend succeeds, because it needs the dist artifact that frontend uploads, and besides the app and trust specs it renders every Mermaid block in the repository's Markdown. Every completed CI run on main starts the separate Release workflow, whose jobs only run when that CI run passed and was triggered by a push; the Release workflow can also be dispatched by hand, and then its jobs run only on main. Dependabot opens weekly update PRs for npm (dev dependencies grouped, Tailwind majors ignored), pip in /backend and GitHub Actions, and those PRs go through the same workflow.
+The CI workflow runs on pushes and pull requests to main (the default branch) and on manual dispatch, with read-only contents permission and one concurrency group per PR or ref that cancels older runs. Five jobs start in parallel: frontend, the backend Python 3.11/3.12 matrix, database, audit and secrets. e2e runs only after frontend succeeds, because it needs the dist artifact that frontend uploads, and besides the app, trust, models and modes specs it renders every Mermaid block in the repository's Markdown. Every completed CI run on main starts the separate Release workflow, whose jobs only run when that CI run passed and was triggered by a push; the Release workflow can also be dispatched by hand, and then its jobs run only on main. Dependabot opens weekly update PRs for npm (dev dependencies grouped, Tailwind majors ignored), pip in /backend and GitHub Actions, and those PRs go through the same workflow.
 
 <!-- diagram: ci-workflow-overview -->
 ```mermaid
@@ -6362,7 +7028,7 @@ flowchart TD
     CFG --> DB["database: Database migration and RLS tests<br/>(PostgreSQL 16 + pgvector), 15 min"]
     CFG --> AUD["audit: Dependency audit (npm audit, pip-audit)<br/>10 min, Node 22 and Python 3.12,<br/>uploads the CycloneDX SBOMs as artifact sbom"]
     CFG --> SEC["secrets: Secret scanning (gitleaks)<br/>5 min, gitleaks 8.30.1"]
-    FE -->|"needs: frontend succeeded"| E2E["e2e: End-to-end (Playwright, production headers)<br/>20 min, app and trust specs plus rendering of every<br/>Mermaid block in the Markdown files"]
+    FE -->|"needs: frontend succeeded"| E2E["e2e: End-to-end (Playwright, production headers)<br/>20 min, app, trust, models and modes specs plus<br/>rendering of every Mermaid block in the Markdown files"]
     FE -->|"frontend failed"| SKIP["e2e is skipped"]
     FE --> RES{"every job succeeded?"}
     E2E --> RES
@@ -6382,7 +7048,7 @@ flowchart TD
 
 ### Frontend and end-to-end jobs
 
-The frontend job installs from the lockfile without install scripts, then runs lint, typecheck, the 29 unit test files, pack:core (a typed build of @starpi/core and npm pack --dry-run, so a broken type declaration or package file list fails the pull request, not the release), the production build and verify:dist, and uploads dist (kept 3 days, and the upload errors if there are no files); any failing step fails the job and skips e2e. e2e downloads that same dist, installs Chromium and runs Playwright against scripts/serve.mjs on port 4173 with service workers blocked, test.only forbidden on CI and no retries. Its specs exercise the app under the production headers (every response, workers included, carries the CSP) with a mocked Supabase, check the source check, receipts and accessibility with mocked model APIs and axe, and parse and render every Mermaid block in the Markdown files with mermaid 12.1.0, skipped on the mobile project. If any e2e step fails, playwright-report and test-results are uploaded for 7 days.
+The frontend job installs from the lockfile without install scripts, then runs lint, typecheck, the 38 unit test files, pack:core (a typed build of @starpi/core and npm pack --dry-run, so a broken type declaration or package file list fails the pull request, not the release), the production build and verify:dist, and uploads dist (kept 3 days, and the upload errors if there are no files); any failing step fails the job and skips e2e. e2e downloads that same dist, installs Chromium and runs Playwright against scripts/serve.mjs on port 4173 (STARPI_E2E_PORT can change it) without the NVIDIA functions, with service workers blocked, test.only forbidden on CI and no retries. Its specs exercise the app under the production headers (every response, workers included, carries the CSP) with a mocked Supabase, check the source check, receipts and accessibility with mocked model APIs and axe, the model pickers and the chat modes with a mocked NVIDIA proxy, and parse and render every Mermaid block in the Markdown files with mermaid 12.1.0, skipped on the mobile project. If any e2e step fails, playwright-report and test-results are uploaded for 7 days.
 
 <!-- diagram: ci-frontend-e2e -->
 ```mermaid
@@ -6393,7 +7059,7 @@ flowchart TD
       F3["npm ci --ignore-scripts"]
       F4["npm run lint: eslint ."]
       F5["npm run typecheck: tsc -p tsconfig.json --noEmit"]
-      F6["npm test: node --test tests/unit/*.test.mjs,<br/>29 files"]
+      F6["npm test: node --test tests/unit/*.test.mjs,<br/>38 files, 479 tests"]
       F6b["npm run pack:core: npm pack --workspace=@starpi/core<br/>--dry-run, prepack builds it with type declarations"]
       F7["npm run build: scripts/build.mjs"]
       F8["npm run verify:dist: CSP compatibility,<br/>assets, service worker and build version"]
@@ -6409,9 +7075,9 @@ flowchart TD
       G4["npm run test:e2e: playwright test"]
       G1 --> G2 --> G3 --> G4
     end
-    PWC["playwright.config.mjs: testDir tests/e2e,<br/>webServer node scripts/serve.mjs --port 4173,<br/>projects desktop-chromium and mobile-chromium,<br/>serviceWorkers block, forbidOnly on CI, retries 0,<br/>list + html reporter on CI, trace retain-on-failure"]
+    PWC["playwright.config.mjs: testDir tests/e2e,<br/>webServer node scripts/serve.mjs --port 4173<br/>or STARPI_E2E_PORT, without --functions,<br/>projects desktop-chromium and mobile-chromium,<br/>serviceWorkers block, forbidOnly on CI, retries 0,<br/>list + html reporter on CI, trace retain-on-failure"]
     G4 -.- PWC
-    SPECS["app.spec.mjs: the app under the production CSP,<br/>with a mocked Supabase<br/>trust.spec.mjs: sample files, source check, receipts,<br/>privacy, axe scan via @axe-core/playwright<br/>docs-diagrams.spec.mjs: every mermaid block in the<br/>Markdown files parses and renders with mermaid 12.1.0,<br/>skipped on mobile-chromium"]
+    SPECS["app.spec.mjs: the app under the production CSP,<br/>with a mocked Supabase<br/>trust.spec.mjs: sample files, source check, receipts,<br/>privacy, axe scan via @axe-core/playwright<br/>models.spec.mjs and modes.spec.mjs: model pickers,<br/>chat modes, export, NVIDIA with a mocked proxy<br/>docs-diagrams.spec.mjs: every mermaid block in the<br/>Markdown files parses and renders with mermaid 12.1.0,<br/>skipped on mobile-chromium"]
     G4 -.- SPECS
     G4 -->|"all tests passed"| EOK(["e2e passes"])
     sg_e2e -->|"any step fails"| G5["if failure(): upload-artifact playwright-report<br/>with playwright-report/ and test-results/, kept 7 days"]
@@ -6422,7 +7088,7 @@ flowchart TD
 
 ### Backend, database, audit and secret-scanning jobs
 
-The backend job runs once per Python version (3.11, 3.12) with fail-fast off, and runs ruff check, ruff format --check, a byte-compile and the offline unittest suite, any of which fails its leg. The database job installs PostgreSQL 16 with pgvector and runs run_rls_tests.sh, which starts a throwaway cluster, runs seven scenarios (five apply the schema or the three migration files and run rls_test.sql, while guard and guard_order only require a file to refuse the database) plus a schema-parity diff, and exits 1 if any of them failed and 2 on a setup error; rls_test.sql has 191 checks in fresh and fresh_rerun and 198 in live, legacy_v2 and legacy_v1, which are seeded with legacy rows. The audit job needs no npm install: npm audit reads package-lock.json and fails on any advisory in a runtime dependency (--omit=dev --audit-level=low); a second npm audit over the whole tree at high severity only emits a warning annotation, because the advisories it can report are in build and test tooling that is not shipped in dist/. It then installs backend/requirements-dev.txt on Python 3.12 and runs pip-audit, pinned there, over the backend requirements; any advisory fails the job. Last, unless the run was cancelled, npm run sbom writes the CycloneDX SBOMs of the app and of @starpi/core from the lockfile, again without an npm install (scripts/sbom.mjs imports only Node built-ins and calls npm sbom --package-lock-only), checks them and uploads them as the sbom artifact for 30 days; an invalid document fails the job. The secrets job downloads gitleaks 8.30.1, verifies its pinned SHA-256, scans the working tree, and on pull requests also scans the commits between the base and head SHAs. A failed download, a checksum mismatch or any leak fails the job.
+The backend job runs once per Python version (3.11, 3.12) with fail-fast off, and runs ruff check, ruff format --check, a byte-compile and the offline unittest suite of 146 tests, the NVIDIA router and routes included, any of which fails its leg. The database job installs PostgreSQL 16 with pgvector and runs run_rls_tests.sh, which starts a throwaway cluster, runs seven scenarios (five apply the schema or the three migration files and run rls_test.sql, while guard and guard_order only require a file to refuse the database) plus a schema-parity diff, and exits 1 if any of them failed and 2 on a setup error; rls_test.sql has 191 checks in fresh and fresh_rerun and 198 in live, legacy_v2 and legacy_v1, which are seeded with legacy rows. The audit job needs no npm install: npm audit reads package-lock.json and fails on any advisory in a runtime dependency (--omit=dev --audit-level=low); a second npm audit over the whole tree at high severity only emits a warning annotation, because the advisories it can report are in build and test tooling that is not shipped in dist/. It then installs backend/requirements-dev.txt on Python 3.12 and runs pip-audit, pinned there, over the backend requirements; any advisory fails the job. Last, unless the run was cancelled, npm run sbom writes the CycloneDX SBOMs of the app and of @starpi/core from the lockfile, again without an npm install (scripts/sbom.mjs imports only Node built-ins and calls npm sbom --package-lock-only), checks them and uploads them as the sbom artifact for 30 days; an invalid document fails the job. The secrets job downloads gitleaks 8.30.1, verifies its pinned SHA-256, scans the working tree with the default rules plus the custom rule starpi-nvidia-api-key (NVIDIA keys, also with Markdown escapes), and on pull requests also scans the commits between the base and head SHAs. A failed download, a checksum mismatch or any leak fails the job.
 
 <!-- diagram: ci-backend-database-secrets -->
 ```mermaid
@@ -6433,7 +7099,7 @@ flowchart TD
       B3["Lint: ruff check backend --no-cache"]
       B4["Lint: ruff format --check backend"]
       B5["python -m compileall -q backend"]
-      B6["python -m unittest discover<br/>-s backend -p test_*.py -v"]
+      B6["python -m unittest discover<br/>-s backend -p test_*.py -v, 146 tests,<br/>offline, httpx mocked"]
       B1 --> B2 --> B3 --> B4 --> B5 --> B6
     end
     sg_be -->|"install error, lint error, unformatted file,<br/>syntax error or failing test"| BFAIL(["that matrix leg fails,<br/>the other leg keeps running"])
@@ -6484,7 +7150,7 @@ flowchart TD
       S4 -->|"no"| S5
       S5 -->|"yes"| S6
     end
-    GL[".gitleaks.toml: default rules, allowlists for the<br/>public anon JWT and for generated paths<br/>such as dist/ and node_modules/"]
+    GL[".gitleaks.toml: default rules, custom rule<br/>starpi-nvidia-api-key for nvapi- keys, also escaped,<br/>allowlists for the public anon JWT and for<br/>generated paths such as dist/ and node_modules/"]
     S4 -.- GL
     S2 -->|"download fails"| SFAIL(["secrets fails"])
     S3 -->|"no"| SFAIL
@@ -6555,9 +7221,9 @@ flowchart TD
 
 <sub>Sources: [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`package.json`](../package.json), [`packages/core/package.json`](../packages/core/package.json), [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`CONTRIBUTING.md`](../CONTRIBUTING.md), [`docs/releases/v1.3.0.md`](../docs/releases/v1.3.0.md)</sub>
 
-### CI workflow and Vercel build of the PWA
+### CI workflow and Vercel build of the PWA and the NVIDIA functions
 
-Pushes and pull requests to main (and manual dispatch) run six CI jobs: frontend (lint, typecheck, unit tests, a dry-run pack of @starpi/core, build, verify:dist), e2e on the built dist under the vercel.json headers, backend on Python 3.11 and 3.12, the database migration and RLS suite, a dependency audit (npm audit, pip-audit) with CycloneDX SBOMs and gitleaks secret scanning. Neither ci.yml nor release.yml has a deploy step, so the Vercel build is triggered by settings of the Vercel project outside this repo and nothing in the repo makes it wait for CI. .vercelignore leaves the backend, the tests, the workflows, env files, node_modules and build and test output out of the deployment. vercel.json installs with npm ci --ignore-scripts, builds with npm run build (which stops on a blank or secret Supabase key and on a JWT whose role is not anon) into dist and sets a strict CSP, nosniff, X-Frame-Options DENY, COOP, HSTS and Permissions-Policy on all paths, plus immutable caching for assets/ and no-cache for sw.js, the root and index.html.
+Pushes and pull requests to main (and manual dispatch) run six CI jobs: frontend (lint, typecheck, unit tests, a dry-run pack of @starpi/core, build, verify:dist), e2e on the built dist under the vercel.json headers, backend on Python 3.11 and 3.12, the database migration and RLS suite, a dependency audit (npm audit, pip-audit) with CycloneDX SBOMs and gitleaks secret scanning. Neither ci.yml nor release.yml has a deploy step, so the Vercel build is triggered by settings of the Vercel project outside this repo and nothing in the repo makes it wait for CI. .vercelignore leaves the backend, the tests, the workflows, env files, node_modules and build and test output out of the deployment, but keeps api/ and src/, because the functions import the NVIDIA catalog from src/ (a unit test checks that). vercel.json installs with npm ci --ignore-scripts, builds with npm run build (which stops on a blank or secret Supabase key and on a JWT whose role is not anon) into dist, deploys api/chat/nvidia.js (maxDuration 300 s with supportsCancellation, so a browser that goes away stops the function) and api/models/nvidia.js (maxDuration 10 s) as Node.js functions, and sets a strict CSP, nosniff, X-Frame-Options DENY, COOP, HSTS and Permissions-Policy on all paths, plus immutable caching for assets/ and no-cache for sw.js, the root and index.html. NVIDIA_API_KEYS, and optionally NVIDIA_RATE_LIMIT_PER_MINUTE and NVIDIA_ALLOWED_ORIGINS, are environment variables of the Vercel project, the keys marked sensitive, for Production and Preview. Vercel binds environment variables to a deployment when it is created, so a key added later reaches only deployments created after it; without a valid key the models route reports configured false and the chat route answers 503 nvidia_not_configured.
 
 <!-- diagram: deployment-ci-vercel -->
 ```mermaid
@@ -6567,11 +7233,11 @@ flowchart TD
     subgraph sg_ci["GitHub Actions: .github/workflows/ci.yml"]
         Conc["permissions contents read<br/>concurrency per PR or ref, cancel-in-progress"]
         FE["frontend job, Node 22<br/>npm ci --ignore-scripts, lint, typecheck,<br/>npm test, npm run pack:core,<br/>npm run build, npm run verify:dist<br/>uploads the dist artifact"]
-        E2E["e2e job, needs frontend<br/>npm ci --ignore-scripts, downloads dist,<br/>installs Chromium, npm run test:e2e<br/>app, trust and Mermaid docs specs<br/>playwright-report uploaded on failure"]
+        E2E["e2e job, needs frontend<br/>npm ci --ignore-scripts, downloads dist,<br/>installs Chromium, npm run test:e2e<br/>app, trust, models, modes and Mermaid docs specs,<br/>Supabase and the NVIDIA proxy mocked<br/>playwright-report uploaded on failure"]
         BE["backend job, Python 3.11 and 3.12<br/>pip install requirements-dev.txt<br/>ruff check, ruff format --check,<br/>compileall, unittest discover test_*.py"]
         DBJ["database job<br/>PostgreSQL 16 and pgvector<br/>backend/supabase/tests/run_rls_tests.sh"]
         AUD["audit job<br/>npm audit: no advisory in runtime dependencies<br/>pip-audit on backend/requirements-dev.txt<br/>npm run sbom: CycloneDX SBOMs, artifact sbom"]
-        SEC["secrets job<br/>gitleaks 8.30.1, sha256 verified<br/>working tree, plus PR commits on pull_request"]
+        SEC["secrets job<br/>gitleaks 8.30.1, sha256 verified, NVIDIA key rule<br/>working tree, plus PR commits on pull_request"]
     end
     Push --> Conc
     PR --> Conc
@@ -6584,32 +7250,38 @@ flowchart TD
     sg_ci -.->|"CI passed on a push to main"| REL["release.yml: GitHub release with the<br/>@starpi/core tarball, SBOMs and SHA256SUMS,<br/>no deploy step, no npm publish"]
     Push -.->|"trigger set in the Vercel project, not in this repo<br/>no workflow deploys, nothing waits for CI"| VIg
     subgraph sg_vercel["Vercel build from vercel.json"]
-        VIg[".vercelignore leaves out backend/, tests/, .github/,<br/>.env*, node_modules/, dist/, .build/,<br/>playwright-report/, test-results/"]
+        VIg[".vercelignore leaves out backend/, tests/, .github/,<br/>.env*, node_modules/, dist/, .build/,<br/>playwright-report/, test-results/,<br/>keeps api/ and src/"]
         VI["installCommand<br/>npm ci --ignore-scripts"]
         VB["buildCommand npm run build = scripts/build.mjs<br/>STARPI_SUPABASE_URL, STARPI_SUPABASE_ANON_KEY<br/>or the compiled-in defaults<br/>stops on a blank or sb_secret_ key and on a JWT<br/>whose role is not anon, accepts sb_publishable_ keys<br/>esbuild warnings fail the build"]
         VO[("outputDirectory dist<br/>framework null, cleanUrls true")]
+        VF["functions: api/chat/nvidia.js maxDuration 300,<br/>supportsCancellation true, api/models/nvidia.js<br/>maxDuration 10, Node.js, import the catalog from src/"]
+        VE[("project environment, bound when a deployment<br/>is created: NVIDIA_API_KEYS sensitive, Production<br/>and Preview, NVIDIA_RATE_LIMIT_PER_MINUTE and<br/>NVIDIA_ALLOWED_ORIGINS optional")]
         VIg --> VI --> VB --> VO
+        VIg --> VF
+        VE -.->|"read by runtimeDeps"| VF
     end
-    VO --> Site(["static PWA at www.starpi.app"])
+    VO --> Site(["PWA at www.starpi.app"])
+    VF --> Api(["same-origin /api/models/nvidia and<br/>/api/chat/nvidia, keys only on the server,<br/>503 nvidia_not_configured without a valid key"])
+    Site -.->|"the browser calls them without a key"| Api
     subgraph sg_headers["Response headers from vercel.json"]
         HCsp["all paths: Content-Security-Policy<br/>default-src 'self'<br/>script-src 'self' 'wasm-unsafe-eval'<br/>style-src, font-src, worker-src, manifest-src 'self'<br/>img-src 'self' data: blob:<br/>connect-src 'self' data: https: wss://*.supabase.co<br/>http://localhost:* http://127.0.0.1:*<br/>media-src, object-src, frame-src 'none'<br/>base-uri, form-action, frame-ancestors 'none'"]
         HSec["all paths<br/>X-Content-Type-Options nosniff, X-Frame-Options DENY<br/>Referrer-Policy strict-origin-when-cross-origin<br/>Cross-Origin-Opener-Policy same-origin<br/>Strict-Transport-Security max-age=63072000<br/>Permissions-Policy microphone=(self), camera=(),<br/>geolocation=(), payment=(), usb=(), serial=(), hid=()"]
-        HCache["Cache-Control<br/>assets/*: public, max-age=31536000, immutable<br/>sw.js: no-cache, no-store, must-revalidate<br/>and Service-Worker-Allowed /<br/>root and index.html: no-cache"]
+        HCache["Cache-Control<br/>assets/*: public, max-age=31536000, immutable<br/>sw.js: no-cache, no-store, must-revalidate<br/>and Service-Worker-Allowed /<br/>root and index.html: no-cache<br/>function answers set no-store themselves"]
         HMan["manifest.webmanifest<br/>Content-Type application/manifest+json"]
     end
     Site --> HCsp
     Site --> HSec
     Site --> HCache
     Site --> HMan
-    FE -.->|"verify:dist requires a CSP<br/>without unsafe-inline or unsafe-eval"| HCsp
+    FE -.->|"verify:dist requires a CSP<br/>without unsafe-inline or unsafe-eval,<br/>and no NVIDIA key in the bundles"| HCsp
     E2E -.->|"Playwright webServer: scripts/serve.mjs<br/>on port 4173 applies the vercel.json headers"| sg_headers
 ```
 
-<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`vercel.json`](../vercel.json), [`.vercelignore`](../.vercelignore), [`README.md`](../README.md), [`package.json`](../package.json), [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`scripts/serve.mjs`](../scripts/serve.mjs), [`playwright.config.mjs`](../playwright.config.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs)</sub>
+<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`vercel.json`](../vercel.json), [`.vercelignore`](../.vercelignore), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`api/models/nvidia.js`](../api/models/nvidia.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`api/_lib/env.js`](../api/_lib/env.js), [`README.md`](../README.md), [`package.json`](../package.json), [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`scripts/serve.mjs`](../scripts/serve.mjs), [`playwright.config.mjs`](../playwright.config.mjs), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs)</sub>
 
 ### Backend runtime on EC2
 
-On EC2 the API listens on 127.0.0.1:9200 only; port 9200 is never opened in the security group. A reverse proxy, installed by hand after deploy_ec2.sh, terminates TLS and forwards to the loopback port, so the API must run with BRAIN_API_TOKEN, which deploy_ec2.sh generates into the mode-600 .env when it is missing. The systemd unit has no EnvironmentFile: server.py loads that file itself through core/config.py, so the script makes it belong to SERVICE_USER. The service role key in it bypasses RLS, so the token and the key never leave the server, and the backend itself limits its document list and its vector matches to published rows and rows without an owner (VISIBLE_ROWS in core/supabase_client.py), so private rows of browser sessions never leave through this API.
+On EC2 the API listens on 127.0.0.1:9200 only; port 9200 is never opened in the security group. A reverse proxy, installed by hand after deploy_ec2.sh, terminates TLS and forwards to the loopback port, so the API must run with BRAIN_API_TOKEN, which deploy_ec2.sh generates into the mode-600 .env when it is missing. The systemd unit has no EnvironmentFile: server.py loads that file itself through core/config.py, so the script makes it belong to SERVICE_USER. The service role key in it bypasses RLS, so the token and the key never leave the server, and the backend itself limits its document list and its vector matches to published rows and rows without an owner (VISIBLE_ROWS in core/supabase_client.py), so private rows of browser sessions never leave through this API. With NVIDIA_API_KEYS in the .env file it also serves the two NVIDIA routes; the app's browser client reaches them only when the reverse proxy serves them on the app's own origin, with the token that deploy_ec2.sh sets (a proxy that adds forwarding headers is refused without one) and the app's origin in BRAIN_ALLOWED_ORIGINS (section 13).
 
 <!-- diagram: deployment-ec2-topology -->
 ```mermaid
@@ -6623,6 +7295,7 @@ flowchart TD
     supa["Supabase REST<br/>SUPABASE_SERVICE_ROLE_KEY, bypasses RLS,<br/>so document lists and vector matches are filtered<br/>to is_public true or owner_id null"]
     llm["Chat models<br/>query answers: GEMINI_API_KEYS pool, then<br/>OPENROUTER_API_KEYS pool, then LLM_BASE_URL<br/>ingest structuring: LLM_BASE_URL only"]
     emb["Embedding endpoint<br/>EMBEDDING_BASE_URL, 1536 dimensions"]
+    nvapi["NVIDIA API, only with NVIDIA_API_KEYS:<br/>POST /api/chat/nvidia relayed with a pooled key"]
 
     client -->|"HTTPS"| proxy
     proxy -->|"reverse_proxy 127.0.0.1:9200"| server
@@ -6630,9 +7303,10 @@ flowchart TD
     server -->|"documents, sections, RPCs"| supa
     server -->|"structuring and answers"| llm
     server -->|"section and query embeddings"| emb
+    server -.->|"optional NVIDIA routes"| nvapi
 ```
 
-<sub>Sources: [`backend/aws/cloud_architecture.md`](../backend/aws/cloud_architecture.md), [`backend/aws/deploy_ec2.sh`](../backend/aws/deploy_ec2.sh), [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/rag.py`](../backend/core/rag.py), [`backend/core/embeddings.py`](../backend/core/embeddings.py), [`backend/.env.example`](../backend/.env.example), [`backend/core/structurer.py`](../backend/core/structurer.py)</sub>
+<sub>Sources: [`backend/aws/cloud_architecture.md`](../backend/aws/cloud_architecture.md), [`backend/aws/deploy_ec2.sh`](../backend/aws/deploy_ec2.sh), [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/rag.py`](../backend/core/rag.py), [`backend/core/embeddings.py`](../backend/core/embeddings.py), [`backend/.env.example`](../backend/.env.example), [`backend/core/structurer.py`](../backend/core/structurer.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py)</sub>
 
 ### Backend deployment to EC2 with remote_sync.sh and deploy_ec2.sh
 
@@ -7248,7 +7922,7 @@ flowchart TD
 
 ### Sample files and the source-check demo
 
-The sample files describe a fictitious project (plan, risk register and kickoff notes). They are same-origin static files under public/samples, in German when the interface language is German and in English otherwise. loadSamples fetches each file and adds it to the on-device workspace like a dropped file, skipping names that are already there; nothing is uploaded. The three suggested questions search only the workspace. The check demo shows a fixed answer that states one wrong number, labelled as written for the demo and not generated, with citations that point at the real sample chunks, and runs the same source check on it. Its language follows the sample set that is in the workspace, preferring the interface language, and it is neither stored nor given a receipt.
+The sample files describe a fictitious project (plan, risk register and kickoff notes). They are same-origin static files under public/samples, in German when the interface language is German and in English otherwise. loadSamples fetches each file and adds it to the on-device workspace like a dropped file, skipping names that are already there; nothing is uploaded. The three suggested questions search only the workspace and always run in verified source mode, switching the chat mode toggle to it. The check demo shows a fixed answer that states one wrong number, labelled as written for the demo and not generated, with citations that point at the real sample chunks, and runs the same source check on it. Its language follows the sample set that is in the workspace, preferring the interface language, and it is neither stored nor given a receipt.
 
 <!-- diagram: sample-files-demo -->
 ```mermaid
@@ -7279,7 +7953,7 @@ flowchart TD
     dReady --> dQs["buttons demo.q_launch, demo.q_budget, demo.q_risks:<br/>quick-prompt, data-arg key_question, data-scope workspace,<br/>and demo.check with data-action demo-check"]
     dReady --> dFin(["loading = false"])
     dErr --> dFin
-    dQs -->|"a question"| dAsk["submitChat(t(key_question), workspaceOnly true)"]
+    dQs -->|"a question"| dAsk["submitChat(t(key_question), workspaceOnly true,<br/>chatMode grounded: the toggle switches to it)"]
     dAsk --> dRet["retrieve: workspace hits only,<br/>the knowledge base is not searched"]
     dRet --> dAns(["answer in the active mode with citations,<br/>source check and Receipt button"])
     dQs -->|"demo.check"| dShow["showCheckDemo: language = the first sample set whose three<br/>files are all in the workspace, the interface language first,<br/>else the interface language"]
@@ -7294,3 +7968,273 @@ flowchart TD
 ```
 
 <sub>Sources: [`src/js/demo.js`](../src/js/demo.js), [`src/index.html`](../src/index.html), [`src/js/chat.js`](../src/js/chat.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`public/samples/en/nebula-plan.md`](../public/samples/en/nebula-plan.md), [`public/samples/de/nebula-projektplan.md`](../public/samples/de/nebula-projektplan.md), [`src/locales/en.json`](../src/locales/en.json), [`src/locales/de.json`](../src/locales/de.json), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs)</sub>
+
+## 13. NVIDIA cloud proxy
+
+NVIDIA mode answers through Starpi's own proxy: two Vercel Functions under api/, and on an operator's own host the same routes in the Python backend, keep a pool of NVIDIA API keys in the server environment, accept chat requests only from the app's own pages, check every request against one shared model allowlist and fixed limits, and relay NVIDIA's event stream to the browser, moving to the next key until one delivers the first byte. The browser never holds a key and sends none. The proxy keeps no conversation and logs no request or answer content: its log lines name a key by its index, with a status or a cooldown, and count malformed key entries. The per-IP limit and the key cooldowns live in one function instance or one backend process, so they are best effort, and the Origin check stops other websites' pages, not scripts that forge headers.
+
+### NVIDIA proxy: request guards and limits
+
+Each route file exports its handler (POST for the chat route, GET for the models route) and, for the other common methods (GET or POST, PUT, PATCH, DELETE and OPTIONS), an answer of 405 method_not_allowed with Allow. POST /api/chat/nvidia then runs handleChat, whose guards come in a fixed order, each refusing with a flat JSON body {error, field?} that carries Cache-Control no-store and nosniff. A request whose Origin is listed in NVIDIA_ALLOWED_ORIGINS passes the origin check; otherwise a Sec-Fetch-Site other than same-origin gives 403 cross_site_request, a missing Origin 403 origin_required, and an Origin whose host differs from the request's Host (X-Forwarded-Host first, as the platform sets it) 403 origin_not_allowed. Next a fixed one-minute window per client address (x-real-ip, else the first X-Forwarded-For entry) allows NVIDIA_RATE_LIMIT_PER_MINUTE requests, 20 by default, and answers 429 rate_limited with Retry-After; without a valid key in NVIDIA_API_KEYS the route answers 503 nvidia_not_configured before it reads any body. The body is read with a 256 KiB cap in the same order as the Python backend: a declared size above the cap gives 413 before the media type is checked (415 unless application/json), then the bytes actually read are capped (413), decoded as strict UTF-8 and parsed (400 invalid_json), and must be an object (400 json_body_must_be_object). validateChatRequest accepts only an allowlisted model (400 model_not_allowed), 1 to 40 messages with role system (first only), user or assistant and string content of at most 24,000 UTF-16 code units each and 64,000 in all, the last one a non-blank user message, an integer max_tokens of at least 1, a temperature from 0 to 2 and a top_p above 0 up to 1 (400 invalid_field with the field otherwise). The upstream body is built from these fields alone: the model's fixed upstream extras first (for the default model, thinking switched off), then model, the messages with role and content only, max_tokens capped at the model's maxOutputTokens, stream true and the optional temperature and top_p, so tools, n, stop, stream settings and every other client field are dropped. GET /api/models/nvidia answers the public catalog and whether keys are configured, and never a key or a key count.
+
+<!-- diagram: nvidia-proxy-guards -->
+```mermaid
+flowchart TD
+    Req(["request to api/chat/nvidia.js or api/models/nvidia.js<br/>on Vercel or serve.mjs --functions"])
+    Meth{"method of the request"}
+    E405["405 method_not_allowed, Allow POST or GET,<br/>exported for the other common methods"]
+    Models["GET /api/models/nvidia: handleModels,<br/>publicCatalog(router not null): configured, version,<br/>defaultModel, limits, models without upstream extras"]
+    Req --> Meth
+    Meth -->|"another method"| E405
+    Meth -->|"GET on the models route"| Models
+    Meth -->|"POST on the chat route"| Allowed
+
+    Allowed{"Origin is listed in<br/>NVIDIA_ALLOWED_ORIGINS?"}
+    Site{"Sec-Fetch-Site present<br/>and not same-origin?"}
+    HasOrigin{"Origin header present?"}
+    SameHost{"Origin is http or https and its host<br/>equals X-Forwarded-Host, else Host?"}
+    E403a["403 cross_site_request"]
+    E403b["403 origin_required"]
+    E403c["403 origin_not_allowed"]
+    Allowed -->|"yes"| Rate
+    Allowed -->|"no"| Site
+    Site -->|"yes"| E403a
+    Site -->|"no"| HasOrigin
+    HasOrigin -->|"no"| E403b
+    HasOrigin -->|"yes"| SameHost
+    SameHost -->|"no"| E403c
+    SameHost -->|"yes"| Rate
+
+    Rate{"limiter.hit(client address):<br/>x-real-ip, else the first X-Forwarded-For entry,<br/>more than NVIDIA_RATE_LIMIT_PER_MINUTE, default 20,<br/>in this one-minute window of this instance?"}
+    E429["429 rate_limited,<br/>Retry-After until the window ends"]
+    Keys{"a router exists: NVIDIA_API_KEYS holds at least<br/>one key of nvapi- and 64 characters?"}
+    E503["503 nvidia_not_configured"]
+    Rate -->|"yes"| E429
+    Rate -->|"no"| Keys
+    Keys -->|"no"| E503
+    Keys -->|"yes"| Body
+
+    Body{"readJsonBody, cap 262144 bytes:<br/>declared Content-Length within the cap,<br/>media type application/json,<br/>bytes read within the cap, strict UTF-8,<br/>JSON.parse ok, an object?"}
+    E4xx["413 payload_too_large, 415 unsupported_media_type,<br/>400 invalid_json or json_body_must_be_object"]
+    Body -->|"no"| E4xx
+    Body -->|"yes"| Valid
+
+    Valid{"validateChatRequest: model is a string<br/>and in the allowlist, 1 to 40 messages,<br/>system only first, 24000 code units each,<br/>64000 in all, last one a non-blank user message,<br/>max_tokens an integer of 1 or more,<br/>temperature 0 to 2, top_p above 0 up to 1?"}
+    E400["400 model_not_allowed, or<br/>400 invalid_field with the field"]
+    Upstream["upstream body: model upstream extras first,<br/>then model, messages with role and content only,<br/>max_tokens = min(requested or defaultMaxTokens,<br/>model maxOutputTokens, 4096), stream true,<br/>temperature and top_p when given, nothing else"]
+    Valid -->|"no"| E400
+    Valid -->|"yes"| Upstream
+    Upstream --> Router(["router.open, see nvidia-proxy-failover"])
+
+    Refuse["every refusal: flat JSON error and field,<br/>Content-Type application/json, Cache-Control no-store,<br/>nosniff, Retry-After on 429 and 503"]
+    E429 -.- Refuse
+    E400 -.- Refuse
+```
+
+<sub>Sources: [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`api/models/nvidia.js`](../api/models/nvidia.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`api/_lib/guards.js`](../api/_lib/guards.js), [`api/_lib/env.js`](../api/_lib/env.js), [`api/_lib/nvidia-request.js`](../api/_lib/nvidia-request.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`backend/test_fixtures/nvidia_validation.json`](../backend/test_fixtures/nvidia_validation.json), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs)</sub>
+
+### NVIDIA proxy: key rotation and failover before the first byte
+
+The key router of the Vercel Functions starts each request at the next key (round robin over the whole pool) and skips keys whose cooldown has not ended; when every key is cooling it answers 503 all_keys_exhausted at once, without an upstream request, with Retry-After until the first key is free (1 to 300 s). Each attempt sends the upstream body to NVIDIA's chat completions endpoint with that key as Bearer token, redirects refused, and waits for the first non-empty chunk of a text/event-stream for at most 20 s, or for the time left of the 25 s failover budget, which runs from the start of the request. A 429 parks the key for its Retry-After (delta seconds or an HTTP date, 20 s without one, clamped to 1 to 300 s), a 401 or 403 for 30 minutes, and a 408, a 5xx, a network error, a timeout or a stream that ends or stalls before its first byte for 10 s; then the next key is tried. An attempt that timed out only because the budget had less than 20 s left parks nothing, because it says nothing about the key. A 404 gives 502 model_unavailable and any other answer, a 200 that is not an event stream included, 502 upstream_rejected, without failover, because another key would get the same answer. Upstream bodies are cancelled unread and never echoed, and a log line names only the key index, the reason and the cooldown. When the budget or the keys run out, 504 upstream_timeout says that every attempt timed out (or the budget was spent before the first one), otherwise 503 all_keys_exhausted. Once the first byte has arrived the response is committed and there is no failover. The Python backend follows the same policy with the differences shown in nvidia-proxy-backend.
+
+<!-- diagram: nvidia-proxy-failover -->
+```mermaid
+flowchart TD
+    Start(["router.open(body, signal, deadline):<br/>deadline = request start + failoverBudgetMs 25 s"])
+    Order["order: rotate from the cursor, cursor + 1 per request,<br/>keep keys whose cooldownUntil has passed"]
+    Empty{"any key not cooling?"}
+    Exh0["503 all_keys_exhausted at once, no upstream request,<br/>Retry-After = soonest cooldown end, 1 to 300 s"]
+    Next{"next key in the order"}
+    Gone{"client signal aborted?"}
+    Closed["499 client_closed: the browser left,<br/>nobody reads the answer"]
+    Cooling{"parked meanwhile by a<br/>concurrent request?"}
+    Budget{"budget = deadline - now<br/>above 0?"}
+    Fetch["fetch POST integrate.api.nvidia.com/v1/chat/completions,<br/>Authorization Bearer key, Accept text/event-stream,<br/>redirect error, timer min(attemptTimeoutMs 20 s, budget)"]
+    Net{"fetch throws:<br/>network error or the timer fired?"}
+    Status{"upstream status"}
+    First{"200 text/event-stream and a first<br/>non-empty chunk before the timer?"}
+    Commit(["commit: first chunk and reader to the relay,<br/>see nvidia-proxy-stream, no failover after this"])
+    C429["429: cooldown = Retry-After in seconds or an HTTP date,<br/>default 20 s, clamped to 1 to 300 s"]
+    CAuth["401 or 403: key parked for 30 min"]
+    CTr["408, 5xx, network error, timeout,<br/>empty or stalled stream: cooldown 10 s"]
+    Short{"a timeout of an attempt that<br/>the budget had cut below 20 s?"}
+    NoPark["key not parked"]
+    Park["cooldownUntil = now + cooldown,<br/>log key i of n, reason, cooling s,<br/>never the key or a body"]
+    Fatal["404: 502 model_unavailable<br/>any other status, a 200 that is not SSE included:<br/>502 upstream_rejected, no failover,<br/>body cancelled unread, log key i got status"]
+    AllT{"every attempt timed out,<br/>or the budget ran out before the first?"}
+    E504["504 upstream_timeout"]
+    E503["503 all_keys_exhausted<br/>Retry-After = soonest cooldown end, 1 to 300 s"]
+
+    Start --> Order --> Empty
+    Empty -->|"no"| Exh0
+    Empty -->|"yes"| Next
+    Next -->|"a key"| Gone
+    Gone -->|"yes"| Closed
+    Gone -->|"no"| Cooling
+    Cooling -->|"yes, skip it"| Next
+    Cooling -->|"no"| Budget
+    Budget -->|"no"| AllT
+    Budget -->|"yes"| Fetch --> Net
+    Net -->|"client aborted"| Closed
+    Net -->|"yes"| CTr
+    Net -->|"no, a response"| Status
+    Status -->|"200"| First
+    First -->|"yes"| Commit
+    First -->|"no"| CTr
+    Status -->|"429"| C429
+    Status -->|"401, 403"| CAuth
+    Status -->|"408, 500 to 599"| CTr
+    Status -->|"404 or other"| Fatal
+    C429 --> Park
+    CAuth --> Park
+    CTr --> Short
+    Short -->|"yes"| NoPark
+    Short -->|"no"| Park
+    Park --> Next
+    NoPark --> Next
+    Next -->|"none left"| AllT
+    AllT -->|"yes"| E504
+    AllT -->|"no"| E503
+```
+
+<sub>Sources: [`api/_lib/nvidia-router.js`](../api/_lib/nvidia-router.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs)</sub>
+
+### NVIDIA proxy: relaying the stream to the browser
+
+After the commit handleChat answers 200 with text/event-stream, Cache-Control no-store, no-transform, nosniff and X-Accel-Buffering no, and relayStream passes the upstream bytes through unchanged, starting with the first chunk; the proxy does not parse the events, so reasoning_content and content deltas reach callNvidia as NVIDIA sent them. Every read may wait at most 30 s (idleTimeoutMs) and never past the hard deadline, 240 s (streamMaxMs) after the request started, which ends well before the function's maxDuration of 300 s, and the relayed bytes may not exceed 4 MiB. A failure after the first byte can no longer change the HTTP status, so a silent upstream or the deadline ends the stream with an SSE event of code stream_timeout, too many bytes with stream_too_large and a read error with upstream_interrupted; the event starts with a blank line, which ends any event the upstream left half-written. Every end cancels the upstream reader and aborts the upstream request, and so does a Stop in the tab: the cancelled response stream stops the relay, and with supportsCancellation Vercel also aborts the function's request signal, which the router's attempt still listens to. The browser's own limits (35 s to the first byte, 40 s between reads, 255 s in all) are each longer than the proxy's, so the proxy's error normally arrives first; unit tests pin these inequalities and the vercel.json durations.
+
+<!-- diagram: nvidia-proxy-stream -->
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Tab as Browser tab callNvidia
+    participant Fn as api/chat/nvidia.js handleChat
+    participant R as nvidia-router.js
+    participant NIM as integrate.api.nvidia.com
+    participant Rel as nvidia-stream.js relayStream
+
+    Tab->>Fn: POST /api/chat/nvidia, same origin, JSON, no key
+    Fn->>Fn: guards, rate limit, keys, body and validation, see nvidia-proxy-guards
+    Fn->>R: open with the upstream body, deadline = request start + 25 s
+    R->>NIM: POST stream true, Bearer key n
+    NIM-->>R: 429 with Retry-After
+    R->>R: key n parked for Retry-After, log line with the key index only
+    R->>NIM: POST stream true, Bearer key of the next index
+    NIM-->>R: 200 text/event-stream, first non-empty chunk
+    R-->>Fn: commit, the first chunk and the reader
+    Fn->>Rel: relayStream, idle 30 s, hard deadline start + min of 240 s and 297 s, 4 MiB
+    Rel-->>Tab: 200 text/event-stream, no-store, no-transform, X-Accel-Buffering no, the first chunk
+    loop each pull until the stream ends
+        Rel->>NIM: read, at most 30 s and never past the hard deadline
+        NIM-->>Rel: bytes with content or reasoning_content deltas
+        Rel-->>Tab: the same bytes, size counted
+    end
+    alt upstream finishes
+        NIM-->>Rel: data DONE, then the end of the body
+        Rel-->>Tab: close
+    else no bytes within 30 s, or the hard deadline
+        Rel-->>Tab: blank line, data error code stream_timeout, close
+        Rel->>NIM: reader cancelled, request aborted
+    else more than 4 MiB relayed
+        Rel-->>Tab: blank line, data error code stream_too_large, close
+        Rel->>NIM: reader cancelled, request aborted
+    else read error
+        Rel-->>Tab: blank line, data error code upstream_interrupted, close
+        Rel->>NIM: reader cancelled, request aborted
+    else Stop in the tab or the connection closes
+        Tab-->>Rel: response stream cancelled
+        Rel->>NIM: reader cancelled, request aborted
+    end
+    Note over Tab,Fn: browser limits 35 s to the first byte, 40 s between reads<br/>and 255 s in all, each longer than the proxy's, so its error arrives first
+```
+
+<sub>Sources: [`api/_lib/nvidia-stream.js`](../api/_lib/nvidia-stream.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`api/_lib/nvidia-router.js`](../api/_lib/nvidia-router.js), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`vercel.json`](../vercel.json), [`src/js/providers.js`](../src/js/providers.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>
+
+### NVIDIA proxy in the Python backend
+
+backend/server.py serves the same two routes from core/nvidia.py, with the same allowlist, limits, validation rules (both test suites run the 47 shared vectors), error codes and failover policy. They pass the server's general guards first (section 10), and POST /api/chat/nvidia then needs an Origin listed in BRAIN_ALLOWED_ORIGINS or the Bearer token, so a bare script without the token cannot spend the key pool. The rate limit counts the socket peer, and only behind the reverse proxy that a token implies (a token set and a loopback peer) the right-most X-Forwarded-For entry, the hop that proxy appended, because a client talking to the server directly could send any X-Forwarded-For. The body cap is 256 KiB, a leading byte order mark is ignored and NaN or Infinity is refused, as JSON.parse would, and lengths count UTF-16 code units, as JavaScript does. All request threads share one httpx client: when no pooled connection becomes free within 2 s the request gets 503 proxy_busy with Retry-After 5 and no key is parked, because the key is not at fault. httpx applies its 30 s read timeout to each read rather than to a whole attempt, so the 25 s failover budget only keeps new attempts from starting, every failed attempt parks its key, a redirect counts as a transient failure, and the 240 s stream limit is checked whenever a chunk arrives. The stream is sent as HTTP/1.0 without Content-Length and with Connection close, so it ends when the connection closes; a client that goes away ends the loop and the upstream response is closed in every case. The browser client calls these routes only on the app's own origin, so a deployment needs a reverse proxy in front that serves the app and the two routes on one origin; backend/README.md shows an example.
+
+<!-- diagram: nvidia-proxy-backend -->
+```mermaid
+flowchart TD
+    Req(["request on a BrainAPIHandler thread"]) --> Guards["_route guards, section 10: proxy headers without<br/>a token 401, Origin not in BRAIN_ALLOWED_ORIGINS 403,<br/>non-loopback Host without a token 403,<br/>404, OPTIONS preflight, 405 with Allow"]
+    Guards -->|"GET /api/models/nvidia"| Models["_handle_nvidia_models: public_catalog,<br/>configured = a router was built"]
+    Guards -->|"POST /api/chat/nvidia"| Caller{"_check_nvidia_caller: an allowed Origin<br/>or the Bearer token BRAIN_API_TOKEN?"}
+    Caller -->|"no"| E403["403 origin_required"]
+    Caller -->|"yes"| Key["_client_key: socket peer, or the right-most<br/>X-Forwarded-For entry when a token is set<br/>and the peer is loopback, the local reverse proxy"]
+    Key --> Rate{"RateLimiter.hit: NVIDIA_RATE_LIMIT_PER_MINUTE<br/>per one-minute window, this process only?"}
+    Rate -->|"over"| E429["429 rate_limited with Retry-After"]
+    Rate -->|"ok"| Conf{"build_router found a valid key<br/>in NVIDIA_API_KEYS at start?"}
+    Conf -->|"no"| E503n["503 nvidia_not_configured"]
+    Conf -->|"yes"| Body["_read_json_object(max_bytes 262144):<br/>411, 400, 413, 415, 408 as in section 10,<br/>BOM ignored, NaN and Infinity refused"]
+    Body --> Valid{"validate_chat_request: the same rules,<br/>lengths in UTF-16 code units,<br/>1.0 counts as an integer, True does not"}
+    Valid -->|"no"| E400["400 invalid_field with the field,<br/>or model_not_allowed"]
+    Valid -->|"yes"| Open["NvidiaRouter.open_stream: KeyPool.order,<br/>round robin under a lock, cooling keys skipped,<br/>none left: 503 all_keys_exhausted at once"]
+    Open --> Try["_attempt: one shared httpx.Client,<br/>send(stream true), Bearer key,<br/>connect 3 s, read 30 s per read, pool 2 s"]
+    Try -->|"PoolTimeout"| Busy["503 proxy_busy, Retry-After 5,<br/>no key parked"]
+    Try -->|"timeout, network error, empty stream,<br/>408, 5xx or a redirect"| Park["park the key 10 s,<br/>log key index only"]
+    Try -->|"429"| Park429["park for Retry-After, 1 to 300 s"]
+    Try -->|"401 or 403"| Park30["park for 30 min"]
+    Try -->|"404 or other 4xx"| E502["502 model_unavailable or<br/>upstream_rejected, no failover"]
+    Park --> More{"another key not cooling<br/>and the 25 s budget left?"}
+    Park429 --> More
+    Park30 --> More
+    More -->|"yes"| Try
+    More -->|"no"| End["504 upstream_timeout when every attempt<br/>timed out, else 503 all_keys_exhausted"]
+    Try -->|"200 text/event-stream<br/>and a first non-empty chunk"| Head["_send_stream_head: 200, SECURITY_HEADERS,<br/>text/event-stream, no-store, no-transform,<br/>X-Accel-Buffering no, Connection close,<br/>Vary Origin, no Content-Length"]
+    Head --> Rest["write the first chunk, then rest():<br/>past started + 240 s at a chunk: stream_timeout,<br/>over 4 MiB: stream_too_large,<br/>read timeout: stream_timeout,<br/>other httpx error: upstream_interrupted"]
+    Rest --> Tail["sse_error(code) when a code was set"]
+    Tail --> Close(["finally stream.close(), the connection<br/>closes and ends the HTTP/1.0 body"])
+    Rest -->|"OSError: the client went away"| Close
+```
+
+<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/nvidia_catalog.json`](../backend/core/nvidia_catalog.json), [`backend/test_nvidia.py`](../backend/test_nvidia.py), [`backend/test_server.py`](../backend/test_server.py), [`backend/test_fixtures/nvidia_validation.json`](../backend/test_fixtures/nvidia_validation.json), [`backend/README.md`](../backend/README.md)</sub>
+
+### One model allowlist for the app, the functions and the backend
+
+src/js/models/nvidia-catalog.js is the single source of the NVIDIA models (13 entries with id, label, vendor, reasoning and vision flags, output token limits and fixed upstream extras), the default model, the request limits, the proxy timings and cooldowns, and the browser timeouts derived from them; it is deep-frozen, so no importer can change it at run time. esbuild bundles it into the app, where the pickers list its models, state.js normalizes starpi_nvidia_model against it, prompts.js fits requests to its limits and providers.js takes its timeouts. The Vercel Functions import it from src/ for validation, the router and the public catalog, so .vercelignore keeps src/. The Python backend cannot import JavaScript and gets backend/core/nvidia_catalog.json, the byte-for-byte JSON of the same object, written by npm run nvidia:sync; nvidia-catalog.test.mjs fails when that copy is outdated, when the README's T4 table does not list the same models with the same names and reasoning flags in the same order, or when a timing would let the browser give up before the proxy. GET /api/models/nvidia publishes the models without their upstream extras, and the browser offers only the models the proxy lists. npm run nvidia:ping, run by a maintainer with real keys before the list changes, checks every allowlisted id against NVIDIA's live API.
+
+<!-- diagram: nvidia-proxy-allowlist -->
+```mermaid
+flowchart LR
+    Cat["src/js/models/nvidia-catalog.js<br/>NVIDIA_CATALOG, deep-frozen: version 1, upstream URL,<br/>defaultModel, 13 models, limits, proxy timings,<br/>NVIDIA_CLIENT_TIMEOUTS derived: first byte 35 s,<br/>idle 40 s, total 255 s, models 6 s"]
+
+    subgraph app["esbuild bundle, the browser"]
+        Pick["models/choices.js and settings.js<br/>picker values nvidia:id, allowlist check"]
+        State["state.js normalizeNvidiaModel<br/>starpi_nvidia_model"]
+        Fit["prompts.js fitNvidiaMessages<br/>NVIDIA_LIMITS"]
+        Prov["providers.js callNvidia, parseNvidiaCatalog<br/>NVIDIA_CLIENT_TIMEOUTS, model labels"]
+    end
+
+    subgraph fns["Vercel Functions, api/_lib"]
+        Req["nvidia-request.js validateChatRequest<br/>findNvidiaModel, NVIDIA_LIMITS"]
+        Rt["nvidia-router.js<br/>NVIDIA_PROXY, NVIDIA_UPSTREAM_URL"]
+        Hd["handlers.js publicCatalog,<br/>idle, stream and size limits"]
+    end
+
+    Sync["npm run nvidia:sync<br/>scripts/sync-nvidia-catalog.mjs, catalogJson()"]
+    Json[("backend/core/nvidia_catalog.json<br/>byte-for-byte copy")]
+    Py["backend/core/nvidia.py<br/>CATALOG, MODELS, LIMITS, PROXY, UPSTREAM_URL"]
+    Pub["GET /api/models/nvidia<br/>models without upstream extras"]
+    Readme["README.md T4 table<br/>id, name, reasoning"]
+    Test["nvidia-catalog.test.mjs: copy exact, README table,<br/>timing inequalities, frozen, ids unique,<br/>labels outside the i18n key shape"]
+    Ping["npm run nvidia:ping, maintainer only:<br/>GET /v1/models and one streamed request<br/>per allowlisted id, real keys and quota"]
+
+    Cat --> Pick
+    Cat --> State
+    Cat --> Fit
+    Cat --> Prov
+    Cat -->|"imported from src/,<br/>kept by .vercelignore"| Req
+    Cat --> Rt
+    Cat --> Hd
+    Cat --> Sync --> Json --> Py
+    Hd --> Pub
+    Py --> Pub
+    Pub -->|"the offered models"| Prov
+    Test -.->|"checks"| Json
+    Test -.->|"checks"| Readme
+    Test -.->|"checks"| Cat
+    Ping -.->|"live check before a change"| Cat
+```
+
+<sub>Sources: [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/state.js`](../src/js/state.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/providers.js`](../src/js/providers.js), [`api/_lib/nvidia-request.js`](../api/_lib/nvidia-request.js), [`api/_lib/nvidia-router.js`](../api/_lib/nvidia-router.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`scripts/sync-nvidia-catalog.mjs`](../scripts/sync-nvidia-catalog.mjs), [`scripts/nvidia-ping.mjs`](../scripts/nvidia-ping.mjs), [`backend/core/nvidia_catalog.json`](../backend/core/nvidia_catalog.json), [`backend/core/nvidia.py`](../backend/core/nvidia.py), [`.vercelignore`](../.vercelignore), [`README.md`](../README.md), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>

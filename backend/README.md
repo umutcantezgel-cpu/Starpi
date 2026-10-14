@@ -2,8 +2,10 @@
 
 A dependency-light Python service for server-side ingestion and retrieval. It structures raw text
 into Markdown sections, stores them with 1536-dimensional embeddings in Supabase and answers
-questions over pgvector search. The browser app does not call it: the PWA reads Supabase directly
-with the anon key and row level security.
+questions over pgvector search. The browser app does not call its ingestion and retrieval routes:
+the PWA reads Supabase directly with the anon key and row level security. The service also offers
+the NVIDIA NIM routes of the Vercel Functions in [`api/`](../api), for hosts without Vercel; the
+app calls them only on its own origin ([below](#nvidia-routes-on-the-apps-origin)).
 
 The backend writes with the Supabase **service role key**, which bypasses RLS. Run it only on a
 machine you control, keep it on `127.0.0.1` or behind a TLS reverse proxy with `BRAIN_API_TOKEN`
@@ -33,10 +35,12 @@ root); the environment always wins, and within the file the last assignment of a
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | empty | Supabase project; both are required, and if either is empty documents are kept in memory only |
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | `http://127.0.0.1:8000/v1`, `EMPTY`, `Qwen/Qwen2.5-7B-Instruct` | Chat Completions-compatible endpoint for structuring and answers |
 | `GEMINI_API_KEYS`, `OPENROUTER_API_KEYS` | empty | Optional key pools, comma separated, tried before `LLM_BASE_URL` for answers |
+| `NVIDIA_API_KEYS` | empty | Key pool of `POST /api/chat/nvidia`, comma separated, `nvapi-<64 characters>` per key; entries of another shape are ignored and only counted in the log. Empty: the route answers `503 nvidia_not_configured`. Never logged or returned |
+| `NVIDIA_RATE_LIMIT_PER_MINUTE` | `20` | NVIDIA chat requests per client address and minute, counted in this process |
 | `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL` | `http://127.0.0.1:8000/v1`, `EMPTY`, see `.env.example` | `/v1/embeddings` endpoint returning 1536 dimensions; set the model your endpoint serves. Without the endpoint, sections are stored without embeddings |
 | `BRAIN_SERVER_HOST`, `BRAIN_SERVER_PORT` | `127.0.0.1`, `9200` | Bind address; any non-loopback address requires `BRAIN_API_TOKEN` |
 | `BRAIN_API_TOKEN` | empty | Bearer token for `/api/brain/*` (`openssl rand -hex 32`) |
-| `BRAIN_ALLOWED_ORIGINS` | local dev servers and `starpi.app` | CORS allow-list, comma separated |
+| `BRAIN_ALLOWED_ORIGINS` | local dev servers and `starpi.app` | CORS allow-list, comma separated; also the pages that may call `POST /api/chat/nvidia` without the token |
 | `BRAIN_MAX_BODY_BYTES` | `1048576` | Largest accepted request body |
 | `BRAIN_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |
 
@@ -48,9 +52,68 @@ root); the environment always wins, and within the file the last assignment of a
 | `GET /api/brain/documents` | when set | none | `{"documents": [...], "count": n}` |
 | `POST /api/brain/ingest` | when set | `{"text": str, "source_name"?: str, "source_type"?: str}` (200000 / 256 / 64 characters) | document id, title, summary, tags, Markdown, section and embedding counts, storage |
 | `POST /api/brain/query` | when set | `{"query": str}` (4000 characters) | `answer`, `sources`, `provider` (`gemini_pool`, `openrouter_pool` or `local_llm`); when no model answers, still 200 with `provider` `none`, `error` `llm_unavailable` and the retrieved context as `answer` |
+| `GET /api/models/nvidia` | never | none | `{"configured": bool, "version": 1, "defaultModel", "limits", "models": [...]}`: the allowlist from [`core/nvidia_catalog.json`](core/nvidia_catalog.json) and whether `NVIDIA_API_KEYS` holds a key, never a key or their number |
+| `POST /api/chat/nvidia` | an `Origin` from `BRAIN_ALLOWED_ORIGINS`, or the token | `{"model", "messages", "max_tokens"?, "temperature"?, "top_p"?}` (256 KiB, validated like the Vercel Function) | `text/event-stream`: the upstream stream, which ends when the connection closes (HTTP/1.0, no `Content-Length`); a stream that fails ends with `data: {"error":{"code":"stream_timeout"}}` (or `stream_too_large`, `upstream_interrupted`) |
 
 Rejected requests get a 4xx or 5xx status and a JSON object with an `error` code. Every response,
-including errors, carries the security headers.
+including errors, carries the security headers. The NVIDIA chat route answers with the codes of
+the Vercel Function: `403 origin_required` without an allowed `Origin` or the token,
+`429 rate_limited` and `503 all_keys_exhausted` with `Retry-After`, `503 nvidia_not_configured`,
+`400 invalid_field` (with `field`) or `model_not_allowed`, `502 model_unavailable` or
+`upstream_rejected`, and `504 upstream_timeout`. Two of its codes do not occur on Vercel:
+`411 length_required` for a body without `Content-Length` (as on every POST route here), and
+`503 proxy_busy` (with `Retry-After`) when all connections of the shared upstream client are in
+use.
+
+## NVIDIA routes on the app's origin
+
+The app's NVIDIA client calls `/api/models/nvidia` and `/api/chat/nvidia` on the origin the page
+was loaded from and sends no key, so it can use this backend only when one host serves both the
+app and these two routes. The EC2 setup in [aws/cloud_architecture.md](aws/cloud_architecture.md)
+serves the API on an origin of its own (`api.example.com`), which the app does not call. A reverse
+proxy in front of the built app (`npm run build`, then `dist/`) can serve both, for example Caddy:
+
+```caddyfile
+app.example.com {
+    handle /api/chat/nvidia* {
+        reverse_proxy 127.0.0.1:9200 {
+            flush_interval -1
+        }
+    }
+    handle /api/models/nvidia {
+        reverse_proxy 127.0.0.1:9200
+    }
+    handle {
+        root * /srv/starpi/dist
+        file_server
+    }
+}
+```
+
+`flush_interval -1` passes every chunk of the stream on at once. Only the two NVIDIA paths reach
+the backend; `/api/brain/*` stays off the app's origin. Behind such a proxy:
+
+- `BRAIN_API_TOKEN` must be set: without it the backend refuses every request that carries the
+  proxy's `X-Forwarded-*` headers (401 `api_token_required_behind_proxy`).
+- `BRAIN_ALLOWED_ORIGINS` must contain the app's origin (`https://app.example.com`), which the
+  browser sends as `Origin` with the chat request.
+- The rate limit counts the right-most `X-Forwarded-For` entry, the address the proxy added, when
+  a token is set and the request comes from a loopback address; otherwise the socket address.
+- `file_server` does not add the app's response headers (the Content-Security-Policy and the
+  others in [`vercel.json`](../vercel.json)); add them with Caddy's `header` directive, so the app
+  runs under the same policy as on Vercel.
+
+The model list is [`core/nvidia_catalog.json`](core/nvidia_catalog.json), a generated copy of
+[`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js) (`npm run nvidia:sync`;
+a unit test fails when it is outdated), so the backend runs from `backend/` alone. A local check
+without a proxy and without a token, as a page of an allowed origin calls the route:
+
+```bash
+curl http://127.0.0.1:9200/api/models/nvidia
+curl -N http://127.0.0.1:9200/api/chat/nvidia \
+  -H 'Origin: http://localhost:3000' -H 'Content-Type: application/json' \
+  -d '{"model": "nvidia/nemotron-3.5-lightning-30b-a3b", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 64}'
+```
 
 ## Request handling
 
@@ -76,11 +139,16 @@ flowchart TD
     IsOpt -->|"no"| MethOk{"method listed for this path?"}
     MethOk -->|"no"| E405["405 method_not_allowed<br/>with Allow header"]
     MethOk -->|"yes"| Prot{"path starts with /api/brain/<br/>and BRAIN_API_TOKEN is set?"}
-    Prot -->|"no, e.g. /api/health"| Handler
+    Prot -->|"no"| NvPath{"path is /api/chat/nvidia?"}
+    NvPath -->|"no, e.g. /api/health,<br/>/api/models/nvidia"| Handler
+    NvPath -->|"yes"| Caller{"_check_nvidia_caller<br/>Origin in allowed_origins,<br/>or a matching Bearer token?"}
+    Caller -->|"no"| E403N["403 origin_required"]
+    Caller -->|"yes"| Handler
     Prot -->|"yes"| Bearer{"_check_auth<br/>scheme Bearer, case-insensitive, and<br/>hmac.compare_digest matches the token?"}
     Bearer -->|"no"| E401["401 unauthorized<br/>with WWW-Authenticate Bearer"]
-    Bearer -->|"yes"| Handler["handler method from ROUTES<br/>_handle_health, _handle_documents,<br/>_handle_ingest, _handle_query"]
+    Bearer -->|"yes"| Handler["handler method from ROUTES<br/>_handle_health, _handle_documents,<br/>_handle_ingest, _handle_query,<br/>_handle_nvidia_models, _handle_nvidia_chat"]
     Handler -->|"returns"| OK["200 JSON body"]
+    Handler -->|"/api/chat/nvidia committed"| Stream["_send_stream_head: 200 text/event-stream,<br/>SECURITY_HEADERS, no-store, X-Accel-Buffering no,<br/>Connection close, no Content-Length,<br/>first chunk, the rest, an SSE error event<br/>when the stream fails, then close"]
     Handler -->|"raises ApiError<br/>in body or field checks"| AE
     E401P --> AE
     E403O --> AE
@@ -88,6 +156,7 @@ flowchart TD
     E404 --> AE
     E405 --> AE
     E401 --> AE
+    E403N --> AE
     AE["_dispatch catches ApiError<br/>_discard_unread_body drains the body only if it is unread<br/>and Content-Length is 1 to 65536 bytes, 1 s timeout<br/>larger bodies are not drained"] --> Send
     Handler -->|"BrokenPipeError or ConnectionResetError"| Disc["log client disconnected<br/>close connection, no response"]
     Handler -->|"any other exception"| Started{"logger.exception with traceback,<br/>connection marked to close<br/>response already started?"}
@@ -98,7 +167,7 @@ flowchart TD
     P204A --> Send
     P204B --> Send
     StdErr --> Send
-    Send["_send adds headers to every response<br/>Content-Type application/json when there is a body<br/>Content-Length except on 204<br/>X-Content-Type-Options nosniff, Cache-Control no-store<br/>Referrer-Policy no-referrer<br/>Content-Security-Policy default-src 'none' and frame-ancestors 'none'<br/>Vary Origin, Access-Control-Allow-Origin for an allowed Origin"]
+    Send["_send adds headers to every other response<br/>Content-Type application/json when there is a body<br/>Content-Length except on 204<br/>X-Content-Type-Options nosniff, Cache-Control no-store<br/>Referrer-Policy no-referrer<br/>Content-Security-Policy default-src 'none' and frame-ancestors 'none'<br/>Vary Origin, Access-Control-Allow-Origin for an allowed Origin"]
 ```
 
 JSON bodies are bounded and validated before any work starts:
@@ -112,13 +181,20 @@ flowchart TD
     Docs -->|"yes"| R200
     Docs -->|"not live, httpx.HTTPError,<br/>ValueError or non-list body"| DocsMem["warning if live, newest 200 documents<br/>of the in-memory store, storage memory"]
     DocsMem --> R200
+    H -->|"GET /api/models/nvidia"| NvModels["_handle_nvidia_models: public_catalog,<br/>configured = a router was built from NVIDIA_API_KEYS,<br/>version, defaultModel, limits, models"]
+    NvModels --> R200
+    H -->|"POST /api/chat/nvidia"| Rate{"nvidia_limiter.hit(client key):<br/>NVIDIA_RATE_LIMIT_PER_MINUTE per<br/>fixed one-minute window exceeded?"}
+    Rate -->|"yes"| E429["429 rate_limited<br/>with Retry-After"]
+    Rate -->|"no"| Conf{"nvidia_router configured?"}
+    Conf -->|"no"| E503["503 nvidia_not_configured"]
+    Conf -->|"yes, max_bytes 256 KiB"| TE
     H -->|"POST /api/brain/ingest<br/>or /api/brain/query"| TE{"_read_json_object<br/>Transfer-Encoding header present?"}
     TE -->|"yes"| E411["411 length_required"]
     TE -->|"no"| CL{"Content-Length header present?"}
     CL -->|"no"| E411
     CL -->|"yes"| CLv{"exactly one Content-Length<br/>made of ASCII digits only?"}
     CLv -->|"no"| E400L["400 invalid_content_length"]
-    CLv -->|"yes"| Max{"length above max_body_bytes?<br/>BRAIN_MAX_BODY_BYTES, default 1048576<br/>more than 18 significant digits counts as 10^18"}
+    CLv -->|"yes"| Max{"length above the limit?<br/>BRAIN_MAX_BODY_BYTES, default 1048576,<br/>at most 262144 on /api/chat/nvidia<br/>more than 18 significant digits counts as 10^18"}
     Max -->|"yes"| E413["413 payload_too_large<br/>with max_bytes"]
     Max -->|"no"| CT{"Content-Type media type<br/>is application/json?"}
     CT -->|"no"| E415["415 unsupported_media_type"]
@@ -126,11 +202,16 @@ flowchart TD
     Read -->|"TimeoutError, body stalled past 30 s"| E408["408 request_timeout<br/>Connection close"]
     Read -->|"bytes received"| Short{"fewer bytes than Content-Length?"}
     Short -->|"yes"| E400B["400 incomplete_body"]
-    Short -->|"no"| Json{"UTF-8 decode and json.loads succeed?<br/>RecursionError counts as a failure"}
+    Short -->|"no"| Json{"UTF-8 decode, a leading BOM ignored,<br/>and json.loads with NaN and Infinity refused?<br/>RecursionError counts as a failure"}
     Json -->|"no"| E400J["400 invalid_json"]
     Json -->|"yes"| Obj{"top level is a JSON object?"}
     Obj -->|"no"| E400O["400 json_body_must_be_object"]
-    Obj -->|"yes"| Fields{"_string_field checks<br/>ingest: text required, max 200000 chars,<br/>source_name max 256, source_type max 64<br/>query: query required, max 4000 chars"}
+    Obj -->|"yes, ingest or query"| Fields{"_string_field checks<br/>ingest: text required, max 200000 chars,<br/>source_name max 256, source_type max 64<br/>query: query required, max 4000 chars"}
+    Obj -->|"yes, /api/chat/nvidia"| NvVal{"validate_chat_request: model allowlisted,<br/>messages, max_tokens, temperature, top_p valid?<br/>shared vectors with the Vercel functions"}
+    NvVal -->|"no"| E400N["400 invalid_field with field,<br/>or 400 model_not_allowed"]
+    NvVal -->|"yes"| Open["NvidiaRouter.open_stream: failover<br/>before the first byte, section 13"]
+    Open -->|"NvidiaRouterError"| E5xx["502 model_unavailable or upstream_rejected,<br/>503 all_keys_exhausted or proxy_busy<br/>with Retry-After, 504 upstream_timeout"]
+    Open -->|"stream"| SSE["200 text/event-stream without Content-Length,<br/>first chunk, the rest, an SSE error event<br/>when the stream fails, upstream closed at the end<br/>or when the client goes away"]
     Fields -->|"not a string, too long,<br/>or required and missing or blank"| E400F["400 invalid_field<br/>with field and detail"]
     Fields -->|"ingest"| Ing["ingest_raw_information<br/>source_name Web-Upload when missing or blank<br/>source_type text when missing or blank"]
     Fields -->|"query"| Qry["query_brain(user_query)"]
@@ -149,6 +230,10 @@ flowchart TD
     E400J --> AE
     E400O --> AE
     E400F --> AE
+    E429 --> AE
+    E503 --> AE
+    E400N --> AE
+    E5xx --> AE
     AE["raised as ApiError<br/>_dispatch drains any unread body<br/>and sends the JSON error"]
 ```
 
@@ -159,7 +244,7 @@ Start-up refuses unsafe configurations:
 flowchart TD
     Start(["python server.py [port] [--host HOST] [--log-level LEVEL]"]) --> Env["import core.config<br/>loads backend/.env, else the repo-root .env<br/>parse_env_line: an export prefix is dropped,<br/>a quoted value ends at its matching quote,<br/>an unquoted value drops a whitespace # comment<br/>last assignment of a key in the file wins<br/>variables already in the environment win<br/>an unreadable file is logged and skipped"]
     Env --> Cfg["config = BrainConfig()<br/>BRAIN_SERVER_HOST default 127.0.0.1<br/>BRAIN_SERVER_PORT default 9200"]
-    Cfg --> Int{"BRAIN_SERVER_PORT or BRAIN_MAX_BODY_BYTES<br/>set but not an integer?"}
+    Cfg --> Int{"BRAIN_SERVER_PORT, BRAIN_MAX_BODY_BYTES or<br/>NVIDIA_RATE_LIMIT_PER_MINUTE not an integer,<br/>or the rate limit below 1?"}
     Int -->|"yes"| IntW["warning, default value used"]
     Int -->|"no"| LL
     IntW --> LL{"_env_log_level<br/>BRAIN_LOG_LEVEL value?"}
@@ -169,7 +254,7 @@ flowchart TD
     LInfo --> Db
     LWarn --> Db
     LSet --> Db
-    Db["server.py imports core.supabase_client<br/>db = SupabaseBrainClient()<br/>is_live = SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY<br/>both set, no network call"] --> Args
+    Db["server.py imports core.supabase_client<br/>db = SupabaseBrainClient()<br/>is_live = SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY<br/>both set, no network call<br/>core.nvidia loads core/nvidia_catalog.json"] --> Args
     Args{"main(): argparse<br/>--log-level upper-cased, one of LOG_LEVELS,<br/>default config.log_level<br/>port, if given, an integer?"}
     Args -->|"no"| ArgErr["argparse error, exit status 2"]
     Args -->|"yes"| Basic["logging.basicConfig(level)"]
@@ -179,12 +264,12 @@ flowchart TD
     Loop -->|"no"| TokLen{"token set but shorter<br/>than 32 characters?"}
     TokLen -->|"yes"| TokW["warning"]
     TokLen -->|"no"| Bind
-    TokW --> Bind["create_server: BrainHTTPServer (ThreadingHTTPServer)<br/>daemon_threads False, request threads not daemonic<br/>AF_INET6 when the host contains a colon<br/>server_bind skips the reverse DNS lookup"]
+    TokW --> Bind["create_server: BrainHTTPServer (ThreadingHTTPServer)<br/>daemon_threads False, request threads not daemonic<br/>build_router(NVIDIA_API_KEYS): warning with the count of<br/>malformed entries, info NVIDIA key pool: n keys,<br/>None without a valid key, RateLimiter per client<br/>AF_INET6 when the host contains a colon<br/>server_bind skips the reverse DNS lookup"]
     Bind -->|"OSError, e.g. address in use"| BindErr["not caught: traceback, exit status 1"]
     Bind --> Sig{"running in the main thread?"}
     Sig -->|"yes"| SigT["install SIGTERM handler: logs Received SIGTERM,<br/>httpd.shutdown in a daemon thread"]
     Sig -->|"no"| Listen
-    SigT --> Listen["log Brain API listening<br/>with supabase_live and token_auth"]
+    SigT --> Listen["log Brain API listening<br/>with supabase_live, token_auth and nvidia"]
     Listen --> Live{"db.is_live?"}
     Live -->|"no"| MemW["warning: Supabase is not configured,<br/>documents are kept in memory only"]
     Live -->|"yes"| Serve
@@ -403,7 +488,11 @@ python -m unittest discover -s . -p 'test_*.py'
 ```
 
 The unit tests run offline: calls to external services are mocked or replaced with fakes, and the
-server tests send real HTTP requests to a server started on `127.0.0.1` with an ephemeral port. `scripts/brain_smoke.py` is a manual end-to-end
+server tests send real HTTP requests to a server started on `127.0.0.1` with an ephemeral port.
+`test_nvidia.py` and the NVIDIA tests in `test_server.py` answer for NVIDIA with
+`httpx.MockTransport` (key rotation, cooldowns, timeouts, the stream relay, and that no key is
+logged), and `test_nvidia.py` runs the validation cases in `test_fixtures/nvidia_validation.json`,
+which the JavaScript proxy tests run as well. `scripts/brain_smoke.py` is a manual end-to-end
 check against live endpoints. The database policies are tested separately with
 `supabase/tests/run_rls_tests.sh` (see [supabase/README.md](supabase/README.md)).
 

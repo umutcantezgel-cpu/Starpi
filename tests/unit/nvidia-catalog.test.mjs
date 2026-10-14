@@ -81,6 +81,17 @@ describe('NVIDIA model catalog', () => {
   });
 });
 
+describe('README NVIDIA model table', () => {
+  const readme = readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+  // | T4 | `nvidia/nemotron-3.5-lightning-30b-a3b` | Nemotron 3.5 Lightning 30B A3B | no |
+  const rows = [...readme.matchAll(/^\| T4 \| `([a-z0-9][\w.-]*\/[\w.:-]+)` \| ([^|]+?) \| (yes|no) \|$/gm)].map(([, id, label, reasoning]) => ({ id, label, reasoning: reasoning === 'yes' }));
+
+  it('lists every allowlisted model in catalog order, with its name and whether it reasons', () => {
+    assert.deepEqual(rows.map((row) => row.id), NVIDIA_MODELS.map((m) => m.id));
+    assert.deepEqual(rows, NVIDIA_MODELS.map(({ id, label, reasoning }) => ({ id, label, reasoning })));
+  });
+});
+
 /**
  * The regex of a custom gitleaks rule, read from .gitleaks.toml (a TOML literal string, so no escapes).
  * @param {string} id

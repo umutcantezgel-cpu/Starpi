@@ -6,6 +6,8 @@ Explain what changes and why. Link related issues.
 * [ ] On-device workspace and citations (`src/js/rag`)
 * [ ] Languages (`src/locales`, `src/js/i18n`)
 * [ ] WebGPU runtime and model selection (`src/js/webgpu`)
+* [ ] On-device model catalog and WASM runtime (`src/js/models/`, `src/js/wasm/`)
+* [ ] Vercel Functions and the NVIDIA proxy (`api/`, `backend/core/nvidia.py`)
 * [ ] Retrieval and Supabase access (`src/js/supabase.js`, `src/js/retrieval.js`)
 * [ ] Database schema, migrations and RLS (`backend/supabase`)
 * [ ] Service worker and PWA (`src/sw.js`, `public/`)
@@ -21,6 +23,7 @@ Explain what changes and why. Link related issues.
 * [ ] Dependencies: `npm audit --omit=dev` and `pip-audit -r backend/requirements-dev.txt` report nothing (if dependencies changed)
 * [ ] Database: `bash backend/supabase/tests/run_rls_tests.sh` passes (if touched)
 * [ ] Tested in a WebGPU browser (if the local model path changed)
+* [ ] NVIDIA model list: `npm run nvidia:sync -- --check` passes and the README T4 table matches (if `src/js/models/nvidia-catalog.js` changed)
 
 ### Benchmark Measurements (if inference performance is affected)
 * Model and device:
@@ -31,10 +34,12 @@ Explain what changes and why. Link related issues.
 ## Checklist
 * [ ] No inline scripts, event handlers or styles; new actions registered via `onAction()` / `onChange()`
 * [ ] Untrusted content rendered only through `escapeHtml()` / `renderMarkdown()`
+* [ ] No API key or token in code, tests, logs or this description (test keys are built at runtime)
 * [ ] New tables and functions have RLS policies, explicit grants and tests
 * [ ] Documentation updated where behaviour changed
 * [ ] Diagrams updated in `docs/ARCHITECTURE.md` and copies synced (`npm run docs:sync`)
 * [ ] `CHANGELOG.md` updated under `[Unreleased]`
 * [ ] Changed extraction, chunking or source-check rules bump `EXTRACTOR`, `CHUNKER` or `GROUNDING`
 * [ ] Release only: the same version in `package.json`, `packages/core/package.json`, `package-lock.json` and `CITATION.cff`, and `docs/releases/vX.Y.Z.md` written
+* [ ] Release only: new Vercel environment variables set for Production and Preview before the release deploys
 * [ ] Commits follow Conventional Commits
