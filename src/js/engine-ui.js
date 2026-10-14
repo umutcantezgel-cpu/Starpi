@@ -53,11 +53,18 @@ function render(s) {
 function confirmDownload(choice) {
   const conn = /** @type {{ connection?: { saveData?: boolean } }} */ (/** @type {unknown} */ (navigator)).connection;
   const mb = formatNumber(choice.approxDownloadMB);
-  const message =
+  /** @type {string[]} */
+  const parts = [];
+  // The 7-9B presets fit only GPUs with several GB of free memory, which the browser cannot report:
+  // say so before the download question.
+  if (choice.tier === 't3') parts.push(t('engine.confirm_large', { gb: formatNumber((choice.vramMB ?? 0) / 1024, { maximumFractionDigits: 1 }) }));
+  parts.push(
     choice.runtime === 'wasm'
       ? t('engine.confirm_download_wasm', { model: choice.label, mb, runtime: formatNumber(WASM_RUNTIME_MB) })
-      : t('engine.confirm_download', { model: choice.label, mb });
-  return window.confirm(conn?.saveData ? `${message}\n\n${t('engine.confirm_save_data')}` : message);
+      : t('engine.confirm_download', { model: choice.label, mb }),
+  );
+  if (conn?.saveData) parts.push(t('engine.confirm_save_data'));
+  return window.confirm(parts.join('\n\n'));
 }
 
 /** @param {import('./webgpu/engine.js').EngineError} err */

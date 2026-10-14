@@ -193,11 +193,11 @@ test.describe('local mode without WebGPU', () => {
   });
 
   test('explains why a WebGPU model is unavailable and keeps answering', async ({ page, diagnostics }) => {
-    // A WebGPU preset picked explicitly (as stored by the settings): no silent switch to the processor.
-    await page.addInitScript(() => localStorage.setItem('starpi_webgpu_model', 'webgpu:llama-1b'));
     const calls = await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await page.goto('/');
-    await page.selectOption('#engineSelector', 'client');
+    // A WebGPU preset picked explicitly (the picker marks it): no silent switch to the processor.
+    await expect(page.locator('#engineSelector[data-ready="true"] option[value="webgpu:llama-1b"]')).toContainText('needs WebGPU');
+    await page.selectOption('#engineSelector', 'webgpu:llama-1b');
     await expect(page.locator('#chatMessages')).toContainText('On-device mode is not available');
     await expect(page.locator('#privacyNotice')).toContainText('On-device mode');
 
@@ -218,9 +218,13 @@ test.describe('local mode without WebGPU', () => {
       void dialog.dismiss();
     });
     await page.goto('/');
-    await page.selectOption('#engineSelector', 'client');
+    // The device's recommendation comes first: a processor (WASM) model on a device without WebGPU;
+    // which one depends on its memory.
+    const recommended = page.locator('#engineSelector[data-ready="true"] optgroup').first().locator('option').first();
+    const value = await recommended.getAttribute('value');
+    expect(value).toMatch(/^wasm:/);
+    await page.selectOption('#engineSelector', value ?? '');
     await expect.poll(() => dialogs.length).toBe(1);
-    // 'auto' resolves to a processor (WASM) model on a device without WebGPU; which one depends on its memory.
     expect(WASM_LABELS.filter((label) => dialogs[0].includes(`"${label}"`))).toHaveLength(1);
     expect(dialogs[0]).toContain('plus 15 MB for the runtime');
     await expect(page.locator('#webgpuProgressContainer')).toBeHidden();

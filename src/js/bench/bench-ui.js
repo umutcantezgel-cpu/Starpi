@@ -131,7 +131,8 @@ async function executeBenchmark() {
     setValue('benchResultLatency', `${formatNumber(m.totalMs, { maximumFractionDigits: 0 })} ms`);
     setText(byId('benchResultMeta'), 'diagnostics.result_meta', {
       model: run.modelId,
-      precision: run.f16 ? 'f16' : 'f32',
+      // A processor model runs its own quantization (q8) on WASM, not a WebGPU precision.
+      precision: run.runtime === 'wasm' ? 'WASM' : run.f16 ? 'f16' : 'f32',
       prompt: formatNumber(m.promptTokens),
       output: formatNumber(m.completionTokens),
     });

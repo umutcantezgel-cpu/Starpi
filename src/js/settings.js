@@ -1,6 +1,7 @@
 // @ts-check
-// Settings tab: compute mode, provider keys (session or device storage), own-server URL,
-// WebGPU model preference, the NVIDIA cloud status, and connection tests.
+// Settings tab: the assistant choice (mode plus on-device or NVIDIA model, picked in either model
+// picker), provider keys (session or device storage), own-server URL, the NVIDIA cloud status, and
+// connection tests.
 import { deleteChatHistory } from './chat-store.js';
 import { isChatBusy, resetConversation } from './chat.js';
 import { STORAGE_KEYS } from './config.js';
@@ -9,15 +10,30 @@ import { byId, onAction, onChange, setHidden } from './dom.js';
 import { renderEngineState, startLocalEngine } from './engine-ui.js';
 import { refreshIcons } from './icons.js';
 import { formatNumber, getLocale, setText, t } from './i18n/index.js';
+import { syncPickerValue } from './model-picker.js';
+import { parseAssistantChoice } from './models/choices.js';
+import { NVIDIA_MODELS } from './models/nvidia-catalog.js';
 import { readinessPrompt } from './prompts.js';
 import { callGemini, callOpenRouter, getNvidiaCatalog, hasGeminiKey, hasOpenRouterKey, normalizeServerUrl, probeLocalServer } from './providers.js';
 import { sanitizeModelNames } from './render.js';
-import { getChatMode, getLlmUrl, getMode, getModelPreference, onChatModeChange, setLlmUrl, setMode, setModelPreference } from './state.js';
+import {
+  getChatMode,
+  getLlmUrl,
+  getMode,
+  getModelPreference,
+  getNvidiaModel,
+  onChatModeChange,
+  setLlmUrl,
+  setMode,
+  setModelPreference,
+  setNvidiaModel,
+} from './state.js';
 import { readLocal, readSecret, removeSecret, writeLocal, writeSecret } from './storage.js';
 import { setAssistantStatus, setEngineDot } from './ui.js';
 import * as engine from './webgpu/engine.js';
 
-/** @typedef {import('./config.js').ComputeMode} ComputeMode */
+/** The NVIDIA models a picker may name (the allowlist; the proxy may offer fewer). */
+const NVIDIA_IDS = Object.freeze(NVIDIA_MODELS.map((m) => m.id));
 
 function rememberKeys() {
   return readLocal(STORAGE_KEYS.rememberKeys) === '1';
@@ -85,24 +101,48 @@ export function renderPrivacyNotice() {
   refreshIcons(el);
 }
 
-/** @param {ComputeMode} mode */
-function syncModeSelectors(mode) {
-  for (const id of ['engineSelector', 'cfgComputeMode']) {
-    const sel = /** @type {HTMLSelectElement | null} */ (byId(id));
-    if (sel && sel.value !== mode) sel.value = mode;
-  }
-}
-
 /**
- * Applies a compute mode. `interactive` is true when the user picked it (allows a model download).
+ * Applies a picker value: a mode ('council', 'local', or before the device probe 'client' and
+ * 'nvidia', which keep the stored model), an on-device model ('webgpu:<key>', 'wasm:<key>') or an
+ * NVIDIA model ('nvidia:<id>'). `interactive` is true when the user picked it (allows a model
+ * download). A switch is refused while an answer is being written; the pickers then show the
+ * stored choice again.
  * @param {string} value
  * @param {{ interactive: boolean }} opts
- * @returns {Promise<boolean>} whether the mode was also stored for the next visit
+ * @returns {Promise<boolean>} whether the choice was also stored for the next visit
  */
 export async function changeEngine(value, opts) {
-  const stored = setMode(/** @type {ComputeMode} */ (value));
+  const choice = parseAssistantChoice(value, NVIDIA_IDS);
+  if (!choice) {
+    syncPickerValue();
+    return false;
+  }
+  const previousLocal = getModelPreference();
+  const switching =
+    choice.mode !== getMode() ||
+    (choice.local !== undefined && choice.local !== previousLocal) ||
+    (choice.nvidia !== undefined && choice.nvidia !== getNvidiaModel());
+  // The answer being written keeps its engine; unloading its model would cut it off.
+  if (switching && isChatBusy()) {
+    syncPickerValue();
+    if (opts.interactive) window.alert(t('models.switch_busy'));
+    return false;
+  }
+
+  let stored = true;
+  if (choice.local !== undefined) {
+    stored = setModelPreference(choice.local) && stored;
+    // Another on-device model was loaded (or is loading) for the previous choice: free it, so the
+    // picked one is loaded below or with the next question.
+    const s = engine.getEngineState();
+    if (choice.local !== previousLocal && s.status !== 'idle' && !(s.status === 'ready' && s.model?.ref === choice.local)) {
+      await engine.unloadModel();
+    }
+  }
+  if (choice.nvidia !== undefined) stored = setNvidiaModel(choice.nvidia) && stored;
+  stored = setMode(choice.mode) && stored;
   const mode = getMode();
-  syncModeSelectors(mode);
+  syncPickerValue();
   renderPrivacyNotice();
   renderEngineState(engine.getEngineState());
 
@@ -140,7 +180,6 @@ async function saveSettings() {
   const openrouterInput = /** @type {HTMLInputElement | null} */ (byId('cfgOpenrouterKey'));
   const rememberInput = /** @type {HTMLInputElement | null} */ (byId('cfgRememberKeys'));
   const modeInput = /** @type {HTMLSelectElement | null} */ (byId('cfgComputeMode'));
-  const modelInput = /** @type {HTMLSelectElement | null} */ (byId('cfgWebgpuModel'));
 
   let url;
   try {
@@ -170,13 +209,8 @@ async function saveSettings() {
   }
   renderKeyHints();
 
-  const previousPreference = getModelPreference();
-  stored = setModelPreference(modelInput?.value ?? 'auto') && stored;
-  const mode = /** @type {ComputeMode} */ (modeInput?.value ?? 'council');
-  if (engine.getEngineState().status !== 'idle' && previousPreference !== getModelPreference()) {
-    await engine.unloadModel();
-  }
-  stored = (await changeEngine(mode, { interactive: true })) && stored;
+  // The picker holds the mode and the model; changeEngine stores both.
+  stored = (await changeEngine(modeInput?.value ?? 'council', { interactive: true })) && stored;
   window.alert(t(stored ? 'settings.saved_toast' : 'settings.save_failed'));
 }
 
@@ -287,11 +321,9 @@ async function deleteModelCache() {
 export function initSettings() {
   const urlInput = /** @type {HTMLInputElement | null} */ (byId('cfgLlmUrl'));
   if (urlInput) urlInput.value = getLlmUrl();
-  const modelInput = /** @type {HTMLSelectElement | null} */ (byId('cfgWebgpuModel'));
-  if (modelInput) modelInput.value = getModelPreference();
   const rememberInput = /** @type {HTMLInputElement | null} */ (byId('cfgRememberKeys'));
   if (rememberInput) rememberInput.checked = rememberKeys();
-  syncModeSelectors(getMode());
+  syncPickerValue();
   renderKeyHints();
   renderPrivacyNotice();
   // The chat mode toggle lives in chat.js, which must not import this module: state.js tells us.

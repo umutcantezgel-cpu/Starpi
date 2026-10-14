@@ -62,6 +62,7 @@
     "src/js/library.js",
     "src/js/main.js",
     "src/js/messages.js",
+    "src/js/model-picker.js",
     "src/js/models/choices.js",
     "src/js/models/device.js",
     "src/js/models/nvidia-catalog.js",

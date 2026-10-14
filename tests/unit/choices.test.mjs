@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { assistantGroups, choiceValue, parseAssistantChoice } from '../../src/js/models/choices.js';
+import { assistantGroups, choiceValue, GROUP_KEYS, nvidiaStatus, optionParts, parseAssistantChoice } from '../../src/js/models/choices.js';
 import { GIB } from '../../src/js/models/device.js';
 import { NVIDIA_DEFAULT_MODEL, NVIDIA_MODELS } from '../../src/js/models/nvidia-catalog.js';
 import { WASM_CATALOG } from '../../src/js/models/wasm-catalog.js';
@@ -128,10 +128,89 @@ describe('assistantGroups', () => {
   });
 });
 
-describe('model names are catalog data', () => {
-  // Removed with the #cfgWebgpuModel select when the model picker replaces it.
-  const LEGACY_SELECT_KEYS = new Set(['model_llama_1b', 'model_qwen_1_5b', 'model_qwen_3b']);
+describe('nvidiaStatus', () => {
+  const current = { mode: 'nvidia', local: 'auto', nvidia: NVIDIA_IDS[2] };
+  const offered = { reachable: true, configured: true, defaultModel: NVIDIA_IDS[1], models: NVIDIA_IDS.slice(0, 3).map((id) => ({ id })) };
 
+  it('is pending until the proxy answers, and names the bundled default meanwhile', () => {
+    assert.deepEqual(nvidiaStatus(null, current), { state: 'pending', ids: [], defaultModel: NVIDIA_DEFAULT_MODEL, currentMode: 'nvidia', currentId: NVIDIA_IDS[2] });
+  });
+
+  it('tells a missing proxy, a proxy without keys and a ready one apart', () => {
+    assert.equal(nvidiaStatus({ ...offered, reachable: false, configured: false, models: [] }, current).state, 'absent');
+    assert.equal(nvidiaStatus({ ...offered, configured: false }, current).state, 'unconfigured');
+    const ready = nvidiaStatus(offered, { ...current, mode: 'council' });
+    assert.deepEqual(ready, { state: 'configured', ids: NVIDIA_IDS.slice(0, 3), defaultModel: NVIDIA_IDS[1], currentMode: 'council', currentId: NVIDIA_IDS[2] });
+    assert.equal(nvidiaStatus({ ...offered, defaultModel: null }, current).defaultModel, NVIDIA_DEFAULT_MODEL);
+  });
+
+  it('feeds assistantGroups: the recommended NVIDIA entry is the proxy default', () => {
+    const groups = assistantGroups(desktop, nvidiaStatus(offered, { ...current, mode: 'council' }));
+    assert.deepEqual(group(groups, 'recommended').items.at(-1)?.value, `nvidia:${NVIDIA_IDS[1]}`);
+    assert.deepEqual(group(groups, 'nvidia').items.map((i) => i.value), [`nvidia:${NVIDIA_IDS[0]}`, `nvidia:${NVIDIA_IDS[2]}`]);
+    // No proxy here: the group is gone unless NVIDIA is the current mode.
+    const absent = { reachable: false, configured: false, defaultModel: null, models: [] };
+    assert.equal(group(assistantGroups(desktop, nvidiaStatus(absent, { ...current, mode: 'council' })), 'nvidia'), undefined);
+    assert.deepEqual(group(assistantGroups(desktop, nvidiaStatus(absent, current)), 'nvidia').items.map((i) => [i.value, i.disabled]), [[`nvidia:${NVIDIA_IDS[2]}`, true]]);
+  });
+});
+
+describe('optionParts', () => {
+  const groups = assistantGroups(desktop, nvidia());
+
+  it('names the model, where it runs, its download, the recommendation and a warning, in that order', () => {
+    assert.deepEqual(optionParts(item(groups, 'webgpu:qwen-3b')), [
+      { text: 'Qwen 2.5 3B' },
+      { key: 'models.runtime_webgpu' },
+      { key: 'models.download_size', gb: 1.9 },
+      { key: 'models.recommended' },
+    ]);
+    assert.deepEqual(optionParts(item(groups, 'webgpu:gemma-9b')), [
+      { text: 'Gemma 2 9B' },
+      { key: 'models.runtime_webgpu' },
+      { key: 'models.download_size', gb: 5.3 },
+      { key: 'models.warn_heavy' },
+    ]);
+    assert.deepEqual(optionParts(item(groups, 'wasm:smollm2-135m')), [{ text: 'SmolLM2 135M' }, { key: 'models.runtime_wasm' }, { key: 'models.download_size', gb: 0.14 }]);
+    assert.deepEqual(optionParts(item(assistantGroups(pro, nvidia()), 'webgpu:qwen-7b')).at(-1), { key: 'models.pro_pick' });
+    assert.deepEqual(optionParts(item(assistantGroups(cpu, nvidia()), 'webgpu:llama-1b')).at(-1), { key: 'models.warn_needs_webgpu' });
+  });
+
+  it('gives NVIDIA models no download and marks them when the proxy has no keys', () => {
+    assert.deepEqual(optionParts(item(groups, `nvidia:${NVIDIA_IDS[1]}`)), [{ text: NVIDIA_MODELS[1].label }, { key: 'models.runtime_nvidia' }]);
+    const unconfigured = assistantGroups(desktop, nvidia({ state: 'unconfigured' }));
+    assert.deepEqual(optionParts(item(unconfigured, `nvidia:${NVIDIA_IDS[1]}`)), [
+      { text: NVIDIA_MODELS[1].label },
+      { key: 'models.runtime_nvidia' },
+      { key: 'models.warn_not_configured' },
+    ]);
+  });
+
+  it('uses a single key for the other assistants', () => {
+    assert.deepEqual(optionParts(item(groups, 'council')), [{ key: 'engine.mode_cloud' }]);
+    assert.deepEqual(optionParts(item(groups, 'local')), [{ key: 'engine.mode_server' }]);
+  });
+
+  it('only uses keys both locales define, with the placeholders the parts fill', async () => {
+    const { hasKey, t } = await import('../../src/js/i18n/index.js');
+    const keys = new Set(Object.values(GROUP_KEYS));
+    for (const hw of [desktop, cpu, pro, null]) {
+      for (const state of ['configured', 'unconfigured']) {
+        for (const g of assistantGroups(hw, nvidia({ state }))) {
+          for (const part of g.items.flatMap(optionParts)) if ('key' in part) keys.add(part.key);
+        }
+      }
+    }
+    assert.deepEqual(Object.keys(GROUP_KEYS), ['recommended', 'local', 'nvidia', 'other']);
+    for (const key of keys) {
+      for (const locale of ['en', 'de']) assert.ok(hasKey(key, locale), `${locale}:${key}`);
+    }
+    assert.equal(t('models.download_size', { gb: '1.9' }, 'en'), '1.9 GB download');
+    assert.equal(t('models.group_recommended', undefined, 'de'), 'Empfohlen für Ihr Gerät');
+  });
+});
+
+describe('model names are catalog data', () => {
   it('never appear in the locale files', () => {
     const labels = [...Object.values(MODEL_CATALOG), ...Object.values(WASM_CATALOG), ...NVIDIA_MODELS].map((m) => m.label);
     for (const locale of ['en', 'de']) {
@@ -141,7 +220,7 @@ describe('model names are catalog data', () => {
       const walk = (obj, prefix) => {
         for (const [k, v] of Object.entries(obj)) {
           if (v && typeof v === 'object') walk(v, `${prefix}${k}.`);
-          else if (!(prefix === 'settings.' && LEGACY_SELECT_KEYS.has(k))) entries.push([`${prefix}${k}`, String(v)]);
+          else entries.push([`${prefix}${k}`, String(v)]);
         }
       };
       walk(dict, '');
