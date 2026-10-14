@@ -242,8 +242,31 @@ export async function probeDevice(options) {
 
 /** A menu must not wait long for an adapter that never answers. */
 const PICKER_PROBE_TIMEOUT_MS = 2_500;
+/** Loading wakes the high-performance GPU, which can take a few seconds; some browsers never answer. */
+const LOAD_PROBE_TIMEOUT_MS = 10_000;
 /** @type {Promise<DeviceProbe> | null} */
 let pickerProbe = null;
+
+/**
+ * probeDevice() with a deadline: requestAdapter() stays pending forever in some browsers, and the
+ * processor (WASM) fallback is meant for exactly those. Past the deadline the device counts as
+ * having no WebGPU.
+ * @param {AdapterOptions | undefined} options
+ * @param {number} ms
+ * @returns {Promise<DeviceProbe>}
+ */
+function probeDeviceWithin(options, ms) {
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timer;
+  return Promise.race([
+    probeDevice(options).finally(() => clearTimeout(timer)),
+    /** @type {Promise<DeviceProbe>} */ (
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(withoutWebGPU(new EngineError('no-adapter', 'requestAdapter() did not answer in time'))), ms);
+      })
+    ),
+  ]);
+}
 
 /**
  * The device profile for the model picker, probed once. It asks for the browser's default adapter
@@ -252,14 +275,7 @@ let pickerProbe = null;
  * @returns {Promise<DeviceProbe>}
  */
 export function getDeviceProbe() {
-  pickerProbe ??= Promise.race([
-    probeDevice({}),
-    /** @type {Promise<DeviceProbe>} */ (
-      new Promise((resolve) => {
-        setTimeout(() => resolve(withoutWebGPU(new EngineError('no-adapter', 'requestAdapter() did not answer in time'))), PICKER_PROBE_TIMEOUT_MS);
-      })
-    ),
-  ]);
+  pickerProbe ??= probeDeviceWithin({}, PICKER_PROBE_TIMEOUT_MS);
   return pickerProbe;
 }
 
@@ -377,7 +393,7 @@ export function loadModel(options) {
   const current = () => seq === loadSeq;
 
   const run = async () => {
-    const { hw, webgpu } = await probeDevice();
+    const { hw, webgpu } = await probeDeviceWithin(undefined, LOAD_PROBE_TIMEOUT_MS);
     const choice = chooseModel(hw, options.preference);
     // A WebGPU preset picked on a device without WebGPU: say why instead of switching runtimes.
     if (choice.runtime === 'webgpu' && !webgpu.supported) throw webgpu.error;

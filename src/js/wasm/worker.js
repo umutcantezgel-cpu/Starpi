@@ -8,7 +8,8 @@
 //   { id, type: 'load', source: { repo, revision, dtype } }               -> progress*, ready
 //   { id, type: 'generate', messages, maxTokens, temperature, ignoreEos } -> delta*, done { usage }
 //   { id, type: 'unload' }                                                -> unloaded
-//   { type: 'interrupt' }   stops the running generation at its next token (handled at once)
+//   { type: 'interrupt', upTo } stops the running generation at its next token and skips queued
+//                                generations with an id up to `upTo` (handled at once)
 // Replies: { id, type: 'progress', file, loaded, done } | { id, type: 'ready' } | { id, type: 'delta', text }
 //   | { id, type: 'done', usage: { prompt_tokens, completion_tokens } } | { id, type: 'unloaded' }
 //   | { id, type: 'error', name, message }   (no stack traces)
@@ -57,6 +58,8 @@ let model = null;
 let stopping = null;
 /** Requests run one after another; 'interrupt' bypasses the queue. */
 let queue = Promise.resolve();
+/** Generations with an id up to this one were stopped, possibly before they started. */
+let interruptedUpTo = 0;
 
 /**
  * Every download of Transformers.js goes through here: files of the loading model only, at its
@@ -124,6 +127,11 @@ async function load(id, requested) {
  */
 async function generate(id, req) {
   if (!model || !tokenizer) throw new Error('No model is loaded');
+  // Stopped while it waited behind the previous one: it would otherwise run to maxTokens.
+  if (id <= interruptedUpTo) {
+    post({ id, type: 'done', usage: { prompt_tokens: 0, completion_tokens: 0 } });
+    return;
+  }
   const inputs = /** @type {TokenizedChat} */ (/** @type {unknown} */ (tokenizer.apply_chat_template(req.messages, { add_generation_prompt: true, return_dict: true })));
   const criteria = new InterruptableStoppingCriteria();
   stopping = criteria;
@@ -164,6 +172,7 @@ async function unload() {
 self.addEventListener('message', (event) => {
   const msg = /** @type {WorkerRequest} */ (event.data);
   if (msg.type === 'interrupt') {
+    interruptedUpTo = Math.max(interruptedUpTo, msg.upTo);
     stopping?.interrupt();
     return;
   }
