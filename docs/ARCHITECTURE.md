@@ -142,10 +142,13 @@ idealised design. When the code changes, change the diagram in the same pull req
 12. [Source check, answer receipts and sample files](#12-source-check-answer-receipts-and-sample-files)
     - [Source check: from the rendered answer to the panel](#source-check-from-the-rendered-answer-to-the-panel)
     - [checkSentence: when a statement is checked, its reasons and its verdict](#checksentence-when-a-statement-is-checked-its-reasons-and-its-verdict)
+    - [checkV2: negations, names and values in another place](#checkv2-negations-names-and-values-in-another-place)
     - [Facts: strict claims, lenient excerpts and how they are matched](#facts-strict-claims-lenient-excerpts-and-how-they-are-matched)
     - [Answer receipts: fingerprints, draft, dialog and download](#answer-receipts-fingerprints-draft-dialog-and-download)
+    - [Receipts v2: Merkle tree, inclusion proofs and signature](#receipts-v2-merkle-tree-inclusion-proofs-and-signature)
     - [Deterministic citation verification and receipt flow](#deterministic-citation-verification-and-receipt-flow)
     - [Re-checking a receipt in the app and on the command line](#re-checking-a-receipt-in-the-app-and-on-the-command-line)
+    - [starpi-ground: from arguments to exit code](#starpi-ground-from-arguments-to-exit-code)
     - [Sample files and the source-check demo](#sample-files-and-the-source-check-demo)
 
 ## 1. System overview
@@ -482,7 +485,7 @@ flowchart TD
 
 ### Frontend import graph (1 of 4): main.js and its application imports
 
-main.js is the only main-thread entry point and has 19 imports: the 14 application modules drawn here (with the names it imports from each) and 5 infrastructure modules (dom, i18n, icons, state, supabase) drawn in frontend-modules-infrastructure. Application modules are every module reachable from main.js except the 10 infrastructure modules drawn in frontend-modules-infrastructure; there are 31 of them, including the five core/ modules and rag/bm25.js and rag/chunker.js, which core/ reuses from the ingestion worker. The 81 imports between them are split across four diagrams: the 14 made by main.js here, the 20 made by settings.js, graph.js, ingest.js, bench/bench-ui.js and voice.js in frontend-modules-views, the 23 made by chat.js, engine-ui.js, messages.js, rag/citations.js and webgpu/engine.js in frontend-modules-chat, and the 24 made by demo.js, synthesizer.js, retrieval.js, rag/grounding-view.js, rag/receipts.js and the core/ modules in frontend-modules-trust. An import and a re-export of the same module count as one edge. The import graph has no cycles.
+main.js is the only main-thread entry point and has 19 imports: the 14 application modules drawn here (with the names it imports from each) and 5 infrastructure modules (dom, i18n, icons, state, supabase) drawn in frontend-modules-infrastructure. Application modules are every module reachable from main.js except the 10 infrastructure modules drawn in frontend-modules-infrastructure; there are 36 of them, including the ten core/ modules the page reaches and rag/bm25.js and rag/chunker.js, which core/ reuses from the ingestion worker. The 94 imports between them are split across four diagrams: the 14 made by main.js here, the 20 made by settings.js, graph.js, ingest.js, bench/bench-ui.js and voice.js in frontend-modules-views, the 23 made by chat.js, engine-ui.js, messages.js, rag/citations.js and webgpu/engine.js in frontend-modules-chat, and the 37 made by demo.js, synthesizer.js, retrieval.js, rag/grounding-view.js, rag/receipts.js and the core/ modules in frontend-modules-trust. An import and a re-export of the same module count as one edge. The import graph has no cycles.
 
 <!-- diagram: frontend-modules-overview -->
 ```mermaid
@@ -653,7 +656,7 @@ flowchart TD
 
 ### Frontend import graph (4 of 4): demo, source check, receipts and core/
 
-The remaining 24 of the 81 imports: every import made by demo.js, synthesizer.js, retrieval.js, rag/grounding-view.js, rag/receipts.js and the core/ modules. The five core/ modules import no infrastructure module and use no DOM, so the same code runs in the page, in the ingestion worker and in Node: core/labels.js holds the citation label format that retrieval.js re-exports, core/sentences.js the sentence splitting that synthesizer.js re-exports and safeSlice, with which retrieval.js shortens excerpts and core/grounding.js the passage it quotes in a fact_context reason without splitting a surrogate pair, core/facts.js and core/grounding.js the source check, and core/receipt.js builds and verifies starpi.receipt/v1 receipts. core/facts.js reuses tokenize and the stopword lists of rag/bm25.js, core/grounding.js reuses its English stopword list, and core/receipt.js reuses chunkText and CHUNKER from rag/chunker.js, so both worker modules are part of the main-thread graph too. Outside this graph, rag/ingest.worker.js imports core/receipt.js to hash files and verify receipts, scripts/verify-receipt.mjs imports core/receipt.js and rag/parser.js in Node, and packages/core/src/index.js re-exports the core/ modules, rag/parser.js, rag/chunker.js and rag/bm25.js as the @starpi/core package. demo.js fetches the sample files from /samples/ into the workspace and shows a fixed answer with one deliberate error through applyGrounding, in the language of the sample set that is complete in the workspace (the interface language first, and also when neither set is complete).
+The remaining 37 of the 94 imports: every import made by demo.js, synthesizer.js, retrieval.js, rag/grounding-view.js, rag/receipts.js and the core/ modules. The ten core/ modules the page reaches import no infrastructure module and use no DOM, so the same code runs in the page, in the ingestion worker and in Node: core/labels.js holds the citation label format that retrieval.js re-exports, core/sentences.js the sentence splitting that synthesizer.js re-exports and safeSlice, with which retrieval.js shortens excerpts and core/grounding.js the passage it quotes in a reason without splitting a surrogate pair, core/facts.js and core/grounding.js the source check, core/polarity.js its version 2 negation check and core/binding.js its version 2 checks of names and values in another place, and core/receipt.js builds and verifies starpi.receipt/v2 receipts (and still reads v1), with core/merkle.js for the Merkle tree over the citations, core/signature.js for Ed25519 and ES256 signatures and core/hash.js for SHA-256, canonical JSON, hex and base64url. core/facts.js reuses tokenize and the stopword lists of rag/bm25.js, core/grounding.js reuses its English stopword list, core/polarity.js and core/binding.js its combined STOPWORDS, and core/receipt.js reuses chunkText and CHUNKER from rag/chunker.js, so both worker modules are part of the main-thread graph too. Outside this graph, rag/ingest.worker.js imports core/receipt.js to hash files and verify receipts and core/signature.js to import a signer's public key, scripts/verify-receipt.mjs imports core/receipt.js, core/signature.js and rag/parser.js in Node, scripts/ground.mjs imports core/document.js and core/sarif.js, the two core/ modules the page never loads, and packages/core/src/index.js re-exports nine of the twelve core/ modules (core/polarity.js, core/binding.js and core/hash.js come in through them, canonicalJson and sha256Hex through core/receipt.js), rag/parser.js, rag/chunker.js and rag/bm25.js as the @starpi/core package. demo.js fetches the sample files from /samples/ into the workspace and shows a fixed answer with one deliberate error through applyGrounding, in the language of the sample set that is complete in the workspace (the interface language first, and also when neither set is complete).
 
 <!-- diagram: frontend-modules-trust -->
 ```mermaid
@@ -676,11 +679,16 @@ flowchart LR
         sentences["core/sentences.js<br/>sentenceSpans, splitSentences, safeSlice"]
         facts["core/facts.js<br/>extractFacts, indexSource, lookupFact"]
         grounding["core/grounding.js<br/>groundAnswer, checkSentence,<br/>contextCoverage, GROUNDING"]
-        receipt["core/receipt.js<br/>buildReceipt, verifyReceipt,<br/>validateReceipt, sha256Hex"]
+        polarity["core/polarity.js<br/>negationInversion, sourceClauses"]
+        binding["core/binding.js<br/>misplacedName, misplacedValues,<br/>unitsOf, valuePassages"]
+        receipt["core/receipt.js<br/>buildReceipt, verifyReceipt,<br/>validateReceipt, signReceipt"]
+        merkle["core/merkle.js<br/>merkleTree, verifyMerkleProof"]
+        signature["core/signature.js<br/>signHead, verifyHead, importPublicKey"]
+        hash["core/hash.js<br/>sha256Hex, canonicalJson,<br/>hex and base64url"]
     end
 
     subgraph ragw["Worker modules reached through core/"]
-        bm25["rag/bm25.js<br/>tokenize, STOPWORDS_EN, STOPWORDS_DE"]
+        bm25["rag/bm25.js<br/>tokenize, STOPWORDS,<br/>STOPWORDS_EN, STOPWORDS_DE"]
         chunker["rag/chunker.js<br/>chunkText, CHUNKER"]
     end
 
@@ -705,12 +713,25 @@ flowchart LR
     grounding -->|"STOPWORDS_EN"| bm25
     grounding -->|"CITATION_PATTERN, LOOSE_LABEL_PATTERN,<br/>parseLabel"| labels
     grounding -->|"safeSlice, sentenceSpans"| sentences
+    grounding -->|"negationInversion, sourceClauses"| polarity
+    grounding -->|"misplacedName, misplacedValues,<br/>nameLexicon, unitsOf, valuePassages"| binding
+    polarity -->|"contentTokens, fold,<br/>indexSource, tokenMatches"| facts
+    polarity -->|"STOPWORDS"| bm25
+    polarity -->|"sentenceSpans"| sentences
+    binding -->|"contentTokens, extractFacts, fold,<br/>indexSource, lookupFact, tokenMatches"| facts
+    binding -->|"STOPWORDS"| bm25
+    binding -->|"sentenceSpans"| sentences
     receipt -->|"chunkText, CHUNKER"| chunker
     receipt -->|"guessLanguage, indexSource"| facts
-    receipt -->|"checkSentence, GROUNDING,<br/>REASON_CODES, THRESHOLDS"| grounding
+    receipt -->|"checkSentence, GROUNDING, GROUNDING_VERSIONS,<br/>REASON_CODES, REASON_CODES_V1, THRESHOLDS"| grounding
+    receipt -->|"canonicalJson, sha256Hex,<br/>re-exports both"| hash
+    receipt -->|"MERKLE_ALG, merkleLeafHash,<br/>merkleTree, verifyMerkleProof"| merkle
+    receipt -->|"signHead, SIGNATURE_ALGS, verifyHead"| signature
+    merkle -->|"fromHex, sha256Bytes, toHex"| hash
+    signature -->|"canonicalJson, fromBase64url,<br/>sha256Hex, toBase64url"| hash
 ```
 
-<sub>Sources: [`src/js/demo.js`](../src/js/demo.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/labels.js`](../src/js/core/labels.js), [`src/js/core/sentences.js`](../src/js/core/sentences.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`packages/core/src/index.js`](../packages/core/src/index.js)</sub>
+<sub>Sources: [`src/js/demo.js`](../src/js/demo.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/labels.js`](../src/js/core/labels.js), [`src/js/core/sentences.js`](../src/js/core/sentences.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/polarity.js`](../src/js/core/polarity.js), [`src/js/core/binding.js`](../src/js/core/binding.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/hash.js`](../src/js/core/hash.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`scripts/ground.mjs`](../scripts/ground.mjs), [`packages/core/src/index.js`](../packages/core/src/index.js)</sub>
 
 ### Shared infrastructure modules, their importers and npm packages
 
@@ -807,7 +828,7 @@ flowchart LR
 
 ### Bundle entry points, Web Workers and lazy imports
 
-scripts/build.mjs bundles three JS entry points with esbuild (splitting: true): main.js, rag/ingest.worker.js and webgpu/worker.js (plus the CSS entry). Nothing imports the workers: rag/workspace.js and webgpu/engine.js start them with new Worker(new URL(...)) using the placeholders __STARPI_INGEST_WORKER_URL__ and __STARPI_WEBLLM_WORKER_URL__, which build.mjs replaces with the hashed bundle names, and the build fails if either placeholder is missing from the output. Because the page and the ingestion worker both import core/receipt.js, core/grounding.js, core/facts.js, core/labels.js, core/sentences.js, rag/bm25.js and rag/chunker.js, esbuild puts these seven modules in one chunk that both entries import statically, and @mlc-ai/web-llm is one chunk shared by the WebLLM worker and the page. The service worker precaches the page, its CSS, main.js, the chunks main.js imports statically, the ingestion worker, the Latin font and the public files; WebLLM and pdf.js are cached on first use. Solid edges are static imports: main.js's edges go to the modules shown in its bundle (its other imports are in frontend-modules-overview), the edges into rag/workspace.js and webgpu/engine.js are every static import of those two modules, and the edges into the shared chunk show one path from the page and one from the ingestion worker (rag/grounding-view.js, retrieval.js and synthesizer.js also import core/ modules, see frontend-modules-trust). Dotted edges are the two Worker spawns, the service worker registration, and the lazy import() calls for @mlc-ai/web-llm (in engine.js) and pdf.js (in parser.js, inside the ingestion worker). scripts/verify-receipt.mjs is not part of the app build; it runs the same receipt, extraction and chunking code in Node. A separate build, scripts/build-core.mjs, bundles packages/core/src/index.js (which re-exports the shared-chunk modules and rag/parser.js) into packages/core/dist/index.js and scripts/verify-receipt.mjs into packages/core/dist/verify-receipt.js, the @starpi/core package, with pdfjs-dist left external.
+scripts/build.mjs bundles three JS entry points with esbuild (splitting: true): main.js, rag/ingest.worker.js and webgpu/worker.js (plus the CSS entry). Nothing imports the workers: rag/workspace.js and webgpu/engine.js start them with new Worker(new URL(...)) using the placeholders __STARPI_INGEST_WORKER_URL__ and __STARPI_WEBLLM_WORKER_URL__, which build.mjs replaces with the hashed bundle names, and the build fails if either placeholder is missing from the output. Because the page and the ingestion worker both import core/receipt.js and core/signature.js, and through them core/merkle.js, core/hash.js, core/grounding.js, core/polarity.js, core/binding.js, core/facts.js, core/labels.js, core/sentences.js, rag/bm25.js and rag/chunker.js, esbuild puts these twelve modules in one chunk that both entries import statically, and @mlc-ai/web-llm is one chunk shared by the WebLLM worker and the page. The service worker precaches the page, its CSS, main.js, the chunks main.js imports statically, the ingestion worker, the Latin font and the public files; WebLLM and pdf.js are cached on first use. Solid edges are static imports: main.js's edges go to the modules shown in its bundle (its other imports are in frontend-modules-overview), the edges into rag/workspace.js and webgpu/engine.js are every static import of those two modules, and the edges into the shared chunk show one path from the page and one from the ingestion worker (rag/grounding-view.js, retrieval.js and synthesizer.js also import core/ modules, see frontend-modules-trust). Dotted edges are the two Worker spawns, the service worker registration, and the lazy import() calls for @mlc-ai/web-llm (in engine.js) and pdf.js (in parser.js, inside the ingestion worker). scripts/verify-receipt.mjs and scripts/ground.mjs are not part of the app build; they run the same receipt, source-check, extraction and chunking code in Node, and core/document.js and core/sarif.js, which only scripts/ground.mjs and the package use, are in no app bundle. A separate build, scripts/build-core.mjs, bundles packages/core/src/index.js (which re-exports nine of the shared-chunk modules, reaching core/polarity.js, core/binding.js and core/hash.js through them, plus core/document.js, core/sarif.js and rag/parser.js) into packages/core/dist/index.js, scripts/verify-receipt.mjs into packages/core/dist/verify-receipt.js and scripts/ground.mjs into packages/core/dist/ground.js, the @starpi/core package, with pdfjs-dist left external.
 
 <!-- diagram: frontend-modules-workers -->
 ```mermaid
@@ -827,8 +848,8 @@ flowchart TD
     end
 
     subgraph shared["Shared chunk, imported statically by main and ingest-worker"]
-        coreReceipt["core/receipt.js"]
-        coreCheck["core/grounding.js, core/facts.js,<br/>core/labels.js, core/sentences.js"]
+        coreReceipt["core/receipt.js, core/merkle.js,<br/>core/signature.js, core/hash.js"]
+        coreCheck["core/grounding.js, core/polarity.js,<br/>core/binding.js, core/facts.js,<br/>core/labels.js, core/sentences.js"]
         bm25["rag/bm25.js<br/>BM25Index, tokenize, stopword lists"]
         chunker["rag/chunker.js<br/>chunkText, CHUNKER"]
     end
@@ -847,6 +868,8 @@ flowchart TD
     webllm["@mlc-ai/web-llm<br/>chunk shared by webllm-worker and main"]
     sw["src/sw.js<br/>written to dist/sw.js by build.mjs<br/>with build version, precache and asset lists"]
     cli["scripts/verify-receipt.mjs<br/>Node command line, not in the app build,<br/>bundled by scripts/build-core.mjs<br/>as packages/core/dist/verify-receipt.js"]
+    groundcli["scripts/ground.mjs, starpi-ground<br/>Node command line, not in the app build,<br/>bundled by scripts/build-core.mjs<br/>as packages/core/dist/ground.js"]
+    docsarif["core/document.js, core/sarif.js<br/>checkDocument, toSarif, describeReason,<br/>in no app bundle"]
     corepkg["packages/core/src/index.js<br/>@starpi/core entry, bundled by<br/>scripts/build-core.mjs, not by build.mjs"]
 
     main --> chat
@@ -880,19 +903,26 @@ flowchart TD
     engine -.->|"import() in loadWebLLM()"| webllm
     ww --> webllm
 
-    iw -->|"sha256Hex, validateReceipt,<br/>verifyReceipt"| coreReceipt
+    iw -->|"sha256Hex, validateReceipt, verifyReceipt,<br/>importPublicKey from core/signature.js"| coreReceipt
     iw -->|"BM25Index"| bm25
     iw -->|"chunkText, CHUNKER,<br/>DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP"| chunker
     iw -->|"extractText, EXTRACTOR,<br/>MAX_FILE_BYTES, ParseError"| parser
     parser -.->|"first import()"| pdfw
     parser -.->|"then import()"| pdf
-    cli -->|"RECEIPT_LIMITS, validateReceipt,<br/>verifyReceipt"| coreReceipt
+    cli -->|"RECEIPT_LIMITS, validateReceipt, verifyReceipt,<br/>importPublicKey from core/signature.js"| coreReceipt
     cli -->|"extractText, EXTRACTOR"| parser
-    corepkg -->|"re-exports all seven modules"| shared
+    groundcli -->|"checkDocument, describeReason, toSarif"| docsarif
+    groundcli -->|"citationLabel"| coreCheck
+    groundcli -->|"chunkText"| chunker
+    groundcli -->|"extractText, extensionOf,<br/>MAX_FILE_BYTES, SUPPORTED_EXTENSIONS"| parser
+    docsarif -->|"groundAnswer, associate, blocksFromMarkdown,<br/>THRESHOLDS, REASON_CODES, extractFacts, contentTokens"| coreCheck
+    docsarif -->|"sha256Hex from core/hash.js"| coreReceipt
+    corepkg -->|"re-exports nine of the twelve modules,<br/>bundles the other three through them"| shared
+    corepkg -->|"re-exports checkDocument, toSarif,<br/>describeReason and more"| docsarif
     corepkg -->|"re-exports extractText,<br/>EXTRACTOR, ParseError and more"| parser
 ```
 
-<sub>Sources: [`scripts/build.mjs`](../scripts/build.mjs), [`src/js/main.js`](../src/js/main.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/sw.js`](../src/sw.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/src/index.js`](../packages/core/src/index.js)</sub>
+<sub>Sources: [`scripts/build.mjs`](../scripts/build.mjs), [`src/js/main.js`](../src/js/main.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/document.js`](../src/js/core/document.js), [`src/js/core/sarif.js`](../src/js/core/sarif.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/sw.js`](../src/sw.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`scripts/ground.mjs`](../scripts/ground.mjs), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/src/index.js`](../packages/core/src/index.js)</sub>
 
 ## 2. Boot and settings
 
@@ -1640,7 +1670,7 @@ flowchart TD
 
 ### After rendering: source check, receipt draft and conversation turns
 
-While the session is unchanged, submitChat takes the rendered message element (the appended bubble, or the streamed bubble of an on-device answer) and, when the answer has a citation scope, runs the source check and adds a receipt button. The check first needs the part of each excerpt that reached the model: extractive answers count every excerpt as delivered in full, and for model answers contextCoverage parses the context that was actually sent (the budgeted context for the on-device model, otherwise the buildContext string) back into its excerpt blocks and marks each excerpt full, partial or omitted. applyGrounding compares the numbers, dates, times, weekdays, codes, quotations and wording of each statement in the rendered answer with the excerpts it cites and shows the result under the answer; a match does not prove a statement correct. A value or name that the check does not find in the excerpts but finds in the question or one of the last user turns is marked from_conversation, a weak verdict; the model's own earlier answers do not count as given. When nothing was compared (the answer is too long, or answer and excerpts are in different languages and no statement was counted), the bar is neutral (grounding-none, a plain shield icon) instead of green. The receipt draft stays in memory, records for a partly delivered excerpt how many of its first characters reached the model (deliveredChars), and becomes an unsigned JSON file only when the user exports it from the receipt dialog: it shows that cited workspace excerpts can be reproduced from the same files, not that the receipt is authentic, what a model saw, or that its reasoning is right. Finally both turns are pushed to the in-memory conversation with localOnly set for client mode, workspace excerpts, an attached file or an extractive answer that names a workspace file.
+While the session is unchanged, submitChat takes the rendered message element (the appended bubble, or the streamed bubble of an on-device answer) and, when the answer has a citation scope, runs the source check and adds a receipt button. The check first needs the part of each excerpt that reached the model: extractive answers count every excerpt as delivered in full, and for model answers contextCoverage parses the context that was actually sent (the budgeted context for the on-device model, otherwise the buildContext string) back into its excerpt blocks and marks each excerpt full, partial or omitted. applyGrounding compares the numbers, dates, times, weekdays, codes, quotations and wording of each statement in the rendered answer with the excerpts it cites and, with the current rules (starpi-grounding 2), whether in the excerpts' language it keeps their negations and puts names and values where they do; it shows the result under the answer, and a match does not prove a statement correct. A value or name that the check does not find in the excerpts but finds in the question or one of the last user turns is marked from_conversation, a weak verdict; the model's own earlier answers do not count as given. When nothing was compared (the answer is too long, or answer and excerpts are in different languages and no statement was counted), the bar is neutral (grounding-none, a plain shield icon) instead of green. The receipt draft stays in memory, records for a partly delivered excerpt how many of its first characters reached the model (deliveredChars), and becomes a starpi.receipt/v2 JSON file, with a Merkle tree over its citations but without a signature (the app signs nothing), only when the user exports it from the receipt dialog: it shows that cited workspace excerpts can be reproduced from the same files, not that the receipt is authentic, what a model saw, or that its reasoning is right. Finally both turns are pushed to the in-memory conversation with localOnly set for client mode, workspace excerpts, an attached file or an extractive answer that names a workspace file.
 
 <!-- diagram: chat-request-source-check -->
 ```mermaid
@@ -1662,7 +1692,7 @@ flowchart TD
     Apply["applyGrounding(messageEl): scope, sources with label,<br/>doc, heading, delivered text and state,<br/>given = prompt + the user turns among the last 4<br/>history messages, citedOnly for a synthesizer answer"]
     Apply --> Slot{".message-content and .message-provenance<br/>present and sources not empty?"}
     Slot -->|"no"| NoRep["report null, nothing shown"]
-    Slot -->|"yes"| Ground["groundAnswer on the rendered blocks: numbers, dates,<br/>times, weekdays, codes, quotations and wording<br/>of each statement against its cited excerpts<br/>over 20000 chars or 300 statements: skipped, too_long"]
+    Slot -->|"yes"| Ground["groundAnswer on the rendered blocks, rules version 2: numbers,<br/>dates, times, weekdays, codes, quotations and wording<br/>of each statement against its cited excerpts, and negations,<br/>names and values in another place in the excerpts' language,<br/>over 20000 chars or 300 statements: skipped, too_long"]
     Ground --> Show{"any statement counted,<br/>unchecked or skipped?"}
     Show -->|"no"| Quiet["report returned, no bar"]
     Show -->|"yes"| Bar["details bar replaces the content of .message-provenance:<br/>review, partial or ok color and shield icon, neutral<br/>grounding-none with a plain shield when nothing was compared,<br/>grounding.title with grounding.summary ok of total,<br/>grounding.too_long or grounding.only_unchecked,<br/>badges to review and partly, flagged statements,<br/>grounding.disclaimer, opened when one is unsupported,<br/>unsupported statements highlighted"]
@@ -1672,7 +1702,7 @@ flowchart TD
     Draft["storeReceiptDraft: createdAt, APP_VERSION, answer text,<br/>engine and locale, question, grounding report,<br/>citations with delivered state, deliveredChars<br/>for a partly delivered excerpt, workspace file<br/>and text SHA-256 and chunk offsets"]
     Draft --> Mem[("in-memory Map, ids r1, r2 and so on<br/>at most 50 drafts, never stored")]
     Draft --> Btn["receiptButton(id) appended to .message-provenance<br/>data-action open-receipt, then refreshIcons"]
-    Btn -.->|"export in the receipt dialog"| Json["buildReceipt: unsigned JSON starpi.receipt/v1,<br/>id from a hash of its body,<br/>at most 20 reasons per statement"]
+    Btn -.->|"export in the receipt dialog"| Json["buildReceipt: JSON starpi.receipt/v2,<br/>Merkle root over the citations, not signed by the app,<br/>id from a hash of its body,<br/>at most 20 reasons per statement"]
     Btn --> Push
     Push["conversation.push user turn, first 4000 chars,<br/>and assistant turn, both with localOnly =<br/>mode client, usesWorkspace, namesWorkspace<br/>or a file attached"]
     Push --> Out(["persistMessage follows, see the previous diagram"])
@@ -2394,7 +2424,7 @@ sequenceDiagram
 
 ### verify-receipt: re-checking an answer receipt against the original files
 
-The receipt dialog's verify mode reads the chosen receipt file (at most RECEIPT_LIMITS.bytes, 2,000,000 bytes), parses it as JSON on the main thread and sends it with the chosen original files to the ingestion worker, because extraction and chunking are too heavy for the UI thread; nothing is added to the workspace. The worker validates the receipt against the starpi.receipt/v1 schema and its size limits, refusing members the format does not define and reason codes outside REASON_CODES, and replies with the first invalid path instead of throwing; it takes the first 20 chosen files (MAX_VERIFY_FILES) and skips any of them above MAX_FILE_BYTES. For each workspace citation that carries a file fingerprint it looks for a provided file with the same SHA-256, extracts that file once with the worker's own extractText, and compares the text fingerprint, the passage at the recorded offsets and the chunk bounds that chunkText gives with the recorded size and overlap; a file that cannot be extracted adds a warning and leaves those three checks empty. A match shows that the cited excerpt can be reproduced from the same file under the recorded rules. The source-check verdicts are then recomputed on the excerpt texts in the receipt, or, when a text was left out or does not match its fingerprint, on the matching passage, unless the excerpt was truncated or never reached the model; for a partly delivered excerpt only its first deliveredChars characters count, and without deliveredChars that excerpt counts as unavailable; a statement is not recomputed when one of its cited excerpts, or of the other excerpts its reasons name, is unavailable. Receipts are unsigned JSON, so the check does not show that the receipt is authentic, what a model saw or that the answer's reasoning is right. Section 12 (receipts-verify) draws the same check in more detail, with the recomputed source check and the command-line script.
+The receipt dialog's verify mode reads the chosen receipt file (at most RECEIPT_LIMITS.bytes, 2,000,000 bytes), parses it as JSON on the main thread, reads an optional public key of the signer (a JWK or PEM file of at most MAX_KEY_BYTES, 16,384 bytes) as text and sends both with the chosen original files to the ingestion worker, because extraction and chunking are too heavy for the UI thread; nothing is added to the workspace. The worker validates the receipt as starpi.receipt/v2 or v1 with its size limits, each format with its own list of members (a v1 receipt with a Merkle tree, a proof or a signature is refused) and of reason codes (REASON_CODES_V1 for v1, REASON_CODES for v2), and replies with the first invalid path instead of throwing; a key that importPublicKey cannot read ends the check with invalidKey. It takes the first 20 chosen files (MAX_VERIFY_FILES) and skips any of them above MAX_FILE_BYTES. For a v2 receipt verifyReceipt first recomputes the Merkle root, checks every inclusion proof and the signature, if there is one, against the chosen key or else the key embedded in the receipt (receipts-merkle-signature). For each workspace citation that carries a file fingerprint it looks for a provided file with the same SHA-256, extracts that file once with the worker's own extractText, and compares the text fingerprint, the passage at the recorded offsets and the chunk bounds that chunkText gives with the recorded size and overlap; a file that cannot be extracted adds a warning and leaves those three checks empty. A match shows that the cited excerpt can be reproduced from the same file under the recorded rules. The source-check verdicts are then recomputed on the excerpt texts in the receipt, or, when a text was left out or does not match its fingerprint, on the matching passage, unless the excerpt was truncated or never reached the model; for a partly delivered excerpt only its first deliveredChars characters count, and without deliveredChars that excerpt counts as unavailable; a statement is not recomputed when one of its cited excerpts, or of the other excerpts its reasons name, is unavailable, and the verdicts are recomputed with the rules version the receipt records. The app does not sign receipts, and a signature checked only with the key embedded in the receipt shows that the receipt is unchanged since signing, not who signed it; the check does not show what a model saw or that the answer's reasoning is right. Section 12 (receipts-verify) draws the same check in more detail, with the recomputed source check and the command-line script.
 
 <!-- diagram: workspace-ingestion-verify-receipt -->
 ```mermaid
@@ -2405,13 +2435,24 @@ flowchart TD
     sizeQ -->|"yes"| invSize["receipt.verify_invalid, reason size"]
     sizeQ -->|"no"| jsonQ{"JSON.parse of its text succeeds?"}
     jsonQ -->|"no"| invJson["receipt.verify_invalid, reason JSON"]
-    jsonQ -->|"yes"| send["receipt.verify_running, then verifyReceiptFiles:<br/>request verify-receipt with the receipt<br/>and the files chosen in receiptSources"]
+    jsonQ -->|"yes"| keySize{"a key file chosen in receiptPublicKey<br/>above MAX_KEY_BYTES 16384?"}
+    keySize -->|"yes"| badSize["receipt.verify_bad_key, reason size"]
+    keySize -->|"no"| send["receipt.verify_running, then verifyReceiptFiles:<br/>request verify-receipt with the receipt,<br/>the files chosen in receiptSources and<br/>the key file's text, or null without one"]
     send -.->|"rejects, e.g. worker crash or Clear workspace"| rej["receipt.verify_invalid with the error message"]
-    send --> valQ{"validateReceipt in the worker: schema starpi.receipt/v1,<br/>field types, hex fingerprints, size limits,<br/>no unknown members, reason codes from REASON_CODES?"}
+    send --> valQ{"validateReceipt in the worker: schema starpi.receipt/v2 or v1,<br/>only the members of that format, field types, hex fingerprints,<br/>size limits, reason codes from REASON_CODES, for v1 from<br/>REASON_CODES_V1, for v2 a merkle record and a proof<br/>per citation, a signature with alg, keyId, publicKey and value?"}
     valQ -->|"no"| inv["reply invalid with error and path<br/>receipt.verify_invalid, reason error (path)"]
-    valQ -->|"yes"| files["the first MAX_VERIFY_FILES 20 chosen files,<br/>any above MAX_FILE_BYTES skipped, the rest read into bytes,<br/>nothing is added to the workspace"]
-    files --> hashes["verifyReceipt: idMatches from the receipt hash,<br/>answerMatches from the answer hash,<br/>provided files keyed by the SHA-256 of their bytes"]
-    hashes --> exc["next citation: an excerpt text in the receipt that<br/>does not match its recorded SHA-256 adds a warning"]
+    valQ -->|"yes"| keyQ{"key text sent?"}
+    keyQ -->|"yes"| impQ{"importPublicKey reads it: a public JWK<br/>or PEM SPKI key, Ed25519 or P-256,<br/>a JWK with a private member d refused?"}
+    impQ -->|"no"| badKey["reply invalidKey with the error message,<br/>receipt.verify_bad_key, nothing verified"]
+    impQ -->|"yes"| files
+    keyQ -->|"no"| files["the first MAX_VERIFY_FILES 20 chosen files,<br/>any above MAX_FILE_BYTES skipped, the rest read into bytes,<br/>nothing is added to the workspace"]
+    files --> hashes["verifyReceipt with publicKey: idMatches from the receipt hash,<br/>answerMatches from the answer hash"]
+    hashes --> v2Q{"schema starpi.receipt/v2?"}
+    v2Q -->|"yes"| tree["Merkle root recomputed from the citations, every<br/>inclusion proof checked, signature status valid, invalid,<br/>unsigned, key_mismatch or unsupported_algorithm,<br/>see receipts-merkle-signature"]
+    v2Q -->|"no, v1"| noTree["merkle and signature null,<br/>proof null for every citation"]
+    tree --> byHash["provided files keyed by the SHA-256 of their bytes"]
+    noTree --> byHash
+    byHash --> exc["next citation: an excerpt text in the receipt that<br/>does not match its recorded SHA-256 adds a warning"]
     exc --> citQ{"workspace source with a document,<br/>a chunk and a fileSha256?"}
     citQ -->|"no, e.g. knowledge base"| nv["file not_verifiable"]
     citQ -->|"yes"| fileQ{"a provided file with that fileSha256?"}
@@ -2427,10 +2468,10 @@ flowchart TD
     extrErr --> moreQ
     cCheck --> moreQ{"more citations?"}
     moreQ -->|"yes"| exc
-    moreQ -->|"no"| report(["VerifyReport: passages that match of citations marked verifiable,<br/>source-check verdicts recomputed on the excerpt texts or matching passages,<br/>a partly delivered excerpt only on its first deliveredChars characters,<br/>skipping statements whose cited or other named excerpts are unknown,<br/>compared with the recorded ones, warnings, shown by renderReport,<br/>see receipts-verify"])
+    moreQ -->|"no"| report(["VerifyReport: schema, passages that match of citations marked verifiable,<br/>merkle and signature results and a proof flag per citation for v2,<br/>source-check verdicts recomputed with the recorded rules version<br/>on the excerpt texts or matching passages,<br/>a partly delivered excerpt only on its first deliveredChars characters,<br/>skipping statements whose cited or other named excerpts are unknown,<br/>compared with the recorded ones, warnings, shown by renderReport,<br/>see receipts-verify"])
 ```
 
-<sub>Sources: [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json)</sub>
 
 ### Worker crash, Clear workspace and restart
 
@@ -5156,7 +5197,7 @@ flowchart LR
 
 ### Source-check panel and answer receipts
 
-The source-check panel and the receipt dialog show text taken from answers, excerpts and receipt files, so both are built with DOM APIs, setText and textContent, never with HTML strings. applyGrounding reads the answer after renderMarkdown and linkifyCitations: a button counts as a citation only when it carries data-action open-citation and an index in this answer's scope, and since DOMPurify forbids button tags and data-* attributes, only citationButton can create one. Any other label-like text is not a citation: a label that names no given excerpt is reported as unknown_citation (level unsupported), and one that resolveLabel matches to a given excerpt is reported as label_mismatch (level weak) while the statement is compared with that excerpt. Such text on a line that states nothing itself, such as a Sources: line, is reported on the checked statements that have no citation of their own, of their block or of a list lead-in, the ones that inherit answer-wide citations. The bar never shows the green check when nothing was compared: it is then neutral (grounding-none, shield icon). Statements that need review are marked with Range objects in the CSS Custom Highlight API, which changes no DOM and needs no inline style; the flagged list is the accessible channel, and the citation buttons of those statements point to it with aria-describedby. A receipt is JSON from anywhere: the dialog refuses files over 2,000,000 bytes and text that JSON.parse rejects, and the ingest worker runs validateReceipt, which also refuses members the format does not define and reason codes outside REASON_CODES, before it reads at most 20 of the chosen files (files over 25 MiB are skipped) and verifyReceipt matches them by SHA-256 on the device. scripts/verify-receipt.mjs applies the same byte limit, JSON.parse and validateReceipt, reads every file it is given, and escapes control and bidirectional characters from the receipt in its text report. A receipt exported without excerpt texts also drops found from fact_context, approximate and fact_elsewhere reasons, where it quotes the excerpt. The source check compares the numbers, dates, times, weekdays, codes, quotations and wording of each statement, and names in English statements, with the excerpts it cites; a match does not prove a statement correct. Receipts are unsigned JSON: they show that cited excerpts can be reproduced from the same files, not that the receipt is authentic, what a model saw, or that its reasoning is right.
+The source-check panel and the receipt dialog show text taken from answers, excerpts and receipt files, so both are built with DOM APIs, setText and textContent, never with HTML strings. applyGrounding reads the answer after renderMarkdown and linkifyCitations: a button counts as a citation only when it carries data-action open-citation and an index in this answer's scope, and since DOMPurify forbids button tags and data-* attributes, only citationButton can create one. Any other label-like text is not a citation: a label that names no given excerpt is reported as unknown_citation (level unsupported), and one that resolveLabel matches to a given excerpt is reported as label_mismatch (level weak) while the statement is compared with that excerpt. Such text on a line that states nothing itself, such as a Sources: line, is reported on the checked statements that have no citation of their own, of their block or of a list lead-in, the ones that inherit answer-wide citations. The bar never shows the green check when nothing was compared: it is then neutral (grounding-none, shield icon). Statements that need review are marked with Range objects in the CSS Custom Highlight API, which changes no DOM and needs no inline style; the flagged list is the accessible channel, and the citation buttons of those statements point to it with aria-describedby. A receipt is JSON from anywhere: the dialog refuses files over 2,000,000 bytes and text that JSON.parse rejects, and the ingest worker runs validateReceipt, which refuses members the format does not define (a v1 receipt with a Merkle tree, proof or signature included), reason codes outside the list of its format, malformed Merkle records and proofs, and signatures whose algorithm, key id, value or public key do not have the defined form, before it reads at most 20 of the chosen files (files over 25 MiB are skipped) and verifyReceipt matches them by SHA-256 on the device. A signer's public key chosen in the dialog is refused above 16,384 bytes and is read only by importPublicKey, which accepts an Ed25519 or P-256 public key as a JWK or PEM and refuses a JWK with a private member. scripts/verify-receipt.mjs applies the same byte limit, JSON.parse, validateReceipt and importPublicKey for --public-key, reads every file it is given, and escapes control and bidirectional characters from the receipt in its text report. A receipt exported without excerpt texts also drops found from fact_context, approximate, fact_elsewhere, negation_inversion and name_context reasons, where it quotes the excerpt. The source check compares the numbers, dates, times, weekdays, codes, quotations and wording of each statement, names in English statements and, with rules version 2, in the excerpts' language negations and names and values in another place, with the excerpts it cites; a match does not prove a statement correct. The app does not sign receipts: they show that cited excerpts can be reproduced from the same files, not that the receipt is authentic, what a model saw, or that its reasoning is right. A signed receipt (signed outside the app with signReceipt) counts as unchanged since signing only while its id and Merkle root still match its contents, and as signed by someone only when the verifier supplies that signer's public key.
 
 <!-- diagram: security-layers-check-receipts -->
 ```mermaid
@@ -5166,6 +5207,7 @@ flowchart LR
         iExc["Cited excerpts and document names<br/>the delivered text of each excerpt"]
         iRcpt["Receipt file chosen in the dialog<br/>receiptFile, JSON from anywhere"]
         iFiles["Original files for verification<br/>receiptSources, any number"]
+        iKey["Signer's public key chosen in the dialog,<br/>receiptPublicKey, or given with --public-key"]
         iCli["Receipt and files passed to<br/>scripts/verify-receipt.mjs"]
     end
 
@@ -5175,10 +5217,12 @@ flowchart LR
         cPanel["applyGrounding panel: details, summary and list<br/>built with createElement, text via setText params,<br/>statements cut to 160 chars, references via citationButton,<br/>grounding.disclaimer in every panel, no innerHTML,<br/>nothing compared: neutral grounding-none bar<br/>with the shield icon, never shield-check"]
         cHl["CSS Custom Highlight API<br/>Range objects in CSS.highlights starpi-review<br/>for unsupported statements, no DOM change,<br/>no inline style, skipped without Highlight"]
         cSize["receipts.js verify: file over RECEIPT_LIMITS.bytes 2000000<br/>or rejected by JSON.parse: receipt.verify_invalid,<br/>reason size or JSON"]
-        cValid["ingest worker verify-receipt: validateReceipt<br/>schema starpi.receipt/v1, field types, lowercase SHA-256 hex,<br/>members the format does not define refused,<br/>reason codes only from REASON_CODES,<br/>deliveredChars only with delivered partial,<br/>at most 64 citations, 500 sentences, 20 reasons,<br/>answer 200000, question 10000, excerpt 20000,<br/>statement 20000, labels and names 600 chars,<br/>other strings 1000 or fewer, citation indexes in range<br/>failure: invalid error and path, nothing verified"]
+        cValid["ingest worker verify-receipt: validateReceipt<br/>schema starpi.receipt/v2 or v1, field types, lowercase SHA-256 hex,<br/>members the format does not define refused, so a v1 receipt<br/>with merkle, proof or signature is refused,<br/>reason codes only from REASON_CODES, for v1 REASON_CODES_V1,<br/>deliveredChars only with delivered partial,<br/>at most 64 citations, 500 sentences, 20 reasons,<br/>answer 200000, question 10000, excerpt 20000,<br/>statement 20000, labels and names 600 chars,<br/>other strings 1000 or fewer, citation indexes in range,<br/>v2: merkle alg sha256-rfc6962, size = citations, at most<br/>6 proof hashes, signature alg Ed25519 or ES256, value<br/>86 base64url chars, publicKey with its public members only<br/>failure: invalid error and path, nothing verified"]
+        cKey["receipts.js: key file over MAX_KEY_BYTES 16384 refused,<br/>receipt.verify_bad_key; worker and verify-receipt.mjs:<br/>importPublicKey, a public JWK or PEM SPKI for Ed25519<br/>or P-256, a JWK with a private member d refused,<br/>failure: invalidKey in the app, exit 2 on the command line"]
+        cSig["verifyReceipt: Merkle root and every inclusion proof<br/>recomputed; verifyReceiptSignature: the signature covers alg,<br/>id, keyId and merkle, invalid once the id or root no longer<br/>match the contents, key_mismatch for another key than<br/>the one supplied, trusted only for a supplied key"]
         cRead["ingest worker reads the files, then verifyReceipt<br/>first MAX_VERIFY_FILES 20 files, larger than<br/>MAX_FILE_BYTES 25 MiB skipped, matched by SHA-256,<br/>re-read with extractText, nothing uploaded"]
         cReport["verify and renderReport: invalid reasons as<br/>receipt.verify_invalid params, summary and lines via setText,<br/>warnings via textContent, replaceChildren"]
-        cDraft["receipts.js drafts: main-thread memory only,<br/>MAX_DRAFTS 50, never stored,<br/>downloaded only on request, question and excerpt<br/>texts optional, without excerpts buildReceipt drops found<br/>from fact_context, approximate and fact_elsewhere reasons,<br/>receipt.privacy: leaves the device only if shared,<br/>export dialog shows receipt.proves and receipt.not_proves"]
+        cDraft["receipts.js drafts: main-thread memory only,<br/>MAX_DRAFTS 50, never stored,<br/>downloaded only on request, question and excerpt<br/>texts optional, without excerpts buildReceipt drops found<br/>from fact_context, approximate, fact_elsewhere,<br/>negation_inversion and name_context reasons,<br/>receipt.privacy: leaves the device only if shared,<br/>export dialog shows receipt.proves and receipt.not_proves"]
         cCliChk["verify-receipt.mjs: same RECEIPT_LIMITS.bytes check,<br/>JSON.parse and validateReceipt, exit 2 when invalid,<br/>control and bidirectional characters from the receipt<br/>escaped in the text report"]
     end
 
@@ -5189,7 +5233,9 @@ flowchart LR
         tDos["Oversized or malformed receipts<br/>exhausting the page or the worker"]
         tLeak["Receipts, excerpts or files<br/>leaving the device unasked"]
         tTerm["Receipt strings that rewrite or hide<br/>lines of the terminal report"]
-        tClaim["A match or a receipt read as proof:<br/>the check can miss or flag wrongly,<br/>receipts are unsigned<br/>stated, not prevented"]
+        tForge["A receipt edited after signing, or signed<br/>with another key, passing as the signer's"]
+        tPriv["A private key handed to the verifier<br/>as the public key"]
+        tClaim["A match or a receipt read as proof:<br/>the check can miss or flag wrongly,<br/>the app does not sign receipts, an embedded<br/>key does not show who signed<br/>stated, not prevented"]
     end
 
     iAns --> cBlocks
@@ -5206,7 +5252,13 @@ flowchart LR
     iFiles --> cRead
     cSize --> tDos
     cValid --> tDos
-    cValid --> cReport
+    cValid --> cSig
+    iKey --> cKey
+    cKey --> tDos
+    cKey --> tPriv
+    cKey --> cSig
+    cSig --> tForge
+    cSig --> cReport
     cRead --> cReport
     cReport --> tXss
     cRead --> tLeak
@@ -5218,7 +5270,7 @@ flowchart LR
     cDraft -.-> tClaim
 ```
 
-<sub>Sources: [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/labels.js`](../src/js/core/labels.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/render.js`](../src/js/render.js), [`src/styles/app.css`](../src/styles/app.css), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs)</sub>
+<sub>Sources: [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/labels.js`](../src/js/core/labels.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/render.js`](../src/js/render.js), [`src/styles/app.css`](../src/styles/app.css), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs)</sub>
 
 ### Worker isolation, RLS, key handling, CSP and the build gate
 
@@ -5946,48 +5998,51 @@ flowchart TD
 
 ### Command-line tools beside the build
 
-Six more npm scripts sit outside the build and deploy path; of them, CI runs pack:core directly in the frontend job and sbom in the audit job, and release.yml runs both. verify:receipt checks an answer receipt against the original files with the extraction and chunking code the app uses: it matches files by their SHA-256 fingerprint, not by name, re-extracts them, compares the passage at the recorded offsets and the recorded chunk, and recomputes the source check for every statement whose cited excerpts, and the other excerpts its reasons name, are available, using only the first deliveredChars characters of an excerpt that reached the model in part. It exits 0 when every workspace excerpt was reproduced, 1 when something does not match or a file is missing, and 2 on a usage error or an invalid receipt, which includes a member or reason code the format does not define. In the text report, strings from the receipt and the given file names (labels, the creation time, the engine, file names in the checks and warnings) are printed with control and bidirectional characters escaped, so a crafted receipt cannot rewrite report lines in a terminal. A receipt is unsigned JSON, so a pass shows that the cited excerpts can be reproduced from the given files; it does not prove that the receipt is authentic, what a model saw, or that the answer is right. build:core bundles the @starpi/core package (an npm workspace of the root package, which declares Node.js 22.13 or newer and has the app's version) from the app's own modules, including the same verifier as a packaged command, and pack:core runs npm pack --workspace=@starpi/core --dry-run, whose prepack script runs build:core with type declarations, and lists the package contents without publishing anything; release.yml packs the same way into a real tarball. sbom (scripts/sbom.mjs) writes CycloneDX SBOMs of the app and of @starpi/core from package-lock.json with npm sbom --package-lock-only, without installing anything, and scripts/lib/sbom.mjs makes them deterministic and validates them before they are written. eval:source-check measures the source check on labelled answers, and docs:sync copies atlas diagrams into the Markdown files that embed them. The unit tests run verify-receipt.mjs, build-core.mjs, sbom.mjs and the evaluation.
+Six more npm scripts sit outside the build and deploy path; of them, CI runs pack:core directly in the frontend job and sbom in the audit job, and release.yml runs both. verify:receipt checks an answer receipt against the original files with the extraction and chunking code the app uses: it matches files by their SHA-256 fingerprint, not by name, re-extracts them, compares the passage at the recorded offsets and the recorded chunk, and recomputes the source check, with the rules version the receipt records, for every statement whose cited excerpts, and the other excerpts its reasons name, are available, using only the first deliveredChars characters of an excerpt that reached the model in part. For a starpi.receipt/v2 receipt it also recomputes the Merkle root, checks every inclusion proof and checks the signature, if there is one, against the public key given with --public-key (a JWK or PEM file) or else the key embedded in the receipt. It exits 0 when every workspace excerpt was reproduced and the tree and any signature are valid, 1 when something does not match, a file is missing, the root or an inclusion proof fails, the signature is invalid, made with another key or cannot be checked, or a --public-key was given and the receipt is not validly signed with it, and 2 on a usage error, a key file importPublicKey refuses or an invalid receipt, which includes a member or reason code the format does not define. In the text report, strings from the receipt and the given file names (labels, the creation time, the engine, file names in the checks and warnings) are printed with control and bidirectional characters escaped, so a crafted receipt cannot rewrite report lines in a terminal. The app does not sign receipts, so a pass on one of them shows that the cited excerpts can be reproduced from the given files; it does not prove that the receipt is authentic, what a model saw, or that the answer is right. build:core bundles the @starpi/core package (an npm workspace of the root package, which declares Node.js 22.13 or newer and has the app's version) from the app's own modules, including the same verifier and starpi-ground (scripts/ground.mjs, which has no npm script of its own, see source-check-ground-cli) as packaged commands, and pack:core runs npm pack --workspace=@starpi/core --dry-run, whose prepack script runs build:core with type declarations, and lists the package contents without publishing anything; release.yml packs the same way into a real tarball. sbom (scripts/sbom.mjs) writes CycloneDX SBOMs of the app and of @starpi/core from package-lock.json with npm sbom --package-lock-only, without installing anything, and scripts/lib/sbom.mjs makes them deterministic and validates them before they are written. eval:source-check measures the source check on labelled answers with either version of the rules, leaving out the held-out sets (holdout and v2holdout) unless --unblind is given and refusing a v2 held-out file whose SHA-256 differs from the one committed before the version 2 rules were written (docs/eval/v2-protocol.md), and docs:sync copies atlas diagrams into the Markdown files that embed them. The unit tests run verify-receipt.mjs, ground.mjs, build-core.mjs, sbom.mjs and the evaluation.
 
 <!-- diagram: build-pipeline-cli-tools -->
 ```mermaid
 flowchart TD
-    subgraph sg_receipt["npm run verify:receipt: scripts/verify-receipt.mjs receipt.json [file ...] [--json]"]
-      V1{"receipt path given and readable,<br/>at most RECEIPT_LIMITS.bytes 2000000,<br/>JSON, and validateReceipt passes:<br/>limits, types, no unknown member or reason code?"}
+    subgraph sg_receipt["npm run verify:receipt: scripts/verify-receipt.mjs receipt.json [file ...] [--public-key key] [--json]"]
+      V1{"options known, --public-key with a file,<br/>receipt path given and readable,<br/>at most RECEIPT_LIMITS.bytes 2000000,<br/>JSON, and validateReceipt passes:<br/>limits, types, no unknown member or reason code?"}
+      VK{"no --public-key, or importPublicKey<br/>reads the file as a JWK or PEM public key?"}
       V2{"every given file readable?"}
-      V3["verifyReceipt with EXTRACTOR and extractText<br/>from src/js/rag/parser.js: file by SHA-256 fingerprint,<br/>extracted text, passage at the recorded offsets,<br/>chunk rebuilt, source check recomputed for statements<br/>whose excerpts are available, a partly delivered<br/>excerpt cut to its recorded deliveredChars"]
-      V4{"receipt id and answer hash match,<br/>every workspace excerpt has file match<br/>and passage match, no excerpt differs<br/>from its recorded fingerprint?"}
-      V1 -->|"yes"| V2
+      V3["verifyReceipt with EXTRACTOR and extractText<br/>from src/js/rag/parser.js and the public key:<br/>v2 Merkle root, inclusion proofs and signature,<br/>file by SHA-256 fingerprint, extracted text,<br/>passage at the recorded offsets, chunk rebuilt,<br/>source check recomputed with the recorded rules version<br/>for statements whose excerpts are available, a partly<br/>delivered excerpt cut to its recorded deliveredChars"]
+      V4{"receipt id and answer hash match,<br/>every workspace excerpt has file match<br/>and passage match, no excerpt differs<br/>from its recorded fingerprint, root and every proof<br/>valid, signature valid or unsigned, and valid<br/>with the given key when there is one?"}
+      V1 -->|"yes"| VK
+      VK -->|"yes"| V2
       V2 -->|"yes"| V3 --> V4
     end
     V1 -->|"no"| X2(["usage message on stderr, exit 2"])
+    VK -->|"no"| X2
     V2 -->|"no"| X2
     V4 -->|"no"| X1(["report, exit 1"])
     V4 -->|"yes"| X0(["report, exit 0"])
-    REP["report: ok or FAIL per check, knowledge-base excerpts<br/>n/a, N/M workspace excerpts reproduced,<br/>verdicts that now differ, or JSON with --json;<br/>control and bidi characters in receipt strings<br/>and file names printed as escapes in the text report"]
+    REP["report: ok or FAIL per check, the Merkle line or<br/>n/a for format v1, the signature line, knowledge-base<br/>excerpts n/a, N/M workspace excerpts reproduced,<br/>verdicts that now differ, or JSON with --json;<br/>control and bidi characters in receipt strings<br/>and file names printed as escapes in the text report"]
     V4 -.- REP
     subgraph sg_core["npm run build:core: scripts/build-core.mjs [--out dir] [--no-types]"]
       C1["remove and recreate the output directory,<br/>default packages/core/dist"]
       C2["esbuild: packages/core/src/index.js to index.js,<br/>platform neutral, es2022, pdfjs-dist external"]
-      C3["esbuild: scripts/verify-receipt.mjs to verify-receipt.js,<br/>platform node, target node20, pdfjs-dist external;<br/>packages/core/package.json engines: node 22.13 or newer"]
+      C3["esbuild: scripts/verify-receipt.mjs to verify-receipt.js<br/>and scripts/ground.mjs to ground.js, the bins<br/>starpi-verify-receipt and starpi-ground,<br/>platform node, target node20, pdfjs-dist external;<br/>packages/core/package.json engines: node 22.13 or newer"]
       C4["unless --no-types: tsc -p packages/core/tsconfig.build.json<br/>into types/, then index.d.ts"]
       C1 --> C2 --> C3 --> C4
     end
     PACK["npm run pack:core, also in the CI frontend job:<br/>npm pack --workspace=@starpi/core --dry-run,<br/>its prepack script runs build-core.mjs"] --> C1
     SBOM["npm run sbom [--out dir]: scripts/sbom.mjs,<br/>npm sbom --package-lock-only for the app and for<br/>--workspace @starpi/core, normalized and validated<br/>by scripts/lib/sbom.mjs, CI audit job and release.yml"]
     TSBOM["sbom.test.mjs: two runs of scripts/sbom.mjs<br/>write identical files"] -.-> SBOM
-    TCORE["core-package.test.mjs: build-core.mjs --out a temp dir<br/>--no-types, the bundle checks an answer and builds<br/>a receipt, the bundled verify-receipt.js reproduces it,<br/>package.json: files cover every entry point,<br/>public, a workspace, the app's version"] -.-> C1
-    TREC["receipt.test.mjs runs verify-receipt.mjs:<br/>exit 0 with the file, 1 without it,<br/>2 for another schema and for no arguments"] -.-> V1
-    EV["npm run eval:source-check [--json]: labelled answers in<br/>tests/fixtures/grounding/eval.json against the sample files<br/>and kb-sample.json, per set dev and holdout: false alarms,<br/>planted errors caught, flagged or missed"]
-    TEV["source-check-eval.test.mjs: thresholds on the same<br/>summarize results, see the unit tests below"] -.->|"imports loadItems, loadCorpora, summarize"| EV
+    TCORE["core-package.test.mjs: build-core.mjs --out a temp dir<br/>--no-types, both commands start with a shebang,<br/>the bundle checks an answer and builds a receipt,<br/>the bundled verify-receipt.js reproduces it with a valid tree,<br/>the bundled ground.js writes SARIF with missing_fact, exit 1,<br/>and exits 2 without arguments, package.json: both bins,<br/>files cover every entry point, public, a workspace,<br/>the app's version"] -.-> C1
+    TREC["receipt.test.mjs and receipt-v2.test.mjs run verify-receipt.mjs:<br/>exit 0 with the file, 1 without it, 2 for another schema<br/>and for no arguments; with v2 receipts: tree and signature<br/>lines, exit 1 for another key, an unsigned receipt with a key,<br/>a forged signature or a broken proof, 2 for a private key,<br/>the 1.3.0 receipt still exit 0"] -.-> V1
+    EV["npm run eval:source-check [--sets list] [--grounding 1 or 2]<br/>[--variants] [--unblind] [--json]: labelled answers in eval.json,<br/>eval-v2-dev.json, eval-v2-holdout.json and paraphrases.json<br/>against the sample files, kb-sample.json, sources-v2.json and<br/>the paraphrase sources, per set dev, holdout, v2dev, v2holdout<br/>and paraphrases: false alarms, planted errors caught,<br/>flagged or missed; holdout and v2holdout only with --unblind,<br/>eval-v2-holdout.json checked against eval-v2-holdout.sha256"]
+    TEV["source-check-eval.test.mjs: thresholds on the same<br/>summarize results for rules versions 1 and 2,<br/>see the unit tests below"] -.->|"imports loadItems, loadV2Items,<br/>loadParaphrases, loadCorpora, summarize"| EV
     DS["npm run docs:sync: copy each diagram of docs/ARCHITECTURE.md<br/>into the Markdown files that embed its id,<br/>with --check change nothing and exit 1 on an outdated copy,<br/>an unknown id exits 1 in both modes"]
     TDOC["docs.test.mjs: every embedded copy<br/>equals the atlas diagram"] -.- DS
 ```
 
-<sub>Sources: [`package.json`](../package.json), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/package.json`](../packages/core/package.json), [`packages/core/src/index.js`](../packages/core/src/index.js), [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`scripts/sync-diagrams.mjs`](../scripts/sync-diagrams.mjs), [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`scripts/lib/sbom.mjs`](../scripts/lib/sbom.mjs), [`tests/unit/receipt.test.mjs`](../tests/unit/receipt.test.mjs), [`tests/unit/sbom.test.mjs`](../tests/unit/sbom.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`tests/unit/source-check-eval.test.mjs`](../tests/unit/source-check-eval.test.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs)</sub>
+<sub>Sources: [`package.json`](../package.json), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`scripts/ground.mjs`](../scripts/ground.mjs), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/package.json`](../packages/core/package.json), [`packages/core/src/index.js`](../packages/core/src/index.js), [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`tests/fixtures/grounding/eval-v2-holdout.sha256`](../tests/fixtures/grounding/eval-v2-holdout.sha256), [`docs/eval/v2-protocol.md`](eval/v2-protocol.md), [`scripts/sync-diagrams.mjs`](../scripts/sync-diagrams.mjs), [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`scripts/lib/sbom.mjs`](../scripts/lib/sbom.mjs), [`tests/unit/receipt.test.mjs`](../tests/unit/receipt.test.mjs), [`tests/unit/receipt-v2.test.mjs`](../tests/unit/receipt-v2.test.mjs), [`tests/unit/sbom.test.mjs`](../tests/unit/sbom.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`tests/unit/source-check-eval.test.mjs`](../tests/unit/source-check-eval.test.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs)</sub>
 
 ### CI jobs and the test layers they run
 
-The CI workflow runs six jobs on pushes and pull requests to main (and on manual dispatch). The frontend job runs lint, typecheck, the node:test unit suite of 25 files (including the documentation test, a build of @starpi/core into a temporary directory and two runs of the SBOM generator), a typed build and dry-run pack of @starpi/core, the production build and verify-dist, then uploads dist, which the e2e job reuses to run Playwright under the production headers: the app spec, the trust spec with its axe accessibility scan, and the Mermaid render gate. The backend job lints, byte-compiles and runs the offline unittest suites on Python 3.11 and 3.12. The database job installs PostgreSQL 16 with pgvector and runs the RLS harness, whose rls_test.sql has 191 checks in the fresh and fresh_rerun scenarios and 198 in the three scenarios seeded with legacy rows. The audit job runs npm audit on the lockfile, failing on any advisory in a runtime dependency and only warning about development tooling, and pip-audit on the backend requirements, then writes CycloneDX SBOMs of the app and of @starpi/core from the lockfile and uploads them, and the secrets job scans the tree, and on pull requests the new commits, with a checksum-verified gitleaks. npm run verify repeats the frontend gate locally.
+The CI workflow runs six jobs on pushes and pull requests to main (and on manual dispatch). The frontend job runs lint, typecheck, the node:test unit suite of 29 files (including the documentation test, a build of @starpi/core into a temporary directory and two runs of the SBOM generator), a typed build and dry-run pack of @starpi/core, the production build and verify-dist, then uploads dist, which the e2e job reuses to run Playwright under the production headers: the app spec, the trust spec with its axe accessibility scan, and the Mermaid render gate. The backend job lints, byte-compiles and runs the offline unittest suites on Python 3.11 and 3.12. The database job installs PostgreSQL 16 with pgvector and runs the RLS harness, whose rls_test.sql has 191 checks in the fresh and fresh_rerun scenarios and 198 in the three scenarios seeded with legacy rows. The audit job runs npm audit on the lockfile, failing on any advisory in a runtime dependency and only warning about development tooling, and pip-audit on the backend requirements, then writes CycloneDX SBOMs of the app and of @starpi/core from the lockfile and uploads them, and the secrets job scans the tree, and on pull requests the new commits, with a checksum-verified gitleaks. npm run verify repeats the frontend gate locally.
 
 <!-- diagram: test-strategy-ci-gates -->
 ```mermaid
@@ -5997,7 +6052,7 @@ flowchart LR
     subgraph jobFront["Job frontend: Node 22, npm ci --ignore-scripts"]
         lint["npm run lint<br/>ESLint, eslint.config.mjs"]
         tc["npm run typecheck<br/>tsc -p tsconfig.json --noEmit"]
-        unit["npm test<br/>node --test on the 25 tests/unit/*.test.mjs files,<br/>docs.test.mjs, core-package.test.mjs and sbom.test.mjs included"]
+        unit["npm test<br/>node --test on the 29 tests/unit/*.test.mjs files,<br/>docs.test.mjs, core-package.test.mjs and sbom.test.mjs included"]
         pack["npm run pack:core<br/>typed build of @starpi/core, npm pack --dry-run"]
         build["npm run build<br/>scripts/build.mjs"]
         verify["npm run verify:dist<br/>scripts/verify-dist.mjs: dist/ is CSP-compatible,<br/>referenced assets exist, sw.js carries the recomputed version"]
@@ -6006,7 +6061,7 @@ flowchart LR
 
     subgraph jobE2e["Job e2e, needs frontend"]
         dl["download artifact dist,<br/>npx playwright install --with-deps chromium"]
-        pw["npm run test:e2e<br/>app.spec.mjs, 16 tests, and trust.spec.mjs, 12 tests,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.1.0"]
+        pw["npm run test:e2e<br/>app.spec.mjs, 16 tests, and trust.spec.mjs, 13 tests,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.1.0"]
         rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
     end
 
@@ -6056,18 +6111,18 @@ flowchart LR
 
 ### Unit tests grouped by concern
 
-npm test runs the 25 tests/unit/*.test.mjs files with the built-in node:test runner in the frontend CI job; 17 of them are grouped here, the other 8 in the next diagram. Security and UI contract tests cover the sanitizer (on a real jsdom DOM), server URL validation (http only for localhost and 127.0.0.1), the CSP and build settings in vercel.json, handler and icon coverage, and dictionary parity including keys built at run time and plural forms. Retrieval tests pin exact BM25 scores, chunk boundaries, parser error codes (with a generated PDF from tests/fixtures/pdf.mjs) and CSV rows, citation labels, context fences that are never cut and the merge of workspace and knowledge-base hits, and grounded offline answers. Model tests pin the prompts, the WebLLM model catalog and the benchmark metrics. Build tests pin buildVersion, assertPublicKey, the typecheck coverage of every @ts-check module and the CycloneDX SBOMs (deterministic, valid, one entry per package, @starpi/core without dependencies), and docs.test.mjs keeps every documentation diagram single-sourced in docs/ARCHITECTURE.md and checks relative links and heading anchors in every Markdown file.
+npm test runs the 29 tests/unit/*.test.mjs files with the built-in node:test runner in the frontend CI job; 17 of them are grouped here, the other 12 in the next diagram. Security and UI contract tests cover the sanitizer (on a real jsdom DOM), server URL validation (http only for localhost and 127.0.0.1), the CSP and build settings in vercel.json, handler and icon coverage, and dictionary parity including keys built at run time and plural forms. Retrieval tests pin exact BM25 scores, chunk boundaries, parser error codes (with a generated PDF from tests/fixtures/pdf.mjs) and CSV rows, citation labels, context fences that are never cut and the merge of workspace and knowledge-base hits, and grounded offline answers. Model tests pin the prompts, the WebLLM model catalog and the benchmark metrics. Build tests pin buildVersion, assertPublicKey, the typecheck coverage of every @ts-check module and the CycloneDX SBOMs (deterministic, valid, one entry per package, @starpi/core without dependencies), and docs.test.mjs keeps every documentation diagram single-sourced in docs/ARCHITECTURE.md and checks relative links and heading anchors in every Markdown file.
 
 <!-- diagram: test-strategy-unit -->
 ```mermaid
 flowchart LR
-    runner(["npm test: node --test tests/unit/*.test.mjs, 25 files<br/>CI job frontend, also inside npm run verify<br/>17 files here, 8 in the next diagram"])
+    runner(["npm test: node --test tests/unit/*.test.mjs, 29 files<br/>CI job frontend, also inside npm run verify<br/>17 files here, 12 in the next diagram"])
 
     subgraph gSec["Security and UI contracts"]
         render["render.test.mjs, real DOM via jsdom<br/>escapeHtml, renderMarkdown drops scripts, handlers, styles,<br/>images, iframes, javascript: and data: links, data-*, class, id,<br/>https links get rel noopener noreferrer nofollow,<br/>escapeMarkdown, sanitizeModelNames on whole words"]
         config["config.test.mjs, constants from setup.mjs<br/>normalizeServerUrl: https anywhere, http only on localhost<br/>and 127.0.0.1, http://[::1] rejected, normalizeMode, classifyError,<br/>vercel.json CSP: script-src self wasm-unsafe-eval, no unsafe-*,<br/>object-src, frame-ancestors, base-uri none, img-src without https:,<br/>output dist, npm ci --ignore-scripts, microphone self"]
         actions["actions.test.mjs, static scan of src/<br/>every data-action and data-change has a handler and vice versa,<br/>no inline on* attributes, lucide icons bundled exactly as used,<br/>no emoji, icon-only buttons named, aria-labels translatable"]
-        i18n["i18n.test.mjs<br/>en.json and de.json: same keys and placeholders, no empty values,<br/>German differs, every key used in src/ resolves without fallback,<br/>also keys built at run time, e.g. engine errors, source check reasons,<br/>receipt checks, sample questions, voice errors,<br/>t() interpolation, key fallback,<br/>singular for a count of 1, plural otherwise"]
+        i18n["i18n.test.mjs<br/>en.json and de.json: same keys and placeholders, no empty values,<br/>German differs, every key used in src/ resolves without fallback,<br/>also keys built at run time, e.g. engine errors, a source check<br/>reason for every code in REASON_CODES, receipt checks,<br/>sample questions, voice errors, t() interpolation, key fallback,<br/>singular for a count of 1, plural otherwise"]
     end
 
     subgraph gRag["Workspace, retrieval and offline answers"]
@@ -6114,49 +6169,57 @@ flowchart LR
     runner --> docs
 ```
 
-<sub>Sources: [`tests/unit/render.test.mjs`](../tests/unit/render.test.mjs), [`tests/unit/config.test.mjs`](../tests/unit/config.test.mjs), [`tests/unit/setup.mjs`](../tests/unit/setup.mjs), [`tests/unit/actions.test.mjs`](../tests/unit/actions.test.mjs), [`tests/unit/i18n.test.mjs`](../tests/unit/i18n.test.mjs), [`tests/unit/parser.test.mjs`](../tests/unit/parser.test.mjs), [`tests/unit/chunker.test.mjs`](../tests/unit/chunker.test.mjs), [`tests/unit/bm25.test.mjs`](../tests/unit/bm25.test.mjs), [`tests/unit/retrieval.test.mjs`](../tests/unit/retrieval.test.mjs), [`tests/unit/synthesizer.test.mjs`](../tests/unit/synthesizer.test.mjs), [`tests/unit/prompts.test.mjs`](../tests/unit/prompts.test.mjs), [`tests/unit/models.test.mjs`](../tests/unit/models.test.mjs), [`tests/unit/diagnostics.test.mjs`](../tests/unit/diagnostics.test.mjs), [`tests/unit/build-version.test.mjs`](../tests/unit/build-version.test.mjs), [`tests/unit/supabase-key.test.mjs`](../tests/unit/supabase-key.test.mjs), [`tests/unit/typecheck-coverage.test.mjs`](../tests/unit/typecheck-coverage.test.mjs), [`tests/unit/sbom.test.mjs`](../tests/unit/sbom.test.mjs), [`scripts/lib/sbom.mjs`](../scripts/lib/sbom.mjs), [`tests/fixtures/pdf.mjs`](../tests/fixtures/pdf.mjs), [`package.json`](../package.json), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`scripts/markdown.mjs`](../scripts/markdown.mjs)</sub>
+<sub>Sources: [`tests/unit/render.test.mjs`](../tests/unit/render.test.mjs), [`tests/unit/config.test.mjs`](../tests/unit/config.test.mjs), [`tests/unit/setup.mjs`](../tests/unit/setup.mjs), [`tests/unit/actions.test.mjs`](../tests/unit/actions.test.mjs), [`tests/unit/i18n.test.mjs`](../tests/unit/i18n.test.mjs), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`tests/unit/parser.test.mjs`](../tests/unit/parser.test.mjs), [`tests/unit/chunker.test.mjs`](../tests/unit/chunker.test.mjs), [`tests/unit/bm25.test.mjs`](../tests/unit/bm25.test.mjs), [`tests/unit/retrieval.test.mjs`](../tests/unit/retrieval.test.mjs), [`tests/unit/synthesizer.test.mjs`](../tests/unit/synthesizer.test.mjs), [`tests/unit/prompts.test.mjs`](../tests/unit/prompts.test.mjs), [`tests/unit/models.test.mjs`](../tests/unit/models.test.mjs), [`tests/unit/diagnostics.test.mjs`](../tests/unit/diagnostics.test.mjs), [`tests/unit/build-version.test.mjs`](../tests/unit/build-version.test.mjs), [`tests/unit/supabase-key.test.mjs`](../tests/unit/supabase-key.test.mjs), [`tests/unit/typecheck-coverage.test.mjs`](../tests/unit/typecheck-coverage.test.mjs), [`tests/unit/sbom.test.mjs`](../tests/unit/sbom.test.mjs), [`scripts/lib/sbom.mjs`](../scripts/lib/sbom.mjs), [`tests/fixtures/pdf.mjs`](../tests/fixtures/pdf.mjs), [`package.json`](../package.json), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`scripts/markdown.mjs`](../scripts/markdown.mjs)</sub>
 
 ### Unit tests for the source check, receipts and sample files
 
-Eight of the unit test files cover the source check, answer receipts, the sample files and the @starpi/core package. The source check tests pin how facts are read (numbers, dates, times, weekdays, codes, spelled numbers, quotations) and how each statement is compared with the excerpts it cites, including in rendered answers; the evaluation test fails when a rule change makes a published result on the labelled answers worse: more faithful statements flagged, or fewer planted errors flagged in any category. None of this shows that an answer is correct: the check only compares values and wording with the cited excerpts. The receipt tests cover building, validating and verifying receipts (including members and reason codes the format does not define, and a partly delivered excerpt recomputed on its delivered part), the exit codes of verify-receipt.mjs and the JSON Schema in docs/spec, and the golden test pins extraction, chunking and source-check output, including every verdict and reason on the 308 labelled answers, to the rule versions that receipts record. The demo test answers each sample question from the sample files and requires the answer to pass the source check without a flagged statement, and the core-package test builds and uses the package the way a consumer would.
+Twelve of the unit test files cover the source check, answer receipts, starpi-ground, the sample files and the @starpi/core package. The source check tests pin how facts are read (numbers, dates, times, weekdays, codes, version numbers, spelled numbers, quotations) and how each statement is compared with the excerpts it cites, including in rendered answers; grounding-v2.test.mjs pins the version 2 checks of negations, names and values in another place and that version 1 still gives its old verdicts. The evaluation test fails when a rule change makes a published result on the labelled answers worse, for either rules version: more faithful statements flagged, or fewer planted errors flagged in any category. None of this shows that an answer is correct: the check only compares values and wording with the cited excerpts. The receipt tests cover building, validating and verifying receipts of both formats (including members and reason codes a format does not define, and a partly delivered excerpt recomputed on its delivered part), the Merkle tree against the RFC 6962 test vectors, Ed25519 and ES256 signatures, the exit codes of verify-receipt.mjs, the receipt written by Starpi 1.3.0 and the two JSON Schemas in docs/spec, and the golden test pins extraction, chunking and source-check output, including every verdict and reason of version 1 on the 308 labelled answers and of version 2 on every answer set, to the rule versions that receipts record. ground.test.mjs covers checkDocument, the SARIF output and starpi-ground, the demo test answers each sample question from the sample files and requires the answer to pass the source check without a flagged statement, and the core-package test builds and uses the package the way a consumer would.
 
 <!-- diagram: test-strategy-unit-trust -->
 ```mermaid
 flowchart LR
-    runner(["same npm test run, 8 of the 25 files"])
+    runner(["same npm test run, 12 of the 29 files"])
 
     subgraph gCheck["Source check"]
         facts["facts.test.mjs<br/>parseNumber with English and German separators,<br/>extractFacts: numbers with scale words, percent and currency,<br/>approximations, ISO, German and English dates, times,<br/>weekdays, codes, numbers written as words, also right after and,<br/>quotations, indexSource and lookupFact across formats<br/>and languages, 4.05. read as a decimal and as a date,<br/>codes with or without a hyphen, typographic dashes in codes,<br/>folding and inflection"]
-        grounding["grounding.test.mjs<br/>sentences with offsets, German day.month dates kept inside,<br/>groundAnswer: supported statements,<br/>changed numbers, dates, weekdays and codes named,<br/>citation inheritance, facts elsewhere or in no excerpt,<br/>facts from the question, approximations, unknown labels,<br/>bad labels on a Sources line, English times such as 10.00 am,<br/>excerpts that did not reach the model, names missing,<br/>a name only in the question: from_conversation,<br/>size limit, contextCoverage, resolveLabel"]
+        grounding["grounding.test.mjs<br/>sentences with offsets, German day.month dates kept inside,<br/>groundAnswer: supported statements,<br/>changed numbers, dates, weekdays and codes named,<br/>citation inheritance, facts elsewhere or in no excerpt,<br/>facts from the question, approximations, unknown labels,<br/>bad labels on a Sources line, English times such as 10.00 am,<br/>excerpts that did not reach the model, names missing,<br/>a name only in the question: from_conversation,<br/>a value next to other words: fact_context,<br/>size limit, contextCoverage, resolveLabel"]
+        gv2["grounding-v2.test.mjs<br/>GROUNDING starpi-grounding 2, GROUNDING_VERSIONS 1 and 2,<br/>version 3 throws; negations dropped, added or reversed in<br/>English and German: negation_inversion, always weak, none for<br/>negations written differently, time conditions, ranges,<br/>restrictions, questions or clauses with other numbers;<br/>a name the excerpt has in another place: name_context,<br/>not for titles, genitives, hyphenated names, names from<br/>the question or a statement joining two passages, the same<br/>whatever other excerpts were given; values next to other<br/>words: fact_context; version numbers read as codes;<br/>version 1 verdicts unchanged; receipts recompute both<br/>versions, format v1 refuses the version 2 reason codes"]
         gview["grounding-view.test.mjs, jsdom<br/>blocks from rendered paragraphs, lists and tables, code skipped,<br/>items of a loose list inherit the lead-in's citations,<br/>summary bar, only the flagged citation button marked<br/>with aria-describedby, neutral grounding-none bar with<br/>the shield icon when nothing was compared,<br/>works without the CSS Custom Highlight API,<br/>extractive answers never flagged"]
-        seval["source-check-eval.test.mjs, sets dev and holdout<br/>of eval.json: no statement of a faithful answer unsupported,<br/>faithful statements marked weak at most 0 in dev, 15 in holdout,<br/>per category at least the published number of planted errors<br/>marked weak or unsupported, e.g. number 15 in each set,<br/>every date, time and weekday error marked unsupported"]
+        seval["source-check-eval.test.mjs, rules versions 1 and 2<br/>on sets dev, holdout and paraphrases, version 2 also on v2dev<br/>and v2holdout, the held-out file checked against its SHA-256:<br/>no statement of a faithful answer unsupported, faithful<br/>statements marked weak at most as published, version 2:<br/>0 in dev and v2dev, 16 in holdout, 8 in v2holdout,<br/>27 in paraphrases; per category at least the published<br/>number of planted errors marked weak or unsupported,<br/>e.g. version 2 negation 24 in v2dev and 16 in v2holdout;<br/>in dev and holdout every date, time and weekday error unsupported"]
     end
 
     subgraph gReceipt["Receipts and pinned rules"]
-        receipt["receipt.test.mjs<br/>SHA-256 over UTF-8, canonical JSON, fingerprints,<br/>offsets, verdicts, id over the rest, optional texts left out,<br/>validateReceipt rejections incl. unknown members and reason codes,<br/>verifyReceipt: passages reproduced, missing or modified file,<br/>edited receipt, changed chunking rules, a partly delivered<br/>excerpt recomputed on its deliveredChars, skipped without them,<br/>reason passages left out with the excerpts,<br/>over 20 reasons (20 kept), a long statement<br/>and a long title still give a valid receipt,<br/>verify-receipt.mjs exit codes 0, 1 and 2,<br/>docs/spec/receipt.schema.json accepts the receipts the app<br/>builds and rejects what validateReceipt rejects,<br/>its reason codes equal REASON_CODES"]
-        golden["golden.test.mjs<br/>SHA-256 pins of extracted text and chunk bounds,<br/>verdicts on a fixed answer, SHA-256 of the verdicts and<br/>reasons for all 308 labelled answers, per EXTRACTOR,<br/>CHUNKER and GROUNDING version: changed output needs a version bump"]
+        receipt["receipt.test.mjs<br/>SHA-256 over UTF-8, canonical JSON, fingerprints,<br/>offsets, verdicts, id over the rest, optional texts left out,<br/>validateReceipt rejections incl. unknown members and reason codes,<br/>verifyReceipt: passages reproduced, missing or modified file,<br/>edited receipt, changed chunking rules, a partly delivered<br/>excerpt recomputed on its deliveredChars, skipped without them,<br/>reason passages left out with the excerpts,<br/>over 20 reasons (20 kept), a long statement<br/>and a long title still give a valid receipt,<br/>verify-receipt.mjs exit codes 0, 1 and 2,<br/>docs/spec/receipt.schema.json for v1 and receipt-v2.schema.json<br/>for v2 accept the receipts built in their format and reject<br/>what validateReceipt rejects, their reason codes equal<br/>REASON_CODES_V1 and REASON_CODES, the v2 schema<br/>describes signed receipts of both algorithms"]
+        rv2["receipt-v2.test.mjs<br/>v2 by default: a root over one leaf per citation and<br/>a proof in each, one citation checked against the root alone,<br/>the same root without excerpt texts and question, v1 on request,<br/>verifyReceipt reports the root, the proofs and an edited citation;<br/>Ed25519 and ES256: valid with the embedded key, trusted with<br/>the signer's key as CryptoKey, JWK or PEM, also checked<br/>with node:crypto, every edit after signing invalid, a re-signed<br/>receipt key_mismatch for the signer's key; malformed trees,<br/>proofs and signatures and v2 members in v1 refused;<br/>the receipt of Starpi 1.3.0 still verifies; verify-receipt.mjs<br/>with --public-key: exit 0, 1 and 2"]
+        merkle["merkle.test.mjs<br/>Certificate Transparency test vectors, root and every<br/>audit path equal to an independent implementation<br/>for 0 to 64 leaves, a proof for another leaf, position,<br/>size or root, or a changed path, rejected;<br/>hex and base64url encoded canonically"]
+        golden["golden.test.mjs<br/>SHA-256 pins of extracted text and chunk bounds,<br/>verdicts on a fixed answer, SHA-256 of the verdicts and<br/>reasons of version 1 for all 308 labelled answers and<br/>of version 2 for the 2930 statements of every answer set,<br/>per EXTRACTOR, CHUNKER and GROUNDING version:<br/>changed output needs a version bump"]
     end
 
-    subgraph gDemo["Sample files and the package"]
+    subgraph gDemo["Documents, sample files and the package"]
+        ground["ground.test.mjs<br/>checkDocument: line and column of every statement,<br/>labels or every excerpt, a long document split at headings<br/>with the Sources line in each part, an oversized paragraph<br/>reported as not checked; SARIF: a rule per reason code worded<br/>like en.json, one result per statement to review, fingerprints<br/>that survive a moved line; starpi-ground: a directory read<br/>like the app, --fail-on, labels, SARIF to a file, exit 2 on<br/>bad arguments, escaped control characters"]
         demo["demo.test.mjs<br/>English and German sample files match the list in demo.js,<br/>the sample questions launch, budget and risks find their facts,<br/>the extractive answer has at least 2 supported and<br/>no weak or unsupported statements"]
-        core["core-package.test.mjs<br/>build-core.mjs into a temp dir with --no-types,<br/>exports equal packages/core/src/index.js, only pdfjs-dist imported,<br/>the bundle checks an answer and builds a valid receipt,<br/>the bundled verify-receipt.js reproduces it,<br/>package.json name, exports, bin, no dependencies<br/>of any kind, files cover every entry point, publishConfig public,<br/>workspace of the root, same version as the app<br/>and in the lockfile, pdfjs-dist peer major as the app's"]
+        core["core-package.test.mjs<br/>build-core.mjs into a temp dir with --no-types, both commands,<br/>exports equal packages/core/src/index.js, only pdfjs-dist imported,<br/>the bundle checks an answer and builds a valid receipt,<br/>the bundled verify-receipt.js reproduces it with a valid tree,<br/>the bundled ground.js writes SARIF and exits 1, or 2 without<br/>arguments, package.json name, exports, both bins, no dependencies<br/>of any kind, files cover every entry point, publishConfig public,<br/>workspace of the root, same version as the app<br/>and in the lockfile, pdfjs-dist peer major as the app's"]
     end
 
     runner --> facts
     runner --> grounding
+    runner --> gv2
     runner --> gview
     runner --> seval
     runner --> receipt
+    runner --> rv2
+    runner --> merkle
     runner --> golden
+    runner --> ground
     runner --> demo
     runner --> core
 ```
 
-<sub>Sources: [`tests/unit/facts.test.mjs`](../tests/unit/facts.test.mjs), [`tests/unit/grounding.test.mjs`](../tests/unit/grounding.test.mjs), [`tests/unit/grounding-view.test.mjs`](../tests/unit/grounding-view.test.mjs), [`tests/unit/source-check-eval.test.mjs`](../tests/unit/source-check-eval.test.mjs), [`tests/unit/receipt.test.mjs`](../tests/unit/receipt.test.mjs), [`tests/unit/golden.test.mjs`](../tests/unit/golden.test.mjs), [`tests/unit/demo.test.mjs`](../tests/unit/demo.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`tests/fixtures/grounding/eval.json`](../tests/fixtures/grounding/eval.json), [`docs/spec/receipt.schema.json`](../docs/spec/receipt.schema.json), [`src/js/demo.js`](../src/js/demo.js)</sub>
+<sub>Sources: [`tests/unit/facts.test.mjs`](../tests/unit/facts.test.mjs), [`tests/unit/grounding.test.mjs`](../tests/unit/grounding.test.mjs), [`tests/unit/grounding-v2.test.mjs`](../tests/unit/grounding-v2.test.mjs), [`tests/unit/grounding-view.test.mjs`](../tests/unit/grounding-view.test.mjs), [`tests/unit/source-check-eval.test.mjs`](../tests/unit/source-check-eval.test.mjs), [`tests/unit/receipt.test.mjs`](../tests/unit/receipt.test.mjs), [`tests/unit/receipt-v2.test.mjs`](../tests/unit/receipt-v2.test.mjs), [`tests/unit/merkle.test.mjs`](../tests/unit/merkle.test.mjs), [`tests/unit/golden.test.mjs`](../tests/unit/golden.test.mjs), [`tests/unit/ground.test.mjs`](../tests/unit/ground.test.mjs), [`tests/unit/demo.test.mjs`](../tests/unit/demo.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`tests/fixtures/grounding/eval.json`](../tests/fixtures/grounding/eval.json), [`tests/fixtures/receipts/v1.3.0-receipt.json`](../tests/fixtures/receipts/v1.3.0-receipt.json), [`docs/spec/receipt.schema.json`](../docs/spec/receipt.schema.json), [`docs/spec/receipt-v2.schema.json`](../docs/spec/receipt-v2.schema.json), [`src/js/demo.js`](../src/js/demo.js)</sub>
 
 ### End-to-end tests with mocked Supabase and diagnostics
 
-Playwright serves the built dist/ through scripts/serve.mjs, which applies the vercel.json headers to every path, and runs app.spec.mjs (16 tests) and trust.spec.mjs (12 tests) on a desktop and a mobile Chromium project. mockSupabase answers every *.supabase.co request with two independent flags, hardened (otherwise a pre-migration project) and anonymousAuth, reports through auth/v1/settings whether anonymous sign-ins are on, and seeds a document with hostile markup; the diagnostics fixture fails a test on any CSP violation, page error, unexpected console error or request to a host other than 127.0.0.1 and the mocked Supabase. The workspace tests check that a question answered from workspace files or about an attached file stays in localStorage with its answer while chats sync, that a citation made before Clear workspace never opens a file added afterwards, and that a batch reports every file, refuses the same file twice and renames a different file with the same name. Two settings tests check that the save dialog confirms only what the browser stored, an offline-start test checks that the app reconnects on the online event and then syncs chats, and docs-diagrams.spec.mjs renders every Mermaid block in the repository Markdown with mermaid 12.1.0, skipped on the mobile project.
+Playwright serves the built dist/ through scripts/serve.mjs, which applies the vercel.json headers to every path, and runs app.spec.mjs (16 tests) and trust.spec.mjs (13 tests) on a desktop and a mobile Chromium project. mockSupabase answers every *.supabase.co request with two independent flags, hardened (otherwise a pre-migration project) and anonymousAuth, reports through auth/v1/settings whether anonymous sign-ins are on, and seeds a document with hostile markup; the diagnostics fixture fails a test on any CSP violation, page error, unexpected console error or request to a host other than 127.0.0.1 and the mocked Supabase. The workspace tests check that a question answered from workspace files or about an attached file stays in localStorage with its answer while chats sync, that a citation made before Clear workspace never opens a file added afterwards, and that a batch reports every file, refuses the same file twice and renames a different file with the same name. Two settings tests check that the save dialog confirms only what the browser stored, an offline-start test checks that the app reconnects on the online event and then syncs chats, and docs-diagrams.spec.mjs renders every Mermaid block in the repository Markdown with mermaid 12.1.0, skipped on the mobile project.
 
 <!-- diagram: test-strategy-e2e -->
 ```mermaid
@@ -6194,7 +6257,7 @@ flowchart TD
         s11["Unsupported photo.png rejected with a clear message"]
     end
 
-    trust["trust.spec.mjs, 12 tests, both projects:<br/>sample files, source check, receipts, privacy,<br/>session without sign-in, axe scan and keyboard,<br/>see the next diagram"]
+    trust["trust.spec.mjs, 13 tests, both projects:<br/>sample files, source check, receipts, privacy,<br/>session without sign-in, axe scan and keyboard,<br/>see the next diagram"]
 
     docs["docs-diagrams.spec.mjs, skipped on the mobile project<br/>every mermaid block in repository Markdown parses and renders<br/>with the pinned mermaid 12.1.0, securityLevel strict,<br/>in a blank page via setContent: no app page, no diagnostics fixture"]
 
@@ -6215,12 +6278,12 @@ flowchart TD
 
 ### End-to-end tests for the source check, receipts and accessibility
 
-trust.spec.mjs runs 12 tests on both projects, each with a hardened mockSupabase and the diagnostics fixture. Model answers come from routes for the Gemini and OpenRouter APIs that the spec registers after the diagnostics route; Playwright tries later routes first, so these two hosts are answered instead of aborted. The tests load the sample files in one click and require a sample answer to pass the source check, show the check flagging the deliberate error of the demo, and check that a mocked model answer with a changed number and weekday gets both named while the same facts in German formats pass. Three chat tests cover a question that starts with a greeting, a wide table that must not scroll the conversation sideways, and a message box that grows with multi-line input. They download a receipt whose file fingerprint equals the SHA-256 of the file, verify it in the dialog against the original and against a changed copy, keep a turn about an attached file out of the history sent to a cloud provider, and show the published knowledge without a browser session. An axe scan of six views must find no serious or critical violation, and a keyboard test checks that the attach button is two Shift+Tab presses from the message box, that focus stays inside the open citation drawer and that Escape returns it to the citation chip.
+trust.spec.mjs runs 13 tests on both projects, each with a hardened mockSupabase and the diagnostics fixture. Model answers come from routes for the Gemini and OpenRouter APIs that the spec registers after the diagnostics route; Playwright tries later routes first, so these two hosts are answered instead of aborted. The tests load the sample files in one click and require a sample answer to pass the source check, show the check flagging the deliberate error of the demo, and check that a mocked model answer with a changed number and weekday gets both named, that one which reverses its excerpt and puts a name where the excerpt has another one gets both reasons as weak, without a flagged chip, and that the same facts in German formats pass. Three chat tests cover a question that starts with a greeting, a wide table that must not scroll the conversation sideways, and a message box that grows with multi-line input. They download a starpi.receipt/v2 receipt whose file fingerprint equals the SHA-256 of the file and whose Merkle root the dialog previews, verify it in the dialog against the original (Merkle root and proofs valid, not signed), sign it outside the app with ES256 and check it with the signer's public key and with another key, verify it against a changed copy, keep a turn about an attached file out of the history sent to a cloud provider, and show the published knowledge without a browser session. An axe scan of six views must find no serious or critical violation, and a keyboard test checks that the attach button is two Shift+Tab presses from the message box, that focus stays inside the open citation drawer and that Escape returns it to the citation chip.
 
 <!-- diagram: test-strategy-e2e-trust -->
 ```mermaid
 flowchart TD
-    run(["trust.spec.mjs: 12 tests on desktop-chromium and mobile-chromium,<br/>mockSupabase hardened, diagnostics fixture on every test"])
+    run(["trust.spec.mjs: 13 tests on desktop-chromium and mobile-chromium,<br/>mockSupabase hardened, diagnostics fixture on every test"])
 
     subgraph mocks["model mocks in the spec"]
         gem["mockGemini: starpi_gemini_key in sessionStorage,<br/>generativelanguage.googleapis.com answers a fixed text"]
@@ -6238,16 +6301,18 @@ flowchart TD
         t5["four-line question: the message box<br/>grows by more than 30 px"]
     end
 
-    subgraph sCheck["source check on model answers, 2 tests"]
+    subgraph sCheck["source check on model answers, 3 tests"]
         t6["attached budget.md, mocked answer with 520,000 EUR and Friday:<br/>1/3 statements match, 520,000 and Friday each named<br/>as not in the budget.md label, 2 flagged chips"]
+        t6b["attached spec.md, mocked answer: Power over Ethernet<br/>is supported, Marcus Hale owns the specification,<br/>Port 8443 serves the admin interface: 1/3 statements match,<br/>the spec.md label says the opposite and names someone<br/>or something else here, not Marcus Hale, badge 2 partly,<br/>no flagged chip"]
         t7["mocked German answer with 480.000 € and<br/>dienstags um 10:00 Uhr: bar grounding-ok, 2/2 statements"]
     end
 
     subgraph sReceipt["answer receipts, 1 test"]
-        t8["open-receipt shows 1 workspace, download receipt.json:<br/>schema starpi.receipt/v1, fileSha256 equals<br/>the SHA-256 of budget.md"]
-        t9["verify in the dialog with receiptFile and receiptSources:<br/>1/1 workspace excerpts reproduced from your files,<br/>exact passage found in budget.md"]
-        t10["480,000 changed to 520,000 in the file:<br/>none of the chosen files has the recorded fingerprint,<br/>Escape closes, focus back on open-receipt"]
-        t8 --> t9 --> t10
+        t8["open-receipt shows 1 workspace, download receipt.json:<br/>schema starpi.receipt/v2, fileSha256 equals<br/>the SHA-256 of budget.md, receiptRoot shows<br/>the first 16 hex chars of merkle.root"]
+        t9["verify in the dialog with receiptFile and receiptSources:<br/>1/1 workspace excerpts reproduced from your files,<br/>exact passage found in budget.md, Merkle root reproduced,<br/>2/2 inclusion proofs valid, Not signed."]
+        t9b["signReceipt in the test with a new ECDSA P-256 key,<br/>its public JWK chosen in receiptPublicKey: signed with<br/>the public key you chose, ES256 and the key id,<br/>another key's JWK: not with the public key you chose"]
+        t10["key cleared, the unsigned receipt again,<br/>480,000 changed to 520,000 in the file:<br/>none of the chosen files has the recorded fingerprint,<br/>Escape closes, focus back on open-receipt"]
+        t8 --> t9 --> t9b --> t10
     end
 
     subgraph sPriv["privacy and session, 2 tests"]
@@ -6271,7 +6336,7 @@ flowchart TD
     orr -.-> t11
 ```
 
-<sub>Sources: [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/fixtures.mjs`](../tests/e2e/fixtures.mjs), [`playwright.config.mjs`](../playwright.config.mjs), [`package.json`](../package.json)</sub>
+<sub>Sources: [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/fixtures.mjs`](../tests/e2e/fixtures.mjs), [`playwright.config.mjs`](../playwright.config.mjs), [`package.json`](../package.json), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
 
 ### CI workflow triggers, jobs and Dependabot
 
@@ -6317,7 +6382,7 @@ flowchart TD
 
 ### Frontend and end-to-end jobs
 
-The frontend job installs from the lockfile without install scripts, then runs lint, typecheck, the 25 unit test files, pack:core (a typed build of @starpi/core and npm pack --dry-run, so a broken type declaration or package file list fails the pull request, not the release), the production build and verify:dist, and uploads dist (kept 3 days, and the upload errors if there are no files); any failing step fails the job and skips e2e. e2e downloads that same dist, installs Chromium and runs Playwright against scripts/serve.mjs on port 4173 with service workers blocked, test.only forbidden on CI and no retries. Its specs exercise the app under the production headers (every response, workers included, carries the CSP) with a mocked Supabase, check the source check, receipts and accessibility with mocked model APIs and axe, and parse and render every Mermaid block in the Markdown files with mermaid 12.1.0, skipped on the mobile project. If any e2e step fails, playwright-report and test-results are uploaded for 7 days.
+The frontend job installs from the lockfile without install scripts, then runs lint, typecheck, the 29 unit test files, pack:core (a typed build of @starpi/core and npm pack --dry-run, so a broken type declaration or package file list fails the pull request, not the release), the production build and verify:dist, and uploads dist (kept 3 days, and the upload errors if there are no files); any failing step fails the job and skips e2e. e2e downloads that same dist, installs Chromium and runs Playwright against scripts/serve.mjs on port 4173 with service workers blocked, test.only forbidden on CI and no retries. Its specs exercise the app under the production headers (every response, workers included, carries the CSP) with a mocked Supabase, check the source check, receipts and accessibility with mocked model APIs and axe, and parse and render every Mermaid block in the Markdown files with mermaid 12.1.0, skipped on the mobile project. If any e2e step fails, playwright-report and test-results are uploaded for 7 days.
 
 <!-- diagram: ci-frontend-e2e -->
 ```mermaid
@@ -6328,7 +6393,7 @@ flowchart TD
       F3["npm ci --ignore-scripts"]
       F4["npm run lint: eslint ."]
       F5["npm run typecheck: tsc -p tsconfig.json --noEmit"]
-      F6["npm test: node --test tests/unit/*.test.mjs,<br/>25 files"]
+      F6["npm test: node --test tests/unit/*.test.mjs,<br/>29 files"]
       F6b["npm run pack:core: npm pack --workspace=@starpi/core<br/>--dry-run, prepack builds it with type declarations"]
       F7["npm run build: scripts/build.mjs"]
       F8["npm run verify:dist: CSP compatibility,<br/>assets, service worker and build version"]
@@ -6433,7 +6498,7 @@ flowchart TD
 
 ### Release workflow after CI
 
-release.yml publishes a GitHub release for the version in package.json, with the @starpi/core tarball, the CycloneDX SBOMs of the app and of the package, and SHA256SUMS as assets. It starts when the CI workflow completes on main (workflow_run) or by manual dispatch, which takes no inputs, and its jobs run for a dispatch on main or for a CI run that succeeded and was triggered by a push. The prepare job has read-only permissions (contents, and actions to look up CI runs): it checks out the commit CI tested (for a dispatch, the head of main), reads the version from package.json with node -p, requires it to be three dot-separated numbers, and ends successfully without a release when docs/releases/vX.Y.Z.md does not exist or the release vX.Y.Z is already published. Otherwise it requires, for a dispatch, a successful push-triggered CI run of that commit, packages/core/package.json to have the same version, and a tag vX.Y.Z, if one was pushed ahead, to point at the tested commit, then installs from the lockfile without install scripts, packs @starpi/core (its prepack script runs build-core.mjs with type declarations), writes the SBOMs with npm run sbom, smoke-tests the tarball (its file list, the version in the bundle banner, an offline install into an empty project, the exported functions, the starpi-verify-receipt command) and writes SHA256SUMS over the three files, which it uploads as an artifact. The release job needs prepare, is the only job with contents: write and installs and runs nothing from the repository: it checks out the commit only for the notes file, downloads the artifact, checks SHA256SUMS, ends successfully if the release was published in the meantime, fails on a draft release left by an interrupted upload (gh uploads assets to a draft and publishes it at the end), and otherwise gh release create tags that commit (or keeps the pushed tag), titles the release Starpi vX.Y.Z, uses the notes file, marks it as latest and attaches the four files. The release concurrency group never cancels a running release. The workflow deploys nothing and does not publish to npm: the maintainer publishes the attached tarball (CONTRIBUTING.md, Releases).
+release.yml publishes a GitHub release for the version in package.json, with the @starpi/core tarball, the CycloneDX SBOMs of the app and of the package, and SHA256SUMS as assets. It starts when the CI workflow completes on main (workflow_run) or by manual dispatch, which takes no inputs, and its jobs run for a dispatch on main or for a CI run that succeeded and was triggered by a push. The prepare job has read-only permissions (contents, and actions to look up CI runs): it checks out the commit CI tested (for a dispatch, the head of main), reads the version from package.json with node -p, requires it to be three dot-separated numbers, and ends successfully without a release when docs/releases/vX.Y.Z.md does not exist or the release vX.Y.Z is already published. Otherwise it requires, for a dispatch, a successful push-triggered CI run of that commit, packages/core/package.json to have the same version, and a tag vX.Y.Z, if one was pushed ahead, to point at the tested commit, then installs from the lockfile without install scripts, packs @starpi/core (its prepack script runs build-core.mjs with type declarations), writes the SBOMs with npm run sbom, smoke-tests the tarball (its file list with dist/verify-receipt.js and dist/ground.js, the version in the bundle banner, an offline install into an empty project, the exported functions, both commands without arguments, and starpi-ground on a plan and an answer with a changed budget, which must exit 1 and write SARIF 2.1.0 with one missing_fact result) and writes SHA256SUMS over the three files, which it uploads as an artifact. The release job needs prepare, is the only job with contents: write and installs and runs nothing from the repository: it checks out the commit only for the notes file, downloads the artifact, checks SHA256SUMS, ends successfully if the release was published in the meantime, fails on a draft release left by an interrupted upload (gh uploads assets to a draft and publishes it at the end), and otherwise gh release create tags that commit (or keeps the pushed tag), titles the release Starpi vX.Y.Z, uses the notes file, marks it as latest and attaches the four files. The release concurrency group never cancels a running release. The workflow deploys nothing and does not publish to npm: the maintainer publishes the attached tarball (CONTRIBUTING.md, Releases).
 
 <!-- diagram: ci-release-workflow -->
 ```mermaid
@@ -6451,7 +6516,7 @@ flowchart TD
       VIEW{"gh release view vX.Y.Z<br/>finds a published release?"}
       LOCK{"for a dispatch: CI passed on a push of the commit,<br/>packages/core/package.json has X.Y.Z,<br/>and a pushed tag vX.Y.Z, if any,<br/>points at the tested commit?"}
       BUILD["setup-node 22 without cache, npm ci --ignore-scripts,<br/>npm pack --workspace=@starpi/core into release-assets,<br/>prepack runs build-core.mjs,<br/>npm run sbom -- --out release-assets"]
-      SMOKE{"smoke test: files in the tarball, banner version,<br/>offline npm install into an empty project,<br/>exports import, starpi-verify-receipt exits 2<br/>without arguments?"}
+      SMOKE{"smoke test: package.json, README.md, LICENSE,<br/>dist/index.js, index.d.ts, verify-receipt.js and ground.js<br/>in the tarball, banner version, offline npm install<br/>into an empty project, groundAnswer, blocksFromMarkdown,<br/>checkDocument, toSarif, buildReceipt, signReceipt,<br/>verifyReceipt, verifyReceiptSignature, chunkText and<br/>BM25Index exported as functions, starpi-verify-receipt and<br/>starpi-ground exit 2 without arguments, starpi-ground on<br/>an answer of 520,000 EUR against a plan of 480,000 EUR<br/>exits 1 and writes SARIF 2.1.0 with only missing_fact?"}
       SUMS["sha256sum of the tarball and both SBOMs<br/>into SHA256SUMS, upload-artifact release-assets"]
       CO --> VER --> VCHK
       VCHK -->|"yes"| NOTES
@@ -6666,11 +6731,11 @@ flowchart TD
 
 ## 12. Source check, answer receipts and sample files
 
-Every new answer with citations gets a source check and a receipt draft, both on the device; the fixed demo answer gets only the check. The logic lives in pure modules under src/js/core (no DOM; they run in the browser, in workers and in Node, and @starpi/core re-exports them). The source check compares the numbers, dates, times, weekdays, codes, quotations and wording of each statement with the excerpts it cites. It is a deterministic heuristic, not a second model, and a match never proves a statement correct. An answer receipt is unsigned JSON: it shows that the cited workspace excerpts can be reproduced from the same files, and it does not prove that the receipt is authentic, what a model saw, or that the answer's reasoning is right. The sample files let a new user try both without any setup.
+Every new answer with citations gets a source check and a receipt draft, both on the device; the fixed demo answer gets only the check. The logic lives in pure modules under src/js/core (no DOM; they run in the browser, in workers and in Node, and @starpi/core re-exports them). The source check compares the numbers, dates, times, weekdays, codes, quotations and wording of each statement with the excerpts it cites; version 2 of its rules (starpi-grounding 2, the current one; version 1 can still be run) also reports, in the excerpts' language, a statement that reverses a negation of its excerpt and a name or value that the excerpt puts next to something else. It is a deterministic heuristic, not a second model, and a match never proves a statement correct. An answer receipt is starpi.receipt/v2 JSON with a Merkle tree over its citations: it shows that the cited workspace excerpts can be reproduced from the same files and that each citation belongs to the receipt, and it does not prove what a model saw or that the answer's reasoning is right. The app does not sign receipts; a deployment can sign one with signReceipt from @starpi/core, and only a verifier who has the signer's public key learns who signed it. starpi-ground runs the same source check on a Markdown document against source files for scripts and CI. The sample files let a new user try the check and the receipts without any setup.
 
 ### Source check: from the rendered answer to the panel
 
-After an answer with a citation scope is rendered, chat.js passes applyGrounding one source per excerpt, carrying the text that actually reached the model. For the extractive synthesizer that is the excerpt as given; for a model answer it is what contextCoverage parses back from the context that was sent, marked full, partial or omitted. given holds the question and the user's messages among the last 4 conversation entries, never the model's own earlier answers, and citedOnly (extractive answers) makes the check ignore statements without their own marker. blocksFromElement reads the rendered DOM, not the Markdown, so a citation counts only when it is a citation button of this answer's scope; other label-like text becomes a bad citation. groundAnswer skips answers with more than 20,000 characters of text, links markers to statements, skips answers with more than 300 statements and runs checkSentence on each one (next diagram). The result is a details panel under the answer that lists the flagged statements with one reason line per reason, unsupported ones first, and opens by itself when a statement is unsupported. Its colour and shield icon follow the worst verdict; when nothing was compared (the answer was too long, or every checked statement stayed unchecked) the bar is neutral grey with a plain shield, never the green one. Citation buttons of unsupported statements are flagged and point to their list item with aria-describedby. Where the browser supports the CSS Custom Highlight API, those statements are also highlighted without changing the DOM. Every panel ends with the disclaimer that a match does not prove a statement correct.
+After an answer with a citation scope is rendered, chat.js passes applyGrounding one source per excerpt, carrying the text that actually reached the model. For the extractive synthesizer that is the excerpt as given; for a model answer it is what contextCoverage parses back from the context that was sent, marked full, partial or omitted. given holds the question and the user's messages among the last 4 conversation entries, never the model's own earlier answers, and citedOnly (extractive answers) makes the check ignore statements without their own marker. blocksFromElement reads the rendered DOM, not the Markdown, so a citation counts only when it is a citation button of this answer's scope; other label-like text becomes a bad citation. groundAnswer runs the current rules, version 2 (GROUNDING.version), since the app passes no other version; it skips answers with more than 20,000 characters of text, links markers to statements, skips answers with more than 300 statements and runs checkSentence on each one (next two diagrams). The result is a details panel under the answer that lists the flagged statements with one reason line per reason, unsupported ones first, and opens by itself when a statement is unsupported. Its colour and shield icon follow the worst verdict; when nothing was compared (the answer was too long, or every checked statement stayed unchecked) the bar is neutral grey with a plain shield, never the green one. Citation buttons of unsupported statements are flagged and point to their list item with aria-describedby. Where the browser supports the CSS Custom Highlight API, those statements are also highlighted without changing the DOM. Every panel ends with the disclaimer that a match does not prove a statement correct.
 
 <!-- diagram: source-check-pipeline -->
 ```mermaid
@@ -6693,13 +6758,13 @@ flowchart TD
     sCite --> sSize
     sLoose --> sSize
     sLead --> sSize
-    sSize{"groundAnswer: text segments over<br/>THRESHOLDS.maxChars 20000 characters?"}
+    sSize{"groundAnswer, rules version GROUNDING.version 2:<br/>text segments over THRESHOLDS.maxChars 20000 characters?"}
     sSize -->|"yes"| sSkip["skipped too_long"]
     sSize -->|"no"| sAssoc["associate: sentenceSpans per block, no statement ends at the dot<br/>of an ordinal, a day.month date such as 1.6. or a known abbreviation,<br/>a marker belongs to the last statement that starts before it,<br/>a statement without one inherits from the next cited statement<br/>of its block, then the previous one, then its lead-in up to 4 hops,<br/>then the markers and bad labels of contentless blocks<br/>such as a Sources line"]
     sAssoc --> sMany{"more than maxSentences 300 statements?"}
     sMany -->|"yes"| sSkip
-    sMany -->|"no"| sIdx["indexSource per excerpt over text, doc and heading,<br/>no index for an omitted excerpt, given indexed,<br/>answer language from guessLanguage"]
-    sIdx --> sCheck["checkSentence per statement,<br/>see source-check-verdicts"]
+    sMany -->|"no"| sIdx["indexSource per excerpt over text, doc and heading<br/>with the same rules version, no index for an omitted excerpt,<br/>given indexed, answer language from guessLanguage"]
+    sIdx --> sCheck["checkSentence per statement,<br/>see source-check-verdicts and source-check-v2-checks"]
     sCheck --> sCount["counts supported, weak, unsupported, unchecked,<br/>neutral statements not counted"]
     sCount --> sAny{"anything counted, unchecked or skipped?"}
     sSkip --> sAny
@@ -6722,12 +6787,12 @@ flowchart TD
 
 ### checkSentence: when a statement is checked, its reasons and its verdict
 
-checkSentence first decides whether a statement is checked at all. Headings and table header rows without their own marker, statements without their own marker in extractive answers, statements with no citation, no bad label and no fact, and statements with no fact, fewer than 3 content words and no bad label of their own are neutral: they are not counted and not written to a receipt. For every other statement it collects reasons, each at level weak or unsupported: bad labels, cited excerpts that did not fit into the model's context, each fact looked up in the cited delivered excerpts and then in the other excerpts and in what the user said, word overlap, names in English statements, and values that the excerpt states next to other words. One unsupported reason makes the statement unsupported and any other reason makes it weak. A cited statement without reasons is supported when it had facts or measured overlap, and unchecked otherwise, which in practice means a statement without facts whose excerpts are all in another language.
+checkSentence first decides whether a statement is checked at all. Headings and table header rows without their own marker, statements without their own marker in extractive answers, statements with no citation, no bad label and no fact, and statements with no fact, fewer than 3 content words and no bad label of their own are neutral: they are not counted and not written to a receipt. For every other statement it collects reasons, each at level weak or unsupported: bad labels, cited excerpts that did not fit into the model's context, each fact looked up in the cited delivered excerpts and then in the other excerpts and in what the user said, word overlap and names of English statements missing from the excerpts. Then the rules version decides: version 1 compares each value found with the words next to it (fact_context), and version 2, the default, runs checkV2 when every cited delivered excerpt is in the statement's language or either language is unknown: a reversed negation, a name in another place and its own fact_context rule, all weak (next diagram). One unsupported reason makes the statement unsupported and any other reason makes it weak. A cited statement without reasons is supported when it had facts or measured overlap, and unchecked otherwise, which in practice means a statement without facts whose excerpts are all in another language.
 
 <!-- diagram: source-check-verdicts -->
 ```mermaid
 flowchart TD
-    vIn(["checkSentence(statement, ctx)"]) --> vFacts["extractFacts and contentTokens of the statement text"]
+    vIn(["checkSentence(statement, ctx)"]) --> vFacts["extractFacts with ctx.version, GROUNDING.version 2<br/>by default, and contentTokens of the statement text"]
     vFacts --> vN1{"heading or header-row<br/>without its own marker?"}
     vN1 -->|"yes"| vNeutral(["neutral: not counted,<br/>left out of the receipt"])
     vN1 -->|"no"| vN2{"citedOnly, an extractive answer,<br/>and no own marker?"}
@@ -6760,12 +6825,17 @@ flowchart TD
     vWords{"delivered cited excerpts and at least<br/>3 content words?"}
     vWords -->|"no"| vNames
     vWords -->|"yes"| vLang{"language of the statement, else of the answer,<br/>differs from every known language of the cited excerpts?"}
-    vLang -->|"yes"| vCross["crossLanguage: facts only, overlap,<br/>names and fact_context skipped"]
+    vLang -->|"yes"| vCross["crossLanguage: facts only, overlap, names,<br/>fact_context and checkV2 skipped"]
     vLang -->|"no"| vOverlap["overlap = share of content words found with tokenMatches,<br/>below supportedOverlap 0.5: low_overlap, weak"]
     vOverlap --> vNames["English statement with delivered excerpts: a capitalised word that<br/>opens no sentence, list item, cell or clause, is no fact, weekday,<br/>month or stopword, and is in no cited delivered excerpt:<br/>from_conversation, weak, when it is in given, else name_missing, weak"]
-    vNames --> vCtx["fact_context, weak: a found value stands only in passages of the<br/>cited excerpts that share none of the words next to it in the statement,<br/>counting words found in at most half the passages, while a passage<br/>without the value shares them, the excerpt's heading counting as part<br/>of every passage, its document name not, found = the first such<br/>passage, at most 160 chars"]
+    vNames --> vVer{"rules version?"}
+    vVer -->|"1"| vCtx["version 1 fact_context, weak: a found value stands only in passages<br/>of the cited excerpts that share none of the words next to it in the<br/>statement, counting words found in at most half the passages, while<br/>a passage without the value shares them, the excerpt's heading<br/>counting as part of every passage, its document name not,<br/>found = the first such passage, at most 160 chars"]
+    vVer -->|"2"| vSame{"delivered cited excerpts, not crossLanguage,<br/>and each of them in the statement's language,<br/>or either language unknown?"}
+    vSame -->|"yes"| vV2["checkV2, see source-check-v2-checks:<br/>negation_inversion, name_context and<br/>version 2 fact_context, each weak"]
+    vSame -->|"no"| vVerdict
     vCross --> vVerdict
     vCtx --> vVerdict
+    vV2 --> vVerdict
     vVerdict{"verdict"}
     vVerdict -->|"a reason at level unsupported"| vU(["unsupported"])
     vVerdict -->|"any other reason"| vW(["weak"])
@@ -6776,17 +6846,81 @@ flowchart TD
 
 <sub>Sources: [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
 
+### checkV2: negations, names and values in another place
+
+Version 2 of the rules adds three checks to every statement that cites delivered excerpts in its own language (or in an unknown one). Each compares the statement only with the delivered excerpts it cites, never with other statements or with excerpts it does not cite, so a receipt that leaves other excerpts out still recomputes it. Each gives a weak reason, never an unsupported one: a lexical reading cannot tell every restatement from a contradiction, and a flag means open the source and check. The negation check (core/polarity.js) rewrites statement and excerpt sentences into a canonical form, in which "disabled" reads as "not enabled" and "prohibited" as "not allowed", splits them into clauses and anchors each negator to the word it negates; a statement clause that matches an excerpt clause in its words, in both directions, and in its numbers, but differs in the parity of its negations is reported as negation_inversion, quoting the excerpt sentence. The name check (core/binding.js) splits statement and excerpts into units at semicolons and conjunctions and reports name_context when the excerpt unit that best matches the statement's other words has a different name in place of the statement's, unless every such name of the statement stands in another excerpt unit that shares two of those words, so a statement that joins two passages is not flagged. Names are found without a list: capitalised words inside an English sentence, runs of two or more capitalised words, CamelCase and all-capital words, and capitalised words the excerpts themselves use as names. The value check replaces version 1's fact_context rule: a value of a statement part is reported when the passages holding it share fewer of the part's words than another passage with a value of the same kind, by the margins below. The thresholds were chosen on the development sets (docs/eval/v2-protocol.md).
+
+<!-- diagram: source-check-v2-checks -->
+```mermaid
+flowchart TD
+    wIn(["checkV2(statement text, delivered cited excerpts, ctx), from checkSentence<br/>with version 2, lang = the statement's language, else the answer's"])
+    wIn --> nQ{"statement ends with a question mark?"}
+    subgraph sg_neg["negationInversion: core/polarity.js"]
+        nCanon["canonicalText of the statement and of each excerpt sentence: fold,<br/>isn't and can't as is not and can not, neither ... nor as not ... or not,<br/>it is not true that as one negation; disabled, prohibited, rejected,<br/>failed, decreased, listed un-, in-, im-, il-, ir- and dis- words and<br/>-less words as notx before the positive word, German deaktiviert,<br/>verboten, gesunken, listed un-, in-, il- and ir- words and -los<br/>words likewise;<br/>no later than, not only, nicht nur and whether or not lose their<br/>negator; in a clause with a time condition such as until, before,<br/>bevor or bis, or next to a clause that starts with one,<br/>negators are dropped unless it is a range"]
+        nClauses["clausesOf with merge: split at sentence ends, semicolons, colons,<br/>commas and at and, or, but, while, because, und, oder, weil and others,<br/>a part with fewer than 2 content words joined to the next one"]
+        nProfile["profileClause: content tokens without stopwords and qualifiers<br/>such as still, yet, noch; each negator anchored to the next<br/>content word, or to the previous one at the end of the clause"]
+        nMatch{"another statement clause of at least POLARITY.minShared 2 tokens<br/>with excerpt clauses that hold at least 2 and minShare 0.6 of them,<br/>whose own tokens are at least minBack 0.5 in the statement clause<br/>and which hold every number of the statement clause?"}
+        nDiff{"every best match, by matched tokens: the same restriction<br/>as the statement, only, solely, nur, erst and the like in both<br/>sentences or in neither, and polarityDiffers: the parity of the<br/>negators anchored on shared words differs, and so does<br/>the parity of all negators?"}
+        nCanon --> nClauses --> nProfile --> nMatch
+        nMatch -->|"yes"| nDiff
+        nDiff -->|"no"| nMatch
+    end
+    nQ -->|"no"| nCanon
+    nDiff -->|"yes"| nR["negation_inversion, weak, cites that excerpt,<br/>found = the sentence of the first best match without a<br/>leading separator or closing punctuation, at most 160 chars"]
+    nQ -->|"yes"| mUnits
+    nMatch -->|"no"| mUnits
+    nR --> mUnits
+    subgraph sg_name["misplacedName: core/binding.js"]
+        mUnits["unitsOf each cited excerpt in its own language: sentences cut at<br/>semicolons, at a comma before and, but, while, und, aber, während<br/>and others, and at while, whereas, während, wobei; a table row<br/>with 2 or more column: value parts stays one record"]
+        mNames["capitalised words without stopwords, months, weekdays and titles<br/>such as Mr, Dr, Frau; name-like in a run of 2 or more, in CamelCase<br/>or all capitals, or in English when not opening the sentence;<br/>nameLexicon = the name-like words of all cited units"]
+        mCand{"another statement unit, then another comma piece of a unit<br/>whose pieces all have at least 2 content words, with candidate<br/>names: its names and its capitalised words in the lexicon,<br/>less names the question or the conversation gave?"}
+        mHas{"an excerpt unit with every one of these names that shares<br/>at least BINDING.minShared 2 and minShare 0.6 of the statement<br/>unit's words, a name of several words counting once?"}
+        mBest{"a best excerpt unit that lacks a name of the statement, has a name<br/>of its own instead, holds at least 2 and 0.6 of the statement's other<br/>words and more than the best unit before it, and whose own other<br/>words are at least minBack 0.6 in the statement, minBackRecord 0.3<br/>for a table row?"}
+        mHome{"every missing name is in another excerpt unit<br/>that shares BINDING.home 2 of the statement's other words?"}
+        mUnits --> mNames --> mCand
+        mCand -->|"yes"| mHas
+        mHas -->|"yes: this unit is supported"| mCand
+        mHas -->|"no"| mBest
+        mBest -->|"no"| mCand
+        mBest -->|"yes"| mHome
+        mHome -->|"yes: the statement joins two passages"| mCand
+    end
+    mHome -->|"no"| mR["name_context, weak, fact = the name's run of capitalised words<br/>as the statement writes it, cites that excerpt,<br/>found = the excerpt unit, at most 160 chars, no further unit"]
+    mCand -->|"no"| vPass
+    mR --> vPass
+    subgraph sg_val["misplacedValues: core/binding.js"]
+        vPass["valuePassages of each cited excerpt without its heading: sentences,<br/>also cut after a version number, split by valueParts version 2;<br/>bare: no words of its own, or a table row; short: one value and<br/>fewer than 2 other words; lead: the first part, for a later part with<br/>fewer than 3 words the first part does not have, not after a semicolon"]
+        vParts{"another part of valueParts(statement, 2): cut between two values<br/>at the last conjunction, semicolon or dash between them,<br/>at a bare comma only when there is none?"}
+        vTell{"the part has facts other than quotations and telling words:<br/>content words without facts, currency and unit words,<br/>found in at most half of all passages?"}
+        vFact{"another fact of the part, not a four-digit number from 1900<br/>to 2100, that passages hold exactly, none of them short?"}
+        vRel{"a passage without it that holds another value of the same kind,<br/>not one of the part's own, and scores at least BINDING.minRelated 2<br/>and margin 2 more than the best holder, or at least 1 while the<br/>holders score 0? score = telling words plus the part's other values<br/>found, a bare holder scored by its sentence, one with a lead also<br/>with the lead's words when the part repeats one of its own<br/>words the lead does not have, or it has none"}
+        vPass --> vParts
+        vParts -->|"yes"| vTell
+        vTell -->|"no"| vParts
+        vTell -->|"yes"| vFact
+        vFact -->|"no"| vParts
+        vFact -->|"yes"| vRel
+        vRel -->|"no"| vFact
+    end
+    vRel -->|"yes"| vR["fact_context, weak, fact = the value, cites the excerpt<br/>of the best scored holder, found = that passage,<br/>at most 160 chars"]
+    vR --> vFact
+    vParts -->|"no"| wOut(["reasons appended to checkSentence's reasons, all weak:<br/>a statement with no other reason becomes weak,<br/>never unsupported"])
+```
+
+<sub>Sources: [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/polarity.js`](../src/js/core/polarity.js), [`src/js/core/binding.js`](../src/js/core/binding.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/core/sentences.js`](../src/js/core/sentences.js), [`src/locales/en.json`](../src/locales/en.json), [`docs/eval/v2-protocol.md`](eval/v2-protocol.md)</sub>
+
 ### Facts: strict claims, lenient excerpts and how they are matched
 
-facts.js reads facts in two modes. extractFacts reads an answer statement strictly and records only what it is sure of, taking the dominant reading of a number; indexSource reads an excerpt leniently and records every plausible reading. A fact copied verbatim, or rewritten between English and German formats, therefore matches, while a changed value does not. Quotation words, codes, month names, content words and the excerpt word sequence go through the same fold on both sides. lookupFact answers exact, approx (numbers only: within 5 percent when the statement says the value is approximate, or equal once rounded to the digits written with a scale word), partial (quotations only, 80 percent of the words) or null. Word overlap uses tokenMatches, which tolerates inflection and German compounds. guessLanguage decides between English and German from function words; when a statement and all its cited excerpts are in different languages, only the facts are compared.
+facts.js reads facts in two modes. extractFacts reads an answer statement strictly and records only what it is sure of, taking the dominant reading of a number; indexSource reads an excerpt leniently and records every plausible reading. A fact copied verbatim, or rewritten between English and German formats, therefore matches, while a changed value does not. Version 2 of the rules, the default of both functions, also reads version numbers with three or four dotted parts (4.2.1, v3.9.4) as codes, where version 1 read 3.9.4 am as the number 3.9 and the time 4 am. Quotation words, codes, month names, content words and the excerpt word sequence go through the same fold on both sides. lookupFact answers exact, approx (numbers only: within 5 percent when the statement says the value is approximate, or equal once rounded to the digits written with a scale word), partial (quotations only, 80 percent of the words) or null. Word overlap uses tokenMatches, which tolerates inflection and German compounds. guessLanguage decides between English and German from function words; when a statement and all its cited excerpts are in different languages, only the facts are compared.
 
 <!-- diagram: source-check-facts -->
 ```mermaid
 flowchart TD
     fFold["fold, used on both sides for quotation words, code values, month names,<br/>content tokens and the word sequence, not for the raw text: NFKC,<br/>soft hyphens and PDF line-break hyphens removed, lower case, ae, oe,<br/>ue and ss for umlauts and sharp s, quotation marks and dashes unified"]
     subgraph sg_claim["extractFacts(statement): claim mode, strict"]
-        fC0["citation labels blanked, then each kind in this order,<br/>quotes, dates, times and codes masked once found"]
+        fC0["citation labels blanked, then each kind in this order,<br/>quotes, version numbers, dates, times and codes masked once found"]
         fC1["quote: 3 to 300 chars between German, English,<br/>straight or French quotation marks, at least 2 words"]
+        fCV["version 2 only, version number as a code: 3 or 4 parts of<br/>1 to 4 digits joined by dots, an optional v, value v:4.2.1 without<br/>leading zeros; not when the later parts all have 3 digits, as in<br/>4.480.000, nor when it could be a date, as 10.4.12, unless a v or<br/>a word such as version, firmware, release, build or patch precedes;<br/>a date written d.m.yy also gets the version reading"]
         fC2["date: 2026-09-14, 14.09.2026, 14.09.26, 14. September 2026,<br/>14 September 2026, September 14, 2026, September 2026,<br/>9/14/2026 read both ways when ambiguous, 09/2026,<br/>14.09. and am 14.09., 14.09. also read as the number 14.09,<br/>impossible dates dropped"]
         fC3["time: 10:00 with optional Uhr, h, am or pm,<br/>10.00 Uhr, 10.30 pm, 10 am, 10 Uhr"]
         fC4["weekday: English and German names, plural s allowed,<br/>month: full name only after in, by, until, bis, seit, early,<br/>end of and similar words, lowercase may skipped as a verb"]
@@ -6798,6 +6932,7 @@ flowchart TD
         fCT["contentTokens: BM25 tokens without stopwords, folded, without<br/>words such as according, source, about or million,<br/>without tokens that contain a digit"]
     end
     subgraph sg_src["indexSource(excerpt, doc, heading): source mode, every reading"]
+        fS0["version 2 only: version numbers first, read and masked<br/>as in claim mode, then the version reading of every<br/>d.m.yy triple left, which is still read as a date as well"]
         fS1["dates: full date, day and month, month and year, month,<br/>the year as a plain number, the day and month not,<br/>14.09. also as the number 14.09"]
         fS2["times with the hour as a number, weekdays,<br/>every full month name, no preposition needed"]
         fS3["codes, plus neighbouring word and number pairs:<br/>ISO 27001 and Q 3 index as ISO27001 and Q3"]
@@ -6805,12 +6940,12 @@ flowchart TD
         fS5["content tokens, their first 5 letters, the folded<br/>word sequence, language en, de or null"]
     end
     fFold -.-> fC0
-    fFold -.-> fS1
-    fC0 --> fC1 --> fC2 --> fC3 --> fC4 --> fC5 --> fC6
+    fFold -.-> fS0
+    fC0 --> fC1 --> fCV --> fC2 --> fC3 --> fC4 --> fC5 --> fC6
     fC6 --> fC7
     fC6 --> fC8
     fC6 --> fC9
-    fS1 --> fS2 --> fS3 --> fS4 --> fS5
+    fS0 --> fS1 --> fS2 --> fS3 --> fS4 --> fS5
     fC9 --> fLook
     fS4 --> fLook
     fLook{"lookupFact(fact, index)"}
@@ -6831,7 +6966,7 @@ flowchart TD
 
 ### Answer receipts: fingerprints, draft, dialog and download
 
-A receipt relies on fingerprints taken when a file is added. The ingestion worker hashes the file bytes before parsing, because pdf.js detaches the buffer it reads, then hashes the extracted text and records the extractor and chunker ids and versions with the chunk size and overlap. After the source check, chat.js keeps a receipt draft in main-thread memory. The draft holds the answer, the question, the check report and, for each citation, its delivered state and excerpt, for a partly delivered excerpt how many of its first characters reached the model (deliveredChars), plus the document fingerprints and chunk offsets of workspace excerpts. Nothing is written to storage. The Receipt button opens the export dialog, which previews the receipt id and counts and lets the user leave out the question or the excerpt texts; without the excerpt texts, the passages and numbers that check reasons quote from them (found of fact_context, approximate and fact_elsewhere) are left out too. Download builds the receipt again, keeping at most the first 20 reasons of each statement, computes its id as the SHA-256 of the canonical JSON of everything else, and saves it as a JSON file on the device. The id changes with any edit to the contents, but whoever edits a receipt can compute a new one: receipts are unsigned, and anyone can write a well-formed receipt.
+A receipt relies on fingerprints taken when a file is added. The ingestion worker hashes the file bytes before parsing, because pdf.js detaches the buffer it reads, then hashes the extracted text and records the extractor and chunker ids and versions with the chunk size and overlap. After the source check, chat.js keeps a receipt draft in main-thread memory. The draft holds the answer, the question, the check report and, for each citation, its delivered state and excerpt, for a partly delivered excerpt how many of its first characters reached the model (deliveredChars), plus the document fingerprints and chunk offsets of workspace excerpts. Nothing is written to storage. The Receipt button opens the export dialog, which previews the receipt id, the Merkle root and the counts and lets the user leave out the question or the excerpt texts; without the excerpt texts, the passages and numbers that check reasons quote from them (found of fact_context, approximate, fact_elsewhere, negation_inversion and name_context) are left out too. Download builds the receipt again in the starpi.receipt/v2 format, keeping at most the first 20 reasons of each statement, puts one Merkle leaf per citation into a tree with an inclusion proof in each citation (receipts-merkle-signature), computes its id as the SHA-256 of the canonical JSON of everything but the id and a signature, and saves it as a JSON file on the device. The id changes with any edit to the contents, but whoever edits a receipt can compute a new id and a new tree: the app does not sign receipts, and anyone can write a well-formed receipt.
 
 <!-- diagram: receipts-build-and-download -->
 ```mermaid
@@ -6865,78 +7000,155 @@ sequenceDiagram
         RV->>B: openDialog receiptModal in export mode, title receipt.title,<br/>receipt.proves and receipt.not_proves shown
         RV->>RC: preview, buildReceipt(draft, includeQuestion, includeExcerpts)
         RC-->>RV: receipt
-        RV->>B: receiptId = first 16 hex chars of the id,<br/>receipt.counts with workspace and knowledge
+        RV->>B: receiptId = first 16 hex chars of the id,<br/>receiptRoot = first 16 hex chars of merkle.root, a dash without one,<br/>receipt.counts with workspace and knowledge
     end
     User->>RV: toggle receiptIncludeQuestion or receiptIncludeExcerpts
     RV->>RC: preview again, a result overtaken by a newer preview is dropped
     User->>RV: download-receipt
     RV->>RC: buildReceipt(draft, options)
     RC->>RC: per citation excerpt sha256, excerpt text or null,<br/>verifiable = workspace with fileSha256 and chunk,<br/>chunk sha256 null when the excerpt was truncated,<br/>deliveredChars kept when the excerpt is partial and it is an integer
-    RC->>RC: grounding with algorithm starpi-grounding 1, counts and<br/>statements without neutral ones, at most 20 reasons each,<br/>found of fact_context, approximate and fact_elsewhere<br/>dropped without excerpt texts, question null when left out
-    RC->>RC: id = sha256Hex of canonicalJson of the body without id,<br/>keys sorted, no whitespace, undefined members dropped,<br/>schema starpi.receipt/v1
+    RC->>RC: grounding with the report's algorithm, starpi-grounding 2,<br/>counts and statements without neutral ones, at most 20 reasons each,<br/>found of fact_context, approximate, fact_elsewhere, negation_inversion<br/>and name_context dropped without excerpt texts, question null when left out
+    RC->>RC: schema starpi.receipt/v2 unless options.schema asks for v1:<br/>merkleTree over citationLeafHash of each citation, proof per citation,<br/>merkle with alg sha256-rfc6962, size and root
+    RC->>RC: id = sha256Hex of canonicalJson of the body without id and signature,<br/>keys sorted, no whitespace, undefined members dropped,<br/>schema and id written first
     RC-->>RV: receipt
     RV->>B: Blob of JSON.stringify with 2-space indent, application/json,<br/>object URL, download name starpi-receipt-first 12 hex chars.json
     B-->>User: file saved on this device, object URL revoked after 1000 ms
 ```
 
-<sub>Sources: [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
+<sub>Sources: [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/core/hash.js`](../src/js/core/hash.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
+
+### Receipts v2: Merkle tree, inclusion proofs and signature
+
+A starpi.receipt/v2 receipt puts its citations into a Merkle tree as RFC 6962 defines it for Certificate Transparency, with SHA-256. Each citation is one leaf, hashed from its canonical JSON without its proof and with the excerpt reduced to its hash and truncated flag, so a receipt exported without excerpt texts has the same root. Each citation carries its audit path, so one citation can be checked against the root without the others (verifyCitationProof). The id is the hash of everything but the id and the signature. A signature is optional and never made by the app: signReceipt in @starpi/core signs, with Ed25519 or ECDSA P-256 (ES256) through WebCrypto, a fixed prefix and the canonical JSON of the algorithm, the id, the key id and the Merkle record, and embeds the public key as a JWK; the key id is the SHA-256 of the key's SubjectPublicKeyInfo. Verifying recomputes the root and every proof, and checks the signature with the public key the verifier gives, or else with the embedded one, which shows only that the receipt is unchanged since it was signed, not who signed it. A v1 receipt has no tree and no signature.
+
+<!-- diagram: receipts-merkle-signature -->
+```mermaid
+flowchart TD
+    subgraph sg_build["buildReceipt, schema starpi.receipt/v2 unless v1 is asked for"]
+        bLeaf["citationLeafHash per citation, in answer order: canonicalJson of the<br/>citation without proof, its excerpt reduced to sha256 and truncated,<br/>merkleLeafHash = SHA-256 of the byte 0x00 and that UTF-8 text"]
+        bTree["merkleTree, RFC 6962: an interior node is SHA-256 of the byte 0x01,<br/>the left and the right hash; a range of more than 1 leaf is split<br/>at the largest power of two below its size;<br/>no citations: SHA-256 of the empty string"]
+        bProof["proof in each citation: its audit path from the sibling up to<br/>the child of the root, at most RECEIPT_LIMITS.proof 6 hashes"]
+        bHead["merkle = alg sha256-rfc6962, size = number of citations, root;<br/>id = sha256Hex of canonicalJson without id and signature"]
+        bLeaf --> bTree --> bProof --> bHead
+    end
+    bProof -.-> bOne["verifyCitationProof(citation, index, merkle):<br/>one citation, also without its excerpt text,<br/>checked against the root without the others"]
+    subgraph sg_sign["signReceipt(receipt, privateKey, publicKey?), outside the app"]
+        sChk{"schema v2 with merkle, and the id and the root<br/>and size recomputed from the contents match?"}
+        sKey{"private CryptoKey Ed25519 or ECDSA P-256, and a public key<br/>given or exported from the extractable private key,<br/>for the same algorithm?"}
+        sMsg["keyId = SHA-256 of the public key's SPKI in DER;<br/>signed bytes = UTF-8 of starpi.receipt/v2 signature, a line break<br/>and canonicalJson of alg, id, keyId and merkle"]
+        sVal{"crypto.subtle.sign, then crypto.subtle.verify<br/>with the public key accepts the value?"}
+        sOut["signature: alg Ed25519 or ES256, keyId, publicKey as a JWK<br/>with kty, crv, x and for ES256 y, value base64url of the<br/>64-byte signature, r then s for ES256; signing again replaces it"]
+        sChk -->|"yes"| sKey
+        sKey -->|"yes"| sMsg --> sVal
+        sVal -->|"yes"| sOut
+    end
+    bHead -.->|"optional"| sChk
+    sChk -->|"no"| sErr(["error thrown, nothing signed"])
+    sKey -->|"no"| sErr
+    sVal -->|"no"| sErr
+    subgraph sg_ver["verifyReceipt(receipt, files, tools, publicKey?)"]
+        vV2{"schema starpi.receipt/v2?"}
+        vTree["leaves and tree recomputed: rootMatches when the root and the<br/>number of citations equal merkle.root and merkle.size,<br/>proof per citation = verifyMerkleProof(leaf, index, size, proof, root),<br/>the algorithm of RFC 9162, validProofs = how many lead to the root"]
+        vSig{"signature present?"}
+        vAlg{"alg Ed25519 or ES256?"}
+        vImp{"importPublicKey of the given key, else of the embedded JWK?"}
+        vGiven{"a key given by the verifier?"}
+        vKid{"same algorithm, and the SHA-256 of its SPKI<br/>equals signature.keyId?"}
+        vVal{"value decodes to 64 bytes, and crypto.subtle.verify<br/>accepts it over the signed bytes?"}
+        vSame{"verifyReceiptSignature: the id and the Merkle root<br/>recomputed from the contents still match?"}
+        vV2 -->|"yes"| vTree --> vSig
+        vSig -->|"yes"| vAlg
+        vAlg -->|"yes"| vImp
+        vImp -->|"imported"| vGiven
+        vGiven -->|"yes"| vKid
+        vVal -->|"yes"| vSame
+    end
+    sOut -.->|"signed receipt"| vV2
+    bHead -.->|"unsigned receipt"| vV2
+    vV2 -->|"no, v1"| rV1(["merkle and signature null, proof null per citation"])
+    vSig -->|"no"| rUns(["unsigned"])
+    vAlg -->|"no"| rAlg(["unsupported_algorithm"])
+    vImp -->|"NotSupportedError, e.g. no Ed25519 in this browser"| rAlg
+    vImp -->|"other error with the embedded key"| rInv(["invalid, trusted false"])
+    vImp -->|"other error with a given key"| rThrow(["thrown; the worker and verify-receipt.mjs<br/>import the key first: invalidKey or exit 2"])
+    vGiven -->|"no"| vKidE{"embedded key: same algorithm, and the SHA-256<br/>of its SPKI equals signature.keyId?"}
+    vKid -->|"no"| rMis(["key_mismatch"])
+    vKid -->|"yes"| vVal
+    vKidE -->|"yes"| vVal
+    vKidE -->|"no"| rInv
+    vVal -->|"no"| rInv
+    vSame -->|"no"| rInv
+    vSame -->|"yes, a given key"| rTrust(["valid, trusted: signed with the verifier's key"])
+    vSame -->|"yes, the embedded key"| rEmb(["valid, not trusted: unchanged since signing,<br/>not who signed"])
+    rShow["shown by renderReport: receipt.merkle_ok or merkle_failed with<br/>valid of n proofs, check_proof_invalid per failed proof, format_v1,<br/>signature_trusted, signature_embedded, signature_key_mismatch,<br/>signature_invalid, signature_unsupported, signature_unsigned, or<br/>signature_unsigned_key when a key was chosen; verify-receipt.mjs<br/>exits 1 unless the root and every proof are valid, the status is<br/>valid or unsigned, and, with --public-key, valid and trusted"]
+    vTree -.- rShow
+```
+
+<sub>Sources: [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/hash.js`](../src/js/core/hash.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`src/locales/en.json`](../src/locales/en.json), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
 
 ### Deterministic citation verification and receipt flow
 
-The verification pipeline links an on-screen answer back to source file bytes through four deterministic layers (L0 to L3). During ingestion, `chunkText` records exact UTF-16 code unit offsets `[start, end]` alongside `fileSha256` and `textSha256`. After response generation, `applyGrounding` deterministically evaluates factual claims (`extractFacts`) against cited excerpt tokens (`indexSource`) without probabilistic models. To export proof, `buildReceipt` formats citation offsets and source-check findings, serializes the payload using canonical JSON (RFC 8785: sorted keys, stripped whitespace, normalized numeric values), and computes `id = sha256Hex(canonicalJson(body))`. During verification (`verifyReceipt` in browser or CLI), the receipt structure is validated against strict limits, source files are identified by cryptographic hash rather than filename, and each passage is verified against the original text bounds before recomputing grounding verdicts.
+The verification pipeline links an on-screen answer back to source file bytes through four deterministic layers (L0 to L3). During ingestion, `chunkText` records exact UTF-16 code unit offsets `[start, end]` alongside `fileSha256` and `textSha256`. After the answer is rendered, `applyGrounding` runs `groundAnswer`, which compares the facts of each statement (`extractFacts`) with the cited excerpts (`indexSource`) and, with rules version 2, checks negations, names and values in another place (`checkV2`), without a second model. chat.js keeps the result in a receipt draft; to export it, `buildReceipt` records citation offsets and source-check findings, puts one leaf per citation into an RFC 6962 Merkle tree, serializes the receipt as canonical JSON (keys sorted by UTF-16 code units, no whitespace, undefined members dropped, which for the strings, integers, booleans, nulls, arrays and objects of a receipt equals RFC 8785) and computes `id = sha256Hex(canonicalJson(body))` over everything but the id and a signature. During verification, in the ingestion worker or in scripts/verify-receipt.mjs, `validateReceipt` checks the structure against strict limits before anything is read, and `verifyReceipt` recomputes the Merkle root, the inclusion proofs and any signature, identifies source files by hash rather than file name, checks each passage against the original text and recomputes the verdicts with the rules version the receipt records.
 
 <!-- diagram: citation-verification-receipt-flow -->
 ```mermaid
 sequenceDiagram
     autonumber
-    participant UI as Chat & UI
+    participant UI as chat.js and rag/receipts.js
     participant GW as rag/grounding-view.js
     participant CG as core/grounding.js
     participant CR as core/receipt.js
-    participant VR as verifyReceipt (App / CLI)
-    Note over UI,CG: 1. Answer Synthesis & Grounding Evaluation
-    UI->>GW: applyGrounding(messageEl, sources, given)
-    GW->>CG: groundAnswer(renderedText, deliveredExcerpts)
-    CG->>CG: splitSentences, extractFacts (strict claims), indexSource (lenient excerpts)
-    CG->>CG: checkSentence per statement -> verdicts (supported, weak, unsupported)
-    CG-->>GW: GroundingReport (counts, statements, reasons)
-    Note over GW,CR: 2. Cryptographic Receipt Assembly
-    GW->>CR: buildReceipt(draft, { includeQuestion, includeExcerpts })
-    CR->>CR: Anchor citations with document fingerprints, chunk offsets [start, end]
-    CR->>CR: canonicalJson(receiptBody) -> RFC 8785 canonical serialization
-    CR->>CR: id = sha256Hex(canonicalBody)
-    CR-->>UI: starpi.receipt/v1 JSON artifact
-    Note over UI,VR: 3. Four-Tier Deterministic Verification
-    UI->>VR: verifyReceipt(receipt, sourceFiles)
-    VR->>VR: validateReceipt: schema, bounds, allowed fields & reason codes
-    VR->>VR: L0 File Check: sha256Hex(fileBytes) == document.fileSha256
-    VR->>VR: L1 Text Check: sha256Hex(extractedText) == document.textSha256
-    VR->>VR: L2 Passage Check: extractedText.slice(start, end) matches excerpt
-    VR->>VR: L3 Chunk Check: chunkText(text, size, overlap) reproduces [start, end]
-    VR->>CG: Re-run checkSentence on reproduced passages
-    VR-->>UI: VerificationReport (idMatch, L0-L3 status, reproduced/verifiable count)
+    participant VR as ingest.worker.js or verify-receipt.mjs
+    Note over UI,CG: 1. Answer and source check
+    UI->>GW: applyGrounding(messageEl, { scope, sources, given, citedOnly })
+    GW->>CG: groundAnswer(blocks from the rendered DOM, sources, { given, citedOnly })
+    CG->>CG: associate markers with statements, extractFacts (strict claims), indexSource (lenient excerpts)
+    CG->>CG: checkSentence per statement, with version 2 also checkV2, verdicts supported, weak, unsupported or unchecked
+    CG-->>GW: GroundingReport (algorithm starpi-grounding 2, counts, statements, reasons)
+    GW-->>UI: report, kept with storeReceiptDraft
+    Note over UI,CR: 2. Receipt assembly
+    UI->>CR: buildReceipt(draft, { includeQuestion, includeExcerpts }) for the preview and the download
+    CR->>CR: anchor citations with document fingerprints and chunk offsets [start, end]
+    CR->>CR: Merkle tree with one leaf per citation, a proof in each citation, merkle root
+    CR->>CR: canonicalJson(body without id and signature), id = sha256Hex of it
+    CR-->>UI: starpi.receipt/v2 JSON, not signed by the app
+    Note over UI,VR: 3. Four-tier deterministic verification
+    UI->>VR: verifyReceiptFiles(receipt, files, publicKey) from the receipt dialog, or the command line
+    VR->>CR: validateReceipt: schema v2 or v1, bounds, allowed members and reason codes
+    VR->>CR: verifyReceipt(receipt, files, { extract, extractor }, { publicKey })
+    CR->>CR: v2 only: Merkle root and inclusion proofs recomputed, signature status
+    CR->>CR: L0 File Check: sha256Hex(fileBytes) == document.fileSha256
+    CR->>CR: L1 Text Check: sha256Hex(extractedText) == document.textSha256
+    CR->>CR: L2 Passage Check: extractedText.slice(start, end) hashes to chunk.sha256, or excerpt.sha256
+    CR->>CR: L3 Chunk Check: chunkText(text, size, overlap) reproduces [start, end]
+    CR->>CG: checkSentence per recorded statement, with the rules version the receipt records
+    CR-->>VR: VerifyReport (idMatches, merkle, signature, L0 to L3 per citation, reproduced of verifiable)
+    VR-->>UI: renderReport in the dialog, or the command-line report and exit code
 ```
 
-<sub>Sources: [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
+<sub>Sources: [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/core/hash.js`](../src/js/core/hash.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/chat.js`](../src/js/chat.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
 
 ### Re-checking a receipt in the app and on the command line
 
-A receipt can be re-checked in the receipt dialog, where the ingestion worker does the work, or with scripts/verify-receipt.mjs in Node, which runs the same core/receipt.js, extraction and chunking code. Both validate the receipt before reading any source file, refusing members and reason codes the format does not define, and match the given files by SHA-256, never by name. For each workspace citation verifyReceipt checks four levels: L0 a file with the recorded fingerprint, L1 the recorded text fingerprint after extraction, L2 the passage at the recorded offsets (moved when the excerpt occurs elsewhere once whitespace is collapsed), and L3 the chunk bounds that chunking gives today. Knowledge-base citations are listed as not verifiable and never counted as reproduced. The source check is then recomputed from the receipt's excerpts, for a partly delivered excerpt on its first deliveredChars characters, and compared with the recorded verdicts; a statement is skipped when an excerpt it cites, or one a reason names as the other place of a value, has no usable text. A full match shows only that the cited excerpts can be reproduced from these files under the recorded rules; it does not show who wrote the receipt, what a model saw, or that the answer is right.
+A receipt can be re-checked in the receipt dialog, where the ingestion worker does the work, or with scripts/verify-receipt.mjs in Node, which runs the same core/receipt.js, extraction and chunking code. Both read starpi.receipt/v2 and v1 receipts, validate the receipt before reading any source file, refusing members and reason codes its format does not define, accept an optional public key of the signer, and match the given files by SHA-256, never by name. For a v2 receipt verifyReceipt first recomputes the Merkle root and every inclusion proof and checks the signature, if there is one (receipts-merkle-signature). For each workspace citation verifyReceipt checks four levels: L0 a file with the recorded fingerprint, L1 the recorded text fingerprint after extraction, L2 the passage at the recorded offsets (moved when the excerpt occurs elsewhere once whitespace is collapsed), and L3 the chunk bounds that chunking gives today. Knowledge-base citations are listed as not verifiable and never counted as reproduced. The source check is then recomputed from the receipt's excerpts, for a partly delivered excerpt on its first deliveredChars characters, with the rules version the receipt records (version 1 for receipts of Starpi 1.x, version 2 for this release; an unknown id or version is recomputed with the current rules and a warning), and compared with the recorded verdicts; a statement is skipped when an excerpt it cites, or one a reason names as the other place of a value, has no usable text. A full match shows only that the cited excerpts can be reproduced from these files under the recorded rules; it does not show what a model saw or that the answer is right, and it shows who wrote the receipt only for a receipt signed with the public key the verifier supplied.
 
 <!-- diagram: receipts-verify -->
 ```mermaid
 flowchart TD
     subgraph sg_app["In the app"]
-        rA0(["receipt dialog, opened by open-receipt-verify in the workspace<br/>panel or by a Receipt button, verify-receipt: receiptFile<br/>and the files chosen in receiptSources"])
-        rA1{"receipt chosen, at most RECEIPT_LIMITS.bytes<br/>2000000, JSON.parse succeeds?"}
-        rA2["receipt.verify_need_receipt, or receipt.verify_invalid<br/>with reason size or JSON"]
-        rA3["receipt.verify_running, verifyReceiptFiles sends verify-receipt<br/>to the ingest worker, a rejection shows<br/>receipt.verify_invalid with its message"]
+        rA0(["receipt dialog, opened by open-receipt-verify in the workspace<br/>panel or by a Receipt button, verify-receipt: receiptFile,<br/>the files chosen in receiptSources and an optional<br/>public key in receiptPublicKey"])
+        rA1{"receipt chosen, at most RECEIPT_LIMITS.bytes<br/>2000000, JSON.parse succeeds, a key file<br/>at most MAX_KEY_BYTES 16384?"}
+        rA2["receipt.verify_need_receipt, receipt.verify_invalid<br/>with reason size or JSON, or receipt.verify_bad_key<br/>with reason size"]
+        rA3["receipt.verify_running, verifyReceiptFiles sends verify-receipt<br/>with the key file's text to the ingest worker,<br/>a rejection shows receipt.verify_invalid with its message"]
+        rAK{"no key text, or importPublicKey in the worker reads it?"}
+        rAK2["reply invalidKey: receipt.verify_bad_key<br/>with the error message"]
         rA4["worker reads the first MAX_VERIFY_FILES 20 files,<br/>files above MAX_FILE_BYTES skipped"]
     end
     subgraph sg_cli["Command line"]
-        rB0(["node scripts/verify-receipt.mjs receipt.json file ... --json,<br/>npm run verify:receipt, or starpi-verify-receipt<br/>from @starpi/core, the same script bundled,<br/>Node 22.13 or later"])
-        rB1{"receipt path given, readable, at most<br/>2000000 bytes and JSON?"}
+        rB0(["node scripts/verify-receipt.mjs receipt.json file ...<br/>--public-key key --json, npm run verify:receipt,<br/>or starpi-verify-receipt from @starpi/core,<br/>the same script bundled, Node 22.13 or later"])
+        rB1{"options known, receipt path given, readable,<br/>at most 2000000 bytes and JSON?"}
         rB2(["usage message on stderr, exit 2"])
+        rBK{"no --public-key, or importPublicKey reads<br/>the file as a JWK or PEM public key?"}
         rB3{"every file path readable?"}
         rB4["files named by basename"]
     end
@@ -6947,16 +7159,20 @@ flowchart TD
     rB1 -->|"no"| rB2
     rA3 --> rVal
     rB1 -->|"yes"| rVal
-    rVal{"validateReceipt: schema starpi.receipt/v1, no unknown members,<br/>field types, SHA-256 hex, at most 64 citations, 500 statements<br/>of at most 20,000 chars, 20 reasons each with a code from REASON_CODES,<br/>labels and document names at most 600 chars, other strings bounded,<br/>deliveredChars only on a partial excerpt, the four counts as integers,<br/>citation indexes in range?"}
+    rVal{"validateReceipt: schema starpi.receipt/v2 or v1, only the members<br/>of that format, field types, SHA-256 hex, at most 64 citations,<br/>500 statements of at most 20,000 chars, 20 reasons each with a code<br/>from REASON_CODES, for v1 from REASON_CODES_V1, labels and document<br/>names at most 600 chars, other strings bounded, deliveredChars only<br/>on a partial excerpt, the four counts as integers, citation indexes<br/>in range; v2: merkle alg, size and root, a proof of at most<br/>6 hashes per citation, an optional signature of the defined form?"}
     rVal -->|"no: unsupported_version, not_a_receipt,<br/>or the first bad field with its path"| rInv["app: receipt.verify_invalid with error and path,<br/>CLI: not a valid Starpi receipt"]
     rInv -.->|"CLI"| rB2
-    rVal -->|"yes, app"| rA4
-    rVal -->|"yes, CLI"| rB3
+    rVal -->|"yes, app"| rAK
+    rAK -->|"no"| rAK2
+    rAK -->|"yes"| rA4
+    rVal -->|"yes, CLI"| rBK
+    rBK -->|"no"| rB2
+    rBK -->|"yes"| rB3
     rB3 -->|"no"| rB2
     rB3 -->|"yes"| rB4
     rA4 --> rVR
     rB4 --> rVR
-    rVR["verifyReceipt with extractText and EXTRACTOR of rag/parser.js:<br/>idMatches = hash of canonicalJson without id equals id,<br/>answerMatches = the answer text hashes to answer.sha256,<br/>files keyed by the SHA-256 of their bytes, not by name"]
+    rVR["verifyReceipt with extractText and EXTRACTOR of rag/parser.js<br/>and the public key: idMatches = hash of canonicalJson without id<br/>and signature equals id, answerMatches = the answer text hashes<br/>to answer.sha256, for v2 the Merkle root, a proof flag per citation<br/>and the signature status, see receipts-merkle-signature,<br/>files keyed by the SHA-256 of their bytes, not by name"]
     rVR --> rEx["per citation: excerptConsistent when the excerpt text hashes to<br/>excerpt.sha256, null without text, false adds a warning"]
     rEx --> rWs{"workspace citation with a document,<br/>a chunk and a fileSha256?"}
     rWs -->|"no, e.g. a knowledge-base excerpt"| rNV["file not_verifiable"]
@@ -6977,16 +7193,58 @@ flowchart TD
     rMiss --> rSum
     rL3 --> rSum
     rSum["reproduced = passages that match,<br/>verifiable = citations marked verifiable"]
-    rSum --> rG["with a grounding record: warning unless starpi-grounding 1,<br/>checkSentence per recorded statement on the consistent excerpt texts,<br/>else on the matching passage of an excerpt neither omitted nor truncated,<br/>for a partial excerpt only its first deliveredChars, none without that field,<br/>given = the recorded question, a statement skipped when an excerpt<br/>it cites or a reason names in other has no text, differing verdicts listed,<br/>needsConversation when a reason is from_conversation"]
+    rSum --> rG["with a grounding record: the recorded version when the id is<br/>starpi-grounding and GROUNDING_VERSIONS 1 and 2 has it, else<br/>version 2 and a warning naming both, checkSentence per recorded<br/>statement with that version on the consistent excerpt texts,<br/>else on the matching passage of an excerpt neither omitted nor truncated,<br/>for a partial excerpt only its first deliveredChars, none without that field,<br/>given = the recorded question, a statement skipped when an excerpt<br/>it cites or a reason names in other has no text, differing verdicts listed,<br/>needsConversation when a reason is from_conversation"]
     rG --> rOut{"where?"}
-    rOut -->|"app"| rApp["renderReport: receipt.summary, id and answer lines,<br/>check_knowledge, check_file, check_passage, check_text<br/>and check_chunk lines, grounding_same or grounding_differs,<br/>grounding_conversation, warnings as plain text"]
-    rOut -->|"CLI"| rCli["ok or FAIL lines for the hashes, one ok, FAIL or n/a line<br/>per citation, reproduced of verifiable, recomputed verdicts<br/>and warn lines, control and bidi characters in receipt strings,<br/>file names and warnings shown escaped, or with --json<br/>one JSON object with ok, receipt id and the report"]
-    rCli --> rExit{"id and answer match, every workspace citation<br/>has file match and passage match, and no excerpt<br/>contradicts its fingerprint?"}
+    rOut -->|"app"| rApp["renderReport: receipt.summary, id and answer lines,<br/>merkle_ok, merkle_failed or format_v1, the signature line,<br/>check_knowledge, check_file, check_passage, check_text<br/>and check_chunk lines, check_proof_invalid per failed proof,<br/>grounding_same or grounding_differs,<br/>grounding_conversation, warnings as plain text"]
+    rOut -->|"CLI"| rCli["ok or FAIL lines for the hashes, the Merkle root and the<br/>signature, n/a for format v1, one ok, FAIL or n/a line per citation<br/>with inclusion proof invalid where it fails, reproduced of verifiable,<br/>recomputed verdicts and warn lines, control and bidi characters<br/>in receipt strings, file names and warnings shown escaped, or with<br/>--json one JSON object with ok, receipt id and the report"]
+    rCli --> rExit{"id and answer match, every workspace citation<br/>has file match and passage match, no excerpt<br/>contradicts its fingerprint, root and every proof valid,<br/>signature valid or unsigned, and valid and trusted<br/>when --public-key was given?"}
     rExit -->|"yes"| rE0(["exit 0"])
     rExit -->|"no, moved and missing included"| rE1(["exit 1"])
 ```
 
-<sub>Sources: [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`packages/core/package.json`](../packages/core/package.json), [`package.json`](../package.json), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`packages/core/package.json`](../packages/core/package.json), [`package.json`](../package.json), [`src/locales/en.json`](../src/locales/en.json)</sub>
+
+### starpi-ground: from arguments to exit code
+
+starpi-ground (scripts/ground.mjs, packaged as the starpi-ground command of @starpi/core) runs the source check on a Markdown document, such as an answer, release notes or generated documentation, against source files, for scripts and CI. It reads the sources the way the app does (Markdown, text, CSV, logs and JSON, PDF when the optional pdfjs-dist is installed), chunks them with the app's chunker and labels each chunk like a workspace excerpt, with the relative path instead of the file name when two files share a name. checkDocument compares each statement with the excerpts its citation labels name or, in a document without labels, with every excerpt; it splits a document above the source check's limits at headings, and then between blocks, into sections that each fit, and reports a part that still does not fit as not checked, never as passed. The report is text, JSON or SARIF 2.1.0 for code scanning, and the exit code says whether a statement reached the --fail-on level. As in the app, a finding means: open the source and check; a pass does not prove the document correct.
+
+<!-- diagram: source-check-ground-cli -->
+```mermaid
+flowchart TD
+    gArgs(["starpi-ground from @starpi/core, or node scripts/ground.mjs:<br/>--answer file.md, --source file or directory, repeatable,<br/>--format text, json or sarif, --output file,<br/>--fail-on unsupported, weak or never, --cite auto, labels or all,<br/>each as --name value or --name=value"])
+    gArgs --> gHelp{"--help or -h, else --version, anywhere?"}
+    gHelp -->|"yes"| gInfo(["the usage line, or the version of<br/>packages/core/package.json, on stdout, exit 0"])
+    gHelp -->|"no"| gParse{"every argument known and with a non-empty value,<br/>format, fail-on and cite one of their choices,<br/>--answer and at least one --source given?"}
+    gParse -->|"no"| gUsage(["starpi-ground: the reason and the usage line<br/>on stderr, exit 2"])
+    gParse -->|"yes"| gRead{"the answer readable as UTF-8, each source a file of a<br/>SUPPORTED_EXTENSIONS type or a directory, at least one<br/>supported file, each readable, at most MAX_FILE_BYTES 25 MiB,<br/>and extractText succeeds on it?"}
+    gRead -->|"no"| gUsage
+    gRead -->|"yes"| gSrc["CRLF in the answer made LF; a directory adds its supported files<br/>below it, sorted by name, hidden entries and node_modules skipped,<br/>a file named twice read once; extractText as in the app, chunkText<br/>500 and 50, one source per chunk labelled Doc: file name, Chunk: n,<br/>the relative path when two files share a name, delivered full"]
+    gSrc --> gDoc["checkDocument: blocksFromMarkdown, one block per non-empty line<br/>with its line number, labels of the sources as cite segments, other<br/>label-like text as badcite; mode labels with --cite labels, or with<br/>auto when the document has a label, else all: one more block<br/>citing every excerpt"]
+    gDoc --> gFit{"all blocks within THRESHOLDS.maxChars 20000 characters<br/>and maxSentences 300 statements?"}
+    gFit -->|"yes"| gOne["one section"]
+    gFit -->|"no"| gSplit["units from heading to heading packed into sections<br/>while they fit, a unit that does not fit split between<br/>blocks, answer-wide Sources lines added to every section"]
+    gOne --> gGround
+    gSplit --> gGround
+    gGround["groundAnswer per section with the current rules, version 2;<br/>a section it skips as too_long recorded with its first and last line,<br/>else every statement that is not neutral counted, with its line<br/>and its column in UTF-16 code units"]
+    gGround --> gFmt{"--format?"}
+    gFmt -->|"text, the default"| gText["per weak or unsupported statement: path:line:column, the verdict<br/>and the statement cut to 200 chars, one describeReason line per<br/>reason; a not checked line per skipped part; the counts; a note<br/>when statements were compared across languages; control and<br/>bidi characters escaped"]
+    gFmt -->|"json"| gJson["ok, tool, answer, mode, algorithm, the files with their<br/>chunk counts, sections, counts, skipped and every statement<br/>with line, column, verdict, cited labels and reasons<br/>with their message"]
+    gFmt -->|"sarif"| gSarif["toSarif: SARIF 2.1.0, columnKind utf16CodeUnits, one rule per<br/>reason code plus too_long, one result per weak statement, level<br/>warning, and per unsupported one, level error, ruleId = its first<br/>unsupported reason, else its first, startLine and startColumn,<br/>partialFingerprints starpiStatement/v1 = SHA-256 of rule id and<br/>statement; an error result too_long per skipped part"]
+    gText --> gOut
+    gJson --> gOut
+    gSarif --> gOut
+    gOut{"--output given?"}
+    gOut -->|"no"| gStdout["report on stdout"]
+    gOut -->|"yes"| gWrite{"file written?"}
+    gWrite -->|"no"| gUsage
+    gWrite -->|"yes"| gFail
+    gStdout --> gFail
+    gFail{"--fail-on never, or no skipped part and no unsupported<br/>statement, and with --fail-on weak no weak one either?"}
+    gFail -->|"yes"| gE0(["exit code 0"])
+    gFail -->|"no"| gE1(["exit code 1"])
+```
+
+<sub>Sources: [`scripts/ground.mjs`](../scripts/ground.mjs), [`src/js/core/document.js`](../src/js/core/document.js), [`src/js/core/sarif.js`](../src/js/core/sarif.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/labels.js`](../src/js/core/labels.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/package.json`](../packages/core/package.json), [`tests/unit/ground.test.mjs`](../tests/unit/ground.test.mjs)</sub>
 
 ### Sample files and the source-check demo
 
