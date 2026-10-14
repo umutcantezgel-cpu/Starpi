@@ -47,18 +47,25 @@ async function httpError(res, label) {
 }
 
 /**
- * Single-turn Gemini completion. The key travels in the x-goog-api-key header, never in the URL.
+ * Gemini completion. The key travels in the x-goog-api-key header, never in the URL. Without
+ * `system` and `history` (source mode, connection test) the request is a single user turn.
  * @param {string} prompt
- * @param {{ signal?: AbortSignal, key?: string }} [opts]  `key`: test a key that is not saved yet
+ * @param {{ signal?: AbortSignal, key?: string, system?: string, history?: Array<{ role: 'user' | 'assistant', content: string }> }} [opts]
+ *   `key`: test a key that is not saved yet; `system` and `history`: the free chat
  * @returns {Promise<{ text: string }>}
  */
 export async function callGemini(prompt, opts = {}) {
   const key = (opts.key || readSecret(STORAGE_KEYS.geminiKey)).trim();
   if (!key) throw new ProviderError(t('provider.no_gemini_key'), { notConfigured: true });
+  const contents = [
+    ...(opts.history ?? []).map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+    { role: 'user', parts: [{ text: prompt }] },
+  ];
+  const body = opts.system ? { systemInstruction: { parts: [{ text: opts.system }] }, contents } : { contents };
   const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }] }),
+    body: JSON.stringify(body),
     signal: withTimeoutSignal(opts.signal, TIMEOUTS_MS.gemini),
   });
   if (!res.ok) throw await httpError(res, '');

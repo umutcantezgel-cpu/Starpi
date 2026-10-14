@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-const { normalizeServerUrl } = await import('../../src/js/providers.js');
+const { callGemini, normalizeServerUrl } = await import('../../src/js/providers.js');
 const { normalizeChatMode, normalizeMode } = await import('../../src/js/state.js');
 const { classifyError } = await import('../../src/js/supabase.js');
 
@@ -18,6 +18,44 @@ describe('normalizeServerUrl', () => {
     assert.throws(() => normalizeServerUrl('javascript:alert(1)'));
     assert.throws(() => normalizeServerUrl('https://user:pass@example.com'));
     assert.throws(() => normalizeServerUrl('not a url'));
+  });
+});
+
+describe('callGemini', () => {
+  /**
+   * Calls Gemini with a stubbed fetch and returns the request body as sent.
+   * @param {Parameters<typeof callGemini>[1]} opts
+   */
+  async function bodyOf(opts) {
+    const realFetch = globalThis.fetch;
+    /** @type {string[]} */
+    const sent = [];
+    globalThis.fetch = async (_url, init) => {
+      sent.push(String(init?.body));
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }), { status: 200 });
+    };
+    try {
+      assert.equal((await callGemini('Question?', { key: 'test-key-1', ...opts })).text, 'ok');
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    return sent[0];
+  }
+
+  it('sends one user turn in source mode, as before', async () => {
+    assert.equal(await bodyOf({}), '{"contents":[{"role":"user","parts":[{"text":"Question?"}]}]}');
+  });
+
+  it('sends the system prompt and the conversation in free chat', async () => {
+    const body = JSON.parse(await bodyOf({ system: 'Be brief.', history: [{ role: 'user', content: 'Hi' }, { role: 'assistant', content: 'Hello' }] }));
+    assert.deepEqual(body, {
+      systemInstruction: { parts: [{ text: 'Be brief.' }] },
+      contents: [
+        { role: 'user', parts: [{ text: 'Hi' }] },
+        { role: 'model', parts: [{ text: 'Hello' }] },
+        { role: 'user', parts: [{ text: 'Question?' }] },
+      ],
+    });
   });
 });
 

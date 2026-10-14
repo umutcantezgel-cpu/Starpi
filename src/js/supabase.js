@@ -251,11 +251,12 @@ function scheduleReconnect() {
 }
 
 /**
- * Deletes every synced chat message of this browser's anonymous user, in all chat sessions (row
- * level security limits the delete to own rows).
+ * Deletes synced chat messages of this browser's anonymous user: those of one chat session, or all
+ * of them (row level security limits the delete to own rows either way).
+ * @param {string | null} sessionId
  * @returns {Promise<Result<null>>}
  */
-export async function deleteOwnChats() {
+async function deleteOwnMessages(sessionId) {
   let uid;
   try {
     const { data } = await sb.auth.getSession();
@@ -264,7 +265,25 @@ export async function deleteOwnChats() {
     return { ok: false, error: classifyError(err) };
   }
   if (!uid) return { ok: true, data: null };
-  return run(sb.from('chat_history').delete().eq('owner_id', uid));
+  const own = sb.from('chat_history').delete().eq('owner_id', uid);
+  return run(sessionId ? own.eq('session_id', sessionId) : own);
+}
+
+/**
+ * Deletes every synced chat message of this browser's anonymous user, in all chat sessions.
+ * @returns {Promise<Result<null>>}
+ */
+export function deleteOwnChats() {
+  return deleteOwnMessages(null);
+}
+
+/**
+ * Deletes the synced messages of one chat session of this browser's anonymous user.
+ * @param {string} sessionId
+ * @returns {Promise<Result<null>>}
+ */
+export function deleteChatSession(sessionId) {
+  return deleteOwnMessages(sessionId);
 }
 
 /** Chats may be stored in Supabase only when a session exists and RLS isolates them per user. */

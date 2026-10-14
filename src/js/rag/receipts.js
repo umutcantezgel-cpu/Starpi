@@ -4,7 +4,7 @@
 // files. Everything shown here is set with textContent; receipts and files are read on this device.
 import { buildReceipt, RECEIPT_LIMITS } from '../core/receipt.js';
 import { closeDialog, openDialog } from '../dialog.js';
-import { byId, onAction, setHidden } from '../dom.js';
+import { byId, downloadText, onAction, setHidden } from '../dom.js';
 import { refreshIcons } from '../icons.js';
 import { formatNumber, setText } from '../i18n/index.js';
 import { verifyReceiptFiles } from './workspace.js';
@@ -87,15 +87,7 @@ async function download() {
   const draft = current ? drafts.get(current) : undefined;
   if (!draft) return;
   const receipt = await buildReceipt(draft, options());
-  const url = URL.createObjectURL(new Blob([`${JSON.stringify(receipt, null, 2)}\n`], { type: 'application/json' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `starpi-receipt-${receipt.id.slice(0, 12)}.json`;
-  document.body.append(a);
-  a.click();
-  a.remove();
-  // Revoking right away can cancel the download in some browsers.
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadText(`starpi-receipt-${receipt.id.slice(0, 12)}.json`, `${JSON.stringify(receipt, null, 2)}\n`, 'application/json');
 }
 
 /**
