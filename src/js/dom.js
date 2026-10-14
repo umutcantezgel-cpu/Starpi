@@ -89,3 +89,21 @@ export function setHtml(el, html) {
 export function setHidden(el, hidden) {
   el?.classList.toggle('hidden', hidden);
 }
+
+/**
+ * Saves text as a file through a temporary download link.
+ * @param {string} name  file name
+ * @param {string} text
+ * @param {string} type  media type, e.g. 'application/json'
+ */
+export function downloadText(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  // Revoking right away can cancel the download in some browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

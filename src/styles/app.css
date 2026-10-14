@@ -48,6 +48,10 @@ body {
 .prose-custom th { background: #f1f5f9; font-weight: 700; color: #0f172a; }
 .prose-custom blockquote { border-left: 3px solid #ffca00; padding-left: 0.85rem; margin: 0.6rem 0; color: #475569; background: #fffbeb; padding-top: 0.4rem; padding-bottom: 0.4rem; border-radius: 0 0.5rem 0.5rem 0; }
 .prose-custom a { color: #b45309; text-decoration: underline; text-underline-offset: 2px; }
+/* Code blocks with a copy button (code-blocks.js): the wrapper takes the block's margin, so the button
+   sits inside the code box, and the code leaves room for it. */
+.prose-custom .code-block { position: relative; margin: 0.6rem 0; }
+.prose-custom .code-block > pre { margin: 0; padding-right: 5rem; }
 
 /* Touch target optimizations for mobile buttons */
 .touch-target-min {
@@ -208,11 +212,35 @@ body {
   .receipt-line-na {
     @apply text-slate-700;
   }
-  .lang-toggle button[aria-pressed='true'] {
+  .lang-toggle button[aria-pressed='true'],
+  .mode-toggle button[aria-pressed='true'] {
     @apply bg-white text-slate-950 shadow-subtle;
   }
-  .lang-toggle button[aria-pressed='false'] {
+  .lang-toggle button[aria-pressed='false'],
+  .mode-toggle button[aria-pressed='false'] {
     @apply text-slate-600 hover:text-slate-900;
+  }
+  /* Free chat / verified source mode switch in the composer. */
+  .mode-toggle {
+    @apply flex flex-shrink-0 items-center gap-0.5 rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-[11px] font-semibold;
+  }
+  .mode-toggle button {
+    @apply inline-flex items-center gap-1 px-2 py-1 min-h-[24px] rounded-md transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900;
+  }
+  .chat-menu > summary::-webkit-details-marker {
+    @apply hidden;
+  }
+  .chat-menu-item {
+    @apply w-full flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs font-medium text-slate-800 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900;
+  }
+  .code-copy {
+    @apply absolute top-1.5 right-1.5 inline-flex items-center gap-1 min-h-[24px] min-w-[24px] rounded-md border border-slate-200 bg-white/90 px-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900;
+  }
+  .free-note {
+    @apply mt-2 flex items-center gap-1.5 text-[11px] text-slate-500;
+  }
+  .stream-thinking {
+    @apply text-slate-500 italic animate-pulse;
   }
   .nav-item {
     @apply w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 transition hover:text-slate-950 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900;

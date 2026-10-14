@@ -1,33 +1,52 @@
 // @ts-check
-// Chat flow: retrieval (on-device workspace BM25 + knowledge base) -> answer (cloud provider /
-// on-device model / own server / extractive synthesizer) -> render with verifiable citations -> persist.
-import { currentSessionId, loadCurrentSession, persistMessage, refreshSyncStatus, startNewSession } from './chat-store.js';
+// Chat flow in two modes. Verified source mode: retrieval (on-device workspace BM25 + knowledge
+// base) -> answer (cloud provider / on-device model / own server / extractive synthesizer) -> render
+// with verifiable citations, the source check and a receipt -> persist. Free chat: the conversation
+// and an attached file go to the configured model, without retrieval, source check or receipt.
+import { currentSessionId, deleteSession, loadCurrentSession, persistMessage, refreshSyncStatus, startNewSession } from './chat-store.js';
+import { chatToJson, chatToMarkdown, exportFileName } from './chat-export.js';
 import { splitReasoning } from './chat-stream.js';
 import { APP_VERSION, LIMITS } from './config.js';
 import { contextCoverage } from './core/grounding.js';
-import { byId, onAction, onChange, setHidden } from './dom.js';
+import { byId, downloadText, onAction, onChange, setHidden } from './dom.js';
 import { refreshIcons } from './icons.js';
 import { startLocalEngine } from './engine-ui.js';
-import { getLocale, hasKey, setText, t } from './i18n/index.js';
-import { appendLoading, appendMessage, appendNotice, createStreamingMessage, resetMessages } from './messages.js';
-import { buildInstructions, buildSystemPrompt, contextSection } from './prompts.js';
+import { formatDate, getLocale, hasKey, setText, t } from './i18n/index.js';
+import { appendLoading, appendMessage, appendNotice, createStreamingMessage, markFreeAnswer, resetMessages } from './messages.js';
+import { attachmentSection, buildChatPrompt, buildInstructions, buildSystemPrompt, chatInstructions, contextSection, excerptForChat, historyWindow } from './prompts.js';
 import { callGemini, callLocalServer, callOpenRouter, hasGeminiKey, hasOpenRouterKey } from './providers.js';
 import { registerCitations } from './rag/citations.js';
 import { applyGrounding } from './rag/grounding-view.js';
 import { receiptButton, storeReceiptDraft } from './rag/receipts.js';
-import { addToWorkspace, firstChunks, listWorkspace, searchWorkspace } from './rag/workspace.js';
+import { addToWorkspace, firstChunks, getDocumentText, listWorkspace, searchWorkspace } from './rag/workspace.js';
 import { sanitizeModelNames } from './render.js';
 import { assignCitations, buildContext, distinctSources, mergeHits, rankHitsLocally, workspaceHit } from './retrieval.js';
 import { isUserAbort } from './signals.js';
-import { getLlmUrl, getMode } from './state.js';
+import { getChatMode, getLlmUrl, getMode, onChatModeChange, setChatMode } from './state.js';
 import { getConnection, listDocuments, recentKnowledge, searchKnowledge } from './supabase.js';
-import { describeTrace, isGreeting, synthesizeAnswer } from './synthesizer.js';
+import { describeChatTrace, describeTrace, isGreeting, synthesizeAnswer } from './synthesizer.js';
 import { setAssistantStatus } from './ui.js';
 import * as engine from './webgpu/engine.js';
 import { budgetPrompt } from './webgpu/models.js';
 
 /** @typedef {import('./supabase.js').KnowledgeHit} KnowledgeHit */
-/** @typedef {{ role: 'user' | 'assistant', content: string, localOnly?: boolean }} Turn */
+/** @typedef {import('./config.js').ChatMode} ChatMode */
+/** @typedef {import('./config.js').ComputeMode} ComputeMode */
+/** @typedef {import('./providers.js').ChatMessage} ChatMessage */
+
+/**
+ * A turn of the conversation. `content` is what a model gets as history; `shown` is the question as
+ * the chat showed it (with the name of an attached file).
+ * @typedef {object} Turn
+ * @property {'user' | 'assistant'} role
+ * @property {string} content
+ * @property {boolean} [localOnly]  stays on this device: never sent to a provider or server as history
+ * @property {string} [shown]
+ * @property {string} [createdAt]   ISO time
+ * @property {string} [engine]      engine id of an answer
+ * @property {string} [model]       model id of an answer, when known
+ * @property {ChatMode} [chatMode]
+ */
 
 /** i18n keys of the engine that produced an answer (stored with the message as `engine`). */
 const ENGINE_LABELS = /** @type {Record<string, string>} */ ({
@@ -37,6 +56,13 @@ const ENGINE_LABELS = /** @type {Record<string, string>} */ ({
   local: 'engine.label_server',
   synthesizer: 'engine.label_synthesizer',
 });
+
+/** History sent with a question in source mode: the last four turns, as before. */
+const GROUNDED_WINDOW = Object.freeze({ turns: 4, turnChars: Infinity, totalChars: Infinity });
+/** History sent with a question in the free chat: a longer conversation within a size budget. */
+const FREE_WINDOW = Object.freeze({ turns: LIMITS.freeHistoryTurns, turnChars: LIMITS.historyTurnChars, totalChars: LIMITS.freeHistoryChars });
+/** The trace of a free answer has one phase after the model's own reasoning: the answer. */
+const FREE_TRACE_ROLES = ['trace.role_answer'];
 
 /** @type {Turn[]} */
 let conversation = [];
@@ -145,6 +171,7 @@ async function retrieve(query, mode, focusDocId, workspaceOnly) {
  * @typedef {object} Answer
  * @property {string} text
  * @property {'cloud' | 'client' | 'wasm' | 'local' | 'synthesizer'} engine
+ * @property {string} [model] id of the model that answered, when known
  * @property {boolean} [rendered] already rendered by a streaming bubble
  * @property {HTMLElement} [element] the message element of a streamed answer
  * @property {string} [deliveredContext] the context actually sent, when it was trimmed to fit the model
@@ -152,29 +179,91 @@ async function retrieve(query, mode, focusDocId, workspaceOnly) {
  */
 
 /**
- * The last turns that may leave the device: turns that stayed on it (on-device mode, workspace
+ * What goes into the system prompt: the retrieved excerpts (source mode), or an attached file
+ * (free chat).
+ * @typedef {{ kind: 'grounded', context: string } | { kind: 'free', attachment: { name: string, text: string } | null }} PromptPlan
+ */
+
+/**
+ * @typedef {object} AnswerRequest
+ * @property {PromptPlan} plan
+ * @property {string} prompt
+ * @property {Turn[]} history
+ * @property {AbortSignal} signal
+ * @property {number} started             performance.now() when the question was sent
+ * @property {() => void} removeLoading
+ * @property {string | null} citations    citation scope of the excerpts (source mode)
+ * @property {string} query
+ * @property {string} method              how the excerpts were found (source mode)
+ * @property {KnowledgeHit[]} hits
+ */
+
+/**
+ * The newest turns that may leave the device: turns that stayed on it (on-device mode, workspace
  * excerpts, attached files) are never sent to a cloud provider or a server as history.
  * @param {Turn[]} history
- * @returns {Array<{ role: 'user' | 'assistant', content: string }>}
+ * @param {{ turns: number, turnChars: number, totalChars: number }} limits
  */
-function shareableHistory(history) {
-  return history
-    .filter((h) => !h.localOnly)
-    .slice(-4)
-    .map(({ role, content }) => ({ role, content }));
+function shareableHistory(history, limits) {
+  return historyWindow(history.filter((h) => !h.localOnly), limits);
 }
 
 /**
- * @param {{ prompt: string, context: string, history: Turn[], signal: AbortSignal }} req
+ * System prompt, shareable history and question for a model that does not run on this device.
+ * @param {AnswerRequest} req
+ * @param {'cloud' | 'server'} target
+ * @returns {ChatMessage[]}
+ */
+function remoteMessages(req, target) {
+  const locale = getLocale();
+  const { plan } = req;
+  const system = plan.kind === 'free' ? buildChatPrompt({ locale, target, attachment: plan.attachment }) : buildSystemPrompt({ locale, target, context: plan.context });
+  return [{ role: 'system', content: system }, ...shareableHistory(req.history, plan.kind === 'free' ? FREE_WINDOW : GROUNDED_WINDOW), { role: 'user', content: req.prompt }];
+}
+
+/**
+ * The trace stored with an answer: retrieval and answer in source mode, the answer alone in free chat.
+ * @param {AnswerRequest} req
+ * @param {string} engineLabel
+ * @param {number} durationMs
+ */
+function traceFor(req, engineLabel, durationMs) {
+  const { plan } = req;
+  return plan.kind === 'free'
+    ? describeChatTrace({ engineLabel, durationMs, attachment: plan.attachment?.name ?? null })
+    : describeTrace({ query: req.query, method: req.method, hits: req.hits, engineLabel, durationMs });
+}
+
+/**
+ * The label of the engine that answered, as an i18n key with parameters: a model name is only ever
+ * a parameter, never part of a key.
+ * @param {string | undefined} engineId
+ * @param {string | undefined} model
+ * @returns {{ badge: string, badgeParams: Record<string, string> | undefined }}
+ */
+function engineLabel(engineId, model) {
+  return { badge: (engineId && ENGINE_LABELS[engineId]) || '', badgeParams: model ? { model } : undefined };
+}
+
+/**
+ * @param {AnswerRequest} req
  * @returns {Promise<Answer | null>}
  */
 async function answerWithCloud(req) {
-  const system = buildSystemPrompt({ locale: getLocale(), target: 'cloud', context: req.context });
+  const { plan } = req;
   /** @type {string | null} */
   let geminiFailure = null;
   if (hasGeminiKey()) {
     try {
-      const r = await callGemini(`${system}\n\n${t('prompt.user_question')}\n${req.prompt}`, { signal: req.signal });
+      // Source mode sends one self-contained turn; the free chat sends the conversation.
+      const r =
+        plan.kind === 'free'
+          ? await callGemini(req.prompt, {
+              signal: req.signal,
+              system: buildChatPrompt({ locale: getLocale(), target: 'cloud', attachment: plan.attachment }),
+              history: shareableHistory(req.history, FREE_WINDOW),
+            })
+          : await callGemini(`${buildSystemPrompt({ locale: getLocale(), target: 'cloud', context: plan.context })}\n\n${t('prompt.user_question')}\n${req.prompt}`, { signal: req.signal });
       return { text: r.text, engine: 'cloud' };
     } catch (err) {
       if (req.signal.aborted) throw err;
@@ -184,9 +273,7 @@ async function answerWithCloud(req) {
   }
   if (hasOpenRouterKey()) {
     try {
-      const r = await callOpenRouter([{ role: 'system', content: system }, ...shareableHistory(req.history), { role: 'user', content: req.prompt }], {
-        signal: req.signal,
-      });
+      const r = await callOpenRouter(remoteMessages(req, 'cloud'), { signal: req.signal });
       return { text: r.text, engine: 'cloud' };
     } catch (err) {
       if (req.signal.aborted) throw err;
@@ -199,7 +286,35 @@ async function answerWithCloud(req) {
 }
 
 /**
- * @param {{ prompt: string, context: string, history: Turn[], signal: AbortSignal, citations: string | null, query: string, method: string, hits: KnowledgeHit[], started: number, removeLoading: () => void }} req
+ * Engine id and output budgets of the loaded on-device model. A model without a runtime field is a
+ * WebGPU preset; the free chat may answer longer, within a third of the context window.
+ * @param {{ chatOptions: { context_window_size: number }, runtime?: 'webgpu' | 'wasm', maxOutputTokens?: number }} model
+ */
+function localModelProfile(model) {
+  const wasm = model.runtime === 'wasm';
+  const groundedTokens = model.maxOutputTokens ?? 512;
+  return {
+    engineId: /** @type {'client' | 'wasm'} */ (wasm ? 'wasm' : 'client'),
+    groundedTokens,
+    freeTokens: wasm ? groundedTokens : Math.min(768, Math.floor(model.chatOptions.context_window_size / 3)),
+  };
+}
+
+/**
+ * The system message for the on-device model. The context is fenced after budgeting, so trimming
+ * never cuts its closing marker.
+ * @param {PromptPlan} plan
+ * @param {{ system: string, context: string }} budget
+ */
+function localSystemMessage(plan, budget) {
+  const locale = getLocale();
+  if (plan.kind === 'grounded') return `${budget.system}\n\n${contextSection(locale, budget.context)}`;
+  if (!plan.attachment) return budget.system;
+  return `${budget.system}\n\n${attachmentSection(locale, { name: plan.attachment.name, text: budget.context })}`;
+}
+
+/**
+ * @param {AnswerRequest} req
  * @returns {Promise<Answer | null>}
  */
 async function answerWithLocalModel(req) {
@@ -207,31 +322,32 @@ async function answerWithLocalModel(req) {
   const model = engine.getEngineState().model;
   if (!ready || !model || req.signal.aborted) return null;
 
-  // Receipts and history name the runtime: on the GPU ('client') or on the processor ('wasm').
-  const engineId = model.runtime === 'wasm' ? 'wasm' : 'client';
   const locale = getLocale();
+  const { plan } = req;
+  const free = plan.kind === 'free';
+  const local = localModelProfile(model);
+  const maxTokens = free ? local.freeTokens : local.groundedTokens;
   const budget = budgetPrompt({
     contextWindow: model.chatOptions.context_window_size,
-    maxOutputTokens: model.maxOutputTokens,
-    system: buildInstructions(locale, 'local'),
-    context: req.context,
-    history: req.history.slice(-4),
+    maxOutputTokens: maxTokens,
+    system: plan.kind === 'free' ? chatInstructions(locale, 'local', plan.attachment !== null) : buildInstructions(locale, 'local'),
+    context: plan.kind === 'free' ? (plan.attachment?.text ?? '') : plan.context,
+    history: req.history.slice(free ? -LIMITS.freeHistoryTurns : -4),
     user: req.prompt,
+    // A conversation keeps longer turns than the excerpt-heavy source mode.
+    turnChars: free ? 2_000 : undefined,
   });
 
   req.removeLoading();
-  const stream = createStreamingMessage(ENGINE_LABELS[engineId]);
+  const label = ENGINE_LABELS[local.engineId];
+  const stream = createStreamingMessage(label);
   const onAbort = () => engine.interrupt();
   req.signal.addEventListener('abort', onAbort, { once: true });
   try {
     const text = await engine.generate({
-      messages: [
-        { role: 'system', content: `${budget.system}\n\n${contextSection(locale, budget.context)}` },
-        ...budget.history,
-        { role: 'user', content: budget.user },
-      ],
-      maxTokens: model.maxOutputTokens,
-      temperature: 0.2,
+      messages: [{ role: 'system', content: localSystemMessage(plan, budget) }, ...budget.history, { role: 'user', content: budget.user }],
+      maxTokens,
+      temperature: free ? 0.7 : 0.2,
       onDelta: (delta) => stream.update(delta),
     });
     if (!text.trim()) {
@@ -239,9 +355,9 @@ async function answerWithLocalModel(req) {
       return null;
     }
     const durationMs = Math.round(performance.now() - req.started);
-    const trace = describeTrace({ query: req.query, method: req.method, hits: req.hits, engineLabel: t(ENGINE_LABELS[engineId]), durationMs });
-    stream.finalize(text, { citations: req.citations, trace, durationMs });
-    return { text, engine: engineId, rendered: true, element: stream.element, deliveredContext: budget.context };
+    const trace = traceFor(req, t(label), durationMs);
+    stream.finalize(text, { citations: req.citations, trace, durationMs, traceRoles: free ? FREE_TRACE_ROLES : undefined });
+    return { text, engine: local.engineId, model: model.modelId, rendered: true, element: stream.element, deliveredContext: budget.context };
   } catch (err) {
     stream.remove();
     const message = err instanceof Error ? err.message : String(err);
@@ -252,24 +368,37 @@ async function answerWithLocalModel(req) {
 }
 
 /**
- * @param {{ prompt: string, context: string, history: Turn[], signal: AbortSignal }} req
+ * @param {AnswerRequest} req
  * @returns {Promise<Answer | null>}
  */
 async function answerWithOwnServer(req) {
   try {
-    const r = await callLocalServer(
-      getLlmUrl(),
-      [
-        { role: 'system', content: buildSystemPrompt({ locale: getLocale(), target: 'server', context: req.context }) },
-        ...shareableHistory(req.history),
-        { role: 'user', content: req.prompt },
-      ],
-      { signal: req.signal },
-    );
+    const r = await callLocalServer(getLlmUrl(), remoteMessages(req, 'server'), { signal: req.signal });
     return { text: r.text, engine: 'local' };
   } catch (err) {
     if (req.signal.aborted) throw err;
     return { text: '', engine: 'synthesizer', note: t('chat.note_server_failed', { reason: err instanceof Error ? err.message : String(err) }) };
+  }
+}
+
+/**
+ * Asks the model of the current mode. null: no model answered (none is set up, or it is not
+ * ready); an answer without text but with a note: a configured model failed.
+ * @param {ComputeMode} mode
+ * @param {AnswerRequest} req
+ * @returns {Promise<Answer | null>}
+ */
+async function generateAnswer(mode, req) {
+  switch (mode) {
+    case 'council':
+      return answerWithCloud(req);
+    case 'client':
+      return answerWithLocalModel(req);
+    case 'local':
+      return answerWithOwnServer(req);
+    case 'nvidia':
+      // The NVIDIA cloud client is not connected yet: no model answers, so the fallbacks apply.
+      return null;
   }
 }
 
@@ -290,8 +419,27 @@ function setBusy(on) {
 }
 
 /**
+ * One question on its way to an answer.
+ * @typedef {object} Exchange
+ * @property {string} prompt
+ * @property {string} shownText       the question as shown (with the name of an attached file)
+ * @property {string} askedAt         ISO time
+ * @property {{ docId: string, name: string } | null} file  attached to this question
+ * @property {string} sid             chat session the question belongs to
+ * @property {Turn[]} history
+ * @property {ComputeMode} mode
+ * @property {boolean} localOnly      on-device mode: nothing of this turn leaves the device
+ * @property {AbortSignal} signal
+ * @property {number} started
+ * @property {() => void} removeLoading
+ * @property {(usesWorkspace: boolean) => void} storeQuestion
+ * @property {boolean} workspaceOnly  search only the on-device workspace
+ */
+
+/**
  * @param {string} rawText
- * @param {{ workspaceOnly?: boolean }} [options]  workspaceOnly: search only the on-device workspace
+ * @param {{ workspaceOnly?: boolean, chatMode?: ChatMode }} [options]  workspaceOnly: search only the
+ *   on-device workspace; chatMode: overrides the composer toggle (quick prompts ask the sources)
  */
 export async function submitChat(rawText, options = {}) {
   if (busy) {
@@ -323,11 +471,13 @@ export async function submitChat(rawText, options = {}) {
   const sid = currentSessionId();
   const history = conversation.slice();
   const mode = getMode();
+  const chatMode = options.chatMode ?? getChatMode();
   const localOnly = mode === 'client';
   const prompt = userText || t('chat.summarize_file', { name: file?.name ?? '' });
   const shownText = file ? `${prompt}\n\n[${file.name}]` : prompt;
 
   appendMessage('user', shownText);
+  const askedAt = new Date().toISOString();
   // The question follows its answer's storage rule, so it is stored once retrieval shows whether
   // workspace excerpts are involved: a question about the workspace (or naming an attached file)
   // stays on this device like its answer.
@@ -335,128 +485,19 @@ export async function submitChat(rawText, options = {}) {
   const storeQuestion = (/** @type {boolean} */ usesWorkspace) => {
     if (questionStored) return;
     questionStored = true;
-    void persistMessage(sid, { role: 'user', content: shownText, sources: [], metadata: {} }, { localOnly: localOnly || Boolean(file) || usesWorkspace });
+    void persistMessage(sid, { role: 'user', content: shownText, sources: [], metadata: { chat_mode: chatMode } }, { localOnly: localOnly || Boolean(file) || usesWorkspace });
   };
 
   const controller = new AbortController();
   activeAbort = controller;
   setBusy(true);
-  const removeLoading = appendLoading();
+  const removeLoading = appendLoading(chatMode === 'free' ? 'chat.thinking_free' : 'chat.thinking');
   const started = performance.now();
+  /** @type {Exchange} */
+  const exchange = { prompt, shownText, askedAt, file, sid, history, mode, localOnly, signal: controller.signal, started, removeLoading, storeQuestion, workspaceOnly: options.workspaceOnly === true };
 
   try {
-    const { hits, method, kbUnavailable } = await retrieve(prompt, mode, file?.docId ?? null, options.workspaceOnly === true);
-    const greeting = !file && isGreeting(userText);
-    const used = greeting ? [] : hits;
-    const usesWorkspace = used.some((h) => h.workspace);
-    storeQuestion(usesWorkspace);
-    const citationList = assignCitations(used, { excerptChars: LIMITS.excerptChars });
-    const citations = registerCitations(citationList);
-    const sources = distinctSources(used);
-    const context = buildContext(citationList, { maxChars: LIMITS.contextCharsCloud });
-
-    /** @type {Answer | null} */
-    let answer = null;
-    const common = { prompt, context, history, signal: controller.signal };
-    if (mode === 'council') answer = await answerWithCloud(common);
-    else if (mode === 'client') answer = await answerWithLocalModel({ ...common, citations, query: prompt, method, hits: used, started, removeLoading });
-    else answer = await answerWithOwnServer(common);
-
-    const note = answer?.note;
-    if (note) {
-      // A configured model failed: say so where the answer appears, not only in the details.
-      appendNotice({ icon: 'triangle-alert', tone: 'warn', title: 'chat.provider_failed_title', body: 'chat.provider_failed_body', params: { reason: note } });
-    }
-    if (!answer || !answer.text) {
-      const modelAvailable = !note && (mode !== 'council' || hasGeminiKey() || hasOpenRouterKey());
-      answer = {
-        text: synthesizeAnswer({
-          query: prompt,
-          hits: used,
-          citations: citationList,
-          // Files in the on-device workspace are available documents too.
-          knownTitles: [...new Set([...listWorkspace().map((d) => d.name), ...(await knownTitles())])],
-          modelAvailable,
-          kbUnavailable,
-          focusName: file?.name ?? null,
-        }),
-        engine: 'synthesizer',
-      };
-    }
-    if (controller.signal.aborted && !answer.rendered) throw new DOMException('Aborted', 'AbortError');
-
-    const durationMs = Math.round(performance.now() - started);
-    const answerText = splitReasoning(answer.text).answer || answer.text;
-    // An answer quoted without a model can list the files in the workspace (greeting, document list):
-    // their names stay on this device like the files themselves.
-    const namesWorkspace = answer.engine === 'synthesizer' && listWorkspace().some((d) => answerText.includes(d.name));
-    const trace = describeTrace({ query: prompt, method, hits: used, engineLabel: t(ENGINE_LABELS[answer.engine]), durationMs, note });
-    const metadata = { engine: answer.engine, thoughts: trace, duration_ms: durationMs };
-
-    if (sid === currentSessionId()) {
-      /** @type {HTMLElement | null} */
-      let messageEl = answer.element ?? null;
-      if (!answer.rendered) {
-        removeLoading();
-        messageEl = appendMessage('assistant', answer.text, { citations, badge: ENGINE_LABELS[answer.engine], trace, durationMs });
-      }
-      if (messageEl && citations) {
-        // Extractive answers quote the excerpts as given; model answers are checked against the part
-        // of each excerpt that actually reached the model.
-        const coverage =
-          answer.engine === 'synthesizer'
-            ? citationList.map((c) => ({ delivered: /** @type {const} */ ('full'), text: c.text }))
-            : contextCoverage(citationList, answer.deliveredContext ?? context);
-        const report = applyGrounding(messageEl, {
-          scope: citations,
-          sources: citationList.map((c, i) => ({ label: c.label, doc: c.doc, heading: c.heading, text: coverage[i].text, delivered: coverage[i].delivered })),
-          // What the user said may be repeated without a source; the model's own earlier answers may not.
-          given: [prompt, ...history.slice(-4).filter((h) => h.role === 'user').map((h) => h.content)],
-          citedOnly: answer.engine === 'synthesizer',
-        });
-        const docs = new Map(listWorkspace().map((d) => [d.docId, d]));
-        const receipt = storeReceiptDraft({
-          createdAt: new Date().toISOString(),
-          version: APP_VERSION,
-          answer: { text: answerText, engine: answer.engine, locale: getLocale() },
-          question: prompt,
-          grounding: report,
-          citations: citationList.map((c, i) => {
-            const doc = c.span ? docs.get(c.span.docId) : undefined;
-            return {
-              label: c.label,
-              doc: c.doc,
-              heading: c.heading,
-              source: c.source,
-              delivered: coverage[i].delivered,
-              deliveredChars: coverage[i].delivered === 'partial' && c.text.startsWith(coverage[i].text) ? coverage[i].text.length : undefined,
-              text: c.text,
-              truncated: c.truncated,
-              documentId: c.source === 'knowledge' ? c.documentId : null,
-              document: doc && {
-                name: doc.name,
-                kind: doc.kind,
-                bytes: doc.bytes,
-                fileSha256: doc.fileSha256,
-                textSha256: doc.textSha256,
-                textChars: doc.chars,
-                pages: doc.pages,
-                extractor: doc.extractor,
-                chunker: doc.chunker,
-              },
-              chunk: c.span ? { index: c.span.chunkIndex, start: c.span.start, end: c.span.end } : undefined,
-            };
-          }),
-        });
-        messageEl.querySelector('.message-provenance')?.append(receiptButton(receipt));
-        refreshIcons(messageEl);
-      }
-      const turnLocal = localOnly || usesWorkspace || namesWorkspace || Boolean(file);
-      conversation.push({ role: 'user', content: prompt.slice(0, 4_000), localOnly: turnLocal }, { role: 'assistant', content: answerText, localOnly: turnLocal });
-    }
-
-    // Answers quoting the on-device workspace stay on this device, even when chats are synced.
-    void persistMessage(sid, { role: 'assistant', content: answerText, sources, metadata }, { localOnly: localOnly || usesWorkspace || namesWorkspace });
+    await (chatMode === 'free' ? answerFree(exchange) : answerGrounded(exchange));
   } catch (err) {
     storeQuestion(false);
     removeLoading();
@@ -468,6 +509,207 @@ export async function submitChat(rawText, options = {}) {
     setBusy(false);
     activeAbort = null;
   }
+}
+
+/**
+ * Stored with an answer: the engine (and model) that produced it, the chat mode and the trace.
+ * @param {Answer} answer
+ * @param {ChatMode} chatMode
+ * @param {string} trace
+ * @param {number} durationMs
+ */
+function answerMetadata(answer, chatMode, trace, durationMs) {
+  return { engine: answer.engine, ...(answer.model ? { model: answer.model } : {}), chat_mode: chatMode, thoughts: trace, duration_ms: durationMs };
+}
+
+/**
+ * Adds a question and its answer to the conversation.
+ * @param {Exchange} x
+ * @param {Answer} answer
+ * @param {string} answerText  the answer without the model's reasoning
+ * @param {boolean} localOnly
+ * @param {ChatMode} chatMode
+ */
+function pushTurns(x, answer, answerText, localOnly, chatMode) {
+  conversation.push(
+    { role: 'user', content: x.prompt.slice(0, 4_000), localOnly, shown: x.shownText, createdAt: x.askedAt, chatMode },
+    { role: 'assistant', content: answerText, localOnly, createdAt: new Date().toISOString(), engine: answer.engine, model: answer.model, chatMode },
+  );
+}
+
+/**
+ * Verified source mode: retrieval, an answer from the model (or quoted from the sources), the
+ * source check and a receipt draft, for every engine.
+ * @param {Exchange} x
+ */
+async function answerGrounded(x) {
+  const { prompt, file, sid, history, mode, localOnly, signal, started, removeLoading } = x;
+  const { hits, method, kbUnavailable } = await retrieve(prompt, mode, file?.docId ?? null, x.workspaceOnly);
+  const greeting = !file && isGreeting(prompt);
+  const used = greeting ? [] : hits;
+  const usesWorkspace = used.some((h) => h.workspace);
+  x.storeQuestion(usesWorkspace);
+  const citationList = assignCitations(used, { excerptChars: LIMITS.excerptChars });
+  const citations = registerCitations(citationList);
+  const sources = distinctSources(used);
+  const context = buildContext(citationList, { maxChars: LIMITS.contextCharsCloud });
+
+  /** @type {Answer | null} */
+  let answer = await generateAnswer(mode, { plan: { kind: 'grounded', context }, prompt, history, signal, started, removeLoading, citations, query: prompt, method, hits: used });
+
+  const note = answer?.note;
+  if (note) {
+    // A configured model failed: say so where the answer appears, not only in the details.
+    appendNotice({ icon: 'triangle-alert', tone: 'warn', title: 'chat.provider_failed_title', body: 'chat.provider_failed_body', params: { reason: note } });
+  }
+  if (!answer || !answer.text) {
+    const modelAvailable = !note && (mode !== 'council' || hasGeminiKey() || hasOpenRouterKey());
+    answer = {
+      text: synthesizeAnswer({
+        query: prompt,
+        hits: used,
+        citations: citationList,
+        // Files in the on-device workspace are available documents too.
+        knownTitles: [...new Set([...listWorkspace().map((d) => d.name), ...(await knownTitles())])],
+        modelAvailable,
+        kbUnavailable,
+        focusName: file?.name ?? null,
+      }),
+      engine: 'synthesizer',
+    };
+  }
+  if (signal.aborted && !answer.rendered) throw new DOMException('Aborted', 'AbortError');
+
+  const durationMs = Math.round(performance.now() - started);
+  const answerText = splitReasoning(answer.text).answer || answer.text;
+  // An answer quoted without a model can list the files in the workspace (greeting, document list):
+  // their names stay on this device like the files themselves.
+  const namesWorkspace = answer.engine === 'synthesizer' && listWorkspace().some((d) => answerText.includes(d.name));
+  const label = engineLabel(answer.engine, answer.model);
+  const trace = describeTrace({ query: prompt, method, hits: used, engineLabel: t(label.badge, label.badgeParams), durationMs, note });
+
+  if (sid === currentSessionId()) {
+    /** @type {HTMLElement | null} */
+    let messageEl = answer.element ?? null;
+    if (!answer.rendered) {
+      removeLoading();
+      messageEl = appendMessage('assistant', answer.text, { citations, ...label, trace, durationMs });
+    }
+    if (messageEl && citations) {
+      // Extractive answers quote the excerpts as given; model answers are checked against the part
+      // of each excerpt that actually reached the model.
+      const coverage =
+        answer.engine === 'synthesizer'
+          ? citationList.map((c) => ({ delivered: /** @type {const} */ ('full'), text: c.text }))
+          : contextCoverage(citationList, answer.deliveredContext ?? context);
+      const report = applyGrounding(messageEl, {
+        scope: citations,
+        sources: citationList.map((c, i) => ({ label: c.label, doc: c.doc, heading: c.heading, text: coverage[i].text, delivered: coverage[i].delivered })),
+        // What the user said may be repeated without a source; the model's own earlier answers may not.
+        given: [prompt, ...history.slice(-4).filter((h) => h.role === 'user').map((h) => h.content)],
+        citedOnly: answer.engine === 'synthesizer',
+      });
+      const docs = new Map(listWorkspace().map((d) => [d.docId, d]));
+      const receipt = storeReceiptDraft({
+        createdAt: new Date().toISOString(),
+        version: APP_VERSION,
+        answer: { text: answerText, engine: answer.engine, locale: getLocale() },
+        question: prompt,
+        grounding: report,
+        citations: citationList.map((c, i) => {
+          const doc = c.span ? docs.get(c.span.docId) : undefined;
+          return {
+            label: c.label,
+            doc: c.doc,
+            heading: c.heading,
+            source: c.source,
+            delivered: coverage[i].delivered,
+            deliveredChars: coverage[i].delivered === 'partial' && c.text.startsWith(coverage[i].text) ? coverage[i].text.length : undefined,
+            text: c.text,
+            truncated: c.truncated,
+            documentId: c.source === 'knowledge' ? c.documentId : null,
+            document: doc && {
+              name: doc.name,
+              kind: doc.kind,
+              bytes: doc.bytes,
+              fileSha256: doc.fileSha256,
+              textSha256: doc.textSha256,
+              textChars: doc.chars,
+              pages: doc.pages,
+              extractor: doc.extractor,
+              chunker: doc.chunker,
+            },
+            chunk: c.span ? { index: c.span.chunkIndex, start: c.span.start, end: c.span.end } : undefined,
+          };
+        }),
+      });
+      messageEl.querySelector('.message-provenance')?.append(receiptButton(receipt));
+      refreshIcons(messageEl);
+    }
+    pushTurns(x, answer, answerText, localOnly || usesWorkspace || namesWorkspace || Boolean(file), 'grounded');
+  }
+
+  // Answers quoting the on-device workspace stay on this device, even when chats are synced.
+  void persistMessage(sid, { role: 'assistant', content: answerText, sources, metadata: answerMetadata(answer, 'grounded', trace, durationMs) }, { localOnly: localOnly || usesWorkspace || namesWorkspace });
+}
+
+/**
+ * The attached file as free-chat context: all of it when it fits, otherwise its beginning and the
+ * passages that match the question.
+ * @param {{ docId: string, name: string }} file
+ * @param {string} query
+ * @returns {Promise<{ name: string, text: string } | null>}
+ */
+async function attachmentForChat(file, query) {
+  try {
+    const { text } = await getDocumentText(file.docId);
+    if (text.length <= LIMITS.freeAttachmentChars) return { name: file.name, text };
+    const ranges = [...(await firstChunks(file.docId, 2)), ...(await searchWorkspace(query, 12)).filter((h) => h.docId === file.docId)];
+    return { name: file.name, text: excerptForChat(text, ranges, LIMITS.freeAttachmentChars) };
+  } catch (err) {
+    console.warn('[starpi] the attached file could not be read for the chat', err);
+    return null;
+  }
+}
+
+/**
+ * Free chat: the conversation (and an attached file) goes to the model of the current mode, without
+ * retrieval, source check or receipt. Every answer is marked as not checked against sources.
+ * @param {Exchange} x
+ */
+async function answerFree(x) {
+  const { prompt, file, sid, history, mode, localOnly, signal, started, removeLoading } = x;
+  // Nothing is retrieved; an attached file keeps the question on this device (storeQuestion's rule).
+  x.storeQuestion(false);
+  const attachment = file ? await attachmentForChat(file, prompt) : null;
+  /** @type {AnswerRequest} */
+  const req = { plan: { kind: 'free', attachment }, prompt, history, signal, started, removeLoading, citations: null, query: prompt, method: '', hits: [] };
+  const answer = await generateAnswer(mode, req);
+  if (signal.aborted && !answer?.rendered) throw new DOMException('Aborted', 'AbortError');
+  if (!answer?.text) {
+    removeLoading();
+    // The free chat has no sources to quote instead: it says why there is no answer.
+    if (answer?.note) appendNotice({ icon: 'triangle-alert', tone: 'warn', title: 'chat.provider_failed_title', body: 'chat.free_failed_body', params: { reason: answer.note } });
+    else appendNotice({ icon: 'info', tone: 'info', title: 'chat.free_no_model_title', body: 'chat.free_no_model_body' });
+    return;
+  }
+
+  const durationMs = Math.round(performance.now() - started);
+  const answerText = splitReasoning(answer.text).answer || answer.text;
+  const label = engineLabel(answer.engine, answer.model);
+  const trace = traceFor(req, t(label.badge, label.badgeParams), durationMs);
+  // An answer about an attached file stays on this device like the file.
+  const turnLocal = localOnly || Boolean(file);
+  if (sid === currentSessionId()) {
+    let messageEl = answer.element ?? null;
+    if (!answer.rendered) {
+      removeLoading();
+      messageEl = appendMessage('assistant', answer.text, { ...label, trace, durationMs, traceRoles: FREE_TRACE_ROLES });
+    }
+    if (messageEl) markFreeAnswer(messageEl);
+    pushTurns(x, answer, answerText, turnLocal, 'free');
+  }
+  void persistMessage(sid, { role: 'assistant', content: answerText, sources: [], metadata: answerMetadata(answer, 'free', trace, durationMs) }, { localOnly: turnLocal });
 }
 
 function removeAttachment() {
@@ -522,9 +764,13 @@ export async function restoreHistory() {
   conversation = [];
   resetMessages();
   for (const m of messages) {
-    const engineKey = typeof m.metadata?.engine === 'string' ? ENGINE_LABELS[m.metadata.engine] : undefined;
-    appendMessage(m.role, m.content, { sources: m.sources, badge: engineKey });
-    conversation.push({ role: m.role, content: m.content, localOnly: m.metadata?.local_only === true });
+    const meta = m.metadata ?? {};
+    const engineId = typeof meta.engine === 'string' ? meta.engine : undefined;
+    const model = typeof meta.model === 'string' ? meta.model : undefined;
+    const chatMode = meta.chat_mode === 'free' || meta.chat_mode === 'grounded' ? meta.chat_mode : undefined;
+    const el = appendMessage(m.role, m.content, { sources: m.sources, ...engineLabel(engineId, model) });
+    if (chatMode === 'free' && m.role === 'assistant') markFreeAnswer(el);
+    conversation.push({ role: m.role, content: m.content, localOnly: meta.local_only === true, shown: m.content, createdAt: m.created_at, engine: engineId, model, chatMode });
   }
   container?.append(...shownSinceBoot);
   conversation.push(...live);
@@ -537,6 +783,80 @@ export async function restoreHistory() {
 function autosize(input) {
   input.style.height = 'auto';
   if (input.value) input.style.height = `${Math.min(input.scrollHeight, 128)}px`;
+}
+
+/** Shows the chat mode in the composer: the pressed toggle button, the hint and the placeholder. */
+function renderChatMode() {
+  const free = getChatMode() === 'free';
+  for (const btn of document.querySelectorAll('[data-action="set-chat-mode"]')) {
+    btn.setAttribute('aria-pressed', String((btn.getAttribute('data-arg') === 'free') === free));
+  }
+  setText(byId('chatModeHint'), free ? 'chat.mode_free_hint' : 'chat.mode_grounded_hint');
+  const input = byId('chatInput');
+  const placeholder = free ? 'chat.placeholder_free' : 'chat.placeholder';
+  input?.setAttribute('data-i18n-placeholder', placeholder);
+  input?.setAttribute('placeholder', t(placeholder));
+}
+
+/**
+ * Downloads the conversation on screen as Markdown or as JSON (schema starpi.chat/v1).
+ * @param {'md' | 'json'} format
+ */
+function exportChat(format) {
+  if (!conversation.length) {
+    appendNotice({ icon: 'info', tone: 'info', title: 'chat.export_empty' });
+    return;
+  }
+  const sessionId = currentSessionId();
+  const exportedAt = new Date().toISOString();
+  const turns = conversation.map((c) => ({
+    role: c.role,
+    content: c.shown ?? c.content,
+    createdAt: c.createdAt ?? null,
+    engine: c.engine ?? null,
+    model: c.model ?? null,
+    chatMode: c.chatMode ?? null,
+  }));
+  const text =
+    format === 'json'
+      ? chatToJson(turns, { sessionId, exportedAt, version: APP_VERSION, locale: getLocale() })
+      : chatToMarkdown(turns, {
+          title: t('chat.export_title'),
+          subtitle: t('chat.export_meta', { date: formatDate(new Date(exportedAt), { dateStyle: 'long', timeStyle: 'short' }), n: turns.length }),
+          user: t('chat.export_you'),
+          assistant: (turn) => {
+            const label = engineLabel(turn.engine ?? undefined, turn.model ?? undefined);
+            return label.badge ? `Starpi · ${t(label.badge, label.badgeParams)}` : 'Starpi';
+          },
+        });
+  downloadText(exportFileName(sessionId, exportedAt, format), text, format === 'json' ? 'application/json' : 'text/markdown;charset=utf-8');
+}
+
+/** Deletes the current chat on this device and, when chats are synced, its synced messages. */
+async function deleteCurrentChat() {
+  // An answer still being written would store its turn again after the delete.
+  if (busy) {
+    window.alert(t('chat.delete_busy'));
+    return;
+  }
+  if (!window.confirm(t('chat.delete_confirm'))) return;
+  const ok = await deleteSession(currentSessionId());
+  resetConversation();
+  appendNotice(ok ? { icon: 'check-circle-2', tone: 'success', title: 'chat.deleted_title' } : { icon: 'triangle-alert', tone: 'warn', title: 'chat.delete_partial_title' });
+}
+
+/** The chat menu closes like a menu: on a click elsewhere, and on Escape (focus returns to it). */
+function initChatMenu() {
+  const menu = /** @type {HTMLDetailsElement | null} */ (document.querySelector('details.chat-menu'));
+  if (!menu) return;
+  document.addEventListener('click', (e) => {
+    if (menu.open && !(e.target instanceof Node && menu.contains(e.target))) menu.open = false;
+  });
+  menu.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !menu.open) return;
+    menu.open = false;
+    menu.querySelector('summary')?.focus();
+  });
 }
 
 export function initChat() {
@@ -570,12 +890,27 @@ export function initChat() {
   onAction('remove-attachment', () => removeAttachment());
   onAction('pick-chat-file', () => byId('chatFileInput')?.click());
 
-  // Quick prompts carry an i18n key, so the question is asked in the active language. Questions about
-  // the sample files (data-scope="workspace") search only the workspace.
+  // Quick prompts carry an i18n key, so the question is asked in the active language. They ask about
+  // the sources, so they always run in source mode; questions about the sample files
+  // (data-scope="workspace") search only the workspace.
   onAction('quick-prompt', (el) => {
     const key = el.dataset.arg ?? '';
-    if (key) void submitChat(hasKey(key) ? t(key) : key, { workspaceOnly: el.dataset.scope === 'workspace' });
+    if (key) void submitChat(hasKey(key) ? t(key) : key, { workspaceOnly: el.dataset.scope === 'workspace', chatMode: 'grounded' });
   });
+
+  onAction('set-chat-mode', (el) => setChatMode(el.dataset.arg));
+  onChatModeChange(() => renderChatMode());
+  renderChatMode();
+
+  onAction('export-chat', (el) => {
+    el.closest('details')?.removeAttribute('open');
+    exportChat(el.dataset.arg === 'json' ? 'json' : 'md');
+  });
+  onAction('delete-chat', (el) => {
+    el.closest('details')?.removeAttribute('open');
+    return deleteCurrentChat();
+  });
+  initChatMenu();
 
   onChange('attach-file', (el) => {
     const fileInput = /** @type {HTMLInputElement} */ (el);

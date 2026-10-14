@@ -6,7 +6,7 @@ import { formatNumber, setText } from './i18n/index.js';
 import { LIMITS, STORAGE_KEYS } from './config.js';
 import { byId } from './dom.js';
 import { readLocal, readLocalJson, writeLocal, writeLocalJson } from './storage.js';
-import { canSyncChats, countChatMessages, deleteOwnChats, getConnection, insertChatMessage, loadChatSession } from './supabase.js';
+import { canSyncChats, countChatMessages, deleteChatSession, deleteOwnChats, getConnection, insertChatMessage, loadChatSession } from './supabase.js';
 
 /** @typedef {import('./supabase.js').ChatRow} ChatRow */
 
@@ -128,6 +128,22 @@ export async function deleteChatHistory() {
   // a failure instead of claiming success.
   if (getConnection().status === 'ready' && !canSyncChats()) return true;
   const res = await deleteOwnChats();
+  void refreshSyncStatus();
+  return res.ok;
+}
+
+/**
+ * Deletes one chat: its messages stored in this browser and, when chats are synced, its synced
+ * messages. Deleting the current chat starts a new chat session.
+ * @param {string} sid
+ * @returns {Promise<boolean>} false when the synced messages could not be deleted
+ */
+export async function deleteSession(sid) {
+  writeLocalJson(STORAGE_KEYS.localChats, Object.fromEntries(Object.entries(readLocalChats()).filter(([key]) => key !== sid)));
+  if (sid === sessionId) startNewSession();
+  // As in deleteChatHistory(): nothing was synced when the connection is up and chats cannot sync.
+  if (getConnection().status === 'ready' && !canSyncChats()) return true;
+  const res = await deleteChatSession(sid);
   void refreshSyncStatus();
   return res.ok;
 }

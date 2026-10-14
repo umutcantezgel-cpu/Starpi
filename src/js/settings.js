@@ -12,7 +12,7 @@ import { formatNumber, getLocale, setText, t } from './i18n/index.js';
 import { readinessPrompt } from './prompts.js';
 import { callGemini, callOpenRouter, hasGeminiKey, hasOpenRouterKey, normalizeServerUrl, probeLocalServer } from './providers.js';
 import { sanitizeModelNames } from './render.js';
-import { getLlmUrl, getMode, getModelPreference, setLlmUrl, setMode, setModelPreference } from './state.js';
+import { getChatMode, getLlmUrl, getMode, getModelPreference, onChatModeChange, setLlmUrl, setMode, setModelPreference } from './state.js';
 import { readLocal, readSecret, removeSecret, writeLocal, writeSecret } from './storage.js';
 import { setAssistantStatus, setEngineDot } from './ui.js';
 import * as engine from './webgpu/engine.js';
@@ -37,21 +37,23 @@ function renderKeyHints() {
   renderKeyHint(byId('cfgOpenrouterKeyHint'), readSecret(STORAGE_KEYS.openrouterKey));
 }
 
-/** Footer under the chat input: where the question goes in the current mode. */
+/** Footer under the chat input: where the question goes in the current mode and chat mode. */
 export function renderPrivacyNotice() {
   const el = byId('privacyNotice');
   if (!el) return;
   const mode = getMode();
-  let icon = 'library';
-  let key = 'privacy.extractive';
+  // The free chat searches no sources: its notices say what goes where instead.
+  const free = getChatMode() === 'free';
+  let icon = free ? 'info' : 'library';
+  let key = free ? 'privacy.free_no_model' : 'privacy.extractive';
   /** @type {Record<string, string> | undefined} */
   let params;
   if (mode === 'client') {
     icon = 'lock';
-    key = 'privacy.local';
+    key = free ? 'privacy.free_local' : 'privacy.local';
   } else if (mode === 'local') {
     icon = 'server';
-    key = 'privacy.server';
+    key = free ? 'privacy.free_server' : 'privacy.server';
     let host = '';
     try {
       host = new URL(getLlmUrl()).host;
@@ -61,7 +63,7 @@ export function renderPrivacyNotice() {
     params = { host: host || '–' };
   } else if (hasGeminiKey() || hasOpenRouterKey()) {
     icon = 'cloud';
-    key = 'privacy.cloud';
+    key = free ? 'privacy.free_cloud' : 'privacy.cloud';
   }
   const iconEl = document.createElement('i');
   iconEl.dataset.lucide = icon;
@@ -281,6 +283,8 @@ export function initSettings() {
   syncModeSelectors(getMode());
   renderKeyHints();
   renderPrivacyNotice();
+  // The chat mode toggle lives in chat.js, which must not import this module: state.js tells us.
+  onChatModeChange(() => renderPrivacyNotice());
 
   onChange('change-engine', (el) => changeEngine(/** @type {HTMLSelectElement} */ (el).value, { interactive: true }));
   onAction('save-settings', () => saveSettings());

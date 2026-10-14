@@ -37,6 +37,7 @@
     "src/js/chat-store.js",
     "src/js/chat-stream.js",
     "src/js/chat.js",
+    "src/js/code-blocks.js",
     "src/js/config.js",
     "src/js/core/binding.js",
     "src/js/core/document.js",

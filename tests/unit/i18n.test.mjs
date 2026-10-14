@@ -61,7 +61,7 @@ function usedKeys() {
   for (const type of ['project', 'person', 'metric', 'tech', 'regulation']) keys.add(`graph.type_${type}`);
   for (const tab of ['chat', 'library', 'graph', 'ingest', 'bench', 'settings']) keys.add(`nav.${tab}`);
   for (const dir of ['outgoing', 'incoming']) keys.add(`graph.${dir}`);
-  for (const role of ['retrieval', 'answer', 'details']) keys.add(`trace.role_${role}`);
+  for (const role of ['retrieval', 'answer', 'details', 'reasoning']) keys.add(`trace.role_${role}`);
   for (const key of ['review', 'partial']) keys.add(`grounding.${key}`);
   for (const e of ['denied', 'microphone', 'network', 'no_speech', 'language', 'other']) keys.add(`chat.voice_error_${e}`);
   for (const q of ['launch', 'budget', 'risks']) keys.add(`demo.q_${q}`), keys.add(`demo.q_${q}_question`);

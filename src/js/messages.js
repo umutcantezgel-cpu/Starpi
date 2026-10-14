@@ -3,7 +3,8 @@
 // renderMarkdown() (marked + DOMPurify). UI chrome inside messages carries data-i18n keys, so a
 // language switch re-labels it; message content itself stays as written. No inline handlers:
 // toggles and citations use data-action delegation.
-import { splitReasoning } from './chat-stream.js';
+import { splitReasoning, splitStreamingText } from './chat-stream.js';
+import { decorateCodeBlocks, initCodeBlocks } from './code-blocks.js';
 import { byId, onAction } from './dom.js';
 import { refreshIcons } from './icons.js';
 import { applyTranslations, formatNumber, setText, t } from './i18n/index.js';
@@ -31,6 +32,7 @@ export function initMessages() {
   const el = container();
   welcomeTemplate = el.firstElementChild ? el.firstElementChild.cloneNode(true) : null;
   onAction('toggle-thought', (btn) => toggleThought(btn));
+  initCodeBlocks();
 }
 
 /** Restores the welcome message only (new chat / before replaying history). */
@@ -44,13 +46,24 @@ export function resetMessages() {
 }
 
 const PHASE_ICONS = ['search', 'sparkles', 'clipboard-list', 'zap'];
+/** i18n keys naming the phases of a trace, in order (a grounded answer: retrieval, then answer). */
 const PHASE_ROLES = ['trace.role_retrieval', 'trace.role_answer', 'trace.role_details', 'trace.role_details'];
+
+/**
+ * The phase roles of a trace that may start with the model's own reasoning.
+ * @param {string} thoughts
+ * @param {string[] | undefined} roles
+ */
+function rolesWithReasoning(thoughts, roles = PHASE_ROLES) {
+  return thoughts ? ['trace.role_reasoning', ...roles] : roles;
+}
 
 /**
  * Renders a details/trace text (Markdown with ### headings) as a list of step cards.
  * @param {string} text
+ * @param {string[]} [roles]  i18n keys of the phases, in order
  */
-export function formatThoughtSteps(text) {
+export function formatThoughtSteps(text, roles = PHASE_ROLES) {
   if (!text) return '';
   /** @type {Array<{ title: string, content: string[] }>} */
   const phases = [];
@@ -72,7 +85,7 @@ export function formatThoughtSteps(text) {
   return phases
     .map((p, idx) => {
       const body = p.content.join('\n');
-      const role = PHASE_ROLES[idx] ?? 'trace.role_details';
+      const role = roles[idx] ?? 'trace.role_details';
       return `
         <div class="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-1.5">
           <div class="flex items-center justify-between gap-2">
@@ -108,8 +121,9 @@ function toggleThought(btn) {
 /**
  * @param {string} trace
  * @param {number | null} durationMs
+ * @param {string[]} roles
  */
-function thoughtBlock(trace, durationMs) {
+function thoughtBlock(trace, durationMs, roles) {
   const dur = durationMs ? `${formatNumber(durationMs / 1000, { maximumFractionDigits: 1 })} s` : '';
   return `
     <div class="thought-container mb-3 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden">
@@ -125,12 +139,13 @@ function thoughtBlock(trace, durationMs) {
         </span>
       </button>
       <div class="thought-body hidden p-3 border-t border-slate-200 space-y-2 bg-white">
-        ${formatThoughtSteps(trace)}
+        ${formatThoughtSteps(trace, roles)}
       </div>
     </div>`;
 }
 
 /**
+ * The engine badge under an answer; setBadgeLabel() fills in its label.
  * @param {string} badgeKey
  * @param {boolean} pulse
  */
@@ -138,8 +153,18 @@ function badgeBlock(badgeKey, pulse) {
   if (!badgeKey) return '';
   return `<div class="mt-2.5 pt-2 border-t border-slate-200 flex items-center gap-1.5 text-[11px] text-slate-600">
       <span class="w-1.5 h-1.5 rounded-full bg-emerald-500${pulse ? ' animate-pulse' : ''}"></span>
-      <span data-i18n="${escapeHtml(badgeKey)}">${escapeHtml(t(badgeKey))}</span>
+      <span class="engine-badge-label"></span>
     </div>`;
+}
+
+/**
+ * Labels the engine badge. A model name arrives only as a parameter, never as an i18n key.
+ * @param {HTMLElement} msgDiv
+ * @param {string} badgeKey
+ * @param {Record<string, string> | undefined} badgeParams
+ */
+function setBadgeLabel(msgDiv, badgeKey, badgeParams) {
+  if (badgeKey) setText(msgDiv.querySelector('.engine-badge-label'), badgeKey, badgeParams);
 }
 
 /**
@@ -164,8 +189,10 @@ const USER_AVATAR =
  * @property {Source[]} [sources]       title-only sources (restored history)
  * @property {string | null} [citations] citation scope id from registerCitations()
  * @property {string} [badge]           i18n key of the engine label
+ * @property {Record<string, string>} [badgeParams] parameters of the engine label
  * @property {string | null} [trace]
  * @property {number | null} [durationMs]
+ * @property {string[]} [traceRoles]    i18n keys of the trace phases (default: retrieval, answer)
  */
 
 /**
@@ -190,10 +217,12 @@ export function appendMessage(role, text, opts = {}) {
 
   let mainText = text;
   let trace = opts.trace ?? null;
+  let roles = PHASE_ROLES;
   if (!isUser) {
     const split = splitReasoning(text);
     mainText = split.answer;
     if (split.thoughts) trace = trace ? `${split.thoughts}\n\n${trace}` : split.thoughts;
+    roles = rolesWithReasoning(split.thoughts, opts.traceRoles);
   }
 
   const bodyHtml = isUser ? escapeHtml(text).replace(/\n/g, '<br>') : renderMarkdown(mainText);
@@ -201,7 +230,7 @@ export function appendMessage(role, text, opts = {}) {
   msgDiv.innerHTML = `
     ${isUser ? USER_AVATAR : ASSISTANT_AVATAR}
     <div class="flex-1 min-w-0 ${isUser ? 'sm:max-w-[85%] bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-800'} rounded-2xl p-4 text-sm leading-relaxed shadow-xs">
-      ${!isUser && trace ? thoughtBlock(trace, opts.durationMs ?? null) : ''}
+      ${!isUser && trace ? thoughtBlock(trace, opts.durationMs ?? null, roles) : ''}
       <div class="message-content ${isUser ? 'text-white break-words' : 'prose-custom break-words'}">${bodyHtml}</div>
       ${isUser ? '' : '<div class="message-sources"></div><div class="message-provenance"></div>'}
       ${isUser ? '' : badgeBlock(opts.badge ?? '', false)}
@@ -210,7 +239,9 @@ export function appendMessage(role, text, opts = {}) {
   if (!isUser) {
     const content = /** @type {HTMLElement} */ (msgDiv.querySelector('.message-content'));
     linkifyCitations(content, opts.citations ?? null);
+    decorateCodeBlocks(content);
     attachSources(msgDiv, opts);
+    setBadgeLabel(msgDiv, opts.badge ?? '', opts.badgeParams);
   }
 
   container().appendChild(msgDiv);
@@ -256,8 +287,9 @@ export function appendNotice(notice) {
 /**
  * A message bubble that re-renders at most once per animation frame while tokens stream in.
  * @param {string} badgeKey i18n key of the engine label
+ * @param {Record<string, string>} [badgeParams] parameters of the engine label
  */
-export function createStreamingMessage(badgeKey) {
+export function createStreamingMessage(badgeKey, badgeParams) {
   const msgDiv = document.createElement('div');
   msgDiv.className = 'flex items-start gap-3 w-full max-w-4xl mx-auto';
   msgDiv.innerHTML = `
@@ -269,6 +301,7 @@ export function createStreamingMessage(badgeKey) {
       <div class="message-provenance"></div>
       ${badgeBlock(badgeKey, true)}
     </div>`;
+  setBadgeLabel(msgDiv, badgeKey, badgeParams);
   container().appendChild(msgDiv);
   scrollToBottom();
 
@@ -276,10 +309,25 @@ export function createStreamingMessage(badgeKey) {
   const traceEl = /** @type {HTMLElement} */ (msgDiv.querySelector('.streaming-trace'));
   let pending = '';
   let frame = 0;
+  let thinkingShown = false;
 
-  const flush = () => {
+  /** @param {boolean} final  the whole answer: rendered even when it is reasoning only */
+  const flush = (final) => {
     frame = 0;
-    proseEl.innerHTML = renderMarkdown(splitReasoning(pending).answer || pending);
+    const view = splitStreamingText(pending);
+    if (view.thinking && !final) {
+      // While the model reasons, one line says so instead of re-rendering text that stays hidden.
+      if (!thinkingShown) {
+        const note = document.createElement('span');
+        note.className = 'stream-thinking';
+        setText(note, 'chat.reasoning');
+        proseEl.replaceChildren(note);
+        thinkingShown = true;
+      }
+    } else {
+      thinkingShown = false;
+      proseEl.innerHTML = renderMarkdown(final ? splitReasoning(pending).answer || pending : view.answer);
+    }
     scrollToBottom();
   };
 
@@ -288,20 +336,21 @@ export function createStreamingMessage(badgeKey) {
     /** @param {string} text */
     update(text) {
       pending = text;
-      if (!frame) frame = requestAnimationFrame(flush);
+      if (!frame) frame = requestAnimationFrame(() => flush(false));
     },
     /**
      * @param {string} finalText
-     * @param {{ citations: string | null, trace: string | null, durationMs: number | null }} meta
+     * @param {{ citations: string | null, trace: string | null, durationMs: number | null, traceRoles?: string[] }} meta
      */
     finalize(finalText, meta) {
       if (frame) cancelAnimationFrame(frame);
       pending = finalText;
-      flush();
+      flush(true);
       linkifyCitations(proseEl, meta.citations);
+      decorateCodeBlocks(proseEl);
       const split = splitReasoning(finalText);
       const fullTrace = [split.thoughts, meta.trace].filter(Boolean).join('\n\n');
-      if (fullTrace) traceEl.innerHTML = thoughtBlock(fullTrace, meta.durationMs);
+      if (fullTrace) traceEl.innerHTML = thoughtBlock(fullTrace, meta.durationMs, rolesWithReasoning(split.thoughts, meta.traceRoles));
       attachSources(msgDiv, { citations: meta.citations });
       msgDiv.querySelector('.animate-pulse')?.classList.remove('animate-pulse');
       refreshIcons(msgDiv);
@@ -313,8 +362,11 @@ export function createStreamingMessage(badgeKey) {
   };
 }
 
-/** @returns {() => void} removes the indicator */
-export function appendLoading() {
+/**
+ * @param {string} [key]  i18n key of the indicator text
+ * @returns {() => void} removes the indicator
+ */
+export function appendLoading(key = 'chat.thinking') {
   const div = document.createElement('div');
   div.className = 'flex items-start gap-3 w-full max-w-4xl mx-auto';
   div.setAttribute('role', 'status');
@@ -325,9 +377,28 @@ export function appendLoading() {
         <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
         <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
       </span>
-      <span class="font-medium text-slate-700" data-i18n="chat.thinking">${escapeHtml(t('chat.thinking'))}</span>
+      <span class="font-medium text-slate-700" data-i18n="${escapeHtml(key)}">${escapeHtml(t(key))}</span>
     </div>`;
   container().appendChild(div);
   scrollToBottom();
   return () => div.remove();
+}
+
+/**
+ * Marks an answer of the free chat: it searched no sources and was not checked against any.
+ * @param {HTMLElement} messageEl
+ */
+export function markFreeAnswer(messageEl) {
+  const slot = messageEl.querySelector('.message-provenance');
+  if (!slot) return;
+  const note = document.createElement('p');
+  note.className = 'free-note';
+  const icon = document.createElement('i');
+  icon.dataset.lucide = 'message-square';
+  icon.className = 'w-3.5 h-3.5 flex-shrink-0';
+  const text = document.createElement('span');
+  setText(text, 'chat.free_note');
+  note.append(icon, text);
+  slot.append(note);
+  refreshIcons(note);
 }

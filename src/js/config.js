@@ -68,4 +68,9 @@ export const LIMITS = Object.freeze({
   retrievalRows: 6,
   contextCharsCloud: 9_000,
   excerptChars: 1_600,
+  // Free chat: the conversation window sent with a question, and the part of an attached file.
+  freeHistoryTurns: 16,
+  freeHistoryChars: 24_000,
+  historyTurnChars: 4_000,
+  freeAttachmentChars: 12_000,
 });
