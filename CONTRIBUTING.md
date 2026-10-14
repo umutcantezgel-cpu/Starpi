@@ -6,9 +6,14 @@ must pass and the conventions the codebase relies on.
 ## Development setup
 
 ```bash
-npm ci                 # Node.js 22.13+ (see .nvmrc)
-npm run dev            # watch build + local server with production headers on :3000
+npm ci --ignore-scripts   # Node.js 22.13+ (see .nvmrc); no install scripts, as in CI and on Vercel
+npm run dev               # watch build + local server with production headers on :3000
 ```
+
+`npm run dev` and `npm run preview` also serve the NVIDIA routes from `api/`
+(`scripts/serve.mjs --functions`) for `localhost` and IP addresses; set
+`NVIDIA_API_KEYS=nvapi-<64 characters>` in the environment to use them. The end-to-end tests run
+without the functions and mock `/api/*`, so they never reach NVIDIA.
 
 Backend (optional):
 
@@ -30,41 +35,50 @@ flowchart TD
     APPV --> AK{"assertPublicKey at module load,<br/>scripts/lib/supabase-key.mjs"}
     AK -->|"blank, or starts with sb_secret_"| FAILTOP(["uncaught Error outside main():<br/>Node prints it with the stack, exit code 1"])
     AK -->|"JWT payload not readable,<br/>or JWT role is not anon, e.g. service_role"| FAILTOP
-    AK -->|"sb_publishable_ key or anon JWT:<br/>main() calls buildOnce"| CLEAN["remove dist/, create .build/"]
-    CLEAN --> TW["tailwindcss -c tailwind.config.js<br/>-i src/styles/app.css -o .build/tailwind.css --minify<br/>content: src/index.html and src/js JS files"]
+    AK -->|"sb_publishable_ key or anon JWT:<br/>main() calls buildOnce"| TMPD["create .build/"]
+    TMPD --> TW["tailwindcss -c tailwind.config.js<br/>-i src/styles/app.css -o .build/tailwind.css --minify<br/>content: src/index.html and src/js JS files"]
     TW -->|"exit status not 0"| FAIL
-    TW -->|"ok"| ESB
+    TW -->|"ok, pass 1 without URLs"| PASS["remove dist/, clear the placeholders seen"]
+    PASS --> ESB
     subgraph sg_esb["esbuild.build into dist/assets"]
       E1["main: src/js/main.js"]
       E2["webllm-worker: src/js/webgpu/worker.js"]
       E3["ingest-worker: src/js/rag/ingest.worker.js"]
+      E5["wasm-worker: src/js/wasm/worker.js"]
       E4["app: src/styles/entry.css<br/>Plus Jakarta Sans font faces + .build/tailwind.css"]
+      ORT["plugin ort-wasm-only: onnxruntime-web/webgpu and<br/>onnxruntime-common resolve to onnxruntime-web/wasm,<br/>one ONNX Runtime without new Function"]
+      URLS["plugin starpi-asset-urls: onLoad of src/js files writes<br/>this pass's URLs over __STARPI_WEBLLM_WORKER_URL__,<br/>__STARPI_INGEST_WORKER_URL__, __STARPI_WASM_WORKER_URL__<br/>and __STARPI_ORT_WASM_URL__, none in pass 1"]
       ESB["bundle, splitting, esm, minify, target es2022,<br/>chrome113, safari17, firefox121, linked sourcemaps<br/>and legal comments, entries name-hash, chunks chunk-hash,<br/>fonts as files, define inlines __STARPI_SUPABASE_URL__,<br/>__STARPI_SUPABASE_ANON_KEY__ and __STARPI_VERSION__"]
       E1 --> ESB
       E2 --> ESB
       E3 --> ESB
+      E5 --> ESB
       E4 --> ESB
+      ORT -.- ESB
+      URLS -.- ESB
     end
     ESB -->|"build error"| FAIL
     ESB --> WARN{"esbuild warnings?"}
     WARN -->|"yes: warnings are errors"| FAIL
-    WARN -->|"no"| META{"metafile present and all four<br/>entry outputs found?"}
+    WARN -->|"no"| RES["resolveUrls: hashed URLs of the three workers,<br/>copyOrtWasm: ort-wasm-simd-threaded.wasm from the<br/>onnxruntime-web dist that was bundled, written to<br/>/assets/ort-wasm-simd-threaded-sha256 16 hex.wasm"]
+    RES -->|"no output for an entry,<br/>onnxruntime-web/wasm not bundled"| FAIL
+    RES --> SETTLED{"every URL equals the one<br/>written into this pass?"}
+    SETTLED -->|"no, pass 4"| FAIL
+    SETTLED -->|"no, passes 1 to 3: next pass<br/>with these URLs, settles in pass 3"| PASS
+    SETTLED -->|"yes"| META{"metafile present and all five<br/>entry outputs found, every<br/>placeholder seen in a source file?"}
     META -->|"no"| FAIL
-    META -->|"yes"| PATCH["replace __STARPI_WEBLLM_WORKER_URL__ and<br/>__STARPI_INGEST_WORKER_URL__ in the output JS<br/>with the hashed worker URLs"]
-    PATCH --> PCHK{"each placeholder found in<br/>at least one chunk?"}
-    PCHK -->|"no"| FAIL
-    PCHK -->|"yes"| PUB["copyPublic: public/ copied into dist/,<br/>file list kept for the version and the precache"]
+    META -->|"yes"| PUB["copyPublic: public/ copied into dist/,<br/>file list kept for the version and the precache"]
     PUB --> HTML["src/index.html: %STARPI_APP_CSS% and<br/>%STARPI_MAIN_JS% set to the hashed URLs"]
     HTML --> HCHK{"any %STARPI_ left?"}
     HCHK -->|"yes"| FAIL
     HCHK -->|"no"| WHTML["write dist/index.html"]
-    WHTML --> VER["buildVersion, scripts/lib/build-version.mjs:<br/>sha256 over index.html, the sorted asset URLs<br/>without .map and .LEGAL.txt, each public file as<br/>URL plus bytes, then the src/sw.js template,<br/>first 12 hex chars"]
-    VER --> SHELL["precache shell: /, app CSS, main JS, ingest worker,<br/>the Latin plus-jakarta-sans woff2 when present,<br/>static imports of main, public files,<br/>/index.html is not listed"]
+    WHTML --> VER["buildVersion, scripts/lib/build-version.mjs:<br/>sha256 over index.html, the sorted asset URLs<br/>without .map and .LEGAL.txt plus the ONNX Runtime binary,<br/>each public file as URL plus bytes, then the src/sw.js<br/>template, first 12 hex chars"]
+    VER --> SHELL["precache shell: /, app CSS, main JS, ingest worker,<br/>the Latin plus-jakarta-sans woff2 when present,<br/>static imports of main, public files,<br/>/index.html, the WASM worker and the binary are not listed"]
     SHELL --> SW["src/sw.js: __STARPI_BUILD_VERSION__ gets the version,<br/>__STARPI_PRECACHE__ the deduplicated shell,<br/>__STARPI_ASSETS__ the sorted asset URLs"]
     SW --> SCHK{"any __STARPI_ left?"}
     SCHK -->|"yes"| FAIL
     SCHK -->|"no"| WSW["write dist/sw.js"]
-    WSW --> MAN["write dist/build-manifest.json:<br/>version, entries, assets, public, precache"]
+    WSW --> MAN["write dist/build-manifest.json: version, entries<br/>mainJs, workerJs, ingestWorkerJs, wasmWorkerJs,<br/>ortWasm, appCss, then assets, public, precache"]
     MAN --> DONE(["log built main JS, app CSS,<br/>version and duration"])
     FAIL(["main().catch prints the message,<br/>process.exit(1)"])
 ```
@@ -79,9 +93,15 @@ flowchart TD
 | Backend | `ruff check backend && ruff format --check backend && python -m unittest discover -s backend -p 'test_*.py'` |
 | Database | `bash backend/supabase/tests/run_rls_tests.sh` |
 | Dependencies | `npm audit --omit=dev`, `pip-audit -r backend/requirements-dev.txt` and `npm run sbom` (CycloneDX SBOMs into `sbom/`) |
+| NVIDIA model list | `npm run nvidia:sync -- --check` (the backend's copy `backend/core/nvidia_catalog.json` matches `src/js/models/nvidia-catalog.js`; `npm run nvidia:sync` rewrites it) |
 
-CI runs all of them, plus gitleaks. `backend/scripts/brain_smoke.py` is a manual end-to-end
+CI runs all of them (the NVIDIA copy is checked by the unit tests), plus gitleaks.
+`npm run nvidia:ping` checks the NVIDIA list against the live API with real keys and quota; run it
+before changing the list, never in CI. `backend/scripts/brain_smoke.py` is a manual end-to-end
 check against live endpoints and is not part of the automated suite.
+
+When the NVIDIA list changes, change `src/js/models/nvidia-catalog.js`, run `npm run nvidia:sync`
+and update the T4 table in the README; the unit tests fail until all three agree.
 
 <!-- diagram: test-strategy-ci-gates -->
 ```mermaid
@@ -91,7 +111,7 @@ flowchart LR
     subgraph jobFront["Job frontend: Node 22, npm ci --ignore-scripts"]
         lint["npm run lint<br/>ESLint, eslint.config.mjs"]
         tc["npm run typecheck<br/>tsc -p tsconfig.json --noEmit"]
-        unit["npm test<br/>node --test on the 29 tests/unit/*.test.mjs files,<br/>docs.test.mjs, core-package.test.mjs and sbom.test.mjs included"]
+        unit["npm test<br/>node --test on the 38 tests/unit/*.test.mjs files, 479 tests,<br/>docs.test.mjs, core-package.test.mjs, sbom.test.mjs<br/>and nvidia-proxy.test.mjs included"]
         pack["npm run pack:core<br/>typed build of @starpi/core, npm pack --dry-run"]
         build["npm run build<br/>scripts/build.mjs"]
         verify["npm run verify:dist<br/>scripts/verify-dist.mjs: dist/ is CSP-compatible,<br/>referenced assets exist, sw.js carries the recomputed version"]
@@ -100,14 +120,14 @@ flowchart LR
 
     subgraph jobE2e["Job e2e, needs frontend"]
         dl["download artifact dist,<br/>npx playwright install --with-deps chromium"]
-        pw["npm run test:e2e<br/>app.spec.mjs, 16 tests, and trust.spec.mjs, 13 tests,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.1.0"]
+        pw["npm run test:e2e<br/>app.spec.mjs 17 tests, trust.spec.mjs 13,<br/>models.spec.mjs 8 and modes.spec.mjs 8,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.1.0,<br/>94 test runs in all"]
         rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
     end
 
     subgraph jobBack["Job backend, matrix Python 3.11 and 3.12"]
         ruff["ruff check backend,<br/>ruff format --check backend"]
         comp["python -m compileall -q backend"]
-        ut["python -m unittest discover -s backend -p test_*.py<br/>test_core.py: chunker, embeddings, config, structurer,<br/>supabase_client incl. private rows kept out of reads,<br/>ingestion pipeline, rag<br/>test_server.py: routing, body validation, timeouts, proxy and<br/>token auth, length limits, CORS, startup,<br/>shutdown waits for requests in flight, Content-Length parsing<br/>offline: httpx.Client mocked, fakes behind a 127.0.0.1 server"]
+        ut["python -m unittest discover -s backend -p test_*.py, 146 tests<br/>test_core.py: chunker, embeddings, config, structurer,<br/>supabase_client incl. private rows kept out of reads,<br/>ingestion pipeline, rag<br/>test_server.py: routing, body validation, timeouts, proxy and<br/>token auth, length limits, CORS, startup, the NVIDIA routes,<br/>shutdown waits for requests in flight, Content-Length parsing<br/>test_nvidia.py: keys, shared validation vectors, Retry-After,<br/>key pool, failover, stream ends, rate limiter<br/>offline: httpx.Client and MockTransport, fakes behind a 127.0.0.1 server"]
     end
 
     subgraph jobDb["Job database"]
@@ -173,7 +193,13 @@ every flowchart label and keep colours and `init` directives out.
 - **Pure core:** `src/js/core/` (citation labels, sentences, facts, the source check with its
   negation and binding rules, receipts with their Merkle tree and signatures, documents and SARIF)
   uses no DOM, network or storage APIs, so it runs in the browser, in workers and in Node. Keep
-  it that way; the ESLint configuration only allows globals available in all three.
+  it that way; the ESLint configuration only allows globals available in all three. The same
+  holds for `src/js/models/` (device classes, the model menu's choices, the WASM presets and the
+  NVIDIA allowlist), `chat-stream.js` and `chat-export.js`.
+- **Server functions:** `api/` holds the Vercel Functions of the NVIDIA proxy. They use Web
+  `Request` and `Response` only, and ESLint forbids `process`, `Buffer` and `require` there;
+  `api/_lib/env.js` is the one module that reads the environment, through `globalThis`. Keys never
+  appear in a log line, a response or a test fixture: tests build fake keys at runtime.
 - **Versioned rules:** answer receipts record the version of the text extraction, chunking and
   source-check rules. The golden tests (`tests/unit/golden.test.mjs`) fail when a change alters
   the extracted text or chunks of the sample files, or any verdict or reason of either version of
@@ -253,9 +279,15 @@ flowchart TD
   Every load has a sequence number, and every exit path ends in `worker.terminate()`, which
   releases GPU memory deterministically.
 - New models must exist in the pinned WebLLM prebuilt catalog, have a `q4f32_1` fallback, and
-  get a catalog entry in `src/js/webgpu/models.js` (the unit tests enforce this).
+  get a catalog entry in `src/js/webgpu/models.js` with its tier, plus a row in the README table
+  (the unit tests enforce this).
 - Upgrading `@mlc-ai/web-llm`: re-run the unit tests (model ids) and confirm that the bundle
   still needs no `unsafe-eval` (`npm run verify:dist` checks for `eval`/`new Function`).
+- Processor (WASM) presets live in `src/js/models/wasm-catalog.js`: a Hugging Face repository
+  pinned to a commit and every downloaded file with its size, and a row in the README table. The
+  worker in `src/js/wasm/` loads only those files. After upgrading `@huggingface/transformers`,
+  check `npm run verify:dist` and load a WASM model in a browser without WebGPU under the production
+  CSP (`npm run preview`).
 
 <!-- diagram: webgpu-lifecycle-load-prepare -->
 ```mermaid
@@ -265,7 +297,7 @@ sequenceDiagram
     participant Eng as webgpu/engine.js loadModel
     participant GPU as navigator.gpu
     participant Mod as webgpu/models.js
-    participant CS as Cache Storage webllm/model
+    participant CS as Cache Storage webllm/model or transformers-cache
     participant Sto as navigator.storage
 
     UI->>Eng: loadModel(preference, onlyIfCached, confirmDownload)
@@ -274,39 +306,47 @@ sequenceDiagram
         Eng-->>UI: the shared loadPromise
     end
     Eng->>Eng: seq = ++loadSeq, aborted promise via abortPending
-    Eng->>GPU: probeWebGPU()
+    Eng->>GPU: probeDevice: requestAdapter(high-performance), raced against 10 s
     alt navigator.gpu.requestAdapter missing
-        Eng->>Eng: throw EngineError unsupported
-    else requestAdapter(high-performance) throws or returns null
-        GPU-->>Eng: error or null
-        Eng->>Eng: throw EngineError no-adapter
+        Eng->>Eng: no WebGPU, keeps EngineError unsupported
+    else requestAdapter throws, returns null or does not answer in 10 s
+        Eng->>Eng: no WebGPU, keeps EngineError no-adapter
+    else adapter
+        GPU-->>Eng: adapter, limits, features, info
     end
-    GPU-->>Eng: adapter
-    Eng->>Eng: hw = isMobile via detectMobile, navigator.deviceMemory,<br/>adapter maxBufferSize, hasF16 from shader-f16
+    Eng->>Eng: hw = isMobile via detectMobile, navigator.deviceMemory,<br/>maxBufferSize, hasF16 from shader-f16, webgpu,<br/>maxStorageBufferBindingSize, vendor, architecture
     Eng->>Mod: chooseModel(hw, preference)
-    Mod-->>Eng: choice with the q4f16_1 id if hasF16, else the q4f32_1 id
+    Mod-->>Eng: WASM choice, or WebGPU choice with the q4f16_1 id if hasF16, else the q4f32_1 id
     Note over Eng,Mod: f32 is chosen up front from the adapter features,<br/>a failed f16 load is never retried as f32
-    alt engine set with the same modelId
+    alt WebGPU choice and no WebGPU
+        Eng->>Eng: throw the kept EngineError, no switch to a WASM model
+    end
+    alt engine set with the same runtime and modelId
         Eng-->>UI: true (reuse)
     end
-    Eng->>CS: certainlyNotCached(modelId)
-    Note over Eng,CS: caches.has webllm/model, then cache.match for<br/>huggingface.co/mlc-ai/modelId/resolve/main/tensor-cache.json
-    alt no webllm/model cache, or no tensor-cache.json entry
-        CS-->>Eng: missing true
-    else entry found, no Cache API, or the check throws
-        CS-->>Eng: missing false, hasModelInCache decides after the import
+    alt WASM choice
+        Eng->>CS: wasmCacheStatus: caches.has transformers-cache, then match<br/>config.json, tokenizer.json and the weights at the pinned revision
+        CS-->>Eng: missing unless all three are there, also when the cache cannot be read
+    else WebGPU choice
+        Eng->>CS: certainlyNotCached(modelId)
+        Note over Eng,CS: caches.has webllm/model, then cache.match for<br/>huggingface.co/mlc-ai/modelId/resolve/main/tensor-cache.json
+        alt no webllm/model cache, or no tensor-cache.json entry
+            CS-->>Eng: missing true
+        else entry found, no Cache API, or the check throws
+            CS-->>Eng: missing false, hasModelInCache decides after the import
+        end
     end
     opt missing
         alt onlyIfCached
-            Eng-->>UI: false, no setState, WebLLM not imported
+            Eng-->>UI: false, no setState, no import and no worker
         else agreeToDownload(choice, options)
-            Eng->>Sto: checkQuota(max(approxDownloadMB, 1)), no check without estimate()
+            Eng->>Sto: checkQuota(max(approxDownloadMB, plus 15 MB for WASM, 1)), no check without estimate()
             Sto-->>Eng: quota, usage
             alt quota above 0 and free MB below 1.2 x requiredMB
                 Eng->>Eng: throw EngineError quota (requiredMB, freeMB)
             end
             Eng->>UI: confirmDownload(choice) via window.confirm, when given
-            Note over UI: engine.confirm_download, plus engine.confirm_save_data<br/>when navigator.connection.saveData is set
+            Note over UI: engine.confirm_large first for a T3 preset,<br/>engine.confirm_download, or confirm_download_wasm with the runtime MB,<br/>engine.confirm_save_data when navigator.connection.saveData is set
             alt declined
                 UI-->>Eng: false
                 Eng-->>UI: false, no setState
@@ -315,7 +355,7 @@ sequenceDiagram
             Eng->>Eng: return false if seq is stale
         end
     end
-    Note over Eng: then teardown and status loading, see<br/>loadModel: WebLLM import, model record and partial cache
+    Note over Eng: then teardown and status loading, see loadModel: WebLLM import,<br/>model record and partial cache, or wasm-runtime-load for a WASM model
     Note over UI,Eng: every throw lands in the loadPromise catch. A stale seq resolves false,<br/>else teardown, classifyEngineError, status error and reject
 ```
 
@@ -421,6 +461,10 @@ follows these conventions, and it passes the checks.
 
 The app and `@starpi/core` are released together and share one version number.
 
+0. **Set new Vercel environment variables first.** Set any new Vercel environment variable (such
+   as `NVIDIA_API_KEYS`, type Sensitive) for Production and Preview before the release deploys:
+   Vercel reads them when it creates a deployment, so a deployment created earlier does not see
+   them until it is redeployed.
 1. **Prepare the release commit.**
    - Set the version in `package.json` and in `packages/core/package.json`, then run
      `npm install --package-lock-only --ignore-scripts` so the lockfile records both.
@@ -433,6 +477,9 @@ The app and `@starpi/core` are released together and share one version number.
    merge or squash commit, and push nothing else to `main` until the release exists: a newer push
    cancels the CI run of the tagged commit. If that run was cancelled or failed, re-run it; a
    manual run of the release workflow only works while the tagged commit is the head of `main`.
+   Or merge the release pull request with **Rebase and merge** and push no tag: `release.yml`
+   creates the tag `vX.Y.Z` at the commit CI tested. Here too, push nothing else to `main` until
+   the release exists.
 3. **CI and the release workflow.** Once CI has passed on `main`, `release.yml` builds the
    `@starpi/core` tarball and the SBOMs without write access, smoke-tests the tarball and creates
    the release with `starpi-core-X.Y.Z.tgz`, `starpi-X.Y.Z.cdx.json`,
