@@ -163,6 +163,7 @@ describe('callNvidia errors', () => {
     ['nvidia_not_configured', 503, 'provider.nvidia_not_configured', {}, true],
     ['rate_limited', 429, 'provider.nvidia_rate_limited', { seconds: 30 }, false],
     ['all_keys_exhausted', 503, 'provider.nvidia_busy', { seconds: 30 }, false],
+    ['proxy_busy', 503, 'provider.nvidia_busy', { seconds: 30 }, false],
     ['model_not_allowed', 400, 'provider.nvidia_model_unavailable', model, false],
     ['model_unavailable', 502, 'provider.nvidia_model_unavailable', model, false],
     ['invalid_field', 400, 'provider.nvidia_invalid_request', {}, false],

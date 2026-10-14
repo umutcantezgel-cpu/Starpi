@@ -9,6 +9,7 @@ import { once } from 'node:events';
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { isIP } from 'node:net';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -50,6 +51,27 @@ const functions = new Map(
 const FORWARDING_HEADERS = /^(?:forwarded|x-real-ip|x-forwarded-.+)$/;
 
 /**
+ * Host names the functions answer for. A page whose own name was rebound to this machine (DNS
+ * rebinding) sends a matching Origin and Host, which the same-origin check accepts; such names are
+ * neither localhost nor an IP address, so they get no function, and no request with the developer's
+ * keys. Other names can be allowed through NVIDIA_ALLOWED_ORIGINS.
+ * @param {string | undefined} host the Host header
+ */
+function functionHostAllowed(host) {
+  if (!host) return false;
+  const name = new URL(`http://${host}`).hostname.replace(/^\[|\]$/g, '');
+  if (name === 'localhost' || isIP(name) !== 0) return true;
+  const allowed = (process.env.NVIDIA_ALLOWED_ORIGINS ?? '').split(',').map((origin) => origin.trim()).filter(Boolean);
+  return allowed.some((origin) => {
+    try {
+      return new URL(origin).hostname === name;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
  * Runs a Web-standard route handler (exports named by HTTP method) for a Node request and streams the
  * response with backpressure. A client that disconnects aborts the request and cancels the response.
  * @param {Record<string, unknown>} route
@@ -58,6 +80,18 @@ const FORWARDING_HEADERS = /^(?:forwarded|x-real-ip|x-forwarded-.+)$/;
  * @param {URL} url
  */
 async function runFunction(route, req, res, url) {
+  let hostAllowed = false;
+  try {
+    hostAllowed = functionHostAllowed(req.headers.host);
+  } catch {
+    // an unparseable Host header
+  }
+  if (!hostAllowed) {
+    res.statusCode = 403;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.end(JSON.stringify({ error: 'host_not_allowed' }));
+    return;
+  }
   const method = req.method ?? 'GET';
   const handler = route[method];
   if (typeof handler !== 'function') {
