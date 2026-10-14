@@ -12,6 +12,9 @@ test.describe('documentation diagrams', () => {
   test.skip(({ isMobile }) => isMobile, 'rendering is viewport independent; run once');
 
   test('every Mermaid block parses and renders', async ({ page }) => {
+    // Rendering all blocks (about 150 with the copies) takes some 40 s on a loaded runner; the global
+    // 45 s timeout is meant for app tests.
+    test.setTimeout(Math.max(90_000, blocks.length * 1_000));
     expect(blocks.length).toBeGreaterThan(0);
     await page.setContent('<!doctype html><html><body></body></html>');
     await page.addScriptTag({ path: MERMAID });
