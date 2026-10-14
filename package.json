@@ -23,7 +23,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "node scripts/build.mjs --watch --serve",
-    "preview": "node scripts/serve.mjs --port 3000",
+    "preview": "node scripts/serve.mjs --port 3000 --functions",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test \"tests/unit/*.test.mjs\"",

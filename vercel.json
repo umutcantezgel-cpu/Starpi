@@ -5,6 +5,10 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "cleanUrls": true,
+  "functions": {
+    "api/chat/nvidia.js": { "maxDuration": 300, "supportsCancellation": true },
+    "api/models/nvidia.js": { "maxDuration": 10 }
+  },
   "headers": [
     {
       "source": "/(.*)",

@@ -216,7 +216,7 @@ async function main() {
   watch(path.join(ROOT, 'public'), { recursive: true }, rebuild);
 
   if (SERVE) {
-    spawn(process.execPath, [path.join(ROOT, 'scripts', 'serve.mjs'), '--port', '3000'], { cwd: ROOT, stdio: 'inherit' });
+    spawn(process.execPath, [path.join(ROOT, 'scripts', 'serve.mjs'), '--port', '3000', '--functions'], { cwd: ROOT, stdio: 'inherit' });
   }
 }
 
