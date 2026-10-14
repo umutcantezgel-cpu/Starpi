@@ -91,7 +91,7 @@ flowchart LR
     subgraph jobFront["Job frontend: Node 22, npm ci --ignore-scripts"]
         lint["npm run lint<br/>ESLint, eslint.config.mjs"]
         tc["npm run typecheck<br/>tsc -p tsconfig.json --noEmit"]
-        unit["npm test<br/>node --test on the 25 tests/unit/*.test.mjs files,<br/>docs.test.mjs, core-package.test.mjs and sbom.test.mjs included"]
+        unit["npm test<br/>node --test on the 29 tests/unit/*.test.mjs files,<br/>docs.test.mjs, core-package.test.mjs and sbom.test.mjs included"]
         pack["npm run pack:core<br/>typed build of @starpi/core, npm pack --dry-run"]
         build["npm run build<br/>scripts/build.mjs"]
         verify["npm run verify:dist<br/>scripts/verify-dist.mjs: dist/ is CSP-compatible,<br/>referenced assets exist, sw.js carries the recomputed version"]
@@ -100,7 +100,7 @@ flowchart LR
 
     subgraph jobE2e["Job e2e, needs frontend"]
         dl["download artifact dist,<br/>npx playwright install --with-deps chromium"]
-        pw["npm run test:e2e<br/>app.spec.mjs, 16 tests, and trust.spec.mjs, 12 tests,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.1.0"]
+        pw["npm run test:e2e<br/>app.spec.mjs, 16 tests, and trust.spec.mjs, 13 tests,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.1.0"]
         rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
     end
 

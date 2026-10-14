@@ -178,6 +178,6 @@ CI runs all of them, plus gitleaks, on every push and pull request to `main`
 
 - [README.md](../README.md): what is different, modes, models, configuration and the roadmap.
 - [docs/spec/receipts.md](spec/receipts.md): the receipt format and how verification works.
-- [docs/ARCHITECTURE.md](ARCHITECTURE.md): 118 diagrams, one per question about the system.
+- [docs/ARCHITECTURE.md](ARCHITECTURE.md): 121 diagrams, one per question about the system.
 - [CONTRIBUTING.md](../CONTRIBUTING.md): conventions, checks and the diagram rules.
 - [CHANGELOG.md](../CHANGELOG.md): what changed, release by release.

@@ -197,13 +197,13 @@ flowchart TD
     sCite --> sSize
     sLoose --> sSize
     sLead --> sSize
-    sSize{"groundAnswer: text segments over<br/>THRESHOLDS.maxChars 20000 characters?"}
+    sSize{"groundAnswer, rules version GROUNDING.version 2:<br/>text segments over THRESHOLDS.maxChars 20000 characters?"}
     sSize -->|"yes"| sSkip["skipped too_long"]
     sSize -->|"no"| sAssoc["associate: sentenceSpans per block, no statement ends at the dot<br/>of an ordinal, a day.month date such as 1.6. or a known abbreviation,<br/>a marker belongs to the last statement that starts before it,<br/>a statement without one inherits from the next cited statement<br/>of its block, then the previous one, then its lead-in up to 4 hops,<br/>then the markers and bad labels of contentless blocks<br/>such as a Sources line"]
     sAssoc --> sMany{"more than maxSentences 300 statements?"}
     sMany -->|"yes"| sSkip
-    sMany -->|"no"| sIdx["indexSource per excerpt over text, doc and heading,<br/>no index for an omitted excerpt, given indexed,<br/>answer language from guessLanguage"]
-    sIdx --> sCheck["checkSentence per statement,<br/>see source-check-verdicts"]
+    sMany -->|"no"| sIdx["indexSource per excerpt over text, doc and heading<br/>with the same rules version, no index for an omitted excerpt,<br/>given indexed, answer language from guessLanguage"]
+    sIdx --> sCheck["checkSentence per statement,<br/>see source-check-verdicts and source-check-v2-checks"]
     sCheck --> sCount["counts supported, weak, unsupported, unchecked,<br/>neutral statements not counted"]
     sCount --> sAny{"anything counted, unchecked or skipped?"}
     sSkip --> sAny
