@@ -18,7 +18,13 @@ import httpx
 
 from core import embeddings, rag, structurer, supabase_client
 from core.chunker import chunk_markdown
-from core.config import DEFAULT_MAX_BODY_BYTES, BrainConfig, load_env_file, parse_env_line
+from core.config import (
+    DEFAULT_MAX_BODY_BYTES,
+    DEFAULT_NVIDIA_RATE_LIMIT_PER_MINUTE,
+    BrainConfig,
+    load_env_file,
+    parse_env_line,
+)
 from core.embeddings import (
     EMBEDDING_DIM,
     get_embedding,
@@ -191,6 +197,8 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(cfg.llm_model)
         self.assertEqual(cfg.gemini_keys, [])
         self.assertEqual(cfg.openrouter_keys, [])
+        self.assertEqual(cfg.nvidia_keys, [])
+        self.assertEqual(cfg.nvidia_rate_limit_per_minute, DEFAULT_NVIDIA_RATE_LIMIT_PER_MINUTE)
 
     def test_anon_key_is_never_used(self) -> None:
         env = {"SUPABASE_URL": "https://example.supabase.co", "SUPABASE_ANON_KEY": "anon-key"}
@@ -207,6 +215,8 @@ class ConfigTests(unittest.TestCase):
             "BRAIN_MAX_BODY_BYTES": "2048",
             "BRAIN_API_TOKEN": " token-value ",
             "GEMINI_API_KEYS": "k1, k2,",
+            "NVIDIA_API_KEYS": " nv-1 ,nv-2,",
+            "NVIDIA_RATE_LIMIT_PER_MINUTE": "45",
         }
         with mock.patch.dict(os.environ, env, clear=True):
             cfg = BrainConfig()
@@ -215,6 +225,17 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfg.max_body_bytes, 2048)
         self.assertEqual(cfg.api_token, "token-value")
         self.assertEqual(cfg.gemini_keys, ["k1", "k2"])
+        self.assertEqual(cfg.nvidia_keys, ["nv-1", "nv-2"])
+        self.assertEqual(cfg.nvidia_rate_limit_per_minute, 45)
+
+    def test_non_positive_nvidia_rate_limit_falls_back_to_default(self) -> None:
+        for value in ("0", "-5"):
+            with (
+                self.subTest(value=value),
+                mock.patch.dict(os.environ, {"NVIDIA_RATE_LIMIT_PER_MINUTE": value}, clear=True),
+                self.assertLogs("core.config", "WARNING"),
+            ):
+                self.assertEqual(BrainConfig().nvidia_rate_limit_per_minute, DEFAULT_NVIDIA_RATE_LIMIT_PER_MINUTE)
 
     def test_log_level_is_validated(self) -> None:
         cases = {"": "INFO", "debug": "DEBUG", " Warning ": "WARNING", "ERROR": "ERROR"}
@@ -249,9 +270,10 @@ class ConfigTests(unittest.TestCase):
             embedding_api_key="emb-secret",
             gemini_keys=["gem-secret"],
             openrouter_keys=["or-secret"],
+            nvidia_keys=["nv-secret"],
         )
         text = repr(cfg)
-        for secret in ("sb-secret", "api-secret", "llm-secret", "emb-secret", "gem-secret", "or-secret"):
+        for secret in ("sb-secret", "api-secret", "llm-secret", "emb-secret", "gem-secret", "or-secret", "nv-secret"):
             self.assertNotIn(secret, text)
 
     def test_parse_env_line(self) -> None:

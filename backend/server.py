@@ -5,6 +5,9 @@ Endpoints:
     GET  /api/brain/documents   newest documents
     POST /api/brain/ingest      {"text": str, "source_name"?: str, "source_type"?: str}
     POST /api/brain/query       {"query": str}
+    GET  /api/models/nvidia     NVIDIA model allowlist and whether NVIDIA_API_KEYS holds a key
+    POST /api/chat/nvidia       {"model", "messages", "max_tokens"?, "temperature"?, "top_p"?};
+                                answers with the upstream SSE stream (core/nvidia.py)
 
 The server binds to 127.0.0.1 by default and refuses any other address unless BRAIN_API_TOKEN is
 set. With a token, /api/brain/* requires ``Authorization: Bearer <token>``. Without one the API is
@@ -13,6 +16,10 @@ that carry reverse proxy headers (Forwarded, X-Forwarded-*, X-Real-IP) are refus
 because a proxy on the same host makes every request look like it comes from loopback. That check
 is a safety net only (nginx, for example, adds none of these headers by default): always set a
 token when a proxy is in front. TLS is expected to be terminated by that reverse proxy.
+
+POST /api/chat/nvidia spends a shared key pool, so it needs an Origin listed in
+BRAIN_ALLOWED_ORIGINS (a browser page of the app) or the Bearer token, and it is rate limited per
+client address (NVIDIA_RATE_LIMIT_PER_MINUTE).
 """
 
 from __future__ import annotations
@@ -28,8 +35,9 @@ import socketserver
 import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import Any, cast
 
+from core import nvidia
 from core.config import LOG_LEVELS, BrainConfig, config
 from core.ingestion_pipeline import ingest_raw_information
 from core.rag import query_brain
@@ -67,13 +75,23 @@ ROUTES: dict[str, dict[str, str]] = {
     "/api/brain/documents": {"GET": "_handle_documents"},
     "/api/brain/ingest": {"POST": "_handle_ingest"},
     "/api/brain/query": {"POST": "_handle_query"},
+    "/api/models/nvidia": {"GET": "_handle_nvidia_models"},
+    "/api/chat/nvidia": {"POST": "_handle_nvidia_chat"},
 }
+NVIDIA_CHAT_PATH = "/api/chat/nvidia"
 
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Cache-Control": "no-store",
     "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+}
+# The NVIDIA stream: no Content-Length, the body ends when the HTTP/1.0 connection closes.
+SSE_HEADERS = {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-store, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "close",
 }
 
 
@@ -279,6 +297,8 @@ class BrainAPIHandler(BaseHTTPRequestHandler):
             raise ApiError(HTTPStatus.METHOD_NOT_ALLOWED, "method_not_allowed", headers={"Allow": allow})
         if path.startswith(PROTECTED_PREFIX):
             self._check_auth()
+        if path == NVIDIA_CHAT_PATH:
+            self._check_nvidia_caller()
         getattr(self, methods[method])()
 
     def _check_proxy_headers(self) -> None:
@@ -300,18 +320,35 @@ class BrainAPIHandler(BaseHTTPRequestHandler):
         if host_header and not is_loopback_host(_hostname_from_host_header(host_header)):
             raise ApiError(HTTPStatus.FORBIDDEN, "host_not_allowed")
 
-    def _check_auth(self) -> None:
+    def _bearer_ok(self) -> bool:
+        """True when BRAIN_API_TOKEN is set and the request carries it as a Bearer token."""
         token = self.settings.api_token
         if not token:
-            return
+            return False
         scheme, _, supplied = (self._header("Authorization") or "").partition(" ")
-        valid = scheme.lower() == "bearer" and hmac.compare_digest(
+        return scheme.lower() == "bearer" and hmac.compare_digest(
             supplied.strip().encode("utf-8"), token.encode("utf-8")
         )
-        if not valid:
+
+    def _check_auth(self) -> None:
+        if self.settings.api_token and not self._bearer_ok():
             raise ApiError(HTTPStatus.UNAUTHORIZED, "unauthorized", headers=dict(UNAUTHORIZED_HEADERS))
 
-    def _read_json_object(self) -> dict[str, Any]:
+    def _check_nvidia_caller(self) -> None:
+        # The NVIDIA route spends a shared key pool: only pages of an allowed origin (a foreign Origin
+        # was refused in _route) or holders of the API token may call it, never a bare script.
+        if self._allowed_origin() is None and not self._bearer_ok():
+            raise ApiError(HTTPStatus.FORBIDDEN, "origin_required")
+
+    def _client_key(self) -> str:
+        """The address the NVIDIA rate limit counts: the socket peer or, behind the trusted proxy that a
+        token requires, the right-most X-Forwarded-For entry (the hop that proxy appended)."""
+        forwarded = self._header("X-Forwarded-For") if self.settings.api_token else None
+        last_hop = forwarded.rsplit(",", 1)[-1].strip() if forwarded else ""
+        return last_hop or str(self.client_address[0])
+
+    def _read_json_object(self, max_bytes: int | None = None) -> dict[str, Any]:
+        limit = self.settings.max_body_bytes if max_bytes is None else min(self.settings.max_body_bytes, max_bytes)
         if self._header("Transfer-Encoding") is not None:
             raise ApiError(HTTPStatus.LENGTH_REQUIRED, "length_required")
         lengths = self.headers.get_all("Content-Length") or []
@@ -320,10 +357,8 @@ class BrainAPIHandler(BaseHTTPRequestHandler):
         length = parse_content_length(lengths[0])
         if len(lengths) > 1 or length is None:
             raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_content_length")
-        if length > self.settings.max_body_bytes:
-            raise ApiError(
-                HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "payload_too_large", max_bytes=self.settings.max_body_bytes
-            )
+        if length > limit:
+            raise ApiError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "payload_too_large", max_bytes=limit)
         media_type = (self._header("Content-Type") or "").split(";", 1)[0].strip().lower()
         if media_type != "application/json":
             raise ApiError(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type")
@@ -383,6 +418,56 @@ class BrainAPIHandler(BaseHTTPRequestHandler):
         user_query = _string_field(data, "query", max_chars=MAX_QUERY_CHARS, required=True)
         self._send(HTTPStatus.OK, query_brain(user_query=user_query))
 
+    def _handle_nvidia_models(self) -> None:
+        configured = cast(BrainHTTPServer, self.server).nvidia_router is not None
+        self._send(HTTPStatus.OK, nvidia.public_catalog(configured))
+
+    def _handle_nvidia_chat(self) -> None:
+        # Same order as the Vercel Function: rate limit, keys configured, body, validation, upstream.
+        server = cast(BrainHTTPServer, self.server)
+        retry_after = server.nvidia_limiter.hit(self._client_key())
+        if retry_after is not None:
+            raise ApiError(HTTPStatus.TOO_MANY_REQUESTS, "rate_limited", headers={"Retry-After": str(retry_after)})
+        router = server.nvidia_router
+        if router is None:
+            raise ApiError(HTTPStatus.SERVICE_UNAVAILABLE, "nvidia_not_configured")
+        data = self._read_json_object(max_bytes=nvidia.LIMITS["maxBodyBytes"])
+        try:
+            body = nvidia.validate_chat_request(data)
+        except nvidia.NvidiaValidationError as exc:
+            raise ApiError(HTTPStatus.BAD_REQUEST, exc.error, **exc.details) from None
+        try:
+            stream = router.open_stream(body)
+        except nvidia.NvidiaRouterError as exc:
+            raise ApiError(exc.status, exc.error, headers=exc.headers) from None
+
+        try:
+            self._send_stream_head()
+            self.wfile.write(stream.first)
+            for chunk in stream.rest():
+                self.wfile.write(chunk)
+            if stream.error_code:
+                self.wfile.write(nvidia.sse_error(stream.error_code))
+        except OSError:
+            # The client went away or stopped reading (write timeout); the upstream is closed below.
+            logger.info("Client disconnected during the NVIDIA stream")
+            self.close_connection = True
+        finally:
+            stream.close()
+
+    def _send_stream_head(self) -> None:
+        """Status and headers of an SSE response; the HTTP/1.0 body then runs until the connection closes."""
+        self.send_response(HTTPStatus.OK)
+        for name, value in {**SECURITY_HEADERS, **SSE_HEADERS}.items():
+            self.send_header(name, value)
+        self.send_header("Vary", "Origin")
+        allowed_origin = self._allowed_origin()
+        if allowed_origin:
+            self.send_header("Access-Control-Allow-Origin", allowed_origin)
+        self.end_headers()
+        self._response_started = True
+        self.close_connection = True
+
 
 class BrainHTTPServer(ThreadingHTTPServer):
     """Threaded server that carries its settings for the request handlers.
@@ -396,6 +481,8 @@ class BrainHTTPServer(ThreadingHTTPServer):
 
     def __init__(self, server_address: tuple[str, int], settings: BrainConfig) -> None:
         self.settings = settings
+        self.nvidia_router: nvidia.NvidiaRouter | None = nvidia.build_router(settings.nvidia_keys)
+        self.nvidia_limiter = nvidia.RateLimiter(settings.nvidia_rate_limit_per_minute)
         if ":" in server_address[0]:
             self.address_family = socket.AF_INET6
         super().__init__(server_address, BrainAPIHandler)
@@ -442,11 +529,12 @@ def run_server(port: int | None = None, host: str | None = None, settings: Brain
 
     bound_host, bound_port = httpd.server_address[:2]
     logger.info(
-        "Brain API listening on %s:%s (supabase_live=%s, token_auth=%s)",
+        "Brain API listening on %s:%s (supabase_live=%s, token_auth=%s, nvidia=%s)",
         bound_host,
         bound_port,
         db.is_live,
         bool(settings.api_token),
+        httpd.nvidia_router is not None,
     )
     if not db.is_live:
         logger.warning("Supabase is not configured; documents are kept in memory only")

@@ -20,6 +20,8 @@ _ENV_FILE_CANDIDATES = (_BACKEND_DIR / ".env", _BACKEND_DIR.parent / ".env")
 
 DEFAULT_ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,https://www.starpi.app,https://starpi.app"
 DEFAULT_MAX_BODY_BYTES = 1_048_576
+# Same default as the Vercel Functions (proxy.rateLimitPerMinute in core/nvidia_catalog.json).
+DEFAULT_NVIDIA_RATE_LIMIT_PER_MINUTE = 20
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 DEFAULT_LOG_LEVEL = "INFO"
 
@@ -95,6 +97,14 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_positive_int(name: str, default: int) -> int:
+    value = _env_int(name, default)
+    if value < 1:
+        logger.warning("Ignoring non-positive value for %s; using %d", name, default)
+        return default
+    return value
+
+
 def _env_list(name: str, default: str = "") -> list[str]:
     return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
 
@@ -137,6 +147,11 @@ class BrainConfig:
     # Optional hosted model key pools, comma separated.
     gemini_keys: list[str] = field(default_factory=lambda: _env_list("GEMINI_API_KEYS"), repr=False)
     openrouter_keys: list[str] = field(default_factory=lambda: _env_list("OPENROUTER_API_KEYS"), repr=False)
+    # NVIDIA NIM key pool behind POST /api/chat/nvidia (nvapi-..., comma separated). Never logged.
+    nvidia_keys: list[str] = field(default_factory=lambda: _env_list("NVIDIA_API_KEYS"), repr=False)
+    nvidia_rate_limit_per_minute: int = field(
+        default_factory=lambda: _env_positive_int("NVIDIA_RATE_LIMIT_PER_MINUTE", DEFAULT_NVIDIA_RATE_LIMIT_PER_MINUTE)
+    )
 
     # Embeddings endpoint with the same API shape (``/v1/embeddings``); vectors must have 1536 dimensions.
     embedding_base_url: str = field(default_factory=lambda: _env_str("EMBEDDING_BASE_URL", "http://127.0.0.1:8000/v1"))
