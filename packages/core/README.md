@@ -69,13 +69,13 @@ package tarball, built and tested by CI, with its SHA-256 in `SHA256SUMS`. The n
 same file. To install from the release instead of the registry:
 
 ```bash
-curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.0.0/starpi-core-2.0.0.tgz
-curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.0.0/SHA256SUMS
+curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.1.0/starpi-core-2.1.0.tgz
+curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.1.0/SHA256SUMS
 sha256sum -c --ignore-missing SHA256SUMS
-npm install ./starpi-core-2.0.0.tgz
+npm install ./starpi-core-2.1.0.tgz
 ```
 
-`npm install https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.0.0/starpi-core-2.0.0.tgz`
+`npm install https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.1.0/starpi-core-2.1.0.tgz`
 works too, without the checksum step.
 
 ## Check an answer against its sources

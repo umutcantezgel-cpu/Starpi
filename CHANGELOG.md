@@ -5,6 +5,78 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-14
+
+### Added
+
+- **Free chat and verified source mode.** A toggle in the message box switches between *Free chat*
+  (a conversation without retrieval: up to 16 earlier turns, Markdown, code blocks, an attached file
+  used as context) and *Verified source mode* (the source check and a receipt for every answer, as
+  before). The choice is kept in this browser; source mode is the default. Quick prompts, sample
+  questions and questions about a knowledge-graph entity always run in source mode. Free answers
+  say that they were not checked against sources.
+- **Device-adaptive model choice.** One picker in the header and in Settings lists every model,
+  grouped as *Recommended for your device*, *In this browser (WebGPU/WASM)*, *NVIDIA NIM cloud* and
+  *Other assistants*, with runtime, download size and warnings (needs WebGPU, needs a strong GPU,
+  not set up). The device is classified from the WebGPU adapter, `deviceMemory` and the platform
+  (`src/js/models/device.js`); the automatic choice never picks a 7–9B model and nothing is
+  downloaded without a confirmation. Settings show hardware badges. Arrow keys switch only once
+  they rest.
+- **13 WebGPU presets in three tiers** (`src/js/webgpu/models.js`): T1 SmolLM2 360M and 1.7B,
+  Qwen 2.5 0.5B and 1.5B, Llama 3.2 1B; T2 Gemma 2 2B, Llama 3.2 3B, Phi 3.5 mini, Qwen 2.5 3B; T3
+  Mistral 7B v0.3, Qwen 2.5 7B, Llama 3.1 8B, Gemma 2 9B, each with its f16 and f32 build from the
+  pinned WebLLM catalog. The README table is checked against that catalog.
+- **A processor (WASM) runtime for browsers without WebGPU** (`src/js/wasm/`): Transformers.js
+  4.3.0 runs SmolLM2 135M, SmolLM2 360M or Qwen 2.5 0.5B (8-bit ONNX, Hugging Face repositories
+  pinned to a revision) in a Web Worker on a self-hosted, single-threaded ONNX Runtime
+  (`/assets/ort-wasm-simd-threaded-<hash>.wasm`, loaded on first use). It works under the existing
+  CSP, streams, stops at the next token, works offline once stored, and "Delete downloaded model
+  data" removes it.
+- **NVIDIA NIM cloud models through a server-side proxy.** `api/chat/nvidia.js` and
+  `api/models/nvidia.js` (Vercel Functions) and the same routes in `backend/server.py` call 13
+  models that NVIDIA offers as free endpoints with a pool of keys from `NVIDIA_API_KEYS`. Each
+  request starts at the next key and fails over on 429, 5xx, timeouts and network errors until a
+  stream starts; keys that fail are parked (429 for its Retry-After, 401/403 for 30 minutes). The
+  proxy accepts only same-origin requests, allowlisted models and bounded requests, limits each
+  client address per minute, sets the upstream fields itself, never reads or returns upstream
+  bodies and logs keys by index only. Answers stream into the chat; in source mode they get the
+  source check and a receipt (`answer.engine: "nvidia"`) like every other engine.
+- `src/js/models/nvidia-catalog.js`: one allowlist with limits and timings for the app, the
+  functions and the Python backend (`backend/core/nvidia_catalog.json`, written by
+  `npm run nvidia:sync`); `npm run nvidia:ping` checks the endpoints without printing keys.
+- **Chat tools:** a copy button on every code block, export of the current chat as Markdown or
+  JSON (`starpi.chat/v1`), and deleting the current chat (also its synced messages).
+- `npm run preview` and `npm run dev` serve the functions locally (`scripts/serve.mjs --functions`,
+  only for localhost, IP addresses and `NVIDIA_ALLOWED_ORIGINS`).
+- Tests: unit tests for the device classes, the model choices, the WASM catalog pins, the NVIDIA
+  catalog, proxy, router and browser client, the stream parser, the chat export and the copy
+  buttons; Python tests for the NVIDIA router and routes against shared validation vectors;
+  end-to-end tests for both chat modes, NVIDIA answers with source check and receipt, the model
+  picker and keyboard use.
+
+### Changed
+
+- Receipts record `wasm` and `nvidia` as engines (`docs/spec/receipts.md`); the receipt format is
+  unchanged.
+- Gemini receives the conversation in free chat; in source mode it still gets the question only.
+- The build writes worker and runtime URLs into the sources before esbuild names the bundles, so a
+  bundle's name always matches its content (browsers keep `/assets/*` for a year).
+- `vercel.json` configures the two functions (300 s for the chat stream, 10 s for the model list).
+- The architecture atlas has 130 diagrams (nine new: dual-mode chat, the NVIDIA browser client, the
+  device tiers, the WASM runtime and five for the NVIDIA proxy); README, `SECURITY.md`, the
+  walkthrough, the backend README and `CONTRIBUTING.md` describe the new parts.
+- `@starpi/core` and the app are 2.1.0; the package API is unchanged. `CITATION.cff` follows.
+
+### Security
+
+- gitleaks rule `starpi-nvidia-api-key` (also for keys pasted with escaped underscores); the build
+  check fails on any NVIDIA key in the bundles; a unit test scans the tracked files.
+- The keys live only in the server environment (on Vercel a sensitive variable); the browser never
+  sends an Authorization header to the proxy.
+- `SECURITY.md` covers the proxy as a new surface, what each mode sends where, and its limits: the
+  per-address limit and the key cooldowns are per instance, the Origin check stops other sites'
+  pages but not scripts that forge headers, and pooling free keys must fit NVIDIA's terms.
+
 ## [2.0.0] - 2026-10-14
 
 ### Breaking changes
@@ -332,7 +404,8 @@ of 8 of 10 are reached for values, not for names (74 %) or negations (70 %).
 - First public release: knowledge base on Supabase with pgvector, knowledge graph, voice input,
   cloud and on-device (WebGPU) answers, and an installable PWA.
 
-[Unreleased]: https://github.com/umutcantezgel-cpu/Starpi/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/umutcantezgel-cpu/Starpi/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.3.0...v2.0.0
 [1.3.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.1.0...v1.2.0

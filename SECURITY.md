@@ -181,8 +181,8 @@ Out of scope:
 
   ```bash
   sha256sum -c --ignore-missing SHA256SUMS
-  npm view @starpi/core@2.0.0 dist.integrity   # sha512-…, compare with:
-  echo "sha512-$(openssl dgst -sha512 -binary starpi-core-2.0.0.tgz | base64 -w0)"
+  npm view @starpi/core@2.1.0 dist.integrity   # sha512-…, compare with:
+  echo "sha512-$(openssl dgst -sha512 -binary starpi-core-2.1.0.tgz | base64 -w0)"
   ```
 - **Browser.** A Content-Security-Policy without `unsafe-inline` or `unsafe-eval` (only
   `wasm-unsafe-eval`, for on-device inference with WebLLM and ONNX Runtime Web), checked by
