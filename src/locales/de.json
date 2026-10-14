@@ -114,6 +114,19 @@
       "code-download": "Die lokale KI-Engine konnte nicht geladen werden (Verbindung unterbrochen). Laden Sie die Seite neu, um es erneut zu versuchen."
     }
   },
+  "models": {
+    "badge_webgpu_f16": "WebGPU mit f16",
+    "badge_webgpu": "WebGPU ohne f16",
+    "badge_cpu_only": "Kein WebGPU: Modelle laufen auf dem Prozessor (WASM)",
+    "badge_memory": "{gb} GB Arbeitsspeicher",
+    "badge_memory_hidden": "Arbeitsspeicher nicht angegeben",
+    "class_cpu_only": "Geräteklasse: nur Prozessor",
+    "class_mobile": "Geräteklasse: Smartphone oder Tablet",
+    "class_low": "Geräteklasse: leicht",
+    "class_laptop": "Geräteklasse: Laptop",
+    "class_desktop": "Geräteklasse: Desktop",
+    "class_desktop_pro": "Geräteklasse: Desktop Pro (starke GPU oder Apple Silicon)"
+  },
   "chat": {
     "new_chat": "Neuer Chat",
     "welcome_title": "Willkommen bei Starpi",

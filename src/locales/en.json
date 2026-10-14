@@ -114,6 +114,19 @@
       "code-download": "The on-device engine could not be downloaded (connection interrupted). Reload the page to try again."
     }
   },
+  "models": {
+    "badge_webgpu_f16": "WebGPU with f16",
+    "badge_webgpu": "WebGPU without f16",
+    "badge_cpu_only": "No WebGPU: models run on the processor (WASM)",
+    "badge_memory": "{gb} GB RAM",
+    "badge_memory_hidden": "RAM not reported",
+    "class_cpu_only": "Device class: processor only",
+    "class_mobile": "Device class: phone or tablet",
+    "class_low": "Device class: light",
+    "class_laptop": "Device class: laptop",
+    "class_desktop": "Device class: desktop",
+    "class_desktop_pro": "Device class: desktop pro (strong GPU or Apple silicon)"
+  },
   "chat": {
     "new_chat": "New chat",
     "welcome_title": "Welcome to Starpi",
