@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, statSync } from 'node:fs';
+import path from 'node:path';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   catalogJson,
   findNvidiaModel,
@@ -12,6 +16,8 @@ import {
   normalizeNvidiaModel,
   publicCatalog,
 } from '../../src/js/models/nvidia-catalog.js';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 /** The i18n test reads `: 'x.y'` and `? 'x.y'` in src/ as translation keys (tests/unit/i18n.test.mjs). */
 const I18N_KEY_SHAPE = /^[a-z]\w*\.[\w.-]+$/;
@@ -72,5 +78,51 @@ describe('NVIDIA model catalog', () => {
   it('serializes to the JSON the Python backend reads', () => {
     assert.deepEqual(JSON.parse(catalogJson()), JSON.parse(JSON.stringify(NVIDIA_CATALOG)));
     assert.ok(catalogJson().endsWith('}\n'));
+  });
+});
+
+/**
+ * The regex of a custom gitleaks rule, read from .gitleaks.toml (a TOML literal string, so no escapes).
+ * @param {string} id
+ */
+function gitleaksRegex(id) {
+  const toml = readFileSync(path.join(ROOT, '.gitleaks.toml'), 'utf8');
+  const rule = toml.split(/^(?=\[)/m).find((table) => table.startsWith('[[rules]]') && table.includes(`\nid = "${id}"\n`));
+  assert.ok(rule, `.gitleaks.toml has no rule ${id}`);
+  assert.match(rule, /^keywords = \["nvapi-"\]$/m);
+  const source = /^regex = '''(.+)'''$/m.exec(rule)?.[1];
+  assert.ok(source, `rule ${id} has no regex`);
+  return new RegExp(source);
+}
+
+describe('NVIDIA catalog mirror and key-leak guards', () => {
+  it('keeps backend/core/nvidia_catalog.json an exact copy of the catalog', () => {
+    const mirror = readFileSync(path.join(ROOT, 'backend/core/nvidia_catalog.json'), 'utf8');
+    assert.ok(mirror === catalogJson(), 'backend/core/nvidia_catalog.json is outdated; run npm run nvidia:sync');
+  });
+
+  it('has a gitleaks rule that finds plain and Markdown-escaped keys but not the docs placeholder', () => {
+    const rule = gitleaksRegex('starpi-nvidia-api-key');
+    // Keys are built at runtime so that no key-shaped literal exists in the repository.
+    const plain = `nvapi-${'t'.repeat(63)}1`;
+    const escaped = `nvapi-${'a\\_'.repeat(32)}`;
+    assert.equal(rule.exec(plain)?.[0], plain);
+    assert.equal(rule.exec(`key: ${escaped}.`)?.[0], escaped);
+    assert.doesNotMatch(`nvapi-${'t'.repeat(63)}`, rule);
+    assert.doesNotMatch('NVIDIA_API_KEYS=nvapi-<64 characters>', rule);
+  });
+
+  it('finds no NVIDIA API key in any tracked text file', () => {
+    const rule = gitleaksRegex('starpi-nvidia-api-key');
+    const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8' }).split('\0').filter(Boolean);
+    assert.ok(tracked.length > 100, `only ${tracked.length} tracked files found`);
+    const leaks = tracked.filter((file) => {
+      const full = path.join(ROOT, file);
+      // Files deleted in the working tree, and binaries (a NUL byte), are skipped.
+      if (!statSync(full, { throwIfNoEntry: false })?.isFile()) return false;
+      const bytes = readFileSync(full);
+      return !bytes.includes(0) && rule.test(bytes.toString('utf8'));
+    });
+    assert.deepEqual(leaks, [], 'remove the key and revoke it');
   });
 });

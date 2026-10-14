@@ -35,6 +35,8 @@
     "sbom": "node scripts/sbom.mjs",
     "eval:source-check": "node scripts/eval-source-check.mjs",
     "docs:sync": "node scripts/sync-diagrams.mjs",
+    "nvidia:sync": "node scripts/sync-nvidia-catalog.mjs",
+    "nvidia:ping": "node scripts/nvidia-ping.mjs",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run verify:dist"
   },
   "keywords": [

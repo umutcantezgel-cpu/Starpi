@@ -2,6 +2,14 @@
 [extend]
 useDefault = true
 
+# NVIDIA API keys: nvapi- and 64 characters. Also matches keys pasted with Markdown escapes (\_).
+# tests/unit/nvidia-catalog.test.mjs reads this regex and scans the tracked files with it.
+[[rules]]
+id = "starpi-nvidia-api-key"
+description = "NVIDIA API key (build.nvidia.com, NIM)"
+regex = '''nvapi-(?:\\?[A-Za-z0-9_-]){64}'''
+keywords = ["nvapi-"]
+
 [[allowlists]]
 description = "Supabase anon (publishable) JWT for project behnltoogscnbjhvixmw: public by design, access is enforced by RLS. The payload prefix pins role=anon, so a service_role key is still reported."
 regexTarget = "match"

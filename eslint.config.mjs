@@ -55,6 +55,20 @@ export default [
     },
   },
   {
+    // Vercel Functions and their helpers (Node.js runtime, Web-standard Request and Response). Only
+    // api/_lib/env.js reads the environment, through globalThis, so Node-only globals stay out.
+    files: ['api/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+    rules: {
+      'no-console': ['error', { allow: ['warn', 'error'] }],
+      'no-restricted-globals': ['error', 'process', 'Buffer', 'require', '__dirname'],
+    },
+  },
+  {
     files: ['src/sw.js'],
     languageOptions: {
       ecmaVersion: 'latest',

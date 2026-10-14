@@ -23,6 +23,7 @@
   },
   "include": [
     "src/js/globals.d.ts",
+    "api/_lib/env.js",
     "src/js/bench/bench-ui.js",
     "src/js/bench/diagnostics.js",
     "src/js/chat-store.js",
