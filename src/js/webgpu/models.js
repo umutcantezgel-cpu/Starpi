@@ -271,9 +271,11 @@ const CHARS_PER_TOKEN = 3;
 /**
  * Trims system context, history and user prompt so the request fits the model's context window.
  * Priority: the user's question, then retrieved context, then the most recent history.
- * @param {{ contextWindow: number, maxOutputTokens: number, system: string, context: string, history: Array<{ role: 'user' | 'assistant', content: string }>, user: string }} input
+ * `turnChars` caps each history turn (default 600; the free chat keeps longer turns).
+ * @param {{ contextWindow: number, maxOutputTokens: number, system: string, context: string, history: Array<{ role: 'user' | 'assistant', content: string }>, user: string, turnChars?: number }} input
  */
 export function budgetPrompt(input) {
+  const turnChars = input.turnChars ?? 600;
   const reserveTokens = input.maxOutputTokens + 128; // output + chat template overhead
   let remaining = Math.max(256, input.contextWindow - reserveTokens) * CHARS_PER_TOKEN;
 
@@ -291,7 +293,7 @@ export function budgetPrompt(input) {
   /** @type {Array<{ role: 'user' | 'assistant', content: string }>} */
   const history = [];
   for (const msg of [...input.history].reverse()) {
-    const content = msg.content.length > 600 ? `${msg.content.slice(0, 599)}…` : msg.content;
+    const content = msg.content.length > turnChars ? `${msg.content.slice(0, turnChars - 1)}…` : msg.content;
     if (content.length > remaining) break;
     remaining -= content.length;
     history.unshift({ role: msg.role, content });

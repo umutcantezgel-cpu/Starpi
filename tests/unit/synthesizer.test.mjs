@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { assignCitations } from '../../src/js/retrieval.js';
-import { describeTrace, isGreeting, splitSentences, synthesizeAnswer } from '../../src/js/synthesizer.js';
+import { describeChatTrace, describeTrace, isGreeting, splitSentences, synthesizeAnswer } from '../../src/js/synthesizer.js';
 
 describe('splitSentences', () => {
   it('keeps ordinals, decimals and abbreviations inside sentences', () => {
@@ -70,5 +70,21 @@ describe('describeTrace', () => {
     assert.match(t, /Postgres full-text search/);
     assert.match(t, /1 excerpt from 1 document /);
     assert.match(t, /1\.2 s/);
+  });
+});
+
+describe('describeChatTrace', () => {
+  it('lists mode, engine, attachment and note, escapes Markdown and has no retrieval heading', () => {
+    const t = describeChatTrace({ engineLabel: 'Cloud [x](y)', durationMs: 2500, attachment: 'notes_*v2*.md', note: 'Cut <b>short</b>' });
+    assert.match(t, /^### Free chat answer\n/);
+    assert.match(t, /\* \*\*Mode:\*\* Free chat, not checked against sources/);
+    assert.match(t, /\* \*\*Engine:\*\* Cloud \\\[x\\\]\\\(y\\\)/);
+    assert.match(t, /\* \*\*Duration:\*\* 2\.5 s/);
+    assert.match(t, /\* \*\*Attached file:\*\* notes\\_\\\*v2\\\*\.md/);
+    assert.match(t, /\* \*\*Note:\*\* Cut/);
+    assert.doesNotMatch(t, /Retrieval|Query|Matches/);
+    const bare = describeChatTrace({ engineLabel: 'Own server', durationMs: null, attachment: null });
+    assert.match(bare, /Duration:\*\* –/);
+    assert.doesNotMatch(bare, /Attached file|Note/);
   });
 });
