@@ -116,6 +116,25 @@ def is_loopback_host(host: str) -> bool:
         return False
 
 
+def _reject_constant(name: str) -> Any:
+    raise ValueError(f"{name} is not JSON")
+
+
+def rate_limit_key(peer: str, forwarded: str | None, behind_proxy: bool) -> str:
+    """The address a per-client rate limit counts.
+
+    Behind the reverse proxy that a token requires (``behind_proxy``: a token is set and the request
+    comes from a loopback peer, that proxy on this host), it is the right-most X-Forwarded-For entry,
+    the hop the proxy appended. Otherwise it is the socket peer: a client talking to the server
+    directly could send any X-Forwarded-For and so pick a fresh key for every request.
+    """
+    if behind_proxy and forwarded:
+        last_hop = forwarded.rsplit(",", 1)[-1].strip()
+        if last_hop:
+            return last_hop
+    return peer
+
+
 def parse_content_length(value: str) -> int | None:
     """Value of a Content-Length header, or None unless it is a plain decimal number.
 
@@ -341,11 +360,10 @@ class BrainAPIHandler(BaseHTTPRequestHandler):
             raise ApiError(HTTPStatus.FORBIDDEN, "origin_required")
 
     def _client_key(self) -> str:
-        """The address the NVIDIA rate limit counts: the socket peer or, behind the trusted proxy that a
-        token requires, the right-most X-Forwarded-For entry (the hop that proxy appended)."""
-        forwarded = self._header("X-Forwarded-For") if self.settings.api_token else None
-        last_hop = forwarded.rsplit(",", 1)[-1].strip() if forwarded else ""
-        return last_hop or str(self.client_address[0])
+        """The address the NVIDIA rate limit counts (see rate_limit_key)."""
+        peer = str(self.client_address[0])
+        behind_proxy = bool(self.settings.api_token) and is_loopback_host(peer)
+        return rate_limit_key(peer, self._header("X-Forwarded-For"), behind_proxy)
 
     def _read_json_object(self, max_bytes: int | None = None) -> dict[str, Any]:
         limit = self.settings.max_body_bytes if max_bytes is None else min(self.settings.max_body_bytes, max_bytes)
@@ -375,7 +393,8 @@ class BrainAPIHandler(BaseHTTPRequestHandler):
         if len(body) < length:
             raise ApiError(HTTPStatus.BAD_REQUEST, "incomplete_body")
         try:
-            data = json.loads(body.decode("utf-8"))
+            # As JSON.parse in the Vercel Functions: a leading BOM is ignored, NaN and Infinity are no JSON.
+            data = json.loads(body.decode("utf-8-sig"), parse_constant=_reject_constant)
         except (UnicodeDecodeError, ValueError, RecursionError):
             raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_json") from None
         if not isinstance(data, dict):
