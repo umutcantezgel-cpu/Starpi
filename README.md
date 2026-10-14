@@ -49,10 +49,12 @@ next to it says what the source says. Starpi makes that visible and checkable:
   numbers, quotations and wording; and whether it reverses a negation of the excerpt ("is
   supported" where the excerpt says "is not supported") or puts a name or a value next to
   something else than the excerpt does. A value that is not in the cited excerpt is named
-  ("520,000 is not in [Doc: plan.md, Chunk: 1]"), a reversed or moved statement is shown with the
-  passage that says otherwise, the statement is highlighted, and its citation is marked. It runs in the browser, is deterministic and needs no second model. On
-  labelled test answers it flagged every changed value in the held-out set and no statement of a
-  faithful answer as unsupported ([how well it works](#how-well-it-works)).
+  ("520,000 is not in [Doc: plan.md, Chunk: 1]"), the statement is highlighted and its citation
+  marked; a reversed or misplaced statement is listed for review with the passage that says
+  otherwise. It runs in the browser, is deterministic and needs no second model. On labelled test
+  answers held out from its development it flagged every changed value, about three in four
+  reversed statements, wrong names and misplaced values, and no statement of a faithful answer as
+  unsupported ([how well it works](#how-well-it-works)).
 - **Answer receipts.** A JSON file per answer with SHA-256 fingerprints of the source files, the
   exact offsets of each cited passage, the source-check verdicts and a Merkle tree (RFC 6962) over
   the citations, so one cited passage can be shown with its inclusion proof without the others.
@@ -134,29 +136,45 @@ tests.
 
 ### How well it works
 
-Measured with `npm run eval:source-check` on labelled answers about the sample files and the sample
-knowledge base, in English, in German and across the two. Each answer is either faithful or has
-exactly one planted error. The first set was available while the rules were adjusted; the held-out
-set was written afterwards, in a different style, and only measured.
+Measured with `npm run eval:source-check` on labelled answers, each either faithful or with exactly
+one planted error, in English and German: two sets written for Starpi 1.2 about the sample files
+and the sample knowledge base (also across the two languages), two sets written for Starpi 2.0
+about technical specifications (an edge gateway and a data retention policy), and 854 faithful
+paraphrases. In each pair, the first set was available while the rules were adjusted; the
+held-out set was written in advance and measured once, with both versions of the rules
+([protocol](docs/eval/v2-protocol.md), [all results](docs/eval/v2-results.md)). Detected means
+marked unsupported or weak; each cell gives version 2 / version 1 of the rules.
 
-| | First set | Held-out set |
-| --- | --- | --- |
-| Faithful answers (statements) | 50 (143) | 100 (324) |
-| Statements of faithful answers marked unsupported | 0 | 0 |
-| Statements of faithful answers marked weak | 0 | 15 (4.6 %) |
-| Changed number, date, time, weekday or code: flagged | 48 of 49 | 49 of 49 |
-| Wrong name or place: flagged (names are checked in English only) | 3 of 10 | 4 of 10 |
-| Correct value attached to the wrong thing: flagged | 2 of 10 | 6 of 10 |
-| Negated statement: flagged | 0 of 10 | 0 of 10 |
+| | Set for 1.2 | Held-out for 1.2 ¹ | Set for 2.0 | Held-out for 2.0 | Paraphrases |
+| --- | --- | --- | --- | --- | --- |
+| Statements of faithful answers | 143 | 324 | 143 | 144 | 844 |
+| … marked unsupported | 0 / 0 | 0 / 0 | 0 / 1 | 0 / 0 | 0 / 0 |
+| … marked weak | 0 / 0 | 16 / 15 | 0 / 2 | 8 / 4 | 27 / 16 |
+| Changed number, date, time, weekday or code detected | 47 / 48 of 49 | 49 / 49 of 49 | – | – | – |
+| Wrong name or place detected | 5 / 3 of 10 | 6 / 4 of 10 | 19 / 9 of 24 | **17 / 10 of 23** | – |
+| Correct value attached to the wrong thing detected | 3 / 2 of 10 | 7 / 6 of 10 | 23 / 13 of 24 | **20 / 13 of 24** | – |
+| Negated or reversed statement detected | 8 / 0 of 10 | 4 / 0 of 10 | 24 / 1 of 24 | **16 / 0 of 23** | – |
 
-The answers were written by language models following these instructions, and every label was
-confirmed by two independent model reviewers; they are not answers from real users, and the sample
-is small. One rule was corrected after the held-out set was written (a word from the file name no
-longer counts as context for a value); it raised the held-out "wrong thing" row from 4 to 6 and
-changed nothing else. Read the table as what the check can and cannot see: it is reliable for
-changed values and blind to a statement that keeps the source's words and reverses their meaning.
-The labelled answers are in [`tests/fixtures/grounding/eval.json`](tests/fixtures/grounding/eval.json),
-and a unit test fails if any of these results gets worse.
+¹ Its misses under version 1 were inspected while version 2 was designed, so it is not a clean
+held-out measure for version 2.
+
+The clean measure of version 2 is the held-out set for 2.0: it detects 17 of 23 wrong names, 20 of
+24 values attached to the wrong thing and 16 of 23 reversed statements, where version 1 detected
+10, 13 and none, and it marks no statement of a faithful answer unsupported. The target set before
+the work, 8 of 10 in each of these three categories, is reached for values (83 %) and not for
+names (74 %) or negations (70 %). The price is more weak marks on faithful statements: 8 instead
+of 4 of 144 in that set. Reversed negations are marked weak, never unsupported: a red-team test
+with 843 faithful paraphrases showed that reading negations by their words also reverses correct
+restatements ("only allowed after the update" for "prohibited until the update"), and no faithful
+statement may be marked unsupported.
+
+The answers were written by language models following fixed instructions, and every label was
+confirmed by two independent model reviewers; they are not answers from real users, and each
+category has 10 to 24 answers per set. Read the table as what the check can and cannot see: it is
+reliable for changed values and finds most reversed statements, wrong names and misplaced values
+within one statement, but not all, and not a wrong relation spread over two statements. The
+labelled answers are in [`tests/fixtures/grounding/`](tests/fixtures/grounding), and a unit test
+fails if any of these results gets worse.
 
 <!-- diagram: source-check-pipeline -->
 ```mermaid
@@ -536,12 +554,13 @@ cache, the four commands took 16 seconds in total on a 4-vCPU Linux container wi
 git clone https://github.com/umutcantezgel-cpu/Starpi.git && cd Starpi
 npm ci
 npm test                    # unit tests, including the checks in the table below
-npm run eval:source-check   # per-category results of the source check on both answer sets
+npm run eval:source-check -- --unblind --grounding 2   # the source check on every answer set
+npm run eval:source-check -- --unblind --grounding 1   # the same with the rules of 1.x
 ```
 
 | Figure | Produced by | Pinned by |
 | --- | --- | --- |
-| Source check results ([How well it works](#how-well-it-works)) | `npm run eval:source-check` on [`tests/fixtures/grounding/eval.json`](tests/fixtures/grounding/eval.json) | `tests/unit/source-check-eval.test.mjs` fails if any result gets worse |
+| Source check results ([How well it works](#how-well-it-works)) | `npm run eval:source-check` on the answer sets in [`tests/fixtures/grounding/`](tests/fixtures/grounding) (`--unblind` adds the held-out sets) | `tests/unit/source-check-eval.test.mjs` fails if any result gets worse; `tests/unit/golden.test.mjs` pins every verdict |
 | VRAM, download size and context window ([On-device models](#on-device-models)) | `vram_required_MB` in the WebLLM catalog pinned by `package-lock.json`; the context window the app requests (`chooseModel`) | `tests/unit/models.test.mjs` fails if the table and the catalog differ |
 | Time to first token, prefill and decode speed | **Diagnostics** tab on your device: a warm-up request, then a fixed prompt with exactly 128 generated tokens (`ignore_eos`, temperature 0) on a reset chat | Not published: the result depends on the GPU, the driver and the browser |
 
