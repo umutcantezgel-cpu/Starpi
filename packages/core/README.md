@@ -318,12 +318,14 @@ same when the statement moves. In GitHub Actions (the job needs `security-events
 ## Chunk and search
 
 ```js
-import { readFile } from 'node:fs/promises';
 import { BM25Index, chunkText, citationLabel } from '@starpi/core';
 
+const docs = {
+  'plan.md': 'The approved budget is 480,000 EUR. The public launch is planned for 12 May 2027.',
+  'risks.md': 'R-01: The traffic data supplier delays its delivery. Owner: Marta Silva. R-02: Drivers reject the new app.',
+};
 const index = new BM25Index(); // Okapi BM25, k1 = 1.2, b = 0.75
-for (const name of ['plan.md', 'risks.md']) {
-  const text = await readFile(name, 'utf8');
+for (const [name, text] of Object.entries(docs)) {
   const chunks = chunkText(text); // 500 characters, 50 overlap, breaks at paragraphs, sentences or words
   index.add(chunks.map((c) => ({ docId: name, docName: name, chunkIndex: c.index, start: c.start, end: c.end, text: c.text })));
 }
@@ -331,7 +333,7 @@ for (const name of ['plan.md', 'risks.md']) {
 for (const { chunk, score, matchedTerms } of index.search('supplier delays', 3)) {
   console.log(citationLabel(chunk.docName, chunk.chunkIndex + 1), score.toFixed(2), matchedTerms);
 }
-// for example: [Doc: risks.md, Chunk: 1] 3.17 [ 'supplier', 'delays' ]
+// [Doc: risks.md, Chunk: 1] 1.32 [ 'supplier', 'delays' ]
 ```
 
 `chunk.start` and `chunk.end` are offsets into the text, so `text.slice(start, end)` is the chunk;

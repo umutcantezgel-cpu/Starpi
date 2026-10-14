@@ -31,8 +31,8 @@ the first chunk of the sample file `public/samples/en/nebula-plan.md` (excerpt t
 ```json
 {
   "schema": "starpi.receipt/v2",
-  "id": "849c6516594c0b5ff4b0e49508d4c1068260b73c08359c3a14b4ff294277ead2",
-  "createdAt": "2026-10-13T09:30:00.000Z",
+  "id": "93b368aec17289e740df8eb91948ab069c921a37cd42427e5c90f7089208a9c1",
+  "createdAt": "2026-10-14T09:30:00.000Z",
   "generator": { "name": "starpi", "version": "2.0.0" },
   "answer": {
     "text": "The approved budget for Project Nebula is 480,000 EUR [Doc: nebula-plan.md, Chunk: 1].",
@@ -66,7 +66,7 @@ the first chunk of the sample file `public/samples/en/nebula-plan.md` (excerpt t
     }
   ],
   "grounding": {
-    "algorithm": { "id": "starpi-grounding", "version": 1 },
+    "algorithm": { "id": "starpi-grounding", "version": 2 },
     "counts": { "supported": 1, "weak": 0, "unsupported": 0, "unchecked": 0 },
     "sentences": [
       {
@@ -81,9 +81,9 @@ the first chunk of the sample file `public/samples/en/nebula-plan.md` (excerpt t
   "merkle": { "alg": "sha256-rfc6962", "size": 1, "root": "f99102a2e18f07bd7ca75cc10a6bc480276261068ffb52290532981f103f1bca" },
   "signature": {
     "alg": "Ed25519",
-    "keyId": "280157ae9935c93ef9d96ede3293bfc45166e80eaaa76d6bb7b92bee511c30ce",
-    "publicKey": { "kty": "OKP", "crv": "Ed25519", "x": "jbneUZQVb6QGrSwGV7xO7Gcrg-Q8aiDnPKg86szpFY0" },
-    "value": "oAMg70OIIakkrk4934hqsPI-7VKBjC45n7pMtORueb2K4fcys84dyuArAkxgUDuESN7rjzU5PBM4BsKHaoBSAg"
+    "keyId": "59246ff00e9ff2d8528734d202cc456195153e139323fd55032c3b5df829ac0c",
+    "publicKey": { "kty": "OKP", "crv": "Ed25519", "x": "wWrwLYMpDddZk4sC_1USoG9_e-3hztA0HLIUbO992qc" },
+    "value": "ZCCGDTuSND78j3SWCSBW-98Ad9WkNJVpeOqkeOAhGEYyxlUYL5wBSEeq2kFRgbL4w8w7SffZM2YuAOARy2cQDw"
   }
 }
 ```
@@ -346,11 +346,11 @@ npx -p @starpi/core starpi-verify-receipt receipt.json plan.pdf notes.md
 ```
 
 ```text
-receipt 849c6516594c0b5f… (2026-10-13T09:30:00.000Z, cloud)
+receipt 93b368aec17289e7… (2026-10-14T09:30:00.000Z, cloud)
 ok   receipt hash matches its contents
 ok   answer hash matches the answer text
 ok   Merkle root over 1 citation matches, 1/1 inclusion proofs valid
-ok   signature valid (Ed25519, key 280157ae9935c93e…, the public key you gave)
+ok   signature valid (Ed25519, key 59246ff00e9ff2d8…, the public key you gave)
 ok   [Doc: nebula-plan.md, Chunk: 1]: file match (nebula-plan.md), text match, passage match, chunk match
 
 1/1 workspace excerpts reproduced from the given files
