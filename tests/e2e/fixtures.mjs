@@ -1,5 +1,7 @@
-// Test fixtures: a mocked Supabase backend plus collectors for CSP violations and runtime errors.
+// Test fixtures: a mocked Supabase backend, a mocked NVIDIA proxy, plus collectors for CSP violations
+// and runtime errors.
 import { test as base, expect } from '@playwright/test';
+import { NVIDIA_DEFAULT_MODEL, publicCatalog } from '../../src/js/models/nvidia-catalog.js';
 
 export const MALICIOUS_DOC = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -110,6 +112,67 @@ export async function mockSupabase(page, mode) {
     return json(404, { code: 'PGRST000', message: `unmocked ${url.pathname}` });
   });
   return calls;
+}
+
+/**
+ * A text/event-stream body as Starpi's NVIDIA proxy relays it: OpenAI-compatible chunks with the
+ * reasoning and content deltas, a finish chunk and [DONE].
+ * @param {{ reasoning?: string[], content?: string[] }} [parts]
+ */
+export function sseBody({ reasoning = [], content = [] } = {}) {
+  const line = (/** @type {Record<string, unknown>} */ delta, /** @type {string | null} */ finish = null) =>
+    `data: ${JSON.stringify({ id: 'chatcmpl-test', object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+  return [line({ role: 'assistant', content: '' }), ...reasoning.map((r) => line({ reasoning_content: r })), ...content.map((c) => line({ content: c })), line({}, 'stop'), 'data: [DONE]\n\n'].join('');
+}
+
+/**
+ * @typedef {{ reasoning?: string[], content?: string[] }} NvidiaReply
+ * @typedef {{ status: number, body: unknown, headers?: Record<string, string> }} NvidiaError
+ */
+
+/**
+ * Mocks Starpi's NVIDIA proxy (GET /api/models/nvidia and POST /api/chat/nvidia). The catalog has the
+ * published shape; chat requests get the replies in turn (the last one repeats) or the error. Records
+ * each request body and its Authorization header (the browser must send none).
+ * @param {import('@playwright/test').Page} page
+ * @param {{ configured?: boolean, models?: string[], reply?: NvidiaReply | NvidiaReply[], error?: NvidiaError }} [options]
+ *   `models`: the ids the proxy offers (default: the whole bundled catalog)
+ */
+export async function mockNvidia(page, { configured = true, models, reply = { content: ['OK.'] }, error } = {}) {
+  /** @type {{ bodies: Array<{ model: string, messages: Array<{ role: string, content: string }>, max_tokens: number, temperature: number }>, auth: Array<string | undefined>, catalogRequests: number }} */
+  const recorded = { bodies: [], auth: [], catalogRequests: 0 };
+  const catalog = publicCatalog(configured);
+  const body = { ...catalog, models: models ? catalog.models.filter((m) => models.includes(m.id)) : catalog.models };
+  await page.route('**/api/models/nvidia', (route) => {
+    recorded.catalogRequests += 1;
+    return route.fulfill({ status: 200, contentType: 'application/json; charset=utf-8', headers: { 'cache-control': 'no-store' }, body: JSON.stringify(body) });
+  });
+  await page.route('**/api/chat/nvidia', (route) => {
+    const req = route.request();
+    recorded.bodies.push(JSON.parse(req.postData() ?? '{}'));
+    recorded.auth.push(req.headers().authorization);
+    if (error) return route.fulfill({ status: error.status, contentType: 'application/json; charset=utf-8', headers: { 'cache-control': 'no-store', ...error.headers }, body: JSON.stringify(error.body) });
+    const replies = Array.isArray(reply) ? reply : [reply];
+    return route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream; charset=utf-8',
+      headers: { 'cache-control': 'no-store, no-transform' },
+      body: sseBody(replies[Math.min(recorded.bodies.length, replies.length) - 1]),
+    });
+  });
+  return recorded;
+}
+
+/**
+ * Starts the page in NVIDIA cloud mode with the given model, as a returning visitor who picked them.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} [model]
+ */
+export async function useNvidia(page, model = NVIDIA_DEFAULT_MODEL) {
+  await page.addInitScript((id) => {
+    localStorage.setItem('starpi_compute_mode', 'nvidia');
+    localStorage.setItem('starpi_nvidia_model', id);
+  }, model);
 }
 
 export const test = base.extend({

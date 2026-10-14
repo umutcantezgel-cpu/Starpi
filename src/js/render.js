@@ -75,7 +75,9 @@ export function renderMarkdown(markdown) {
 /**
  * Replaces provider and model identifiers in status and error messages (connection tests, provider
  * failures) with a neutral label. Only whole words are replaced. Never applied to answers: they may
- * quote documents verbatim, and citations must match the source text exactly.
+ * quote documents verbatim, and citations must match the source text exactly. Not applied on the
+ * NVIDIA cloud path either: the user picked that model, so badges and traces name it on purpose, and
+ * its error messages come from i18n keys only, never from server text.
  * @param {unknown} str
  */
 export function sanitizeModelNames(str) {

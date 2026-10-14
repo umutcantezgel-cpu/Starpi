@@ -2,6 +2,7 @@
 // System prompts in the active UI language. Kept pure (no DOM, no storage) so the exact wording is
 // unit-tested. engine.js and providers.js stay transport layers: they receive finished messages.
 import { safeSlice } from './core/sentences.js';
+import { NVIDIA_LIMITS } from './models/nvidia-catalog.js';
 
 /** @typedef {import('./i18n/index.js').Locale} Locale */
 /** @typedef {'local' | 'cloud' | 'server'} PromptTarget */
@@ -200,6 +201,91 @@ export function excerptForChat(text, ranges, maxChars) {
     break;
   }
   return out;
+}
+
+/** The opening line of a fenced excerpt (group 1: its number) or of an attached file. */
+const FENCE_OPEN = /<<<(?:EXCERPT (\d+) |FILE )[^\n]*?>>>\n/g;
+
+/**
+ * The text cut to at most `max` characters without breaking a fence. The blocks are walked in order:
+ * one cut in its body keeps its opening line, ends in "…" and gets its closing line back; one whose
+ * opening line would be cut is left out; plain text cut short ends in "…".
+ * @param {string} text
+ * @param {number} max
+ */
+export function cutFenced(text, max) {
+  if (text.length <= max) return text;
+  if (max <= 0) return '';
+  let pos = 0;
+  for (;;) {
+    FENCE_OPEN.lastIndex = pos;
+    const open = FENCE_OPEN.exec(text);
+    if (!open || open.index >= max) {
+      // The cut falls into plain text after the last complete block.
+      const kept = safeSlice(text, max - 1);
+      return kept.slice(pos).trim() ? `${kept}…` : text.slice(0, pos).trimEnd();
+    }
+    const close = open[1] === undefined ? '\n<<<END FILE>>>' : `\n<<<END EXCERPT ${open[1]}>>>`;
+    const bodyStart = open.index + open[0].length;
+    const closeAt = text.indexOf(close, bodyStart);
+    const end = closeAt >= 0 ? closeAt + close.length : text.length;
+    if (end <= max) {
+      pos = end;
+      continue;
+    }
+    const room = max - bodyStart - 1 - close.length;
+    const body = room > 0 ? safeSlice(text.slice(bodyStart, closeAt >= 0 ? closeAt : text.length), room).trimEnd() : '';
+    return body ? `${text.slice(0, bodyStart)}${body}…${close}` : text.slice(0, open.index).trimEnd();
+  }
+}
+
+/** Room in the request body for everything besides the messages (model, max_tokens, temperature). */
+const NVIDIA_BODY_RESERVE_BYTES = 2048;
+
+/** @param {Array<{ role: string, content: string }>} messages */
+function jsonBytes(messages) {
+  return new TextEncoder().encode(JSON.stringify(messages)).byteLength;
+}
+
+/**
+ * Fits a request for the NVIDIA proxy into its limits (count, characters per message and in total,
+ * body bytes), so the proxy never refuses it for its size. Earlier turns are shortened to
+ * `historyChars` and the oldest question/answer pairs go first; the system message (its context) is
+ * cut further only when no earlier turn is left, and the question is only held to the per-message
+ * limit. A cut never removes the closing line of an excerpt or an attached file.
+ * @template {{ role: 'system' | 'user' | 'assistant', content: string }} M
+ * @param {M[]} messages  an optional system message, the conversation, and the question last
+ * @param {import('./models/nvidia-catalog.js').NvidiaLimits} [limits]
+ * @param {number} [historyChars]  longest earlier turn
+ * @returns {M[]}
+ */
+export function fitNvidiaMessages(messages, limits = NVIDIA_LIMITS, historyChars = limits.maxMessageChars) {
+  if (messages.length === 0) return [];
+  const hasSystem = messages[0].role === 'system' && messages.length > 1;
+  const question = messages[messages.length - 1];
+  const turnChars = Math.min(limits.maxMessageChars, historyChars);
+  /** @type {M | null} */
+  let system = hasSystem ? { ...messages[0], content: cutFenced(messages[0].content, limits.maxMessageChars) } : null;
+  const history = messages.slice(hasSystem ? 1 : 0, -1).map((m) => ({ ...m, content: cutFenced(m.content, turnChars) }));
+  const last = { ...question, content: cutFenced(question.content, limits.maxMessageChars) };
+  const maxBytes = limits.maxBodyBytes - NVIDIA_BODY_RESERVE_BYTES;
+  const assemble = () => /** @type {M[]} */ ([...(system?.content ? [system] : []), ...history, last]);
+  const chars = () => assemble().reduce((sum, m) => sum + m.content.length, 0);
+  const over = () => assemble().length > limits.maxMessages || chars() > limits.maxTotalChars || jsonBytes(assemble()) > maxBytes;
+
+  // Oldest pairs first; the conversation keeps starting with a question.
+  while (history.length > 0 && over()) {
+    history.shift();
+    while (history[0]?.role === 'assistant') history.shift();
+  }
+  // Still too large: the system message (its context) gives way, never the question.
+  while (system && system.content && over()) {
+    const excessChars = Math.max(0, chars() - limits.maxTotalChars);
+    const excessBytes = Math.max(0, jsonBytes(assemble()) - maxBytes);
+    const target = Math.max(0, system.content.length - Math.max(excessChars, excessBytes, 1));
+    system = { ...system, content: cutFenced(system.content, target) };
+  }
+  return assemble();
 }
 
 /**
