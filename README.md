@@ -548,7 +548,7 @@ Content-Security-Policy.
 
 The figures in this README are produced by scripts in the repository and pinned by unit tests.
 None of these steps needs a GPU, an account or an API key. From a fresh clone with an empty npm
-cache, the four commands took 16 seconds in total on a 4-vCPU Linux container with Node.js 22:
+cache, the five commands took 45 seconds in total on a 4-vCPU Linux container with Node.js 22:
 
 ```bash
 git clone https://github.com/umutcantezgel-cpu/Starpi.git && cd Starpi
