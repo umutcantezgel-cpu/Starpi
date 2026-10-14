@@ -14,7 +14,7 @@ import { WASM_CACHE_NAME, wasmFileUrl } from '../models/wasm-catalog.js';
  * @typedef {{ role: string, content: string }} ChatMessage
  * @typedef {{ type: 'load', source: { repo: string, revision: string, dtype: string } } | { type: 'unload' }} ControlRequest
  * @typedef {{ type: 'generate', messages: ChatMessage[], maxTokens: number, temperature: number, ignoreEos: boolean }} GenerateRequest
- * @typedef {(ControlRequest | GenerateRequest) & { id: number } | { type: 'interrupt' }} WorkerRequest
+ * @typedef {(ControlRequest | GenerateRequest) & { id: number } | { type: 'interrupt', upTo: number }} WorkerRequest
  * @typedef {{ prompt_tokens: number, completion_tokens: number }} Usage
  * @typedef {{ id: number, type: 'progress', file: string, loaded: number, done: boolean }
  *   | { id: number, type: 'ready' | 'unloaded' }
@@ -182,7 +182,8 @@ export class WasmEngineClient {
   }
 
   interruptGenerate() {
-    this.#worker.postMessage(/** @type {WorkerRequest} */ ({ type: 'interrupt' }));
+    // Covers a generation that is still queued in the worker, not only the running one.
+    this.#worker.postMessage(/** @type {WorkerRequest} */ ({ type: 'interrupt', upTo: this.#seq }));
     this.#endStream?.();
   }
 
