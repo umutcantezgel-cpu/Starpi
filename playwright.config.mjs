@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined;
+// Another port lets several checkouts run the suite side by side (each serves its own dist/).
+const port = Number(process.env.STARPI_E2E_PORT || 4173);
 
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -11,7 +13,7 @@ export default defineConfig({
   retries: 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: `http://127.0.0.1:${port}`,
     trace: 'retain-on-failure',
     serviceWorkers: 'block',
     launchOptions: { executablePath },
@@ -21,8 +23,8 @@ export default defineConfig({
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'], launchOptions: { executablePath } } },
   ],
   webServer: {
-    command: 'node scripts/serve.mjs --port 4173',
-    url: 'http://127.0.0.1:4173/',
+    command: `node scripts/serve.mjs --port ${port}`,
+    url: `http://127.0.0.1:${port}/`,
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
   },
