@@ -11,17 +11,17 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 - **Free chat and verified source mode.** A toggle in the message box switches between *Free chat*
   (a conversation without retrieval: up to 16 earlier turns, Markdown, code blocks, an attached file
-  used as context) and *Verified source mode* (the source check and a receipt for every answer, as
-  before). The choice is kept in this browser; source mode is the default. Quick prompts, sample
-  questions and questions about a knowledge-graph entity always run in source mode. Free answers
-  say that they were not checked against sources.
+  used as context) and *Verified source mode* (the source check, and a receipt for every answer with
+  sources, as before). The choice is kept in this browser; source mode is the default. Quick
+  prompts, sample questions and questions about a knowledge-graph entity always run in source mode.
+  Free answers say that they were not checked against sources.
 - **Device-adaptive model choice.** One picker in the header and in Settings lists every model,
-  grouped as *Recommended for your device*, *In this browser (WebGPU/WASM)*, *NVIDIA NIM cloud* and
-  *Other assistants*, with runtime, download size and warnings (needs WebGPU, needs a strong GPU,
-  not set up). The device is classified from the WebGPU adapter, `deviceMemory` and the platform
-  (`src/js/models/device.js`); the automatic choice never picks a 7–9B model and nothing is
-  downloaded without a confirmation. Settings show hardware badges. Arrow keys switch only once
-  they rest.
+  grouped as *Recommended for your device*, *In this browser (WebGPU/WASM)*, *NVIDIA NIM cloud (fast
+  & free)* and *Other assistants*, with runtime, download size and warnings (needs WebGPU, needs a
+  strong GPU, not set up). The device is classified from the WebGPU adapter, `deviceMemory` and the
+  platform (`src/js/models/device.js`); the automatic choice never picks a 7–9B model and nothing is
+  downloaded without a confirmation. Settings show hardware badges. Arrow keys switch only once they
+  rest.
 - **13 WebGPU presets in three tiers** (`src/js/webgpu/models.js`): T1 SmolLM2 360M and 1.7B,
   Qwen 2.5 0.5B and 1.5B, Llama 3.2 1B; T2 Gemma 2 2B, Llama 3.2 3B, Phi 3.5 mini, Qwen 2.5 3B; T3
   Mistral 7B v0.3, Qwen 2.5 7B, Llama 3.1 8B, Gemma 2 9B, each with its f16 and f32 build from the
@@ -37,10 +37,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
   models that NVIDIA offers as free endpoints with a pool of keys from `NVIDIA_API_KEYS`. Each
   request starts at the next key and fails over on 429, 5xx, timeouts and network errors until a
   stream starts; keys that fail are parked (429 for its Retry-After, 401/403 for 30 minutes). The
-  proxy accepts only same-origin requests, allowlisted models and bounded requests, limits each
-  client address per minute, sets the upstream fields itself, never reads or returns upstream
-  bodies and logs keys by index only. Answers stream into the chat; in source mode they get the
-  source check and a receipt (`answer.engine: "nvidia"`) like every other engine.
+  chat route accepts only requests from the site's own pages (or from origins listed in
+  `NVIDIA_ALLOWED_ORIGINS`; on the Python backend an origin in `BRAIN_ALLOWED_ORIGINS` or the API
+  token), allowlisted models and bounded requests, limits each client address per minute, sets the
+  upstream fields itself, never reads or returns upstream error bodies and logs keys by index only.
+  Answers stream into the chat; in source mode they get the source check and a receipt
+  (`answer.engine: "nvidia"`) like every other engine.
 - `src/js/models/nvidia-catalog.js`: one allowlist with limits and timings for the app, the
   functions and the Python backend (`backend/core/nvidia_catalog.json`, written by
   `npm run nvidia:sync`); `npm run nvidia:ping` checks the endpoints without printing keys.

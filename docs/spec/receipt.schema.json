@@ -26,7 +26,7 @@
       "properties": {
         "text": { "type": "string", "maxLength": 200000 },
         "sha256": { "$ref": "#/$defs/sha256" },
-        "engine": { "type": "string", "maxLength": 40, "description": "cloud, client, local or synthesizer" },
+        "engine": { "type": "string", "maxLength": 40, "description": "cloud, client, wasm, local, nvidia or synthesizer" },
         "locale": { "type": "string", "maxLength": 10 }
       }
     },
