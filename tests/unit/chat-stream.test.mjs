@@ -107,6 +107,17 @@ describe('createChatStreamAssembler', () => {
     assert.deepEqual(splitReasoning(a.text()), { thoughts: 'Plan the answer.', answer: 'Done.' });
   });
 
+  it('keeps reasoning tags split over two deltas out of the answer', () => {
+    const a = createChatStreamAssembler();
+    a.push(chunk({ reasoning_content: 'First idea.</th' }));
+    a.push(chunk({ reasoning_content: 'ink> Second idea. <denkprozess>x</Denkprozess>' }));
+    a.push(chunk({ content: 'The answer.' }));
+    const split = splitReasoning(a.text());
+    assert.equal(split.answer, 'The answer.');
+    assert.equal(split.thoughts, 'First idea. Second idea. x');
+    assert.equal(a.reasoning, 'First idea. Second idea. x');
+  });
+
   it('records finish_reason and [DONE]', () => {
     const a = createChatStreamAssembler();
     a.push(chunk({ content: 'x' }, 'length'));

@@ -39,11 +39,18 @@ function readLocalChats() {
   return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
 }
 
+/** Message writes still under way, per session; a delete waits for them. */
+/** @type {Map<string, Set<Promise<void>>>} */
+const pendingWrites = new Map();
+/** Sessions deleted in this tab: a write that ends later must not store them again. */
+const deletedSessions = new Set();
+
 /**
  * @param {string} sid
  * @param {ChatRow} message
  */
 function appendLocal(sid, message) {
+  if (deletedSessions.has(sid)) return;
   const chats = readLocalChats();
   const entry = chats[sid] ?? { updatedAt: 0, messages: [] };
   const stamped = message.created_at ? message : { ...message, created_at: new Date().toISOString() };
@@ -57,11 +64,40 @@ function appendLocal(sid, message) {
 }
 
 /**
+ * Stores a message (synced or on this device). A delete of its session waits for it.
+ * @param {string} sid
+ * @param {ChatRow} message
+ * @param {{ localOnly: boolean }} opts
+ * @returns {Promise<void>}
+ */
+export function persistMessage(sid, message, opts) {
+  const write = writeMessage(sid, message, opts);
+  const writes = pendingWrites.get(sid) ?? new Set();
+  pendingWrites.set(sid, writes);
+  writes.add(write);
+  return write.finally(() => {
+    writes.delete(write);
+    if (writes.size === 0 && pendingWrites.get(sid) === writes) pendingWrites.delete(sid);
+  });
+}
+
+/**
+ * Waits for the writes of the given sessions (all when none are given) and marks those sessions as
+ * deleted, so a write that is still sending cannot bring a deleted chat back.
+ * @param {string[]} [sids]
+ */
+async function settleWrites(sids) {
+  const keys = sids ?? [...pendingWrites.keys()];
+  for (const sid of keys) deletedSessions.add(sid);
+  await Promise.allSettled(keys.flatMap((sid) => [...(pendingWrites.get(sid) ?? [])]));
+}
+
+/**
  * @param {string} sid
  * @param {ChatRow} message
  * @param {{ localOnly: boolean }} opts
  */
-export async function persistMessage(sid, message, opts) {
+async function writeMessage(sid, message, opts) {
   if (!message.content) return;
   if (opts.localOnly || !canSyncChats()) {
     // The flag keeps on-device turns out of the history sent to cloud providers after a reload.
@@ -121,6 +157,8 @@ export function mergeByTime(remote, local) {
  * @returns {Promise<boolean>} false when the synced history could not be deleted
  */
 export async function deleteChatHistory() {
+  // A message still being synced would otherwise be stored after the delete.
+  await settleWrites();
   writeLocalJson(STORAGE_KEYS.localChats, {});
   startNewSession();
   // Nothing was synced from this browser when the connection is up and chats cannot sync (no
@@ -139,6 +177,7 @@ export async function deleteChatHistory() {
  * @returns {Promise<boolean>} false when the synced messages could not be deleted
  */
 export async function deleteSession(sid) {
+  await settleWrites([sid]);
   writeLocalJson(STORAGE_KEYS.localChats, Object.fromEntries(Object.entries(readLocalChats()).filter(([key]) => key !== sid)));
   if (sid === sessionId) startNewSession();
   // As in deleteChatHistory(): nothing was synced when the connection is up and chats cannot sync.

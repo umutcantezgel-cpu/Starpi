@@ -406,7 +406,7 @@
   "workspace": {
     "title": "Lokaler Arbeitsbereich",
     "badge": "Privat · nur im Speicher",
-    "description": "Dateien werden auf diesem Gerät in einem Hintergrund-Worker ausgelesen, in Abschnitte zerlegt und mit BM25 indexiert und beim Neuladen der Seite entfernt. Nichts wird hochgeladen oder synchronisiert; nur wenn der Cloud-Assistent oder Ihr eigener Server eine Antwort schreibt, werden die passenden Auszüge mit der Frage gesendet. Antworten zitieren sie als [Doc: Datei, Chunk: n].",
+    "description": "Dateien werden auf diesem Gerät in einem Hintergrund-Worker ausgelesen, in Abschnitte zerlegt und mit BM25 indexiert und beim Neuladen der Seite entfernt. Nichts wird hochgeladen oder synchronisiert. Nur wenn ein Modell außerhalb dieses Geräts antwortet (der Cloud-Assistent, die NVIDIA NIM Cloud über den Starpi-Server oder Ihr eigener Server), geht Dateitext mit der Frage mit: im Quellen-Modus die passenden Auszüge, im freien Chat der Text einer an diese Frage angehängten Datei (bis etwa 12.000 Zeichen). Antworten zitieren Auszüge als [Doc: Datei, Chunk: n].",
     "drop_label": "Dateien zum lokalen Arbeitsbereich hinzufügen",
     "drop_title": "Dateien hier ablegen oder klicken",
     "drop_hint": "PDF, TXT, Markdown, JSON oder CSV · bis 25 MB pro Datei",
@@ -574,7 +574,7 @@
     "mode_local": "Lokal (automatisch) · WebGPU oder Prozessor in diesem Browser, nichts verlässt das Gerät",
     "mode_server": "Eigener Server · MLX, Ollama oder vLLM",
     "mode_nvidia": "NVIDIA NIM Cloud (Schnell & Gratis) · über den Starpi-Server, ohne eigenen Schlüssel",
-    "mode_hint": "Der Cloud-Assistent sendet Ihre Frage und die passenden Auszüge an den Anbieter, den Sie einrichten. Ohne Schlüssel zitiert Starpi direkt aus der Wissensdatenbank.",
+    "mode_hint": "Modelle außerhalb dieses Geräts (Cloud-Assistent, NVIDIA NIM Cloud, eigener Server) erhalten Ihre Frage: im Quellen-Modus mit den passenden Auszügen, im freien Chat mit früheren Nachrichten und einer angehängten Datei. Modelle im Browser behalten alles auf dem Gerät. Ohne Modell zitiert Starpi direkt aus der Wissensdatenbank.",
     "save": "Einstellungen speichern",
     "saved_toast": "Einstellungen gespeichert.",
     "save_failed": "Einige Einstellungen konnten nicht gespeichert werden: Dieser Browser blockiert oder begrenzt den Speicher (zum Beispiel in einem privaten Fenster). Beim Neuladen der Seite können sie verloren gehen.",

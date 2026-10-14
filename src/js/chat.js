@@ -543,6 +543,10 @@ export async function submitChat(rawText, options = {}) {
   const sid = currentSessionId();
   const history = conversation.slice();
   const mode = getMode();
+  // A question about the sources (quick prompt, sample question, graph entity) runs in source mode
+  // even when free chat is selected; the toggle and the privacy notice switch along, so they show
+  // what this question does: search the sources and send the excerpts.
+  if (options.chatMode === 'grounded' && getChatMode() !== 'grounded') setChatMode('grounded');
   const chatMode = options.chatMode ?? getChatMode();
   const localOnly = mode === 'client';
   const prompt = userText || t('chat.summarize_file', { name: file?.name ?? '' });
@@ -919,6 +923,17 @@ async function deleteCurrentChat() {
 }
 
 /** The chat menu closes like a menu: on a click elsewhere, and on Escape (focus returns to it). */
+/**
+ * Closes the chat menu and hands the focus back to its button, so a keyboard user stays where they were.
+ * @param {HTMLElement} item a menu entry
+ */
+function closeChatMenu(item) {
+  const menu = item.closest('details');
+  if (!menu) return;
+  menu.removeAttribute('open');
+  menu.querySelector('summary')?.focus();
+}
+
 function initChatMenu() {
   const menu = /** @type {HTMLDetailsElement | null} */ (document.querySelector('details.chat-menu'));
   if (!menu) return;
@@ -976,11 +991,11 @@ export function initChat() {
   renderChatMode();
 
   onAction('export-chat', (el) => {
-    el.closest('details')?.removeAttribute('open');
+    closeChatMenu(el);
     exportChat(el.dataset.arg === 'json' ? 'json' : 'md');
   });
   onAction('delete-chat', (el) => {
-    el.closest('details')?.removeAttribute('open');
+    closeChatMenu(el);
     return deleteCurrentChat();
   });
   initChatMenu();

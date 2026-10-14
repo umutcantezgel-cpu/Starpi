@@ -171,9 +171,9 @@
               </button>
             </div>
           </details>
-          <button type="button" data-action="new-chat" class="btn btn-secondary py-1 px-2">
+          <button type="button" data-action="new-chat" class="btn btn-secondary py-1 px-2" data-i18n-aria="chat.new_chat" aria-label="New chat">
             <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
-            <span data-i18n="chat.new_chat">New chat</span>
+            <span class="hidden xs:inline" data-i18n="chat.new_chat">New chat</span>
           </button>
         </div>
       </div>
@@ -354,7 +354,7 @@
               <span data-i18n="workspace.badge">Private · memory only</span>
             </span>
           </div>
-          <p class="text-[13px] text-slate-600" data-i18n="workspace.description">Files are parsed, split into chunks and indexed with BM25 in a background worker on this device, and removed when you reload the page. Nothing is uploaded or synced; only when the cloud assistant or your own server writes an answer are the matching excerpts sent along with the question. Answers cite them as [Doc: file, Chunk: n].</p>
+          <p class="text-[13px] text-slate-600" data-i18n="workspace.description">Files are parsed, split into chunks and indexed with BM25 in a background worker on this device, and removed when you reload the page. Nothing is uploaded or synced. Only when a model outside this device answers (the cloud assistant, NVIDIA NIM cloud through Starpi's server, or your own server) does file text go along with the question: in source mode the matching excerpts, in free chat the text of a file attached to that question (up to about 12,000 characters). Answers cite excerpts as [Doc: file, Chunk: n].</p>
 
           <div id="dropZone" role="button" tabindex="0" data-action="pick-workspace-files" class="border-2 border-dashed border-slate-300 hover:border-amber-400 rounded-xl p-6 text-center transition cursor-pointer bg-slate-50/60 hover:bg-amber-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400" data-i18n-aria="workspace.drop_label" aria-label="Add files to the on-device workspace">
             <i data-lucide="upload" class="w-6 h-6 mx-auto mb-2 text-slate-500"></i>
@@ -568,7 +568,7 @@
             </select>
             <div id="cfgDeviceBadges" class="hidden flex flex-wrap gap-1.5 mt-2"></div>
             <p id="cfgModelHint" class="text-[11px] text-slate-500 mt-1.5" data-i18n="settings.model_hint">Local models are downloaded once, only after you confirm, and cached by this browser. GPUs without shader-f16 use the f32 variant; without WebGPU, processor (WASM) models run instead.</p>
-            <p class="text-xs text-slate-500 mt-1.5 leading-relaxed" data-i18n="settings.mode_hint">The cloud assistant sends your question and the matching excerpts to the provider you configure. Without a key, Starpi quotes the knowledge base directly.</p>
+            <p class="text-xs text-slate-500 mt-1.5 leading-relaxed" data-i18n="settings.mode_hint">Models outside this device (the cloud assistant, NVIDIA NIM cloud, your own server) receive your question: in source mode with the matching excerpts, in free chat with earlier messages and an attached file. Models in this browser keep everything on the device. Without a model, Starpi quotes the knowledge base directly.</p>
           </div>
           <div class="flex justify-end">
             <button type="button" data-action="save-settings" class="btn btn-primary">
