@@ -236,13 +236,17 @@
     "role_details": "Details",
     "retrieval_heading": "1. Retrieval",
     "answer_heading": "2. Answer",
+    "chat_heading": "Free chat answer",
+    "mode": "Mode",
+    "mode_free": "Free chat, not checked against sources",
     "query": "Query",
     "method": "Method",
     "matches": "Matches",
     "matches_value": "{hits} {hits:excerpt|excerpts} from {docs} {docs:document|documents} ({titles})",
     "engine": "Engine",
     "duration": "Duration",
-    "note": "Note"
+    "note": "Note",
+    "attachment": "Attached file"
   },
   "citation": {
     "title": "Source",

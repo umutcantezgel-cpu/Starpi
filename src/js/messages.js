@@ -3,6 +3,7 @@
 // renderMarkdown() (marked + DOMPurify). UI chrome inside messages carries data-i18n keys, so a
 // language switch re-labels it; message content itself stays as written. No inline handlers:
 // toggles and citations use data-action delegation.
+import { splitReasoning } from './chat-stream.js';
 import { byId, onAction } from './dom.js';
 import { refreshIcons } from './icons.js';
 import { applyTranslations, formatNumber, setText, t } from './i18n/index.js';
@@ -40,22 +41,6 @@ export function resetMessages() {
   applyTranslations(el);
   refreshIcons(el);
   el.scrollTop = 0;
-}
-
-/**
- * Splits model output into an optional reasoning part (<think>, <thought>, <denkprozess>) and the answer.
- * @param {string} rawText
- */
-export function splitReasoning(rawText) {
-  const text = String(rawText ?? '');
-  const tags = [/<denkprozess>([\s\S]*?)<\/denkprozess>/i, /<(?:thought|think)>([\s\S]*?)<\/(?:thought|think)>/i];
-  for (const re of tags) {
-    const match = text.match(re);
-    if (match) {
-      return { thoughts: match[1].trim(), answer: text.replace(re, '').replace(/<\/?antwort>/gi, '').trim() };
-    }
-  }
-  return { thoughts: '', answer: text.replace(/<\/?antwort>/gi, '').trim() };
 }
 
 const PHASE_ICONS = ['search', 'sparkles', 'clipboard-list', 'zap'];

@@ -221,4 +221,12 @@ describe('budgetPrompt', () => {
     const out = budgetPrompt({ contextWindow: 4096, maxOutputTokens: 512, system: 'sys', context: 'ctx', history: [{ role: 'user', content: 'hi' }], user: 'q' });
     assert.deepEqual(out, { system: 'sys', context: 'ctx', user: 'q', history: [{ role: 'user', content: 'hi' }] });
   });
+
+  it('turnChars widens the per-turn history cap', () => {
+    const history = [{ role: /** @type {const} */ ('user'), content: 'z'.repeat(1_500) }];
+    const input = { contextWindow: 4096, maxOutputTokens: 768, system: 'sys', context: '', history, user: 'q' };
+    assert.equal(budgetPrompt(input).history[0].content, `${'z'.repeat(599)}…`);
+    assert.equal(budgetPrompt({ ...input, turnChars: 2_000 }).history[0].content, history[0].content);
+    assert.equal(budgetPrompt({ ...input, turnChars: 1_000 }).history[0].content.length, 1_000);
+  });
 });

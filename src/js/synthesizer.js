@@ -158,7 +158,7 @@ export function synthesizeAnswer(input) {
 export function describeTrace(input) {
   const docTitles = titles(input.hits);
   const docs = docTitles.length ? docTitles.slice(0, 5).map((title) => `"${escapeMarkdown(title)}"`).join(', ') : '–';
-  const duration = input.durationMs !== null ? `${formatNumber(input.durationMs / 1000, { maximumFractionDigits: 1 })} s` : '–';
+  const duration = formatDuration(input.durationMs);
   return [
     `### ${t('trace.retrieval_heading')}`,
     `* **${t('trace.query')}:** ${escapeMarkdown(input.query.slice(0, 120))}`,
@@ -172,4 +172,28 @@ export function describeTrace(input) {
   ]
     .filter((l) => l !== '')
     .join('\n');
+}
+
+/**
+ * The trace of a free-chat answer: nothing was retrieved, so it only says how the answer was made
+ * (stored with the message, in the language active at that time).
+ * @param {{ engineLabel: string, durationMs: number | null, attachment: string | null, note?: string }} input
+ *   `attachment`: name of a file attached to the question
+ */
+export function describeChatTrace(input) {
+  return [
+    `### ${t('trace.chat_heading')}`,
+    `* **${t('trace.mode')}:** ${t('trace.mode_free')}`,
+    `* **${t('trace.engine')}:** ${escapeMarkdown(input.engineLabel)}`,
+    `* **${t('trace.duration')}:** ${formatDuration(input.durationMs)}`,
+    input.attachment ? `* **${t('trace.attachment')}:** ${escapeMarkdown(input.attachment)}` : '',
+    input.note ? `* **${t('trace.note')}:** ${escapeMarkdown(input.note)}` : '',
+  ]
+    .filter((l) => l !== '')
+    .join('\n');
+}
+
+/** @param {number | null} ms */
+function formatDuration(ms) {
+  return ms !== null ? `${formatNumber(ms / 1000, { maximumFractionDigits: 1 })} s` : '–';
 }

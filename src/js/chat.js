@@ -2,13 +2,14 @@
 // Chat flow: retrieval (on-device workspace BM25 + knowledge base) -> answer (cloud provider /
 // on-device model / own server / extractive synthesizer) -> render with verifiable citations -> persist.
 import { currentSessionId, loadCurrentSession, persistMessage, refreshSyncStatus, startNewSession } from './chat-store.js';
+import { splitReasoning } from './chat-stream.js';
 import { APP_VERSION, LIMITS } from './config.js';
 import { contextCoverage } from './core/grounding.js';
 import { byId, onAction, onChange, setHidden } from './dom.js';
 import { refreshIcons } from './icons.js';
 import { startLocalEngine } from './engine-ui.js';
 import { getLocale, hasKey, setText, t } from './i18n/index.js';
-import { appendLoading, appendMessage, appendNotice, createStreamingMessage, resetMessages, splitReasoning } from './messages.js';
+import { appendLoading, appendMessage, appendNotice, createStreamingMessage, resetMessages } from './messages.js';
 import { buildInstructions, buildSystemPrompt, contextSection } from './prompts.js';
 import { callGemini, callLocalServer, callOpenRouter, hasGeminiKey, hasOpenRouterKey } from './providers.js';
 import { registerCitations } from './rag/citations.js';

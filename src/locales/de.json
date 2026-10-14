@@ -236,13 +236,17 @@
     "role_details": "Details",
     "retrieval_heading": "1. Suche",
     "answer_heading": "2. Antwort",
+    "chat_heading": "Antwort im freien Chat",
+    "mode": "Modus",
+    "mode_free": "Freier Chat, nicht mit Quellen abgeglichen",
     "query": "Anfrage",
     "method": "Verfahren",
     "matches": "Treffer",
     "matches_value": "{hits} {hits:Auszug|Auszüge} aus {docs} {docs:Dokument|Dokumenten} ({titles})",
     "engine": "Engine",
     "duration": "Dauer",
-    "note": "Hinweis"
+    "note": "Hinweis",
+    "attachment": "Angehängte Datei"
   },
   "citation": {
     "title": "Quelle",
