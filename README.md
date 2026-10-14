@@ -97,8 +97,8 @@ facts and looks them up in the cited excerpts, then compares the remaining wordi
 | Verdict | When |
 | --- | --- |
 | **Supported** | Every fact is in a cited excerpt and at least half of the content words appear there. |
-| **Weak** | A value is rounded or approximate, appears only in another excerpt or in the question, or stands in the excerpt next to something else than the statement says; a name stands in the excerpt in another place, or an English statement names someone or something the excerpt does not; the statement reverses a negation of a passage it matches only loosely; the wording overlaps little; or a statement without a citation states a value that one of the excerpts contains. |
-| **Unsupported** | A number, date, time, weekday, code or quotation appears in none of the excerpts, the statement reverses a negation of the passage it closely matches, a cited label was not one of the excerpts, or the cited excerpt did not fit into the model's context. |
+| **Weak** | A value is rounded or approximate, appears only in another excerpt or in the question, or stands in the excerpt next to something else than the statement says; a name stands in the excerpt in another place, or an English statement names someone or something the excerpt does not; the statement reverses a negation of the passage it matches; the wording overlaps little; or a statement without a citation states a value that one of the excerpts contains. |
+| **Unsupported** | A number, date, time, weekday, code or quotation appears in none of the excerpts, a cited label was not one of the excerpts, or the cited excerpt did not fit into the model's context. |
 | **Unchecked** | The statement and its excerpt are in different languages, so only facts are compared, and the statement has none. |
 
 Headings, short fragments, and statements with neither a citation nor a fact are not counted.
@@ -109,9 +109,10 @@ own words and still says something else, in English and German:
 - **Negations.** "Power over Ethernet is supported" against "Power over Ethernet is not
   supported", "USB-Datenträger sind erlaubt" against "… sind verboten", "gestiegen" against
   "gesunken". The check reads negations by their meaning, so "is unsupported", "no … without" or
-  "darf … nicht" match their excerpts, and "no later than", "not … until" and conditions are not
-  read as negations. A reversal of a closely matching passage is unsupported, otherwise weak, and
-  the panel quotes the passage.
+  "darf … nicht" match their excerpts, and "no later than", "not … until", "only after" and
+  questions are not read as reversals. A reversal is marked weak, never unsupported: a reading of
+  negations by words cannot tell every restatement of a negated rule from its reversal. The panel
+  quotes the passage.
 - **Names in the wrong place.** "Marcus Hale owns the specification" when the excerpt says
   "Priya Raman owns this specification; Marcus Hale maintains the network configuration" is
   marked weak, with the passage that names someone else; so is a statement that matches a passage

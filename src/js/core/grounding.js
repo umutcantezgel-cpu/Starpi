@@ -258,7 +258,6 @@ export function associate(blocks, version = GROUNDING.version) {
  * @property {Array<import('./polarity.js').SourceClause[] | undefined>} [clauses]  version 2: per excerpt, its clauses
  * @property {Array<import('./binding.js').Unit[] | undefined>} [units]  version 2: per excerpt, its units
  * @property {Array<import('./binding.js').ValuePassage[] | undefined>} [valuePassages]  version 2: per excerpt, its passages without heading
- * @property {Set<string>} [names]  version 2: name-like words of all delivered excerpts
  */
 
 /**
@@ -286,7 +285,14 @@ export function valueParts(text, version = GROUNDING.version) {
     const from = facts[k - 1].end;
     const gap = text.slice(from, facts[k].start);
     let last = -1;
-    for (const m of gap.matchAll(VALUE_SEPARATOR)) last = m.index ?? -1;
+    let joined = -1;
+    for (const m of gap.matchAll(VALUE_SEPARATOR)) {
+      last = m.index ?? -1;
+      if (!m[0].startsWith(',')) joined = last;
+    }
+    // Version 2 cuts at a conjunction or semicolon before a bare comma, which may only set off an
+    // apposition ("…, and Grace Whitfield, the plant manager, approved it on 18 March").
+    if (version >= 2 && joined >= 0) last = joined;
     if (last >= 0) cuts.push(from + last);
   }
   cuts.push(text.length);
@@ -562,24 +568,29 @@ function checkV2(text, delivered, ctx) {
     text,
     delivered.map((i) => ({ index: i, clauses: (clauses[i] ??= sourceClauses(ctx.sources[i].text)) })),
   );
-  if (inversion) reasons.push({ code: 'negation_inversion', level: inversion.strong ? 'unsupported' : 'weak', cites: [inversion.index], found: quote(inversion.sentence) });
+  // Weak, never unsupported: a lexical reading of negations cannot tell every restatement of a
+  // negated rule ("prohibited until …" → "only allowed after …") from its reversal.
+  if (inversion) reasons.push({ code: 'negation_inversion', level: 'weak', cites: [inversion.index], found: quote(inversion.sentence) });
 
+  // Units are read in the language of their excerpt, and names are learned from the excerpts the
+  // statement cites: the result does not depend on other statements or on excerpts a receipt may
+  // leave out, so a receipt recomputes it.
   const units = (ctx.units ??= []);
-  const unitsAt = (/** @type {number} */ i) => (units[i] ??= unitsOf(ctx.sources[i].text, ctx.indexes[i]?.lang ?? lang));
-  ctx.names ??= nameLexicon(ctx.sources.flatMap((_, i) => (ctx.indexes[i] ? unitsAt(i) : [])));
+  const unitsAt = (/** @type {number} */ i) => (units[i] ??= unitsOf(ctx.sources[i].text, ctx.indexes[i]?.lang ?? null));
+  const cited = delivered.map((i) => ({ index: i, units: unitsAt(i) }));
   const name = misplacedName(
     text,
     lang,
-    delivered.map((i) => ({ index: i, units: unitsAt(i) })),
-    ctx.names,
+    cited,
+    nameLexicon(cited.flatMap((c) => c.units)),
     (n) => Boolean(ctx.given && tokenMatches(n, ctx.given)),
   );
   if (name) reasons.push({ code: 'name_context', level: 'weak', fact: name.name, cites: [name.index], found: quote(name.passage) });
 
   const passages = (ctx.valuePassages ??= []);
-  const cited = delivered.map((i) => ({ index: i, passages: (passages[i] ??= valuePassages(ctx.sources[i].text, (s) => valueParts(s, 2))) }));
+  const withPassages = delivered.map((i) => ({ index: i, passages: (passages[i] ??= valuePassages(ctx.sources[i].text, (s) => valueParts(s, 2))) }));
   for (const part of valueParts(text, 2)) {
-    for (const v of misplacedValues(part, cited)) reasons.push({ code: 'fact_context', level: 'weak', fact: v.fact.surface, cites: [v.index], found: quote(v.passage) });
+    for (const v of misplacedValues(part, withPassages)) reasons.push({ code: 'fact_context', level: 'weak', fact: v.fact.surface, cites: [v.index], found: quote(v.passage) });
   }
   return reasons;
 }
@@ -590,7 +601,7 @@ function checkV2(text, delivered, ctx) {
  * @param {string} passage
  */
 function quote(passage) {
-  return clip(passage.replace(/^[\s,;:–-]+/u, '').replace(/[\s.,;:!?]+$/u, ''), 160);
+  return clip(passage.replace(/^(?:[\s,;:]|[–-](?=\s))+/u, '').replace(/[\s.,;:!?]+$/u, ''), 160);
 }
 
 /**

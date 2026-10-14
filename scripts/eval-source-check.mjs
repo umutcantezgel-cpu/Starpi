@@ -3,11 +3,12 @@
 // planted error (a changed number, date, time, weekday or code; a wrong person; a negation; a value
 // attached to the wrong thing). The answers are in tests/fixtures/grounding/eval.json (sets "dev"
 // and "holdout", written for 1.2) and eval-v2-dev.json / eval-v2-holdout.json (sets "v2dev" and
-// "v2holdout", written for 2.0, see docs/eval/v2-protocol.md); their sources are the sample files in
-// public/samples (chunked here with the app's own code), the sample knowledge-base sections in
-// kb-sample.json and the technical specifications in sources-v2.json.
+// "v2holdout", written for 2.0, see docs/eval/v2-protocol.md) and paraphrases.json (set
+// "paraphrases": faithful statements only); their sources are the sample files in public/samples
+// (chunked here with the app's own code), the sample knowledge-base sections in kb-sample.json, the
+// technical specifications in sources-v2.json and the sources in paraphrases.json.
 //
-// Usage: node scripts/eval-source-check.mjs [--sets dev,v2dev] [--grounding 1|2] [--variants] [--json]
+// Usage: node scripts/eval-source-check.mjs [--sets dev,v2dev,paraphrases] [--grounding 1|2] [--variants] [--json]
 //        node scripts/eval-source-check.mjs --unblind [--sets …]   (also the held-out sets)
 //
 // For a faithful answer, a statement marked "unsupported" is a false alarm. For an answer with an
@@ -51,9 +52,9 @@ export async function loadCorpora() {
       for (const c of chunkText(text)) corpora[lang].push({ label: citationLabel(name, c.index + 1), doc: name, heading: '', text: c.text, delivered: 'full' });
     }
   }
-  for (const file of ['kb-sample.json', 'sources-v2.json']) {
-    const sets = JSON.parse(await readFile(path.join(ROOT, 'tests/fixtures/grounding', file), 'utf8'));
-    for (const [key, sections] of Object.entries(sets)) {
+  for (const file of ['kb-sample.json', 'sources-v2.json', 'paraphrases.json']) {
+    const json = JSON.parse(await readFile(path.join(ROOT, 'tests/fixtures/grounding', file), 'utf8'));
+    for (const [key, sections] of Object.entries(file === 'paraphrases.json' ? json.corpora : json)) {
       corpora[key] = /** @type {Array<{ label: string, doc: string, heading: string, text: string }>} */ (sections).map((s) => ({ ...s, delivered: 'full' }));
     }
   }
@@ -120,6 +121,15 @@ export async function loadItems() {
   return /** @type {EvalItem[]} */ (items);
 }
 
+/**
+ * Faithful paraphrases written by a red-team agent against the first version 2 rules (set
+ * "paraphrases", docs/eval/v2-protocol.md): a development set of faithful statements only.
+ */
+export async function loadParaphrases() {
+  const { items } = JSON.parse(await readFile(path.join(ROOT, 'tests/fixtures/grounding/paraphrases.json'), 'utf8'));
+  return /** @type {EvalItem[]} */ (items);
+}
+
 /** Held-out sets: measured, never used to adjust rules. */
 export const HELD_OUT = Object.freeze(['holdout', 'v2holdout']);
 
@@ -148,8 +158,9 @@ function print(summary, variants) {
   console.log(`Faithful answers: ${f.answers} (${f.statements} statements)`);
   console.log(`  statements wrongly marked unsupported: ${f.falseAlarms} (in ${f.answersWithFalseAlarm} answers)`);
   console.log(`  statements marked weak: ${f.weak}`);
-  console.log('Answers with one planted error (caught = unsupported, flagged = weak):');
   const rows = Object.entries(summary.byCategory).sort(([a], [b]) => a.localeCompare(b));
+  if (!rows.length) return;
+  console.log('Answers with one planted error (caught = unsupported, flagged = weak):');
   for (const [category, c] of rows) {
     const kind = FACT_CATEGORIES.includes(category) ? 'fact' : 'meaning';
     console.log(`  ${category.padEnd(9)} (${kind})  ${c.caught}/${c.total} caught, ${c.flagged} flagged, ${c.missed} missed${c.notFound ? `, ${c.notFound} statement not found` : ''}`);
@@ -184,14 +195,15 @@ async function main() {
       if (!Number.isInteger(options.version)) usage('--grounding needs a version number');
     } else if (!['--json', '--unblind', '--variants'].includes(name)) usage(`unknown argument ${args[i]}`);
   }
-  const all = ['dev', 'holdout', 'v2dev', 'v2holdout'];
+  const all = ['dev', 'holdout', 'v2dev', 'v2holdout', 'paraphrases'];
   const sets = wanted ?? all.filter((s) => unblind || !HELD_OUT.includes(s));
   for (const set of sets) {
     if (!all.includes(set)) usage(`unknown set ${set} (sets: ${all.join(', ')})`);
     if (HELD_OUT.includes(set) && !unblind) usage(`${set} is a held-out set: it is measured once, with --unblind (see docs/eval/v2-protocol.md)`);
   }
   const v2 = sets.some((set) => set.startsWith('v2')) ? await loadV2Items({ unblind: sets.includes('v2holdout') }) : [];
-  const items = [...(await loadItems()), ...v2].filter((i) => sets.includes(i.set));
+  const paraphrases = sets.includes('paraphrases') ? await loadParaphrases() : [];
+  const items = [...(await loadItems()), ...v2, ...paraphrases].filter((i) => sets.includes(i.set));
   const corpora = await loadCorpora();
   const results = Object.fromEntries(sets.map((set) => [set, summarize(items.filter((i) => i.set === set), corpora, options)]));
   if (asJson) {

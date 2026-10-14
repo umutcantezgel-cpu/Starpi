@@ -25,6 +25,8 @@ const NOT_NAMES = new Set([
   'januar', 'februar', 'maerz', 'mai', 'juni', 'juli', 'oktober', 'dezember',
   'montag', 'dienstag', 'mittwoch', 'donnerstag', 'freitag', 'samstag', 'sonntag',
   'laut', 'gemaess', 'ausser', 'trotz', 'wegen', 'statt', 'zwischen', 'note', 'sources', 'source', 'quelle', 'quellen',
+  // Titles and forms of address: "Frau Albers" and "Katrin Albers" name the same person.
+  'mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'sir', 'frau', 'herr', 'herrn',
 ]);
 
 /** Where a sentence is cut into units: a semicolon, or a conjunction that starts another statement. */
@@ -133,6 +135,19 @@ export function inUnit(token, unit) {
   return tokenMatches(token, unit.index) || unit.index.words.includes(` ${token} `);
 }
 
+/**
+ * Whether a name word occurs in a unit, also in the German genitive ("Werks Süd" for "Werk Süd",
+ * "Lena Parks" for "Lena Park") and with a hyphen ("Sign-On", "Wi-Fi") that the unit's words split.
+ * @param {string} token  folded name word
+ * @param {Unit} unit
+ */
+function hasName(token, unit) {
+  if (inUnit(token, unit)) return true;
+  if (token.length > 3 && token.endsWith('s') && inUnit(token.slice(0, -1), unit)) return true;
+  const parts = token.split('-').filter((p) => p.length > 1);
+  return parts.length > 1 && parts.every((p) => inUnit(p, unit));
+}
+
 /** Thresholds of the binding checks, chosen on the development sets (docs/eval/v2-protocol.md). */
 export const BINDING = Object.freeze({
   /** statement words, other than the names in question, a unit must share */
@@ -159,6 +174,22 @@ export const BINDING = Object.freeze({
 const isName = (token, names) => names.some((n) => token === n || token.startsWith(n) || n.startsWith(token));
 
 /**
+ * How many tokens a unit contains, or -1 as soon as fewer than `need` can be reached: most units of
+ * an excerpt share hardly a word with the statement.
+ * @param {string[]} tokens
+ * @param {Unit} unit
+ * @param {number} need
+ */
+function countUpTo(tokens, unit, need) {
+  let matched = 0;
+  for (let i = 0; i < tokens.length; i += 1) {
+    if (inUnit(tokens[i], unit)) matched += 1;
+    else if (matched + tokens.length - i - 1 < need) return -1;
+  }
+  return matched >= need ? matched : -1;
+}
+
+/**
  * @param {Unit} u
  * @param {Unit[]} units  units of the cited excerpts
  * @param {Set<string>} lexicon
@@ -171,7 +202,7 @@ function nameInPlace(u, units, lexicon, known) {
   /** @type {{ unit: Unit, names: string[], matched: number } | null} */
   let best = null;
   for (const c of units) {
-    const missing = candidates.filter((t) => !inUnit(t, c));
+    const missing = candidates.filter((t) => !hasName(t, c));
     // A unit with every name of the statement and its other words supports it. A name of several
     // words counts as one: "Nordwall Service GmbH" would otherwise outweigh what the statement says
     // about it.
@@ -182,21 +213,23 @@ function nameInPlace(u, units, lexicon, known) {
       if (shared >= BINDING.minShared && shared / (words.length + names) >= BINDING.minShare) return null;
       continue;
     }
-    const rest = u.tokens.filter((t) => !isName(t, missing));
-    const matched = rest.filter((t) => inUnit(t, c)).length;
-    const share = rest.length ? matched / rest.length : 0;
-    const theirs = [...new Set([...c.names, ...[...c.caps].filter((t) => lexicon.has(t))])].filter((t) => !inUnit(t, u));
+    const theirs = [...new Set([...c.names, ...[...c.caps].filter((t) => lexicon.has(t))])].filter((t) => !hasName(t, u));
     if (!theirs.length) continue;
+    // At least BINDING.minShared of the statement's other words and BINDING.minShare of them, and
+    // more than the best unit so far.
+    const rest = u.tokens.filter((t) => !isName(t, missing));
+    const matched = countUpTo(rest, c, Math.max(BINDING.minShared, Math.ceil(BINDING.minShare * rest.length - 1e-9), best ? best.matched + 1 : 0));
+    if (matched < 0) continue;
     const cRest = c.tokens.filter((t) => !isName(t, theirs));
     const back = cRest.length ? cRest.filter((t) => inUnit(t, u)).length / cRest.length : 0;
-    if (matched >= BINDING.minShared && share >= BINDING.minShare && back >= (c.record ? BINDING.minBackRecord : BINDING.minBack) && (!best || matched > best.matched)) best = { unit: c, names: missing, matched };
+    if (back >= (c.record ? BINDING.minBackRecord : BINDING.minBack)) best = { unit: c, names: missing, matched };
   }
   if (!best) return null;
   // A name with a unit of its own that shares the statement's other words: the statement joins two
   // passages, it does not move the name.
   const found = best;
   const rest = u.tokens.filter((t) => !isName(t, found.names));
-  if (found.names.every((n) => units.some((c) => c !== found.unit && inUnit(n, c) && rest.filter((t) => inUnit(t, c)).length >= BINDING.home))) return null;
+  if (found.names.every((n) => units.some((c) => c !== found.unit && hasName(n, c) && rest.filter((t) => inUnit(t, c)).length >= BINDING.home))) return null;
   return { unit: found.unit, names: found.names };
 }
 
@@ -275,7 +308,14 @@ function plainWords(text) {
  *   ("GW-17" in "GW-17 and GW-31 are …") or a part of a table row, which is one record
  * @property {boolean} short  a sentence with one value and fewer than two other words ("Date: 14 September 2026")
  * @property {import('./facts.js').SourceIndex} sentence  the whole sentence
+ * @property {import('./facts.js').SourceIndex | null} lead  for a later part with hardly any words of
+ *   its own ("and to the supervisory authority within 72 hours"), the first part of its sentence,
+ *   whose subject and verb it shares; not after a semicolon, which starts a clause of its own
+ * @property {string[]} own  the part's content words without its facts
  */
+
+/** A dot that ends a sentence after a version number ("… firmware 4.8. Automatic backups …"). */
+const AFTER_VERSION = /(?<=\d\.\d+)\.\s+(?=\p{Lu})/u;
 
 /**
  * The passages of an excerpt for the value check: each sentence cut into one part per value, as
@@ -289,16 +329,39 @@ export function valuePassages(text, split) {
   /** @type {ValuePassage[]} */
   const out = [];
   for (const span of sentenceSpans(text)) {
-    const sentence = text.slice(span.start, span.end);
-    const sentenceIndex = indexSource(sentence);
-    const parts = split(sentence);
-    const record = (sentence.match(/(?:^|;\s)[\p{L}][\p{L} ]{0,30}:\s/gu) ?? []).length >= 2;
-    for (const part of parts) {
-      const words = plainWords(part).length;
-      out.push({ text: part, index: indexSource(part), facts: extractFacts(part).filter((f) => f.kind !== 'quote'), bare: words === 0 || record, short: parts.length === 1 && words < 2, sentence: sentenceIndex });
+    for (const sentence of text.slice(span.start, span.end).split(AFTER_VERSION)) {
+      const sentenceIndex = indexSource(sentence);
+      const parts = split(sentence);
+      const record = (sentence.match(/(?:^|;\s)[\p{L}][\p{L} ]{0,30}:\s/gu) ?? []).length >= 2;
+      const first = parts.length > 1 ? indexSource(parts[0]) : null;
+      parts.forEach((part, k) => {
+        const own = plainWords(part);
+        const words = own.length;
+        // Words the part does not share with the first part ("within", "hours" in a list of
+        // deadlines) are what it says of its own.
+        const lead = k > 0 ? first : null;
+        const elliptic = lead !== null && own.filter((w) => !tokenMatches(w, lead)).length < 3 && !/^\s*;/.test(part);
+        out.push({ text: part, index: indexSource(part), facts: extractFacts(part).filter((f) => f.kind !== 'quote'), bare: words === 0 || record, short: parts.length === 1 && words < 2, sentence: sentenceIndex, lead: elliptic ? lead : null, own });
+      });
     }
   }
   return out;
+}
+
+/** Per excerpt's passages, how many of them contain a word: the same words recur in every statement. */
+/** @type {WeakMap<ValuePassage[], Map<string, number>>} */
+const WITH_WORD = new WeakMap();
+
+/**
+ * @param {string} word
+ * @param {ValuePassage[]} list  the passages of one excerpt
+ */
+function passagesWith(word, list) {
+  let counts = WITH_WORD.get(list);
+  if (!counts) WITH_WORD.set(list, (counts = new Map()));
+  let n = counts.get(word);
+  if (n === undefined) counts.set(word, (n = list.filter((p) => tokenMatches(word, p.index)).length));
+  return n;
 }
 
 /**
@@ -315,13 +378,14 @@ export function valuePassages(text, split) {
  */
 export function misplacedValues(part, cited) {
   const passages = cited.flatMap((c) => c.passages.map((p) => ({ ...p, source: c.index })));
-  if (!passages.length) return [];
+  const facts = extractFacts(part).filter((f) => f.kind !== 'quote');
+  if (!passages.length || !facts.length) return [];
   const words = plainWords(part);
+  const own = indexSource(words.join(' '));
   // A word found in most passages (a column name repeated on every row) says nothing about where a
   // value belongs.
-  const telling = words.filter((w) => passages.filter((p) => tokenMatches(w, p.index)).length * 2 <= passages.length);
+  const telling = words.filter((w) => cited.reduce((n, c) => n + passagesWith(w, c.passages), 0) * 2 <= passages.length);
   if (!telling.length) return [];
-  const facts = extractFacts(part).filter((f) => f.kind !== 'quote');
   /** @type {Array<{ fact: import('./facts.js').Fact, index: number, passage: string }>} */
   const out = [];
   for (const fact of facts) {
@@ -330,18 +394,32 @@ export function misplacedValues(part, cited) {
     if (!holders.length || holders.some((p) => p.short)) continue;
     const others = facts.filter((g) => g !== fact);
     const score = (/** @type {import('./facts.js').SourceIndex} */ index) => telling.filter((w) => tokenMatches(w, index)).length + others.filter((g) => lookupFact(g, index, 0).found === 'exact').length;
-    const held = Math.max(...holders.map((p) => score(p.bare ? p.sentence : p.index)));
+    // A part with hardly any words of its own shares those of the first part of its sentence, when
+    // it has no word of its own beyond the first part's ("while firmware 4.1.8 does not") or the
+    // statement repeats one ("to the supervisory authority within 72 hours"); otherwise the first
+    // part's words belong to the first part's value ("Port 9443 dient der Weboberfläche, Port 4840
+    // der Maschinenanbindung").
+    const scoreHolder = (/** @type {ValuePassage} */ p) => {
+      if (p.bare) return score(p.sentence);
+      const mine = p.lead ? p.own.filter((w) => !tokenMatches(w, /** @type {import('./facts.js').SourceIndex} */ (p.lead))) : [];
+      const lead = p.lead && (!mine.length || mine.some((w) => tokenMatches(w, own))) ? p.lead : null;
+      if (!lead) return score(p.index);
+      return telling.filter((w) => tokenMatches(w, p.index) || tokenMatches(w, lead)).length + others.filter((g) => lookupFact(g, p.index, 0).found === 'exact').length;
+    };
+    const held = Math.max(...holders.map(scoreHolder));
     /** @type {{ score: number } | null} */
     let related = null;
     for (const p of passages) {
       if (holders.includes(p)) continue;
-      if (!p.facts.some((g) => g.kind === fact.kind && !g.values.some((v) => fact.values.includes(v)))) continue;
+      // Another value of the same kind, and not one the statement part names itself: a passage that
+      // holds the part's other value is where that value belongs.
+      if (!p.facts.some((g) => g.kind === fact.kind && !g.values.some((v) => fact.values.includes(v) || others.some((o) => o.values.includes(v))))) continue;
       const s = score(p.index);
       const strong = (s >= BINDING.minRelated && s >= held + BINDING.margin) || (held === 0 && s >= 1);
       if (strong && (!related || s > related.score)) related = { score: s };
     }
     if (!related) continue;
-    const place = holders.reduce((a, b) => (score(b.bare ? b.sentence : b.index) > score(a.bare ? a.sentence : a.index) ? b : a));
+    const place = holders.reduce((a, b) => (scoreHolder(b) > scoreHolder(a) ? b : a));
     out.push({ fact, index: place.source, passage: place.text });
   }
   return out;
