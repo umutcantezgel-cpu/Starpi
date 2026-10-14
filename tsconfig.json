@@ -51,6 +51,7 @@
     "src/js/library.js",
     "src/js/main.js",
     "src/js/messages.js",
+    "src/js/models/nvidia-catalog.js",
     "src/js/prompts.js",
     "src/js/providers.js",
     "src/js/rag/bm25.js",

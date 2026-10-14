@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 const { normalizeServerUrl } = await import('../../src/js/providers.js');
-const { normalizeMode } = await import('../../src/js/state.js');
+const { normalizeChatMode, normalizeMode } = await import('../../src/js/state.js');
 const { classifyError } = await import('../../src/js/supabase.js');
 
 describe('normalizeServerUrl', () => {
@@ -26,8 +26,16 @@ describe('normalizeMode', () => {
     assert.equal(normalizeMode('webgpu'), 'client');
     assert.equal(normalizeMode('cluster_b'), 'council');
     assert.equal(normalizeMode('local'), 'local');
+    assert.equal(normalizeMode('nvidia'), 'nvidia');
     assert.equal(normalizeMode('constructor'), 'council');
     assert.equal(normalizeMode(undefined), 'council');
+  });
+});
+
+describe('normalizeChatMode', () => {
+  it('defaults to the source-checked mode', () => {
+    assert.equal(normalizeChatMode('free'), 'free');
+    for (const other of ['grounded', 'FREE', '__proto__', null, undefined, 1]) assert.equal(normalizeChatMode(other), 'grounded');
   });
 });
 
