@@ -10,7 +10,7 @@ import { byId, onAction, onChange, setHidden } from './dom.js';
 import { renderEngineState, startLocalEngine } from './engine-ui.js';
 import { refreshIcons } from './icons.js';
 import { formatNumber, getLocale, setText, t } from './i18n/index.js';
-import { syncPickerValue } from './model-picker.js';
+import { currentPickerValue, syncPickerValue } from './model-picker.js';
 import { parseAssistantChoice } from './models/choices.js';
 import { NVIDIA_MODELS } from './models/nvidia-catalog.js';
 import { readinessPrompt } from './prompts.js';
@@ -209,8 +209,12 @@ async function saveSettings() {
   }
   renderKeyHints();
 
-  // The picker holds the mode and the model; changeEngine stores both.
-  stored = (await changeEngine(modeInput?.value ?? 'council', { interactive: true })) && stored;
+  // A pick is applied when it is made. Only a picker showing something else than the stored choice
+  // (e.g. a switch that waited for the keyboard to settle) is applied here: re-applying the shown
+  // recommendation would replace a stored 'auto' with a fixed model.
+  if (modeInput && modeInput.value !== currentPickerValue()) {
+    stored = (await changeEngine(modeInput.value, { interactive: true })) && stored;
+  }
   window.alert(t(stored ? 'settings.saved_toast' : 'settings.save_failed'));
 }
 
@@ -318,6 +322,57 @@ async function deleteModelCache() {
   }
 }
 
+/**
+ * Arrow keys on a closed <select> fire a change at every step in Chrome on Windows and Linux. Each
+ * step would switch the engine: unload the loaded model and ask to download the next one. A change
+ * that follows a key press is therefore applied once the user rests on an option (or leaves the
+ * picker, or presses Enter); a pick with the mouse or touch is applied at once.
+ */
+const KEY_SETTLE_MS = 700;
+/** @type {WeakMap<HTMLSelectElement, { keyAt: number, timer: ReturnType<typeof setTimeout> | null }>} */
+const pickerKeys = new WeakMap();
+
+/** @param {HTMLSelectElement} sel */
+function applyPick(sel) {
+  const state = pickerKeys.get(sel);
+  if (state?.timer) {
+    clearTimeout(state.timer);
+    state.timer = null;
+  }
+  return changeEngine(sel.value, { interactive: true });
+}
+
+/** @param {KeyboardEvent} event */
+function notePickerKey(event) {
+  const sel = event.target;
+  if (!(sel instanceof HTMLSelectElement) || sel.dataset.change !== 'change-engine') return;
+  const state = pickerKeys.get(sel) ?? { keyAt: 0, timer: null };
+  if (event.key === 'Enter' && state.timer) {
+    void applyPick(sel);
+    return;
+  }
+  state.keyAt = performance.now();
+  pickerKeys.set(sel, state);
+}
+
+/** @param {HTMLSelectElement} sel */
+function pickFromSelect(sel) {
+  const state = pickerKeys.get(sel);
+  if (!state || performance.now() - state.keyAt > 500) return applyPick(sel);
+  if (state.timer) clearTimeout(state.timer);
+  else {
+    sel.addEventListener(
+      'blur',
+      () => {
+        if (pickerKeys.get(sel)?.timer) void applyPick(sel);
+      },
+      { once: true },
+    );
+  }
+  state.timer = setTimeout(() => void applyPick(sel), KEY_SETTLE_MS);
+  return undefined;
+}
+
 export function initSettings() {
   const urlInput = /** @type {HTMLInputElement | null} */ (byId('cfgLlmUrl'));
   if (urlInput) urlInput.value = getLlmUrl();
@@ -329,7 +384,8 @@ export function initSettings() {
   // The chat mode toggle lives in chat.js, which must not import this module: state.js tells us.
   onChatModeChange(() => renderPrivacyNotice());
 
-  onChange('change-engine', (el) => changeEngine(/** @type {HTMLSelectElement} */ (el).value, { interactive: true }));
+  onChange('change-engine', (el) => pickFromSelect(/** @type {HTMLSelectElement} */ (el)));
+  document.addEventListener('keydown', notePickerKey, true);
   onAction('save-settings', () => saveSettings());
   onAction('clear-keys', () => clearKeys());
   onAction('test-gemini', () => testProvider('gemini'));

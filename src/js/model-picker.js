@@ -112,12 +112,17 @@ export function renderModelPickers() {
   renderBadges();
 }
 
+/** The picker value of the stored choice ('auto' shows as the recommended model once the device is probed). */
+export function currentPickerValue() {
+  return choiceValue(currentState(), hw);
+}
+
 /**
  * Selects the stored choice in both pickers without rebuilding them, for example after a switch was
  * refused. Rebuilds when the choice has no option yet (an NVIDIA model that was hidden).
  */
 export function syncPickerValue() {
-  const value = choiceValue(currentState(), hw);
+  const value = currentPickerValue();
   for (const { id } of PICKERS) {
     const sel = byId(id);
     if (!(sel instanceof HTMLSelectElement)) continue;

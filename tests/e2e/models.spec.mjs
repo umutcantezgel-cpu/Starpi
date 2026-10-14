@@ -245,4 +245,25 @@ test.describe('model picker', () => {
     expect(dialogs).toHaveLength(1);
     expect(nvidia.bodies).toHaveLength(1);
   });
+
+  test('applies a pick made with the arrow keys once they rest, not at every step', async ({ page, diagnostics: _diagnostics }) => {
+    await emulateDesktop(page, { gpu: false });
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const dialogs = captureDialogs(page);
+    await page.goto('/');
+    await expect(page.locator(HEADER)).toHaveCount(1);
+    await page.focus('#engineSelector');
+    const start = await page.locator('#engineSelector').inputValue();
+    for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowUp');
+    const picked = await page.locator('#engineSelector').inputValue();
+    expect(picked).not.toBe(start);
+    // Stepping through the options switches nothing and asks nothing.
+    expect(dialogs).toHaveLength(0);
+    expect(await page.evaluate(() => localStorage.getItem('starpi_compute_mode'))).toBe('council');
+    // Resting on an option applies it once, for the option it rests on.
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('starpi_webgpu_model')), { timeout: 5_000 }).toBe(picked);
+    await page.waitForTimeout(1_000);
+    // A processor model asks once before its download; a GPU model cannot run here and asks nothing.
+    expect(dialogs).toHaveLength(picked.startsWith('wasm:') ? 1 : 0);
+  });
 });
