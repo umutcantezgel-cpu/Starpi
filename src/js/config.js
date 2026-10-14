@@ -14,6 +14,8 @@ export const STORAGE_KEYS = Object.freeze({
   rememberKeys: 'starpi_remember_keys',
   computeMode: 'starpi_compute_mode',
   webgpuModel: 'starpi_webgpu_model',
+  nvidiaModel: 'starpi_nvidia_model',
+  chatMode: 'starpi_chat_mode',
   sessionId: 'starpi_chat_session_id',
   localChats: 'starpi_local_chats_v1',
 });
@@ -21,10 +23,19 @@ export const STORAGE_KEYS = Object.freeze({
 /** Keys written by earlier versions that are no longer read. */
 export const LEGACY_STORAGE_KEYS = Object.freeze(['starpi_ai_tier']);
 
-/** @typedef {'council' | 'client' | 'local'} ComputeMode */
+/** @typedef {'council' | 'client' | 'local' | 'nvidia'} ComputeMode */
 
 /** @type {readonly ComputeMode[]} */
-export const COMPUTE_MODES = Object.freeze(['council', 'client', 'local']);
+export const COMPUTE_MODES = Object.freeze(['council', 'client', 'local', 'nvidia']);
+
+/**
+ * 'grounded': answers from the sources, checked sentence by sentence, with a receipt.
+ * 'free': a conversation without retrieval and without the source check.
+ * @typedef {'grounded' | 'free'} ChatMode
+ */
+
+/** @type {readonly ChatMode[]} */
+export const CHAT_MODES = Object.freeze(['grounded', 'free']);
 
 /** Values persisted by earlier versions, mapped onto the current modes. */
 export const LEGACY_MODE_ALIASES = Object.freeze({
