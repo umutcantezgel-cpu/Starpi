@@ -87,8 +87,12 @@ import { en } from './en.js';
 const PACKS = new Map();
 let revision = 0;
 
-/** Codes of the registered packs, in registration order. Reassigned (not mutated) on registration. */
-export let LANGUAGES = /** @type {readonly string[]} */ (Object.freeze([]));
+/**
+ * Codes of the registered packs, in registration order. Read-only for callers: registerLanguage()
+ * appends to this same array, so a copy taken by destructuring stays current too.
+ * @type {readonly string[]}
+ */
+export const LANGUAGES = [];
 
 /**
  * Freezes plain objects and arrays all the way down. Regular expressions stay unfrozen: a global
@@ -243,7 +247,7 @@ export function registerLanguage(pack) {
   validate(full);
   deepFreeze(full);
   PACKS.set(full.code, full);
-  LANGUAGES = Object.freeze([...PACKS.keys()]);
+  /** @type {string[]} */ (LANGUAGES).push(full.code);
   revision += 1;
   return full;
 }
