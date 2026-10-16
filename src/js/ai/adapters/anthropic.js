@@ -25,7 +25,7 @@
 import { messageText, withoutForeignOpaque } from '../contract.js';
 import { AiError } from '../errors.js';
 import { fromAnthropic } from '../stop-reason.js';
-import { capsFor } from '../catalog/models.js';
+import { capsFor, parseModelList } from '../catalog/models.js';
 import { argsObject, base64Text, isRecord, streamError, usageEvent } from './common.js';
 
 /** @typedef {import('../contract.js').AiRequest} AiRequest */
@@ -498,17 +498,7 @@ function wireHeaders(betas) {
  * @param {unknown} json
  * @returns {import('../stream.js').ModelInfo[]}
  */
-function parseModels(json) {
-  const data = isRecord(json) && Array.isArray(json.data) ? json.data : [];
-  return data
-    .filter((m) => isRecord(m) && typeof m.id === 'string')
-    .map((m) => ({
-      id: m.id,
-      ...(typeof m.display_name === 'string' ? { label: m.display_name } : {}),
-      ...(Number.isInteger(m.max_input_tokens) ? { contextTokens: m.max_input_tokens } : {}),
-      ...(Number.isInteger(m.max_tokens) ? { maxOutput: m.max_tokens } : {}),
-    }));
-}
+const parseModels = (json) => parseModelList('anthropic', json).map(({ id, label, contextTokens, maxOutput }) => ({ id, label, contextTokens, maxOutput }));
 
 /** @param {string} key @returns {[string, string]} */
 const authHeader = (key) => ['x-api-key', key];

@@ -82,6 +82,8 @@ export function buildResponsesBody(req, caps = capsFor('openai', req.model)) {
   if (reasons) {
     body.include = ['reasoning.encrypted_content'];
     const mode = req.thinking?.mode ?? 'auto';
+    // "Off" is the lowest effort the current reasoning models take ('minimal'); a model family that
+    // names it differently needs its own catalog flag, checked with a real key first.
     const effort = mode === 'off' ? 'minimal' : req.thinking?.effort === 'max' ? 'high' : (req.thinking?.effort ?? (mode === 'on' ? 'high' : undefined));
     /** @type {Record<string, unknown>} */
     const reasoning = {};
