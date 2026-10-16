@@ -1,0 +1,87 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_1fake","object":"response","created_at":1767225601,"model":"gpt-5","store":false,"status":"in_progress","output":[]}}
+
+event: response.in_progress
+data: {"type":"response.in_progress","sequence_number":1,"response":{"id":"resp_1fake","object":"response","created_at":1767225601,"model":"gpt-5","store":false,"status":"in_progress","output":[]}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":2,"output_index":0,"item":{"id":"rs_1fake","type":"reasoning","summary":[]}}
+
+event: response.reasoning_summary_part.added
+data: {"type":"response.reasoning_summary_part.added","sequence_number":3,"item_id":"rs_1fake","output_index":0,"summary_index":0,"part":{"type":"summary_text","text":""}}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":4,"item_id":"rs_1fake","output_index":0,"summary_index":0,"delta":"The question "}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":5,"item_id":"rs_1fake","output_index":0,"summary_index":0,"delta":"is short. "}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":6,"item_id":"rs_1fake","output_index":0,"summary_index":0,"delta":"I recall "}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":7,"item_id":"rs_1fake","output_index":0,"summary_index":0,"delta":"the key "}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":8,"item_id":"rs_1fake","output_index":0,"summary_index":0,"delta":"facts first, "}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":9,"item_id":"rs_1fake","output_index":0,"summary_index":0,"delta":"then answer "}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":10,"item_id":"rs_1fake","output_index":0,"summary_index":0,"delta":"in one "}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":11,"item_id":"rs_1fake","output_index":0,"summary_index":0,"delta":"or two "}
+
+event: response.reasoning_summary_text.delta
+data: {"type":"response.reasoning_summary_text.delta","sequence_number":12,"item_id":"rs_1fake","output_index":0,"summary_index":0,"delta":"sentences."}
+
+event: response.reasoning_summary_text.done
+data: {"type":"response.reasoning_summary_text.done","sequence_number":13,"item_id":"rs_1fake","output_index":0,"summary_index":0,"text":"The question is short. I recall the key facts first, then answer in one or two sentences."}
+
+event: response.reasoning_summary_part.done
+data: {"type":"response.reasoning_summary_part.done","sequence_number":14,"item_id":"rs_1fake","output_index":0,"summary_index":0,"part":{"type":"summary_text","text":"The question is short. I recall the key facts first, then answer in one or two sentences."}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":15,"output_index":0,"item":{"id":"rs_1fake","type":"reasoning","summary":[{"type":"summary_text","text":"The question is short. I recall the key facts first, then answer in one or two sentences."}],"encrypted_content":"ZmFrZS1yZWFzb25pbmctMQ=="}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":16,"output_index":1,"item":{"id":"msg_1fake","type":"message","status":"in_progress","role":"assistant","content":[]}}
+
+event: response.content_part.added
+data: {"type":"response.content_part.added","sequence_number":17,"item_id":"msg_1fake","output_index":1,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":18,"item_id":"msg_1fake","output_index":1,"content_index":0,"delta":"This is "}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":19,"item_id":"msg_1fake","output_index":1,"content_index":0,"delta":"a simulated "}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":20,"item_id":"msg_1fake","output_index":1,"content_index":0,"delta":"answer from "}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":21,"item_id":"msg_1fake","output_index":1,"content_index":0,"delta":"the local "}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":22,"item_id":"msg_1fake","output_index":1,"content_index":0,"delta":"test provider. "}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":23,"item_id":"msg_1fake","output_index":1,"content_index":0,"delta":"You asked: "}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":24,"item_id":"msg_1fake","output_index":1,"content_index":0,"delta":"\"Think first\"."}
+
+event: response.output_text.done
+data: {"type":"response.output_text.done","sequence_number":25,"item_id":"msg_1fake","output_index":1,"content_index":0,"text":"This is a simulated answer from the local test provider. You asked: \"Think first\"."}
+
+event: response.content_part.done
+data: {"type":"response.content_part.done","sequence_number":26,"item_id":"msg_1fake","output_index":1,"content_index":0,"part":{"type":"output_text","text":"This is a simulated answer from the local test provider. You asked: \"Think first\".","annotations":[]}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":27,"output_index":1,"item":{"id":"msg_1fake","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"This is a simulated answer from the local test provider. You asked: \"Think first\".","annotations":[]}]}}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":28,"response":{"id":"resp_1fake","object":"response","created_at":1767225601,"model":"gpt-5","store":false,"status":"completed","output":[{"id":"rs_1fake","type":"reasoning","summary":[{"type":"summary_text","text":"The question is short. I recall the key facts first, then answer in one or two sentences."}],"encrypted_content":"ZmFrZS1yZWFzb25pbmctMQ=="},{"id":"msg_1fake","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"This is a simulated answer from the local test provider. You asked: \"Think first\".","annotations":[]}]}],"usage":{"input_tokens":8,"input_tokens_details":{"cached_tokens":0},"output_tokens":44,"output_tokens_details":{"reasoning_tokens":23},"total_tokens":52},"output_text":"This is a simulated answer from the local test provider. You asked: \"Think first\"."}}
+

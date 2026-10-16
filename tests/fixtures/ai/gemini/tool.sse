@@ -1,0 +1,22 @@
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"The question ","thought":true}]},"index":0}],"usageMetadata":{"promptTokenCount":6,"candidatesTokenCount":1,"totalTokenCount":30,"thoughtsTokenCount":23},"modelVersion":"gemini-2.5-flash","responseId":"resp-2-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"is short. ","thought":true}]},"index":0}],"usageMetadata":{"promptTokenCount":6,"candidatesTokenCount":1,"totalTokenCount":30,"thoughtsTokenCount":23},"modelVersion":"gemini-2.5-flash","responseId":"resp-2-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"I recall ","thought":true}]},"index":0}],"usageMetadata":{"promptTokenCount":6,"candidatesTokenCount":1,"totalTokenCount":30,"thoughtsTokenCount":23},"modelVersion":"gemini-2.5-flash","responseId":"resp-2-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"the key ","thought":true}]},"index":0}],"usageMetadata":{"promptTokenCount":6,"candidatesTokenCount":1,"totalTokenCount":30,"thoughtsTokenCount":23},"modelVersion":"gemini-2.5-flash","responseId":"resp-2-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"facts first, ","thought":true}]},"index":0}],"usageMetadata":{"promptTokenCount":6,"candidatesTokenCount":1,"totalTokenCount":30,"thoughtsTokenCount":23},"modelVersion":"gemini-2.5-flash","responseId":"resp-2-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"then answer ","thought":true}]},"index":0}],"usageMetadata":{"promptTokenCount":6,"candidatesTokenCount":1,"totalTokenCount":30,"thoughtsTokenCount":23},"modelVersion":"gemini-2.5-flash","responseId":"resp-2-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"in one ","thought":true}]},"index":0}],"usageMetadata":{"promptTokenCount":6,"candidatesTokenCount":1,"totalTokenCount":30,"thoughtsTokenCount":23},"modelVersion":"gemini-2.5-flash","responseId":"resp-2-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"or two ","thought":true}]},"index":0}],"usageMetadata":{"promptTokenCount":6,"candidatesTokenCount":1,"totalTokenCount":30,"thoughtsTokenCount":23},"modelVersion":"gemini-2.5-flash","responseId":"resp-2-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"sentences.","thought":true}]},"index":0}],"usageMetadata":{"promptTokenCount":6,"candidatesTokenCount":1,"totalTokenCount":30,"thoughtsTokenCount":23},"modelVersion":"gemini-2.5-flash","responseId":"resp-2-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"lookup","args":{"query":"Look it up"}},"thoughtSignature":"fake-thought-2"}]},"index":0}],"usageMetadata":{"promptTokenCount":6,"candidatesTokenCount":1,"totalTokenCount":30,"thoughtsTokenCount":23},"modelVersion":"gemini-2.5-flash","responseId":"resp-2-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[]},"index":0,"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":6,"candidatesTokenCount":1,"totalTokenCount":30,"thoughtsTokenCount":23},"modelVersion":"gemini-2.5-flash","responseId":"resp-2-fake"}
+

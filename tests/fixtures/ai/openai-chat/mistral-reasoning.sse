@@ -1,0 +1,38 @@
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"The question "}]}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"is short. "}]}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"I recall "}]}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"the key "}]}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"facts first, "}]}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"then answer "}]}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"in one "}]}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"or two "}]}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"sentences."}]}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":"This is "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":"a simulated "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":"answer from "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":"the local "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":"test provider. "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":"You asked: "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{"content":"\"Think first\"."},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-12fake","object":"chat.completion.chunk","created":1767225612,"model":"fake-mistral-reasoner","choices":[{"index":0,"delta":{},"finish_reason":"stop","logprobs":null}],"usage":{"prompt_tokens":8,"completion_tokens":44,"total_tokens":52,"completion_tokens_details":{"reasoning_tokens":23}}}
+
+data: [DONE]
+

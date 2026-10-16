@@ -384,7 +384,7 @@ export function parseAnthropicEvent(data, state) {
       const entry = { block, json: '', textStart: state.answerLength, citations: /** @type {any[]} */ ([]) };
       state.open.set(index, entry);
       if (block.type === 'text') {
-        block.citations = Array.isArray(block.citations) ? [...block.citations] : block.citations;
+        if (Array.isArray(block.citations)) block.citations = [...block.citations];
         if (typeof block.text === 'string' && block.text) {
           out.push({ type: 'text', delta: block.text });
           state.answerLength += block.text.length;
