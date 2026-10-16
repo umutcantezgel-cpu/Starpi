@@ -1,4 +1,0 @@
-# Local tooling and runtime artefacts of the Python backend.
-.venv/
-.ruff_cache/
-.env

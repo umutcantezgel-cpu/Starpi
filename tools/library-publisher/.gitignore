@@ -1,0 +1,5 @@
+# Local tooling, secrets and the downloaded model of the library publisher.
+.venv/
+.ruff_cache/
+.env
+models/

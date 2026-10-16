@@ -106,12 +106,7 @@ function gitleaksRegex(id) {
   return new RegExp(source);
 }
 
-describe('NVIDIA catalog mirror and key-leak guards', () => {
-  it('keeps backend/core/nvidia_catalog.json an exact copy of the catalog', () => {
-    const mirror = readFileSync(path.join(ROOT, 'backend/core/nvidia_catalog.json'), 'utf8');
-    assert.ok(mirror === catalogJson(), 'backend/core/nvidia_catalog.json is outdated; run npm run nvidia:sync');
-  });
-
+describe('NVIDIA key-leak guards', () => {
   it('has a gitleaks rule that finds plain and Markdown-escaped keys but not the docs placeholder', () => {
     const rule = gitleaksRegex('starpi-nvidia-api-key');
     // Keys are built at runtime so that no key-shaped literal exists in the repository.

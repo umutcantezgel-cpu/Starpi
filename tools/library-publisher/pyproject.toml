@@ -1,0 +1,27 @@
+# Tooling configuration for the library publisher. It runs from this directory
+# (python -m publisher) and is not packaged, so there is no [project] table.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "F",  # pyflakes
+    "W",  # pycodestyle warnings
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "UP", # pyupgrade
+    "S",  # flake8-bandit
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use throwaway credentials (S105/S106) and plain asserts in helpers (S101).
+"publisher/tests/**" = ["S101", "S105", "S106"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["publisher"]
+
+[tool.pytest.ini_options]
+testpaths = ["publisher/tests"]

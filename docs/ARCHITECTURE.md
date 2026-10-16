@@ -22,7 +22,7 @@ idealised design. When the code changes, change the diagram in the same pull req
    - [System context and trust boundaries](#system-context-and-trust-boundaries)
    - [What leaves the device: connection state](#what-leaves-the-device-connection-state)
    - [What leaves the device: one chat turn](#what-leaves-the-device-one-chat-turn)
-   - [Backend trust boundary: server.py request guards](#backend-trust-boundary-serverpy-request-guards)
+   - [Library publisher trust boundary](#library-publisher-trust-boundary)
    - [Frontend import graph (1 of 4): main.js and its application imports](#frontend-import-graph-1-of-4-mainjs-and-its-application-imports)
    - [Frontend import graph (2 of 4): imports made by the feature views and the model pickers](#frontend-import-graph-2-of-4-imports-made-by-the-feature-views-and-the-model-pickers)
    - [Frontend import graph (3 of 4): chat pipeline, workspace client and on-device engine](#frontend-import-graph-3-of-4-chat-pipeline-workspace-client-and-on-device-engine)
@@ -116,16 +116,11 @@ idealised design. When the code changes, change the diagram in the same pull req
    - [Untrusted content on its way to the DOM](#untrusted-content-on-its-way-to-the-dom)
    - [Source-check panel and answer receipts](#source-check-panel-and-answer-receipts)
    - [Worker isolation, RLS, key handling, CSP and the build gate](#worker-isolation-rls-key-handling-csp-and-the-build-gate)
-   - [Backend API guards, backend secrets and CI supply chain](#backend-api-guards-backend-secrets-and-ci-supply-chain)
-10. [Optional backend](#10-optional-backend)
-    - [BrainAPIHandler: guards, routing and error responses](#brainapihandler-guards-routing-and-error-responses)
-    - [BrainAPIHandler: JSON body validation and handler dispatch](#brainapihandler-json-body-validation-and-handler-dispatch)
-    - [Brain API startup checks](#brain-api-startup-checks)
-    - [ingest_raw_information: structuring, chunking and embeddings](#ingest_raw_information-structuring-chunking-and-embeddings)
-    - [save_document: size clamping, insert and rollback](#save_document-size-clamping-insert-and-rollback)
-    - [query_brain: vector retrieval and answer providers](#query_brain-vector-retrieval-and-answer-providers)
-    - [Service role reads: which rows the backend returns](#service-role-reads-which-rows-the-backend-returns)
-    - [Backend command line entry points: cli_supabase and brain_smoke](#backend-command-line-entry-points-cli_supabase-and-brain_smoke)
+   - [Publisher secrets, service role reads and CI supply chain](#publisher-secrets-service-role-reads-and-ci-supply-chain)
+10. [Library publisher](#10-library-publisher)
+    - [Publishing a file: sections, vectors and one atomic insert](#publishing-a-file-sections-vectors-and-one-atomic-insert)
+    - [Vectors: the model of the browser, pinned and verified](#vectors-the-model-of-the-browser-pinned-and-verified)
+    - [Service role reads: health, list, backfill and test-query](#service-role-reads-health-list-backfill-and-test-query)
 11. [Build, test and deploy](#11-build-test-and-deploy)
     - [npm run build (scripts/build.mjs)](#npm-run-build-scriptsbuildmjs)
     - [Build output gate (verify-dist.mjs)](#build-output-gate-verify-distmjs)
@@ -141,8 +136,6 @@ idealised design. When the code changes, change the diagram in the same pull req
     - [Backend, database, audit and secret-scanning jobs](#backend-database-audit-and-secret-scanning-jobs)
     - [Release workflow after CI](#release-workflow-after-ci)
     - [CI workflow and Vercel build of the PWA and the NVIDIA functions](#ci-workflow-and-vercel-build-of-the-pwa-and-the-nvidia-functions)
-    - [Backend runtime on EC2](#backend-runtime-on-ec2)
-    - [Backend deployment to EC2 with remote_sync.sh and deploy_ec2.sh](#backend-deployment-to-ec2-with-remote_syncsh-and-deploy_ec2sh)
     - [Supabase schema: fresh install or ordered migrations](#supabase-schema-fresh-install-or-ordered-migrations)
 12. [Source check, answer receipts and sample files](#12-source-check-answer-receipts-and-sample-files)
     - [Source check: from the rendered answer to the panel](#source-check-from-the-rendered-answer-to-the-panel)
@@ -159,16 +152,15 @@ idealised design. When the code changes, change the diagram in the same pull req
     - [NVIDIA proxy: request guards and limits](#nvidia-proxy-request-guards-and-limits)
     - [NVIDIA proxy: key rotation and failover before the first byte](#nvidia-proxy-key-rotation-and-failover-before-the-first-byte)
     - [NVIDIA proxy: relaying the stream to the browser](#nvidia-proxy-relaying-the-stream-to-the-browser)
-    - [NVIDIA proxy in the Python backend](#nvidia-proxy-in-the-python-backend)
-    - [One model allowlist for the app, the functions and the backend](#one-model-allowlist-for-the-app-the-functions-and-the-backend)
+    - [One model allowlist for the app and the functions](#one-model-allowlist-for-the-app-and-the-functions)
 
 ## 1. System overview
 
-Where each part of Starpi runs, which trust boundary it sits behind, and how the frontend modules depend on each other. The browser tab is the trusted zone; Supabase, model providers, Starpi's NVIDIA proxy, the optional backend, model downloads and the browser's speech recognition are reached across explicit boundaries.
+Where each part of Starpi runs, which trust boundary it sits behind, and how the frontend modules depend on each other. The browser tab is the trusted zone; Supabase, model providers, Starpi's NVIDIA proxy, the optional library publisher, model downloads and the browser's speech recognition are reached across explicit boundaries.
 
 ### System context and trust boundaries
 
-The browser tab is the trusted zone: the main thread, the three Web Workers (starpi-webllm for WebLLM inference on WebGPU, starpi-wasm for Transformers.js on the processor, started only for a processor model, and starpi-ingest for parsing, hashing and BM25), the service worker and per-origin storage all live there. Vercel serves the static files with the vercel.json headers (CSP, HSTS, COOP, X-Frame-Options, Permissions-Policy) and runs two Node.js functions, api/models/nvidia.js and api/chat/nvidia.js, which keep the NVIDIA_API_KEYS pool in the server environment: the browser calls them on its own origin without any key, and they forward a validated request to NVIDIA's API with a key from the pool. Supabase is reached only with the public key (a publishable sb_publishable_ key or a JWT with role anon; scripts/lib/supabase-key.mjs makes the build refuse an empty key, sb_secret_ keys, JWTs with any other role and anything that is neither) plus an anonymous session JWT, so role grants and RLS decide what each caller can read or write, and the RPC functions are SECURITY INVOKER. The optional Python backend is the only component that holds the service_role key; the browser bundle never calls its /api/brain/* routes and reaches its two NVIDIA routes only when an operator serves them on the app's own origin, because the NVIDIA client uses same-origin URLs only. Because the service_role key bypasses RLS, the backend itself limits its document list and its search matches to rows that are public or have no owner (rows it wrote itself), so private rows of browser sessions do not leave through it. The source check and the answer receipts are computed in the tab, a receipt loaded for verification is checked in the ingestion worker, and neither is sent anywhere; a receipt leaves the tab only as a JSON file the user downloads. Dashed nodes are third-party services outside Starpi control, including the browser's speech recognition, which in client mode voice.js uses only where the browser offers on-device recognition (processLocally). Because cross-origin requests bypass sw.js, model files are cached only in the Cache API buckets of WebLLM and of Transformers.js (transformers-cache); the self-hosted ONNX Runtime binary is a hashed /assets file. A new sw.js version takes over at install only when no window of the app is open; otherwise it waits until those windows close or a page posts a SKIP_WAITING message (the app itself sends none), and a navigation answered with the cached shell after the 3.5 s deadline does not store the late network response as the new shell.
+The browser tab is the trusted zone: the main thread, the three Web Workers (starpi-webllm for WebLLM inference on WebGPU, starpi-wasm for Transformers.js on the processor, started only for a processor model, and starpi-ingest for parsing, hashing and BM25), the service worker and per-origin storage all live there. Vercel serves the static files with the vercel.json headers (CSP, HSTS, COOP, X-Frame-Options, Permissions-Policy) and runs two Node.js functions, api/models/nvidia.js and api/chat/nvidia.js, which keep the NVIDIA_API_KEYS pool in the server environment: the browser calls them on its own origin without any key, and they forward a validated request to NVIDIA's API with a key from the pool. Supabase is reached only with the public key (a publishable sb_publishable_ key or a JWT with role anon; scripts/lib/supabase-key.mjs makes the build refuse an empty key, sb_secret_ keys, JWTs with any other role and anything that is neither) plus an anonymous session JWT, so role grants and RLS decide what each caller can read or write, and the RPC functions are SECURITY INVOKER. The optional library publisher, a command line tool on a machine the operator controls, is the only component that holds the service_role key; the browser never talks to it, and because the key bypasses RLS, the publisher limits its own reads to rows that are public or have no owner (rows written with the service role), so private rows of browser sessions do not leave through it. The source check and the answer receipts are computed in the tab, a receipt loaded for verification is checked in the ingestion worker, and neither is sent anywhere; a receipt leaves the tab only as a JSON file the user downloads. Dashed nodes are third-party services outside Starpi control, including the browser's speech recognition, which in client mode voice.js uses only where the browser offers on-device recognition (processLocally). Because cross-origin requests bypass sw.js, model files are cached only in the Cache API buckets of WebLLM and of Transformers.js (transformers-cache); the self-hosted ONNX Runtime binary is a hashed /assets file. A new sw.js version takes over at install only when no window of the app is open; otherwise it waits until those windows close or a page posts a SKIP_WAITING message (the app itself sends none), and a navigation answered with the cached shell after the 3.5 s deadline does not store the late network response as the new shell.
 
 <!-- diagram: system-context-overview -->
 ```mermaid
@@ -212,13 +204,12 @@ flowchart LR
         rest["PostgREST<br/>/rest/v1 tables and /rest/v1/rpc"]
         subgraph pg["Postgres, RLS enabled on every table"]
             tables[("knowledge_documents, knowledge_entities,<br/>knowledge_relations: read is_public or owner_id = auth.uid(),<br/>knowledge_sections: visible with their document,<br/>writes only to own private rows<br/>chat_history: owner only, no anon grant<br/>brain_settings: no policy, service_role only")]
-            rpcFns["SECURITY INVOKER functions<br/>search_knowledge: anon, authenticated, service_role<br/>match_knowledge_sections, match_knowledge_hybrid:<br/>authenticated, service_role<br/>ingest_document_atomic: service_role only"]
+            rpcFns["SECURITY INVOKER functions<br/>search_knowledge: anon, authenticated, service_role<br/>match_knowledge_vector_384, optional migration:<br/>anon, authenticated, service_role<br/>match_knowledge_sections, match_knowledge_hybrid:<br/>authenticated, service_role<br/>ingest_document_atomic: service_role only"]
         end
     end
 
-    subgraph backendHost["Optional backend host, operator-controlled"]
-        caller["HTTP client of /api/brain/*, or the app<br/>when the NVIDIA routes share its origin"]
-        brain["backend/server.py<br/>default bind 127.0.0.1:9200<br/>/api/brain/* never called by the browser bundle"]
+    subgraph backendHost["Optional library publisher, operator machine"]
+        brain["tools/library-publisher<br/>python -m publisher, no listener:<br/>publish, backfill, list, test-query"]
     end
 
     subgraph thirdParty["Third-party services outside Starpi control"]
@@ -229,7 +220,7 @@ flowchart LR
         hf["Hugging Face<br/>huggingface.co/mlc-ai weights,<br/>WASM model repositories at pinned revisions"]
         ghLibs["raw.githubusercontent.com<br/>binary-mlc-llm-libs wasm"]
         speech["Browser speech recognition<br/>vendor servers in most browsers"]
-        backendApis["Backend upstreams<br/>LLM_BASE_URL, EMBEDDING_BASE_URL,<br/>GEMINI_API_KEYS, OPENROUTER_API_KEYS"]
+        backendApis["Publisher upstreams<br/>Hugging Face model files at a pinned revision,<br/>LLM_BASE_URL only for publish --structure"]
     end
 
     host -->|"app shell, hashed assets and<br/>public files with security headers"| sw
@@ -263,16 +254,14 @@ flowchart LR
     provJs -->|"same-origin GET /api/models/nvidia,<br/>POST /api/chat/nvidia without a key,<br/>answer streamed back as SSE"| fn
     fn -->|"Bearer key from the pool,<br/>failover before the first byte"| nvidia
     voiceJs -->|"microphone audio, handled by the browser"| speech
-    caller -->|"Bearer BRAIN_API_TOKEN when set,<br/>else loopback Host only,<br/>/api/chat/nvidia: an allowed Origin or the token"| brain
-    brain -->|"service_role key bypasses RLS:<br/>knowledge_documents, knowledge_sections,<br/>rpc match_knowledge_sections,<br/>reads kept to is_public or no owner"| rest
-    brain -->|"chat/completions, embeddings,<br/>generateContent"| backendApis
-    brain -->|"/api/chat/nvidia: Bearer key<br/>from its own NVIDIA_API_KEYS pool"| nvidia
+    brain -->|"service_role key bypasses RLS:<br/>rpc ingest_document_atomic, PATCH is_public<br/>and embedding_384, reads kept to is_public or no owner"| rest
+    brain -->|"fetch-model, chat/completions"| backendApis
 
     classDef external stroke-dasharray: 5 5
     class gemini,openrouter,ownServer,nvidia,hf,ghLibs,speech,backendApis external
 ```
 
-<sub>Sources: [`README.md`](../README.md), [`src/js/main.js`](../src/js/main.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/voice.js`](../src/js/voice.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/sw.js`](../src/sw.js), [`vercel.json`](../vercel.json), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`api/models/nvidia.js`](../api/models/nvidia.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/rag.py`](../backend/core/rag.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
+<sub>Sources: [`README.md`](../README.md), [`src/js/main.js`](../src/js/main.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/voice.js`](../src/js/voice.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/sw.js`](../src/sw.js), [`vercel.json`](../vercel.json), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`api/models/nvidia.js`](../api/models/nvidia.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`tools/library-publisher/publisher/cli_supabase.py`](../tools/library-publisher/publisher/cli_supabase.py), [`tools/library-publisher/publisher/supabase_service.py`](../tools/library-publisher/publisher/supabase_service.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
 
 ### What leaves the device: connection state
 
@@ -457,90 +446,41 @@ flowchart TD
 
 <sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
 
-### Backend trust boundary: server.py request guards
+### Library publisher trust boundary
 
-run_server refuses to bind to a non-loopback address unless BRAIN_API_TOKEN is set and exits with SystemExit(2). _route then checks every request in a fixed order: without a token it rejects requests carrying reverse-proxy headers (fail closed), it rejects any Origin not in BRAIN_ALLOWED_ORIGINS, and without a token it rejects non-loopback Host headers (DNS rebinding guard); only then does it resolve the route, answer OPTIONS, check the method and, for /api/brain/*, compare the Bearer token with hmac.compare_digest. POST /api/chat/nvidia spends a shared key pool, so it also needs an Origin listed in BRAIN_ALLOWED_ORIGINS or the Bearer token (403 origin_required otherwise), and it is rate limited per client address before the body is read. Request bodies are bounded by _read_json_object (256 KiB on the NVIDIA route) and _string_field. The handlers use Supabase with the service_role key, which bypasses RLS, so supabase_client.py filters every read with VISIBLE_ROWS to rows that are public or have no owner (rows the backend wrote itself; they are not public by default): the document list selects only such rows, and vector matches are kept only when their document passes the same filter, so private rows of browser sessions (owner set, not public) are not returned. When Supabase is not configured or the remote call fails, the handlers fall back to an in-memory store. The NVIDIA routes touch neither Supabase nor that store: they list the shared model allowlist or relay one validated chat request to NVIDIA with a key from NVIDIA_API_KEYS.
+The library publisher (section 10) is the only component that holds the service_role key. It runs as a command line tool on a machine the operator controls and opens no port, so there is no request to guard; what it guards are its reads, which the service role would otherwise let reach every row. The browser bundle never talks to it: the browser and the publisher meet only in the database, where RLS decides what the browser sees of the rows the publisher wrote.
 
-<!-- diagram: system-context-backend-guards -->
+<!-- diagram: system-context-publisher -->
 ```mermaid
-flowchart TD
-    start["run_server()<br/>BRAIN_SERVER_HOST default 127.0.0.1,<br/>BRAIN_SERVER_PORT default 9200,<br/>CLI port and --host override"]
-    bindQ{"host is loopback<br/>or BRAIN_API_TOKEN set?"}
-    refuse["log error, SystemExit(2)"]
-    listen["BrainHTTPServer serve_forever<br/>warning if token shorter than 32 chars,<br/>30 s socket timeout per connection,<br/>SECURITY_HEADERS on every response,<br/>NVIDIA key router and rate limiter built at start"]
-    start --> bindQ
-    bindQ -->|"no"| refuse
-    bindQ -->|"yes"| listen
+flowchart LR
+    subgraph op["Operator machine"]
+        files[("Text and Markdown files")]
+        env[("tools/library-publisher/.env<br/>SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,<br/>PUBLISHER_MODEL_DIR, optional LLM_*")]
+        pub["python -m publisher<br/>publish, backfill, list, test-query,<br/>health, fetch-model<br/>no listener"]
+        model[("Pinned model files<br/>multilingual-e5-small q8")]
+    end
+    subgraph supa["Supabase project"]
+        rest["PostgREST /rest/v1"]
+        rows[("knowledge_documents, knowledge_sections<br/>embedding_384")]
+    end
+    hf["Hugging Face<br/>pinned revision"]
+    llm["Optional chat model<br/>LLM_BASE_URL, publish --structure only"]
+    tab["Browser tab<br/>anon key and anonymous session, RLS"]
 
-    proxyQ{"no token and Forwarded, X-Forwarded-For,<br/>X-Forwarded-Host, X-Forwarded-Proto<br/>or X-Real-IP present?"}
-    r401p["401 api_token_required_behind_proxy"]
-    originQ{"Origin present and not in<br/>BRAIN_ALLOWED_ORIGINS?"}
-    r403o["403 origin_not_allowed"]
-    hostQ{"no token and Host<br/>not loopback?"}
-    r403h["403 host_not_allowed<br/>DNS rebinding guard"]
-    listen -->|"_dispatch then _route"| proxyQ
-    proxyQ -->|"yes"| r401p
-    proxyQ -->|"no"| originQ
-    originQ -->|"yes"| r403o
-    originQ -->|"no"| hostQ
-    hostQ -->|"yes"| r403h
-    hostQ -->|"no"| routeQ
+    files --> pub
+    env --> pub
+    model --> pub
+    hf -.->|"fetch-model, SHA-256 checked"| model
+    pub -.->|"--structure"| llm
+    pub -->|"service_role key: rpc ingest_document_atomic,<br/>PATCH is_public and embedding_384,<br/>reads limited to is_public or no owner"| rest
+    rest --> rows
+    tab -->|"search_knowledge, match_knowledge_vector_384,<br/>public and own rows only"| rest
 
-    routeQ{"path in ROUTES?"}
-    r404["404 not_found"]
-    optQ{"method OPTIONS?"}
-    pre["204 with CORS preflight headers<br/>for an allowed Origin, else Allow only"]
-    methQ{"method listed<br/>for this path?"}
-    r405["405 method_not_allowed"]
-    protQ{"which path?"}
-    health["_handle_health<br/>status, supabase_live"]
-    routeQ -->|"no"| r404
-    routeQ -->|"yes"| optQ
-    optQ -->|"yes"| pre
-    optQ -->|"no"| methQ
-    methQ -->|"no"| r405
-    methQ -->|"yes"| protQ
-    protQ -->|"/api/health"| health
-    protQ -->|"/api/brain/*"| bearerQ
-
-    bearerQ{"token unset, or Bearer matches<br/>via hmac.compare_digest?"}
-    r401["401 unauthorized<br/>WWW-Authenticate Bearer"]
-    docs["_handle_documents<br/>db.list_documents()"]
-    body{"_read_json_object and _string_field<br/>ok for ingest or query?"}
-    r4xx["411 length_required, 413 payload_too_large,<br/>415 unsupported_media_type, 408 request_timeout,<br/>400 invalid_content_length, incomplete_body,<br/>invalid_json, json_body_must_be_object, invalid_field"]
-    handlers["_handle_ingest: ingest_raw_information<br/>_handle_query: query_brain, no retrieval when<br/>Supabase is live but only a hash vector exists,<br/>context returned as llm_unavailable if no model answers"]
-    bearerQ -->|"no"| r401
-    bearerQ -->|"yes: GET documents"| docs
-    bearerQ -->|"yes: POST ingest or query"| body
-    body -->|"no"| r4xx
-    body -->|"yes"| handlers
-
-    nvModels["_handle_nvidia_models<br/>public allowlist and configured,<br/>never keys or a key count"]
-    nvCaller{"_check_nvidia_caller:<br/>an Origin in BRAIN_ALLOWED_ORIGINS<br/>or the Bearer token?"}
-    r403n["403 origin_required"]
-    nvChat["_handle_nvidia_chat: rate limit per client,<br/>keys configured, body at most 256 KiB,<br/>validate_chat_request, open_stream with<br/>failover before the first byte, SSE relayed"]
-    r4n["429 rate_limited, 503 nvidia_not_configured,<br/>400, 411, 413, 415 body and field errors,<br/>502, 503 or 504 when no key delivers a stream"]
-    protQ -->|"GET /api/models/nvidia"| nvModels
-    protQ -->|"POST /api/chat/nvidia"| nvCaller
-    nvCaller -->|"no"| r403n
-    nvCaller -->|"yes"| nvChat
-    nvChat -->|"refused"| r4n
-
-    supa["Supabase /rest/v1 with service_role key<br/>bypasses RLS, so reads filter to<br/>is_public or owner_id null"]
-    mem[("in-memory store<br/>_local_docs, _local_sections<br/>used when not db.is_live<br/>or the Supabase call fails")]
-    upstream["EMBEDDING_BASE_URL: section and query embeddings<br/>LLM_BASE_URL: structuring on ingest<br/>answers: Gemini key pool, then OpenRouter<br/>key pool, then LLM_BASE_URL"]
-    nvUp["NVIDIA API, Bearer key from NVIDIA_API_KEYS,<br/>upstream body never read on errors or echoed"]
-    docs -->|"select newest 200,<br/>is_public or no owner"| supa
-    handlers -->|"insert, rollback delete,<br/>rpc match_knowledge_sections, then<br/>_visible_matches drops private documents"| supa
-    handlers -->|"structure, embed, answer"| upstream
-    nvChat -->|"validated body, stream true"| nvUp
-    docs -.-> mem
-    handlers -.-> mem
-    r500["500 internal_error"]
-    handlers -.->|"unhandled exception"| r500
+    classDef external stroke-dasharray: 5 5
+    class hf,llm external
 ```
 
-<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/rag.py`](../backend/core/rag.py), [`backend/core/ingestion_pipeline.py`](../backend/core/ingestion_pipeline.py), [`backend/core/structurer.py`](../backend/core/structurer.py), [`backend/core/embeddings.py`](../backend/core/embeddings.py)</sub>
+<sub>Sources: [`tools/library-publisher/publisher/cli_supabase.py`](../tools/library-publisher/publisher/cli_supabase.py), [`tools/library-publisher/publisher/config.py`](../tools/library-publisher/publisher/config.py), [`tools/library-publisher/publisher/supabase_service.py`](../tools/library-publisher/publisher/supabase_service.py), [`tools/library-publisher/publisher/model_files.py`](../tools/library-publisher/publisher/model_files.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
 
 ### Frontend import graph (1 of 4): main.js and its application imports
 
@@ -5196,6 +5136,7 @@ erDiagram
         vector embedding "vector(1536), nullable, HNSW cosine m 16 ef_construction 64"
         timestamptz created_at "not null, default now()"
         tsvector fts "generated stored, german heading markdown_content, GIN"
+        vector embedding_384 "vector(384), nullable, multilingual-e5-small, HNSW cosine"
     }
     knowledge_entities {
         uuid id PK "default gen_random_uuid()"
@@ -5270,7 +5211,7 @@ flowchart TD
     req["Request on knowledge_documents,<br/>knowledge_entities or knowledge_relations"]
     role{"Database role?"}
     req --> role
-    role -->|"service_role, backend key"| svc["RLS bypassed, select, insert, update, delete<br/>on every row, only role that can publish<br/>or unpublish (is_public), size CHECKs still apply"]
+    role -->|"service_role, library publisher key"| svc["RLS bypassed, select, insert, update, delete<br/>on every row, only role that can publish<br/>or unpublish (is_public), size CHECKs still apply"]
     role -->|"anon, no session"| anonOp{"Operation?"}
     role -->|"authenticated, anonymous sign-in"| authOp{"Operation?"}
 
@@ -5303,7 +5244,7 @@ flowchart TD
 
     names["Policy names are the table name plus<br/>_select_public_or_own, _insert_own,<br/>_update_own and _delete_own"]
     lock["Published-row lock, 20260924000000_lock_published_rows<br/>added and not is_public to the update and delete USING,<br/>before that owners could still change published rows.<br/>Re-running 20260923000000 alone restores the old policies"]
-    brainApi["Brain API, backend/core/supabase_client.py:<br/>document list and match_knowledge_sections results<br/>filtered to is_public or owner_id null (VISIBLE_ROWS),<br/>supabase_service.py for the command line does not filter"]
+    brainApi["Library publisher, tools/library-publisher supabase_service.py:<br/>document list, backfill and vector matches<br/>limited to is_public or owner_id null (SHARED_ROWS)"]
     names -.- role
     lock -.- usingChk
     svc -.- brainApi
@@ -5370,7 +5311,7 @@ flowchart TD
 
 ### RPC EXECUTE grants and size limits
 
-All four RPCs run as SECURITY INVOKER with an empty search_path, so the caller's RLS decides which rows they return or write. full_schema.sql and 20260923000000 drop every overload of the four names before they create them; 20260924120000 replaces search_knowledge in place with create or replace, keeps its signature and applies the same revoke and grant again. search_knowledge is executable by anon, authenticated and service_role, match_knowledge_sections and match_knowledge_hybrid by authenticated and service_role, and ingest_document_atomic by service_role only. Any other call fails with 42501. CHECK constraints bound the text and JSON columns the browser can write. The _max_length and _max_size constraints are added NOT VALID, so they apply to new and updated rows of every role, while legacy rows are not scanned.
+All five RPCs run as SECURITY INVOKER with an empty search_path, so the caller's RLS decides which rows they return or write. full_schema.sql drops every overload of the five names before it creates them, 20260923000000 those of the first four; 20260924120000 replaces search_knowledge in place with create or replace, keeps its signature and applies the same revoke and grant again, and the optional 20261101000000 does the same for ingest_document_atomic (which then also stores embedding_384) and creates match_knowledge_vector_384. search_knowledge and match_knowledge_vector_384 are executable by anon, authenticated and service_role, match_knowledge_sections and match_knowledge_hybrid by authenticated and service_role, and ingest_document_atomic by service_role only. Any other call fails with 42501. CHECK constraints bound the text and JSON columns the browser can write. The _max_length and _max_size constraints are added NOT VALID, so they apply to new and updated rows of every role, while legacy rows are not scanned.
 
 <!-- diagram: rls-access-functions-limits -->
 ```mermaid
@@ -5383,22 +5324,27 @@ flowchart TD
         sk["search_knowledge<br/>(query_text, match_count default 6)<br/>German full text, rows with every term first,<br/>else rows sharing at least two terms or the only one,<br/>match_count clamped to 1 to 20,<br/>blank or null query returns none"]
         mks["match_knowledge_sections<br/>(query_embedding, match_threshold default 0.25,<br/>match_count default 5)<br/>vector search, 1 to 50 rows"]
         mkh["match_knowledge_hybrid<br/>(query_text, query_embedding,<br/>match_count default 5, rrf_k default 60)<br/>RRF of top 25 vector and top 25 full-text ranks,<br/>1 to 50 rows"]
-        ing["ingest_document_atomic<br/>(doc_title, doc_summary, doc_tags,<br/>doc_source_type, doc_source_name,<br/>doc_raw_content, sections_data)<br/>new document is private, owner_id null,<br/>22023 if sections_data is not a JSON array"]
+        mkv["match_knowledge_vector_384, optional migration<br/>(query_embedding, match_count default 6,<br/>match_threshold default 0)<br/>cosine ranking on embedding_384, 1 to 20 rows,<br/>null query returns none, other dimensions 22023"]
+        ing["ingest_document_atomic<br/>(doc_title, doc_summary, doc_tags,<br/>doc_source_type, doc_source_name,<br/>doc_raw_content, sections_data)<br/>new document is private, owner_id null,<br/>embedding and embedding_384 per section optional,<br/>22023 if sections_data is not a JSON array"]
     end
 
     anon --> sk
+    anon --> mkv
     authn --> sk
     authn --> mks
     authn --> mkh
+    authn --> mkv
     svc --> sk
     svc --> mks
     svc --> mkh
+    svc --> mkv
     svc --> ing
 
-    invoker["Runs as the caller, so table RLS<br/>limits rows to what the caller can see,<br/>service_role bypasses RLS.<br/>full_schema.sql and 20260923000000 drop every overload<br/>before create, so no older SECURITY DEFINER variant stays.<br/>20260924120000 uses create or replace, same signature"]
+    invoker["Runs as the caller, so table RLS<br/>limits rows to what the caller can see,<br/>service_role bypasses RLS.<br/>full_schema.sql and 20260923000000 drop every overload<br/>before create, so no older SECURITY DEFINER variant stays.<br/>20260924120000 and 20261101000000 use<br/>create or replace, same signatures"]
     sk -.- invoker
     mks -.- invoker
     mkh -.- invoker
+    mkv -.- invoker
     ing -.- invoker
     denied["EXECUTE revoked from PUBLIC,<br/>so every call without a grant fails with 42501"]
     anon -.->|"match_knowledge_sections,<br/>match_knowledge_hybrid,<br/>ingest_document_atomic"| denied
@@ -5460,7 +5406,7 @@ flowchart TD
 
 ### Migration apply order and guards
 
-A new project gets full_schema.sql, an existing database gets every migrations/*.sql file in file-name order (three files), either by hand or through apply_migration.py (no argument means full_schema.sql, --migrations stops at the first failed file, exit 2 for setup errors and exit 1 for SQL errors). Each SQL file is its own transaction whose preconditions raise an exception and roll back only that file: full_schema.sql refuses a pre-hardening schema, 20260923000000 refuses a database without the Starpi tables, 20260924000000 refuses to run before 20260923000000 (missing owner_id / is_public or tables), and 20260924120000 refuses a database without search_knowledge(text, integer), knowledge_sections or knowledge_documents; it does not check that 20260924000000 ran. All files are idempotent, but re-running 20260923000000 on its own drops the 20260924000000 policies, opens brain_settings to anon and authenticated for reading again and puts back the older search_knowledge that only returns full matches, so the whole set is always re-run. The last migration ends with commit and, unlike the other files, sends no notify pgrst.
+A new project gets full_schema.sql, an existing database gets every migrations/*.sql file in file-name order (four files, the last one optional), either by hand or through apply_migration.py (no argument means full_schema.sql, --migrations stops at the first failed file, exit 2 for setup errors and exit 1 for SQL errors). Each SQL file is its own transaction whose preconditions raise an exception and roll back only that file: full_schema.sql refuses a pre-hardening schema, 20260923000000 refuses a database without the Starpi tables, 20260924000000 refuses to run before 20260923000000 (missing owner_id / is_public or tables), and 20260924120000 refuses a database without search_knowledge(text, integer), knowledge_sections or knowledge_documents; it does not check that 20260924000000 ran. 20261101000000 refuses a database without the hardened knowledge tables, search_knowledge and ingest_document_atomic. All files are idempotent, but re-running 20260923000000 on its own drops the 20260924000000 policies, opens brain_settings to anon and authenticated for reading again and puts back the older search_knowledge that only returns full matches, so the whole set is always re-run. The last migration ends with commit and, unlike the other files, sends no notify pgrst.
 
 <!-- diagram: migrations-tests-apply-order -->
 ```mermaid
@@ -5480,7 +5426,7 @@ flowchart TD
         fs0["create extension if not exists vector with schema public"]
         fs1{"vector in schema public and<br/>auth.users, auth.uid() present?"}
         fs2{"knowledge_documents, knowledge_entities,<br/>knowledge_relations or chat_history<br/>exists without owner_id?"}
-        fs3["create table if not exists, 16 size CHECKs NOT VALID<br/>only if the name is new, create index if not exists,<br/>drop every policy, create the 19 policies,<br/>drop every RPC overload and recreate SECURITY INVOKER,<br/>search_knowledge as in 20260924120000,<br/>revoke all, then grant per role"]
+        fs3["create table if not exists, 16 size CHECKs NOT VALID<br/>only if the name is new, create index if not exists,<br/>drop every policy, create the 19 policies,<br/>drop every RPC overload and recreate SECURITY INVOKER,<br/>search_knowledge as in 20260924120000,<br/>embedding_384, its index and match_knowledge_vector_384<br/>as in 20261101000000, revoke all, then grant per role"]
     end
     fs0 --> fs1
     fs1 -->|"yes"| fs2
@@ -5513,11 +5459,19 @@ flowchart TD
     m2d -->|"notify pgrst, commit,<br/>then the next file in file-name order"| m3a
     m3a -->|"yes"| m3b
 
+    subgraph sg_m4["20261101000000_embedding_384.sql, optional, one transaction, lock_timeout 15s"]
+        m4a{"knowledge tables with owner_id and is_public,<br/>search_knowledge and<br/>ingest_document_atomic exist?"}
+        m4b["add column if not exists embedding_384 vector(384),<br/>column comment, HNSW cosine index if not exists,<br/>create or replace match_knowledge_vector_384,<br/>EXECUTE for anon, authenticated, service_role,<br/>create or replace ingest_document_atomic with embedding_384"]
+    end
+    m3b -->|"commit, then the next file in file-name order"| m4a
+    m4a -->|"yes"| m4b
+
     abortVec["raise exception: vector extension not in public<br/>or not a Supabase database"]
     abortOld["raise exception: older Starpi schema,<br/>apply migrations/ in file-name order instead"]
     abortFresh["raise exception: Starpi tables not found,<br/>use full_schema.sql for a fresh install"]
     abortOrder["raise exception: apply<br/>20260923000000_harden_rls_anonymous_auth.sql first"]
     abortSearch["raise exception: public.search_knowledge not found,<br/>apply 20260923000000 and 20260924000000 first"]
+    abortSchema["raise exception: Starpi knowledge schema not found,<br/>apply the three earlier migrations first"]
     rollback(["That file's transaction is rolled back: nothing from it<br/>is committed, files applied before it stay committed"])
     fs1 -->|"no"| abortVec
     m1a -->|"no"| abortVec
@@ -5525,16 +5479,20 @@ flowchart TD
     m1b -->|"no"| abortFresh
     m2a -->|"no"| abortOrder
     m3a -->|"no"| abortSearch
+    m4a -->|"no"| abortSchema
     abortVec --> rollback
     abortOld --> rollback
     abortFresh --> rollback
     abortOrder --> rollback
     abortSearch --> rollback
+    abortSchema --> rollback
 
     fsDone(["notify pgrst, reload schema, then commit<br/>running all migrations afterwards changes nothing"])
     m3Done(["commit, this file sends no notify pgrst"])
     fs3 --> fsDone
     m3b --> m3Done
+    m4Done(["notify pgrst, reload schema, then commit"])
+    m4b --> m4Done
     rerun["Re-running 20260923000000 alone drops the 20260924000000 policies,<br/>restores brain_settings_select_all with the SELECT grant to anon<br/>and authenticated, and the full-match-only search_knowledge:<br/>always re-run the whole set"]
     rerun -.- m1e
 ```
@@ -5543,7 +5501,7 @@ flowchart TD
 
 ### run_rls_tests.sh scenarios and assertions
 
-run_rls_tests.sh starts a throwaway PostgreSQL cluster on a Unix socket, loads stub_supabase.sql into one database per scenario and runs its steps in order; the first failing step fails that scenario. A migrations step applies every migrations/*.sql file in file-name order, today the three files. The upgrade scenarios (live, legacy_v2, legacy_v1) apply all migrations twice to prove idempotency, the fresh scenarios cover full_schema.sql via apply_migration.py and a schema.sql plus full_schema.sql re-run, and the guard scenarios pass only when full_schema.sql or 20260924000000 fails on the live shape; no scenario runs 20260924120000 alone against a database that lacks search_knowledge. Finally pg_dump output of live, fresh and fresh_rerun must be identical, so full_schema.sql has to carry the same search_knowledge as the migration; any failed group exits 1, setup problems exit 2, and the work directory is removed unless PGTEST_KEEP=1.
+run_rls_tests.sh starts a throwaway PostgreSQL cluster on a Unix socket, loads stub_supabase.sql into one database per scenario and runs its steps in order; the first failing step fails that scenario. A migrations step applies every migrations/*.sql file in file-name order, today the four files. The upgrade scenarios (live, legacy_v2, legacy_v1) apply all migrations twice to prove idempotency, the fresh scenarios cover full_schema.sql via apply_migration.py and a schema.sql plus full_schema.sql re-run, and the guard scenarios pass only when full_schema.sql, 20260924000000 or 20261101000000 fails on the live shape; no scenario runs 20260924120000 alone against a database that lacks search_knowledge. Finally pg_dump output of live, fresh and fresh_rerun must be identical, so full_schema.sql has to carry the same search_knowledge, embedding_384 column, index and functions as the migrations; any failed group exits 1, setup problems exit 2, and the work directory is removed unless PGTEST_KEEP=1.
 
 <!-- diagram: migrations-tests-rls-harness -->
 ```mermaid
@@ -5570,6 +5528,7 @@ flowchart TD
     subgraph sg_guard["Guards, expect-fail steps"]
         guard["guard: live_shape.sql,<br/>then full_schema.sql must fail"]
         guardOrder["guard_order: live_shape.sql,<br/>then 20260924000000_lock_published_rows.sql must fail"]
+        guardVectors["guard_vectors: live_shape.sql,<br/>then 20261101000000_embedding_384.sql must fail"]
     end
     scen --> live
     scen --> v2
@@ -5578,9 +5537,10 @@ flowchart TD
     scen --> rerunS
     scen --> guard
     scen --> guardOrder
+    scen --> guardVectors
 
     aIdem["Second migrations run succeeds on the upgraded schema:<br/>idempotent on the live shape and both earlier schema versions"]
-    aRls["rls_test.sql: 191 checks, 198 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback"]
+    aRls["rls_test.sql: 220 checks, 227 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback<br/>and match_knowledge_vector_384"]
     aPost["post_rerun_check.sql, 13 checks: a further migrations run keeps<br/>ownership, visibility, chat rows, the published-row lock,<br/>size limits and brain_settings closed to A and anon"]
     aGuard["Step passes only when psql exits non-zero:<br/>pre-hardening database refused, order enforced"]
     aFreshRerun["full_schema.sql re-runs cleanly on a database it created"]
@@ -5596,6 +5556,7 @@ flowchart TD
     rerunS --> aFreshRerun
     guard --> aGuard
     guardOrder --> aGuard
+    guardVectors --> aGuard
 
     parity{"pg_dump --schema-only --schema=public of starpi_live,<br/>starpi_fresh, starpi_fresh_rerun, restrict lines removed:<br/>diff -u live vs fresh and fresh vs fresh_rerun empty?"}
     live --> parity
@@ -5619,7 +5580,7 @@ flowchart TD
 
 ### What rls_test.sql asserts, in order
 
-rls_test.sql runs as superuser, service_role, anon and two anonymous users A and B, switching roles the way PostgREST does, and stops at the first failing check. It checks the catalog (policies, constraints, RPC security, privilege matrices), then tenant isolation in both directions, per-column size limits (SQLSTATE 23514) and permission errors (42501). As anon it also checks how search_knowledge ranks, including the fallback to rows that share terms with a question. It also checks that published rows are read-only for their owner, and the cascade and auth-user deletion paths. With legacy=true it adds 7 checks on rows that existed before the migration (198 instead of 191 checks).
+rls_test.sql runs as superuser, service_role, anon and two anonymous users A and B, switching roles the way PostgREST does, and stops at the first failing check. It checks the catalog (policies, constraints, RPC security, privilege matrices), then tenant isolation in both directions, per-column size limits (SQLSTATE 23514) and permission errors (42501). As anon it also checks how search_knowledge ranks, including the fallback to rows that share terms with a question. It also checks that published rows are read-only for their owner, and the cascade and auth-user deletion paths. Then it checks the 384-dimension vectors: the column and its index, match_knowledge_vector_384 for every role and ingest_document_atomic with embedding_384. With legacy=true it adds 7 checks on rows that existed before the migration (227 instead of 220 checks).
 
 <!-- diagram: migrations-tests-rls-assertions -->
 ```mermaid
@@ -5636,6 +5597,7 @@ flowchart TD
     anonSearch["anon, search_knowledge: denser German match first, ranks descending,<br/>websearch AND, OR, phrases and stemming,<br/>a question without a full match returns the rows sharing two terms,<br/>English function words do not count, one shared term of several gives none,<br/>fallback hides private rows, a full match wins over more shared terms,<br/>shared terms spread over a sectioned document give no document hit,<br/>shared terms of a document without sections return that document,<br/>a document without sections is a hit with null section fields,<br/>private service and user documents hidden, empty, blank or null query gives none,<br/>match_count default 6, capped at 20, below 1 gives 1 row"]
     legacyAnon["legacy=true: anon finds the legacy public document"]
     anonExec["anon: no EXECUTE on ingest_document_atomic,<br/>match_knowledge_sections or match_knowledge_hybrid"]
+    vectors["384-dimension vectors: embedding_384 is a nullable vector(384) with an HNSW cosine index,<br/>match_knowledge_vector_384 SECURITY INVOKER, EXECUTE for anon, authenticated, service_role, not PUBLIC,<br/>ingest_document_atomic stores embedding_384, an empty array stores null,<br/>another length fails with 22000 and stores nothing,<br/>A and B rank public and own sections only, never each other's or ownerless rows,<br/>A cannot change embedding_384 of a published section, anon cannot write it,<br/>anon: ranked by similarity, match_threshold filters, match_count clamped to 1 and 20,<br/>null query gives none, another dimension fails with 22023,<br/>service_role reaches every row, test documents removed"]
     publish["Publishing: service_role publishes the ingested document,<br/>its sections become visible to anon and to A's vector search,<br/>A deletes own session and own draft document"]
     locked["Published rows read-only for the owner: A edits own private section,<br/>entity and relation, service_role publishes them, then A cannot update,<br/>unpublish or delete own published document, entity or relation,<br/>and cannot add, update, move or delete sections of the published document"]
     cascade["Cleanup: deleting a document cascades to its sections,<br/>deleting an auth user removes their chat rows<br/>and leaves their knowledge rows private without owner"]
@@ -5647,7 +5609,7 @@ flowchart TD
     service --> userA --> userB --> aVsB --> anon --> anonSearch
     anonSearch -.->|"legacy=true"| legacyAnon
     legacyAnon -.-> anonExec
-    anonSearch --> anonExec --> publish --> locked --> cascade --> notice
+    anonSearch --> anonExec --> vectors --> publish --> locked --> cascade --> notice
 ```
 
 <sub>Sources: [`backend/supabase/tests/rls_test.sql`](../backend/supabase/tests/rls_test.sql), [`backend/supabase/tests/post_rerun_check.sql`](../backend/supabase/tests/post_rerun_check.sql)</sub>
@@ -5916,67 +5878,57 @@ flowchart LR
 
 <sub>Sources: [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/config.js`](../src/js/config.js), [`src/js/state.js`](../src/js/state.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`api/_lib/guards.js`](../api/_lib/guards.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`api/_lib/nvidia-request.js`](../api/_lib/nvidia-request.js), [`src/sw.js`](../src/sw.js), [`vercel.json`](../vercel.json), [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`scripts/lib/build-version.mjs`](../scripts/lib/build-version.mjs), [`src/locales/en.json`](../src/locales/en.json), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql), [`backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql`](../backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`package.json`](../package.json), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)</sub>
 
-### Backend API guards, backend secrets and CI supply chain
+### Publisher secrets, service role reads and CI supply chain
 
-The Python backend holds the service role key, so server.py binds to 127.0.0.1 unless BRAIN_API_TOKEN is set and then requires a Bearer token for /api/brain/*; without a token it refuses proxy headers and non-loopback Host headers, and it always rejects origins outside BRAIN_ALLOWED_ORIGINS. Request bodies are bounded (Content-Length required, 1 MiB default and 256 KiB on the NVIDIA chat route, JSON only, 30 s timeout, per-field character limits) and every response carries restrictive headers and generic errors. The NVIDIA chat route spends a shared key pool, so it needs an allowed Origin or the Bearer token, counts requests per client address (the right-most X-Forwarded-For hop only behind the local reverse proxy that a token implies) and validates with the same rules and shared test vectors as the Vercel functions. The service role bypasses RLS, so core/supabase_client.py returns only rows an anonymous visitor may see anyway, published rows and rows the backend wrote itself (no owner): list_documents filters with VISIBLE_ROWS, and vector matches from match_knowledge_sections are kept only for documents that pass the same filter. The operator command line (core/cli_supabase.py through core/supabase_service.py) reads without this filter and is not reachable through the API. Secrets, NVIDIA_API_KEYS included, come only from the process environment or the .env file that core/config.py loads itself (backend/.env, else the repository root; the environment wins, and within the file the last assignment wins) and never appear in repr, and CI scans the tree and pull-request commits with a checksum-verified gitleaks, whose custom rule starpi-nvidia-api-key also finds NVIDIA keys pasted with Markdown escapes (a unit test scans every tracked file with the same pattern), and audits the dependencies (npm audit fails on any advisory in a runtime dependency, pip-audit on any advisory in the backend requirements) and writes CycloneDX SBOMs of the app and of @starpi/core from the lockfile while running with read-only permissions, SHA-pinned actions and npm ci --ignore-scripts. In release.yml the prepare job, which installs dependencies and packs @starpi/core, runs with read-only permissions too; only the release job, which installs and runs nothing from the repository and checks SHA256SUMS before it attaches the assets, gets contents write, and it runs after CI has passed on a push to main or when started by hand on main, always for the version in package.json (a manual run takes no inputs).
+The library publisher is the only component that holds the service role key, and it is a command line tool on a machine the operator controls: it opens no port and takes no requests. publisher/config.py reads the key only from SUPABASE_SERVICE_ROLE_KEY, never the anon key, from the process environment or tools/library-publisher/.env (the environment wins, and within the file the last assignment wins), and keeps it out of repr. Because the service role bypasses RLS, every read of the publisher is limited to the shared library, published rows and rows without an owner (SHARED_ROWS): list_documents, the sections that backfill embeds and the matches that test-query prints; private rows of browser sessions never leave the database through it. Errors name the HTTP status and the PostgREST code, never the key or a URL with its query. The model files are pinned by revision, size and SHA-256 and checked before every load, so a replaced file never writes vectors into the shared library. CI scans the tree and pull-request commits with a checksum-verified gitleaks, whose custom rule starpi-nvidia-api-key also finds NVIDIA keys pasted with Markdown escapes (a unit test scans every tracked file with the same pattern), and audits the dependencies (npm audit fails on any advisory in a runtime dependency, pip-audit on any advisory in the publisher's requirements, which backend/requirements-dev.txt includes) and writes CycloneDX SBOMs of the app and of @starpi/core from the lockfile while running with read-only permissions, SHA-pinned actions and npm ci --ignore-scripts. In release.yml the prepare job, which installs dependencies and packs @starpi/core, runs with read-only permissions too; only the release job, which installs and runs nothing from the repository and checks SHA256SUMS before it attaches the assets, gets contents write, and it runs after CI has passed on a push to main or when started by hand on main, always for the version in package.json (a manual run takes no inputs).
 
 <!-- diagram: security-layers-backend-ci -->
 ```mermaid
 flowchart LR
     subgraph sg_in["Untrusted input"]
-        iReq["HTTP requests to the brain API<br/>/api/health, /api/brain/documents,<br/>/api/brain/ingest, /api/brain/query,<br/>/api/models/nvidia, /api/chat/nvidia"]
-        iSecret["Backend secrets<br/>SUPABASE_SERVICE_ROLE_KEY, BRAIN_API_TOKEN,<br/>LLM, embedding and provider keys, NVIDIA_API_KEYS"]
+        iFiles["Files handed to the publisher,<br/>replies of an optional chat model"]
+        iModel["Model files from Hugging Face"]
+        iSecret["Publisher secrets<br/>SUPABASE_SERVICE_ROLE_KEY, LLM_API_KEY"]
         iRepo["Commits, pull requests,<br/>npm and pip dependencies"]
     end
 
     subgraph sg_ctl["Controls"]
-        cBind["server.py run_server: binds 127.0.0.1 by default,<br/>refuses a non-loopback address without BRAIN_API_TOKEN, exit 2,<br/>warns when the token is shorter than 32 characters"]
-        cProxy["_check_proxy_headers, only without a token:<br/>Forwarded, X-Forwarded-For, X-Forwarded-Host,<br/>X-Forwarded-Proto or X-Real-IP present: 401"]
-        cOrigin["Origin header not in BRAIN_ALLOWED_ORIGINS: 403,<br/>Access-Control-Allow-Origin only for allowed origins"]
-        cHost["_check_host, only without a token:<br/>Host header that is not loopback: 403"]
-        cAuth["_check_auth for /api/brain/* when a token is set:<br/>Authorization Bearer checked with hmac.compare_digest, else 401"]
-        cBody["_read_json_object: Transfer-Encoding or no Content-Length 411,<br/>invalid or repeated Content-Length 400, above BRAIN_MAX_BODY_BYTES<br/>default 1 MiB, 256 KiB for /api/chat/nvidia, 413, not application/json 415,<br/>stalled body 408 after 30 s, BOM ignored, NaN and Infinity refused<br/>fields: text 200000, query 4000, source_name 256, source_type 64 characters"]
-        cNvidia["NVIDIA chat route: _check_nvidia_caller, an Origin in<br/>BRAIN_ALLOWED_ORIGINS or the Bearer token, else 403,<br/>RateLimiter per client, NVIDIA_RATE_LIMIT_PER_MINUTE,<br/>validate_chat_request: allowlist and size limits,<br/>upstream bodies never read on errors, keys logged by index"]
-        cResp["Every response: nosniff, Cache-Control no-store,<br/>Referrer-Policy no-referrer, CSP default-src none,<br/>unhandled errors return a generic 500 internal_error,<br/>request log without headers or query string"]
-        cVisible["core/supabase_client.py VISIBLE_ROWS<br/>is_public true or owner_id null:<br/>list_documents filtered, match_knowledge_sections<br/>matches kept only for such documents,<br/>a failed lookup falls back to the in-memory search"]
-        cCfg["core/config.py BrainConfig: read from the process environment,<br/>which wins over backend/.env (else the root .env)<br/>loaded at import, last assignment in the file wins,<br/>service role key only from SUPABASE_SERVICE_ROLE_KEY,<br/>never the anon key, secret fields excluded from repr"]
+        cCli["Command line only: no listener,<br/>run on a machine the operator controls"]
+        cSource["read_source: .md or .txt, UTF-8, not empty,<br/>at most 200000 characters, file name only<br/>as source_name, fields clipped to the CHECK limits"]
+        cStruct["--structure is opt-in: without it the text is stored<br/>as written; a reply without Markdown or JSON<br/>falls back to the original text"]
+        cPins["model_files.py: revision, size and SHA-256 pinned,<br/>download to a .part file, renamed only after<br/>both match, every load_embedder checks again"]
+        cShared["supabase_service.py SHARED_ROWS<br/>is_public true or owner_id null:<br/>list, backfill and test-query never read<br/>private rows of browser sessions"]
+        cAtomic["ingest_document_atomic: document and sections<br/>in one transaction, new documents private<br/>until publish --public"]
+        cCfg["publisher/config.py PublisherConfig: the process environment<br/>wins over tools/library-publisher/.env,<br/>service role key only from SUPABASE_SERVICE_ROLE_KEY,<br/>never the anon key, secret fields excluded from repr,<br/>errors carry status and code, never the key"]
         cLeaks["CI job secrets: gitleaks 8.30.1, sha256 verified,<br/>scans the working tree and the commits of a pull request,<br/>custom rule starpi-nvidia-api-key, escaped keys too,<br/>nvidia-catalog.test.mjs scans tracked files with it"]
-        cAudit["CI job audit: npm audit --omit=dev fails on any advisory<br/>in a runtime dependency, pip-audit on<br/>backend/requirements-dev.txt fails on any advisory,<br/>development tooling: warning at high severity only,<br/>npm run sbom: CycloneDX SBOMs, artifact sbom"]
+        cAudit["CI job audit: npm audit --omit=dev fails on any advisory<br/>in a runtime dependency, pip-audit on<br/>backend/requirements-dev.txt, which includes the<br/>publisher requirements, fails on any advisory,<br/>development tooling: warning at high severity only,<br/>npm run sbom: CycloneDX SBOMs, artifact sbom"]
         cSupply["CI and Vercel: permissions contents read,<br/>actions pinned to commit SHAs, persist-credentials false,<br/>npm ci --ignore-scripts"]
         cRelease["release.yml: the prepare job packs @starpi/core and writes<br/>the SBOMs with contents read, smoke-tests the tarball,<br/>contents write for the release job only, which installs<br/>nothing, checks SHA256SUMS and runs gh release create,<br/>after CI succeeded on a push to main or by hand on main,<br/>version always from package.json, no dispatch inputs,<br/>SHA-pinned checkout, persist-credentials false"]
     end
 
     subgraph sg_thr["Threat stopped"]
-        tRemote["Unauthenticated remote use of<br/>the service role backend"]
-        tRebind["Web pages the local user visits calling the API,<br/>DNS rebinding, remote clients forwarded as local"]
-        tAbuse["Oversized, slow or malformed request bodies"]
-        tQuota["Quota abuse of the shared NVIDIA key pool<br/>by other sites or bare scripts"]
-        tInfo["Error details, cached responses<br/>or credentials in logs"]
+        tRemote["Remote use of the service role key"]
+        tAbuse["Oversized or malformed documents<br/>failing inserts half way"]
+        tRewrite["A model silently rewriting<br/>the facts of a source"]
+        tModel["Vectors from a replaced or truncated model<br/>in the shared library"]
         tPrivate["Private rows of browser sessions<br/>read through the service role,<br/>which bypasses RLS"]
         tKeys["Service role or provider keys<br/>in logs or in git history"]
         tSupply["Install scripts, moved action tags,<br/>a persisted token or write access<br/>in jobs that run dependency code"]
-        tVuln["Dependencies with a published advisory<br/>shipped in dist/ or installed for the backend"]
+        tVuln["Dependencies with a published advisory<br/>shipped in dist/ or installed for the publisher"]
         tAsset["A release asset changed after the build,<br/>or dependencies nobody can list"]
     end
 
-    iReq --> cBind
-    iReq --> cProxy
-    iReq --> cOrigin
-    iReq --> cHost
-    iReq --> cAuth
-    iReq --> cBody
-    iReq --> cResp
-    iReq -->|"documents, query"| cVisible
-    iReq -->|"/api/chat/nvidia"| cNvidia
-    cNvidia --> tQuota
-    cBind --> tRemote
-    cAuth --> tRemote
-    cProxy --> tRebind
-    cOrigin --> tRebind
-    cHost --> tRebind
-    cBody --> tAbuse
-    cResp --> tInfo
-    cVisible --> tPrivate
+    iSecret --> cCli
+    cCli --> tRemote
+    iFiles --> cSource
+    iFiles --> cStruct
+    cSource --> tAbuse
+    cAtomic --> tAbuse
+    cStruct --> tRewrite
+    iModel --> cPins
+    cPins --> tModel
+    iFiles --> cAtomic
+    cShared --> tPrivate
     iSecret --> cCfg
     iSecret --> cLeaks
     iRepo --> cLeaks
@@ -5990,441 +5942,139 @@ flowchart LR
     cRelease --> tSupply
     cRelease --> tAsset
     cAudit --> tAsset
+    cCfg -.-> cShared
 ```
 
-<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/supabase_service.py`](../backend/core/supabase_service.py), [`backend/core/cli_supabase.py`](../backend/core/cli_supabase.py), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`vercel.json`](../vercel.json), [`SECURITY.md`](../SECURITY.md), [`backend/test_server.py`](../backend/test_server.py), [`backend/test_core.py`](../backend/test_core.py), [`backend/test_nvidia.py`](../backend/test_nvidia.py), [`.gitleaks.toml`](../.gitleaks.toml), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>
+<sub>Sources: [`tools/library-publisher/publisher/config.py`](../tools/library-publisher/publisher/config.py), [`tools/library-publisher/publisher/pipeline.py`](../tools/library-publisher/publisher/pipeline.py), [`tools/library-publisher/publisher/structurer.py`](../tools/library-publisher/publisher/structurer.py), [`tools/library-publisher/publisher/model_files.py`](../tools/library-publisher/publisher/model_files.py), [`tools/library-publisher/publisher/supabase_service.py`](../tools/library-publisher/publisher/supabase_service.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`backend/requirements-dev.txt`](../backend/requirements-dev.txt), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`vercel.json`](../vercel.json), [`SECURITY.md`](../SECURITY.md), [`.gitleaks.toml`](../.gitleaks.toml), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>
 
-## 10. Optional backend
+## 10. Library publisher
 
-`backend/` is a dependency-light Python service for server-side ingestion and pgvector retrieval, which can also serve the two NVIDIA proxy routes of the Vercel functions (section 13). It is the only component that holds the service role key, so its request guards fail closed, and because that key bypasses row level security, the document list and vector search of the API filter out private rows themselves.
+`tools/library-publisher/` is a Python command line tool that fills the shared library in Supabase: it splits text and Markdown files into heading-based sections, gives every section a 384-dimensional multilingual-e5-small vector (the model the browser uses for its query vectors) and stores document and sections with the service role key. It replaces the HTTP service of earlier releases: the app never called its /api/brain/* routes, and `node scripts/serve.mjs --functions` serves the app together with the routes of `api/` for hosts without Vercel. The browser reads what the publisher wrote through RLS: keyword search with search_knowledge, and, with the optional migration 20261101000000, vector ranking with match_knowledge_vector_384.
 
-### BrainAPIHandler: guards, routing and error responses
+### Publishing a file: sections, vectors and one atomic insert
 
-Methods without a do_ handler (HEAD, PUT, DELETE and so on) and malformed requests are answered by the send_error override (for example 501 not_implemented) before any guard runs. Every other request passes the guards in a fixed order: without BRAIN_API_TOKEN any of the reverse proxy headers Forwarded, X-Forwarded-For, X-Forwarded-Host, X-Forwarded-Proto or X-Real-IP gives 401 api_token_required_behind_proxy, then an Origin header that is empty or not in BRAIN_ALLOWED_ORIGINS gives 403, then (again only without a token) a non-loopback Host gives 403, and only after that are routes matched (404, OPTIONS preflight, 405 with Allow); Bearer auth with hmac.compare_digest applies to /api/brain/* only when a token is configured, and POST /api/chat/nvidia needs an Origin listed in BRAIN_ALLOWED_ORIGINS or that Bearer token (403 origin_required otherwise). Before an ApiError response the unread body is drained only when its Content-Length is at most 65536 bytes, unexpected exceptions are logged with a traceback and become 500 internal_error if nothing was sent yet, and every response, including the send_error ones, carries nosniff, no-store, no-referrer, a deny-all CSP and Vary Origin. The NVIDIA chat stream is the one response without Content-Length: it is sent as HTTP/1.0 with Connection close and ends when the connection closes.
+publish reads each file (UTF-8 .md, .markdown, .txt or .text, at most 200000 characters), keeps its text as written unless --structure asks the chat model at LLM_BASE_URL for a cleaned-up Markdown version (any failure falls back to the original), derives the title from the first level-1 heading and the summary from the first plain paragraph, splits the Markdown with chunk_markdown and embeds each section as "passage: " plus document title, heading and text. ingest_document_atomic stores the document and all its sections in one transaction, so a failure leaves nothing behind; the new document is private and has no owner until --public publishes it. A file that cannot be read or stored is reported and the next file goes on; the exit status is 1 when any file failed.
 
-<!-- diagram: backend-request-routing -->
+<!-- diagram: publisher-pipeline -->
 ```mermaid
 flowchart TD
-    Req(["HTTP request on a BrainAPIHandler thread<br/>socket timeout 30 s"]) --> HasDo{"do_GET, do_POST or do_OPTIONS<br/>exists for the method?"}
-    HasDo -->|"no, e.g. HEAD, PUT, DELETE,<br/>or a malformed request line or headers"| StdErr["stdlib calls the send_error override<br/>before any guard runs: drains body,<br/>JSON error from the status phrase<br/>e.g. 501 not_implemented, connection closed"]
-    HasDo -->|"yes, _dispatch then _route"| Proxy{"_check_proxy_headers<br/>no BRAIN_API_TOKEN and any of Forwarded,<br/>X-Forwarded-For, X-Forwarded-Host,<br/>X-Forwarded-Proto, X-Real-IP?"}
-    Proxy -->|"yes"| E401P["401 api_token_required_behind_proxy<br/>with WWW-Authenticate Bearer"]
-    Proxy -->|"no"| Orig{"Origin header present and not in allowed_origins?<br/>BRAIN_ALLOWED_ORIGINS, trailing slashes removed, default<br/>http://localhost:3000, http://127.0.0.1:3000,<br/>https://www.starpi.app, https://starpi.app<br/>an empty Origin is not allowed"}
-    Orig -->|"yes"| E403O["403 origin_not_allowed"]
-    Orig -->|"no"| HostC{"_check_host<br/>no token, Host header present and<br/>not localhost or a loopback IP?"}
-    HostC -->|"yes"| E403H["403 host_not_allowed"]
-    HostC -->|"no"| Path{"path without query or fragment<br/>is a key of ROUTES?"}
-    Path -->|"no"| E404["404 not_found"]
-    Path -->|"yes"| IsOpt{"method is OPTIONS?"}
-    IsOpt -->|"yes"| PreO{"_handle_preflight<br/>allowed Origin header?"}
-    PreO -->|"no Origin header"| P204A["204 with Allow"]
-    PreO -->|"yes"| P204B["204 with Access-Control-Allow-Methods,<br/>Access-Control-Allow-Headers Authorization, Content-Type,<br/>Access-Control-Max-Age 600"]
-    IsOpt -->|"no"| MethOk{"method listed for this path?"}
-    MethOk -->|"no"| E405["405 method_not_allowed<br/>with Allow header"]
-    MethOk -->|"yes"| Prot{"path starts with /api/brain/<br/>and BRAIN_API_TOKEN is set?"}
-    Prot -->|"no"| NvPath{"path is /api/chat/nvidia?"}
-    NvPath -->|"no, e.g. /api/health,<br/>/api/models/nvidia"| Handler
-    NvPath -->|"yes"| Caller{"_check_nvidia_caller<br/>Origin in allowed_origins,<br/>or a matching Bearer token?"}
-    Caller -->|"no"| E403N["403 origin_required"]
-    Caller -->|"yes"| Handler
-    Prot -->|"yes"| Bearer{"_check_auth<br/>scheme Bearer, case-insensitive, and<br/>hmac.compare_digest matches the token?"}
-    Bearer -->|"no"| E401["401 unauthorized<br/>with WWW-Authenticate Bearer"]
-    Bearer -->|"yes"| Handler["handler method from ROUTES<br/>_handle_health, _handle_documents,<br/>_handle_ingest, _handle_query,<br/>_handle_nvidia_models, _handle_nvidia_chat"]
-    Handler -->|"returns"| OK["200 JSON body"]
-    Handler -->|"/api/chat/nvidia committed"| Stream["_send_stream_head: 200 text/event-stream,<br/>SECURITY_HEADERS, no-store, X-Accel-Buffering no,<br/>Connection close, no Content-Length,<br/>first chunk, the rest, an SSE error event<br/>when the stream fails, then close"]
-    Handler -->|"raises ApiError<br/>in body or field checks"| AE
-    E401P --> AE
-    E403O --> AE
-    E403H --> AE
-    E404 --> AE
-    E405 --> AE
-    E401 --> AE
-    E403N --> AE
-    AE["_dispatch catches ApiError<br/>_discard_unread_body drains the body only if it is unread<br/>and Content-Length is 1 to 65536 bytes, 1 s timeout<br/>larger bodies are not drained"] --> Send
-    Handler -->|"BrokenPipeError or ConnectionResetError"| Disc["log client disconnected<br/>close connection, no response"]
-    Handler -->|"any other exception"| Started{"logger.exception with traceback,<br/>connection marked to close<br/>response already started?"}
-    Started -->|"no"| E500["500 internal_error"]
-    Started -->|"yes"| Closed["nothing more is sent"]
-    E500 --> Send
-    OK --> Send
-    P204A --> Send
-    P204B --> Send
-    StdErr --> Send
-    Send["_send adds headers to every other response<br/>Content-Type application/json when there is a body<br/>Content-Length except on 204<br/>X-Content-Type-Options nosniff, Cache-Control no-store<br/>Referrer-Policy no-referrer<br/>Content-Security-Policy default-src 'none' and frame-ancestors 'none'<br/>Vary Origin, Access-Control-Allow-Origin for an allowed Origin"]
+    cli(["python -m publisher publish FILE ...<br/>--public, --tag, --structure,<br/>--no-vectors, --dry-run"])
+    cfgQ{"--dry-run, or SUPABASE_URL and<br/>SUPABASE_SERVICE_ROLE_KEY set?"}
+    noCfg["error, exit 1"]
+    modelQ{"--no-vectors, or load_embedder succeeds?<br/>tokenizer.json and onnx/model_quantized.onnx<br/>match their pins, onnxruntime, tokenizers<br/>and numpy installed"}
+    noModel["error with the fetch-model and<br/>--no-vectors hints, exit 1"]
+    readQ{"read_source: supported suffix, UTF-8,<br/>not empty, at most 200000 characters?"}
+    skip["error for this file,<br/>counted, the next file goes on"]
+    structQ{"--structure?"}
+    llm["structure_raw_content<br/>POST LLM_BASE_URL/chat/completions, neutral prompt:<br/>keep every fact, write in the source language<br/>None on any failure, the text is used as written"]
+    derive["title: first level-1 heading, else first line, else file name<br/>summary: first plain paragraph, at most 300 characters<br/>tags: --tag, source_type markdown or text,<br/>source_name: the file name without its directory"]
+    chunk["chunk_markdown: a new section at every heading # to ####<br/>outside code fences, heading text without the markers,<br/>at most 1500 characters, longer text continues<br/>under the same heading, Overview before the first heading"]
+    embed["E5Embedder.embed_passages<br/>passage: + title, heading unless the section starts with it,<br/>section text, one text per model run,<br/>384 finite floats of unit length per section"]
+    dryQ{"--dry-run?"}
+    print["print file, title, sections, vectors"]
+    rpc["POST /rest/v1/rpc/ingest_document_atomic<br/>fields clipped to the CHECK limits,<br/>embedding_384 sent only for 384 finite numbers"]
+    pubQ{"--public?"}
+    patch["PATCH knowledge_documents is_public true,<br/>exactly one row returned"]
+    priv["document private, owner_id null,<br/>hint printed at the end"]
+    fail["SupabaseError: HTTP status and PostgREST code,<br/>never the key, migration hint for<br/>PGRST202, PGRST204, 42703 and 42883"]
+    done(["one JSON line per file,<br/>exit 0, or 1 when a file failed"])
+
+    cli --> cfgQ
+    cfgQ -->|"no"| noCfg
+    cfgQ -->|"yes"| modelQ
+    modelQ -->|"no"| noModel
+    modelQ -->|"yes, for each file"| readQ
+    readQ -->|"no"| skip
+    readQ -->|"yes"| structQ
+    structQ -->|"yes"| llm
+    structQ -->|"no"| derive
+    llm -->|"result or None"| derive
+    derive --> chunk
+    chunk -->|"unless --no-vectors"| embed
+    chunk -->|"--no-vectors"| dryQ
+    embed --> dryQ
+    dryQ -->|"yes"| print
+    dryQ -->|"no"| rpc
+    rpc -->|"new document id"| pubQ
+    rpc -->|"HTTP or network error"| fail
+    pubQ -->|"yes"| patch
+    pubQ -->|"no"| priv
+    patch -->|"error"| fail
+    patch --> done
+    priv --> done
+    print --> done
+    fail --> skip
+    skip --> done
 ```
 
-<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py)</sub>
+<sub>Sources: [`tools/library-publisher/publisher/cli_supabase.py`](../tools/library-publisher/publisher/cli_supabase.py), [`tools/library-publisher/publisher/pipeline.py`](../tools/library-publisher/publisher/pipeline.py), [`tools/library-publisher/publisher/chunker.py`](../tools/library-publisher/publisher/chunker.py), [`tools/library-publisher/publisher/structurer.py`](../tools/library-publisher/publisher/structurer.py), [`tools/library-publisher/publisher/embedder.py`](../tools/library-publisher/publisher/embedder.py), [`tools/library-publisher/publisher/supabase_service.py`](../tools/library-publisher/publisher/supabase_service.py), [`backend/supabase/migrations/20261101000000_embedding_384.sql`](../backend/supabase/migrations/20261101000000_embedding_384.sql)</sub>
 
-### BrainAPIHandler: JSON body validation and handler dispatch
+### Vectors: the model of the browser, pinned and verified
 
-GET handlers answer directly: /api/health reports supabase_live, which only says that the Supabase URL and service role key are set, /api/brain/documents lists at most 200 documents that are published or have no owner, falling back to the in-memory store (still HTTP 200) when Supabase is not configured or answers with an HTTP error, invalid JSON or a non-list body, and /api/models/nvidia lists the model allowlist and whether NVIDIA_API_KEYS holds a valid key, never a key or a key count. POST /api/brain/ingest, /api/brain/query and /api/chat/nvidia read the body through _read_json_object: Transfer-Encoding or a missing Content-Length gives 411, a duplicate or non-numeric Content-Length 400, more than BRAIN_MAX_BODY_BYTES (default 1 MiB, and never more than 256 KiB on the NVIDIA route) 413 and a non-JSON Content-Type 415, all before any byte of the body is read. A body that stalls past the 30 s socket timeout gives 408 and closes the connection, then short bodies, invalid JSON (a leading byte order mark is ignored, NaN and Infinity are refused, as JSON.parse does), non-object JSON and bad string fields give 400 before ingest_raw_information or query_brain runs; exception types that the storage and model fallbacks do not catch end as 500 internal_error. The NVIDIA chat route counts the request against the per-client limit and checks that keys are configured before it reads the body, then validates it with validate_chat_request and opens the upstream stream through NvidiaRouter (section 13).
+The publisher and the browser must use the same model, or the stored passage vectors and the browser's query vectors would not be comparable. fetch-model downloads tokenizer.json and the q8 export onnx/model_quantized.onnx of Xenova/multilingual-e5-small (the ONNX export of intfloat/multilingual-e5-small) at a pinned revision, writes each file to a .part file and renames it only when its size and SHA-256 match the pin; load_embedder checks the pins again before every load. E5Embedder prefixes passages with "passage: " and questions with "query: ", truncates at 512 tokens, averages the last hidden states over the attention mask and L2-normalises the result, as Transformers.js does with pooling mean and normalize true. Each text runs alone: the q8 export quantises activations per run, so in a batch a vector would depend slightly on its neighbours and on the padding. A test compares the vectors with ones that Transformers.js 4.3.0 computed for the same texts (cosine similarity above 0.99; the two ONNX Runtime builds round slightly differently).
 
-<!-- diagram: backend-request-body -->
+<!-- diagram: publisher-vectors -->
+```mermaid
+flowchart LR
+    hub[("Hugging Face<br/>Xenova/multilingual-e5-small<br/>at the pinned revision")]
+    fetch["fetch-model<br/>tokenizer.json, onnx/model_quantized.onnx<br/>.part file, size and SHA-256 checked,<br/>then renamed, kept when already valid"]
+    dir[("PUBLISHER_MODEL_DIR<br/>default tools/library-publisher/models/<br/>multilingual-e5-small, git-ignored")]
+    load["load_embedder<br/>pins checked again, tokenizers truncation 512,<br/>ONNX Runtime CPU session"]
+    emb["E5Embedder.embed<br/>prefix, tokens, one run per text,<br/>input_ids, attention_mask, token_type_ids zeros,<br/>last_hidden_state mean over the mask, L2 norm<br/>shape and finiteness checked"]
+    col[("knowledge_sections.embedding_384<br/>vector(384), HNSW cosine index")]
+    rpc["match_knowledge_vector_384<br/>SECURITY INVOKER, anon may call it,<br/>RLS decides the visible rows"]
+    tab["Browser tab, on-device mode<br/>Transformers.js, same model and q8 weights:<br/>query: + question, mean pooling, normalize"]
+    ref["Test fixture e5_transformers_js.json<br/>Transformers.js 4.3.0 vectors,<br/>cosine above 0.99 required"]
+
+    hub -->|"HTTPS, redirects followed"| fetch
+    fetch --> dir
+    dir --> load
+    load --> emb
+    emb -->|"passage: + section, publish and backfill"| col
+    emb -->|"query: + question, test-query"| rpc
+    tab -->|"query vector only, never the question text"| rpc
+    rpc -->|"cosine similarity, best first"| col
+    ref -.->|"PUBLISHER_TEST_MODEL_DIR set"| emb
+```
+
+<sub>Sources: [`tools/library-publisher/publisher/model_files.py`](../tools/library-publisher/publisher/model_files.py), [`tools/library-publisher/publisher/embedder.py`](../tools/library-publisher/publisher/embedder.py), [`tools/library-publisher/publisher/tests/test_embedder.py`](../tools/library-publisher/publisher/tests/test_embedder.py), [`tools/library-publisher/publisher/tests/fixtures/e5_transformers_js.json`](../tools/library-publisher/publisher/tests/fixtures/e5_transformers_js.json), [`backend/supabase/migrations/20261101000000_embedding_384.sql`](../backend/supabase/migrations/20261101000000_embedding_384.sql)</sub>
+
+### Service role reads: health, list, backfill and test-query
+
+The service role bypasses RLS, so every read of the publisher names the rows it may touch: SHARED_ROWS, published documents and documents without an owner (the ones the service role wrote). backfill embeds the sections of such documents whose embedding_384 is still null, 50 per page in id order, and continues behind the last id so that a section that fails is not retried in the same run; private rows of browser sessions are never read. test-query embeds a question and keeps only the matches of shared documents, since match_knowledge_vector_384 called with the service role sees every row.
+
+<!-- diagram: publisher-service-role -->
 ```mermaid
 flowchart TD
-    H{"handler for the matched route"}
-    H -->|"GET /api/health"| Health["_handle_health<br/>status healthy, supabase_live = bool(db.is_live)<br/>is_live only means SUPABASE_URL and<br/>SUPABASE_SERVICE_ROLE_KEY are set, no connectivity check"]
-    H -->|"GET /api/brain/documents"| Docs{"_handle_documents: db.list_documents<br/>is_live and GET /rest/v1/knowledge_documents<br/>or=(is_public.eq.true,owner_id.is.null)<br/>order created_at.desc, limit 200<br/>returns a JSON list?"}
-    Docs -->|"yes"| R200
-    Docs -->|"not live, httpx.HTTPError,<br/>ValueError or non-list body"| DocsMem["warning if live, newest 200 documents<br/>of the in-memory store, storage memory"]
-    DocsMem --> R200
-    H -->|"GET /api/models/nvidia"| NvModels["_handle_nvidia_models: public_catalog,<br/>configured = a router was built from NVIDIA_API_KEYS,<br/>version, defaultModel, limits, models"]
-    NvModels --> R200
-    H -->|"POST /api/chat/nvidia"| Rate{"nvidia_limiter.hit(client key):<br/>NVIDIA_RATE_LIMIT_PER_MINUTE per<br/>fixed one-minute window exceeded?"}
-    Rate -->|"yes"| E429["429 rate_limited<br/>with Retry-After"]
-    Rate -->|"no"| Conf{"nvidia_router configured?"}
-    Conf -->|"no"| E503["503 nvidia_not_configured"]
-    Conf -->|"yes, max_bytes 256 KiB"| TE
-    H -->|"POST /api/brain/ingest<br/>or /api/brain/query"| TE{"_read_json_object<br/>Transfer-Encoding header present?"}
-    TE -->|"yes"| E411["411 length_required"]
-    TE -->|"no"| CL{"Content-Length header present?"}
-    CL -->|"no"| E411
-    CL -->|"yes"| CLv{"exactly one Content-Length<br/>made of ASCII digits only?"}
-    CLv -->|"no"| E400L["400 invalid_content_length"]
-    CLv -->|"yes"| Max{"length above the limit?<br/>BRAIN_MAX_BODY_BYTES, default 1048576,<br/>at most 262144 on /api/chat/nvidia<br/>more than 18 significant digits counts as 10^18"}
-    Max -->|"yes"| E413["413 payload_too_large<br/>with max_bytes"]
-    Max -->|"no"| CT{"Content-Type media type<br/>is application/json?"}
-    CT -->|"no"| E415["415 unsupported_media_type"]
-    CT -->|"yes"| Read["rfile.read(length)"]
-    Read -->|"TimeoutError, body stalled past 30 s"| E408["408 request_timeout<br/>Connection close"]
-    Read -->|"bytes received"| Short{"fewer bytes than Content-Length?"}
-    Short -->|"yes"| E400B["400 incomplete_body"]
-    Short -->|"no"| Json{"UTF-8 decode, a leading BOM ignored,<br/>and json.loads with NaN and Infinity refused?<br/>RecursionError counts as a failure"}
-    Json -->|"no"| E400J["400 invalid_json"]
-    Json -->|"yes"| Obj{"top level is a JSON object?"}
-    Obj -->|"no"| E400O["400 json_body_must_be_object"]
-    Obj -->|"yes, ingest or query"| Fields{"_string_field checks<br/>ingest: text required, max 200000 chars,<br/>source_name max 256, source_type max 64<br/>query: query required, max 4000 chars"}
-    Obj -->|"yes, /api/chat/nvidia"| NvVal{"validate_chat_request: model allowlisted,<br/>messages, max_tokens, temperature, top_p valid?<br/>shared vectors with the Vercel functions"}
-    NvVal -->|"no"| E400N["400 invalid_field with field,<br/>or 400 model_not_allowed"]
-    NvVal -->|"yes"| Open["NvidiaRouter.open_stream: failover<br/>before the first byte, section 13"]
-    Open -->|"NvidiaRouterError"| E5xx["502 model_unavailable or upstream_rejected,<br/>503 all_keys_exhausted or proxy_busy<br/>with Retry-After, 504 upstream_timeout"]
-    Open -->|"stream"| SSE["200 text/event-stream without Content-Length,<br/>first chunk, the rest, an SSE error event<br/>when the stream fails, upstream closed at the end<br/>or when the client goes away"]
-    Fields -->|"not a string, too long,<br/>or required and missing or blank"| E400F["400 invalid_field<br/>with field and detail"]
-    Fields -->|"ingest"| Ing["ingest_raw_information<br/>source_name Web-Upload when missing or blank<br/>source_type text when missing or blank"]
-    Fields -->|"query"| Qry["query_brain(user_query)"]
-    Health --> R200["_send 200 JSON"]
-    Ing --> R200
-    Qry --> R200
-    Ing -->|"exception type not caught<br/>by the pipeline fallbacks"| E500["500 internal_error<br/>from _dispatch"]
-    Qry -->|"exception type not caught<br/>by the fallbacks"| E500
-    Docs -->|"other exception type"| E500
-    E411 --> AE
-    E400L --> AE
-    E413 --> AE
-    E415 --> AE
-    E408 --> AE
-    E400B --> AE
-    E400J --> AE
-    E400O --> AE
-    E400F --> AE
-    E429 --> AE
-    E503 --> AE
-    E400N --> AE
-    E5xx --> AE
-    AE["raised as ApiError<br/>_dispatch drains any unread body<br/>and sends the JSON error"]
+    health["health<br/>GET knowledge_documents select id, limit 1<br/>GET knowledge_sections select id, embedding_384<br/>exit 0 only when both answer"]
+    list["list --limit N<br/>GET knowledge_documents, or SHARED_ROWS,<br/>newest first, without raw_content"]
+    backfill["backfill --limit, --dry-run<br/>GET knowledge_sections embedding_384 is null,<br/>knowledge_documents!inner(title),<br/>knowledge_documents.or SHARED_ROWS,<br/>order id, 50 per page, id greater than the last"]
+    embed["embed_passages: passage: + title, heading, text"]
+    patch["PATCH knowledge_sections id eq<br/>embedding_384, return minimal,<br/>skipped with --dry-run"]
+    query["test-query QUESTION --count N<br/>embed_query: query: + question"]
+    rpc["POST rpc/match_knowledge_vector_384<br/>query_embedding, match_count, match_threshold"]
+    filter["GET knowledge_documents id in the matches,<br/>or SHARED_ROWS, matches of other documents dropped"]
+    missing["42703 or PGRST202: hint to apply<br/>20261101000000_embedding_384.sql"]
+    shared[("Shared library: is_public true or owner_id null")]
+    private[("Private rows of browser sessions:<br/>owner_id set, is_public false, never read")]
+
+    health -->|"column missing"| missing
+    list --> shared
+    backfill --> shared
+    backfill --> embed
+    embed --> patch
+    query --> rpc
+    rpc --> filter
+    filter --> shared
+    rpc -->|"function missing"| missing
+    shared ~~~ private
 ```
 
-<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py)</sub>
-
-### Brain API startup checks
-
-Importing core.config loads backend/.env (or, only when that file does not exist, the repo-root .env), where quoted values end at the matching quote, unquoted values drop a whitespace # comment and the last assignment of a key wins, without overriding existing environment variables, and validates BRAIN_LOG_LEVEL, falling back to INFO with a warning that never echoes the raw value; importing core.supabase_client creates db, which counts as live when SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are both set, without any network call, and importing core.nvidia reads the model allowlist from core/nvidia_catalog.json. NVIDIA_RATE_LIMIT_PER_MINUTE that is not a positive integer falls back to 20 with a warning. main() validates --log-level and the optional port with argparse (exit 2), and run_server refuses (SystemExit 2) to bind a non-loopback address when BRAIN_API_TOKEN is empty and warns about tokens shorter than 32 characters. Creating the server builds the NVIDIA key router from NVIDIA_API_KEYS, logging only the number of malformed entries and of keys (no router without a valid key), and the per-client rate limiter. A bind error such as a port in use is not caught; otherwise the server installs a SIGTERM handler for systemd, warns when Supabase is not configured and serves until SIGTERM or Ctrl+C. Request threads are not daemonic (daemon_threads False), so server_close in the finally block waits for requests in flight before the process exits.
-
-<!-- diagram: backend-request-startup -->
-```mermaid
-flowchart TD
-    Start(["python server.py [port] [--host HOST] [--log-level LEVEL]"]) --> Env["import core.config<br/>loads backend/.env, else the repo-root .env<br/>parse_env_line: an export prefix is dropped,<br/>a quoted value ends at its matching quote,<br/>an unquoted value drops a whitespace # comment<br/>last assignment of a key in the file wins<br/>variables already in the environment win<br/>an unreadable file is logged and skipped"]
-    Env --> Cfg["config = BrainConfig()<br/>BRAIN_SERVER_HOST default 127.0.0.1<br/>BRAIN_SERVER_PORT default 9200"]
-    Cfg --> Int{"BRAIN_SERVER_PORT, BRAIN_MAX_BODY_BYTES or<br/>NVIDIA_RATE_LIMIT_PER_MINUTE not an integer,<br/>or the rate limit below 1?"}
-    Int -->|"yes"| IntW["warning, default value used"]
-    Int -->|"no"| LL
-    IntW --> LL{"_env_log_level<br/>BRAIN_LOG_LEVEL value?"}
-    LL -->|"empty"| LInfo["log_level INFO"]
-    LL -->|"not DEBUG, INFO,<br/>WARNING or ERROR"| LWarn["warning without the raw value<br/>log_level INFO"]
-    LL -->|"valid, case-insensitive"| LSet["log_level = that level"]
-    LInfo --> Db
-    LWarn --> Db
-    LSet --> Db
-    Db["server.py imports core.supabase_client<br/>db = SupabaseBrainClient()<br/>is_live = SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY<br/>both set, no network call<br/>core.nvidia loads core/nvidia_catalog.json"] --> Args
-    Args{"main(): argparse<br/>--log-level upper-cased, one of LOG_LEVELS,<br/>default config.log_level<br/>port, if given, an integer?"}
-    Args -->|"no"| ArgErr["argparse error, exit status 2"]
-    Args -->|"yes"| Basic["logging.basicConfig(level)"]
-    Basic --> Host["run_server<br/>host = --host or BRAIN_SERVER_HOST<br/>port = argument or BRAIN_SERVER_PORT"]
-    Host --> Loop{"host is not localhost or a loopback IP<br/>and BRAIN_API_TOKEN is empty?"}
-    Loop -->|"yes"| Refuse["log error, raise SystemExit(2)"]
-    Loop -->|"no"| TokLen{"token set but shorter<br/>than 32 characters?"}
-    TokLen -->|"yes"| TokW["warning"]
-    TokLen -->|"no"| Bind
-    TokW --> Bind["create_server: BrainHTTPServer (ThreadingHTTPServer)<br/>daemon_threads False, request threads not daemonic<br/>build_router(NVIDIA_API_KEYS): warning with the count of<br/>malformed entries, info NVIDIA key pool: n keys,<br/>None without a valid key, RateLimiter per client<br/>AF_INET6 when the host contains a colon<br/>server_bind skips the reverse DNS lookup"]
-    Bind -->|"OSError, e.g. address in use"| BindErr["not caught: traceback, exit status 1"]
-    Bind --> Sig{"running in the main thread?"}
-    Sig -->|"yes"| SigT["install SIGTERM handler: logs Received SIGTERM,<br/>httpd.shutdown in a daemon thread"]
-    Sig -->|"no"| Listen
-    SigT --> Listen["log Brain API listening<br/>with supabase_live, token_auth and nvidia"]
-    Listen --> Live{"db.is_live?"}
-    Live -->|"no"| MemW["warning: Supabase is not configured,<br/>documents are kept in memory only"]
-    Live -->|"yes"| Serve
-    MemW --> Serve["serve_forever"]
-    Serve -->|"SIGTERM shutdown or KeyboardInterrupt"| Close["finally: server_close<br/>joins the non-daemon request threads,<br/>so requests in flight finish first"]
-```
-
-<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py)</sub>
-
-### ingest_raw_information: structuring, chunking and embeddings
-
-The raw text is first structured by the configured Chat Completions model into title, summary, tags and Markdown, and any HTTP or parsing failure falls back to fallback_structure instead of failing the ingest. chunk_markdown splits the Markdown at heading lines and after 1500 characters, and each section is embedded through the /embeddings endpoint once, without retries. Vectors that are not 1536 finite numbers (including NaN or Infinity) are rejected and replaced by a word-hash vector that goes into fallback_embedding only, so it is never persisted as an embedding, and a warning logs how many sections vector search will miss.
-
-<!-- diagram: backend-pipelines-ingest -->
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Srv as server.py _handle_ingest
-    participant Pipe as ingestion_pipeline
-    participant Str as structurer
-    participant LLM as Chat Completions endpoint
-    participant Chk as chunker
-    participant Emb as embeddings
-    participant EAPI as Embeddings endpoint
-    participant DB as supabase_client db
-
-    Srv->>Pipe: ingest_raw_information(raw_text, source_name, source_type)
-    Pipe->>Str: structure_raw_content(raw_text, source_name)
-    alt raw_text blank, not reachable through server.py
-        Str-->>Pipe: fixed empty structure, title source_name or Leeres Dokument, tag empty
-    else text present
-        Str->>LLM: POST LLM_BASE_URL/chat/completions, LLM_MODEL, temperature 0.2, max_tokens 3000
-        Note over Str,LLM: timeout 120 s, connect 3 s, Bearer only when LLM_API_KEY is set and not EMPTY
-        alt HTTP error, unexpected reply shape or no JSON object
-            Str-->>Pipe: fallback_structure, title source_name, else the first 60 chars of the first line, else Dokument, tags auto-ingest and raw
-        else JSON object parsed (code fences tolerated)
-            Str-->>Pipe: title (else source_name or Unbenanntes Dokument), summary, tags (max 20), markdown (raw_text if missing)
-        end
-    end
-    Pipe->>Chk: chunk_markdown(markdown, max_chunk_chars 1500)
-    Chk-->>Pipe: sections split at heading lines (levels 1 to 4) and when a section grows past 1500 chars
-    Note over Chk: heading Allgemein before the first heading, token_count is the word count
-    loop each section
-        Pipe->>Emb: get_embedding_with_source(title - heading and section text)
-        Emb->>EAPI: POST EMBEDDING_BASE_URL/embeddings, EMBEDDING_MODEL, timeout 20 s, connect 2 s
-        alt HTTP error, bad reply shape, not 1536 values, non-numeric, NaN or Infinity
-            Emb->>Emb: hash_embedding, L2-normalised word-hash vector
-            Emb-->>Pipe: hash vector, is_real False
-            Note over Pipe: embedding None, fallback_embedding holds the hash vector
-        else 1536 finite floats
-            Emb-->>Pipe: vector, is_real True
-            Note over Pipe: embedding holds the vector, embedded_count plus 1
-        end
-    end
-    opt fewer embedded sections than sections
-        Pipe->>Pipe: warning with the count of sections vector search will miss
-    end
-    Pipe->>DB: save_document(title, summary, tags, source_type, source_name, raw_text, sections)
-    DB-->>Pipe: record with id and storage supabase or memory
-    Pipe-->>Srv: document_id, title, summary, tags, markdown, counts, storage, status success
-```
-
-<sub>Sources: [`backend/core/ingestion_pipeline.py`](../backend/core/ingestion_pipeline.py), [`backend/core/structurer.py`](../backend/core/structurer.py), [`backend/core/chunker.py`](../backend/core/chunker.py), [`backend/core/embeddings.py`](../backend/core/embeddings.py), [`backend/core/http_utils.py`](../backend/core/http_utils.py)</sub>
-
-### save_document: size clamping, insert and rollback
-
-save_document clips model-generated fields to the database CHECK limits (title 500, summary 5000, source_type 64, source_name 500, heading 1000, section text 210000), keeps at most 50 tags of at most 100 characters (the CHECK itself allows 50 tags and 16384 bytes of tag text) and sends an embedding only when it is a real 1536-value finite vector, so the hash fallback is never persisted. The document insert sends neither owner_id nor is_public, so the column defaults store owner_id null (auth.uid() under the service role) and is_public false. With Supabase configured it inserts the document, then its sections, and deletes the document again if the section insert raises anything, re-raising the original error (a failed rollback is only logged). Expected HTTP and data errors fall back to the in-memory store (storage memory); other exceptions reach server.py as a 500. SupabaseService.ingest_document (ingest_document_atomic RPC) is not on this path and is not called by the server or by any CLI command.
-
-<!-- diagram: backend-pipelines-storage -->
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Pipe as ingestion_pipeline
-    participant DB as SupabaseBrainClient db
-    participant REST as Supabase PostgREST
-    participant Mem as in-memory store
-
-    Pipe->>DB: save_document(title, summary, tags, source_type, source_name, raw_content, sections)
-    DB->>DB: document_fields clips title 500, summary 5000, source_type 64, source_name 500
-    DB->>DB: clip_tags keeps at most 50 tags of at most 100 chars, new uuid4 id, total_sections
-    Note over DB: raw_content is not clipped, server.py caps text at 200000 chars
-    alt db.is_live, SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY set
-        DB->>DB: section_payload clips heading 1000 and markdown_content 210000
-        Note over DB: embedding sent only if it is 1536 finite numbers, else NULL. fallback_embedding is never sent
-        DB->>REST: POST /rest/v1/knowledge_documents, Prefer return=representation
-        Note over DB,REST: no owner_id or is_public in the body, the defaults give owner_id null and is_public false
-        REST-->>DB: created row with id
-        opt at least one section
-            DB->>REST: POST /rest/v1/knowledge_sections with document_id, Prefer return=minimal
-            opt any exception in the section insert
-                DB->>REST: DELETE /rest/v1/knowledge_documents?id=eq.doc_id (rollback)
-                Note over DB,REST: a failed rollback is only logged and the row stays, the original exception is re-raised
-            end
-        end
-        alt remote save succeeded
-            DB-->>Pipe: created row, storage supabase
-        else httpx.HTTPError, ValueError, KeyError, IndexError or TypeError
-            DB->>Mem: _save_local, warning logged
-            DB-->>Pipe: record, storage memory
-        end
-    else offline mode
-        DB->>Mem: _save_local, vector is the embedding or the hash fallback
-        DB-->>Pipe: record, storage memory
-    end
-    Note over Pipe,REST: any other exception type propagates to server.py, which answers 500 internal_error
-```
-
-<sub>Sources: [`backend/core/ingestion_pipeline.py`](../backend/core/ingestion_pipeline.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/embeddings.py`](../backend/core/embeddings.py), [`backend/server.py`](../backend/server.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
-
-### query_brain: vector retrieval and answer providers
-
-query_brain embeds the question and skips remote retrieval when Supabase is live but only a hash vector is available, because hash vectors cannot be compared with stored embeddings. Offline it ranks the in-memory sections by cosine similarity. Live, it calls the match_knowledge_sections RPC (threshold 0.15, 5 matches), keeps only the matches whose document is published or has no owner (checked with a second PostgREST request, because the service role bypasses row level security), and falls back to the in-memory ranking on HTTP errors or invalid JSON from either request or a non-list RPC body. The filter runs after the RPC has applied its limit, so matches of private documents still take some of the 5 places and fewer sections can come back. The question and the retrieved sections are sent to each provider that is tried, and answers come from the first provider that returns text: the Gemini key pool, the OpenRouter key pool (4 models per key), then the configured Chat Completions endpoint. If all fail, a hint followed by the formatted context is returned as the answer, with provider none and error llm_unavailable.
-
-<!-- diagram: backend-pipelines-query -->
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Srv as server.py _handle_query
-    participant Rag as rag.query_brain
-    participant Emb as embeddings
-    participant EAPI as Embeddings endpoint
-    participant DB as supabase_client db
-    participant REST as Supabase PostgREST
-    participant Gem as Gemini API
-    participant ORt as OpenRouter
-    participant LLM as Chat Completions endpoint
-
-    Srv->>Rag: query_brain(user_query)
-    opt user_query blank
-        Rag-->>Srv: early return, answer asks for a question, sources empty
-    end
-    Rag->>Emb: get_embedding_with_source(user_query)
-    Emb->>EAPI: POST EMBEDDING_BASE_URL/embeddings
-    Emb-->>Rag: vector and is_real, hash vector when the endpoint fails
-    alt db.is_live and only a hash vector
-        Rag->>Rag: warning, answer without retrieved sections
-    else real vector, or offline mode
-        Rag->>DB: search_similar_sections(vector, threshold 0.15, limit 5)
-        alt db.is_live
-            DB->>REST: POST /rest/v1/rpc/match_knowledge_sections
-            Note over DB,REST: query_embedding, match_threshold, match_count. The RPC has no visibility filter of its own and the service role bypasses RLS, so matches from private documents come back too
-            alt RPC ok, body is a list and the visibility check does not fail
-                REST-->>DB: matching rows
-                DB->>REST: _visible_matches, GET /rest/v1/knowledge_documents with select id, id in the match document ids, or VISIBLE_ROWS
-                REST-->>DB: ids of documents with is_public true or owner_id null
-                DB->>DB: keep the matches of those documents in RPC order
-                Note over DB: no document ids gives an empty list without the second request, a non-list answer drops every match
-            else HTTP error or invalid JSON from either request, or a non-list RPC body
-                DB->>DB: warning, rank_local_sections over in-memory sections
-                Note over DB: in live mode these are only documents whose Supabase save failed in this process
-            end
-        else offline mode
-            DB->>DB: rank_local_sections, cosine above threshold, top 5
-        end
-        DB-->>Rag: matching sections
-    end
-    Rag->>Rag: _format_context into RAG_SYSTEM_PROMPT
-    opt GEMINI_API_KEYS set
-        loop each key from a round-robin start until one returns text
-            Rag->>Gem: POST gemini-2.5-flash generateContent, x-goog-api-key header, 25 s
-        end
-    end
-    alt Gemini returned text
-        Rag-->>Srv: answer, sources, provider gemini_pool
-    else no Gemini answer
-        opt OPENROUTER_API_KEYS set
-            loop each key from a round-robin start, then each of 4 models
-                Rag->>ORt: POST chat/completions, temperature 0.5, max_tokens 1024, 25 s
-            end
-        end
-        alt OpenRouter returned content
-            Rag-->>Srv: answer, sources, provider openrouter_pool
-        else no OpenRouter answer
-            Rag->>LLM: POST LLM_BASE_URL/chat/completions, temperature 0.3, max_tokens 2048, 60 s
-            alt local answer not empty
-                Rag-->>Srv: answer, sources, provider local_llm
-            else HTTP error or empty answer
-                Rag-->>Srv: hint plus context_text as answer, provider none, error llm_unavailable
-            end
-        end
-    end
-```
-
-<sub>Sources: [`backend/core/rag.py`](../backend/core/rag.py), [`backend/core/embeddings.py`](../backend/core/embeddings.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/http_utils.py`](../backend/core/http_utils.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
-
-### Service role reads: which rows the backend returns
-
-Both Supabase clients authenticate to PostgREST with the service role key, which bypasses row level security, so any filtering happens in the client. SupabaseBrainClient (the db instance used by server.py, the ingestion pipeline, query_brain and brain_smoke.py) adds the PostgREST filter or=(is_public.eq.true,owner_id.is.null), named VISIBLE_ROWS, to the document list and runs every match_knowledge_sections result through _visible_matches, which looks up the matched document ids with the same filter and drops matches of private documents. Documents the backend inserts itself have owner_id null and pass the filter; private rows of browser sessions (owner_id set, is_public false) are left out. Backend-written rows also have is_public false, so the browser select policies (is_public or owner_id = auth.uid()) do not show them to browser sessions, while this API returns them. Because the filter runs after the RPC has applied match_count, matches of private documents still take places in the result limit. SupabaseService, used only by the cli_supabase command line tool, sends no such filter, so its list and test-query output can include private rows. The in-memory store has no owners and is never filtered.
-
-<!-- diagram: backend-clients-visibility -->
-```mermaid
-flowchart TD
-    Key(["PostgREST request with the service role key<br/>apikey and Authorization Bearer headers<br/>row level security does not apply"]) --> Who{"which client?"}
-    Who -->|"SupabaseBrainClient db<br/>server.py, ingestion_pipeline, rag, brain_smoke.py"| Api{"method"}
-    Who -->|"SupabaseService<br/>core.cli_supabase only"| Cli{"command"}
-    Api -->|"list_documents"| LFilter["GET /rest/v1/knowledge_documents<br/>or=VISIBLE_ROWS<br/>order created_at.desc, limit 200"]
-    Api -->|"search_similar_sections"| Rpc["POST /rest/v1/rpc/match_knowledge_sections<br/>no visibility filter in the RPC,<br/>matches from every document, match_count applied"]
-    Rpc -->|"httpx.HTTPError, invalid JSON<br/>or a non-list body"| Mem
-    Rpc -->|"body is a list"| Ids{"_visible_matches<br/>any document_id in the matches?"}
-    Ids -->|"no"| Empty["empty list, no second request"]
-    Ids -->|"yes"| Check["GET /rest/v1/knowledge_documents<br/>select id, id=in.(sorted unique document ids),<br/>or=VISIBLE_ROWS"]
-    Check -->|"httpx.HTTPError or invalid JSON"| Mem["warning, rank_local_sections<br/>over the in-memory sections, unfiltered"]
-    Check -->|"answer is not a list"| NoneVis["no document counts as visible<br/>empty list"]
-    Check -->|"list of rows"| Keep["keep the matches whose document_id<br/>is among the returned ids, RPC order kept"]
-    LFilter -.->|"filter"| VR
-    Check -.->|"filter"| VR
-    VR{"VISIBLE_ROWS<br/>(is_public.eq.true,owner_id.is.null)<br/>which kind of row?"}
-    VR -->|"is_public true"| In["returned"]
-    VR -->|"owner_id null"| In
-    VR -->|"owner_id set and is_public false,<br/>private rows of browser sessions"| Out["not returned"]
-    Api -->|"save_document"| Ins["POST /rest/v1/knowledge_documents<br/>body without owner_id and is_public"]
-    Ins --> Def["column defaults: owner_id auth.uid(),<br/>null for the service role, is_public false"]
-    Def -.->|"passes owner_id.is.null"| In
-    Def --> Hid["browser select policy: is_public or owner_id = auth.uid()<br/>does not show these rows to browser sessions"]
-    Cli -->|"list"| CList["GET /rest/v1/knowledge_documents<br/>newest first, no limit parameter, no visibility filter"]
-    Cli -->|"test-query"| CMatch["match_sections: RPC match_knowledge_sections<br/>result returned as is"]
-    CList --> All["not filtered by visibility,<br/>private rows of browser sessions included"]
-    CMatch --> All
-```
-
-<sub>Sources: [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/supabase_service.py`](../backend/core/supabase_service.py), [`backend/core/cli_supabase.py`](../backend/core/cli_supabase.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
-
-### Backend command line entry points: cli_supabase and brain_smoke
-
-python -m core.cli_supabase uses SupabaseService with the service role key and no visibility filter: health requests at most one row of brain_settings and exits 0 only on HTTP 200 or 206, list prints the documents newest first without a limit parameter, private rows of browser sessions included, and test-query embeds the text and calls match_knowledge_sections with threshold 0.1 and 3 matches, whose results are not filtered either. When Supabase is configured but the embedding endpoint is down, test-query exits 1 instead of searching with a hash vector. When Supabase is not configured or the request fails, list and test-query fall back to an in-memory store that is empty in a new process. SupabaseService.ingest_document (ingest_document_atomic RPC) is not used by any command. scripts/brain_smoke.py runs the real ingestion pipeline on a sample note and then query_brain, so when Supabase is configured and reachable it writes a test document with owner_id null, which the API document list then returns.
-
-<!-- diagram: backend-pipelines-cli -->
-```mermaid
-flowchart TD
-    Cli(["python -m core.cli_supabase COMMAND<br/>run from backend/, SupabaseService"]) --> Parse{"subcommand?"}
-    Parse -->|"missing or unknown"| ArgErr["argparse error, exit status 2"]
-    Parse -->|"health"| HConf{"SUPABASE_URL and<br/>SUPABASE_SERVICE_ROLE_KEY set?"}
-    HConf -->|"no"| HOff["status offline_mode, connected false"]
-    HConf -->|"yes"| HGet{"GET /rest/v1/brain_settings<br/>select key, limit 1<br/>timeout 10 s, connect 5 s"}
-    HGet -->|"httpx.HTTPError"| HUnr["status unreachable, connected false"]
-    HGet -->|"HTTP 200 or 206"| HOk["status connected, connected true"]
-    HGet -->|"any other status"| HErr["status error with status_code<br/>and the first 500 chars of the body"]
-    HOk --> HExit0["print JSON, exit 0"]
-    HOff --> HExit1["print JSON, exit 1"]
-    HUnr --> HExit1
-    HErr --> HExit1
-    Parse -->|"list"| LReq{"configured, and GET /rest/v1/knowledge_documents<br/>newest first, no limit parameter, no visibility filter,<br/>timeout 15 s, connect 5 s, returns a JSON list?"}
-    LReq -->|"yes"| LPrint["print Total documents and one line<br/>per document, private rows included, exit 0"]
-    LReq -->|"not configured, httpx.HTTPError,<br/>ValueError or non-list body"| LMem["warning if configured, in-memory list<br/>empty in a fresh CLI process"]
-    LMem --> LPrint
-    Parse -->|"test-query"| QText["query = the words joined, default Projekt Alpha<br/>get_embedding_with_source"]
-    QText --> QReal{"configured and only a hash vector,<br/>embedding endpoint unavailable?"}
-    QReal -->|"yes"| QE2["remote vector search skipped<br/>message on stderr, exit 1"]
-    QReal -->|"no"| QM{"match_sections threshold 0.1, limit 3<br/>configured, and RPC match_knowledge_sections<br/>returns a JSON list? timeout 20 s"}
-    QM -->|"yes, not filtered by visibility"| QPrint["print matches: document title,<br/>heading and similarity, exit 0"]
-    QM -->|"not configured, httpx.HTTPError,<br/>ValueError or non-list body"| QMem["rank_local_sections over the<br/>in-memory sections"]
-    QMem --> QPrint
-    Smoke(["python backend/scripts/brain_smoke.py<br/>--query Q repeatable, --skip-ingest, --verbose"]) --> SLive["print Supabase live = db.is_live"]
-    SLive --> SIng{"--skip-ingest?"}
-    SIng -->|"no"| SIngest["ingest_raw_information with a sample meeting note<br/>Meeting_Alpha_28Aug.txt, meeting_notes<br/>writes a real document when Supabase is configured,<br/>owner_id null, so the API document list returns it"]
-    SIng -->|"yes"| SQ
-    SIngest --> SQ["query_brain for each --query<br/>or the 2 default questions<br/>print provider, answer and sources, exit 0"]
-```
-
-<sub>Sources: [`backend/core/cli_supabase.py`](../backend/core/cli_supabase.py), [`backend/core/supabase_service.py`](../backend/core/supabase_service.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/embeddings.py`](../backend/core/embeddings.py), [`backend/scripts/brain_smoke.py`](../backend/scripts/brain_smoke.py)</sub>
+<sub>Sources: [`tools/library-publisher/publisher/cli_supabase.py`](../tools/library-publisher/publisher/cli_supabase.py), [`tools/library-publisher/publisher/supabase_service.py`](../tools/library-publisher/publisher/supabase_service.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
 
 ## 11. Build, test and deploy
 
-How the static bundle is built and verified, which command-line tools sit beside the build, which tests guard which behaviour, what CI runs on pushes and pull requests to main, how a GitHub release is created, and how the frontend, database and backend are deployed.
+How the static bundle is built and verified, which command-line tools sit beside the build, which tests guard which behaviour, what CI runs on pushes and pull requests to main, how a GitHub release is created, and how the frontend and the database are deployed.
 
 ### npm run build (scripts/build.mjs)
 
@@ -6600,7 +6250,7 @@ flowchart TD
 
 ### Command-line tools beside the build
 
-Eight more npm scripts sit outside the build and deploy path; of them, CI runs pack:core directly in the frontend job and sbom in the audit job, and release.yml runs both. verify:receipt checks an answer receipt against the original files with the extraction and chunking code the app uses: it matches files by their SHA-256 fingerprint, not by name, re-extracts them, compares the passage at the recorded offsets and the recorded chunk, and recomputes the source check, with the rules version the receipt records, for every statement whose cited excerpts, and the other excerpts its reasons name, are available, using only the first deliveredChars characters of an excerpt that reached the model in part. For a starpi.receipt/v2 receipt it also recomputes the Merkle root, checks every inclusion proof and checks the signature, if there is one, against the public key given with --public-key (a JWK or PEM file) or else the key embedded in the receipt. It exits 0 when every workspace excerpt was reproduced and the tree and any signature are valid, 1 when something does not match, a file is missing, the root or an inclusion proof fails, the signature is invalid, made with another key or cannot be checked, or a --public-key was given and the receipt is not validly signed with it, and 2 on a usage error, a key file importPublicKey refuses or an invalid receipt, which includes a member or reason code the format does not define. In the text report, strings from the receipt and the given file names (labels, the creation time, the engine, file names in the checks and warnings) are printed with control and bidirectional characters escaped, so a crafted receipt cannot rewrite report lines in a terminal. The app does not sign receipts, so a pass on one of them shows that the cited excerpts can be reproduced from the given files; it does not prove that the receipt is authentic, what a model saw, or that the answer is right. build:core bundles the @starpi/core package (an npm workspace of the root package, which declares Node.js 22.13 or newer and has the app's version) from the app's own modules, including the same verifier and starpi-ground (scripts/ground.mjs, which has no npm script of its own, see source-check-ground-cli) as packaged commands, and pack:core runs npm pack --workspace=@starpi/core --dry-run, whose prepack script runs build:core with type declarations, and lists the package contents without publishing anything; release.yml packs the same way into a real tarball. sbom (scripts/sbom.mjs) writes CycloneDX SBOMs of the app and of @starpi/core from package-lock.json with npm sbom --package-lock-only, without installing anything, and scripts/lib/sbom.mjs makes them deterministic and validates them before they are written. eval:source-check measures the source check on labelled answers with either version of the rules, leaving out the held-out sets (holdout and v2holdout) unless --unblind is given and refusing a v2 held-out file whose SHA-256 differs from the one committed before the version 2 rules were written (docs/eval/v2-protocol.md), and docs:sync copies atlas diagrams into the Markdown files that embed them. nvidia:sync writes backend/core/nvidia_catalog.json, the Python backend's copy of the NVIDIA allowlist, limits and timings, from src/js/models/nvidia-catalog.js, and with --check only exits 1 when the copy is outdated; nvidia-catalog.test.mjs fails on an outdated copy too. nvidia:ping is a maintainer tool that CI never runs, because it spends real quota: it reads NVIDIA_API_KEYS the way the proxy does (exit 2 without a valid key), asks GET /v1/models once which allowlisted ids exist, sends one small streamed request per model, moving to the next key on 429, and prints only id, status, first-byte time and whether reasoning and content arrived, never a key, header or body; it exits 1 when a model fails, an id is not listed or the list cannot be read. The unit tests run verify-receipt.mjs, ground.mjs, build-core.mjs, sbom.mjs and the evaluation.
+Seven more npm scripts sit outside the build and deploy path; of them, CI runs pack:core directly in the frontend job and sbom in the audit job, and release.yml runs both. verify:receipt checks an answer receipt against the original files with the extraction and chunking code the app uses: it matches files by their SHA-256 fingerprint, not by name, re-extracts them, compares the passage at the recorded offsets and the recorded chunk, and recomputes the source check, with the rules version the receipt records, for every statement whose cited excerpts, and the other excerpts its reasons name, are available, using only the first deliveredChars characters of an excerpt that reached the model in part. For a starpi.receipt/v2 receipt it also recomputes the Merkle root, checks every inclusion proof and checks the signature, if there is one, against the public key given with --public-key (a JWK or PEM file) or else the key embedded in the receipt. It exits 0 when every workspace excerpt was reproduced and the tree and any signature are valid, 1 when something does not match, a file is missing, the root or an inclusion proof fails, the signature is invalid, made with another key or cannot be checked, or a --public-key was given and the receipt is not validly signed with it, and 2 on a usage error, a key file importPublicKey refuses or an invalid receipt, which includes a member or reason code the format does not define. In the text report, strings from the receipt and the given file names (labels, the creation time, the engine, file names in the checks and warnings) are printed with control and bidirectional characters escaped, so a crafted receipt cannot rewrite report lines in a terminal. The app does not sign receipts, so a pass on one of them shows that the cited excerpts can be reproduced from the given files; it does not prove that the receipt is authentic, what a model saw, or that the answer is right. build:core bundles the @starpi/core package (an npm workspace of the root package, which declares Node.js 22.13 or newer and has the app's version) from the app's own modules, including the same verifier and starpi-ground (scripts/ground.mjs, which has no npm script of its own, see source-check-ground-cli) as packaged commands, and pack:core runs npm pack --workspace=@starpi/core --dry-run, whose prepack script runs build:core with type declarations, and lists the package contents without publishing anything; release.yml packs the same way into a real tarball. sbom (scripts/sbom.mjs) writes CycloneDX SBOMs of the app and of @starpi/core from package-lock.json with npm sbom --package-lock-only, without installing anything, and scripts/lib/sbom.mjs makes them deterministic and validates them before they are written. eval:source-check measures the source check on labelled answers with either version of the rules, leaving out the held-out sets (holdout and v2holdout) unless --unblind is given and refusing a v2 held-out file whose SHA-256 differs from the one committed before the version 2 rules were written (docs/eval/v2-protocol.md), and docs:sync copies atlas diagrams into the Markdown files that embed them. nvidia:ping is a maintainer tool that CI never runs, because it spends real quota: it reads NVIDIA_API_KEYS the way the proxy does (exit 2 without a valid key), asks GET /v1/models once which allowlisted ids exist, sends one small streamed request per model, moving to the next key on 429, and prints only id, status, first-byte time and whether reasoning and content arrived, never a key, header or body; it exits 1 when a model fails, an id is not listed or the list cannot be read. The unit tests run verify-receipt.mjs, ground.mjs, build-core.mjs, sbom.mjs and the evaluation.
 
 <!-- diagram: build-pipeline-cli-tools -->
 ```mermaid
@@ -6638,16 +6288,14 @@ flowchart TD
     TEV["source-check-eval.test.mjs: thresholds on the same<br/>summarize results for rules versions 1 and 2,<br/>see the unit tests below"] -.->|"imports loadItems, loadV2Items,<br/>loadParaphrases, loadCorpora, summarize"| EV
     DS["npm run docs:sync: copy each diagram of docs/ARCHITECTURE.md<br/>into the Markdown files that embed its id,<br/>with --check change nothing and exit 1 on an outdated copy,<br/>an unknown id exits 1 in both modes"]
     TDOC["docs.test.mjs: every embedded copy<br/>equals the atlas diagram"] -.- DS
-    NS["npm run nvidia:sync: scripts/sync-nvidia-catalog.mjs<br/>writes backend/core/nvidia_catalog.json from catalogJson()<br/>of src/js/models/nvidia-catalog.js,<br/>with --check change nothing and exit 1 on an outdated copy"]
-    TNS["nvidia-catalog.test.mjs: the copy equals catalogJson()"] -.- NS
     NP["npm run nvidia:ping: scripts/nvidia-ping.mjs, maintainer only,<br/>not in CI, real quota: NVIDIA_API_KEYS parsed like the proxy,<br/>exit 2 without a valid key, GET /v1/models once,<br/>one streamed request per allowlisted model, max_tokens 256,<br/>next key on 429, prints id, status, first-byte ms,<br/>reasoning and content flags only, exit 1 on any failure"]
 ```
 
-<sub>Sources: [`package.json`](../package.json), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`scripts/ground.mjs`](../scripts/ground.mjs), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/package.json`](../packages/core/package.json), [`packages/core/src/index.js`](../packages/core/src/index.js), [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`tests/fixtures/grounding/eval-v2-holdout.sha256`](../tests/fixtures/grounding/eval-v2-holdout.sha256), [`docs/eval/v2-protocol.md`](eval/v2-protocol.md), [`scripts/sync-diagrams.mjs`](../scripts/sync-diagrams.mjs), [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`scripts/lib/sbom.mjs`](../scripts/lib/sbom.mjs), [`tests/unit/receipt.test.mjs`](../tests/unit/receipt.test.mjs), [`tests/unit/receipt-v2.test.mjs`](../tests/unit/receipt-v2.test.mjs), [`tests/unit/sbom.test.mjs`](../tests/unit/sbom.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`tests/unit/source-check-eval.test.mjs`](../tests/unit/source-check-eval.test.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`scripts/sync-nvidia-catalog.mjs`](../scripts/sync-nvidia-catalog.mjs), [`scripts/nvidia-ping.mjs`](../scripts/nvidia-ping.mjs), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>
+<sub>Sources: [`package.json`](../package.json), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`scripts/ground.mjs`](../scripts/ground.mjs), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/package.json`](../packages/core/package.json), [`packages/core/src/index.js`](../packages/core/src/index.js), [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`tests/fixtures/grounding/eval-v2-holdout.sha256`](../tests/fixtures/grounding/eval-v2-holdout.sha256), [`docs/eval/v2-protocol.md`](eval/v2-protocol.md), [`scripts/sync-diagrams.mjs`](../scripts/sync-diagrams.mjs), [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`scripts/lib/sbom.mjs`](../scripts/lib/sbom.mjs), [`tests/unit/receipt.test.mjs`](../tests/unit/receipt.test.mjs), [`tests/unit/receipt-v2.test.mjs`](../tests/unit/receipt-v2.test.mjs), [`tests/unit/sbom.test.mjs`](../tests/unit/sbom.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`tests/unit/source-check-eval.test.mjs`](../tests/unit/source-check-eval.test.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`scripts/nvidia-ping.mjs`](../scripts/nvidia-ping.mjs), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>
 
 ### CI jobs and the test layers they run
 
-The CI workflow runs six jobs on pushes and pull requests to main (and on manual dispatch). The frontend job runs lint, typecheck, the node:test unit suite of 38 files with 479 tests (including the documentation test, a build of @starpi/core into a temporary directory, two runs of the SBOM generator and the NVIDIA proxy with injected fetch and real timers), a typed build and dry-run pack of @starpi/core, the production build and verify-dist, then uploads dist, which the e2e job reuses to run Playwright under the production headers: the app spec, the trust spec with its axe accessibility scan, the model picker and chat mode specs with a mocked NVIDIA proxy, and the Mermaid render gate, 94 test runs on two projects. The backend job lints, byte-compiles and runs the offline unittest suites, 146 tests including the NVIDIA router and routes, on Python 3.11 and 3.12. The database job installs PostgreSQL 16 with pgvector and runs the RLS harness, whose rls_test.sql has 191 checks in the fresh and fresh_rerun scenarios and 198 in the three scenarios seeded with legacy rows. The audit job runs npm audit on the lockfile, failing on any advisory in a runtime dependency and only warning about development tooling, and pip-audit on the backend requirements, then writes CycloneDX SBOMs of the app and of @starpi/core from the lockfile and uploads them, and the secrets job scans the tree, and on pull requests the new commits, with a checksum-verified gitleaks. npm run verify repeats the frontend gate locally.
+The CI workflow runs six jobs on pushes and pull requests to main (and on manual dispatch). The frontend job runs lint, typecheck, the node:test unit suite of 38 files with 478 tests (including the documentation test, a build of @starpi/core into a temporary directory, two runs of the SBOM generator and the NVIDIA proxy with injected fetch and real timers), a typed build and dry-run pack of @starpi/core, the production build and verify-dist, then uploads dist, which the e2e job reuses to run Playwright under the production headers: the app spec, the trust spec with its axe accessibility scan, the model picker and chat mode specs with a mocked NVIDIA proxy, and the Mermaid render gate, 94 test runs on two projects. The backend job lints, byte-compiles and runs the offline unittest suite of the library publisher, 76 tests, on Python 3.11 and 3.13. The database job installs PostgreSQL 16 with pgvector and runs the RLS harness, whose rls_test.sql has 220 checks in the fresh and fresh_rerun scenarios and 227 in the three scenarios seeded with legacy rows. The audit job runs npm audit on the lockfile, failing on any advisory in a runtime dependency and only warning about development tooling, and pip-audit on the library publisher's requirements, then writes CycloneDX SBOMs of the app and of @starpi/core from the lockfile and uploads them, and the secrets job scans the tree, and on pull requests the new commits, with a checksum-verified gitleaks. npm run verify repeats the frontend gate locally.
 
 <!-- diagram: test-strategy-ci-gates -->
 ```mermaid
@@ -6670,15 +6318,15 @@ flowchart LR
         rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
     end
 
-    subgraph jobBack["Job backend, matrix Python 3.11 and 3.12"]
-        ruff["ruff check backend,<br/>ruff format --check backend"]
-        comp["python -m compileall -q backend"]
-        ut["python -m unittest discover -s backend -p test_*.py, 146 tests<br/>test_core.py: chunker, embeddings, config, structurer,<br/>supabase_client incl. private rows kept out of reads,<br/>ingestion pipeline, rag<br/>test_server.py: routing, body validation, timeouts, proxy and<br/>token auth, length limits, CORS, startup, the NVIDIA routes,<br/>shutdown waits for requests in flight, Content-Length parsing<br/>test_nvidia.py: keys, shared validation vectors, Retry-After,<br/>key pool, failover, stream ends, rate limiter<br/>offline: httpx.Client and MockTransport, fakes behind a 127.0.0.1 server"]
+    subgraph jobBack["Job backend, library publisher, matrix Python 3.11 and 3.13"]
+        ruff["ruff check tools/library-publisher backend,<br/>ruff format --check tools/library-publisher backend"]
+        comp["python -m compileall -q tools/library-publisher backend"]
+        ut["python -m unittest discover in tools/library-publisher, 76 tests<br/>chunker, config, structurer, e5 prefixes, mean pooling and<br/>L2 norm with a fake session, pinned model files with a fake hub,<br/>Supabase payloads, shared-row filters and errors,<br/>pipeline and every command against MockTransport<br/>the test against the real model is skipped without<br/>PUBLISHER_TEST_MODEL_DIR"]
     end
 
     subgraph jobDb["Job database"]
         apt["apt-get install postgresql-16,<br/>postgresql-16-pgvector"]
-        rls["bash backend/supabase/tests/run_rls_tests.sh<br/>PG_BIN /usr/lib/postgresql/16/bin<br/>live, fresh, fresh_rerun, legacy_v2, legacy_v1,<br/>guard, guard_order, schema parity via pg_dump<br/>rls_test.sql: 191 checks, 198 with legacy rows"]
+        rls["bash backend/supabase/tests/run_rls_tests.sh<br/>PG_BIN /usr/lib/postgresql/16/bin<br/>live, fresh, fresh_rerun, legacy_v2, legacy_v1,<br/>guard, guard_order, guard_vectors, schema parity via pg_dump<br/>rls_test.sql: 220 checks, 227 with legacy rows"]
     end
 
     subgraph jobAudit["Job audit"]
@@ -6712,11 +6360,11 @@ flowchart LR
     local -.->|"same steps as"| lint
 ```
 
-<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`package.json`](../package.json), [`backend/test_core.py`](../backend/test_core.py), [`backend/test_server.py`](../backend/test_server.py), [`backend/test_nvidia.py`](../backend/test_nvidia.py), [`backend/supabase/tests/run_rls_tests.sh`](../backend/supabase/tests/run_rls_tests.sh), [`backend/supabase/tests/rls_test.sql`](../backend/supabase/tests/rls_test.sql), [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`playwright.config.mjs`](../playwright.config.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs), [`tests/e2e/app.spec.mjs`](../tests/e2e/app.spec.mjs), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/models.spec.mjs`](../tests/e2e/models.spec.mjs), [`tests/e2e/modes.spec.mjs`](../tests/e2e/modes.spec.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs)</sub>
+<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`package.json`](../package.json), [`tools/library-publisher/publisher/tests/test_cli.py`](../tools/library-publisher/publisher/tests/test_cli.py), [`tools/library-publisher/publisher/tests/test_embedder.py`](../tools/library-publisher/publisher/tests/test_embedder.py), [`backend/supabase/tests/run_rls_tests.sh`](../backend/supabase/tests/run_rls_tests.sh), [`backend/supabase/tests/rls_test.sql`](../backend/supabase/tests/rls_test.sql), [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`playwright.config.mjs`](../playwright.config.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs), [`tests/e2e/app.spec.mjs`](../tests/e2e/app.spec.mjs), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/models.spec.mjs`](../tests/e2e/models.spec.mjs), [`tests/e2e/modes.spec.mjs`](../tests/e2e/modes.spec.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs)</sub>
 
 ### Unit tests grouped by concern
 
-npm test runs the 38 tests/unit/*.test.mjs files (479 tests) with the built-in node:test runner in the frontend CI job; 26 of them are grouped here, the other 12 in the next diagram. Security and UI contract tests cover the sanitizer (on a real jsdom DOM), server URL validation (http only for localhost and 127.0.0.1), the CSP and build settings in vercel.json, handler and icon coverage, and dictionary parity including keys built at run time and plural forms. Retrieval tests pin exact BM25 scores, chunk boundaries, parser error codes (with a generated PDF from tests/fixtures/pdf.mjs) and CSV rows, citation labels, context fences that are never cut and the merge of workspace and knowledge-base hits, and grounded offline answers. Model tests pin the prompts of both chat modes and the fitting of NVIDIA requests, the 13 WebGPU presets and their test-coupled README table, the device classes and recommendations, the picker groups, the pinned WASM catalog with its README table, its download pins and the WASM-only ONNX Runtime bundle, and the benchmark metrics. Chat tests pin the SSE parser and stream assembler, the NVIDIA browser client with its error mapping and partial answers, the chat export and the code copy buttons. The NVIDIA proxy tests run the guards, the validation vectors shared with the Python backend, the key router with injected fetch and real but short timers, the stream relay and the Vercel wiring, and the catalog tests keep the backend's JSON copy exact and scan every tracked file for NVIDIA keys. Build tests pin buildVersion, assertPublicKey, the typecheck coverage of every @ts-check module and every server module under api/, and the CycloneDX SBOMs (deterministic, valid, one entry per package, @starpi/core without dependencies), and docs.test.mjs keeps every documentation diagram single-sourced in docs/ARCHITECTURE.md and checks relative links and heading anchors in every Markdown file.
+npm test runs the 38 tests/unit/*.test.mjs files (478 tests) with the built-in node:test runner in the frontend CI job; 26 of them are grouped here, the other 12 in the next diagram. Security and UI contract tests cover the sanitizer (on a real jsdom DOM), server URL validation (http only for localhost and 127.0.0.1), the CSP and build settings in vercel.json, handler and icon coverage, and dictionary parity including keys built at run time and plural forms. Retrieval tests pin exact BM25 scores, chunk boundaries, parser error codes (with a generated PDF from tests/fixtures/pdf.mjs) and CSV rows, citation labels, context fences that are never cut and the merge of workspace and knowledge-base hits, and grounded offline answers. Model tests pin the prompts of both chat modes and the fitting of NVIDIA requests, the 13 WebGPU presets and their test-coupled README table, the device classes and recommendations, the picker groups, the pinned WASM catalog with its README table, its download pins and the WASM-only ONNX Runtime bundle, and the benchmark metrics. Chat tests pin the SSE parser and stream assembler, the NVIDIA browser client with its error mapping and partial answers, the chat export and the code copy buttons. The NVIDIA proxy tests run the guards, the validation vectors shared with the Python backend, the key router with injected fetch and real but short timers, the stream relay and the Vercel wiring, and the catalog tests keep the backend's JSON copy exact and scan every tracked file for NVIDIA keys. Build tests pin buildVersion, assertPublicKey, the typecheck coverage of every @ts-check module and every server module under api/, and the CycloneDX SBOMs (deterministic, valid, one entry per package, @starpi/core without dependencies), and docs.test.mjs keeps every documentation diagram single-sourced in docs/ARCHITECTURE.md and checks relative links and heading anchors in every Markdown file.
 
 <!-- diagram: test-strategy-unit -->
 ```mermaid
@@ -6756,7 +6404,7 @@ flowchart LR
 
     subgraph gNv["NVIDIA proxy and catalog"]
         nvproxy["nvidia-proxy.test.mjs<br/>parseKeys, parseOrigins, the shared validation vectors,<br/>no catalog extra overrides a validated field, key router:<br/>round robin, failover on 429, 5xx, 408, network, timeouts and<br/>empty streams, cooldowns, 401 and 403 parked, 503 and 504,<br/>no failover on 4xx, a budget-shortened timeout parks nothing,<br/>deadline, client abort, keys logged by index; relayStream ends;<br/>handleChat guards in order, rate limit, SSE headers;<br/>handleModels; Vercel exports, 405, vercel.json timings"]
-        nvcat["nvidia-catalog.test.mjs<br/>unique ids with the default, frozen, the proxy answers<br/>before the browser gives up, normalizeNvidiaModel,<br/>publicCatalog without upstream extras, README T4 table<br/>matches the catalog, backend JSON copy exact,<br/>gitleaks rule finds plain and escaped keys,<br/>no NVIDIA key in any tracked file"]
+        nvcat["nvidia-catalog.test.mjs<br/>unique ids with the default, frozen, the proxy answers<br/>before the browser gives up, normalizeNvidiaModel,<br/>publicCatalog without upstream extras, README T4 table<br/>matches the catalog,<br/>gitleaks rule finds plain and escaped keys,<br/>no NVIDIA key in any tracked file"]
     end
 
     subgraph gBuild["Build scripts and type checking"]
@@ -7006,7 +6654,7 @@ flowchart TD
 
 ### CI workflow triggers, jobs and Dependabot
 
-The CI workflow runs on pushes and pull requests to main (the default branch) and on manual dispatch, with read-only contents permission and one concurrency group per PR or ref that cancels older runs. Five jobs start in parallel: frontend, the backend Python 3.11/3.12 matrix, database, audit and secrets. e2e runs only after frontend succeeds, because it needs the dist artifact that frontend uploads, and besides the app, trust, models and modes specs it renders every Mermaid block in the repository's Markdown. Every completed CI run on main starts the separate Release workflow, whose jobs only run when that CI run passed and was triggered by a push; the Release workflow can also be dispatched by hand, and then its jobs run only on main. Dependabot opens weekly update PRs for npm (dev dependencies grouped, Tailwind majors ignored), pip in /backend and GitHub Actions, and those PRs go through the same workflow.
+The CI workflow runs on pushes and pull requests to main (the default branch) and on manual dispatch, with read-only contents permission and one concurrency group per PR or ref that cancels older runs. Five jobs start in parallel: frontend, the backend matrix (the library publisher on Python 3.11 and 3.13), database, audit and secrets. e2e runs only after frontend succeeds, because it needs the dist artifact that frontend uploads, and besides the app, trust, models and modes specs it renders every Mermaid block in the repository's Markdown. Every completed CI run on main starts the separate Release workflow, whose jobs only run when that CI run passed and was triggered by a push; the Release workflow can also be dispatched by hand, and then its jobs run only on main. Dependabot opens weekly update PRs for npm (dev dependencies grouped, Tailwind majors ignored), pip in /backend and GitHub Actions, and those PRs go through the same workflow.
 
 <!-- diagram: ci-workflow-overview -->
 ```mermaid
@@ -7024,7 +6672,7 @@ flowchart TD
     sg_dependabot -->|"update PRs against main,<br/>the default branch"| T2
     sg_on --> CFG["permissions: contents read<br/>concurrency group ci-(workflow)-(PR number or ref),<br/>cancel-in-progress: a newer run cancels the older one"]
     CFG --> FE["frontend: Frontend (lint, typecheck, unit tests, build)<br/>15 min, packs @starpi/core as a dry run,<br/>uploads the dist artifact"]
-    CFG --> BE["backend: Backend (Python 3.11) and Backend (Python 3.12)<br/>10 min, matrix with fail-fast false"]
+    CFG --> BE["backend: Library publisher (Python 3.11) and (Python 3.13)<br/>10 min, matrix with fail-fast false"]
     CFG --> DB["database: Database migration and RLS tests<br/>(PostgreSQL 16 + pgvector), 15 min"]
     CFG --> AUD["audit: Dependency audit (npm audit, pip-audit)<br/>10 min, Node 22 and Python 3.12,<br/>uploads the CycloneDX SBOMs as artifact sbom"]
     CFG --> SEC["secrets: Secret scanning (gitleaks)<br/>5 min, gitleaks 8.30.1"]
@@ -7088,18 +6736,18 @@ flowchart TD
 
 ### Backend, database, audit and secret-scanning jobs
 
-The backend job runs once per Python version (3.11, 3.12) with fail-fast off, and runs ruff check, ruff format --check, a byte-compile and the offline unittest suite of 146 tests, the NVIDIA router and routes included, any of which fails its leg. The database job installs PostgreSQL 16 with pgvector and runs run_rls_tests.sh, which starts a throwaway cluster, runs seven scenarios (five apply the schema or the three migration files and run rls_test.sql, while guard and guard_order only require a file to refuse the database) plus a schema-parity diff, and exits 1 if any of them failed and 2 on a setup error; rls_test.sql has 191 checks in fresh and fresh_rerun and 198 in live, legacy_v2 and legacy_v1, which are seeded with legacy rows. The audit job needs no npm install: npm audit reads package-lock.json and fails on any advisory in a runtime dependency (--omit=dev --audit-level=low); a second npm audit over the whole tree at high severity only emits a warning annotation, because the advisories it can report are in build and test tooling that is not shipped in dist/. It then installs backend/requirements-dev.txt on Python 3.12 and runs pip-audit, pinned there, over the backend requirements; any advisory fails the job. Last, unless the run was cancelled, npm run sbom writes the CycloneDX SBOMs of the app and of @starpi/core from the lockfile, again without an npm install (scripts/sbom.mjs imports only Node built-ins and calls npm sbom --package-lock-only), checks them and uploads them as the sbom artifact for 30 days; an invalid document fails the job. The secrets job downloads gitleaks 8.30.1, verifies its pinned SHA-256, scans the working tree with the default rules plus the custom rule starpi-nvidia-api-key (NVIDIA keys, also with Markdown escapes), and on pull requests also scans the commits between the base and head SHAs. A failed download, a checksum mismatch or any leak fails the job.
+The backend job tests the library publisher once per Python version (3.11, 3.13) with fail-fast off: it installs tools/library-publisher/requirements-dev.txt (with the optional ONNX Runtime stack), runs ruff check, ruff format --check and a byte-compile over tools/library-publisher and backend, and the offline unittest suite of 76 tests in tools/library-publisher, any of which fails its leg. The database job installs PostgreSQL 16 with pgvector and runs run_rls_tests.sh, which starts a throwaway cluster, runs eight scenarios (five apply the schema or the four migration files and run rls_test.sql, while guard, guard_order and guard_vectors only require a file to refuse the database) plus a schema-parity diff, and exits 1 if any of them failed and 2 on a setup error; rls_test.sql has 220 checks in fresh and fresh_rerun and 227 in live, legacy_v2 and legacy_v1, which are seeded with legacy rows. The audit job needs no npm install: npm audit reads package-lock.json and fails on any advisory in a runtime dependency (--omit=dev --audit-level=low); a second npm audit over the whole tree at high severity only emits a warning annotation, because the advisories it can report are in build and test tooling that is not shipped in dist/. It then installs backend/requirements-dev.txt on Python 3.12, which includes the library publisher's requirements, and runs pip-audit, pinned there, over them; any advisory fails the job. Last, unless the run was cancelled, npm run sbom writes the CycloneDX SBOMs of the app and of @starpi/core from the lockfile, again without an npm install (scripts/sbom.mjs imports only Node built-ins and calls npm sbom --package-lock-only), checks them and uploads them as the sbom artifact for 30 days; an invalid document fails the job. The secrets job downloads gitleaks 8.30.1, verifies its pinned SHA-256, scans the working tree with the default rules plus the custom rule starpi-nvidia-api-key (NVIDIA keys, also with Markdown escapes), and on pull requests also scans the commits between the base and head SHAs. A failed download, a checksum mismatch or any leak fails the job.
 
 <!-- diagram: ci-backend-database-secrets -->
 ```mermaid
 flowchart TD
-    subgraph sg_be["backend job, once per Python 3.11 and 3.12"]
-      B1["checkout, actions/setup-python v7.0.0<br/>with pip cache keyed on backend/requirements*.txt"]
-      B2["python -m pip install -r backend/requirements-dev.txt<br/>(requirements.txt plus ruff 0.16.10 and pip-audit 2.10.1)"]
-      B3["Lint: ruff check backend --no-cache"]
-      B4["Lint: ruff format --check backend"]
-      B5["python -m compileall -q backend"]
-      B6["python -m unittest discover<br/>-s backend -p test_*.py -v, 146 tests,<br/>offline, httpx mocked"]
+    subgraph sg_be["backend job, library publisher, once per Python 3.11 and 3.13"]
+      B1["checkout, actions/setup-python v7.0.0 with pip cache<br/>keyed on tools/library-publisher/requirements*.txt"]
+      B2["python -m pip install -r tools/library-publisher/requirements-dev.txt<br/>(httpx, numpy, onnxruntime, tokenizers,<br/>ruff 0.16.10 and pip-audit 2.10.1)"]
+      B3["Lint: ruff check tools/library-publisher backend --no-cache"]
+      B4["Lint: ruff format --check tools/library-publisher backend"]
+      B5["python -m compileall -q tools/library-publisher backend"]
+      B6["python -m unittest discover -v<br/>in tools/library-publisher, 76 tests,<br/>offline, httpx MockTransport, no model download"]
       B1 --> B2 --> B3 --> B4 --> B5 --> B6
     end
     sg_be -->|"install error, lint error, unformatted file,<br/>syntax error or failing test"| BFAIL(["that matrix leg fails,<br/>the other leg keeps running"])
@@ -7121,7 +6769,7 @@ flowchart TD
       A1["checkout, actions/setup-node v7.0.0: Node 22"]
       A2{"npm audit --omit=dev --audit-level=low<br/>reports an advisory in a runtime dependency?"}
       A3["npm audit --audit-level=high over the whole tree,<br/>a finding only emits a warning annotation"]
-      A4["actions/setup-python v7.0.0: Python 3.12,<br/>pip install -r backend/requirements-dev.txt"]
+      A4["actions/setup-python v7.0.0: Python 3.12,<br/>pip install -r backend/requirements-dev.txt,<br/>which includes the publisher requirements"]
       A5{"pip-audit -r backend/requirements-dev.txt<br/>reports an advisory?"}
       A6{"if not cancelled: npm run sbom,<br/>npm sbom --package-lock-only, normalized,<br/>both documents valid?"}
       A7["actions/upload-artifact v7.0.1: sbom,<br/>kept 30 days, if-no-files-found error"]
@@ -7223,7 +6871,7 @@ flowchart TD
 
 ### CI workflow and Vercel build of the PWA and the NVIDIA functions
 
-Pushes and pull requests to main (and manual dispatch) run six CI jobs: frontend (lint, typecheck, unit tests, a dry-run pack of @starpi/core, build, verify:dist), e2e on the built dist under the vercel.json headers, backend on Python 3.11 and 3.12, the database migration and RLS suite, a dependency audit (npm audit, pip-audit) with CycloneDX SBOMs and gitleaks secret scanning. Neither ci.yml nor release.yml has a deploy step, so the Vercel build is triggered by settings of the Vercel project outside this repo and nothing in the repo makes it wait for CI. .vercelignore leaves the backend, the tests, the workflows, env files, node_modules and build and test output out of the deployment, but keeps api/ and src/, because the functions import the NVIDIA catalog from src/ (a unit test checks that). vercel.json installs with npm ci --ignore-scripts, builds with npm run build (which stops on a blank or secret Supabase key and on a JWT whose role is not anon) into dist, deploys api/chat/nvidia.js (maxDuration 300 s with supportsCancellation, so a browser that goes away stops the function) and api/models/nvidia.js (maxDuration 10 s) as Node.js functions, and sets a strict CSP, nosniff, X-Frame-Options DENY, COOP, HSTS and Permissions-Policy on all paths, plus immutable caching for assets/ and no-cache for sw.js, the root and index.html. NVIDIA_API_KEYS, and optionally NVIDIA_RATE_LIMIT_PER_MINUTE and NVIDIA_ALLOWED_ORIGINS, are environment variables of the Vercel project, the keys marked sensitive, for Production and Preview. Vercel binds environment variables to a deployment when it is created, so a key added later reaches only deployments created after it; without a valid key the models route reports configured false and the chat route answers 503 nvidia_not_configured.
+Pushes and pull requests to main (and manual dispatch) run six CI jobs: frontend (lint, typecheck, unit tests, a dry-run pack of @starpi/core, build, verify:dist), e2e on the built dist under the vercel.json headers, backend (the library publisher) on Python 3.11 and 3.13, the database migration and RLS suite, a dependency audit (npm audit, pip-audit) with CycloneDX SBOMs and gitleaks secret scanning. Neither ci.yml nor release.yml has a deploy step, so the Vercel build is triggered by settings of the Vercel project outside this repo and nothing in the repo makes it wait for CI. .vercelignore leaves the database files, the library publisher, the tests, the workflows, env files, node_modules and build and test output out of the deployment, but keeps api/ and src/, because the functions import the NVIDIA catalog from src/ (a unit test checks that). vercel.json installs with npm ci --ignore-scripts, builds with npm run build (which stops on a blank or secret Supabase key and on a JWT whose role is not anon) into dist, deploys api/chat/nvidia.js (maxDuration 300 s with supportsCancellation, so a browser that goes away stops the function) and api/models/nvidia.js (maxDuration 10 s) as Node.js functions, and sets a strict CSP, nosniff, X-Frame-Options DENY, COOP, HSTS and Permissions-Policy on all paths, plus immutable caching for assets/ and no-cache for sw.js, the root and index.html. NVIDIA_API_KEYS, and optionally NVIDIA_RATE_LIMIT_PER_MINUTE and NVIDIA_ALLOWED_ORIGINS, are environment variables of the Vercel project, the keys marked sensitive, for Production and Preview. Vercel binds environment variables to a deployment when it is created, so a key added later reaches only deployments created after it; without a valid key the models route reports configured false and the chat route answers 503 nvidia_not_configured.
 
 <!-- diagram: deployment-ci-vercel -->
 ```mermaid
@@ -7234,7 +6882,7 @@ flowchart TD
         Conc["permissions contents read<br/>concurrency per PR or ref, cancel-in-progress"]
         FE["frontend job, Node 22<br/>npm ci --ignore-scripts, lint, typecheck,<br/>npm test, npm run pack:core,<br/>npm run build, npm run verify:dist<br/>uploads the dist artifact"]
         E2E["e2e job, needs frontend<br/>npm ci --ignore-scripts, downloads dist,<br/>installs Chromium, npm run test:e2e<br/>app, trust, models, modes and Mermaid docs specs,<br/>Supabase and the NVIDIA proxy mocked<br/>playwright-report uploaded on failure"]
-        BE["backend job, Python 3.11 and 3.12<br/>pip install requirements-dev.txt<br/>ruff check, ruff format --check,<br/>compileall, unittest discover test_*.py"]
+        BE["backend job, library publisher, Python 3.11 and 3.13<br/>pip install tools/library-publisher/requirements-dev.txt<br/>ruff check, ruff format --check,<br/>compileall, unittest discover"]
         DBJ["database job<br/>PostgreSQL 16 and pgvector<br/>backend/supabase/tests/run_rls_tests.sh"]
         AUD["audit job<br/>npm audit: no advisory in runtime dependencies<br/>pip-audit on backend/requirements-dev.txt<br/>npm run sbom: CycloneDX SBOMs, artifact sbom"]
         SEC["secrets job<br/>gitleaks 8.30.1, sha256 verified, NVIDIA key rule<br/>working tree, plus PR commits on pull_request"]
@@ -7250,7 +6898,7 @@ flowchart TD
     sg_ci -.->|"CI passed on a push to main"| REL["release.yml: GitHub release with the<br/>@starpi/core tarball, SBOMs and SHA256SUMS,<br/>no deploy step, no npm publish"]
     Push -.->|"trigger set in the Vercel project, not in this repo<br/>no workflow deploys, nothing waits for CI"| VIg
     subgraph sg_vercel["Vercel build from vercel.json"]
-        VIg[".vercelignore leaves out backend/, tests/, .github/,<br/>.env*, node_modules/, dist/, .build/,<br/>playwright-report/, test-results/,<br/>keeps api/ and src/"]
+        VIg[".vercelignore leaves out backend/, tools/, tests/, .github/,<br/>.env*, node_modules/, dist/, .build/,<br/>playwright-report/, test-results/,<br/>keeps api/ and src/"]
         VI["installCommand<br/>npm ci --ignore-scripts"]
         VB["buildCommand npm run build = scripts/build.mjs<br/>STARPI_SUPABASE_URL, STARPI_SUPABASE_ANON_KEY<br/>or the compiled-in defaults<br/>stops on a blank or sb_secret_ key and on a JWT<br/>whose role is not anon, accepts sb_publishable_ keys<br/>esbuild warnings fail the build"]
         VO[("outputDirectory dist<br/>framework null, cleanUrls true")]
@@ -7279,92 +6927,9 @@ flowchart TD
 
 <sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`vercel.json`](../vercel.json), [`.vercelignore`](../.vercelignore), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`api/models/nvidia.js`](../api/models/nvidia.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`api/_lib/env.js`](../api/_lib/env.js), [`README.md`](../README.md), [`package.json`](../package.json), [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`scripts/serve.mjs`](../scripts/serve.mjs), [`playwright.config.mjs`](../playwright.config.mjs), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs)</sub>
 
-### Backend runtime on EC2
-
-On EC2 the API listens on 127.0.0.1:9200 only; port 9200 is never opened in the security group. A reverse proxy, installed by hand after deploy_ec2.sh, terminates TLS and forwards to the loopback port, so the API must run with BRAIN_API_TOKEN, which deploy_ec2.sh generates into the mode-600 .env when it is missing. The systemd unit has no EnvironmentFile: server.py loads that file itself through core/config.py, so the script makes it belong to SERVICE_USER. The service role key in it bypasses RLS, so the token and the key never leave the server, and the backend itself limits its document list and its vector matches to published rows and rows without an owner (VISIBLE_ROWS in core/supabase_client.py), so private rows of browser sessions never leave through this API. With NVIDIA_API_KEYS in the .env file it also serves the two NVIDIA routes; the app's browser client reaches them only when the reverse proxy serves them on the app's own origin, with the token that deploy_ec2.sh sets (a proxy that adds forwarding headers is refused without one) and the app's origin in BRAIN_ALLOWED_ORIGINS (section 13).
-
-<!-- diagram: deployment-ec2-topology -->
-```mermaid
-flowchart TD
-    client(["API client<br/>Authorization: Bearer BRAIN_API_TOKEN,<br/>never shipped to browsers"])
-    subgraph ec2["EC2 instance: security group opens 22 for your IP, 80 and 443"]
-        proxy["Caddy or nginx, set up by hand<br/>TLS on 443, port 80 only for the ACME challenge"]
-        server["server.py on 127.0.0.1:9200<br/>starpi-brain.service, User SERVICE_USER<br/>Bearer token on /api/brain/*<br/>CORS allow-list BRAIN_ALLOWED_ORIGINS"]
-        envf[("~/starpi-brain/.env, mode 600, owned by SERVICE_USER<br/>read by core/config.py when server.py starts,<br/>not an EnvironmentFile of the unit")]
-    end
-    supa["Supabase REST<br/>SUPABASE_SERVICE_ROLE_KEY, bypasses RLS,<br/>so document lists and vector matches are filtered<br/>to is_public true or owner_id null"]
-    llm["Chat models<br/>query answers: GEMINI_API_KEYS pool, then<br/>OPENROUTER_API_KEYS pool, then LLM_BASE_URL<br/>ingest structuring: LLM_BASE_URL only"]
-    emb["Embedding endpoint<br/>EMBEDDING_BASE_URL, 1536 dimensions"]
-    nvapi["NVIDIA API, only with NVIDIA_API_KEYS:<br/>POST /api/chat/nvidia relayed with a pooled key"]
-
-    client -->|"HTTPS"| proxy
-    proxy -->|"reverse_proxy 127.0.0.1:9200"| server
-    envf -.->|"loaded by server.py at start"| server
-    server -->|"documents, sections, RPCs"| supa
-    server -->|"structuring and answers"| llm
-    server -->|"section and query embeddings"| emb
-    server -.->|"optional NVIDIA routes"| nvapi
-```
-
-<sub>Sources: [`backend/aws/cloud_architecture.md`](../backend/aws/cloud_architecture.md), [`backend/aws/deploy_ec2.sh`](../backend/aws/deploy_ec2.sh), [`backend/server.py`](../backend/server.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/supabase_client.py`](../backend/core/supabase_client.py), [`backend/core/rag.py`](../backend/core/rag.py), [`backend/core/embeddings.py`](../backend/core/embeddings.py), [`backend/.env.example`](../backend/.env.example), [`backend/core/structurer.py`](../backend/core/structurer.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py)</sub>
-
-### Backend deployment to EC2 with remote_sync.sh and deploy_ec2.sh
-
-remote_sync.sh checks its arguments and the SSH key, rsyncs backend/ to ~/starpi-brain without .env, .env.local, the virtualenv and cache files (.env.example is copied) and runs aws/deploy_ec2.sh over SSH. The deploy script refuses a root or missing SERVICE_USER, installs a virtualenv with requirements.txt, aborts when it cannot read .env even with sudo, keeps .env at mode 600 owned by SERVICE_USER and generates a 64-hex-character BRAIN_API_TOKEN with openssl when it is missing or empty, never printing it and aborting if openssl output looks wrong. It writes a hardened starpi-brain systemd unit without EnvironmentFile that runs server.py bound to 127.0.0.1 (server.py loads .env itself), restarts it, reads PORT through core.config as SERVICE_USER and polls /api/health up to 20 times, exiting 1 with a journalctl hint when nothing answers; filling in .env, BRAIN_ALLOWED_ORIGINS and the TLS reverse proxy (Caddy or nginx) in front of port 9200 are manual steps.
-
-<!-- diagram: deployment-ec2 -->
-```mermaid
-flowchart TD
-    Op(["operator machine<br/>backend/remote_sync.sh HOST KEY [REMOTE_USER]<br/>REMOTE_USER default ubuntu"]) --> KeyChk{"HOST and KEY given, key readable<br/>and its path without a single quote?"}
-    KeyChk -->|"no"| Exit1["usage or error message, exit 1"]
-    KeyChk -->|"yes"| Mode["warn if the key mode grants group or other<br/>any permission, the file is never changed"]
-    Mode --> Sync["ssh mkdir -p REMOTE_DIR, default starpi-brain<br/>rsync -az backend/ excluding .env, .env.local, .venv,<br/>__pycache__, *.pyc, *.log, .ruff_cache<br/>.env.example is copied"]
-    Sync --> Run["ssh: bash REMOTE_DIR/aws/deploy_ec2.sh<br/>SERVICE_USER is not passed on"]
-    subgraph sg_ec2["EC2 host, Ubuntu 22.04 or 24.04"]
-        User{"SERVICE_USER, default ubuntu,<br/>is not root and exists?"}
-        User -->|"no"| Exit2["exit 1"]
-        User -->|"yes"| S1["step 1 of 5: sudo apt-get update, apt-get install<br/>python3 python3-venv curl openssl"]
-        S1 --> S2["step 2 of 5: python3 -m venv .venv<br/>pip install --upgrade pip, pip install -r requirements.txt"]
-        S2 --> S3["step 3 of 5: umask 077<br/>.env copied from .env.example if missing"]
-        S3 --> Rd{"read_env_file succeeds?<br/>cat .env, or sudo cat when<br/>the current user cannot read it"}
-        Rd -->|"no"| ExitR["Cannot read .env,<br/>abort without changes, exit 1"]
-        Rd -->|"yes"| Ch6["chmod 600 .env, with sudo when the<br/>current user does not own it, e.g. on a re-run<br/>after it was given to another SERVICE_USER"]
-        Ch6 --> Tok{"last BRAIN_API_TOKEN assignment<br/>in read_env_file output has a value?"}
-        Tok -->|"missing or empty"| Gen{"openssl rand -hex 32<br/>is 64 lowercase hex chars?"}
-        Gen -->|"no"| Exit3["abort, exit 1"]
-        Gen -->|"yes"| Write["temp file with mode 600 from read_env_file:<br/>first assignment replaced, later ones dropped,<br/>appended if none, then mv<br/>token never printed or logged"]
-        Tok -->|"yes"| Own
-        Write --> Own{".env owner is SERVICE_USER?"}
-        Own -->|"no"| Chown["sudo chown SERVICE_USER .env"]
-        Own -->|"yes"| S4
-        Chown --> S4["step 4 of 5: /etc/systemd/system/starpi-brain.service<br/>User SERVICE_USER, no EnvironmentFile,<br/>server.py loads .env itself<br/>ExecStart .venv/bin/python server.py --host 127.0.0.1<br/>Restart on-failure, RestartSec 5<br/>NoNewPrivileges, ProtectSystem strict, ProtectHome read-only"]
-        S4 --> S5["step 5 of 5: systemctl daemon-reload,<br/>enable and restart starpi-brain"]
-        S5 --> Port["PORT = config.server_port from core.config<br/>.venv/bin/python run as SERVICE_USER,<br/>same loader and .env as the service<br/>set -e stops the script if this fails"]
-        Port --> HC{"curl http://127.0.0.1:PORT/api/health OK?<br/>up to 20 tries, 1 s apart"}
-        HC -->|"yes"| Status["systemctl status, 5 lines"]
-        HC -->|"no answer in 20 tries"| Status
-        Status --> Healthy{"health check answered?"}
-        Healthy -->|"no"| HCno["Health check failed on stderr<br/>hint: journalctl -u starpi-brain -n 50 --no-pager<br/>exit 1"]
-        Healthy -->|"yes"| HCok["print Health check OK on 127.0.0.1:PORT<br/>print the next steps"]
-        S5 --> API["server.py on 127.0.0.1, port 9200 by default<br/>Bearer token on /api/brain/*<br/>port never opened in the security group"]
-        Manual["manual: as SERVICE_USER fill in .env with SUPABASE_URL,<br/>SUPABASE_SERVICE_ROLE_KEY and model endpoints,<br/>add the site origin to BRAIN_ALLOWED_ORIGINS,<br/>then sudo systemctl restart starpi-brain"]
-        Proxy["manual: TLS reverse proxy, Caddy or nginx<br/>ports 443, and 80 for ACME<br/>not installed by the script"]
-        HCok -.-> Manual
-        HCok -.-> Proxy
-        Manual -.-> API
-        Proxy -->|"reverse_proxy 127.0.0.1:9200"| API
-    end
-    Run --> User
-    Client(["API client"]) -->|"HTTPS with Authorization Bearer BRAIN_API_TOKEN"| Proxy
-    API -->|"service role key"| SB[("Supabase REST")]
-    API --> Models["chat model and embedding endpoints"]
-```
-
-<sub>Sources: [`backend/remote_sync.sh`](../backend/remote_sync.sh), [`backend/aws/deploy_ec2.sh`](../backend/aws/deploy_ec2.sh), [`backend/aws/cloud_architecture.md`](../backend/aws/cloud_architecture.md), [`backend/.env.example`](../backend/.env.example), [`backend/core/config.py`](../backend/core/config.py)</sub>
-
 ### Supabase schema: fresh install or ordered migrations
 
-A new project gets full_schema.sql, an existing one the three migrations in file-name order: 20260923000000_harden_rls_anonymous_auth.sql, 20260924000000_lock_published_rows.sql, then 20260924120000_search_knowledge_shared_terms.sql. Each file first checks its preconditions and raises an exception otherwise: full_schema.sql refuses an older schema, the first migration needs vector in public, Supabase auth and the Starpi tables, the second refuses a database without the first, and the third needs search_knowledge(text, integer) and the two knowledge tables. Every file runs in a single transaction; full_schema.sql and the first two migrations end with notify pgrst to reload the schema, the third does not. An operator applies the files by hand through the SQL editor, a psql loop, apply_migration.py --migrations or supabase db push; no workflow touches the live project. Re-running only the first migration drops and recreates the policies and search_knowledge, which undoes the policy part of the second and the search change of the third, so the whole set is always re-run, and the CI database job checks on a throwaway cluster that fresh and upgraded schemas are identical.
+A new project gets full_schema.sql, an existing one the four migrations in file-name order: 20260923000000_harden_rls_anonymous_auth.sql, 20260924000000_lock_published_rows.sql, 20260924120000_search_knowledge_shared_terms.sql, then the optional 20261101000000_embedding_384.sql. Each file first checks its preconditions and raises an exception otherwise: full_schema.sql refuses an older schema, the first migration needs vector in public, Supabase auth and the Starpi tables, the second refuses a database without the first, and the third needs search_knowledge(text, integer) and the two knowledge tables, the fourth the hardened knowledge tables, search_knowledge and ingest_document_atomic. Every file runs in a single transaction; full_schema.sql, the first two migrations and the fourth end with notify pgrst to reload the schema, the third does not. An operator applies the files by hand through the SQL editor, a psql loop, apply_migration.py --migrations or supabase db push; no workflow touches the live project. Re-running only the first migration drops and recreates the policies and search_knowledge, which undoes the policy part of the second and the search change of the third, so the whole set is always re-run, and the CI database job checks on a throwaway cluster that fresh and upgraded schemas are identical.
 
 <!-- diagram: deployment-supabase-migrations -->
 ```mermaid
@@ -7384,7 +6949,10 @@ flowchart TD
     M2G -->|"yes, then"| M3["migrations/20260924120000_search_knowledge_shared_terms.sql<br/>search_knowledge: rows with every term first, otherwise<br/>rows sharing at least two terms, or one term<br/>when the query has only one"]
     M3 --> M3G{"search_knowledge(text, integer),<br/>knowledge_sections and<br/>knowledge_documents exist?"}
     M3G -->|"no"| M3Stop["raise exception, nothing committed<br/>apply 20260923000000 and 20260924000000 first"]
-    M3G -->|"yes"| Tx
+    M3G -->|"yes, then"| M4["migrations/20261101000000_embedding_384.sql, optional<br/>embedding_384 vector(384) with an HNSW index,<br/>match_knowledge_vector_384 for anon and signed-in users,<br/>ingest_document_atomic stores embedding_384"]
+    M4 --> M4G{"hardened knowledge tables, search_knowledge<br/>and ingest_document_atomic exist?"}
+    M4G -->|"no"| M4Stop["raise exception, nothing committed<br/>apply the three earlier migrations first"]
+    M4G -->|"yes"| Tx
     Full -.->|"migrations afterwards change nothing"| M1
     subgraph sg_tools["ways to apply, all run by hand"]
         T1["SQL editor, one file after the other"]
@@ -7392,16 +6960,16 @@ flowchart TD
         T3["apply_migration.py with DATABASE_URL<br/>no argument: full_schema.sql<br/>--migrations: file-name order, stops at the first failure<br/>psycopg, psycopg2 or psql, exit 1 SQL error, 2 setup"]
         T4["supabase db push after copying the files<br/>into the CLI project's supabase/migrations/"]
     end
-    sg_tools --> Tx["each file: begin, one transaction,<br/>lock_timeout 15s in the migrations, commit<br/>notify pgrst reload schema only in full_schema.sql<br/>and the first two migrations"]
+    sg_tools --> Tx["each file: begin, one transaction,<br/>lock_timeout 15s in the migrations, commit<br/>notify pgrst reload schema in full_schema.sql<br/>and every migration but the third"]
     Tx --> DB[("Supabase Postgres and PostgREST")]
     DB --> Verify["verify with Supabase security advisors<br/>and the verification queries"]
     Rerun["re-running 20260923000000 alone drops and recreates<br/>the policies and search_knowledge: it undoes the policy part<br/>of 20260924000000 and the search of 20260924120000,<br/>always re-run the whole set"] -.-> M1
-    CIdb["CI database job: run_rls_tests.sh on a throwaway<br/>PostgreSQL 16 and pgvector cluster, never the live project<br/>every migrations file in file-name order, guard checks,<br/>rls_test.sql 191 checks, 198 with legacy rows,<br/>fresh vs upgraded pg_dump"] -.->|"tests"| Tx
+    CIdb["CI database job: run_rls_tests.sh on a throwaway<br/>PostgreSQL 16 and pgvector cluster, never the live project<br/>every migrations file in file-name order, guard checks,<br/>rls_test.sql 220 checks, 227 with legacy rows,<br/>fresh vs upgraded pg_dump"] -.->|"tests"| Tx
     PWA(["browser PWA, anon key and RLS"]) --> DB
-    Backend(["Python backend, service role key"]) --> DB
+    Publisher(["library publisher, service role key"]) --> DB
 ```
 
-<sub>Sources: [`backend/supabase/README.md`](../backend/supabase/README.md), [`backend/supabase/apply_migration.py`](../backend/supabase/apply_migration.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql), [`backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql`](../backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql), [`backend/supabase/tests/run_rls_tests.sh`](../backend/supabase/tests/run_rls_tests.sh), [`backend/supabase/tests/rls_test.sql`](../backend/supabase/tests/rls_test.sql), [`README.md`](../README.md), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)</sub>
+<sub>Sources: [`backend/supabase/README.md`](../backend/supabase/README.md), [`backend/supabase/apply_migration.py`](../backend/supabase/apply_migration.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql), [`backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql`](../backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql), [`backend/supabase/migrations/20261101000000_embedding_384.sql`](../backend/supabase/migrations/20261101000000_embedding_384.sql), [`backend/supabase/tests/run_rls_tests.sh`](../backend/supabase/tests/run_rls_tests.sh), [`backend/supabase/tests/rls_test.sql`](../backend/supabase/tests/rls_test.sql), [`README.md`](../README.md), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)</sub>
 
 ## 12. Source check, answer receipts and sample files
 
@@ -7971,11 +7539,11 @@ flowchart TD
 
 ## 13. NVIDIA cloud proxy
 
-NVIDIA mode answers through Starpi's own proxy: two Vercel Functions under api/, and on an operator's own host the same routes in the Python backend, keep a pool of NVIDIA API keys in the server environment, accept chat requests only from the app's own pages, check every request against one shared model allowlist and fixed limits, and relay NVIDIA's event stream to the browser, moving to the next key until one delivers the first byte. The browser never holds a key and sends none. The proxy keeps no conversation and logs no request or answer content: its log lines name a key by its index, with a status or a cooldown, and count malformed key entries. The per-IP limit and the key cooldowns live in one function instance or one backend process, so they are best effort, and the Origin check stops other websites' pages, not scripts that forge headers.
+NVIDIA mode answers through Starpi's own proxy: two Vercel Functions under api/ (on an operator's own host served by node scripts/serve.mjs --functions) keep a pool of NVIDIA API keys in the server environment, accept chat requests only from the app's own pages, check every request against one shared model allowlist and fixed limits, and relay NVIDIA's event stream to the browser, moving to the next key until one delivers the first byte. The browser never holds a key and sends none. The proxy keeps no conversation and logs no request or answer content: its log lines name a key by its index, with a status or a cooldown, and count malformed key entries. The per-IP limit and the key cooldowns live in one function instance or one server process, so they are best effort, and the Origin check stops other websites' pages, not scripts that forge headers.
 
 ### NVIDIA proxy: request guards and limits
 
-Each route file exports its handler (POST for the chat route, GET for the models route) and, for the other common methods (GET or POST, PUT, PATCH, DELETE and OPTIONS), an answer of 405 method_not_allowed with Allow. POST /api/chat/nvidia then runs handleChat, whose guards come in a fixed order, each refusing with a flat JSON body {error, field?} that carries Cache-Control no-store and nosniff. A request whose Origin is listed in NVIDIA_ALLOWED_ORIGINS passes the origin check; otherwise a Sec-Fetch-Site other than same-origin gives 403 cross_site_request, a missing Origin 403 origin_required, and an Origin whose host differs from the request's Host (X-Forwarded-Host first, as the platform sets it) 403 origin_not_allowed. Next a fixed one-minute window per client address (x-real-ip, else the first X-Forwarded-For entry) allows NVIDIA_RATE_LIMIT_PER_MINUTE requests, 20 by default, and answers 429 rate_limited with Retry-After; without a valid key in NVIDIA_API_KEYS the route answers 503 nvidia_not_configured before it reads any body. The body is read with a 256 KiB cap in the same order as the Python backend: a declared size above the cap gives 413 before the media type is checked (415 unless application/json), then the bytes actually read are capped (413), decoded as strict UTF-8 and parsed (400 invalid_json), and must be an object (400 json_body_must_be_object). validateChatRequest accepts only an allowlisted model (400 model_not_allowed), 1 to 40 messages with role system (first only), user or assistant and string content of at most 24,000 UTF-16 code units each and 64,000 in all, the last one a non-blank user message, an integer max_tokens of at least 1, a temperature from 0 to 2 and a top_p above 0 up to 1 (400 invalid_field with the field otherwise). The upstream body is built from these fields alone: the model's fixed upstream extras first (for the default model, thinking switched off), then model, the messages with role and content only, max_tokens capped at the model's maxOutputTokens, stream true and the optional temperature and top_p, so tools, n, stop, stream settings and every other client field are dropped. GET /api/models/nvidia answers the public catalog and whether keys are configured, and never a key or a key count.
+Each route file exports its handler (POST for the chat route, GET for the models route) and, for the other common methods (GET or POST, PUT, PATCH, DELETE and OPTIONS), an answer of 405 method_not_allowed with Allow. POST /api/chat/nvidia then runs handleChat, whose guards come in a fixed order, each refusing with a flat JSON body {error, field?} that carries Cache-Control no-store and nosniff. A request whose Origin is listed in NVIDIA_ALLOWED_ORIGINS passes the origin check; otherwise a Sec-Fetch-Site other than same-origin gives 403 cross_site_request, a missing Origin 403 origin_required, and an Origin whose host differs from the request's Host (X-Forwarded-Host first, as the platform sets it) 403 origin_not_allowed. Next a fixed one-minute window per client address (x-real-ip, else the first X-Forwarded-For entry) allows NVIDIA_RATE_LIMIT_PER_MINUTE requests, 20 by default, and answers 429 rate_limited with Retry-After; without a valid key in NVIDIA_API_KEYS the route answers 503 nvidia_not_configured before it reads any body. The body is read with a 256 KiB cap: a declared size above the cap gives 413 before the media type is checked (415 unless application/json), then the bytes actually read are capped (413), decoded as strict UTF-8 and parsed (400 invalid_json), and must be an object (400 json_body_must_be_object). validateChatRequest accepts only an allowlisted model (400 model_not_allowed), 1 to 40 messages with role system (first only), user or assistant and string content of at most 24,000 UTF-16 code units each and 64,000 in all, the last one a non-blank user message, an integer max_tokens of at least 1, a temperature from 0 to 2 and a top_p above 0 up to 1 (400 invalid_field with the field otherwise). The upstream body is built from these fields alone: the model's fixed upstream extras first (for the default model, thinking switched off), then model, the messages with role and content only, max_tokens capped at the model's maxOutputTokens, stream true and the optional temperature and top_p, so tools, n, stop, stream settings and every other client field are dropped. GET /api/models/nvidia answers the public catalog and whether keys are configured, and never a key or a key count.
 
 <!-- diagram: nvidia-proxy-guards -->
 ```mermaid
@@ -8150,49 +7718,9 @@ sequenceDiagram
 
 <sub>Sources: [`api/_lib/nvidia-stream.js`](../api/_lib/nvidia-stream.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`api/_lib/nvidia-router.js`](../api/_lib/nvidia-router.js), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`vercel.json`](../vercel.json), [`src/js/providers.js`](../src/js/providers.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>
 
-### NVIDIA proxy in the Python backend
+### One model allowlist for the app and the functions
 
-backend/server.py serves the same two routes from core/nvidia.py, with the same allowlist, limits, validation rules (both test suites run the 47 shared vectors), error codes and failover policy. They pass the server's general guards first (section 10), and POST /api/chat/nvidia then needs an Origin listed in BRAIN_ALLOWED_ORIGINS or the Bearer token, so a bare script without the token cannot spend the key pool. The rate limit counts the socket peer, and only behind the reverse proxy that a token implies (a token set and a loopback peer) the right-most X-Forwarded-For entry, the hop that proxy appended, because a client talking to the server directly could send any X-Forwarded-For. The body cap is 256 KiB, a leading byte order mark is ignored and NaN or Infinity is refused, as JSON.parse would, and lengths count UTF-16 code units, as JavaScript does. All request threads share one httpx client: when no pooled connection becomes free within 2 s the request gets 503 proxy_busy with Retry-After 5 and no key is parked, because the key is not at fault. httpx applies its 30 s read timeout to each read rather than to a whole attempt, so the 25 s failover budget only keeps new attempts from starting, every failed attempt parks its key, a redirect counts as a transient failure, and the 240 s stream limit is checked whenever a chunk arrives. The stream is sent as HTTP/1.0 without Content-Length and with Connection close, so it ends when the connection closes; a client that goes away ends the loop and the upstream response is closed in every case. The browser client calls these routes only on the app's own origin, so a deployment needs a reverse proxy in front that serves the app and the two routes on one origin; backend/README.md shows an example.
-
-<!-- diagram: nvidia-proxy-backend -->
-```mermaid
-flowchart TD
-    Req(["request on a BrainAPIHandler thread"]) --> Guards["_route guards, section 10: proxy headers without<br/>a token 401, Origin not in BRAIN_ALLOWED_ORIGINS 403,<br/>non-loopback Host without a token 403,<br/>404, OPTIONS preflight, 405 with Allow"]
-    Guards -->|"GET /api/models/nvidia"| Models["_handle_nvidia_models: public_catalog,<br/>configured = a router was built"]
-    Guards -->|"POST /api/chat/nvidia"| Caller{"_check_nvidia_caller: an allowed Origin<br/>or the Bearer token BRAIN_API_TOKEN?"}
-    Caller -->|"no"| E403["403 origin_required"]
-    Caller -->|"yes"| Key["_client_key: socket peer, or the right-most<br/>X-Forwarded-For entry when a token is set<br/>and the peer is loopback, the local reverse proxy"]
-    Key --> Rate{"RateLimiter.hit: NVIDIA_RATE_LIMIT_PER_MINUTE<br/>per one-minute window, this process only?"}
-    Rate -->|"over"| E429["429 rate_limited with Retry-After"]
-    Rate -->|"ok"| Conf{"build_router found a valid key<br/>in NVIDIA_API_KEYS at start?"}
-    Conf -->|"no"| E503n["503 nvidia_not_configured"]
-    Conf -->|"yes"| Body["_read_json_object(max_bytes 262144):<br/>411, 400, 413, 415, 408 as in section 10,<br/>BOM ignored, NaN and Infinity refused"]
-    Body --> Valid{"validate_chat_request: the same rules,<br/>lengths in UTF-16 code units,<br/>1.0 counts as an integer, True does not"}
-    Valid -->|"no"| E400["400 invalid_field with the field,<br/>or model_not_allowed"]
-    Valid -->|"yes"| Open["NvidiaRouter.open_stream: KeyPool.order,<br/>round robin under a lock, cooling keys skipped,<br/>none left: 503 all_keys_exhausted at once"]
-    Open --> Try["_attempt: one shared httpx.Client,<br/>send(stream true), Bearer key,<br/>connect 3 s, read 30 s per read, pool 2 s"]
-    Try -->|"PoolTimeout"| Busy["503 proxy_busy, Retry-After 5,<br/>no key parked"]
-    Try -->|"timeout, network error, empty stream,<br/>408, 5xx or a redirect"| Park["park the key 10 s,<br/>log key index only"]
-    Try -->|"429"| Park429["park for Retry-After, 1 to 300 s"]
-    Try -->|"401 or 403"| Park30["park for 30 min"]
-    Try -->|"404 or other 4xx"| E502["502 model_unavailable or<br/>upstream_rejected, no failover"]
-    Park --> More{"another key not cooling<br/>and the 25 s budget left?"}
-    Park429 --> More
-    Park30 --> More
-    More -->|"yes"| Try
-    More -->|"no"| End["504 upstream_timeout when every attempt<br/>timed out, else 503 all_keys_exhausted"]
-    Try -->|"200 text/event-stream<br/>and a first non-empty chunk"| Head["_send_stream_head: 200, SECURITY_HEADERS,<br/>text/event-stream, no-store, no-transform,<br/>X-Accel-Buffering no, Connection close,<br/>Vary Origin, no Content-Length"]
-    Head --> Rest["write the first chunk, then rest():<br/>past started + 240 s at a chunk: stream_timeout,<br/>over 4 MiB: stream_too_large,<br/>read timeout: stream_timeout,<br/>other httpx error: upstream_interrupted"]
-    Rest --> Tail["sse_error(code) when a code was set"]
-    Tail --> Close(["finally stream.close(), the connection<br/>closes and ends the HTTP/1.0 body"])
-    Rest -->|"OSError: the client went away"| Close
-```
-
-<sub>Sources: [`backend/server.py`](../backend/server.py), [`backend/core/nvidia.py`](../backend/core/nvidia.py), [`backend/core/config.py`](../backend/core/config.py), [`backend/core/nvidia_catalog.json`](../backend/core/nvidia_catalog.json), [`backend/test_nvidia.py`](../backend/test_nvidia.py), [`backend/test_server.py`](../backend/test_server.py), [`backend/test_fixtures/nvidia_validation.json`](../backend/test_fixtures/nvidia_validation.json), [`backend/README.md`](../backend/README.md)</sub>
-
-### One model allowlist for the app, the functions and the backend
-
-src/js/models/nvidia-catalog.js is the single source of the NVIDIA models (13 entries with id, label, vendor, reasoning and vision flags, output token limits and fixed upstream extras), the default model, the request limits, the proxy timings and cooldowns, and the browser timeouts derived from them; it is deep-frozen, so no importer can change it at run time. esbuild bundles it into the app, where the pickers list its models, state.js normalizes starpi_nvidia_model against it, prompts.js fits requests to its limits and providers.js takes its timeouts. The Vercel Functions import it from src/ for validation, the router and the public catalog, so .vercelignore keeps src/. The Python backend cannot import JavaScript and gets backend/core/nvidia_catalog.json, the byte-for-byte JSON of the same object, written by npm run nvidia:sync; nvidia-catalog.test.mjs fails when that copy is outdated, when the README's T4 table does not list the same models with the same names and reasoning flags in the same order, or when a timing would let the browser give up before the proxy. GET /api/models/nvidia publishes the models without their upstream extras, and the browser offers only the models the proxy lists. npm run nvidia:ping, run by a maintainer with real keys before the list changes, checks every allowlisted id against NVIDIA's live API.
+src/js/models/nvidia-catalog.js is the single source of the NVIDIA models (13 entries with id, label, vendor, reasoning and vision flags, output token limits and fixed upstream extras), the default model, the request limits, the proxy timings and cooldowns, and the browser timeouts derived from them; it is deep-frozen, so no importer can change it at run time. esbuild bundles it into the app, where the pickers list its models, state.js normalizes starpi_nvidia_model against it, prompts.js fits requests to its limits and providers.js takes its timeouts. The Vercel Functions import it from src/ for validation, the router and the public catalog, so .vercelignore keeps src/. nvidia-catalog.test.mjs fails when the README's T4 table does not list the same models with the same names and reasoning flags in the same order, or when a timing would let the browser give up before the proxy. GET /api/models/nvidia publishes the models without their upstream extras, and the browser offers only the models the proxy lists. npm run nvidia:ping, run by a maintainer with real keys before the list changes, checks every allowlisted id against NVIDIA's live API.
 
 <!-- diagram: nvidia-proxy-allowlist -->
 ```mermaid
@@ -8212,12 +7740,9 @@ flowchart LR
         Hd["handlers.js publicCatalog,<br/>idle, stream and size limits"]
     end
 
-    Sync["npm run nvidia:sync<br/>scripts/sync-nvidia-catalog.mjs, catalogJson()"]
-    Json[("backend/core/nvidia_catalog.json<br/>byte-for-byte copy")]
-    Py["backend/core/nvidia.py<br/>CATALOG, MODELS, LIMITS, PROXY, UPSTREAM_URL"]
     Pub["GET /api/models/nvidia<br/>models without upstream extras"]
     Readme["README.md T4 table<br/>id, name, reasoning"]
-    Test["nvidia-catalog.test.mjs: copy exact, README table,<br/>timing inequalities, frozen, ids unique,<br/>labels outside the i18n key shape"]
+    Test["nvidia-catalog.test.mjs: README table,<br/>timing inequalities, frozen, ids unique,<br/>labels outside the i18n key shape"]
     Ping["npm run nvidia:ping, maintainer only:<br/>GET /v1/models and one streamed request<br/>per allowlisted id, real keys and quota"]
 
     Cat --> Pick
@@ -8227,14 +7752,11 @@ flowchart LR
     Cat -->|"imported from src/,<br/>kept by .vercelignore"| Req
     Cat --> Rt
     Cat --> Hd
-    Cat --> Sync --> Json --> Py
     Hd --> Pub
-    Py --> Pub
     Pub -->|"the offered models"| Prov
-    Test -.->|"checks"| Json
     Test -.->|"checks"| Readme
     Test -.->|"checks"| Cat
     Ping -.->|"live check before a change"| Cat
 ```
 
-<sub>Sources: [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/state.js`](../src/js/state.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/providers.js`](../src/js/providers.js), [`api/_lib/nvidia-request.js`](../api/_lib/nvidia-request.js), [`api/_lib/nvidia-router.js`](../api/_lib/nvidia-router.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`scripts/sync-nvidia-catalog.mjs`](../scripts/sync-nvidia-catalog.mjs), [`scripts/nvidia-ping.mjs`](../scripts/nvidia-ping.mjs), [`backend/core/nvidia_catalog.json`](../backend/core/nvidia_catalog.json), [`backend/core/nvidia.py`](../backend/core/nvidia.py), [`.vercelignore`](../.vercelignore), [`README.md`](../README.md), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>
+<sub>Sources: [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/state.js`](../src/js/state.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/providers.js`](../src/js/providers.js), [`api/_lib/nvidia-request.js`](../api/_lib/nvidia-request.js), [`api/_lib/nvidia-router.js`](../api/_lib/nvidia-router.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`scripts/nvidia-ping.mjs`](../scripts/nvidia-ping.mjs), [`.vercelignore`](../.vercelignore), [`README.md`](../README.md), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>
