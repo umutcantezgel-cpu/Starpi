@@ -1,0 +1,4 @@
+# Optional: computes the 384-dimension vectors (publish without --no-vectors, backfill, test-query).
+numpy>=1.26,<3
+onnxruntime>=1.20,<2
+tokenizers>=0.20,<1

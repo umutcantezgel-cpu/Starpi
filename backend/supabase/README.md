@@ -1,8 +1,10 @@
 # Starpi database (Supabase)
 
-SQL for the Starpi knowledge base: documents and sections with 1536-dim
-pgvector embeddings (HNSW index), German full-text search, a small knowledge
-graph, chat history and the RPCs used by the browser and the backend.
+SQL for the Starpi knowledge base: documents and sections with pgvector
+embeddings (1536-dim, and optionally 384-dim multilingual-e5-small vectors,
+each with an HNSW index), German full-text search, a small knowledge graph,
+chat history and the RPCs used by the browser and the library publisher
+(`tools/library-publisher`, see [../README.md](../README.md#library-publisher)).
 
 | Path | Purpose |
 | --- | --- |
@@ -10,6 +12,7 @@ graph, chat history and the RPCs used by the browser and the backend.
 | `migrations/20260923000000_harden_rls_anonymous_auth.sql` | Upgrade 1 of an existing database (the live project and any install from an earlier `schema.sql` / `full_schema.sql`): owner-based RLS for anonymous sign-ins. Idempotent. |
 | `migrations/20260924000000_lock_published_rows.sql` | Upgrade 2 (needs upgrade 1): published rows read-only for browser roles, `brain_settings` service role only, size limits for browser writes. Idempotent. |
 | `migrations/20260924120000_search_knowledge_shared_terms.sql` | Upgrade 3 (needs upgrades 1 and 2): `search_knowledge` answers questions in natural language; when no row contains every term it returns rows that share at least two. Idempotent. |
+| `migrations/20261101000000_embedding_384.sql` | Upgrade 4, optional (needs upgrades 1 to 3): `knowledge_sections.embedding_384 vector(384)` with an HNSW index, `match_knowledge_vector_384` for ranking the visible sections by vector (anon may call it), and `ingest_document_atomic` storing `embedding_384`. Without it the app searches by keywords only. Idempotent. |
 | `schema.sql` | Kept for old links: includes `full_schema.sql` when run with psql. |
 | `apply_migration.py` | Applies `full_schema.sql`, given files or all migrations (in file-name order) to `DATABASE_URL`. |
 | `tests/` | Local PostgreSQL tests for RLS, privileges, RPCs, size limits and idempotency (`run_rls_tests.sh`). |
@@ -45,6 +48,7 @@ Take a backup of the Starpi tables first (see [Rollback](#rollback)).
 1. `migrations/20260923000000_harden_rls_anonymous_auth.sql`
 2. `migrations/20260924000000_lock_published_rows.sql`
 3. `migrations/20260924120000_search_knowledge_shared_terms.sql`
+4. `migrations/20261101000000_embedding_384.sql` (optional, for vector ranking)
 
 - SQL editor: paste and run each file, in this order.
 - psql:
@@ -59,7 +63,8 @@ Take a backup of the Starpi tables first (see [Rollback](#rollback)).
   and run `supabase db push`. Each file has its own `begin; ... commit;`.
 
 The second file checks that the first one has been applied and stops
-otherwise; the third checks that `search_knowledge` exists. Both are idempotent, but `20260923000000` re-creates its own
+otherwise; the third checks that `search_knowledge` exists, the fourth that
+the first three have been applied. All are idempotent, but `20260923000000` re-creates its own
 policies on every run (it first drops every policy on the Starpi tables), so
 re-running it alone undoes the policy part of `20260924000000`. Always re-run
 the whole set, as `--migrations` does.
@@ -84,8 +89,9 @@ changed functions and privileges immediately.
   had 0 rows).
 - Knowledge rows that existed before the migration stay **public**
   (`is_public = true`). New rows are **private by default**, including rows the
-  backend writes with the service role (`owner_id` is null for those). To show a
-  backend document to browser users, publish it with the service role:
+  library publisher writes with the service role (`owner_id` is null for those).
+  To show such a document to browser users, publish it with the service role
+  (`publish --public` does this), or by hand:
   `update public.knowledge_documents set is_public = true where id = '...';`
 - `ingest_document_atomic` can only be called with the service role key;
   `match_knowledge_sections` / `match_knowledge_hybrid` need a signed-in user or
@@ -118,7 +124,7 @@ changed functions and privileges immediately.
 
   They sit above what the PWA sends (`src/js/config.js` `LIMITS`: 200000
   characters of document text, 200 character titles, 8000 character chat input)
-  and what the backend writes (it clips generated titles, summaries and
+  and what the library publisher writes (it clips titles, summaries and
   headings to these limits). A violation fails with SQLSTATE `23514` (HTTP 400
   from the REST API).
 - The limits are added `NOT VALID`: every new or updated row is checked, rows
@@ -131,6 +137,28 @@ changed functions and privileges immediately.
   ```
   (`full_schema.sql` adds the same constraints `NOT VALID` as well, so fresh and
   upgraded schemas stay identical.)
+
+`20261101000000` (optional):
+
+- `knowledge_sections.embedding_384 vector(384)` is nullable; rows that exist
+  keep it null until the library publisher fills it (`backfill`). The vectors
+  come from multilingual-e5-small: sections are embedded as `passage: ` + text,
+  questions as `query: ` + question with the same model, mean-pooled and
+  L2-normalised (the column comment says so too).
+- `match_knowledge_vector_384(query_embedding, match_count default 6,
+  match_threshold default 0)` returns the visible sections most similar to the
+  query, best first, with the columns of `search_knowledge` and a `similarity`
+  instead of `rank`. `anon` may call it, so a visitor can rank the shared
+  library by vector without sending the question text; RLS decides what is
+  visible. `match_count` is clamped to 1..20, a null query returns nothing, a
+  query of another dimension fails with SQLSTATE `22023` (HTTP 400). With the
+  HNSW index the ranking is approximate, and RLS filters the index candidates,
+  so a caller who can see only a small part of the table may get fewer rows.
+- `ingest_document_atomic` keeps its signature and privileges and also stores an
+  `embedding_384` array per section; an empty or missing array stores null, an
+  array of another length fails the whole call (SQLSTATE `22000`).
+- Browser roles write `embedding_384` under the same policies as the other
+  columns: only on sections of their own private documents.
 
 ## Schema
 
@@ -169,6 +197,7 @@ erDiagram
         vector embedding "vector(1536), nullable, HNSW cosine m 16 ef_construction 64"
         timestamptz created_at "not null, default now()"
         tsvector fts "generated stored, german heading markdown_content, GIN"
+        vector embedding_384 "vector(384), nullable, multilingual-e5-small, HNSW cosine"
     }
     knowledge_entities {
         uuid id PK "default gen_random_uuid()"
@@ -230,8 +259,8 @@ erDiagram
 ## Security model
 
 Roles: `anon` = browser before sign-in (anon key), `authenticated` = browser
-after anonymous sign-in (`owner_id = auth.uid()`), `service_role` = backend
-(bypasses RLS). "own" means `owner_id = auth.uid()`; "visible" means
+after anonymous sign-in (`owner_id = auth.uid()`), `service_role` = library
+publisher (bypasses RLS). "own" means `owner_id = auth.uid()`; "visible" means
 `is_public or owner_id = auth.uid()`.
 
 | Table | anon | authenticated | service_role |
@@ -248,9 +277,10 @@ after anonymous sign-in (`owner_id = auth.uid()`), `service_role` = backend
 | `search_knowledge(query_text, match_count default 6)` | yes | yes | yes | German full-text search, returns `section_id, document_id, document_title, heading, markdown_content, tags, rank`. Rows containing every term come first (websearch syntax); when there are none, rows sharing at least two terms (English function words and one-letter terms do not count), ranked by the number of shared terms; a document stands in for its sections only when it has none. `match_count` clamped to 1..20; blank query returns nothing |
 | `match_knowledge_sections(query_embedding, match_threshold, match_count)` | no | yes | yes | vector search, `match_count` clamped to 1..50 |
 | `match_knowledge_hybrid(query_text, query_embedding, match_count, rrf_k)` | no | yes | yes | reciprocal rank fusion of vector and full-text ranks |
+| `match_knowledge_vector_384(query_embedding, match_count default 6, match_threshold default 0)` | yes | yes | yes | optional (`20261101000000`): cosine ranking on `embedding_384`, returns `section_id, document_id, document_title, heading, markdown_content, tags, similarity`, `match_count` clamped to 1..20 |
 | `ingest_document_atomic(...)` | no | no | yes | document + sections in one transaction |
 
-All four functions are `SECURITY INVOKER` with `search_path = ''`, so RLS
+All five functions are `SECURITY INVOKER` with `search_path = ''`, so RLS
 applies to the caller and results only contain visible rows. Only the service
 role may publish (`is_public = true`), and published rows are read-only for
 every browser role. No policy is unconditional. Deleting a user from `auth.users`
@@ -265,7 +295,7 @@ flowchart TD
     req["Request on knowledge_documents,<br/>knowledge_entities or knowledge_relations"]
     role{"Database role?"}
     req --> role
-    role -->|"service_role, backend key"| svc["RLS bypassed, select, insert, update, delete<br/>on every row, only role that can publish<br/>or unpublish (is_public), size CHECKs still apply"]
+    role -->|"service_role, library publisher key"| svc["RLS bypassed, select, insert, update, delete<br/>on every row, only role that can publish<br/>or unpublish (is_public), size CHECKs still apply"]
     role -->|"anon, no session"| anonOp{"Operation?"}
     role -->|"authenticated, anonymous sign-in"| authOp{"Operation?"}
 
@@ -298,7 +328,7 @@ flowchart TD
 
     names["Policy names are the table name plus<br/>_select_public_or_own, _insert_own,<br/>_update_own and _delete_own"]
     lock["Published-row lock, 20260924000000_lock_published_rows<br/>added and not is_public to the update and delete USING,<br/>before that owners could still change published rows.<br/>Re-running 20260923000000 alone restores the old policies"]
-    brainApi["Brain API, backend/core/supabase_client.py:<br/>document list and match_knowledge_sections results<br/>filtered to is_public or owner_id null (VISIBLE_ROWS),<br/>supabase_service.py for the command line does not filter"]
+    brainApi["Library publisher, tools/library-publisher supabase_service.py:<br/>document list, backfill and vector matches<br/>limited to is_public or owner_id null (SHARED_ROWS)"]
     names -.- role
     lock -.- usingChk
     svc -.- brainApi
@@ -366,22 +396,27 @@ flowchart TD
         sk["search_knowledge<br/>(query_text, match_count default 6)<br/>German full text, rows with every term first,<br/>else rows sharing at least two terms or the only one,<br/>match_count clamped to 1 to 20,<br/>blank or null query returns none"]
         mks["match_knowledge_sections<br/>(query_embedding, match_threshold default 0.25,<br/>match_count default 5)<br/>vector search, 1 to 50 rows"]
         mkh["match_knowledge_hybrid<br/>(query_text, query_embedding,<br/>match_count default 5, rrf_k default 60)<br/>RRF of top 25 vector and top 25 full-text ranks,<br/>1 to 50 rows"]
-        ing["ingest_document_atomic<br/>(doc_title, doc_summary, doc_tags,<br/>doc_source_type, doc_source_name,<br/>doc_raw_content, sections_data)<br/>new document is private, owner_id null,<br/>22023 if sections_data is not a JSON array"]
+        mkv["match_knowledge_vector_384, optional migration<br/>(query_embedding, match_count default 6,<br/>match_threshold default 0)<br/>cosine ranking on embedding_384, 1 to 20 rows,<br/>null query returns none, other dimensions 22023"]
+        ing["ingest_document_atomic<br/>(doc_title, doc_summary, doc_tags,<br/>doc_source_type, doc_source_name,<br/>doc_raw_content, sections_data)<br/>new document is private, owner_id null,<br/>embedding and embedding_384 per section optional,<br/>22023 if sections_data is not a JSON array"]
     end
 
     anon --> sk
+    anon --> mkv
     authn --> sk
     authn --> mks
     authn --> mkh
+    authn --> mkv
     svc --> sk
     svc --> mks
     svc --> mkh
+    svc --> mkv
     svc --> ing
 
-    invoker["Runs as the caller, so table RLS<br/>limits rows to what the caller can see,<br/>service_role bypasses RLS.<br/>full_schema.sql and 20260923000000 drop every overload<br/>before create, so no older SECURITY DEFINER variant stays.<br/>20260924120000 uses create or replace, same signature"]
+    invoker["Runs as the caller, so table RLS<br/>limits rows to what the caller can see,<br/>service_role bypasses RLS.<br/>full_schema.sql and 20260923000000 drop every overload<br/>before create, so no older SECURITY DEFINER variant stays.<br/>20260924120000 and 20261101000000 use<br/>create or replace, same signatures"]
     sk -.- invoker
     mks -.- invoker
     mkh -.- invoker
+    mkv -.- invoker
     ing -.- invoker
     denied["EXECUTE revoked from PUBLIC,<br/>so every call without a grant fails with 42501"]
     anon -.->|"match_knowledge_sections,<br/>match_knowledge_hybrid,<br/>ingest_document_atomic"| denied
@@ -458,7 +493,8 @@ select p.oid::regprocedure as function, p.prosecdef, p.proconfig,
 from pg_proc p
 where p.pronamespace = 'public'::regnamespace
   and p.proname in ('search_knowledge', 'match_knowledge_sections',
-                    'match_knowledge_hybrid', 'ingest_document_atomic');
+                    'match_knowledge_hybrid', 'ingest_document_atomic',
+                    'match_knowledge_vector_384');
 
 -- Act as a signed-in user (use an id from auth.users) without changing anything
 begin;
@@ -486,15 +522,16 @@ only), loads a small Supabase stand-in (`tests/stub_supabase.sql`: roles,
   present (`tests/post_rerun_check.sql`);
 - a fresh `full_schema.sql` (applied through `apply_migration.py`) plus the
   migrations, and `schema.sql` followed by `full_schema.sql`;
-- `full_schema.sql` refusing a pre-hardening database, and `20260924000000`
-  refusing a database without `20260923000000`;
+- `full_schema.sql` refusing a pre-hardening database, `20260924000000`
+  refusing a database without `20260923000000`, and `20261101000000` refusing
+  a database without the earlier migrations;
 - identical `pg_dump` output for upgraded and fresh installs;
-- 191 RLS / privilege / RPC / size-limit assertions per scenario, 198 in the
+- 220 RLS / privilege / RPC / size-limit assertions per scenario, 227 in the
   scenarios seeded with legacy rows (`tests/rls_test.sql`), run as `anon`, two
   different anonymous users and `service_role`: tenant isolation in both
   directions on every table, published rows staying read-only for their owner,
-  oversized writes rejected, and legacy rows above the limits surviving the
-  upgrade.
+  oversized writes rejected, legacy rows above the limits surviving the
+  upgrade, and `match_knowledge_vector_384` returning only visible sections.
 
 The runner applies every file in `migrations/` in file-name order, so a new
 migration is picked up without changing the script.
@@ -524,6 +561,7 @@ flowchart TD
     subgraph sg_guard["Guards, expect-fail steps"]
         guard["guard: live_shape.sql,<br/>then full_schema.sql must fail"]
         guardOrder["guard_order: live_shape.sql,<br/>then 20260924000000_lock_published_rows.sql must fail"]
+        guardVectors["guard_vectors: live_shape.sql,<br/>then 20261101000000_embedding_384.sql must fail"]
     end
     scen --> live
     scen --> v2
@@ -532,9 +570,10 @@ flowchart TD
     scen --> rerunS
     scen --> guard
     scen --> guardOrder
+    scen --> guardVectors
 
     aIdem["Second migrations run succeeds on the upgraded schema:<br/>idempotent on the live shape and both earlier schema versions"]
-    aRls["rls_test.sql: 191 checks, 198 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback"]
+    aRls["rls_test.sql: 220 checks, 227 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback<br/>and match_knowledge_vector_384"]
     aPost["post_rerun_check.sql, 13 checks: a further migrations run keeps<br/>ownership, visibility, chat rows, the published-row lock,<br/>size limits and brain_settings closed to A and anon"]
     aGuard["Step passes only when psql exits non-zero:<br/>pre-hardening database refused, order enforced"]
     aFreshRerun["full_schema.sql re-runs cleanly on a database it created"]
@@ -550,6 +589,7 @@ flowchart TD
     rerunS --> aFreshRerun
     guard --> aGuard
     guardOrder --> aGuard
+    guardVectors --> aGuard
 
     parity{"pg_dump --schema-only --schema=public of starpi_live,<br/>starpi_fresh, starpi_fresh_rerun, restrict lines removed:<br/>diff -u live vs fresh and fresh vs fresh_rerun empty?"}
     live --> parity
@@ -589,6 +629,25 @@ It exits non-zero on any failure. As root it runs the server as the
   undone migration with `supabase migration repair --status reverted <version>`.
 - If the browser cannot read or write after an upgrade, check first that
   anonymous sign-ins are enabled and that the frontend signs in.
+
+### Undo `20261101000000` (back to the state after `20260924120000`)
+
+Re-apply the first three migrations (this restores the earlier
+`ingest_document_atomic`), then drop the function and the column (the index goes
+with it):
+
+```bash
+for f in backend/supabase/migrations/2026092*.sql; do
+    psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f "$f" || break
+done
+psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+drop function if exists public.match_knowledge_vector_384(public.vector, integer, double precision);
+alter table public.knowledge_sections drop column if exists embedding_384;
+notify pgrst, 'reload schema';
+commit;
+SQL
+```
 
 ### Undo `20260924000000` (back to the state after `20260923000000`)
 

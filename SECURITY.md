@@ -14,7 +14,7 @@ Please report vulnerabilities privately, preferably through GitHub:
 email **phoenixprojekt1@gmail.com** with the subject line `[starpi security]`. Do not open a
 public issue, discussion or pull request for security problems.
 
-Include the affected component (frontend, service worker, database policies, Python backend, the
+Include the affected component (frontend, service worker, database policies, the library publisher, the
 NVIDIA proxy in `api/`, deployment scripts, the `@starpi/core` package or its
 `starpi-verify-receipt` command), the commit
 or release you tested, reproduction steps, and the impact you
@@ -51,11 +51,12 @@ In scope:
   user's chats or private knowledge entries, bypassing `is_public`, calling privileged functions)
 - Credential exposure (provider API keys including the NVIDIA key pool, Supabase `service_role`
   key)
-- Authentication, CORS or request-handling flaws in `backend/server.py`
-- Request handling in the Vercel Functions under [`api/`](api) and in the NVIDIA routes of
-  `backend/server.py` ([`backend/core/nvidia.py`](backend/core/nvidia.py)): bypassing the origin
-  check, the rate limit or the model allowlist, reaching an upstream other than NVIDIA's chat
-  endpoint, or reading a key
+- The library publisher in [`tools/library-publisher/`](tools/library-publisher) reading private
+  rows of browser sessions through the service role, or storing vectors from model files that do
+  not match their pinned hashes
+- Request handling in the Vercel Functions under [`api/`](api), also when `scripts/serve.mjs
+  --functions` serves them: bypassing the origin check, the rate limit or the model allowlist,
+  reaching an upstream other than NVIDIA's chat endpoint, or reading a key
 - Service worker behaviour that caches private data or serves stale code
 - The source check or the receipt verifier reporting a match for text that does not match, or a
   receipt that the verifier accepts although its file, passage or hash was changed, in the app or
@@ -80,15 +81,16 @@ Out of scope:
   DEFINER functions.
 - The frontend ships with a strict Content-Security-Policy (no inline scripts, handlers or
   styles; no remote images) and sanitizes all rendered Markdown.
-- The Python backend holds the `service_role` key, binds to `127.0.0.1` by default and requires
-  a bearer token when exposed on another interface.
-- NVIDIA API keys exist only in the server environment (`NVIDIA_API_KEYS` on Vercel or in the
-  backend's `.env`). The browser calls the NVIDIA proxy on its own origin without a key, and
+- The library publisher holds the `service_role` key. It is a command line tool for a machine the
+  operator controls, opens no port and limits its reads to published rows and rows without an
+  owner.
+- NVIDIA API keys exist only in the server environment (`NVIDIA_API_KEYS` on Vercel or of
+  `scripts/serve.mjs --functions` on an own host). The browser calls the NVIDIA proxy on its own origin without a key, and
   `verify-dist` fails if a JavaScript bundle, `index.html`, `sw.js` or the build manifest contains
   one.
 - CI runs gitleaks on the working tree and on the commits of every pull request, fails on any
-  known advisory in a runtime npm dependency (`npm audit`) or in the backend requirements
-  (`pip-audit`), and writes CycloneDX SBOMs of the app and of `@starpi/core` on every run (see
+  known advisory in a runtime npm dependency (`npm audit`) or in the library publisher's
+  requirements (`pip-audit`), and writes CycloneDX SBOMs of the app and of `@starpi/core` on every run (see
   [Supply chain](#supply-chain)).
 - Chat turns that use the on-device workspace are never synced and never sent to a cloud provider,
   the NVIDIA proxy or an own server as chat history.
@@ -124,9 +126,8 @@ Out of scope:
   non-blank question last, at most 24,000 characters per message and 64,000 in all, `max_tokens`
   clamped to the model's limit, `temperature` from 0 to 2 and `top_p` above 0 up to 1 (400). The
   upstream URL is fixed (`https://integrate.api.nvidia.com/v1/chat/completions`) and redirects are
-  not followed. The Python backend applies the same validation (both test suites run the shared
-  cases in `backend/test_fixtures/nvidia_validation.json`) and accepts a caller only with an
-  `Origin` from `BRAIN_ALLOWED_ORIGINS` or the bearer token.
+  not followed. The unit tests run the validation against the shared cases in
+  `backend/test_fixtures/nvidia_validation.json`.
 - **Failover and time limits.** Each request starts at the next key and moves on while no stream
   has started: a key answered with 429 waits for its `Retry-After` (1 s to 5 minutes, 20 s when
   missing), a key rejected with 401 or 403 for 30 minutes, and a key that failed (408, 5xx, a
@@ -161,10 +162,10 @@ Out of scope:
   content, timestamp from the commit). Each document is checked before it is written (format,
   unique `bom-ref`s, every dependency edge resolvable, every runtime dependency present). The CI
   `audit` job uploads them as the `sbom` artifact on every run, and every GitHub release carries
-  them as assets. The backend's Python requirements are covered by `pip-audit`, not by an SBOM.
+  them as assets. The library publisher's Python requirements are covered by `pip-audit`, not by an SBOM.
 - **Dependency audit gates.** `npm audit --omit=dev --audit-level=low` fails CI on any advisory in
   a runtime dependency; advisories in development tooling, which is not shipped in `dist/`, are
-  reported as a warning. `pip-audit` fails on any advisory in the backend requirements.
+  reported as a warning. `pip-audit` fails on any advisory in the library publisher's requirements.
   Dependabot proposes npm, pip and GitHub Actions updates every week.
 - **Installs and pins.** Exact versions in `package.json`, a committed lockfile,
   `npm ci --ignore-scripts` in CI and on Vercel, GitHub Actions pinned to commit SHAs,
@@ -235,18 +236,16 @@ Out of scope:
   revisions. The Content-Security-Policy allows `wasm-unsafe-eval` for the model library and the
   runtime and does not allow `unsafe-eval`.
 - **NVIDIA proxy limits are per instance.** The per-IP rate limit and the key cooldowns live in
-  the memory of one function instance (one process for the Python backend). Several instances
+  the memory of one function instance (one process for `scripts/serve.mjs --functions`). Several instances
   count separately, and a new instance starts from zero, so the limit is a brake, not a quota.
   Rate-limit rules of the Vercel Firewall are the stronger option for a public deployment.
 - **The origin check stops other websites, not scripts.** Browsers always send `Origin` on this
   request, and `Sec-Fetch-Site`, so a page of another site cannot use the proxy. A script outside
   a browser can send any headers; what it can do then is bounded by the rate limit, the model
   allowlist and the size limits.
-- **Time limits of the Python NVIDIA route.** httpx applies its read timeout (30 s) to each read,
-  not to an attempt as a whole: a slow key can start its stream after the browser's first-byte
-  timeout, and a stream can run up to one read timeout past its 240 s limit. The browser then ends
-  it with its own timeouts. The details are in
-  [`backend/core/nvidia.py`](backend/core/nvidia.py).
+- **Vector ranking returns approximate results.** `match_knowledge_vector_384` uses the HNSW index
+  and RLS filters its candidates, so a visitor who can see only a small part of the table may get
+  fewer rows than asked for; it never returns rows the visitor cannot see.
 - **Offline PDF reading.** pdf.js is loaded when the first PDF is read and then cached by the
   service worker. A PDF added offline before that fails with a clear message; text files work.
 - **Anonymous sign-ins.** Every anonymous sign-in creates a user, and RLS bounds the size of each
@@ -435,65 +434,55 @@ flowchart LR
     cVerify2 --> tRegress
 ```
 
-**Backend API guards, backend secrets and CI supply chain**
+**Publisher secrets, service role reads and CI supply chain**
 
 <!-- diagram: security-layers-backend-ci -->
 ```mermaid
 flowchart LR
     subgraph sg_in["Untrusted input"]
-        iReq["HTTP requests to the brain API<br/>/api/health, /api/brain/documents,<br/>/api/brain/ingest, /api/brain/query,<br/>/api/models/nvidia, /api/chat/nvidia"]
-        iSecret["Backend secrets<br/>SUPABASE_SERVICE_ROLE_KEY, BRAIN_API_TOKEN,<br/>LLM, embedding and provider keys, NVIDIA_API_KEYS"]
+        iFiles["Files handed to the publisher,<br/>replies of an optional chat model"]
+        iModel["Model files from Hugging Face"]
+        iSecret["Publisher secrets<br/>SUPABASE_SERVICE_ROLE_KEY, LLM_API_KEY"]
         iRepo["Commits, pull requests,<br/>npm and pip dependencies"]
     end
 
     subgraph sg_ctl["Controls"]
-        cBind["server.py run_server: binds 127.0.0.1 by default,<br/>refuses a non-loopback address without BRAIN_API_TOKEN, exit 2,<br/>warns when the token is shorter than 32 characters"]
-        cProxy["_check_proxy_headers, only without a token:<br/>Forwarded, X-Forwarded-For, X-Forwarded-Host,<br/>X-Forwarded-Proto or X-Real-IP present: 401"]
-        cOrigin["Origin header not in BRAIN_ALLOWED_ORIGINS: 403,<br/>Access-Control-Allow-Origin only for allowed origins"]
-        cHost["_check_host, only without a token:<br/>Host header that is not loopback: 403"]
-        cAuth["_check_auth for /api/brain/* when a token is set:<br/>Authorization Bearer checked with hmac.compare_digest, else 401"]
-        cBody["_read_json_object: Transfer-Encoding or no Content-Length 411,<br/>invalid or repeated Content-Length 400, above BRAIN_MAX_BODY_BYTES<br/>default 1 MiB, 256 KiB for /api/chat/nvidia, 413, not application/json 415,<br/>stalled body 408 after 30 s, BOM ignored, NaN and Infinity refused<br/>fields: text 200000, query 4000, source_name 256, source_type 64 characters"]
-        cNvidia["NVIDIA chat route: _check_nvidia_caller, an Origin in<br/>BRAIN_ALLOWED_ORIGINS or the Bearer token, else 403,<br/>RateLimiter per client, NVIDIA_RATE_LIMIT_PER_MINUTE,<br/>validate_chat_request: allowlist and size limits,<br/>upstream bodies never read on errors, keys logged by index"]
-        cResp["Every response: nosniff, Cache-Control no-store,<br/>Referrer-Policy no-referrer, CSP default-src none,<br/>unhandled errors return a generic 500 internal_error,<br/>request log without headers or query string"]
-        cVisible["core/supabase_client.py VISIBLE_ROWS<br/>is_public true or owner_id null:<br/>list_documents filtered, match_knowledge_sections<br/>matches kept only for such documents,<br/>a failed lookup falls back to the in-memory search"]
-        cCfg["core/config.py BrainConfig: read from the process environment,<br/>which wins over backend/.env (else the root .env)<br/>loaded at import, last assignment in the file wins,<br/>service role key only from SUPABASE_SERVICE_ROLE_KEY,<br/>never the anon key, secret fields excluded from repr"]
+        cCli["Command line only: no listener,<br/>run on a machine the operator controls"]
+        cSource["read_source: .md or .txt, UTF-8, not empty,<br/>at most 200000 characters, file name only<br/>as source_name, fields clipped to the CHECK limits"]
+        cStruct["--structure is opt-in: without it the text is stored<br/>as written; a reply without Markdown or JSON<br/>falls back to the original text"]
+        cPins["model_files.py: revision, size and SHA-256 pinned,<br/>download to a .part file, renamed only after<br/>both match, every load_embedder checks again"]
+        cShared["supabase_service.py SHARED_ROWS<br/>is_public true or owner_id null:<br/>list, backfill and test-query never read<br/>private rows of browser sessions"]
+        cAtomic["ingest_document_atomic: document and sections<br/>in one transaction, new documents private<br/>until publish --public"]
+        cCfg["publisher/config.py PublisherConfig: the process environment<br/>wins over tools/library-publisher/.env,<br/>service role key only from SUPABASE_SERVICE_ROLE_KEY,<br/>never the anon key, secret fields excluded from repr,<br/>errors carry status and code, never the key"]
         cLeaks["CI job secrets: gitleaks 8.30.1, sha256 verified,<br/>scans the working tree and the commits of a pull request,<br/>custom rule starpi-nvidia-api-key, escaped keys too,<br/>nvidia-catalog.test.mjs scans tracked files with it"]
-        cAudit["CI job audit: npm audit --omit=dev fails on any advisory<br/>in a runtime dependency, pip-audit on<br/>backend/requirements-dev.txt fails on any advisory,<br/>development tooling: warning at high severity only,<br/>npm run sbom: CycloneDX SBOMs, artifact sbom"]
+        cAudit["CI job audit: npm audit --omit=dev fails on any advisory<br/>in a runtime dependency, pip-audit on<br/>backend/requirements-dev.txt, which includes the<br/>publisher requirements, fails on any advisory,<br/>development tooling: warning at high severity only,<br/>npm run sbom: CycloneDX SBOMs, artifact sbom"]
         cSupply["CI and Vercel: permissions contents read,<br/>actions pinned to commit SHAs, persist-credentials false,<br/>npm ci --ignore-scripts"]
         cRelease["release.yml: the prepare job packs @starpi/core and writes<br/>the SBOMs with contents read, smoke-tests the tarball,<br/>contents write for the release job only, which installs<br/>nothing, checks SHA256SUMS and runs gh release create,<br/>after CI succeeded on a push to main or by hand on main,<br/>version always from package.json, no dispatch inputs,<br/>SHA-pinned checkout, persist-credentials false"]
     end
 
     subgraph sg_thr["Threat stopped"]
-        tRemote["Unauthenticated remote use of<br/>the service role backend"]
-        tRebind["Web pages the local user visits calling the API,<br/>DNS rebinding, remote clients forwarded as local"]
-        tAbuse["Oversized, slow or malformed request bodies"]
-        tQuota["Quota abuse of the shared NVIDIA key pool<br/>by other sites or bare scripts"]
-        tInfo["Error details, cached responses<br/>or credentials in logs"]
+        tRemote["Remote use of the service role key"]
+        tAbuse["Oversized or malformed documents<br/>failing inserts half way"]
+        tRewrite["A model silently rewriting<br/>the facts of a source"]
+        tModel["Vectors from a replaced or truncated model<br/>in the shared library"]
         tPrivate["Private rows of browser sessions<br/>read through the service role,<br/>which bypasses RLS"]
         tKeys["Service role or provider keys<br/>in logs or in git history"]
         tSupply["Install scripts, moved action tags,<br/>a persisted token or write access<br/>in jobs that run dependency code"]
-        tVuln["Dependencies with a published advisory<br/>shipped in dist/ or installed for the backend"]
+        tVuln["Dependencies with a published advisory<br/>shipped in dist/ or installed for the publisher"]
         tAsset["A release asset changed after the build,<br/>or dependencies nobody can list"]
     end
 
-    iReq --> cBind
-    iReq --> cProxy
-    iReq --> cOrigin
-    iReq --> cHost
-    iReq --> cAuth
-    iReq --> cBody
-    iReq --> cResp
-    iReq -->|"documents, query"| cVisible
-    iReq -->|"/api/chat/nvidia"| cNvidia
-    cNvidia --> tQuota
-    cBind --> tRemote
-    cAuth --> tRemote
-    cProxy --> tRebind
-    cOrigin --> tRebind
-    cHost --> tRebind
-    cBody --> tAbuse
-    cResp --> tInfo
-    cVisible --> tPrivate
+    iSecret --> cCli
+    cCli --> tRemote
+    iFiles --> cSource
+    iFiles --> cStruct
+    cSource --> tAbuse
+    cAtomic --> tAbuse
+    cStruct --> tRewrite
+    iModel --> cPins
+    cPins --> tModel
+    iFiles --> cAtomic
+    cShared --> tPrivate
     iSecret --> cCfg
     iSecret --> cLeaks
     iRepo --> cLeaks
@@ -507,4 +496,5 @@ flowchart LR
     cRelease --> tSupply
     cRelease --> tAsset
     cAudit --> tAsset
+    cCfg -.-> cShared
 ```
