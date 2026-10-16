@@ -5,8 +5,10 @@
 // Claim mode (answer sentences) is strict and extracts only what it is sure about. Source mode
 // (excerpts) is lenient and records every plausible reading. A fact copied verbatim, or rewritten
 // between English and German formats ("480.000" / "480,000", "28.08.2026" / "August 28, 2026"),
-// therefore always matches, while a changed value does not. Pure: no DOM, runs in Node too.
-import { STOPWORDS_DE, STOPWORDS_EN, tokenize } from '../rag/bm25.js';
+// therefore always matches, while a changed value does not. The names, number words and units of
+// each language come from the language packs (lang/), read together. Pure: no DOM, runs in Node too.
+import { tokenize } from '../rag/bm25.js';
+import { anyOf, fromPacks, union } from './lang/index.js';
 import { LOOSE_LABEL_PATTERN } from './labels.js';
 
 /** @typedef {'number' | 'date' | 'time' | 'weekday' | 'month' | 'code' | 'quote'} FactKind */
@@ -31,88 +33,97 @@ import { LOOSE_LABEL_PATTERN } from './labels.js';
  * @property {Set<string>} tokens   folded content tokens
  * @property {Map<string, string[]>} prefixes  content tokens of 5+ characters by their first 5
  * @property {string[]} long        content tokens of 5+ characters
- * @property {'en' | 'de' | null} lang
+ * @property {import('./lang/index.js').LanguageCode | null} lang
  */
 
 const B = '(?<![\\p{L}\\p{N}])';
 const E = '(?![\\p{L}\\p{N}])';
 
-const MONTHS = new Map(
-  Object.entries({
-    january: 1, jan: 1, januar: 1, jänner: 1, jaenner: 1,
-    february: 2, feb: 2, februar: 2,
-    march: 3, mar: 3, märz: 3, maerz: 3, mär: 3,
-    april: 4, apr: 4,
-    may: 5, mai: 5,
-    june: 6, jun: 6, juni: 6,
-    july: 7, jul: 7, juli: 7,
-    august: 8, aug: 8,
-    september: 9, sep: 9, sept: 9,
-    october: 10, oct: 10, oktober: 10, okt: 10,
-    november: 11, nov: 11,
-    december: 12, dec: 12, dezember: 12, dez: 12,
-  }),
-);
 const alternation = (/** @type {Iterable<string>} */ words) => [...words].sort((a, b) => b.length - a.length).join('|');
-const MONTH_ALT = alternation(MONTHS.keys());
-const FULL_MONTH_ALT = alternation([...MONTHS.keys()].filter((m) => (m.length >= 4 && m !== 'sept') || m === 'may' || m === 'mai'));
 
-const WEEKDAYS = new Map(
-  Object.entries({
-    monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6, sunday: 7,
-    montag: 1, dienstag: 2, mittwoch: 3, donnerstag: 4, freitag: 5, samstag: 6, sonnabend: 6, sonntag: 7,
-  }),
-);
-const WEEKDAY_ALT = alternation(WEEKDAYS.keys());
+/** Currency signs and ISO codes, the same in every language (currency names come from the packs). */
+const CURRENCY_SIGNS = ['€', '\\$', '£', 'eur', 'usd', 'chf', 'gbp'];
+/** Unit symbols, the same in every language (unit words come from the packs). */
+const UNIT_SYMBOLS = ['x', 'h', 'min', 's', 'ms', 'kg', 'g', 't', 'km', 'm', 'cm', 'mm', 'gb', 'mb', 'tb', 'kb', 'px', 'pt', '°'];
+/** Words of the app's own citation labels ("[Doc: …, Chunk: n]"), which are English in every language. */
+const LABEL_WORDS = ['chunk', 'doc'];
+const CURRENCY_BEFORE = new RegExp(`(?:${CURRENCY_SIGNS.join('|')})\\s?$`, 'iu');
 
-/** Words before a month name that make it a date ("in August", "bis Mai"), not a name or verb. */
-const MONTH_CONTEXT = 'in|im|on|by|until|till|bis|ab|seit|since|from|vom|von|of|early|late|mid|end|ende|anfang|mitte|during|während|next|last|this|nächsten|kommenden|zum|per';
+/**
+ * @param {string} letters
+ * @returns {RegExp | null}
+ */
+const letterClass = (letters) => (letters ? new RegExp(`[${letters.replace(/[\\\]^[-]/g, '\\$&')}]`) : null);
 
-const SCALES = /** @type {Array<[RegExp, number]>} */ ([
-  [/^\s?(?:k|tsd\.?|tausend|thousand)(?![\p{L}])/iu, 1e3],
-  [/^\s?(?:mio\.?|millionen|million|millions|mn)(?![\p{L}])/iu, 1e6],
-  [/^\s?(?:mrd\.?|milliarden|milliarde|billion|billions|bn)(?![\p{L}])/iu, 1e9],
-]);
-const PERCENT = /^\s?(?:%|prozent|percent|per\s?cent)(?![\p{L}])/iu;
-const CURRENCY_AFTER = /^\s?(?:€|\$|£|eur|euro|usd|dollar|chf|gbp)(?![\p{L}])/iu;
-const CURRENCY_BEFORE = /(?:€|\$|£|eur|usd|chf|gbp)\s?$/iu;
-const UNIT_AFTER =
-  /^\s?(?:x|h|std|min|s|sek|ms|tage?n?|days?|wochen?|weeks?|monate?n?|months?|jahre?n?|years?|kg|g|t|km|m|cm|mm|gb|mb|tb|kb|px|pt|°|stück|pcs|personen|people|mitarbeiter(?:innen)?|employees|users?|nutzer(?:innen)?|teams?|sprints?|phasen?|phases?|stufen?|stages?)(?![\p{L}])/iu;
-const ORDINAL_AFTER = /^(?:st|nd|rd|th)(?![\p{L}])/iu;
-const APPROX_BEFORE =
-  /(?:about|around|approximately|approx\.?|roughly|nearly|almost|some|over|more than|less than|under|up to|circa|ca\.|rund|etwa|ungefähr|ungefaehr|fast|knapp|über|mehr als|weniger als|bis zu|~|≈)\s*(?:[€$£]\s?)?$/iu;
-
-const SPELLED = new Map(
-  Object.entries({
-    two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
-    thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20,
-    thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100,
-    zwei: 2, drei: 3, vier: 4, fünf: 5, sechs: 6, sieben: 7, acht: 8, neun: 9, zehn: 10, elf: 11, zwölf: 12,
-    dreizehn: 13, vierzehn: 14, fünfzehn: 15, sechzehn: 16, siebzehn: 17, achtzehn: 18, neunzehn: 19, zwanzig: 20,
-    dreißig: 30, dreissig: 30, vierzig: 40, fünfzig: 50, sechzig: 60, siebzig: 70, achtzig: 80, neunzig: 90, hundert: 100,
-  }),
-);
-
-const SPELLED_FOLDED = new Map([...SPELLED].map(([w, n]) => [fold(w), n]));
-const NUMBER_WORD = `${alternation(SPELLED.keys())}|one|eins?|thousand|tausend|million|millionen|mio|billion|milliarden?|mrd|dozen|dutzend`;
-// "and" joins two number words ("a hundred and twenty"); between other words it is just "and".
-const SPELLED_PART_AFTER = new RegExp(`^[\\s-]+(?:(?:and|und)\\s+)?(?:${NUMBER_WORD})(?![\\p{L}])|^[\\s-]*\\d`, 'iu');
-const SPELLED_PART_BEFORE = new RegExp(`(?<![\\p{L}])(?:${NUMBER_WORD})(?:\\s+(?:and|und))?[\\s-]+$|\\d[\\s-]*$`, 'iu');
-
-/** Words that describe the sources rather than stating something. */
-const BOILERPLATE = new Set([
-  'according', 'laut', 'gemaess', 'source', 'sources', 'quelle', 'quellen', 'document', 'documents', 'dokument',
-  'dokumente', 'dokumenten', 'excerpt', 'excerpts', 'auszug', 'auszuege', 'auszuegen', 'mentioned', 'genannt',
-  'erwaehnt', 'states', 'stated', 'says', 'heisst', 'steht', 'chunk', 'doc', 'file', 'datei', 'text', 'based',
-  'basierend', 'shown', 'angegeben', 'listed', 'aufgefuehrt',
-  // words that qualify a number (the number itself is checked as a fact)
-  'about', 'around', 'approximately', 'approx', 'roughly', 'nearly', 'almost', 'circa', 'rund', 'etwa', 'ungefaehr',
-  'knapp', 'thousand', 'tausend', 'tsd', 'million', 'millions', 'millionen', 'mio', 'billion', 'billions', 'milliarde',
-  'milliarden', 'mrd', 'percent', 'prozent',
-]);
-
-const EN_ONLY = new Set([...STOPWORDS_EN].filter((w) => !STOPWORDS_DE.has(w)));
-const DE_ONLY = new Set([...STOPWORDS_DE].filter((w) => !STOPWORDS_EN.has(w)));
+/**
+ * The word lists and patterns of all registered language packs (lang/index.js), merged so a fact
+ * written in one language is read in the others too. Rebuilt when a pack is registered.
+ */
+const tables = fromPacks((packs) => {
+  /** @param {(p: import('./lang/index.js').LanguagePack) => string[]} pick */
+  const all = (pick) => union(packs.map(pick));
+  const months = new Map(packs.flatMap((p) => [...Object.entries(p.months), ...Object.entries(p.monthAbbreviations)]));
+  const weekdays = new Map(packs.flatMap((p) => Object.entries(p.weekdays)));
+  const spelled = new Map(packs.flatMap((p) => Object.entries(p.numberWords)));
+  const meridiem = packs.flatMap((p) => (p.meridiem ? [p.meridiem] : []));
+  // "am", "pm" and their dotted forms "a.m.", "p.m."
+  const meridiemForms = [
+    ...meridiem.flatMap((m) => [m.am, m.pm]),
+    ...meridiem.flatMap((m) => [m.am, m.pm].map((w) => `${[...w].join('\\.')}\\.`)),
+  ];
+  /** @type {Map<number, string[]>} */
+  const scales = new Map();
+  for (const [factor, words] of packs.flatMap((p) => p.scales)) scales.set(factor, union([scales.get(factor) ?? [], words]));
+  const joiners = anyOf(all((p) => p.numberJoiners));
+  const numberWord = [alternation(spelled.keys()), ...all((p) => p.numberParts)].filter(Boolean).join('|') || '(?!)';
+  const positions = all((p) => p.monthPosition);
+  const links = all((p) => p.dayMonthLinks);
+  const ordinals = all((p) => p.ordinalSuffixes);
+  /** @param {import('./lang/index.js').LanguagePack} p */
+  const ownWords = (p) => {
+    const others = new Set(packs.filter((q) => q !== p).flatMap((q) => q.stopwords));
+    return new Set(p.stopwords.filter((w) => !others.has(w)));
+  };
+  return {
+    months,
+    monthAlt: alternation(months.keys()),
+    fullMonthAlt: alternation(all((p) => Object.keys(p.months))),
+    /** lowercase month names that are only read as a month when capitalised */
+    ambiguousMonths: new Set(all((p) => p.ambiguousMonths)),
+    weekdays,
+    weekdayAlt: alternation(weekdays.keys()),
+    /** words before a month name that make it a date ("in August", "bis Mai"), not a name or verb */
+    monthContext: anyOf(all((p) => p.monthContext)),
+    monthPosition: positions.length ? `(?:(?:${positions.join('|')})\\s+)?` : '',
+    dayMonthLink: links.length ? `(?:${anyOf(links)}\\s+)?` : '',
+    ordinalSuffix: ordinals.length ? `(?:${ordinals.join('|')})?` : '',
+    ordinalAfter: new RegExp(`^${anyOf(ordinals)}(?![\\p{L}])`, 'iu'),
+    numericDateContext: all((p) => p.numericDateContext),
+    clockWords: all((p) => p.clockWords),
+    meridiemForms,
+    am: new Set(meridiem.map((m) => m.am)),
+    pm: new Set(meridiem.map((m) => m.pm)),
+    scales: /** @type {Array<[RegExp, number]>} */ (
+      [...scales].sort(([a], [b]) => a - b).map(([factor, words]) => [new RegExp(`^\\s?(?:${words.join('|')})(?![\\p{L}])`, 'iu'), factor])
+    ),
+    percent: new RegExp(`^\\s?(?:%|${all((p) => p.percentWords).join('|')})(?![\\p{L}])`, 'iu'),
+    currencyAfter: new RegExp(`^\\s?(?:${[...CURRENCY_SIGNS, ...all((p) => p.currencyWords)].join('|')})(?![\\p{L}])`, 'iu'),
+    unitAfter: new RegExp(`^\\s?(?:${[...UNIT_SYMBOLS, ...all((p) => p.unitWords)].join('|')})(?![\\p{L}])`, 'iu'),
+    approxBefore: new RegExp(`(?:${[...all((p) => p.approxWords), '~', '≈'].join('|')})\\s*(?:[€$£]\\s?)?$`, 'iu'),
+    /** words that make "10.4.12" a version rather than a date */
+    versionContext: new RegExp(`${anyOf(all((p) => p.versionWords))}\\s*$`, 'iu'),
+    spelled,
+    spelledAlt: alternation(spelled.keys()) || '(?!)',
+    spelledFolded: new Map([...spelled].map(([w, n]) => [fold(w), n])),
+    // "and" joins two number words ("a hundred and twenty"); between other words it is just "and".
+    spelledPartAfter: new RegExp(`^[\\s-]+(?:${joiners}\\s+)?(?:${numberWord})(?![\\p{L}])|^[\\s-]*\\d`, 'iu'),
+    spelledPartBefore: new RegExp(`(?<![\\p{L}])(?:${numberWord})(?:\\s+${joiners})?[\\s-]+$|\\d[\\s-]*$`, 'iu'),
+    /** words that describe the sources rather than stating something */
+    boilerplate: new Set([...all((p) => p.boilerplate), ...LABEL_WORDS]),
+    /** per language, the function words no other pack has, and its own letters */
+    cues: packs.map((p) => ({ code: p.code, words: ownWords(p), letters: letterClass(p.letters) })),
+  };
+});
 
 /**
  * Case, Unicode and typography folding shared by claims and sources: NFKC, lowercase, German
@@ -261,24 +272,26 @@ function findDates(text) {
     out.push({ start: m.index, end: m.index + m[0].length, surface: m[0].trim(), claim: [...claim], source: [...source], nums });
     masked = mask(masked, [[m.index, m.index + m[0].length]]);
   };
-  const month = (/** @type {string} */ name) => MONTHS.get(fold(name).replace(/\.$/, '')) ?? MONTHS.get(name.toLowerCase().replace(/\.$/, '')) ?? 0;
+  const t = tables();
+  const month = (/** @type {string} */ name) => t.months.get(fold(name).replace(/\.$/, '')) ?? t.months.get(name.toLowerCase().replace(/\.$/, '')) ?? 0;
+  const ambiguous = (/** @type {string} */ name) => t.ambiguousMonths.has(name);
   /** @type {Array<[RegExp, (m: RegExpExecArray) => Array<{ y: number, mo: number, d: number }> | null, boolean?]>} */
   const patterns = [
     [new RegExp(`${B}(\\d{4})-(\\d{1,2})-(\\d{1,2})${E}`, 'gu'), (m) => [{ y: Number(m[1]), mo: Number(m[2]), d: Number(m[3]) }]],
     [new RegExp(`${B}(\\d{1,2})\\.\\s?(\\d{1,2})\\.\\s?(\\d{4}|\\d{2})${E}`, 'gu'), (m) => [{ y: fullYear(m[3]), mo: Number(m[2]), d: Number(m[1]) }]],
     [
-      new RegExp(`${B}(\\d{1,2})\\.\\s*(${MONTH_ALT})\\.?(?:\\s+(\\d{4}))?${E}`, 'giu'),
+      new RegExp(`${B}(\\d{1,2})\\.\\s*(${t.monthAlt})\\.?(?:\\s+(\\d{4}))?${E}`, 'giu'),
       (m) => [{ y: m[3] ? Number(m[3]) : 0, mo: month(m[2]), d: Number(m[1]) }],
     ],
     [
-      new RegExp(`${B}(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${MONTH_ALT})\\.?(?:,?\\s+(\\d{4}))?${E}`, 'giu'),
-      (m) => (m[2] === 'may' ? null : [{ y: m[3] ? Number(m[3]) : 0, mo: month(m[2]), d: Number(m[1]) }]),
+      new RegExp(`${B}(\\d{1,2})${t.ordinalSuffix}\\s+${t.dayMonthLink}(${t.monthAlt})\\.?(?:,?\\s+(\\d{4}))?${E}`, 'giu'),
+      (m) => (ambiguous(m[2]) ? null : [{ y: m[3] ? Number(m[3]) : 0, mo: month(m[2]), d: Number(m[1]) }]),
     ],
     [
-      new RegExp(`${B}(${MONTH_ALT})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?${E}`, 'giu'),
-      (m) => (m[1] === 'may' ? null : [{ y: m[3] ? Number(m[3]) : 0, mo: month(m[1]), d: Number(m[2]) }]),
+      new RegExp(`${B}(${t.monthAlt})\\.?\\s+(\\d{1,2})${t.ordinalSuffix}(?:,?\\s+(\\d{4}))?${E}`, 'giu'),
+      (m) => (ambiguous(m[1]) ? null : [{ y: m[3] ? Number(m[3]) : 0, mo: month(m[1]), d: Number(m[2]) }]),
     ],
-    [new RegExp(`${B}(${MONTH_ALT})\\.?\\s+(\\d{4})${E}`, 'giu'), (m) => (m[1] === 'may' ? null : [{ y: Number(m[2]), mo: month(m[1]), d: 0 }])],
+    [new RegExp(`${B}(${t.monthAlt})\\.?\\s+(\\d{4})${E}`, 'giu'), (m) => (ambiguous(m[1]) ? null : [{ y: Number(m[2]), mo: month(m[1]), d: 0 }])],
     [
       new RegExp(`${B}(\\d{1,2})/(\\d{1,2})/(\\d{4}|\\d{2})${E}`, 'gu'),
       (m) => {
@@ -291,7 +304,7 @@ function findDates(text) {
     [new RegExp(`${B}(\\d{1,2})/(\\d{4})${E}`, 'gu'), (m) => [{ y: Number(m[2]), mo: Number(m[1]), d: 0 }]],
     [new RegExp(`${B}(\\d{1,2})\\.(\\d{2})\\.(?![\\p{N}])`, 'gu'), (m) => [{ y: 0, mo: Number(m[2]), d: Number(m[1]) }], true],
     [
-      new RegExp(`(?<![\\p{L}])(?:am|vom|bis|ab|zum|seit|den|dem)\\s+(\\d{1,2})\\.(\\d{1,2})\\.(?![\\p{N}])`, 'giu'),
+      new RegExp(`(?<![\\p{L}])${anyOf(t.numericDateContext)}\\s+(\\d{1,2})\\.(\\d{1,2})\\.(?![\\p{N}])`, 'giu'),
       (m) => [{ y: 0, mo: Number(m[2]), d: Number(m[1]) }],
     ],
   ];
@@ -320,21 +333,26 @@ function findTimes(text) {
     const v = `t:${pad2(h)}:${pad2(min)}`;
     out.push({ start: m.index, end: m.index + m[0].length, surface: m[0].trim(), claim: [v], source: [v], nums: h > 0 ? [h] : [] });
   };
+  const t = tables();
   const ampm = (/** @type {number} */ h, /** @type {string | undefined} */ suffix) => {
     const s = (suffix ?? '').toLowerCase().replace(/\./g, '');
-    if (s === 'pm' && h < 12) return h + 12;
-    if (s === 'am' && h === 12) return 0;
+    if (t.pm.has(s) && h < 12) return h + 12;
+    if (t.am.has(s) && h === 12) return 0;
     return h;
   };
+  // The 12-hour markers ("pm", "p.m.") and the words after a time of day ("Uhr"); a pattern whose
+  // words no pack has never matches, so the capture groups keep their numbers.
+  const meridiem = `(${t.meridiemForms.join('|') || '(?!)'})`;
+  const clock = anyOf(t.clockWords);
   /** @type {RegExpExecArray | null} */
   let m;
-  const colon = new RegExp(`${B}([01]?\\d|2[0-3]):([0-5]\\d)(?:\\s*(uhr|h|am|pm|a\\.m\\.|p\\.m\\.))?(?![\\p{N}])`, 'giu');
+  const colon = new RegExp(`${B}([01]?\\d|2[0-3]):([0-5]\\d)(?:\\s*(${[...t.clockWords, 'h', ...t.meridiemForms].join('|')}))?(?![\\p{N}])`, 'giu');
   while ((m = colon.exec(text)) !== null) push(m, ampm(Number(m[1]), m[3]), Number(m[2]));
-  const dotUhr = new RegExp(`${B}([01]?\\d|2[0-3])\\.([0-5]\\d)\\s*uhr${E}`, 'giu');
-  while ((m = dotUhr.exec(text)) !== null) push(m, Number(m[1]), Number(m[2]));
-  const dotAmPm = new RegExp(`${B}(1[0-2]|0?[1-9])\\.([0-5]\\d)\\s*(am|pm|a\\.m\\.|p\\.m\\.)(?![\\p{L}])`, 'giu');
+  const dotClock = new RegExp(`${B}([01]?\\d|2[0-3])\\.([0-5]\\d)\\s*${clock}${E}`, 'giu');
+  while ((m = dotClock.exec(text)) !== null) push(m, Number(m[1]), Number(m[2]));
+  const dotAmPm = new RegExp(`${B}(1[0-2]|0?[1-9])\\.([0-5]\\d)\\s*${meridiem}(?![\\p{L}])`, 'giu');
   while ((m = dotAmPm.exec(text)) !== null) push(m, ampm(Number(m[1]), m[3]), Number(m[2]));
-  const hourOnly = new RegExp(`${B}(1[0-2]|0?[1-9])\\s*(am|pm|a\\.m\\.|p\\.m\\.)(?![\\p{L}])|${B}([01]?\\d|2[0-3])\\s*uhr${E}`, 'giu');
+  const hourOnly = new RegExp(`${B}(1[0-2]|0?[1-9])\\s*${meridiem}(?![\\p{L}])|${B}([01]?\\d|2[0-3])\\s*${clock}${E}`, 'giu');
   while ((m = hourOnly.exec(text)) !== null) {
     const at = m.index;
     if (out.some((f) => at >= f.start && at < f.end)) continue;
@@ -352,17 +370,18 @@ function findWeekdaysAndMonths(text, claim) {
   /** @type {Found[]} */
   const out = [];
   let m;
-  const days = new RegExp(`${B}(${WEEKDAY_ALT})s?${E}`, 'giu');
+  const t = tables();
+  const days = new RegExp(`${B}(${t.weekdayAlt})s?${E}`, 'giu');
   while ((m = days.exec(text)) !== null) {
-    const v = `w:${WEEKDAYS.get(m[1].toLowerCase())}`;
+    const v = `w:${t.weekdays.get(m[1].toLowerCase())}`;
     out.push({ start: m.index, end: m.index + m[0].length, surface: m[0], claim: [v], source: [v], nums: [] });
   }
   const months = claim
-    ? new RegExp(`(?<![\\p{L}])(?:${MONTH_CONTEXT})\\s+(?:(?:early|late|mid|end of|ende|anfang|mitte)\\s+)?(${FULL_MONTH_ALT})${E}`, 'giu')
-    : new RegExp(`${B}(${FULL_MONTH_ALT})${E}`, 'giu');
+    ? new RegExp(`(?<![\\p{L}])${t.monthContext}\\s+${t.monthPosition}(${t.fullMonthAlt})${E}`, 'giu')
+    : new RegExp(`${B}(${t.fullMonthAlt})${E}`, 'giu');
   while ((m = months.exec(text)) !== null) {
-    if (claim && m[1] === 'may') continue;
-    const n = MONTHS.get(m[1].toLowerCase()) ?? MONTHS.get(fold(m[1]));
+    if (claim && t.ambiguousMonths.has(m[1])) continue;
+    const n = t.months.get(m[1].toLowerCase()) ?? t.months.get(fold(m[1]));
     if (!n) continue;
     const v = `mo:${pad2(n)}`;
     const start = m.index + m[0].length - m[1].length;
@@ -371,8 +390,6 @@ function findWeekdaysAndMonths(text, claim) {
   return out;
 }
 
-/** Words that make "10.4.12" a version rather than a date. */
-const VERSION_CONTEXT = /(?:version|versions|firmware|release|build|patch|ver|software)\s*$/iu;
 
 /**
  * Version numbers with three or four dotted parts ("4.2.1", "v3.9.4", "10.0.0.12"), read as codes
@@ -385,6 +402,7 @@ const VERSION_CONTEXT = /(?:version|versions|firmware|release|build|patch|ver|so
 function findVersions(text) {
   /** @type {Found[]} */
   const out = [];
+  const versionContext = tables().versionContext;
   const re = new RegExp(`${B}(v)?(\\d{1,4})\\.(\\d{1,4})\\.(\\d{1,4})(?:\\.(\\d{1,4}))?(?![\\p{L}\\p{N}]|\\.\\d)`, 'giu');
   let m;
   while ((m = re.exec(text)) !== null) {
@@ -393,7 +411,7 @@ function findVersions(text) {
     const dateShape = parts.length === 3 && Number(parts[0]) >= 1 && Number(parts[0]) <= 31 && Number(parts[1]) >= 1 && Number(parts[1]) <= 12 && parts[2].length >= 2;
     // "4.480.000" groups thousands: a number, not a version.
     const thousands = parts.slice(1).every((x) => x.length === 3);
-    if (thousands || (dateShape && !m[1] && !VERSION_CONTEXT.test(before.trimEnd()))) continue;
+    if (thousands || (dateShape && !m[1] && !versionContext.test(before.trimEnd()))) continue;
     const v = `v:${parts.map((x) => String(Number(x))).join('.')}`;
     out.push({ start: m.index, end: m.index + m[0].length, surface: m[0], claim: [v], source: [v], nums: [] });
   }
@@ -464,6 +482,7 @@ function findQuotes(text) {
 function findNumbers(text, claim) {
   /** @type {Array<Found & { approx: boolean, sig: number }>} */
   const out = [];
+  const t = tables();
   const re = new RegExp(`${B}\\d(?:[\\d.,'’\\u00A0\\u202F\\u2009]|\\x20(?=\\d{3}(?![\\p{N}])))*`, 'gu');
   let m;
   while ((m = re.exec(text)) !== null) {
@@ -474,10 +493,10 @@ function findNumbers(text, claim) {
     if (!parsed) continue;
     const rest = text.slice(end);
     const before = text.slice(Math.max(0, start - 24), start);
-    if (ORDINAL_AFTER.test(rest)) continue;
-    if (/^\p{L}/u.test(rest) && !SCALES.some(([s]) => s.test(rest)) && !UNIT_AFTER.test(rest) && !PERCENT.test(rest)) continue;
+    if (t.ordinalAfter.test(rest)) continue;
+    if (/^\p{L}/u.test(rest) && !t.scales.some(([s]) => s.test(rest)) && !t.unitAfter.test(rest) && !t.percent.test(rest)) continue;
     let scale = 1;
-    for (const [s, factor] of SCALES) {
+    for (const [s, factor] of t.scales) {
       const sm = s.exec(rest);
       if (sm) {
         scale = factor;
@@ -485,11 +504,12 @@ function findNumbers(text, claim) {
         break;
       }
     }
+    // A currency sign before the number and "m" after it: an amount in millions.
     if (scale === 1 && /^m(?![\p{L}])/iu.test(rest) && /[€$£]\s?$/u.test(before)) {
       scale = 1e6;
       end += 1;
     }
-    const hasUnit = scale !== 1 || PERCENT.test(rest) || CURRENCY_AFTER.test(rest) || CURRENCY_BEFORE.test(before) || UNIT_AFTER.test(rest);
+    const hasUnit = scale !== 1 || t.percent.test(rest) || t.currencyAfter.test(rest) || CURRENCY_BEFORE.test(before) || t.unitAfter.test(rest);
     // Claims take the dominant reading (a separator before exactly three digits groups thousands);
     // sources keep every reading.
     const readings = (claim ? parsed.readings.slice(0, 1) : parsed.readings).map((r) => r * scale);
@@ -499,7 +519,7 @@ function findNumbers(text, claim) {
       if (integer && parsed.readings[0] < 10 && !hasUnit) continue;
       if (/^\s*$/.test(text.slice(0, start)) && /^[.)]/.test(rest) && !/[.,]/.test(blob)) continue;
     }
-    const approx = claim && APPROX_BEFORE.test(before);
+    const approx = claim && t.approxBefore.test(before);
     const sig = scale !== 1 ? parsed.digits.replace(/^0+/, '').replace(/0+$/, '').length || 1 : 0;
     const values = claim ? readings.map(numKey) : [...readings, ...parsed.readings].map(numKey);
     out.push({ start, end, surface: text.slice(start, end).trim(), claim: values, source: values, nums: claim ? readings : [...readings, ...parsed.readings], approx, sig });
@@ -560,16 +580,17 @@ export function extractFacts(sentence, options = {}) {
 function findSpelledNumbers(text) {
   /** @type {Array<Found & { approx: boolean }>} */
   const out = [];
-  const re = new RegExp(`${B}(${alternation(SPELLED.keys())})${E}`, 'giu');
+  const t = tables();
+  const re = new RegExp(`${B}(${t.spelledAlt})${E}`, 'giu');
   let m;
   while ((m = re.exec(text)) !== null) {
-    const n = SPELLED.get(m[1].toLowerCase());
+    const n = t.spelled.get(m[1].toLowerCase());
     const rest = text.slice(m.index + m[0].length);
     // Part of a larger number ("twenty-five", "two hundred", "ten thousand"): left to the reader.
-    if (!n || n === 100 || SPELLED_PART_AFTER.test(rest) || SPELLED_PART_BEFORE.test(text.slice(0, m.index))) continue;
-    if (n < 10 && !UNIT_AFTER.test(rest)) continue;
+    if (!n || n === 100 || t.spelledPartAfter.test(rest) || t.spelledPartBefore.test(text.slice(0, m.index))) continue;
+    if (n < 10 && !t.unitAfter.test(rest)) continue;
     const before = text.slice(Math.max(0, m.index - 24), m.index);
-    out.push({ start: m.index, end: m.index + m[0].length, surface: m[0], claim: [numKey(n)], source: [numKey(n)], nums: [n], approx: APPROX_BEFORE.test(before) });
+    out.push({ start: m.index, end: m.index + m[0].length, surface: m[0], claim: [numKey(n)], source: [numKey(n)], nums: [n], approx: t.approxBefore.test(before) });
   }
   return out;
 }
@@ -582,29 +603,33 @@ function findSpelledNumbers(text) {
 export function contentTokens(text) {
   return tokenize(text.replace(LOOSE_LABEL_PATTERN, ' '))
     .map((w) => fold(w))
-    .filter((w) => !BOILERPLATE.has(w) && !/\p{N}/u.test(w));
+    .filter((w) => !tables().boilerplate.has(w) && !/\p{N}/u.test(w));
 }
 
 /**
- * Guesses English or German from function words that exist in only one of the two languages.
+ * Guesses the language of a text from function words that only one language pack has, and from
+ * letters that only one pack uses (German ä, ö, ü, ß).
  * @param {string} text
- * @returns {'en' | 'de' | null}
+ * @returns {import('./lang/index.js').LanguageCode | null}
  */
 export function guessLanguage(text) {
-  let en = 0;
-  let de = 0;
+  const { cues } = tables();
+  const score = cues.map(() => 0);
   const lower = text.normalize('NFKC').toLowerCase();
   for (const w of lower.match(/\p{L}+/gu) ?? []) {
-    if (EN_ONLY.has(w)) en += 1;
-    else if (DE_ONLY.has(w)) de += 1;
+    const i = cues.findIndex((c) => c.words.has(w));
+    if (i >= 0) score[i] += 1;
   }
-  if (/[äöüß]/.test(lower)) de += 1;
-  // Short statements carry few function words: one clear signal and none for the other language
+  cues.forEach((c, i) => {
+    if (c.letters?.test(lower)) score[i] += 1;
+  });
+  const ranked = score.map((s, i) => ({ s, i })).sort((a, b) => b.s - a.s);
+  const top = ranked[0]?.s ?? 0;
+  const next = ranked[1]?.s ?? 0;
+  // Short statements carry few function words: one clear signal and none for the other languages
   // is enough; otherwise one language must clearly dominate.
-  if (en > 0 && de === 0) return 'en';
-  if (de > 0 && en === 0) return 'de';
-  if (en >= 2 && en >= 2 * de) return 'en';
-  if (de >= 2 && de >= 2 * en) return 'de';
+  if (top > 0 && next === 0) return /** @type {import('./lang/index.js').LanguageCode} */ (cues[ranked[0].i].code);
+  if (top >= 2 && top >= 2 * next) return /** @type {import('./lang/index.js').LanguageCode} */ (cues[ranked[0].i].code);
   return null;
 }
 
@@ -658,7 +683,7 @@ export function indexSource(text, options = {}) {
     nums.push(...n.nums);
   }
   for (const w of wordsOf(text)) {
-    const n = SPELLED_FOLDED.get(w);
+    const n = tables().spelledFolded.get(w);
     if (n) {
       values.add(numKey(n));
       nums.push(n);

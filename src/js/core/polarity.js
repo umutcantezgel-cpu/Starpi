@@ -12,144 +12,136 @@
 // them is negated. Elements anchored on a word the other clause does not have say nothing about it
 // and are not counted ("GW-31 has not been updated yet" against "GW-31 still runs 4.1.8").
 //
+// The negators, antonyms and conjunctions of each language come from its language pack (lang/);
+// this module compiles the rules of every registered pack together.
+//
 // Pure: no DOM, runs in the browser, in workers and in Node.
 import { contentTokens, fold, indexSource, tokenMatches } from './facts.js';
-import { STOPWORDS } from '../rag/bm25.js';
+import { anyOf, fromPacks, union } from './lang/index.js';
 import { sentenceSpans } from './sentences.js';
-
-/** Stop words as canonicalText writes them ("für" → "fuer"), for clause texts that are already folded. */
-const FOLDED_STOPWORDS = new Set([...STOPWORDS].map((w) => fold(w)));
 
 /** Marker that replaces the negative half of an antonym pair ("disabled" → "notx enabled"). */
 const NEG_MARK = 'notx';
 
 /**
- * Words that state the negation of a positive word, as [pattern on folded text, replacement]. The
- * replacement puts the marker before the positive word, so "disabled" and "not enabled" read the
- * same, and "enabled" in another clause matches the word inside the scope.
- * @type {Array<[RegExp, string]>}
+ * The polarity rules of all registered language packs (lang/index.js), compiled into the patterns
+ * below. Rebuilt when a pack is registered.
  */
-const ANTONYMS = [
-  // English
-  [/\b(?:disabled|disables|disable|switched off|turned off)\b/g, `${NEG_MARK} enabled`],
-  [/\b(?:enables|enable|switched on|turned on)\b/g, 'enabled'],
-  [/\b(?:prohibited|forbidden|barred|banned|not permitted|not allowed|(?:may|must|should) not)\b/g, `${NEG_MARK} allowed`],
-  [/\b(?:permitted|allowed)\b|(?<!\d\s)\bmay\b(?!\s+\d)/g, 'allowed'],
-  [/\b(?:rejected|rejects|reject)\b/g, `${NEG_MARK} accepted`],
-  [/\b(?:accepts|accept)\b/g, 'accepted'],
-  [/\b(?:failed|fails|fail)\b/g, `${NEG_MARK} passed`],
-  [/\b(?:passes|pass|succeeded)\b/g, 'passed'],
-  [/\boffline\b/g, `${NEG_MARK} online`],
-  [/\bunsupported\b/g, `${NEG_MARK} supported`],
-  [/\bunavailable\b/g, `${NEG_MARK} available`],
-  [/\b(?:decreased|decreases|decrease|fell|falls|dropped|drops|reduced|reduces|reduce|cut|cuts|lowered)\b/g, `${NEG_MARK} increased`],
-  [/\b(?:increases|increase|rose|rises|rise|grew|grows|raised)\b/g, 'increased'],
-  [/\bopen (?=questions?\b)/g, `${NEG_MARK} resolved `],
-  [/\b(?:resolved|settled|clarified|answered|decided)\b/g, 'resolved'],
-  [/\bexcluded\b/g, `${NEG_MARK} included`],
-  [/\bdenied\b/g, `${NEG_MARK} granted`],
-  [/\b(?:unless|except when|except if)\b/g, NEG_MARK],
-  [/\b(?:held back|withheld|kept back)\b/g, NEG_MARK],
-  [/\b(?:exempt|exempted)\b/g, NEG_MARK],
-  [/\bun(used|encrypted|signed|authori[sz]ed|approved|planned|changed|limited|restricted|locked|reachable|monitored|managed|disputed|resolved|necessary|known|verified|protected|paid|assigned|documented|tested|connected|published|licensed|certified|affected|acceptable|able|safe|secure|stable|sure|clear|likely|usual|official|attended|modified|readable|aware|solved|answered|confirmed|scheduled|heated|finished|complete)\b/g, `${NEG_MARK} $1`],
-  [/\bin(active|complete|valid|correct|accessible|sufficient|accurate|compatible|eligible|secure|consistent|dependent|visible|applicable|effective|frequent)\b/g, `${NEG_MARK} $1`],
-  [/\bim(possible|proper|plausible|mature|precise|practical)\b/g, `${NEG_MARK} $1`],
-  [/\bil(legal|logical)\b/g, `${NEG_MARK} $1`],
-  [/\bir(relevant|regular|reversible|responsible)\b/g, `${NEG_MARK} $1`],
-  [/\bdis(allowed|connected|approved|continued|qualified)\b/g, `${NEG_MARK} $1`],
-  // A word followed by "less" ("wireless" stays a word when the other text never says "wire"). The
-  // boundaries are written out: \b is ASCII-only, which made the pattern quadratic on long words
-  // that mix ASCII and other letters.
-  [/(?<![\p{L}\p{N}])(\p{L}{3,})less(?![\p{L}\p{N}])/gu, `${NEG_MARK} $1`],
-  // German (folded: ä → ae, ö → oe, ü → ue, ß → ss)
-  [/\b(?:deaktiviert|deaktivieren|abgeschaltet|ausgeschaltet)\b/g, `${NEG_MARK} aktiviert`],
-  [/\b(?:aktivieren|eingeschaltet)\b/g, 'aktiviert'],
-  [/\b(?:verboten|untersagt|unzulaessig|gesperrt|(?:darf|duerfen|soll|sollen) (?:\p{L}+ ){0,4}?nicht)\b/gu, `${NEG_MARK} erlaubt`],
-  [/\b(?:zulaessig|gestattet|freigeschaltet|darf|duerfen)\b/g, 'erlaubt'],
-  [/\b(?:abgelehnt|zurueckgewiesen)\b/g, `${NEG_MARK} akzeptiert`],
-  [/\b(?:durchgefallen|fehlgeschlagen|gescheitert)\b/g, `${NEG_MARK} bestanden`],
-  [/\b(?:gesunken|sinkt|sank|sinken|verringert|reduziert|gesenkt)\b/g, `${NEG_MARK} gestiegen`],
-  [/\b(?:steigt|stieg|steigen|erhoeht)\b/g, 'gestiegen'],
-  [/\boffene (?=fragen?\b)/g, `${NEG_MARK} geklaert `],
-  [/\b(?:geklaert|entschieden|beantwortet)\b/g, 'geklaert'],
-  [/\bausgeschlossen\b/g, `${NEG_MARK} eingeschlossen`],
-  [/\b(?:es sei denn|ausser wenn|ausser falls)\b,?/g, NEG_MARK],
-  [/\b(?:zurueckgehalten|einbehalten)\b/g, NEG_MARK],
-  [/\b(?:ausgenommen|befreit)\b/g, NEG_MARK],
-  [/\bun(genutzt|verschluesselt|signiert|verbraucht|veraendert|befugt|genehmigt|geplant|begrenzt|gesperrt|erreichbar|ueberwacht|bekannt|noetig|erlaubt|vollstaendig|moeglich|verwaltet|beheizt|geklaert|gueltig|wirksam|sicher|bestaetigt|berechtigt|geprueft|verfuegbar|abhaengig|eingeschraenkt|getestet|dokumentiert|bezahlt|verbunden|benutzt|geloest|beantwortet|entschieden|klar|wahrscheinlich|ueblich|regelmaessig|beschaedigt|verschlossen|beaufsichtigt|veroeffentlicht|lizenziert|zertifiziert|betroffen|stabil|zuverlaessig|vollendet)(e|er|es|en|em)?\b/g, `${NEG_MARK} $1$2`],
-  [/\bin(aktiv|kompatibel|konsistent|effizient|korrekt|valide)\b/g, `${NEG_MARK} $1`],
-  [/\bil(legal|loyal)\b/g, `${NEG_MARK} $1`],
-  [/\bir(relevant|reversibel|regulaer)\b/g, `${NEG_MARK} $1`],
-  [/(?<![\p{L}\p{N}])(\p{L}{3,})los(?![\p{L}\p{N}])/gu, `${NEG_MARK} $1`],
-];
-
-/** Words skipped when looking for the word a negator negates: they qualify it, they are not it. */
-const QUALIFIERS = new Set([
-  'yet', 'also', 'always', 'still', 'really', 'even', 'automatically', 'longer', 'anymore', 'ever', 'currently', 'necessarily',
-  'auch', 'noch', 'immer', 'bereits', 'schon', 'ebenfalls', 'dabei', 'mehr', 'automatisch', 'unbedingt', 'derzeit', 'jedoch',
-]);
+const rules = fromPacks((packs) => {
+  const rule = packs.map((p) => p.polarity);
+  /** @param {(r: import('./lang/index.js').PolarityRules) => string[]} pick */
+  const all = (pick) => union(rule.map(pick));
+  const words = (/** @type {string[]} */ list) => `\\b${anyOf(list)}\\b`;
+  const joiners = anyOf(all((r) => r.clauseJoiners));
+  const time = anyOf(all((r) => r.timeConditions));
+  /** @type {Map<string, string>} the positive word a "nothing against" phrase stands for, by its first word or the whole phrase */
+  const allowedBy = new Map();
+  for (const r of rule) for (const w of [...r.nothingAgainst.nothing, ...r.nothingAgainst.phrases]) allowedBy.set(w, r.nothingAgainst.allowed);
+  const verbs = all((r) => r.nothingAgainst.verbs);
+  const timed = rule.filter((r) => r.timeBounds.negators.length && r.timeBounds.words.length);
+  return {
+    /** Stop words as canonicalText writes them ("für" → "fuer"), for clause texts that are already folded. */
+    stopwords: new Set(packs.flatMap((p) => p.stopwords).map((w) => fold(w))),
+    /**
+     * Words that state the negation of a positive word, as [pattern on folded text, replacement]. The
+     * replacement puts the marker before the positive word, so "disabled" and "not enabled" read the
+     * same, and "enabled" in another clause matches the word inside the scope.
+     * @type {Array<[RegExp, string]>}
+     */
+    antonyms: rule.flatMap((r) => r.antonyms.map(([pattern, word, negative]) => /** @type {[RegExp, string]} */ ([pattern, negative ? (word ? `${NEG_MARK} ${word}` : NEG_MARK) : word]))),
+    /** Words skipped when looking for the word a negator negates: they qualify it, they are not it. */
+    qualifiers: new Set(all((r) => r.qualifiers)),
+    /**
+     * Negators that negate what follows them. Conditional ones (unless, es sei denn) are left out:
+     * they restrict a rule rather than reverse it.
+     */
+    negators: new Set([...all((r) => r.negators), NEG_MARK]),
+    contractions: rule.flatMap((r) => r.contractions),
+    // "do-not-disturb", "not-null": the negator of a hyphenated word counts like a separate one.
+    infix: new RegExp(`-(${all((r) => r.infixNegators).join('|') || '(?!)'})-`, 'g'),
+    prefix: new RegExp(`\\b(${all((r) => r.prefixNegators).join('|') || '(?!)'})-(?=\\p{L})`, 'gu'),
+    rewrites: rule.flatMap((r) => r.rewrites),
+    /** A negation of a whole clause, before the clause it negates: "it is not true that …". */
+    sentenceNegation: new RegExp(all((r) => r.clauseNegations).join('|') || '(?!)', 'g'),
+    /** "Nothing speaks against it": a double negation that allows. */
+    nothingAgainst: new RegExp(
+      [
+        `\\b${anyOf(all((r) => r.nothingAgainst.nothing))}\\s+${verbs.length ? `(?:${anyOf(verbs)}\\s+)?` : ''}${anyOf(all((r) => r.nothingAgainst.against))}\\b`,
+        ...all((r) => r.nothingAgainst.phrases).map((phrase) => `\\b${phrase}\\b`),
+      ].join('|'),
+      'g',
+    ),
+    allowedBy,
+    /**
+     * Word sequences that contain a negator but bound a quantity or extend a list instead of negating
+     * ("no later than", "not only", "nicht mehr als"): the negator is removed before counting. "No
+     * longer" and "nicht mehr" without "than" or "als" are negations ("no longer supported"). "Not
+     * before" bounds a time unless a modal verb makes it a prohibition ("darf nicht nach 18 Uhr …").
+     */
+    notNegations: new RegExp(
+      [
+        ...rule.flatMap(({ bounds: b }) =>
+          b.negators.length
+            ? [`\\b${anyOf(b.negators)}\\s+${anyOf(b.comparatives)}\\s+${anyOf(b.than)}\\b`, `\\b${anyOf(b.negators)}\\s+${anyOf(b.additives)}\\b`]
+            : [],
+        ),
+        ...(timed.length
+          ? [`(?<!\\b${anyOf(all((r) => r.modals))}\\s)\\b${anyOf(timed.map((r) => `${anyOf(r.timeBounds.negators)}\\s+${anyOf(r.timeBounds.words)}`))}\\b`]
+          : []),
+        ...all((r) => r.idioms),
+      ].join('|') || '(?!)',
+      'gu',
+    ),
+    /** the negators inside those sequences */
+    boundNegator: new RegExp(words(all((r) => [...r.bounds.negators, ...r.timeBounds.negators])), 'g'),
+    /**
+     * A time condition ("until", "before", "bis", "bevor"): "not connected until it is updated" says
+     * that it is connected after the update, the same as "connected only after it is updated". In a
+     * clause with such a word (not a range like "from Monday until Friday" or "bis zu drei Tagen"),
+     * and in the clauses next to one that starts with it ("Bevor X, werden Y nicht bezahlt"),
+     * negations are not counted.
+     */
+    timeCondition: new RegExp(`\\b${time}\\b`),
+    timeClause: new RegExp(`^${time}\\b`),
+    timeRange: new RegExp(`\\b${anyOf(all((r) => r.rangeStarts))}\\s+(?:[\\p{L}\\p{N}.:-]+\\s+){0,4}${anyOf(all((r) => r.rangeEnds))}\\b`, 'u'),
+    /** the negators a time condition cancels */
+    negationWord: new RegExp(`\\b(?:${[...all((r) => r.plainNegators), NEG_MARK].join('|')})\\b`, 'g'),
+    /**
+     * Clause boundaries: sentence ends, semicolons, colons, commas and conjunctions that join two
+     * statements. Adverbs that can also join clauses (German aber, jedoch, dagegen) stand inside a
+     * clause too often to split at; after a comma they are dropped as a leading word.
+     */
+    clauseBreak: new RegExp(`[.;:!?]\\s+|,\\s+|\\s+${joiners}\\s+`, 'g'),
+    /** clauseBreak with the boundary kept, to rebuild the text */
+    clauseSplit: new RegExp(`([.;:!?]\\s+|,\\s+|\\s+${joiners}\\s+)`),
+    leadingWord: new RegExp(`^${anyOf(all((r) => r.leadingWords))}\\s+`),
+    /**
+     * Words that restrict a statement to a case ("only after the update", "nur im Testnetz"): a clause
+     * with one of them restates a negated rule positively ("prohibited unless …" → "only allowed
+     * if …"), so a clause pair where only one side has it is not compared.
+     */
+    restrictive: new RegExp(words(all((r) => r.restrictive))),
+    /** "Without a wipe certificate, a gateway is not sent back": the phrase belongs to its clause. */
+    without: new RegExp(`^${anyOf(all((r) => r.without))}\\s`),
+  };
+});
 
 /**
- * Negators that negate what follows them. Conditional ones (unless, es sei denn) are left out: they
- * restrict a rule rather than reverse it.
- */
-const NEGATORS = new Set([
-  'not', 'no', 'never', 'none', 'nothing', 'nobody', 'neither', 'nor', 'without', 'cannot', NEG_MARK,
-  'nicht', 'kein', 'keine', 'keinen', 'keinem', 'keiner', 'keines', 'nie', 'niemals', 'nichts', 'niemand', 'weder', 'ohne',
-]);
-
-/**
- * Word sequences that contain a negator but bound a quantity or extend a list instead of negating
- * ("no later than", "not only", "nicht mehr als"): the negator is removed before counting. "No
- * longer" and "nicht mehr" without "than" or "als" are negations ("no longer supported"). "Not
- * before" bounds a time unless a modal verb makes it a prohibition ("darf nicht nach 18 Uhr …").
- */
-const NOT_NEGATIONS =
-  /\b(?:no|not)\s+(?:later|earlier|more|less|fewer|longer|shorter)\s+than\b|\b(?:no|not)\s+(?:only|just)\b|\bnicht\s+(?:spaeter|frueher|mehr|weniger|laenger|kuerzer)\s+als\b|\bnicht\s+nur\b|(?<!\b(?:may|must|should|can|darf|duerfen|soll|sollen|muss|muessen|kann|koennen)\s)\b(?:not\s+(?:before|after)|nicht\s+(?:vor|nach))\b|\bwhether or not\b|\bob oder nicht\b|\bno\.(?=\s*\d)|\bgo\/no-go\b/gu;
-
-/**
- * A time condition ("until", "before", "bis", "bevor"): "not connected until it is updated" says
- * that it is connected after the update, the same as "connected only after it is updated". In a
- * clause with such a word (not a range like "from Monday until Friday" or "bis zu drei Tagen"),
- * and in the clauses next to one that starts with it ("Bevor X, werden Y nicht bezahlt"),
- * negations are not counted.
- */
-const TIME_CONDITION = /\b(?:until|till|before|bevor|ehe|bis(?!\s+zu\b))\b/;
-const TIME_CLAUSE = /^(?:until|till|before|bevor|ehe|bis(?!\s+zu\b))\b/;
-const TIME_RANGE = /\b(?:from|von)\s+(?:[\p{L}\p{N}.:-]+\s+){0,4}(?:until|till|bis)\b/u;
-/** CLAUSE_BREAK with the boundary kept, to rebuild the text. */
-const CLAUSE_SPLIT = /([.;:!?]\s+|,\s+|\s+(?:and|or|but|while|whereas|although|though|because|und|oder|waehrend|wobei|weil|sowie)\s+)/;
-
-/**
- * Removes the negations that a time condition turns into a "not before" (see TIME_CONDITION).
+ * Removes the negations that a time condition turns into a "not before" (see rules().timeCondition).
  * @param {string} sentence  canonical text of one sentence
  */
 function withoutTimedNegations(sentence) {
-  const parts = sentence.split(CLAUSE_SPLIT);
+  const r = rules();
+  const parts = sentence.split(r.clauseSplit);
   const clauses = parts.filter((_, i) => i % 2 === 0);
-  const drop = clauses.map((c) => TIME_CONDITION.test(c) && !TIME_RANGE.test(c));
+  const drop = clauses.map((c) => r.timeCondition.test(c) && !r.timeRange.test(c));
   clauses.forEach((c, i) => {
-    if (!TIME_CLAUSE.test(c.trim()) || TIME_RANGE.test(c)) return;
+    if (!r.timeClause.test(c.trim()) || r.timeRange.test(c)) return;
     if (i > 0) drop[i - 1] = true;
     if (i + 1 < clauses.length) drop[i + 1] = true;
   });
-  return parts.map((p, i) => (i % 2 === 0 && drop[i / 2] ? p.replace(NEGATION_WORD, ' ') : p)).join('');
+  return parts.map((p, i) => (i % 2 === 0 && drop[i / 2] ? p.replace(r.negationWord, ' ') : p)).join('');
 }
-const NEGATION_WORD = new RegExp(`\\b(?:not|no|never|nicht|kein|keine|keinen|keinem|keiner|keines|nie|niemals|${NEG_MARK})\\b`, 'g');
-
-/** A negation of a whole clause, before the clause it negates: "it is not true that …". */
-const SENTENCE_NEGATION = /\bit is not (?:true|the case|correct) that\b|\bes (?:ist|stimmt|trifft) nicht (?:so|zu)?,? dass\b|\bes stimmt nicht,? dass\b/g;
-
-/** "Nothing speaks against it": a double negation that allows. */
-const NOTHING_AGAINST = /\b(?:nothing|nichts)\s+(?:speaks\s+)?(?:dagegen|gegen|against)\b|\bno objection\b/g;
-
-/**
- * Clause boundaries: sentence ends, semicolons, colons, commas and conjunctions that join two
- * statements. German adverbs that can also join clauses (aber, jedoch, dagegen) stand inside a
- * clause too often to split at; after a comma they are dropped as a leading word.
- */
-const CLAUSE_BREAK = /[.;:!?]\s+|,\s+|\s+(?:and|or|but|while|whereas|although|though|because|und|oder|waehrend|wobei|weil|sowie)\s+/g;
-const LEADING_CONJUNCTION = /^(?:and|or|but|while|whereas|although|though|because|so|then|und|oder|aber|jedoch|dagegen|allerdings|sondern|weil|denn|wobei|waehrend|sowie)\s+/;
 
 /**
  * Folds a text and rewrites negated antonyms and contractions, so negation reads the same in every
@@ -157,27 +149,20 @@ const LEADING_CONJUNCTION = /^(?:and|or|but|while|whereas|although|though|becaus
  * @param {string} text
  */
 export function canonicalText(text) {
-  let t = fold(text)
-    .replace(/\bcan'?t\b/g, 'can not')
-    .replace(/\bwon'?t\b/g, 'will not')
-    .replace(/n't\b/g, ' not')
-    .replace(/\bcannot\b/g, 'can not')
-    // "do-not-disturb", "not-null": the negator of a hyphenated word counts like a separate one.
-    .replace(/-(not|nicht)-/g, ' $1 ')
-    .replace(/\b(not|no|nicht|kein)-(?=\p{L})/gu, '$1 ')
-    // "neither A nor B" negates once: "not A or B".
-    .replace(/\bneither\b([^.;:!?]*?)\bnor\b/g, 'not$1or not')
-    .replace(/\bweder\b([^.;:!?]*?)\bnoch\b/g, 'nicht$1oder nicht')
-    .replace(/\bnothing but\b/g, 'only')
-    .replace(/\bnichts als\b/g, 'nur')
-    .replace(/\b(?:stopped|ceased)\s+(?=\p{L}+ing\b)/gu, 'not ')
-    .replace(SENTENCE_NEGATION, ` ${NEG_MARK} `)
-    .replace(NOTHING_AGAINST, (m) => (/nichts/.test(m) ? ' erlaubt ' : ' allowed '))
-    .replace(NOT_NEGATIONS, (m) => m.replace(/\b(?:no|not|nicht)\b/g, ''));
-  for (const [pattern, replacement] of ANTONYMS) t = t.replace(pattern, replacement);
+  const r = rules();
+  let t = fold(text);
+  for (const [pattern, replacement] of r.contractions) t = t.replace(pattern, replacement);
+  t = t.replace(r.infix, ' $1 ').replace(r.prefix, '$1 ');
+  // "neither A nor B" negates once ("not A or not B"); "nothing but" means "only".
+  for (const [pattern, replacement] of r.rewrites) t = t.replace(pattern, replacement);
+  t = t
+    .replace(r.sentenceNegation, ` ${NEG_MARK} `)
+    .replace(r.nothingAgainst, (m) => ` ${r.allowedBy.get(m.split(/\s+/)[0]) ?? r.allowedBy.get(m) ?? ''} `)
+    .replace(r.notNegations, (m) => m.replace(r.boundNegator, ''));
+  for (const [pattern, replacement] of r.antonyms) t = t.replace(pattern, replacement);
   return t
     .split(/(?<=[.;!?])\s+/)
-    .map((sentence) => (TIME_CONDITION.test(sentence) ? withoutTimedNegations(sentence) : sentence))
+    .map((sentence) => (r.timeCondition.test(sentence) ? withoutTimedNegations(sentence) : sentence))
     .join(' ');
 }
 
@@ -189,10 +174,11 @@ export function canonicalText(text) {
  * @returns {string[]}
  */
 export function clausesOf(canonical, merge = false) {
+  const r = rules();
   const labelled = canonical.replace(/^(\s*(?:[\p{L}\p{N}-]+\s+){0,2}[\p{L}\p{N}-]+):\s+/u, '$1 ');
   const parts = labelled
-    .split(CLAUSE_BREAK)
-    .map((c) => c.trim().replace(LEADING_CONJUNCTION, '').replace(/[.!?]+$/, ''))
+    .split(r.clauseBreak)
+    .map((c) => c.trim().replace(r.leadingWord, '').replace(/[.!?]+$/, ''))
     .filter(Boolean);
   if (!merge) return parts;
   // A part with fewer than two content words ("Geklärt ist bereits", "Fahrerinnen") cannot be
@@ -201,12 +187,12 @@ export function clausesOf(canonical, merge = false) {
   /** @type {string[]} */
   const out = [];
   let carry = '';
-  const words = (/** @type {string} */ t) => contentTokens(t).filter((w) => !QUALIFIERS.has(w)).length;
-  const negated = (/** @type {string} */ t) => (t.match(/[\p{L}\p{N}][\p{L}\p{N}-]*/gu) ?? []).some((w) => NEGATORS.has(w));
+  const words = (/** @type {string} */ t) => contentTokens(t).filter((w) => !r.qualifiers.has(w)).length;
+  const negated = (/** @type {string} */ t) => (t.match(/[\p{L}\p{N}][\p{L}\p{N}-]*/gu) ?? []).some((w) => r.negators.has(w));
   for (const part of parts) {
     const joined = carry ? `${carry} ${part}` : part;
     // "Without a wipe certificate, a gateway is not sent back": the phrase belongs to its clause.
-    if (/^(?:without|ohne)\s/.test(part) && words(part) <= 3) carry = joined;
+    if (r.without.test(part) && words(part) <= 3) carry = joined;
     else if (words(joined) < 2 && !negated(part)) carry = joined;
     else {
       if (carry && negated(part) && words(part) < 2) out.push(carry, part);
@@ -239,15 +225,16 @@ export function profileClause(clause) {
   const qualifier = [];
   /** @type {number[]} position of each negator in `tokens` */
   const marks = [];
+  const r = rules();
   for (const w of words) {
-    if (NEGATORS.has(w)) {
+    if (r.negators.has(w)) {
       marks.push(tokens.length);
       continue;
     }
     for (const t of contentTokens(w)) {
-      if (FOLDED_STOPWORDS.has(t)) continue;
+      if (r.stopwords.has(t)) continue;
       tokens.push(t);
-      qualifier.push(QUALIFIERS.has(t));
+      qualifier.push(r.qualifiers.has(t));
     }
   }
   const anchors = marks.map((at) => {
@@ -312,13 +299,6 @@ export const POLARITY = Object.freeze({
 });
 
 /**
- * Words that restrict a statement to a case ("only after the update", "nur im Testnetz"): a clause
- * with one of them restates a negated rule positively ("prohibited unless …" → "only allowed
- * if …"), so a clause pair where only one side has it is not compared.
- */
-const RESTRICTIVE = /\b(?:only|solely|exclusively|merely|nur|ausschliesslich|lediglich|erst)\b/;
-
-/**
  * Numbers of a clause, as digits only, so 480,000 and 480.000 compare equal.
  * @param {string} text  canonical clause text
  */
@@ -328,7 +308,7 @@ const numbersOf = (text) => (text.match(/\d+(?:[.,:]\d+)*/g) ?? []).map((n) => n
  * @typedef {object} SourceClause
  * @property {ClauseProfile} profile
  * @property {string} sentence  the source sentence it is part of, as written
- * @property {boolean} restricted  the sentence restricts a rule to a case (see RESTRICTIVE)
+ * @property {boolean} restricted  the sentence restricts a rule to a case (see rules().restrictive)
  */
 
 /**
@@ -342,7 +322,7 @@ export function sourceClauses(text) {
   for (const span of sentenceSpans(text)) {
     const sentence = text.slice(span.start, span.end);
     const canonical = canonicalText(sentence);
-    const restricted = RESTRICTIVE.test(canonical);
+    const restricted = rules().restrictive.test(canonical);
     for (const clause of clausesOf(canonical, true)) out.push({ profile: profileClause(clause), sentence, restricted });
   }
   return out;
@@ -361,7 +341,7 @@ export function sourceClauses(text) {
 export function negationInversion(statement, cited) {
   if (/\?\s*$/.test(statement)) return null;
   const canonical = canonicalText(statement);
-  const restricted = RESTRICTIVE.test(canonical);
+  const restricted = rules().restrictive.test(canonical);
   for (const clause of clausesOf(canonical, true)) {
     const s = profileClause(clause);
     if (s.tokens.length < POLARITY.minShared) continue;
