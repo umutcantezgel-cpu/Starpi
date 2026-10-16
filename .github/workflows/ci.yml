@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   frontend:
-    name: Frontend (lint, typecheck, unit tests, build)
+    name: Frontend (lint, typecheck, unit tests, build, supply chain)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -47,8 +47,20 @@ jobs:
       - name: Production build
         run: npm run build
 
-      - name: Verify build output (CSP compatibility, assets, service worker)
+      - name: Verify build output (CSP compatibility, header parity, assets, service worker, size budget)
         run: npm run verify:dist
+
+      - name: Generated headers are current (vercel.json from scripts/headers.json)
+        run: npm run headers:check
+
+      - name: License gate (production dependencies against scripts/license-allowlist.json)
+        run: npm run license:check
+
+      - name: End-of-life register (warns 12 months ahead)
+        run: npm run eol:check
+
+      - name: Public hygiene (no private paths or internal identifiers)
+        run: npm run hygiene:check
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -58,7 +70,7 @@ jobs:
           if-no-files-found: error
 
   e2e:
-    name: End-to-end (Playwright, production headers)
+    name: End-to-end (Playwright, production headers, cross-origin isolation, offline)
     needs: frontend
     runs-on: ubuntu-24.04
     timeout-minutes: 20
