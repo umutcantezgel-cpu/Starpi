@@ -23,4 +23,13 @@ describe('buildVersion', () => {
     assert.notEqual(buildVersion({ ...base, assetUrls: ['/assets/c.js'] }), v);
     assert.notEqual(buildVersion({ ...base, swTemplate: `${base.swTemplate}\n` }), v);
   });
+
+  it('changes when the response headers change, so the cached shell never keeps an old policy', () => {
+    const v = buildVersion({ ...base, headersDigest: '0123456789abcdef' });
+    assert.notEqual(v, buildVersion(base));
+    assert.notEqual(v, buildVersion({ ...base, headersDigest: 'fedcba9876543210' }));
+    assert.equal(v, buildVersion({ ...base, headersDigest: '0123456789abcdef' }));
+    // Without a digest the version is the one earlier builds computed.
+    assert.equal(buildVersion({ ...base, headersDigest: '' }), buildVersion(base));
+  });
 });
