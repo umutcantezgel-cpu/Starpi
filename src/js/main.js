@@ -4,10 +4,12 @@ import { initBenchUi, refreshDiagnostics } from './bench/bench-ui.js';
 import { refreshSyncStatus } from './chat-store.js';
 import { initChat, restoreHistory } from './chat.js';
 import { initDemo } from './demo.js';
-import { byId, installDelegation, onAction, reportUnexpected, setHidden } from './dom.js';
+import { closeDialog, openDialog } from './dialog.js';
+import { byId, installDelegation, onAction, onChange, reportUnexpected, setHidden } from './dom.js';
 import { initEngineUi } from './engine-ui.js';
+import { mountFeatures } from './features/index.js';
 import { initGraph, loadKnowledgeGraph } from './graph.js';
-import { initI18n, setLocale } from './i18n/index.js';
+import { initI18n, onLocaleChange, setLocale } from './i18n/index.js';
 import { refreshIcons } from './icons.js';
 import { initIngest } from './ingest.js';
 import { initLibrary, loadDocuments } from './library.js';
@@ -18,7 +20,10 @@ import { initReceipts } from './rag/receipts.js';
 import { changeEngine, initSettings, renderPrivacyNotice } from './settings.js';
 import { getMode } from './state.js';
 import { connect, onConnectionChange } from './supabase.js';
-import { detectAndDisplayDevice, onTabOpen, renderConnection, switchTab, syncSidebarAccess, toggleSidebar } from './ui.js';
+import { closeChatAside, detectAndDisplayDevice, initChatAside, onTabOpen, openChatAside, renderConnection, renderLanguageSwitch, switchTab } from './ui.js';
+import { toast } from './ui/kit.js';
+import { initSidebar, setNavVisible } from './ui/sidebar.js';
+import { initTheme } from './ui/theme.js';
 import { initVoice } from './voice.js';
 
 function registerServiceWorker() {
@@ -52,13 +57,19 @@ function registerServiceWorker() {
 }
 
 async function boot() {
-  // English by default; a stored choice wins. Applied before any module renders text.
+  // English by default; a stored choice wins (its dictionary is loaded before this module runs).
+  // Applied before any module renders text.
   initI18n();
   installDelegation();
+  // The shell: theme (already applied by theme-boot.js), sidebar rail and drawer, language switch,
+  // chat side panel.
+  initTheme();
+  initSidebar();
+  renderLanguageSwitch();
+  initChatAside();
   onAction('switch-tab', (el) => switchTab(el.dataset.arg ?? 'chat'));
-  onAction('toggle-sidebar', () => toggleSidebar());
-  syncSidebarAccess(false);
   onAction('set-locale', (el) => setLocale(el.dataset.arg ?? 'en'));
+  onChange('set-locale', (el) => setLocale(/** @type {HTMLSelectElement} */ (el).value));
 
   onTabOpen('library', () => void loadDocuments());
   onTabOpen('graph', () => void loadKnowledgeGraph());
@@ -78,6 +89,9 @@ async function boot() {
   initCitations();
   initDemo();
   initReceipts();
+
+  // Features render into the shell's mount points (features/registry.js).
+  void mountFeatures({ onAction, onChange, onLocaleChange, onTabOpen, switchTab, setNavVisible, openChatAside, closeChatAside, openDialog, closeDialog, toast }).catch(reportUnexpected);
 
   refreshIcons();
   detectAndDisplayDevice();
