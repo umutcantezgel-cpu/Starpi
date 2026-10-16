@@ -135,7 +135,7 @@ export function heuristicCaps(provider, id, hints = {}) {
     verified: false,
   };
   for (const [key, value] of Object.entries(hints)) {
-    if (key in caps && key !== 'text' && key !== 'verified' && value !== undefined) /** @type {Record<string, unknown>} */ (caps)[key] = value;
+    if ((key in caps || key === 'priceIn' || key === 'priceOut') && key !== 'text' && key !== 'verified' && value !== undefined) /** @type {Record<string, unknown>} */ (caps)[key] = value;
   }
   if (caps.maxOutput > caps.contextTokens) caps.maxOutput = caps.contextTokens;
   return caps;
