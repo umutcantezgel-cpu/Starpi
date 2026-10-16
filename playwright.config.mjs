@@ -3,6 +3,9 @@ import { defineConfig, devices } from '@playwright/test';
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined;
 // Another port lets several checkouts run the suite side by side (each serves its own dist/).
 const port = Number(process.env.STARPI_E2E_PORT || 4173);
+// The fake providers (scripts/fakes/index.mjs) listen on this port and the seven above it; specs
+// reach them as http://127.0.0.1:<fakesPort + n> (the list at the base port names each one).
+const fakesPort = Number(process.env.STARPI_FAKES_PORT || 4610);
 
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -22,10 +25,18 @@ export default defineConfig({
     { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 }, launchOptions: { executablePath } } },
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'], launchOptions: { executablePath } } },
   ],
-  webServer: {
-    command: `node scripts/serve.mjs --port ${port}`,
-    url: `http://127.0.0.1:${port}/`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
-  },
+  webServer: [
+    {
+      command: `node scripts/serve.mjs --port ${port}`,
+      url: `http://127.0.0.1:${port}/`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
+    {
+      command: `node scripts/fakes/index.mjs --base-port ${fakesPort}`,
+      url: `http://127.0.0.1:${fakesPort}/`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 15_000,
+    },
+  ],
 });

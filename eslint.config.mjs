@@ -1,7 +1,7 @@
 import js from '@eslint/js';
 import globals from 'globals';
 
-const PURE = ['src/js/core/**/*.js', 'src/js/rag/bm25.js', 'src/js/rag/chunker.js', 'src/js/models/**/*.js', 'src/js/chat-stream.js', 'src/js/chat-export.js'];
+const PURE = ['src/js/ai/**/*.js', 'src/js/core/**/*.js', 'src/js/rag/bm25.js', 'src/js/rag/chunker.js', 'src/js/models/**/*.js', 'src/js/chat-stream.js', 'src/js/chat-export.js'];
 
 export default [
   {
@@ -42,8 +42,9 @@ export default [
     },
   },
   {
-    // Pure modules (the source check, receipts, chunking, BM25, the model catalogs, chat streams and
-    // chat exports) run in the browser, in workers and in Node, so they may only use globals all three share.
+    // Pure modules (the AI layer, the source check, receipts, chunking, BM25, the model catalogs, chat
+    // streams and chat exports) run in the browser, in workers and in Node, so they may only use globals
+    // all three share.
     files: PURE,
     languageOptions: {
       ecmaVersion: 'latest',
