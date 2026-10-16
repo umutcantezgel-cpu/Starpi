@@ -102,7 +102,8 @@ const isCount = (value) => typeof value === 'number' && Number.isInteger(value) 
 export function heuristicCaps(provider, id, hints = {}) {
   const lower = String(id).toLowerCase();
   const cloudVision = /claude|gemini|gpt-4o|gpt-4\.1|gpt-5|grok-4|pixtral|mistral-(?:small|medium|large)|llama-4|gemma-3|vision|[-_]vl\b|omni|llava/;
-  const tagged = /(?:^|[-/_.])(?:r1|qwq|magistral|reasoner|thinking)(?:$|[-:_.])|deepseek-r1|qwen3/;
+  // Written without a colon inside a bracket: the style build scans these files for class names.
+  const tagged = /(?:^|[-/_.])(?:r1|qwq|magistral|reasoner|thinking)(?:$|[-_.]|:)|deepseek-r1|qwen3/;
   /** @type {Caps['reasoning']} */
   let reasoning = 'none';
   if (provider === 'anthropic') reasoning = 'adaptive';
