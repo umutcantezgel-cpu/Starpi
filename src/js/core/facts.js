@@ -504,7 +504,7 @@ function findNumbers(text, claim) {
         break;
       }
     }
-    // "$4.5m": an amount after a currency sign, in millions.
+    // A currency sign before the number and "m" after it: an amount in millions.
     if (scale === 1 && /^m(?![\p{L}])/iu.test(rest) && /[€$£]\s?$/u.test(before)) {
       scale = 1e6;
       end += 1;
