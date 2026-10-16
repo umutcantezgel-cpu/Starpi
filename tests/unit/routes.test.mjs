@@ -18,10 +18,6 @@ const vercel = JSON.parse(readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
 
 /** Routes that later work packages implement; until then each answers 501. */
 const STUBS = [
-  'api/relay.js',
-  'api/pool.js',
-  'api/health.js',
-  'api/models/pool.js',
   'api/voice/speak.js',
   'api/voice/transcribe.js',
   'api/voice/voices.js',
@@ -110,7 +106,7 @@ describe('scripts/serve.mjs --functions', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'starpi-serve-'));
     writeFileSync(path.join(dir, 'index.html'), '<!DOCTYPE html><title>t</title>');
     writeFileSync(path.join(dir, 'build-manifest.json'), JSON.stringify({ profile }));
-    const env = { ...process.env, NVIDIA_API_KEYS: '', STARPI_ALLOWED_ORIGINS: '', NVIDIA_ALLOWED_ORIGINS: '', RELAY_ALLOWED_ORIGINS: '' };
+    const env = { ...process.env, NVIDIA_API_KEYS: '', STARPI_ALLOWED_ORIGINS: '', NVIDIA_ALLOWED_ORIGINS: '', RELAY_ALLOWED_ORIGINS: '', STARPI_ACCESS_CODE: '' };
     server = spawn(process.execPath, [path.join(ROOT, 'scripts/serve.mjs'), '--port', '0', '--dir', dir, '--functions'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'inherit'] });
     let out = '';
     server.stdout?.setEncoding('utf8');
@@ -130,23 +126,24 @@ describe('scripts/serve.mjs --functions', () => {
     await once(server, 'exit');
   });
 
-  it('answers the new routes with 501 under the production headers of the build profile', async () => {
+  it('answers the new routes under the production headers of the build profile', async () => {
     const expected = headersFor(resolveHeaderRules(profile), '/api/health');
-    for (const [method, url] of [
-      ['GET', '/api/health'],
-      ['POST', '/api/pool'],
-      ['GET', '/api/models/pool'],
-      ['POST', '/api/relay/openai/v1/chat/completions'],
-      ['GET', '/api/relay/gemini/v1beta/models'],
-      ['POST', '/api/voice/speak'],
-      ['POST', '/api/voice/transcribe'],
-      ['GET', '/api/voice/voices'],
-      ['POST', '/api/voice/live-token'],
-      ['POST', '/api/research/step'],
+    for (const [method, url, status, error] of [
+      ['GET', '/api/health', 200],
+      ['POST', '/api/pool', 404, 'unknown_pool'],
+      ['GET', '/api/models/pool', 200],
+      ['POST', '/api/relay/openai/v1/chat/completions', 401, 'key_required'],
+      ['GET', '/api/relay/gemini/v1beta/models', 401, 'key_required'],
+      ['POST', '/api/voice/speak', 501, 'not_implemented'],
+      ['POST', '/api/voice/transcribe', 501, 'not_implemented'],
+      ['GET', '/api/voice/voices', 501, 'not_implemented'],
+      ['POST', '/api/voice/live-token', 501, 'not_implemented'],
+      ['POST', '/api/research/step', 501, 'not_implemented'],
     ]) {
       const res = await fetch(base + url, { method, headers: { origin: base } });
-      assert.equal(res.status, 501, `${method} ${url}`);
-      assert.deepEqual(await res.json(), { error: 'not_implemented' });
+      assert.equal(res.status, status, `${method} ${url}`);
+      const body = await res.json();
+      if (error) assert.deepEqual(body, { error }, `${method} ${url}`);
       for (const name of ['content-security-policy', 'cross-origin-embedder-policy', 'cross-origin-resource-policy', 'referrer-policy']) {
         assert.equal(res.headers.get(name), expected.get(name)?.value, `${url} ${name}`);
       }
@@ -191,6 +188,6 @@ describe('scripts/serve.mjs --functions', () => {
     assert.equal(page.status, 200);
     assert.equal(page.headers.get('cross-origin-opener-policy'), 'same-origin');
     assert.equal(await rawStatus('/api/health', { host: 'rebound.example' }), 403);
-    assert.equal(await rawStatus('/api/health', { host: 'localhost' }), 501);
+    assert.equal(await rawStatus('/api/health', { host: 'localhost' }), 200);
   });
 });
