@@ -59,7 +59,8 @@ assertPublicKey(SUPABASE_ANON_KEY);
 
 const PROFILE = process.env.STARPI_HEADER_PROFILE || DEFAULT_PROFILE;
 if (!BUILD_PROFILES.includes(PROFILE)) {
-  throw new Error(`STARPI_HEADER_PROFILE is "${PROFILE}", expected one of ${BUILD_PROFILES.join(', ')} (scripts/headers.json)`);
+  console.error(`STARPI_HEADER_PROFILE is "${PROFILE}", expected one of ${BUILD_PROFILES.join(', ')} (scripts/headers.json)`);
+  process.exit(1);
 }
 const HEADER_RULES = resolveHeaderRules(PROFILE);
 const HEADERS_DIGEST = headersDigest(HEADER_RULES);
