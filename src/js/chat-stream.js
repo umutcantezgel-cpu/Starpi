@@ -1,76 +1,13 @@
 // @ts-check
-// Pure helpers for streamed chat completions: an incremental text/event-stream parser, an assembler
-// for OpenAI-compatible completion chunks, and the split of model output into reasoning and answer.
-// No DOM and no I/O, so the browser client and the unit tests share them.
+// Pure helpers for streamed chat completions: an assembler for OpenAI-compatible completion chunks
+// and the split of model output into reasoning and answer, plus the text/event-stream parser
+// re-exported from ai/sse.js. No DOM and no I/O, so the browser client and the unit tests share them.
 
-/** Longest unterminated line or pending event the parser holds before it gives up. */
-export const MAX_SSE_BUFFER_CHARS = 1_000_000;
+// The event-stream parser lives in ai/sse.js now; it is re-exported here so existing imports keep working.
+export { createSseParser, MAX_SSE_BUFFER_CHARS } from './ai/sse.js';
+
 /** Longest answer (content plus reasoning) the assembler accepts. */
 export const MAX_STREAM_CHARS = 200_000;
-
-/**
- * Incremental text/event-stream parser. Lines end in \n, \r\n or \r; a chunk that ends in \r waits
- * for the next one, which may start with the \n of the same line end. Comments and the `id` and
- * `retry` fields are ignored; a blank line dispatches the event.
- * @param {(ev: { event: string, data: string }) => void} onEvent
- * @returns {{ push(text: string): void, end(): void }}
- */
-export function createSseParser(onEvent) {
-  let buffer = '';
-  let event = '';
-  /** @type {string[]} */
-  let data = [];
-  let pending = 0;
-
-  const dispatch = () => {
-    if (data.length) onEvent({ event: event || 'message', data: data.join('\n') });
-    event = '';
-    data = [];
-    pending = 0;
-  };
-
-  /** @param {string} line */
-  const processLine = (line) => {
-    if (line === '') return dispatch();
-    if (line.startsWith(':')) return;
-    const colon = line.indexOf(':');
-    const field = colon === -1 ? line : line.slice(0, colon);
-    const raw = colon === -1 ? '' : line.slice(colon + 1);
-    const value = raw.startsWith(' ') ? raw.slice(1) : raw;
-    if (field === 'data') {
-      data.push(value);
-      pending += value.length;
-    } else if (field === 'event') event = value;
-  };
-
-  /** @param {boolean} final */
-  const drain = (final) => {
-    const lineEnd = /\r\n|\r|\n/g;
-    let start = 0;
-    for (let m = lineEnd.exec(buffer); m; m = lineEnd.exec(buffer)) {
-      // A lone \r at the end may be the first half of \r\n.
-      if (!final && m[0] === '\r' && m.index === buffer.length - 1) break;
-      processLine(buffer.slice(start, m.index));
-      start = m.index + m[0].length;
-    }
-    buffer = buffer.slice(start);
-  };
-
-  return {
-    push(text) {
-      buffer += text;
-      drain(false);
-      if (buffer.length + pending > MAX_SSE_BUFFER_CHARS) throw new RangeError('The event stream sent an event that is too long');
-    },
-    // Lenient on purpose: a stream cut off before its final blank line still delivers its last event.
-    end() {
-      drain(true);
-      if (buffer) processLine(buffer);
-      buffer = '';
-      dispatch();
-    },
-  };
-}
 
 /**
  * An error code as a short identifier; anything else (such as server text) is replaced.

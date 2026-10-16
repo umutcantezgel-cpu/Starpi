@@ -1,0 +1,10 @@
+{
+  "$comment": "Policy of scripts/license-gate.mjs (npm run license:check) for every package the production dependencies reach; devDependencies are build and test tooling and never ship. SPDX identifiers, compared without regard to case. 'allowed' lists permissive licenses (OFL-1.1 for the bundled font). 'forbidden' and 'forbiddenPatterns' name strong and weak copyleft, non-commercial, no-derivatives and source-available licenses, which fail with a clear reason; any other license is unknown and fails too until someone reviews it and adds it here. 'packages' records a reviewed fact for one release whose metadata carries no usable license: key 'name@version', value { license, evidence }, where evidence links to the license text of exactly that release. 'notShipped' names packages the production tree reaches but the browser build never bundles, with the reason; the gate skips them and scripts/build.mjs fails if one of them is bundled after all.",
+  "allowed": ["MIT", "MIT-0", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "0BSD", "OFL-1.1", "CC0-1.0", "BlueOak-1.0.0", "Zlib", "Unlicense"],
+  "forbidden": ["SSPL-1.0", "BUSL-1.1", "Elastic-2.0", "Commons-Clause", "UNLICENSED"],
+  "forbiddenPatterns": ["^AGPL-", "^GPL-", "^LGPL-", "^MPL-", "^EPL-", "^CDDL-", "^CC-BY-NC", "^CC-BY-ND", "^CC-BY-SA", "^OSL-", "^EUPL-", "^CPAL-", "^RPL-"],
+  "packages": {},
+  "notShipped": {
+    "sharp": { "reason": "Node-only image backend of @huggingface/transformers (LGPL libvips binaries). The browser build resolves the package's web entry (dist/transformers.web.js), which does not import it." }
+  }
+}

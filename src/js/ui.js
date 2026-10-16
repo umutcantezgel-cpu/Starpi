@@ -1,11 +1,17 @@
 // @ts-check
-// Navigation, sidebar, device indicator, and connection/status indicators.
+// Navigation, tabs, the chat side panel, the language switch, the device indicator, and
+// connection/status indicators. The sidebar itself (rail, drawer, nav visibility) is ui/sidebar.js.
 import { SUPABASE_PROJECT_REF } from './config.js';
-import { byId } from './dom.js';
+import { byId, onAction, setHtml } from './dom.js';
 import { refreshIcons } from './icons.js';
-import { setText } from './i18n/index.js';
+import { getLocale, LANGUAGES, LOCALES, setText } from './i18n/index.js';
+import { emptyState, html } from './ui/kit.js';
+import { toggleSidebar } from './ui/sidebar.js';
 
-const TABS = ['chat', 'library', 'graph', 'ingest', 'bench', 'settings'];
+export { setNavVisible, syncSidebarAccess, toggleSidebar } from './ui/sidebar.js';
+
+/** Tabs in navigation order; each has a section #tab-<name> and nav entries #nav-<name>, #mobile-nav-<name>. */
+export const TABS = Object.freeze(['chat', 'research', 'library', 'ingest', 'graph', 'bench', 'companion', 'settings']);
 
 /** @type {Map<string, () => void>} */
 const tabOpenHooks = new Map();
@@ -18,11 +24,24 @@ export function onTabOpen(tab, hook) {
   tabOpenHooks.set(tab, hook);
 }
 
+/**
+ * A tab that is a mount point (data-mount) and still empty when it opens shows its title and a
+ * quiet note, until a feature renders into it.
+ * @param {HTMLElement} section
+ * @param {string} tab
+ */
+function fillEmptyMount(section, tab) {
+  if (!section.hasAttribute('data-mount') || section.childElementCount > 0) return;
+  setHtml(section, html`<div class="max-w-3xl mx-auto w-full" data-placeholder>${emptyState({ title: `nav.${tab}`, body: 'shell.mount.empty', icon: 'inbox' })}</div>`.value);
+}
+
 /** @param {string} tabId */
 export function switchTab(tabId) {
   const target = TABS.includes(tabId) ? tabId : 'chat';
   for (const name of TABS) {
-    byId(`tab-${name}`)?.classList.toggle('hidden', name !== target);
+    const section = byId(`tab-${name}`);
+    section?.classList.toggle('hidden', name !== target);
+    if (section && name === target) fillEmptyMount(section, name);
     for (const id of [`nav-${name}`, `mobile-nav-${name}`]) {
       const nav = byId(id);
       if (!nav) continue;
@@ -35,35 +54,143 @@ export function switchTab(tabId) {
   if (window.innerWidth < 768) toggleSidebar(false);
 }
 
-const desktop = globalThis.matchMedia?.('(min-width: 768px)');
+// ---------------------------------------------------------------------------------------------
+// Chat side panel (#chat-aside): tabs Canvas, Sources, Compare, Research, each panel a mount point.
+// A column next to the conversation from lg up, a full-screen panel below.
 
-/** @param {boolean} [forcedState] */
-export function toggleSidebar(forcedState) {
-  const sidebar = byId('sidebar');
-  const backdrop = byId('mobileBackdrop');
-  if (!sidebar || !backdrop) return;
-  const isVisible = !sidebar.classList.contains('-translate-x-full');
-  const shouldOpen = forcedState ?? !isVisible;
-  sidebar.classList.toggle('-translate-x-full', !shouldOpen);
-  backdrop.classList.toggle('hidden', !shouldOpen);
-  syncSidebarAccess(shouldOpen);
-  if (shouldOpen && !desktop?.matches) /** @type {HTMLElement | null} */ (sidebar.querySelector('button, a'))?.focus();
+/** @typedef {'canvas' | 'sources' | 'compare' | 'research'} AsideTab */
+export const ASIDE_TABS = /** @type {readonly AsideTab[]} */ (Object.freeze(['canvas', 'sources', 'compare', 'research']));
+
+/** @type {AsideTab} */
+let asideTab = 'canvas';
+/** @type {Set<(tab: AsideTab | null) => void>} */
+const asideListeners = new Set();
+
+/** @param {unknown} value @returns {value is AsideTab} */
+function isAsideTab(value) {
+  return typeof value === 'string' && /** @type {readonly string[]} */ (ASIDE_TABS).includes(value);
+}
+
+/** @returns {boolean} */
+export function isChatAsideOpen() {
+  const aside = byId('chat-aside');
+  return Boolean(aside && !aside.classList.contains('hidden'));
+}
+
+/** @returns {AsideTab} the selected tab (also while the panel is closed) */
+export function chatAsideTab() {
+  return asideTab;
 }
 
 /**
- * On phones the closed off-canvas menu is only moved off screen; `inert` keeps it out of the tab
- * order and away from screen readers until it is opened.
- * @param {boolean} [open]
+ * Selects a tab of the side panel (roving tabindex, aria-selected) without opening it.
+ * @param {string} tab
+ * @param {{ focus?: boolean }} [opts]
  */
-export function syncSidebarAccess(open = false) {
-  const sidebar = byId('sidebar');
-  const closed = !desktop?.matches && !open;
-  if (sidebar) sidebar.inert = closed;
-  byId('menuButton')?.setAttribute('aria-expanded', String(!closed && !desktop?.matches));
+export function selectChatAsideTab(tab, opts = {}) {
+  if (!isAsideTab(tab)) return;
+  asideTab = tab;
+  for (const name of ASIDE_TABS) {
+    const selected = name === tab;
+    const button = byId(`chat-aside-tab-${name}`);
+    button?.setAttribute('aria-selected', String(selected));
+    button?.setAttribute('tabindex', selected ? '0' : '-1');
+    byId(`chat-aside-panel-${name}`)?.classList.toggle('hidden', !selected);
+    if (selected && opts.focus) button?.focus();
+  }
+  if (isChatAsideOpen()) notifyAside(tab);
 }
 
-// A layout change keeps the sidebar's real state: it may still be open on the phone layout.
-desktop?.addEventListener?.('change', () => syncSidebarAccess(!byId('sidebar')?.classList.contains('-translate-x-full')));
+/**
+ * Opens the side panel on a tab (default: the last one) and moves focus to that tab.
+ * @param {string} [tab]
+ */
+export function openChatAside(tab) {
+  const aside = byId('chat-aside');
+  if (!aside) return;
+  const wasOpen = isChatAsideOpen();
+  aside.classList.remove('hidden');
+  byId('chatAsideToggle')?.setAttribute('aria-expanded', 'true');
+  selectChatAsideTab(isAsideTab(tab) ? tab : asideTab, { focus: true });
+  if (!wasOpen) notifyAside(asideTab);
+}
+
+export function closeChatAside() {
+  const aside = byId('chat-aside');
+  if (!aside || !isChatAsideOpen()) return;
+  const hadFocus = aside.contains(document.activeElement);
+  aside.classList.add('hidden');
+  const toggle = byId('chatAsideToggle');
+  toggle?.setAttribute('aria-expanded', 'false');
+  // Focus returns to the toggle when it is on screen, else to the message box.
+  if (hadFocus) (toggle && toggle.getClientRects().length > 0 ? toggle : byId('chatInput'))?.focus();
+  notifyAside(null);
+}
+
+/**
+ * @param {(tab: AsideTab | null) => void} fn called with the shown tab, or null when the panel closes
+ * @returns {() => void}
+ */
+export function onChatAsideChange(fn) {
+  asideListeners.add(fn);
+  return () => asideListeners.delete(fn);
+}
+
+/** @param {AsideTab | null} tab */
+function notifyAside(tab) {
+  for (const fn of asideListeners) {
+    try {
+      fn(tab);
+    } catch (err) {
+      console.error('[starpi] side panel listener failed', err);
+    }
+  }
+}
+
+/**
+ * Wires the side panel: the toolbar toggle, its tabs (arrow keys, Home, End) and Escape to close.
+ * Features open it on their tab with openChatAside() (also passed to them as ctx.openChatAside).
+ */
+export function initChatAside() {
+  onAction('toggle-chat-aside', () => (isChatAsideOpen() ? closeChatAside() : openChatAside()));
+  onAction('close-chat-aside', () => closeChatAside());
+  onAction('select-aside-tab', (el) => selectChatAsideTab(el.dataset.arg ?? 'canvas'));
+  byId('chatAsideTabs')?.addEventListener('keydown', (event) => {
+    const step = /** @type {Record<string, number>} */ ({ ArrowRight: 1, ArrowLeft: -1, Home: -Infinity, End: Infinity })[event.key];
+    if (step === undefined) return;
+    event.preventDefault();
+    const index = ASIDE_TABS.indexOf(asideTab);
+    const next = step === -Infinity ? 0 : step === Infinity ? ASIDE_TABS.length - 1 : (index + step + ASIDE_TABS.length) % ASIDE_TABS.length;
+    selectChatAsideTab(ASIDE_TABS[next], { focus: true });
+  });
+  byId('chat-aside')?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeChatAside();
+    }
+  });
+  selectChatAsideTab(asideTab);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Language switch in the header, generated from the shipped languages: buttons for up to three,
+// a select for more.
+
+export function renderLanguageSwitch() {
+  const host = byId('langSwitch');
+  if (!host) return;
+  const current = getLocale();
+  if (LOCALES.length > 3) {
+    const options = LOCALES.map((code) => html`<option value="${code}" lang="${code}"${code === current ? html` selected` : ''}>${LANGUAGES[code]?.name ?? code}</option>`);
+    setHtml(host, html`<i data-lucide="languages" class="w-3.5 h-3.5 mx-1 text-slate-500 hidden sm:block"></i><select data-change="set-locale" class="bg-transparent text-slate-800 font-semibold text-base sm:text-[11px] py-0.5 pr-1 focus:outline-none cursor-pointer" data-i18n-aria="app.language" aria-label="Language">${options}</select>`.value);
+    return;
+  }
+  const buttons = LOCALES.map(
+    (code) =>
+      html`<button type="button" data-action="set-locale" data-arg="${code}" aria-pressed="${String(code === current)}" class="px-2 py-1 rounded-md transition" lang="${code}" aria-label="${LANGUAGES[code]?.name ?? code}">${LANGUAGES[code]?.short ?? code.toUpperCase()}</button>`,
+  );
+  setHtml(host, html`<i data-lucide="languages" class="w-3.5 h-3.5 mx-1 text-slate-500 hidden sm:block"></i>${buttons}`.value);
+}
 
 export function detectAndDisplayDevice() {
   const userAgent = navigator.userAgent || '';

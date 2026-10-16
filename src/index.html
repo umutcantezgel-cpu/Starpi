@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="light">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
@@ -14,6 +14,11 @@
   <meta name="apple-mobile-web-app-title" content="Starpi">
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <!-- Light and dark themes. theme-boot sets the class on <html> and this tag before the stylesheet
+       applies, so the first frame has the stored or system theme (a classic blocking script: the CSP
+       allows no inline script). -->
+  <meta name="color-scheme" content="light dark">
+  <script src="%STARPI_THEME_BOOT_JS%"></script>
   <link rel="stylesheet" href="%STARPI_APP_CSS%">
   <script type="module" src="%STARPI_MAIN_JS%"></script>
 </head>
@@ -21,52 +26,67 @@
   <a href="#main" class="skip-link" data-i18n="app.skip_to_content">Skip to content</a>
 
   <!-- Mobile menu backdrop -->
-  <div id="mobileBackdrop" class="fixed inset-0 bg-slate-900/30 backdrop-blur-xs z-40 hidden md:hidden" data-action="toggle-sidebar"></div>
+  <div id="mobileBackdrop" class="fixed inset-0 bg-scrim/30 dark:bg-scrim/60 backdrop-blur-xs z-40 hidden md:hidden" data-action="toggle-sidebar"></div>
 
-  <!-- Sidebar -->
-  <aside id="sidebar" class="fixed md:static inset-y-0 left-0 w-64 bg-white border-r border-slate-200 z-50 flex flex-col transition-transform duration-300 -translate-x-full md:translate-x-0">
-    <div class="h-14 px-4 flex items-center justify-between border-b border-slate-200">
-      <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg bg-[#FFCA00] flex items-center justify-center text-slate-950 font-extrabold" aria-hidden="true">S</div>
-        <div class="leading-tight">
+  <!-- Sidebar: a column that collapses to an icon rail from md up (ui/sidebar.js), the drawer below md. -->
+  <aside id="sidebar" class="fixed md:static inset-y-0 left-0 w-64 flex-shrink-0 bg-white border-r border-slate-200 z-50 flex flex-col transition-transform duration-300 -translate-x-full md:translate-x-0">
+    <div class="sidebar-head h-14 px-4 flex items-center justify-between gap-2 border-b border-slate-200">
+      <div class="rail-hide flex items-center gap-2.5 min-w-0">
+        <div class="brand-mark w-8 h-8 flex-shrink-0" aria-hidden="true">S</div>
+        <div class="leading-tight min-w-0">
           <div class="font-bold text-[15px] tracking-tight text-slate-950">Starpi</div>
-          <p class="text-[11px] text-slate-500" data-i18n="app.tagline">Knowledge assistant</p>
+          <p class="text-[11px] text-slate-500 truncate" data-i18n="app.tagline">Knowledge assistant</p>
         </div>
       </div>
+      <button type="button" id="sidebarCollapseBtn" data-action="toggle-rail" class="hidden md:inline-flex btn btn-ghost btn-icon flex-shrink-0" aria-controls="sidebar" aria-expanded="true" data-i18n-aria="shell.sidebar.collapse" aria-label="Collapse sidebar" data-i18n-title="shell.sidebar.collapse" title="Collapse sidebar">
+        <i data-lucide="panel-left-close" class="rail-hide w-4 h-4"></i>
+        <i data-lucide="panel-left-open" class="rail-only w-4 h-4"></i>
+      </button>
       <button type="button" data-action="toggle-sidebar" class="md:hidden btn btn-ghost btn-icon" data-i18n-aria="app.close_menu" aria-label="Close menu">
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
     </div>
 
-    <nav class="p-3 space-y-0.5 overflow-y-auto custom-scrollbar" data-i18n-aria="app.main_navigation" aria-label="Main navigation">
+    <nav class="p-3 space-y-0.5 overflow-y-auto custom-scrollbar flex-shrink-0" data-i18n-aria="app.main_navigation" aria-label="Main navigation">
       <button type="button" data-action="switch-tab" data-arg="chat" id="nav-chat" class="nav-item" aria-current="page">
         <i data-lucide="message-square" class="w-4 h-4"></i>
-        <span data-i18n="nav.chat">Chat</span>
+        <span class="nav-label" data-i18n="nav.chat">Chat</span>
+      </button>
+      <button type="button" data-action="switch-tab" data-arg="research" id="nav-research" class="nav-item">
+        <i data-lucide="telescope" class="w-4 h-4"></i>
+        <span class="nav-label" data-i18n="nav.research">Research</span>
       </button>
       <button type="button" data-action="switch-tab" data-arg="library" id="nav-library" class="nav-item">
         <i data-lucide="library" class="w-4 h-4"></i>
-        <span data-i18n="nav.library">Knowledge base</span>
-      </button>
-      <button type="button" data-action="switch-tab" data-arg="graph" id="nav-graph" class="nav-item">
-        <i data-lucide="network" class="w-4 h-4"></i>
-        <span data-i18n="nav.graph">Knowledge graph</span>
+        <span class="nav-label" data-i18n="nav.library">Knowledge base</span>
       </button>
       <button type="button" data-action="switch-tab" data-arg="ingest" id="nav-ingest" class="nav-item">
         <i data-lucide="upload" class="w-4 h-4"></i>
-        <span data-i18n="nav.ingest">Add knowledge</span>
+        <span class="nav-label" data-i18n="nav.ingest">Add knowledge</span>
+      </button>
+      <button type="button" data-action="switch-tab" data-arg="graph" id="nav-graph" class="nav-item">
+        <i data-lucide="network" class="w-4 h-4"></i>
+        <span class="nav-label" data-i18n="nav.graph">Knowledge graph</span>
       </button>
       <button type="button" data-action="switch-tab" data-arg="bench" id="nav-bench" class="nav-item">
         <i data-lucide="gauge" class="w-4 h-4"></i>
-        <span data-i18n="nav.bench">Diagnostics</span>
+        <span class="nav-label" data-i18n="nav.bench">Diagnostics</span>
+      </button>
+      <button type="button" data-action="switch-tab" data-arg="companion" id="nav-companion" class="nav-item hidden">
+        <i data-lucide="plug" class="w-4 h-4"></i>
+        <span class="nav-label" data-i18n="nav.companion">Companion</span>
       </button>
       <button type="button" data-action="switch-tab" data-arg="settings" id="nav-settings" class="nav-item">
         <i data-lucide="settings-2" class="w-4 h-4"></i>
-        <span data-i18n="nav.settings">Settings</span>
+        <span class="nav-label" data-i18n="nav.settings">Settings</span>
       </button>
     </nav>
 
+    <!-- Mount point: the conversation list (empty until that feature renders it; hidden on the rail). -->
+    <section id="chat-sidebar" class="rail-hide flex-1 min-h-0 overflow-y-auto custom-scrollbar px-3 pb-3 empty:hidden" data-mount data-i18n-aria="shell.sidebar.conversations" aria-label="Conversations"></section>
+
     <!-- Knowledge base connection -->
-    <div class="mt-auto m-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+    <div class="rail-hide mt-auto m-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
       <div class="flex items-center justify-between gap-2 mb-1.5">
         <div class="flex items-center gap-2">
           <span id="dbStatusDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
@@ -92,7 +112,7 @@
       </div>
       <div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
         <!-- Language switch -->
-        <div class="lang-toggle flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-[11px] font-semibold" role="group" data-i18n-aria="app.language" aria-label="Language">
+        <div id="langSwitch" class="lang-toggle flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-[11px] font-semibold" role="group" data-i18n-aria="app.language" aria-label="Language">
           <i data-lucide="languages" class="w-3.5 h-3.5 mx-1 text-slate-500 hidden sm:block"></i>
           <button type="button" data-action="set-locale" data-arg="en" aria-pressed="true" class="px-2 py-1 rounded-md transition" lang="en" aria-label="English">EN</button>
           <button type="button" data-action="set-locale" data-arg="de" aria-pressed="false" class="px-2 py-1 rounded-md transition" lang="de" aria-label="Deutsch">DE</button>
@@ -130,132 +150,189 @@
     </div>
 
     <!-- ========================= Chat ========================= -->
-    <section id="tab-chat" class="flex-1 flex flex-col overflow-hidden relative">
-      <div class="px-3 sm:px-4 py-1.5 bg-white border-b border-slate-200 flex items-center justify-between gap-2 text-xs">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="hidden xs:flex items-center gap-1.5 text-[11px] text-slate-600" data-i18n-title="device.title" title="Detected device">
-            <i data-lucide="smartphone" id="deviceTypeIcon" class="w-3.5 h-3.5 text-slate-500"></i>
-            <span id="detectedDeviceText" data-i18n="device.smartphone">Phone</span>
-          </span>
-          <span class="hidden xs:inline text-slate-300" aria-hidden="true">·</span>
-          <span class="text-[11px] text-slate-600 truncate" id="assistantStatusText" role="status" data-i18n="status.ready">Ready</span>
-        </div>
-        <div class="flex items-center gap-1.5 flex-shrink-0">
-          <div id="localMemoryControls" class="hidden flex items-center gap-1.5">
-            <span id="vramStatusBadge" class="badge badge-muted font-mono max-w-[11rem] sm:max-w-none">
-              <span class="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0" id="vramStatusDot"></span>
-              <span id="vramStatusText" class="truncate" data-i18n="engine.vram_none">No model loaded</span>
+    <section id="tab-chat" class="flex-1 flex overflow-hidden relative">
+      <div class="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+        <div class="px-3 sm:px-4 py-1.5 bg-white border-b border-slate-200 flex items-center justify-between gap-2 text-xs">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="hidden xs:flex items-center gap-1.5 text-[11px] text-slate-600" data-i18n-title="device.title" title="Detected device">
+              <i data-lucide="smartphone" id="deviceTypeIcon" class="w-3.5 h-3.5 text-slate-500"></i>
+              <span id="detectedDeviceText" data-i18n="device.smartphone">Phone</span>
             </span>
-            <button type="button" data-action="unload-webgpu" id="btnUnloadWebgpu" class="btn btn-ghost py-1 px-2 text-rose-600" data-i18n-title="engine.unload_title" title="Unload the model and free its memory" data-i18n-aria="engine.unload_title" aria-label="Unload the model and free its memory">
-              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-              <span class="hidden sm:inline" data-i18n="engine.unload">Unload</span>
-            </button>
+            <span class="hidden xs:inline text-slate-300" aria-hidden="true">·</span>
+            <span class="text-[11px] text-slate-600 truncate" id="assistantStatusText" role="status" data-i18n="status.ready">Ready</span>
           </div>
-          <details class="chat-menu relative">
-            <summary class="btn btn-secondary py-1 px-2 list-none cursor-pointer select-none" data-i18n-aria="chat.export" aria-label="Export or delete this chat">
-              <i data-lucide="download" class="w-3.5 h-3.5"></i>
-              <span class="hidden sm:inline" data-i18n="chat.export_short">This chat</span>
-            </summary>
-            <div class="absolute right-0 z-30 mt-1 w-56 card p-1 flex flex-col">
-              <button type="button" data-action="export-chat" data-arg="md" class="chat-menu-item">
-                <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
-                <span data-i18n="chat.export_md">Export as Markdown</span>
-              </button>
-              <button type="button" data-action="export-chat" data-arg="json" class="chat-menu-item">
-                <i data-lucide="braces" class="w-3.5 h-3.5"></i>
-                <span data-i18n="chat.export_json">Export as JSON</span>
-              </button>
-              <button type="button" data-action="delete-chat" class="chat-menu-item text-rose-700">
+          <div class="flex items-center gap-1.5 flex-shrink-0">
+            <!-- Mount point: tool buttons of features in the chat toolbar. -->
+            <div id="chatToolbarExtras" class="flex items-center gap-1.5 empty:hidden" data-mount></div>
+            <button type="button" id="chatAsideToggle" data-action="toggle-chat-aside" class="btn btn-secondary py-1 px-2" aria-controls="chat-aside" aria-expanded="false" data-i18n-aria="shell.aside.toggle" aria-label="Side panel" data-i18n-title="shell.aside.toggle" title="Side panel">
+              <i data-lucide="panel-right" class="w-3.5 h-3.5"></i>
+            </button>
+            <div id="localMemoryControls" class="hidden flex items-center gap-1.5">
+              <span id="vramStatusBadge" class="badge badge-muted font-mono max-w-[11rem] sm:max-w-none">
+                <span class="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0" id="vramStatusDot"></span>
+                <span id="vramStatusText" class="truncate" data-i18n="engine.vram_none">No model loaded</span>
+              </span>
+              <button type="button" data-action="unload-webgpu" id="btnUnloadWebgpu" class="btn btn-ghost py-1 px-2 text-rose-600" data-i18n-title="engine.unload_title" title="Unload the model and free its memory" data-i18n-aria="engine.unload_title" aria-label="Unload the model and free its memory">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                <span data-i18n="chat.delete">Delete this chat</span>
+                <span class="hidden sm:inline" data-i18n="engine.unload">Unload</span>
               </button>
             </div>
-          </details>
-          <button type="button" data-action="new-chat" class="btn btn-secondary py-1 px-2" data-i18n-aria="chat.new_chat" aria-label="New chat">
-            <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
-            <span class="hidden xs:inline" data-i18n="chat.new_chat">New chat</span>
+            <details class="chat-menu relative">
+              <summary class="btn btn-secondary py-1 px-2 list-none cursor-pointer select-none" data-i18n-aria="chat.export" aria-label="Export or delete this chat">
+                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                <span class="hidden sm:inline" data-i18n="chat.export_short">This chat</span>
+              </summary>
+              <div class="absolute right-0 z-30 mt-1 w-56 card p-1 flex flex-col">
+                <button type="button" data-action="export-chat" data-arg="md" class="chat-menu-item">
+                  <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+                  <span data-i18n="chat.export_md">Export as Markdown</span>
+                </button>
+                <button type="button" data-action="export-chat" data-arg="json" class="chat-menu-item">
+                  <i data-lucide="braces" class="w-3.5 h-3.5"></i>
+                  <span data-i18n="chat.export_json">Export as JSON</span>
+                </button>
+                <button type="button" data-action="delete-chat" class="chat-menu-item text-rose-700">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                  <span data-i18n="chat.delete">Delete this chat</span>
+                </button>
+              </div>
+            </details>
+            <button type="button" data-action="new-chat" class="btn btn-secondary py-1 px-2" data-i18n-aria="chat.new_chat" aria-label="New chat">
+              <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+              <span class="hidden xs:inline" data-i18n="chat.new_chat">New chat</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="chatMessages" class="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-5 custom-scrollbar select-text" role="log" aria-live="polite" data-i18n-aria="chat.log_label" aria-label="Conversation">
+          <!-- Welcome message (cloned by resetMessages) -->
+          <div class="flex items-start gap-3 w-full max-w-4xl mx-auto">
+            <div class="brand-mark w-8 h-8 flex-shrink-0 text-sm" aria-hidden="true">S</div>
+            <div class="flex-1 card p-4 sm:p-5 text-sm leading-relaxed">
+              <p class="font-semibold text-slate-950 text-base mb-1" data-i18n="chat.welcome_title">Welcome to Starpi</p>
+              <p class="text-slate-600" data-i18n="chat.welcome_body">Ask questions about your knowledge base or about files you add to the on-device workspace. Answers cite their sources, and you can open every citation.</p>
+              <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+                <p class="text-[13px] text-amber-950 flex-1" data-i18n="demo.pitch">New here? Load three sample files of a fictitious project and ask about them. The files are read on this device; nothing is uploaded.</p>
+                <button type="button" data-action="load-samples" class="btn btn-primary justify-center flex-shrink-0">
+                  <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                  <span data-i18n="demo.try">Try with sample files</span>
+                </button>
+              </div>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button type="button" data-action="quick-prompt" data-arg="chat.prompt_launch_question" class="btn btn-secondary text-left">
+                  <i data-lucide="search" class="w-3.5 h-3.5 text-amber-600"></i>
+                  <span data-i18n="chat.prompt_launch">Project Alpha: launch and owners</span>
+                </button>
+                <button type="button" data-action="quick-prompt" data-arg="chat.prompt_docs_question" class="btn btn-secondary text-left">
+                  <i data-lucide="book-open" class="w-3.5 h-3.5 text-amber-600"></i>
+                  <span data-i18n="chat.prompt_docs">Which documents are available?</span>
+                </button>
+                <button type="button" data-action="quick-prompt" data-arg="chat.prompt_budget_question" class="btn btn-secondary text-left">
+                  <i data-lucide="activity" class="w-3.5 h-3.5 text-amber-600"></i>
+                  <span data-i18n="chat.prompt_budget">Budgets for marketing and Project Alpha</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-2.5 sm:p-3 md:p-4 border-t border-slate-200 bg-white sticky bottom-0 z-20 pb-[max(0.65rem,env(safe-area-inset-bottom,12px))] mb-14 md:mb-0">
+          <form id="chatForm" class="max-w-4xl mx-auto flex flex-col bg-white border border-slate-300 focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-200/50 rounded-xl p-1.5 transition">
+            <div class="flex items-center gap-2 px-1 pb-1 min-w-0">
+              <div class="mode-toggle" role="group" data-i18n-aria="chat.mode_label" aria-label="Chat mode">
+                <button type="button" data-action="set-chat-mode" data-arg="free" aria-pressed="false">
+                  <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
+                  <span data-i18n="chat.mode_free">Free chat</span>
+                </button>
+                <button type="button" data-action="set-chat-mode" data-arg="grounded" aria-pressed="true">
+                  <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+                  <span data-i18n="chat.mode_grounded">Verified source mode</span>
+                </button>
+              </div>
+              <span id="chatModeHint" class="hidden sm:inline text-[11px] text-slate-500 truncate" data-i18n="chat.mode_grounded_hint">Answers come from your sources and are checked sentence by sentence.</span>
+              <!-- Mount point: composer controls of features (e.g. thinking, web, voice mode). -->
+              <div id="composerExtras" class="ml-auto flex items-center gap-1 flex-shrink-0 empty:hidden" data-mount></div>
+            </div>
+            <div id="attachedInfo" class="hidden px-2 py-1 mb-1 text-xs text-amber-950 bg-amber-50 rounded-lg flex items-center justify-between gap-2 border border-amber-200">
+              <span class="flex items-center gap-1.5 min-w-0">
+                <i data-lucide="paperclip" class="w-3.5 h-3.5 flex-shrink-0"></i>
+                <span id="attachedFileName" class="font-medium truncate" data-i18n="chat.attached_placeholder">File attached</span>
+              </span>
+              <button type="button" data-action="remove-attachment" class="btn btn-ghost p-1" data-i18n-aria="chat.remove_attachment" aria-label="Remove attachment"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+            </div>
+            <div class="flex items-end gap-1 sm:gap-1.5">
+              <button type="button" data-action="pick-chat-file" class="btn btn-ghost btn-icon touch-target-min justify-center" data-i18n-aria="chat.attach_file" aria-label="Attach a file (added to the on-device workspace)" data-i18n-title="chat.attach_file" title="Attach a file (added to the on-device workspace)">
+                <i data-lucide="paperclip" class="w-5 h-5"></i>
+              </button>
+              <input type="file" id="chatFileInput" class="hidden" tabindex="-1" data-change="attach-file" accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.txt,.md,.markdown,.json,.csv,.log">
+              <button type="button" id="voiceBtn" data-action="toggle-voice" class="relative btn btn-ghost btn-icon touch-target-min justify-center" data-i18n-aria="chat.voice_input" aria-label="Voice input" aria-pressed="false" data-i18n-title="chat.voice_hint" title="Voice input: your browser's speech service turns speech into text">
+                <i data-lucide="mic" class="w-5 h-5"></i>
+                <span id="voicePulse" class="hidden absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+              </button>
+              <label for="chatInput" class="sr-only" data-i18n="chat.input_label">Message</label>
+              <textarea id="chatInput" rows="1" data-i18n-placeholder="chat.placeholder" placeholder="Ask a question…" class="flex-1 bg-transparent border-0 focus:ring-0 text-slate-900 text-base sm:text-sm placeholder-slate-500 resize-none py-2.5 px-1.5 focus:outline-none max-h-32 custom-scrollbar"></textarea>
+              <button type="button" id="stopBtn" data-action="stop-generation" class="hidden btn touch-target-min justify-center bg-slate-900 hover:bg-slate-700 text-white" data-i18n-aria="chat.stop" aria-label="Stop generating">
+                <i data-lucide="square" class="w-4 h-4"></i>
+              </button>
+              <button type="submit" id="sendBtn" class="btn btn-primary touch-target-min justify-center" data-i18n-aria="chat.send" aria-label="Send">
+                <i data-lucide="arrow-up" class="w-5 h-5"></i>
+              </button>
+            </div>
+          </form>
+          <p id="privacyNotice" class="text-[11px] leading-snug text-slate-500 mt-1.5 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 text-center">
+            <span data-i18n="privacy.preparing">Preparing connection…</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Chat side panel (ui.js openChatAside): a column from lg up, full screen below. Every panel is a
+           mount point; an empty one shows a short note. -->
+      <aside id="chat-aside" class="hidden fixed inset-0 z-40 lg:static lg:z-auto lg:w-[24rem] xl:w-[26rem] flex-shrink-0 flex flex-col bg-white border-l border-slate-200" aria-labelledby="chatAsideTitle">
+        <h2 id="chatAsideTitle" class="sr-only" data-i18n="shell.aside.label">Side panel</h2>
+        <div class="h-12 pl-2 pr-1.5 flex items-center justify-between gap-2 border-b border-slate-200 flex-shrink-0">
+          <div id="chatAsideTabs" role="tablist" class="flex items-center gap-1 min-w-0 overflow-x-auto" data-i18n-aria="shell.aside.tabs" aria-label="Side panel sections">
+            <button type="button" role="tab" id="chat-aside-tab-canvas" class="aside-tab" data-action="select-aside-tab" data-arg="canvas" aria-selected="true" aria-controls="chat-aside-panel-canvas" tabindex="0">
+              <i data-lucide="square-pen" class="w-3.5 h-3.5 hidden sm:block"></i>
+              <span data-i18n="shell.aside.canvas">Canvas</span>
+            </button>
+            <button type="button" role="tab" id="chat-aside-tab-sources" class="aside-tab" data-action="select-aside-tab" data-arg="sources" aria-selected="false" aria-controls="chat-aside-panel-sources" tabindex="-1">
+              <i data-lucide="book-open" class="w-3.5 h-3.5 hidden sm:block"></i>
+              <span data-i18n="shell.aside.sources">Sources</span>
+            </button>
+            <button type="button" role="tab" id="chat-aside-tab-compare" class="aside-tab" data-action="select-aside-tab" data-arg="compare" aria-selected="false" aria-controls="chat-aside-panel-compare" tabindex="-1">
+              <i data-lucide="columns-2" class="w-3.5 h-3.5 hidden sm:block"></i>
+              <span data-i18n="shell.aside.compare">Compare</span>
+            </button>
+            <button type="button" role="tab" id="chat-aside-tab-research" class="aside-tab" data-action="select-aside-tab" data-arg="research" aria-selected="false" aria-controls="chat-aside-panel-research" tabindex="-1">
+              <i data-lucide="telescope" class="w-3.5 h-3.5 hidden sm:block"></i>
+              <span data-i18n="shell.aside.research">Research</span>
+            </button>
+          </div>
+          <button type="button" data-action="close-chat-aside" class="btn btn-ghost btn-icon flex-shrink-0" data-i18n-aria="shell.aside.close" aria-label="Close side panel" data-i18n-title="shell.aside.close" title="Close side panel">
+            <i data-lucide="x" class="w-4 h-4"></i>
           </button>
         </div>
-      </div>
-
-      <div id="chatMessages" class="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-5 custom-scrollbar select-text" role="log" aria-live="polite" data-i18n-aria="chat.log_label" aria-label="Conversation">
-        <!-- Welcome message (cloned by resetMessages) -->
-        <div class="flex items-start gap-3 w-full max-w-4xl mx-auto">
-          <div class="w-8 h-8 rounded-lg bg-[#FFCA00] flex-shrink-0 flex items-center justify-center text-slate-950 text-sm font-extrabold" aria-hidden="true">S</div>
-          <div class="flex-1 card p-4 sm:p-5 text-sm leading-relaxed">
-            <p class="font-semibold text-slate-950 text-base mb-1" data-i18n="chat.welcome_title">Welcome to Starpi</p>
-            <p class="text-slate-600" data-i18n="chat.welcome_body">Ask questions about your knowledge base or about files you add to the on-device workspace. Answers cite their sources, and you can open every citation.</p>
-            <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3 flex flex-col sm:flex-row sm:items-center gap-3">
-              <p class="text-[13px] text-amber-950 flex-1" data-i18n="demo.pitch">New here? Load three sample files of a fictitious project and ask about them. The files are read on this device; nothing is uploaded.</p>
-              <button type="button" data-action="load-samples" class="btn btn-primary justify-center flex-shrink-0">
-                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-                <span data-i18n="demo.try">Try with sample files</span>
-              </button>
-            </div>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <button type="button" data-action="quick-prompt" data-arg="chat.prompt_launch_question" class="btn btn-secondary text-left">
-                <i data-lucide="search" class="w-3.5 h-3.5 text-amber-600"></i>
-                <span data-i18n="chat.prompt_launch">Project Alpha: launch and owners</span>
-              </button>
-              <button type="button" data-action="quick-prompt" data-arg="chat.prompt_docs_question" class="btn btn-secondary text-left">
-                <i data-lucide="book-open" class="w-3.5 h-3.5 text-amber-600"></i>
-                <span data-i18n="chat.prompt_docs">Which documents are available?</span>
-              </button>
-              <button type="button" data-action="quick-prompt" data-arg="chat.prompt_budget_question" class="btn btn-secondary text-left">
-                <i data-lucide="activity" class="w-3.5 h-3.5 text-amber-600"></i>
-                <span data-i18n="chat.prompt_budget">Budgets for marketing and Project Alpha</span>
-              </button>
-            </div>
-          </div>
+        <div id="chat-aside-panel-canvas" role="tabpanel" aria-labelledby="chat-aside-tab-canvas" tabindex="0" class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 sm:p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-900">
+          <div id="chat-aside-canvas" class="peer" data-mount></div>
+          <p class="hidden peer-empty:flex empty-state" data-i18n="shell.aside.empty">Nothing to show here yet.</p>
         </div>
-      </div>
-
-      <div class="p-2.5 sm:p-3 md:p-4 border-t border-slate-200 bg-white sticky bottom-0 z-20 pb-[max(0.65rem,env(safe-area-inset-bottom,12px))] mb-14 md:mb-0">
-        <form id="chatForm" class="max-w-4xl mx-auto flex flex-col bg-white border border-slate-300 focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-200/50 rounded-xl p-1.5 transition">
-          <div class="flex items-center gap-2 px-1 pb-1 min-w-0">
-            <div class="mode-toggle" role="group" data-i18n-aria="chat.mode_label" aria-label="Chat mode">
-              <button type="button" data-action="set-chat-mode" data-arg="free" aria-pressed="false">
-                <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
-                <span data-i18n="chat.mode_free">Free chat</span>
-              </button>
-              <button type="button" data-action="set-chat-mode" data-arg="grounded" aria-pressed="true">
-                <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
-                <span data-i18n="chat.mode_grounded">Verified source mode</span>
-              </button>
-            </div>
-            <span id="chatModeHint" class="hidden sm:inline text-[11px] text-slate-500 truncate" data-i18n="chat.mode_grounded_hint">Answers come from your sources and are checked sentence by sentence.</span>
-          </div>
-          <div id="attachedInfo" class="hidden px-2 py-1 mb-1 text-xs text-amber-950 bg-amber-50 rounded-lg flex items-center justify-between gap-2 border border-amber-200">
-            <span class="flex items-center gap-1.5 min-w-0">
-              <i data-lucide="paperclip" class="w-3.5 h-3.5 flex-shrink-0"></i>
-              <span id="attachedFileName" class="font-medium truncate" data-i18n="chat.attached_placeholder">File attached</span>
-            </span>
-            <button type="button" data-action="remove-attachment" class="btn btn-ghost p-1" data-i18n-aria="chat.remove_attachment" aria-label="Remove attachment"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
-          </div>
-          <div class="flex items-end gap-1 sm:gap-1.5">
-            <button type="button" data-action="pick-chat-file" class="btn btn-ghost btn-icon touch-target-min justify-center" data-i18n-aria="chat.attach_file" aria-label="Attach a file (added to the on-device workspace)" data-i18n-title="chat.attach_file" title="Attach a file (added to the on-device workspace)">
-              <i data-lucide="paperclip" class="w-5 h-5"></i>
-            </button>
-            <input type="file" id="chatFileInput" class="hidden" tabindex="-1" data-change="attach-file" accept=".pdf,.txt,.md,.markdown,.json,.csv,.log">
-            <button type="button" id="voiceBtn" data-action="toggle-voice" class="relative btn btn-ghost btn-icon touch-target-min justify-center" data-i18n-aria="chat.voice_input" aria-label="Voice input" aria-pressed="false" data-i18n-title="chat.voice_hint" title="Voice input: your browser's speech service turns speech into text">
-              <i data-lucide="mic" class="w-5 h-5"></i>
-              <span id="voicePulse" class="hidden absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-            </button>
-            <label for="chatInput" class="sr-only" data-i18n="chat.input_label">Message</label>
-            <textarea id="chatInput" rows="1" data-i18n-placeholder="chat.placeholder" placeholder="Ask a question…" class="flex-1 bg-transparent border-0 focus:ring-0 text-slate-900 text-base sm:text-sm placeholder-slate-500 resize-none py-2.5 px-1.5 focus:outline-none max-h-32 custom-scrollbar"></textarea>
-            <button type="button" id="stopBtn" data-action="stop-generation" class="hidden btn touch-target-min justify-center bg-slate-900 hover:bg-slate-700 text-white" data-i18n-aria="chat.stop" aria-label="Stop generating">
-              <i data-lucide="square" class="w-4 h-4"></i>
-            </button>
-            <button type="submit" id="sendBtn" class="btn btn-primary touch-target-min justify-center" data-i18n-aria="chat.send" aria-label="Send">
-              <i data-lucide="arrow-up" class="w-5 h-5"></i>
-            </button>
-          </div>
-        </form>
-        <p id="privacyNotice" class="text-[11px] leading-snug text-slate-500 mt-1.5 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 text-center">
-          <span data-i18n="privacy.preparing">Preparing connection…</span>
-        </p>
-      </div>
+        <div id="chat-aside-panel-sources" role="tabpanel" aria-labelledby="chat-aside-tab-sources" tabindex="0" class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 sm:p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-900 hidden">
+          <div id="chat-aside-sources" class="peer" data-mount></div>
+          <p class="hidden peer-empty:flex empty-state" data-i18n="shell.aside.empty">Nothing to show here yet.</p>
+        </div>
+        <div id="chat-aside-panel-compare" role="tabpanel" aria-labelledby="chat-aside-tab-compare" tabindex="0" class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 sm:p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-900 hidden">
+          <div id="chat-aside-compare" class="peer" data-mount></div>
+          <p class="hidden peer-empty:flex empty-state" data-i18n="shell.aside.empty">Nothing to show here yet.</p>
+        </div>
+        <div id="chat-aside-panel-research" role="tabpanel" aria-labelledby="chat-aside-tab-research" tabindex="0" class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 sm:p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-900 hidden">
+          <div id="chat-aside-research" class="peer" data-mount></div>
+          <p class="hidden peer-empty:flex empty-state" data-i18n="shell.aside.empty">Nothing to show here yet.</p>
+        </div>
+      </aside>
     </section>
+
+    <!-- ========================= Research (mount point) ========================= -->
+    <section id="tab-research" class="flex-1 flex flex-col overflow-y-auto hidden p-3 sm:p-4 md:p-6 pb-24 md:pb-6 custom-scrollbar select-text scroll-pb-28 md:scroll-pb-6" data-mount></section>
 
     <!-- ========================= Knowledge base ========================= -->
     <section id="tab-library" class="flex-1 flex flex-col overflow-hidden hidden p-3 sm:p-4 md:p-6 pb-20 md:pb-6 select-text scroll-pb-24 md:scroll-pb-6">
@@ -359,9 +436,9 @@
           <div id="dropZone" role="button" tabindex="0" data-action="pick-workspace-files" class="border-2 border-dashed border-slate-300 hover:border-amber-400 rounded-xl p-6 text-center transition cursor-pointer bg-slate-50/60 hover:bg-amber-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400" data-i18n-aria="workspace.drop_label" aria-label="Add files to the on-device workspace">
             <i data-lucide="upload" class="w-6 h-6 mx-auto mb-2 text-slate-500"></i>
             <p class="text-sm font-medium text-slate-900" data-i18n="workspace.drop_title">Drop files here or click to choose</p>
-            <p class="text-xs text-slate-500 mt-1" data-i18n="workspace.drop_hint">PDF, TXT, Markdown, JSON or CSV · up to 25 MB each</p>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="workspace.drop_hint">PDF, DOCX, XLSX, PPTX, HTML, TXT, Markdown, JSON or CSV · up to 25 MB each</p>
           </div>
-          <input type="file" id="workspaceFileInput" class="hidden" multiple accept=".pdf,.txt,.md,.markdown,.json,.csv,.log" data-change="workspace-files">
+          <input type="file" id="workspaceFileInput" class="hidden" multiple accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.txt,.md,.markdown,.json,.csv,.log" data-change="workspace-files">
           <div class="flex flex-wrap gap-2">
             <button type="button" data-action="load-samples" class="btn btn-secondary">
               <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-600"></i>
@@ -543,6 +620,9 @@
       </div>
     </section>
 
+    <!-- ========================= Companion (mount point) ========================= -->
+    <section id="tab-companion" class="flex-1 flex flex-col overflow-y-auto hidden p-3 sm:p-4 md:p-6 pb-24 md:pb-6 custom-scrollbar select-text scroll-pb-28 md:scroll-pb-6" data-mount></section>
+
     <!-- ========================= Settings ========================= -->
     <section id="tab-settings" class="flex-1 flex flex-col overflow-y-auto hidden p-3 sm:p-4 md:p-6 pb-28 md:pb-6 custom-scrollbar select-text scroll-pb-28 md:scroll-pb-6">
       <div class="max-w-2xl mx-auto w-full space-y-5">
@@ -578,6 +658,9 @@
           </div>
         </div>
 
+        <!-- Mount points: one settings section per feature (hidden while empty). -->
+        <div id="providerSettings" class="empty:hidden" data-mount></div>
+
         <div class="card p-4 sm:p-5 space-y-4">
           <div class="card-header">
             <h3 class="card-title">
@@ -608,6 +691,13 @@
             </div>
           </dl>
         </div>
+
+        <div id="memorySettings" class="empty:hidden" data-mount></div>
+        <div id="trustSettings" class="empty:hidden" data-mount></div>
+        <div id="voiceSettings" class="empty:hidden" data-mount></div>
+        <div id="companionSettings" class="empty:hidden" data-mount></div>
+        <!-- Appearance: light, dark or the system setting (ui/theme.js). -->
+        <div id="appearanceSettings" class="empty:hidden"></div>
 
         <details class="group card p-4 sm:p-5">
           <summary class="flex items-center justify-between cursor-pointer text-sm font-semibold text-slate-800 select-none">
@@ -674,21 +764,29 @@
       <i data-lucide="message-square" class="w-5 h-5"></i>
       <span class="text-[10px] mt-0.5 truncate max-w-full" data-i18n="nav_short.chat">Chat</span>
     </button>
+    <button type="button" data-action="switch-tab" data-arg="research" id="mobile-nav-research" class="mobile-nav-item touch-target-min">
+      <i data-lucide="telescope" class="w-5 h-5"></i>
+      <span class="text-[10px] mt-0.5 truncate max-w-full" data-i18n="nav_short.research">Research</span>
+    </button>
     <button type="button" data-action="switch-tab" data-arg="library" id="mobile-nav-library" class="mobile-nav-item touch-target-min">
       <i data-lucide="library" class="w-5 h-5"></i>
       <span class="text-[10px] mt-0.5 truncate max-w-full" data-i18n="nav_short.library">Library</span>
-    </button>
-    <button type="button" data-action="switch-tab" data-arg="graph" id="mobile-nav-graph" class="mobile-nav-item touch-target-min">
-      <i data-lucide="network" class="w-5 h-5"></i>
-      <span class="text-[10px] mt-0.5 truncate max-w-full" data-i18n="nav_short.graph">Graph</span>
     </button>
     <button type="button" data-action="switch-tab" data-arg="ingest" id="mobile-nav-ingest" class="mobile-nav-item touch-target-min">
       <i data-lucide="upload" class="w-5 h-5"></i>
       <span class="text-[10px] mt-0.5 truncate max-w-full" data-i18n="nav_short.ingest">Add</span>
     </button>
+    <button type="button" data-action="switch-tab" data-arg="graph" id="mobile-nav-graph" class="mobile-nav-item touch-target-min">
+      <i data-lucide="network" class="w-5 h-5"></i>
+      <span class="text-[10px] mt-0.5 truncate max-w-full" data-i18n="nav_short.graph">Graph</span>
+    </button>
     <button type="button" data-action="switch-tab" data-arg="bench" id="mobile-nav-bench" class="mobile-nav-item touch-target-min">
       <i data-lucide="gauge" class="w-5 h-5"></i>
       <span class="text-[10px] mt-0.5 truncate max-w-full" data-i18n="nav_short.bench">Bench</span>
+    </button>
+    <button type="button" data-action="switch-tab" data-arg="companion" id="mobile-nav-companion" class="mobile-nav-item touch-target-min hidden">
+      <i data-lucide="plug" class="w-5 h-5"></i>
+      <span class="text-[10px] mt-0.5 truncate max-w-full" data-i18n="nav_short.companion">Companion</span>
     </button>
     <button type="button" data-action="switch-tab" data-arg="settings" id="mobile-nav-settings" class="mobile-nav-item touch-target-min">
       <i data-lucide="settings-2" class="w-5 h-5"></i>
@@ -697,7 +795,7 @@
   </nav>
 
   <!-- Document modal -->
-  <div id="docModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modalDocTitle">
+  <div id="docModal" class="fixed inset-0 bg-scrim/40 dark:bg-scrim/70 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modalDocTitle">
     <div class="card w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl select-text">
       <div class="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between gap-3">
         <div class="min-w-0">
@@ -713,7 +811,7 @@
   </div>
 
   <!-- Citation drawer -->
-  <div id="citationModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-end sm:items-center justify-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="citationModalTitle">
+  <div id="citationModal" class="fixed inset-0 bg-scrim/40 dark:bg-scrim/70 backdrop-blur-xs z-50 hidden flex items-end sm:items-center justify-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="citationModalTitle">
     <div class="card w-full sm:max-w-2xl max-h-[85vh] flex flex-col shadow-2xl select-text rounded-b-none sm:rounded-b-2xl">
       <div class="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between gap-3">
         <div class="flex items-center gap-2.5 min-w-0">
@@ -754,7 +852,7 @@
   </div>
 
   <!-- Answer receipt -->
-  <div id="receiptModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-end sm:items-center justify-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="receiptModalTitle">
+  <div id="receiptModal" class="fixed inset-0 bg-scrim/40 dark:bg-scrim/70 backdrop-blur-xs z-50 hidden flex items-end sm:items-center justify-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="receiptModalTitle">
     <div class="card w-full sm:max-w-2xl max-h-[85vh] flex flex-col shadow-2xl rounded-b-none sm:rounded-b-2xl">
       <div class="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between gap-3">
         <div class="flex items-center gap-2.5 min-w-0">
@@ -819,7 +917,7 @@
           </div>
           <div>
             <label for="receiptSources" class="field-label" data-i18n="receipt.verify_pick_files">Original files</label>
-            <input type="file" id="receiptSources" multiple accept=".pdf,.txt,.md,.markdown,.json,.csv,.log" class="field">
+            <input type="file" id="receiptSources" multiple accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.txt,.md,.markdown,.json,.csv,.log" class="field">
           </div>
           <div>
             <label for="receiptPublicKey" class="field-label" data-i18n="receipt.verify_pick_key">Signer's public key (optional, JWK or PEM)</label>
@@ -836,7 +934,7 @@
   </div>
 
   <!-- Entity modal -->
-  <div id="entityModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="entityModalTitle">
+  <div id="entityModal" class="fixed inset-0 bg-scrim/40 dark:bg-scrim/70 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="entityModalTitle">
     <div class="card w-full max-w-lg p-5 shadow-2xl space-y-4">
       <div class="card-header">
         <h3 id="entityModalTitle" class="card-title">
@@ -876,10 +974,16 @@
   <div id="updateBanner" role="status" class="hidden fixed top-16 inset-x-4 mx-auto w-fit max-w-md z-[60] bg-slate-900 text-white text-xs font-medium rounded-lg shadow-lg pl-4 pr-1.5 py-1.5 flex items-center gap-3">
     <span data-i18n="update.banner">A new version of Starpi is available.</span>
     <button type="button" data-action="reload-app" class="btn btn-primary py-1 flex-shrink-0" data-i18n="update.reload">Reload</button>
-    <button type="button" data-action="dismiss-update" class="btn btn-icon p-1.5 flex-shrink-0 text-slate-300 hover:text-white hover:bg-slate-800 focus-visible:ring-white focus-visible:ring-offset-slate-900" data-i18n-aria="app.close" aria-label="Close">
+    <button type="button" data-action="dismiss-update" class="btn btn-icon p-1.5 flex-shrink-0 text-slate-300 dark:text-slate-700 hover:text-white hover:bg-slate-800 focus-visible:ring-white focus-visible:ring-offset-slate-900" data-i18n-aria="app.close" aria-label="Close">
       <i data-lucide="x" class="w-4 h-4"></i>
     </button>
   </div>
+
+  <!-- Mount point: full-screen sheet for the live voice conversation (opened with dialog.js). -->
+  <div id="liveSheet" class="hidden fixed inset-0 z-[65] bg-white flex flex-col" role="dialog" aria-modal="true" data-i18n-aria="shell.live.label" aria-label="Live conversation" data-mount></div>
+
+  <!-- Notices from ui/kit.js toast(). -->
+  <div id="toastRegion" class="fixed z-[75] bottom-20 md:bottom-4 inset-x-4 md:inset-x-auto md:right-4 md:w-80 flex flex-col gap-2 pointer-events-none" role="status" aria-live="polite" data-i18n-aria="shell.toast.region" aria-label="Notifications"></div>
 
 </body>
 </html>

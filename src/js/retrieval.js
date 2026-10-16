@@ -2,7 +2,7 @@
 // Pure retrieval helpers: local keyword ranking (used in local mode so questions never leave the
 // device, and as a fallback when the search RPC is unavailable) and context assembly for prompts.
 
-import { citationLabel, labelName } from './core/labels.js';
+import { citationLabel, fenceSafe, labelName } from './core/labels.js';
 import { safeSlice } from './core/sentences.js';
 
 export { CITATION_PATTERN, citationLabel } from './core/labels.js';
@@ -160,7 +160,8 @@ export function buildContext(citations, limits) {
   const blocks = [];
   let used = 0;
   citations.forEach((c, i) => {
-    const heading = c.heading ? ` · ${c.heading}` : '';
+    // A heading comes from the document: it must not end the marker early or forge another one.
+    const heading = c.heading ? ` · ${fenceSafe(c.heading)}` : '';
     const open = `<<<EXCERPT ${i + 1} ${c.label}${heading}>>>\n`;
     const close = `\n<<<END EXCERPT ${i + 1}>>>`;
     const separator = blocks.length ? 2 : 0;

@@ -1,23 +1,24 @@
 // @ts-check
 // Sentence splitting with offsets. Deterministic on purpose (no Intl.Segmenter, whose rules depend
 // on the ICU version of each browser and Node), so a receipt verified elsewhere splits the same way.
+import { fromPacks } from './lang/index.js';
 
-/** Tokens that end with a dot without ending a sentence (German and English). */
-const ABBREVIATIONS = new Set([
-  'z', 'b', 'bzw', 'ca', 'nr', 'dr', 'st', 'usw', 'vgl', 'inkl', 'ggf', 'evtl', 'etc', 'u', 'a', 'd', 'h', 'mio', 'mrd',
-  'tsd', 'inc', 'corp', 'ltd', 'vs', 'e', 'g', 'i', 'mr', 'mrs', 'ms', 'prof', 'jr', 'sr', 'fig', 'approx', 'abs',
-  'tel', 'jan', 'feb', 'mär', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'okt', 'oct', 'nov', 'dez', 'dec',
-]);
+/**
+ * Tokens that end with a dot without ending a sentence: the abbreviations and short month names of
+ * every registered language pack (lang/index.js).
+ */
+const abbreviations = fromPacks((packs) => new Set(packs.flatMap((p) => [...p.abbreviations, ...Object.keys(p.monthAbbreviations)])));
 
 /** @param {string} token lowercase, without the final dot */
 function isAbbreviation(token) {
   const word = token.replace(/^[^\p{L}\p{N}]+/u, '');
   if (/^\d{1,2}$/.test(word)) return true; // ordinals: "am 3. März"; a year ends a sentence
   if (/^\d{1,2}\.\d{1,2}$/.test(word)) return true; // German day and month: "vom 1.6. bis 31.8."
-  if (ABBREVIATIONS.has(word)) return true;
+  const known = abbreviations();
+  if (known.has(word)) return true;
   // "e.g", "z.B", "u.a": the last dot-separated part decides.
   const last = word.includes('.') ? word.slice(word.lastIndexOf('.') + 1) : '';
-  return last !== '' && ABBREVIATIONS.has(last);
+  return last !== '' && known.has(last);
 }
 
 /**

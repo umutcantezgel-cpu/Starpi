@@ -1,45 +1,30 @@
 // @ts-check
-// In-memory Okapi BM25 index over document chunks (English + German).
+// In-memory Okapi BM25 index over document chunks (every registered language; English + German built in).
 //
 //   score(q, d) = Σ_t idf(t) · tf(t,d)·(k1 + 1) / (tf(t,d) + k1·(1 − b + b·|d|/avgdl))
 //   idf(t)      = ln(1 + (N − df(t) + 0.5) / (df(t) + 0.5))      (non-negative variant)
 //
 // with k1 = 1.2 and b = 0.75, N = number of indexed chunks, |d| = chunk length in tokens and
-// avgdl = mean chunk length. Query terms are deduplicated; ties keep insertion order.
+// avgdl = mean chunk length. Query terms are deduplicated; ties keep insertion order. The stop words
+// come from the language packs (core/lang).
+import { fromPacks, languagePack } from '../core/lang/index.js';
 
 export const BM25_PARAMS = Object.freeze({ k1: 1.2, b: 0.75 });
 
 /** English function words that carry no retrieval signal. */
-export const STOPWORDS_EN = new Set([
-  'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', 'as', 'at', 'be',
-  'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by', 'can', 'could', 'did', 'do',
-  'does', 'doing', 'down', 'during', 'each', 'few', 'for', 'from', 'further', 'had', 'has', 'have', 'having', 'he',
-  'her', 'here', 'hers', 'him', 'his', 'how', 'i', 'if', 'in', 'into', 'is', 'it', 'its', 'itself', 'just', 'me',
-  'more', 'most', 'my', 'no', 'nor', 'not', 'now', 'of', 'off', 'on', 'once', 'only', 'or', 'other', 'our', 'ours',
-  'out', 'over', 'own', 'same', 'she', 'should', 'so', 'some', 'such', 'than', 'that', 'the', 'their', 'theirs',
-  'them', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to', 'too', 'under', 'until', 'up', 'very',
-  'was', 'we', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'whom', 'why', 'will', 'with', 'would',
-  'you', 'your', 'yours',
-]);
+export const STOPWORDS_EN = new Set(languagePack('en')?.stopwords);
 
 /** German function words that carry no retrieval signal. */
-export const STOPWORDS_DE = new Set([
-  'aber', 'alle', 'allem', 'allen', 'aller', 'alles', 'als', 'also', 'an', 'andere', 'anderen', 'auch', 'auf',
-  'aus', 'bei', 'beim', 'bin', 'bis', 'bist', 'da', 'damit', 'dann', 'das', 'dass', 'dein', 'deine', 'dem', 'den',
-  'denn', 'der', 'des', 'dessen', 'dich', 'die', 'dies', 'diese', 'diesem', 'diesen', 'dieser', 'dieses', 'dir',
-  'doch', 'dort', 'du', 'durch', 'ein', 'eine', 'einem', 'einen', 'einer', 'eines', 'er', 'es', 'etwas', 'euch',
-  'euer', 'eure', 'für', 'gegen', 'gibt', 'hab', 'habe', 'haben', 'hat', 'hatte', 'hatten', 'hier', 'hin',
-  'ich', 'ihm', 'ihn', 'ihr', 'ihre', 'ihrem', 'ihren', 'ihrer', 'im', 'in', 'ins', 'ist', 'ja', 'jede', 'jedem',
-  'jeden', 'jeder', 'jedes', 'jetzt', 'kann', 'kein', 'keine', 'können', 'man', 'mein', 'meine', 'mich', 'mir',
-  'mit', 'muss', 'nach', 'nicht', 'nichts', 'noch', 'nun', 'nur', 'ob', 'oder', 'ohne', 'sehr', 'sein', 'seine',
-  'sich', 'sie', 'sind', 'so', 'soll', 'sollte', 'sondern', 'um', 'und', 'uns', 'unser', 'unsere', 'unter', 'vom',
-  'von', 'vor', 'wann', 'war', 'waren', 'warum', 'was', 'weil', 'welche', 'welchem', 'welchen', 'welcher',
-  'welches', 'wenn', 'wer', 'werde', 'werden', 'wie', 'wieder', 'will', 'wir', 'wird', 'wo', 'wurde', 'wurden',
-  'zu', 'zum', 'zur', 'über',
-]);
+export const STOPWORDS_DE = new Set(languagePack('de')?.stopwords);
 
-/** English and German function words. */
+/**
+ * Function words of the built-in languages. tokenize() also drops those of a language pack
+ * registered later (registerLanguage in core/lang/index.js); register it before indexing.
+ */
 export const STOPWORDS = new Set([...STOPWORDS_EN, ...STOPWORDS_DE]);
+
+/** Function words of every registered language pack. */
+const stopwords = fromPacks((packs) => new Set(packs.flatMap((p) => p.stopwords)));
 
 /**
  * Lowercases, applies Unicode NFKC, strips punctuation and drops stopwords and single characters.
@@ -49,7 +34,8 @@ export const STOPWORDS = new Set([...STOPWORDS_EN, ...STOPWORDS_DE]);
 export function tokenize(text) {
   if (typeof text !== 'string' || !text) return [];
   const words = text.normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{M}\p{N}]*/gu) ?? [];
-  return words.filter((w) => w.length >= 2 && !STOPWORDS.has(w));
+  const skip = stopwords();
+  return words.filter((w) => w.length >= 2 && !skip.has(w));
 }
 
 /**

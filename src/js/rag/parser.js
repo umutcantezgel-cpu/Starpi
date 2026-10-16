@@ -1,7 +1,17 @@
 // @ts-check
 // Text extraction for the on-device workspace. Runs inside the ingestion worker; nothing is uploaded.
 // Plain text is decoded from a Web Stream, JSON is flattened into "path: value" lines, and PDFs are
-// read with pdf.js (loaded on first use, in-thread, without eval or font loading).
+// read with pdf.js (loaded on first use, in-thread, without eval or font loading). Word, Excel and
+// PowerPoint files and HTML pages are read by the dependency-free readers in ./formats; images are
+// recognised and flagged for text recognition (OCR), which runs only through an explicit hook.
+import { docxToText } from './formats/docx.js';
+import { ParseError } from './formats/errors.js';
+import { decodeHtmlBytes, htmlToText } from './formats/html.js';
+import { IMAGE_EXTENSIONS, imageToText } from './formats/image.js';
+import { pptxToText } from './formats/pptx.js';
+import { xlsxToText } from './formats/xlsx.js';
+
+export { ParseError };
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 export const MAX_TEXT_CHARS = 5_000_000;
@@ -10,28 +20,23 @@ export const MAX_PDF_PAGES = 2_000;
 /**
  * Identifies the extraction rules in answer receipts. Bump the version whenever the same file would
  * produce different text (tests/unit/golden.test.mjs pins the output); the pdf.js version is
- * recorded separately for PDFs.
+ * recorded separately for PDFs. Version 2 added DOCX, XLSX, PPTX and HTML; the text of TXT,
+ * Markdown, CSV, JSON and PDF files is byte for byte that of version 1, so their receipts still verify.
  */
-export const EXTRACTOR = Object.freeze({ id: 'starpi-extract', version: 1 });
+export const EXTRACTOR = Object.freeze({ id: 'starpi-extract', version: 2 });
 
 export const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'csv', 'log']);
-export const SUPPORTED_EXTENSIONS = new Set([...TEXT_EXTENSIONS, 'json', 'pdf']);
+export const OFFICE_EXTENSIONS = new Set(['docx', 'xlsx', 'pptx']);
+export const HTML_EXTENSIONS = new Set(['html', 'htm']);
+/** Files extractText turns into text on its own. Images (IMAGE_EXTENSIONS) need an OCR hook as well. */
+export const SUPPORTED_EXTENSIONS = new Set([...TEXT_EXTENSIONS, 'json', 'pdf', ...OFFICE_EXTENSIONS, ...HTML_EXTENSIONS]);
+export { IMAGE_EXTENSIONS };
 
-/** @typedef {'unsupported_type' | 'too_large' | 'empty' | 'invalid_json' | 'invalid_pdf' | 'encrypted_pdf' | 'pdf_reader'} ParseErrorCode */
+/** @typedef {import('./formats/errors.js').ParseErrorCode} ParseErrorCode */
+/** @typedef {import('./formats/image.js').OcrHook} OcrHook */
 
-export class ParseError extends Error {
-  /**
-   * @param {ParseErrorCode} code
-   * @param {string} message
-   * @param {Record<string, string | number>} [details]
-   */
-  constructor(code, message, details) {
-    super(message);
-    this.name = 'ParseError';
-    this.code = code;
-    this.details = details ?? {};
-  }
-}
+// The document kind recorded for a file: one spelling per format.
+const KIND_OF = /** @type {Record<string, string>} */ ({ markdown: 'md', htm: 'html', jpeg: 'jpg' });
 
 /** @param {string} name */
 export function extensionOf(name) {
@@ -244,13 +249,18 @@ export async function pdfToText(buffer, onPage) {
 
 /**
  * Extracts plain text from a file.
+ *
+ * An image is read only through `options.ocr`, which the caller passes once the user agreed to
+ * have that file recognised; without it the image is refused with ParseError 'needs_ocr', whose
+ * details carry the purpose, the image type and its size.
  * @param {Blob & { name: string }} file
  * @param {(page: number, pages: number) => void} [onPage]
+ * @param {{ ocr?: OcrHook }} [options]
  * @returns {Promise<{ text: string, kind: string, pages: number | null, pdfjs: string | null }>}
  */
-export async function extractText(file, onPage) {
+export async function extractText(file, onPage, options = {}) {
   const ext = extensionOf(file.name);
-  if (!SUPPORTED_EXTENSIONS.has(ext)) throw new ParseError('unsupported_type', 'Unsupported file type', { ext: ext || '?' });
+  if (!SUPPORTED_EXTENSIONS.has(ext) && !IMAGE_EXTENSIONS.has(ext)) throw new ParseError('unsupported_type', 'Unsupported file type', { ext: ext || '?' });
   if (file.size > MAX_FILE_BYTES) {
     throw new ParseError('too_large', 'File is too large', { max: Math.round(MAX_FILE_BYTES / (1024 * 1024)) });
   }
@@ -268,10 +278,25 @@ export async function extractText(file, onPage) {
     text = jsonToText(await streamToText(file.stream()));
   } else if (ext === 'csv') {
     text = csvToText(normalizeText(await streamToText(file.stream())));
+  } else if (ext === 'docx') {
+    text = await docxToText(new Uint8Array(await file.arrayBuffer()), { maxChars: MAX_TEXT_CHARS });
+  } else if (ext === 'xlsx') {
+    text = await xlsxToText(new Uint8Array(await file.arrayBuffer()), { maxChars: MAX_TEXT_CHARS });
+  } else if (ext === 'pptx') {
+    text = await pptxToText(new Uint8Array(await file.arrayBuffer()), { maxChars: MAX_TEXT_CHARS });
+  } else if (HTML_EXTENSIONS.has(ext)) {
+    text = htmlToText(decodeHtmlBytes(new Uint8Array(await file.arrayBuffer())), { maxChars: MAX_TEXT_CHARS });
+  } else if (IMAGE_EXTENSIONS.has(ext)) {
+    const result = await imageToText(new Uint8Array(await file.arrayBuffer()), file.name, options.ocr);
+    if (result.needsOcr) {
+      throw new ParseError('needs_ocr', 'The image needs text recognition (OCR)', { purpose: result.purpose, mime: result.mime, width: result.width, height: result.height });
+    }
+    text = result.text;
+    if (text.length > MAX_TEXT_CHARS) throw new ParseError('too_large', 'Extracted text is too long', { max: MAX_TEXT_CHARS });
   } else {
     text = await streamToText(file.stream());
   }
   text = normalizeText(text);
   if (!text.trim()) throw new ParseError('empty', 'No extractable text');
-  return { text, kind: ext === 'markdown' ? 'md' : ext, pages, pdfjs };
+  return { text, kind: KIND_OF[ext] ?? ext, pages, pdfjs };
 }

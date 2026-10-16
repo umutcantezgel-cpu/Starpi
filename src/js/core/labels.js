@@ -3,12 +3,30 @@
 // DOM, no i18n, runs in the browser, in workers and in Node.
 
 /**
+ * Two or more angle brackets in a row: the shape of the markers that open and close an excerpt in
+ * a prompt ("<<<EXCERPT 1 …>>>"). Text that goes inside such a marker must not contain one.
+ */
+const FENCE_RUN = /<{2,}|>{2,}/g;
+
+/**
+ * Text placed inside an excerpt marker, such as an excerpt's heading: runs of angle brackets and
+ * line breaks become spaces, so a document cannot close its marker early or forge another one.
+ * Single brackets ("a < b") and all other text stay as they are.
+ * @param {string} text
+ */
+export function fenceSafe(text) {
+  return text.replace(FENCE_RUN, ' ').replace(/[\r\n]+/g, ' ');
+}
+
+/**
  * The document name as it appears inside a label: brackets and line breaks would end or split the
- * label, so they become spaces.
+ * label, and runs of angle brackets would end or forge the excerpt marker that carries it (see
+ * fenceSafe), so they all become spaces. The same name always gives the same label, so an answer
+ * that cites it still resolves to the excerpt.
  * @param {string} name
  */
 export function labelName(name) {
-  return name.replace(/[[\]\r\n]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Document';
+  return name.replace(/[[\]\r\n]+/g, ' ').replace(FENCE_RUN, ' ').replace(/\s+/g, ' ').trim() || 'Document';
 }
 
 /**

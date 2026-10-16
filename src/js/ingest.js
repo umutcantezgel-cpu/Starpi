@@ -16,7 +16,7 @@ import { assignCitations } from './retrieval.js';
 import { getConnection, insertDocument } from './supabase.js';
 
 const SOURCE_TYPES = new Set(['meeting_notes', 'file', 'chat', 'text']);
-const WORKSPACE_EXTENSIONS = /\.(pdf|txt|md|markdown|json|csv|log)$/i;
+const WORKSPACE_EXTENSIONS = /\.(pdf|txt|md|markdown|json|csv|log|docx|xlsx|pptx|html?|png|jpe?g|gif|webp)$/i;
 
 /**
  * @param {string} title
@@ -74,7 +74,7 @@ function setWorkspaceStatus(key, params) {
   if (key) setText(el, key, params);
 }
 
-const WORKSPACE_ERRORS = ['unsupported_type', 'too_large', 'empty', 'invalid_json', 'invalid_pdf', 'encrypted_pdf', 'pdf_reader', 'worker_crashed', 'cleared'];
+const WORKSPACE_ERRORS = ['unsupported_type', 'too_large', 'empty', 'invalid_json', 'invalid_pdf', 'encrypted_pdf', 'pdf_reader', 'invalid_document', 'encrypted_document', 'zip_bomb', 'needs_ocr', 'worker_crashed', 'cleared'];
 
 /**
  * The status line with one line per file, so a file that was not added is still reported after
