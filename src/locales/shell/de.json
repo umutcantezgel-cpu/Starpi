@@ -1,0 +1,45 @@
+{
+  "sidebar": {
+    "collapse": "Seitenleiste einklappen",
+    "expand": "Seitenleiste ausklappen",
+    "conversations": "Unterhaltungen"
+  },
+  "theme": {
+    "title": "Darstellung",
+    "label": "Farbschema",
+    "system": "System",
+    "light": "Hell",
+    "dark": "Dunkel",
+    "hint": "„System“ folgt der Hell- oder Dunkel-Einstellung Ihres Geräts.",
+    "not_saved": "Das Farbschema gilt nur für diese Seite: Der Browser hat die Auswahl nicht gespeichert."
+  },
+  "aside": {
+    "label": "Seitenbereich",
+    "toggle": "Seitenbereich",
+    "tabs": "Abschnitte des Seitenbereichs",
+    "canvas": "Arbeitsfläche",
+    "sources": "Quellen",
+    "compare": "Vergleich",
+    "research": "Recherche",
+    "close": "Seitenbereich schließen",
+    "empty": "Hier gibt es noch nichts anzuzeigen."
+  },
+  "mount": {
+    "empty": "Hier gibt es noch nichts anzuzeigen."
+  },
+  "live": {
+    "label": "Live-Gespräch"
+  },
+  "toast": {
+    "region": "Benachrichtigungen",
+    "dismiss": "Schließen"
+  },
+  "label": {
+    "checked": "Mit Ihren Quellen geprüft",
+    "mixed": "Teilweise aus Ihren Quellen",
+    "unchecked": "Nicht geprüft",
+    "web": "Aus dem Web · nicht geprüft",
+    "device": "Auf diesem Gerät",
+    "withheld": "Zurückgehalten"
+  }
+}

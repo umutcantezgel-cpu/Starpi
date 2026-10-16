@@ -1,0 +1,45 @@
+{
+  "sidebar": {
+    "collapse": "Collapse sidebar",
+    "expand": "Expand sidebar",
+    "conversations": "Conversations"
+  },
+  "theme": {
+    "title": "Appearance",
+    "label": "Color theme",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark",
+    "hint": "System follows the light or dark setting of your device.",
+    "not_saved": "The color theme applies to this page only: the browser did not store the choice."
+  },
+  "aside": {
+    "label": "Side panel",
+    "toggle": "Side panel",
+    "tabs": "Side panel sections",
+    "canvas": "Canvas",
+    "sources": "Sources",
+    "compare": "Compare",
+    "research": "Research",
+    "close": "Close side panel",
+    "empty": "Nothing to show here yet."
+  },
+  "mount": {
+    "empty": "Nothing to show here yet."
+  },
+  "live": {
+    "label": "Live conversation"
+  },
+  "toast": {
+    "region": "Notifications",
+    "dismiss": "Dismiss"
+  },
+  "label": {
+    "checked": "Checked against your sources",
+    "mixed": "Partly from your sources",
+    "unchecked": "Not checked",
+    "web": "From the web · not verified",
+    "device": "On this device",
+    "withheld": "Withheld"
+  }
+}

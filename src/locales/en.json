@@ -14,18 +14,22 @@
   },
   "nav": {
     "chat": "Chat",
+    "research": "Research",
     "library": "Knowledge base",
     "graph": "Knowledge graph",
     "ingest": "Add knowledge",
     "bench": "Diagnostics",
+    "companion": "Companion",
     "settings": "Settings"
   },
   "nav_short": {
     "chat": "Chat",
+    "research": "Research",
     "library": "Library",
     "graph": "Graph",
     "ingest": "Add",
     "bench": "Bench",
+    "companion": "Companion",
     "settings": "Settings"
   },
   "status": {
