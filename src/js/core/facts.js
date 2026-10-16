@@ -110,6 +110,8 @@ const tables = fromPacks((packs) => {
     currencyAfter: new RegExp(`^\\s?(?:${[...CURRENCY_SIGNS, ...all((p) => p.currencyWords)].join('|')})(?![\\p{L}])`, 'iu'),
     unitAfter: new RegExp(`^\\s?(?:${[...UNIT_SYMBOLS, ...all((p) => p.unitWords)].join('|')})(?![\\p{L}])`, 'iu'),
     approxBefore: new RegExp(`(?:${[...all((p) => p.approxWords), '~', '≈'].join('|')})\\s*(?:[€$£]\\s?)?$`, 'iu'),
+    /** words that make "10.4.12" a version rather than a date */
+    versionContext: new RegExp(`${anyOf(all((p) => p.versionWords))}\\s*$`, 'iu'),
     spelled,
     spelledAlt: alternation(spelled.keys()) || '(?!)',
     spelledFolded: new Map([...spelled].map(([w, n]) => [fold(w), n])),
@@ -388,8 +390,6 @@ function findWeekdaysAndMonths(text, claim) {
   return out;
 }
 
-/** Words that make "10.4.12" a version rather than a date. */
-const VERSION_CONTEXT = /(?:version|versions|firmware|release|build|patch|ver|software)\s*$/iu;
 
 /**
  * Version numbers with three or four dotted parts ("4.2.1", "v3.9.4", "10.0.0.12"), read as codes
@@ -402,6 +402,7 @@ const VERSION_CONTEXT = /(?:version|versions|firmware|release|build|patch|ver|so
 function findVersions(text) {
   /** @type {Found[]} */
   const out = [];
+  const versionContext = tables().versionContext;
   const re = new RegExp(`${B}(v)?(\\d{1,4})\\.(\\d{1,4})\\.(\\d{1,4})(?:\\.(\\d{1,4}))?(?![\\p{L}\\p{N}]|\\.\\d)`, 'giu');
   let m;
   while ((m = re.exec(text)) !== null) {
@@ -410,7 +411,7 @@ function findVersions(text) {
     const dateShape = parts.length === 3 && Number(parts[0]) >= 1 && Number(parts[0]) <= 31 && Number(parts[1]) >= 1 && Number(parts[1]) <= 12 && parts[2].length >= 2;
     // "4.480.000" groups thousands: a number, not a version.
     const thousands = parts.slice(1).every((x) => x.length === 3);
-    if (thousands || (dateShape && !m[1] && !VERSION_CONTEXT.test(before.trimEnd()))) continue;
+    if (thousands || (dateShape && !m[1] && !versionContext.test(before.trimEnd()))) continue;
     const v = `v:${parts.map((x) => String(Number(x))).join('.')}`;
     out.push({ start: m.index, end: m.index + m[0].length, surface: m[0], claim: [v], source: [v], nums: [] });
   }

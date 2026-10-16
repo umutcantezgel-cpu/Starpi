@@ -64,12 +64,15 @@ import { en } from './en.js';
  * @property {string[]} numericDateContext  words before a day and month without a year ("am 3.4.")
  * @property {string[]} clockWords       a word after a time of day ("14 Uhr")
  * @property {{ am: string, pm: string } | null} meridiem  12-hour clock markers, also written with dots ("a.m.")
- * @property {{ decimal: string, group: string }} numberFormat  the usual decimal and digit-group separators
+ * @property {{ decimal: string, group: string }} numberFormat  the usual decimal and digit-group separators.
+ *   The source check does not depend on it: it reads "480.000" and "480,000" both ways in every
+ *   language, so a fact keeps matching when an answer switches convention.
  * @property {Array<[number, string[]]>} scales  patterns: words for 1e3, 1e6 and 1e9 after a number
  * @property {string[]} percentWords     patterns
  * @property {string[]} currencyWords    patterns: currency names after an amount (symbols and ISO codes are shared)
  * @property {string[]} unitWords        patterns: units and counted things after a number (symbols are shared)
  * @property {string[]} approxWords      patterns: words before a number that make it approximate
+ * @property {string[]} versionWords     words before a dotted triple that make it a version ("firmware 10.4.12")
  * @property {Record<string, number>} numberWords  numbers written as words, read as values
  * @property {string[]} numberParts      patterns: number words that only form part of a larger number
  * @property {string[]} numberJoiners    the word that joins two number words ("a hundred and twenty")
@@ -102,8 +105,8 @@ function deepFreeze(value) {
 
 const LIST_FIELDS = /** @type {const} */ ([
   'ambiguousMonths', 'monthContext', 'monthPosition', 'dayMonthLinks', 'ordinalSuffixes', 'numericDateContext', 'clockWords',
-  'scales', 'percentWords', 'currencyWords', 'unitWords', 'approxWords', 'numberParts', 'numberJoiners', 'boilerplate',
-  'stopwords', 'abbreviations',
+  'scales', 'percentWords', 'currencyWords', 'unitWords', 'approxWords', 'versionWords', 'numberParts', 'numberJoiners',
+  'boilerplate', 'stopwords', 'abbreviations',
 ]);
 const MAP_FIELDS = /** @type {const} */ (['months', 'monthAbbreviations', 'weekdays', 'numberWords']);
 const POLARITY_LISTS = /** @type {const} */ ([
@@ -137,10 +140,97 @@ function complete(pack) {
   });
 }
 
+/** Lists of plain words that are looked up in a set, never joined into a pattern. */
+const SET_FIELDS = new Set(['ambiguousMonths', 'boilerplate', 'stopwords', 'abbreviations']);
+
+/**
+ * Throws when a fragment would not compile, or would add a capturing group to the pattern it is
+ * joined into (the modules read their matches by group number).
+ * @param {unknown} fragment
+ * @param {string} where
+ */
+function checkFragment(fragment, where) {
+  if (typeof fragment !== 'string' || !fragment) throw new TypeError(`registerLanguage: "${where}" holds an empty or non-text entry`);
+  let groups;
+  try {
+    groups = /** @type {RegExpExecArray} */ (new RegExp(`|(?:${fragment})`, 'u').exec('')).length - 1;
+  } catch {
+    throw new TypeError(`registerLanguage: "${where}" holds an invalid pattern: ${fragment}`);
+  }
+  if (groups > 0) throw new TypeError(`registerLanguage: "${where}" must not use capturing groups: ${fragment}`);
+}
+
+/**
+ * Throws unless every rule is [global pattern, replacement] (or [pattern, word, negative?] for antonyms).
+ * @param {unknown} list
+ * @param {string} where
+ */
+function checkRewrites(list, where) {
+  if (!Array.isArray(list)) throw new TypeError(`registerLanguage: "${where}" must be a list`);
+  for (const rule of list) {
+    if (!Array.isArray(rule) || !(rule[0] instanceof RegExp) || !rule[0].global || typeof rule[1] !== 'string') {
+      throw new TypeError(`registerLanguage: "${where}" entries are [global RegExp, text]`);
+    }
+  }
+}
+
+/**
+ * Checks a completed pack before it is frozen and registered.
+ * @param {LanguagePack} pack
+ */
+function validate(pack) {
+  for (const key of LIST_FIELDS) {
+    const list = pack[key];
+    if (!Array.isArray(list)) throw new TypeError(`registerLanguage: "${key}" must be a list`);
+    if (key === 'scales') {
+      for (const entry of list) {
+        if (!Array.isArray(entry) || typeof entry[0] !== 'number' || !Array.isArray(entry[1])) {
+          throw new TypeError('registerLanguage: "scales" entries are [factor, words]');
+        }
+        for (const w of entry[1]) checkFragment(w, 'scales');
+      }
+    } else if (SET_FIELDS.has(key)) {
+      if (!list.every((w) => typeof w === 'string' && w)) throw new TypeError(`registerLanguage: "${key}" must list words`);
+    } else {
+      for (const w of list) checkFragment(w, key);
+    }
+  }
+  for (const key of MAP_FIELDS) {
+    const map = pack[key];
+    if (!map || typeof map !== 'object' || Array.isArray(map) || !Object.values(map).every((n) => Number.isInteger(n))) {
+      throw new TypeError(`registerLanguage: "${key}" must map words to whole numbers`);
+    }
+    for (const w of Object.keys(map)) checkFragment(w, key);
+  }
+  if (pack.meridiem !== null && !(/^\p{L}+$/u.test(pack.meridiem?.am ?? '') && /^\p{L}+$/u.test(pack.meridiem?.pm ?? ''))) {
+    throw new TypeError('registerLanguage: "meridiem" is null or { am, pm } in letters');
+  }
+  const { polarity } = pack;
+  for (const key of POLARITY_LISTS) {
+    if (key === 'contractions' || key === 'rewrites' || key === 'antonyms') checkRewrites(polarity[key], `polarity.${key}`);
+    else if (!Array.isArray(polarity[key])) throw new TypeError(`registerLanguage: "polarity.${key}" must be a list`);
+    else for (const w of polarity[key]) checkFragment(w, `polarity.${key}`);
+  }
+  const groups = /** @type {const} */ ([
+    ['nothingAgainst', ['nothing', 'verbs', 'against', 'phrases']],
+    ['bounds', ['negators', 'comparatives', 'than', 'additives']],
+    ['timeBounds', ['negators', 'words']],
+  ]);
+  for (const [group, keys] of groups) {
+    const rule = /** @type {Record<string, unknown>} */ (polarity[group]);
+    for (const key of keys) {
+      const list = rule[key];
+      if (!Array.isArray(list)) throw new TypeError(`registerLanguage: "polarity.${group}.${key}" must be a list`);
+      for (const w of list) checkFragment(w, `polarity.${group}.${key}`);
+    }
+  }
+  if (typeof polarity.nothingAgainst.allowed !== 'string') throw new TypeError('registerLanguage: "polarity.nothingAgainst.allowed" must be a word');
+}
+
 /**
  * Adds a language. Its words take part in every check from the next call on, also for text in the
  * other languages, so a new pack must be measured with the source-check eval before it ships. A
- * code can be registered once.
+ * code can be registered once; the pack is checked, then frozen (its lists included).
  * @param {Partial<LanguagePack> & { code: string, polarity?: Partial<PolarityRules> }} pack
  * @returns {LanguagePack} the registered pack, completed and frozen
  */
@@ -149,15 +239,9 @@ export function registerLanguage(pack) {
     throw new TypeError('registerLanguage: a pack needs a lowercase ISO 639 code');
   }
   if (PACKS.has(pack.code)) throw new Error(`registerLanguage: "${pack.code}" is already registered`);
-  const full = deepFreeze(complete(pack));
-  for (const key of LIST_FIELDS) if (!Array.isArray(full[key])) throw new TypeError(`registerLanguage: "${key}" must be a list`);
-  for (const key of POLARITY_LISTS) if (!Array.isArray(full.polarity[key])) throw new TypeError(`registerLanguage: "polarity.${key}" must be a list`);
-  for (const key of MAP_FIELDS) {
-    const map = full[key];
-    if (!map || typeof map !== 'object' || Array.isArray(map) || !Object.values(map).every((n) => Number.isInteger(n))) {
-      throw new TypeError(`registerLanguage: "${key}" must map words to whole numbers`);
-    }
-  }
+  const full = complete(pack);
+  validate(full);
+  deepFreeze(full);
   PACKS.set(full.code, full);
   LANGUAGES = Object.freeze([...PACKS.keys()]);
   revision += 1;
