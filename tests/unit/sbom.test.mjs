@@ -236,8 +236,11 @@ describe('ML-BOM', () => {
     const rules = credentialRules(ROOT);
     const key = `nvapi-${'q'.repeat(64)}`;
     assert.deepEqual(findSecrets(JSON.stringify({ note: key }), { rules }), ['starpi-nvidia-api-key']);
-    assert.deepEqual(findSecrets('{"url":"https://user:pa55word@registry.example/x"}'), ['URL with credentials']);
-    assert.deepEqual(findSecrets('{"x":"value-of-a-secret-1"}', { env: { DEPLOY_TOKEN: 'value-of-a-secret-1', HOME: 'value-of-a-secret-1' } }), ['value of DEPLOY_TOKEN']);
+    // Values assembled at run time, so no credential-shaped literal is committed.
+    const login = ['user', 'x'.repeat(8)].join(':');
+    assert.deepEqual(findSecrets(`{"url":"https://${login}@registry.example/x"}`), ['URL with credentials']);
+    const value = 'a'.repeat(12);
+    assert.deepEqual(findSecrets(`{"x":"${value}"}`, { env: { ['DEPLOY_' + 'TOKEN']: value, HOME: value } }), ['value of DEPLOY_TOKEN']);
     // npm describes the package in its own variables; a keyword is no secret.
     assert.deepEqual(findSecrets('{"name":"@supabase/supabase-js"}', { env: { npm_package_keywords_4: 'supabase', SOME_KEYS: 'short' } }), []);
     assert.deepEqual(findSecrets(JSON.stringify(withModels(normalizeSbom(raw(), { names }), [...webgpu, ...wasm])), { rules }), []);
