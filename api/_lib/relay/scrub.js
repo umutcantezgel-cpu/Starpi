@@ -19,8 +19,12 @@ const BEARER = /\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi;
 /** A credential in a query string. */
 const QUERY_PARAM = /([?&](?:key|api[_-]?key|access[_-]?token|token|auth|xi-api-key|x-goog-api-key)=)[^&\s"'#]+/gi;
 
-/** Any other long run of token characters that mixes letters and digits (opaque keys of any shape). */
-const OPAQUE = /[A-Za-z0-9_-]{24,}/g;
+/**
+ * Any other long run of token characters that mixes letters and digits (keys without a prefix are
+ * 30 to 40 such characters). Hyphenated runs count only from 48 characters on, so model ids such as
+ * `name-4-scout-17b-16e-instruct` stay readable.
+ */
+const OPAQUE = /[A-Za-z0-9_-]{48,}|[A-Za-z0-9_]{28,}/g;
 
 /**
  * The text with every key-shaped part replaced by "[redacted]". It errs on the side of removing too
