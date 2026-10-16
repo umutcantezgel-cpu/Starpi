@@ -75,7 +75,7 @@ describe('NVIDIA model catalog', () => {
     assert.equal(publicCatalog(false).configured, false);
   });
 
-  it('serializes to the JSON the Python backend reads', () => {
+  it('serializes the catalog to stable JSON', () => {
     assert.deepEqual(JSON.parse(catalogJson()), JSON.parse(JSON.stringify(NVIDIA_CATALOG)));
     assert.ok(catalogJson().endsWith('}\n'));
   });
