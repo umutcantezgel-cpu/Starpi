@@ -1,0 +1,60 @@
+{
+  "format": "starpi.role-candidates/v1",
+  "note": "Preferred models per provider and role, most preferred first. Only models a provider's live model list names are used; an id it does not list is skipped. Edit freely: this file is data, not code.",
+  "providers": {
+    "anthropic": {
+      "fast": ["claude-haiku-5-5", "claude-sonnet-5-5"],
+      "reasoning": ["claude-sonnet-5-5", "claude-opus-5-5"],
+      "vision": ["claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5"],
+      "judge": ["claude-opus-5-5", "claude-sonnet-5-5"]
+    },
+    "openai": {
+      "fast": ["gpt-5-nano", "gpt-5-mini"],
+      "reasoning": ["gpt-5-mini", "gpt-5"],
+      "vision": ["gpt-5-mini", "gpt-5-nano", "gpt-5"],
+      "judge": ["gpt-5", "gpt-5-mini"]
+    },
+    "gemini": {
+      "fast": ["gemini-2.5-flash-lite", "gemini-2.5-flash"],
+      "reasoning": ["gemini-2.5-flash", "gemini-2.5-pro"],
+      "vision": ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"],
+      "judge": ["gemini-2.5-pro", "gemini-3-pro-preview"]
+    },
+    "xai": {
+      "fast": ["grok-3-mini"],
+      "reasoning": ["grok-4-fast-reasoning", "grok-4"],
+      "vision": ["grok-4-fast-reasoning", "grok-4"],
+      "judge": ["grok-4", "grok-4-fast-reasoning"]
+    },
+    "groq": {
+      "fast": ["llama-3.1-8b-instant", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"],
+      "reasoning": ["openai/gpt-oss-120b", "qwen/qwen3-32b"],
+      "vision": [],
+      "judge": ["openai/gpt-oss-120b"]
+    },
+    "mistral": {
+      "fast": ["mistral-small-latest", "mistral-medium-latest"],
+      "reasoning": ["mistral-medium-latest", "magistral-medium-latest", "mistral-large-latest"],
+      "vision": ["mistral-small-latest", "mistral-medium-latest", "mistral-large-latest"],
+      "judge": ["mistral-large-latest", "magistral-medium-latest"]
+    },
+    "deepseek": {
+      "fast": ["deepseek-chat"],
+      "reasoning": ["deepseek-reasoner", "deepseek-chat"],
+      "vision": [],
+      "judge": ["deepseek-reasoner"]
+    },
+    "openrouter": {
+      "fast": ["meta-llama/llama-3.3-70b-instruct:free"],
+      "reasoning": ["deepseek/deepseek-r1:free", "openrouter/auto"],
+      "vision": ["google/gemma-3-27b-it:free"],
+      "judge": ["deepseek/deepseek-r1:free", "openrouter/auto"]
+    },
+    "nvidia": {
+      "fast": ["nvidia/nemotron-3.5-lightning-30b-a3b", "openai/gpt-oss-20b", "poolside/laguna-xs-2.1"],
+      "reasoning": ["nvidia/nemotron-3-super-120b-a12b", "nvidia/nemotron-3-ultra-550b-a55b"],
+      "vision": ["nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "meta/llama-3.2-90b-vision-instruct", "meta/llama-3.2-11b-vision-instruct"],
+      "judge": ["nvidia/nemotron-3-ultra-550b-a55b", "nvidia/nemotron-3-super-120b-a12b"]
+    }
+  }
+}

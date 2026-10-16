@@ -1,0 +1,123 @@
+{
+  "tier": {
+    "selected": "Your model",
+    "role": "Another model of the provider",
+    "provider": "Next provider",
+    "device": "This device",
+    "cache": "Saved answer",
+    "template": "Without AI"
+  },
+  "outcome": {
+    "ok": "Answered",
+    "invalid": "Answer rejected",
+    "truncated": "Answer cut off",
+    "refused": "Declined",
+    "rate_limited": "Too many requests",
+    "not_found": "Model not offered",
+    "unavailable": "Not reachable",
+    "timeout": "No answer in time",
+    "error": "Failed",
+    "skipped": "Skipped"
+  },
+  "blocked": {
+    "cooldown": "Waiting after too many requests",
+    "circuit_open": "Paused after repeated failures",
+    "probing": "Being tried again",
+    "not_found": "Not offered at the moment"
+  },
+  "attempt": {
+    "retry": "Second try",
+    "served": "{model} answered instead",
+    "latency": "{time}"
+  },
+  "result": {
+    "switched": "{requested} did not answer; {served} answered instead.",
+    "cached": "Saved answer from {time}",
+    "template": "No model answered; this answer was made without AI.",
+    "unavailable": "No model answered and there is no answer without AI for this.",
+    "simulated": "Simulated provider"
+  },
+  "thinking": {
+    "label": "Extended thinking",
+    "hint": "Lets capable models reason before they answer. Slower, and it uses more tokens."
+  },
+  "strength": {
+    "label": "Model strength",
+    "max": "Maximum",
+    "max_desc": "The strongest model of the provider. Best results, slowest and most expensive.",
+    "super": "Reasoning",
+    "super_desc": "A model that reasons at length before it answers.",
+    "auto": "Automatic",
+    "auto_desc": "Starpi picks a free model for each task and steps around busy ones.",
+    "fast": "Fast",
+    "fast_desc": "The quickest model. Good for short questions."
+  },
+  "health": {
+    "on": "Available",
+    "off": "Not set up",
+    "unknown": "Status unknown"
+  },
+  "council": {
+    "title": "Council",
+    "drafts_label": "Drafts of the council",
+    "draft": "Draft {n}",
+    "phase_start": "The council is starting.",
+    "phase_members": "Drafts ready: {done} of {total}.",
+    "phase_judge": "The judge is comparing {valid} drafts.",
+    "phase_done_judge": "The judge chose a draft.",
+    "phase_done_merged": "The judge merged the drafts.",
+    "phase_done_best": "The best valid draft stands.",
+    "phase_done_none": "No valid draft came back.",
+    "phase_aborted": "The council was stopped.",
+    "status": {
+      "pending": "Writing",
+      "ok": "Valid",
+      "invalid": "Rejected",
+      "error": "Failed",
+      "timeout": "Too slow",
+      "skipped": "Skipped"
+    },
+    "latency": "Took {time}",
+    "rejected": "Why it was rejected",
+    "read_draft": "Read this draft",
+    "thinking": "Reasoned before answering",
+    "chosen": "Chosen by the judge",
+    "used_best": "Used as the best draft",
+    "judge": "Judge",
+    "judge_pending": "The judge is reading the drafts.",
+    "judge_reasons": "Reasons",
+    "judge_chose": "Chose {draft}",
+    "judge_merged": "Combined the drafts into one answer",
+    "judge_failed": "The judge gave no usable verdict.",
+    "result": "Result",
+    "decided": {
+      "judge": "Chosen by the judge",
+      "merged": "Merged by the judge",
+      "best": "Best valid draft",
+      "none": "No result"
+    },
+    "valid_count": "{valid} of {total} drafts valid",
+    "finished_at": "Finished at {time}",
+    "reason": {
+      "no_models": "No model is available for a council.",
+      "no_valid_draft": "None of the drafts could be used.",
+      "one_valid_draft": "Only one draft could be used, so no judge was needed.",
+      "no_judge": "No other model was free to judge, so the best valid draft stands.",
+      "judge_invalid": "The judge's verdict could not be used, so the best valid draft stands.",
+      "judge_error": "The judge failed, so the best valid draft stands.",
+      "judge_timeout": "The judge took too long, so the best valid draft stands.",
+      "judge_skipped": "The judge was not available, so the best valid draft stands."
+    },
+    "error": {
+      "empty": "The draft was empty.",
+      "truncated": "The draft reached its length limit.",
+      "too_long": "The draft was too long.",
+      "refusal": "The model declined.",
+      "no_json": "The answer held no JSON object.",
+      "schema": "The answer did not have the expected shape ({detail}).",
+      "quote_not_found": "A quotation was not found in the source.",
+      "unknown_source": "The answer named a source that does not exist ({detail}).",
+      "other": "Rejected ({code})."
+    }
+  }
+}
