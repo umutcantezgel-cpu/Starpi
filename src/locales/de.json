@@ -14,18 +14,22 @@
   },
   "nav": {
     "chat": "Chat",
+    "research": "Recherche",
     "library": "Wissensdatenbank",
     "graph": "Wissensgraph",
     "ingest": "Wissen hinzufügen",
     "bench": "Diagnose",
+    "companion": "Companion",
     "settings": "Einstellungen"
   },
   "nav_short": {
     "chat": "Chat",
+    "research": "Recherche",
     "library": "Archiv",
     "graph": "Graph",
     "ingest": "Neu",
     "bench": "Bench",
+    "companion": "Companion",
     "settings": "Optionen"
   },
   "status": {

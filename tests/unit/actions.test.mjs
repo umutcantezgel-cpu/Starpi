@@ -27,7 +27,8 @@ const html = readFileSync(path.join(SRC, 'index.html'), 'utf8');
 const collect = (re) => new Set([...code.matchAll(re)].map((m) => m[1]));
 
 describe('delegated actions', () => {
-  const usedClicks = new Set([...collect(/data-action="([\w-]+)"/g), ...collect(/dataset\.action = '([\w-]+)'/g)]);
+  // UI kit builders (ui/kit.js) take the action as an option: segmented({ action: 'set-theme', … }).
+  const usedClicks = new Set([...collect(/data-action="([\w-]+)"/g), ...collect(/dataset\.action = '([\w-]+)'/g), ...collect(/\baction: '([\w-]+)'/g)]);
   const usedChanges = collect(/data-change="([\w-]+)"/g);
   const registeredClicks = collect(/onAction\('([\w-]+)'/g);
   const registeredChanges = collect(/onChange\('([\w-]+)'/g);

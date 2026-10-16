@@ -3,6 +3,12 @@
 // choice is kept in localStorage. Switching never reloads the page: static markup is re-translated
 // through data-i18n* attributes and dynamic views subscribe to onLocaleChange().
 //
+// Dictionaries come from src/locales (see src/locales/index.js): a root file per language plus
+// namespace files whose keys are reached as `<ns>.<key>`. English ships with the app bundle and is
+// the fallback for every key another language lacks; other languages are loaded when chosen. This
+// module waits for the stored language before it finishes loading (top-level await), so t() is
+// synchronous everywhere and the first render is already in the right language.
+//
 // Markup contract (applied by applyTranslations()):
 //   data-i18n="ns.key"               -> textContent
 //   data-i18n-placeholder="ns.key"   -> placeholder attribute
@@ -10,24 +16,119 @@
 //   data-i18n-aria="ns.key"          -> aria-label attribute
 //   data-i18n-params='{"n":3}'       -> interpolation values for any of the above
 // Only textContent and attributes are written, never HTML.
-import de from '../../locales/de.json' with { type: 'json' };
-import en from '../../locales/en.json' with { type: 'json' };
+import { ENGLISH, loadLocaleFiles, SHIPPED_LOCALES } from '../../locales/index.js';
 
 /** @typedef {'en' | 'de'} Locale */
 /** @typedef {Record<string, string | number>} Params */
-/** @typedef {{ [key: string]: string | Dictionary }} Dictionary */
+/** @typedef {import('../../locales/index.js').Dictionary} Dictionary */
+/** @typedef {import('../../locales/index.js').LocaleFiles} LocaleFiles */
+/** @typedef {{ name: string, short: string, intl: string }} Language */
 
-export const LOCALES = /** @type {readonly Locale[]} */ (Object.freeze(['en', 'de']));
+/**
+ * Languages the UI is prepared for: the name in the language itself, the short label of the
+ * language switch and the BCP 47 tag for Intl and speech recognition. Only those with dictionaries
+ * (SHIPPED_LOCALES) can be chosen.
+ * @type {Readonly<Record<string, Language>>}
+ */
+export const LANGUAGES = Object.freeze({
+  en: { name: 'English', short: 'EN', intl: 'en-US' },
+  de: { name: 'Deutsch', short: 'DE', intl: 'de-DE' },
+  fr: { name: 'Français', short: 'FR', intl: 'fr-FR' },
+  es: { name: 'Español', short: 'ES', intl: 'es-ES' },
+  it: { name: 'Italiano', short: 'IT', intl: 'it-IT' },
+  tr: { name: 'Türkçe', short: 'TR', intl: 'tr-TR' },
+});
+
+export const LOCALES = /** @type {readonly Locale[]} */ (Object.freeze(SHIPPED_LOCALES.filter((code) => Object.hasOwn(LANGUAGES, code))));
 export const DEFAULT_LOCALE = /** @type {Locale} */ ('en');
 export const STORAGE_KEY = 'starpi_locale';
 
-/** @type {Record<Locale, Dictionary>} */
-const DICTIONARIES = { en, de };
-const INTL_LOCALES = /** @type {Record<Locale, string>} */ ({ en: 'en-US', de: 'de-DE' });
+/**
+ * Merges namespace dictionaries into a copy of the root dictionary, each under its namespace key.
+ * A key that is already defined keeps its first value; its path is added to `conflicts`.
+ * @param {Dictionary} root
+ * @param {Record<string, Dictionary>} namespaces
+ * @param {string[]} [conflicts]
+ * @returns {Dictionary}
+ */
+export function buildDictionary(root, namespaces, conflicts = []) {
+  /** @type {Dictionary} */
+  const out = structuredClone(root);
+  /**
+   * @param {Dictionary} target
+   * @param {Dictionary} source
+   * @param {string} path
+   */
+  const merge = (target, source, path) => {
+    for (const [key, value] of Object.entries(source)) {
+      const at = `${path}.${key}`;
+      const existing = target[key];
+      if (typeof value === 'string') {
+        if (existing === undefined) target[key] = value;
+        else conflicts.push(at);
+      } else if (existing === undefined) {
+        target[key] = structuredClone(value);
+      } else if (typeof existing === 'object') {
+        merge(existing, value, at);
+      } else {
+        conflicts.push(at);
+      }
+    }
+  };
+  for (const [ns, dict] of Object.entries(namespaces)) {
+    const slot = out[ns];
+    if (slot === undefined) out[ns] = structuredClone(dict);
+    else if (typeof slot === 'object') merge(slot, dict, ns);
+    else conflicts.push(ns);
+  }
+  return out;
+}
+
+/** Loaded dictionaries by language code; English is always present. @type {Map<string, Dictionary>} */
+const dictionaries = new Map([['en', buildDictionary(ENGLISH.root, ENGLISH.namespaces)]]);
+/** @type {Map<string, Promise<boolean>>} */
+const loading = new Map();
 
 /** @param {unknown} value @returns {value is Locale} */
 function isLocale(value) {
-  return value === 'en' || value === 'de';
+  return typeof value === 'string' && /** @type {readonly string[]} */ (LOCALES).includes(value);
+}
+
+/**
+ * Loads a prepared language's dictionaries once (concurrent calls share the request). Never throws:
+ * a language that cannot be loaded (unknown, not shipped, offline before its files were cached)
+ * resolves to false and its keys keep showing English.
+ * @param {string} locale
+ * @param {(locale: string) => Promise<LocaleFiles>} [load] where the files come from (default: src/locales)
+ * @returns {Promise<boolean>}
+ */
+export function loadLocale(locale, load = loadLocaleFiles) {
+  if (dictionaries.has(locale)) return Promise.resolve(true);
+  if (!Object.hasOwn(LANGUAGES, locale)) return Promise.resolve(false);
+  const pending = loading.get(locale);
+  if (pending) return pending;
+  const request = (async () => {
+    try {
+      const files = await load(locale);
+      dictionaries.set(locale, buildDictionary(files.root, files.namespaces));
+      return true;
+    } catch (err) {
+      console.warn(`[starpi] the ${locale} dictionary could not be loaded; English is shown instead`, err);
+      return false;
+    } finally {
+      loading.delete(locale);
+    }
+  })();
+  loading.set(locale, request);
+  return request;
+}
+
+/**
+ * @param {string} locale
+ * @returns {boolean} whether the language's dictionaries are loaded
+ */
+export function isLocaleLoaded(locale) {
+  return dictionaries.has(locale);
 }
 
 function readStoredLocale() {
@@ -42,8 +143,18 @@ function readStoredLocale() {
 
 /** @type {Locale} */
 let current = readStoredLocale();
+/** Counts language switches, so a slow load never overrides a later choice. */
+let switches = 0;
 /** @type {Set<(locale: Locale) => void>} */
 const listeners = new Set();
+
+// Node (tests, build tools) has no stored choice and may ask for any language: load them all.
+// In the browser only the stored language is loaded before the app starts.
+if (/** @type {any} */ (globalThis).process?.versions?.node) {
+  await Promise.all(LOCALES.map((locale) => loadLocale(locale)));
+} else if (current !== DEFAULT_LOCALE && !(await loadLocale(current))) {
+  current = DEFAULT_LOCALE;
+}
 
 /** @returns {Locale} */
 export function getLocale() {
@@ -52,11 +163,11 @@ export function getLocale() {
 
 /** BCP 47 tag for Intl formatting and speech recognition. */
 export function getIntlLocale() {
-  return INTL_LOCALES[current];
+  return LANGUAGES[current]?.intl ?? 'en-US';
 }
 
 /**
- * @param {Dictionary} dict
+ * @param {Dictionary | undefined} dict
  * @param {string} key
  * @returns {string | undefined}
  */
@@ -71,11 +182,12 @@ function lookup(dict, key) {
 }
 
 /**
+ * Whether a key has its own entry in a language (English fallbacks do not count).
  * @param {string} key
- * @param {Locale} [locale]
+ * @param {string} [locale]
  */
 export function hasKey(key, locale = current) {
-  return lookup(DICTIONARIES[locale], key) !== undefined;
+  return lookup(dictionaries.get(locale), key) !== undefined;
 }
 
 /**
@@ -84,10 +196,10 @@ export function hasKey(key, locale = current) {
  * picks the singular or plural word for the count in `name` ("{n} {n:chunk|chunks}").
  * @param {string} key
  * @param {Params} [params]
- * @param {Locale} [locale]
+ * @param {string} [locale]
  */
 export function t(key, params, locale = current) {
-  const template = lookup(DICTIONARIES[locale], key) ?? lookup(DICTIONARIES[DEFAULT_LOCALE], key) ?? key;
+  const template = lookup(dictionaries.get(locale), key) ?? lookup(dictionaries.get(DEFAULT_LOCALE), key) ?? key;
   if (!params) return template;
   return template
     .replace(/\{(\w+):([^|{}]*)\|([^{}]*)\}/g, (match, name, one, other) => (name in params ? (String(params[name]) === '1' ? one : other) : match))
@@ -150,6 +262,9 @@ export function applyTranslations(root = document) {
   for (const btn of document.querySelectorAll('[data-action="set-locale"]')) {
     btn.setAttribute('aria-pressed', String(btn.getAttribute('data-arg') === current));
   }
+  for (const select of document.querySelectorAll('select[data-change="set-locale"]')) {
+    /** @type {HTMLSelectElement} */ (select).value = current;
+  }
 }
 
 /**
@@ -167,12 +282,8 @@ export function setText(el, key, params) {
   el.textContent = t(key, params);
 }
 
-/**
- * Switches the language at runtime, persists it and notifies subscribers.
- * @param {string} next
- */
-export function setLocale(next) {
-  const locale = isLocale(next) ? next : DEFAULT_LOCALE;
+/** @param {Locale} locale */
+function apply(locale) {
   current = locale;
   try {
     globalThis.localStorage?.setItem(STORAGE_KEY, locale);
@@ -193,6 +304,26 @@ export function setLocale(next) {
 }
 
 /**
+ * Switches the language at runtime, persists it and notifies subscribers. A loaded language switches
+ * at once (before this returns); another one switches when its dictionaries arrive, unless a later
+ * call chose differently. A language that fails to load leaves the current one in place.
+ * @param {string} next
+ * @returns {Promise<Locale>} the language in effect afterwards
+ */
+export function setLocale(next) {
+  const locale = isLocale(next) ? next : DEFAULT_LOCALE;
+  const request = ++switches;
+  if (dictionaries.has(locale)) {
+    apply(locale);
+    return Promise.resolve(locale);
+  }
+  return loadLocale(locale).then((loaded) => {
+    if (loaded && request === switches) apply(locale);
+    return current;
+  });
+}
+
+/**
  * @param {(locale: Locale) => void} fn
  * @returns {() => void}
  */
@@ -204,6 +335,7 @@ export function onLocaleChange(fn) {
 /** Applies the stored (or default) language to the document once at boot. */
 export function initI18n() {
   current = readStoredLocale();
+  if (!dictionaries.has(current)) current = DEFAULT_LOCALE;
   document.documentElement.lang = current;
   applyTranslations(document);
 }

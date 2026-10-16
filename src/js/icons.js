@@ -68,8 +68,29 @@ import {
   X,
   Zap,
 } from 'lucide';
+// Shell and UI kit (ui/sidebar.js, ui/theme.js, ui/kit.js), kept as one block.
+import {
+  CircleDashed,
+  Columns2,
+  EyeOff,
+  Globe,
+  Inbox,
+  Monitor,
+  Moon,
+  OctagonAlert,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRight,
+  Plug,
+  SquarePen,
+  Sun,
+  Telescope,
+} from 'lucide';
+
+const SHELL_ICONS = { CircleDashed, Columns2, EyeOff, Globe, Inbox, Monitor, Moon, OctagonAlert, PanelLeftClose, PanelLeftOpen, PanelRight, Plug, SquarePen, Sun, Telescope };
 
 const ICONS = {
+  ...SHELL_ICONS,
   Activity,
   AlertCircle,
   ArrowLeft,
