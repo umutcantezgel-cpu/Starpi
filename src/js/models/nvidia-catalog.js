@@ -2,7 +2,9 @@
 // NVIDIA NIM cloud models that the proxy may call, with the request limits and timings both proxies
 // enforce. Pure data and helpers: bundled by the app (model picker, NVIDIA client), imported by the
 // Vercel Functions in api/ and mirrored byte for byte to backend/core/nvidia_catalog.json for the Python
-// backend. Check the endpoints with `npm run nvidia:ping` before changing the list.
+// backend. It is also the NVIDIA section of the AI layer's model catalog: nvidiaSnapshotSection()
+// is what `npm run models:sync` writes into src/js/ai/catalog/snapshot.json. Check the endpoints
+// with `npm run nvidia:ping` before changing the list.
 
 /**
  * @typedef {object} NvidiaModel
@@ -143,4 +145,45 @@ export function publicCatalog(configured) {
 /** Exact text of backend/core/nvidia_catalog.json (written by `npm run nvidia:sync`). */
 export function catalogJson() {
   return `${JSON.stringify(NVIDIA_CATALOG, null, 2)}\n`;
+}
+
+/** Context window assumed for NIM models; the proxy caps every request well below it (NVIDIA_LIMITS). */
+export const NVIDIA_CONTEXT_TOKENS = 32_768;
+
+/**
+ * The NVIDIA section of the model catalog snapshot: every allowlisted model with its capability
+ * flags, in catalog order, and the default model as the candidate for every role. The models
+ * reason visibly (`tagged`) when they stream reasoning, take images when flagged, and are free
+ * through the site pool.
+ */
+export function nvidiaSnapshotSection() {
+  const fast = NVIDIA_MODELS.find((m) => !m.reasoning)?.id ?? NVIDIA_DEFAULT_MODEL;
+  return {
+    roles: { fast, balanced: NVIDIA_DEFAULT_MODEL, max: NVIDIA_MODELS.find((m) => m.id.includes('ultra'))?.id ?? NVIDIA_DEFAULT_MODEL },
+    models: NVIDIA_MODELS.map((m) => ({
+      id: m.id,
+      label: m.label,
+      vendor: m.vendor,
+      caps: {
+        text: true,
+        vision: m.vision,
+        pdf: false,
+        tools: false,
+        parallelTools: false,
+        reasoning: m.reasoning ? 'tagged' : 'none',
+        reasoningVisible: m.reasoning,
+        search: 'none',
+        imageOut: false,
+        audioIn: false,
+        live: false,
+        json: false,
+        contextTokens: NVIDIA_CONTEXT_TOKENS,
+        maxOutput: m.maxOutputTokens,
+        latency: m.reasoning ? 'normal' : 'fast',
+        free: true,
+        local: false,
+        verified: true,
+      },
+    })),
+  };
 }
