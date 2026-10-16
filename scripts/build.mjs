@@ -111,6 +111,8 @@ const esbuildOptions = {
     'webllm-worker': 'src/js/webgpu/worker.js',
     'ingest-worker': 'src/js/rag/ingest.worker.js',
     'wasm-worker': 'src/js/wasm/worker.js',
+    // Classic, blocking script in <head> that applies the stored theme before the first paint.
+    'theme-boot': 'src/js/theme-boot.js',
     app: 'src/styles/entry.css',
   },
   outdir: ASSETS,
@@ -158,7 +160,8 @@ async function postProcess(result, urls) {
   const ingestWorkerJs = entries['src/js/rag/ingest.worker.js'];
   const wasmWorkerJs = entries['src/js/wasm/worker.js'];
   const appCss = entries['src/styles/entry.css'];
-  if (!mainJs || !workerJs || !ingestWorkerJs || !wasmWorkerJs || !appCss) throw new Error(`missing entry outputs: ${JSON.stringify(entries)}`);
+  const themeBootJs = entries['src/js/theme-boot.js'];
+  if (!mainJs || !workerJs || !ingestWorkerJs || !wasmWorkerJs || !appCss || !themeBootJs) throw new Error(`missing entry outputs: ${JSON.stringify(entries)}`);
   const ortWasm = /** @type {string} */ (urls.get(ORT_WASM_PLACEHOLDER));
   for (const placeholder of Object.keys(URL_PLACEHOLDERS)) {
     if (!seenPlaceholders.has(placeholder)) throw new Error(`${placeholder} not found in any source file`);
@@ -174,7 +177,8 @@ async function postProcess(result, urls) {
 
   const html = (await readFile(path.join(SRC, 'index.html'), 'utf8'))
     .replace('%STARPI_APP_CSS%', appCss)
-    .replace('%STARPI_MAIN_JS%', mainJs);
+    .replace('%STARPI_MAIN_JS%', mainJs)
+    .replace('%STARPI_THEME_BOOT_JS%', themeBootJs);
   if (html.includes('%STARPI_')) throw new Error('unresolved placeholder in src/index.html');
   await writeFile(path.join(DIST, 'index.html'), html);
 
@@ -187,7 +191,7 @@ async function postProcess(result, urls) {
   // offline), the Latin font and the public files. WebLLM, pdf.js, the WASM worker (Transformers.js)
   // and the ONNX Runtime binary are cached on first use.
   const latinFont = assetUrls.find((u) => /plus-jakarta-sans-latin-wght-normal-[\w-]+\.woff2$/.test(u));
-  const shell = ['/', appCss, mainJs, ingestWorkerJs, ...(latinFont ? [latinFont] : []), ...directImports(result.metafile, mainJs), ...publicFiles];
+  const shell = ['/', appCss, mainJs, themeBootJs, ingestWorkerJs, ...(latinFont ? [latinFont] : []), ...directImports(result.metafile, mainJs), ...publicFiles];
   const sw = swTemplate
     .replace("'__STARPI_BUILD_VERSION__'", JSON.stringify(version))
     .replace("['__STARPI_PRECACHE__']", JSON.stringify([...new Set(shell)]))
@@ -198,7 +202,7 @@ async function postProcess(result, urls) {
   await writeFile(
     path.join(DIST, 'build-manifest.json'),
     JSON.stringify(
-      { version, entries: { mainJs, workerJs, ingestWorkerJs, wasmWorkerJs, ortWasm, appCss }, assets: assetUrls, public: [...publicFiles].sort(), precache: shell },
+      { version, entries: { mainJs, workerJs, ingestWorkerJs, wasmWorkerJs, ortWasm, appCss, themeBootJs }, assets: assetUrls, public: [...publicFiles].sort(), precache: shell },
       null,
       2,
     ),
