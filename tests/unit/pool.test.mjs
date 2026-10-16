@@ -14,7 +14,7 @@ import * as aliasRoute from '../../api/chat/nvidia.js';
 import * as poolRoute from '../../api/pool.js';
 import { createGeminiFake } from '../../scripts/fakes/gemini.mjs';
 import { createOpenAiFake } from '../../scripts/fakes/openai.mjs';
-import { NVIDIA_DEFAULT_MODEL, NVIDIA_PROXY } from '../../src/js/models/nvidia-catalog.js';
+import { NVIDIA_DEFAULT_MODEL, NVIDIA_LIMITS, NVIDIA_PROXY } from '../../src/js/models/nvidia-catalog.js';
 import { answer, errorOf, frontGuards, jsonRequest, readAll, recordingFetch, siteRequest, sse, SSE_CHUNKS, testKey } from './relay-helpers.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -313,6 +313,16 @@ describe('pool route wiring and the NVIDIA alias', () => {
     process.env.STARPI_POOL_PROVIDERS = 'groq';
     process.env.NVIDIA_API_KEYS = testKey('nvidia');
     assert.deepEqual(await errorOf(await aliasRoute.POST(jsonRequest('/api/chat/nvidia', NVIDIA_BODY))), { status: 503, error: 'nvidia_not_configured' }, 'a disabled pool answers like one without keys');
+  });
+
+  it('keeps the text-only rules and the body cap of /api/chat/nvidia', async () => {
+    process.env.NVIDIA_API_KEYS = testKey('nvidia');
+    process.env.STARPI_NVIDIA_BASE_URL = 'http://127.0.0.1:9';
+    const vision = /** @type {{ models: Array<{ id: string, vision: boolean }> }} */ (findPoolSpec('nvidia')).models.find((m) => m.vision);
+    const image = { model: vision?.id, messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }] }] };
+    assert.deepEqual(await errorOf(await aliasRoute.POST(jsonRequest('/api/chat/nvidia', image))), { status: 400, error: 'invalid_field', field: 'messages' });
+    const big = { ...NVIDIA_BODY, padding: 'x'.repeat(NVIDIA_LIMITS.maxBodyBytes) };
+    assert.deepEqual(await errorOf(await aliasRoute.POST(jsonRequest('/api/chat/nvidia', big))), { status: 413, error: 'payload_too_large' });
   });
 
   it('streams /api/chat/nvidia through the NVIDIA pool against the fake', async () => {

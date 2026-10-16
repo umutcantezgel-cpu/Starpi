@@ -45,7 +45,12 @@ import { poolRoute, validatePoolRequest } from './request.js';
  * @property {readonly string[]} extraOrigins
  * @property {string} accessCode '' when the site has none
  * @property {() => number} now
- * @typedef {{ provider: string, path: string, notConfigured?: string }} PoolTarget
+ * @typedef {object} PoolTarget
+ * @property {string} provider
+ * @property {string} path the upstream path the browser names
+ * @property {string} [notConfigured] error code without keys (default pool_not_configured)
+ * @property {number} [maxBodyBytes] a smaller body cap than the pool's
+ * @property {boolean} [textOnly] refuse images even for vision models
  */
 
 /** vercel.json `functions["api/pool.js"].maxDuration` in milliseconds (a unit test keeps them equal). */
@@ -169,9 +174,10 @@ export async function handlePool(request, deps, fixed) {
   if (!route.ok) return refuse(route);
   if (!pool.router) return refuse({ status: 503, error: notConfigured });
 
-  const read = await readJsonBody(request, pool.spec.limits.maxBodyBytes);
+  const read = await readJsonBody(request, Math.min(pool.spec.limits.maxBodyBytes, target.maxBodyBytes ?? Number.POSITIVE_INFINITY));
   if (!read.ok) return refuse(read);
-  const valid = validatePoolRequest(pool.spec, route, read.data);
+  const spec = target.textOnly ? { ...pool.spec, models: pool.spec.models.map((m) => ({ ...m, vision: false })) } : pool.spec;
+  const valid = validatePoolRequest(spec, route, read.data);
   if (!valid.ok) return refuse(valid);
   const daily = deps.daily.hit(clientIp(request));
   if (!daily.ok) return refuse({ status: 429, error: 'daily_limit_reached', retryAfterS: daily.retryAfterS });
