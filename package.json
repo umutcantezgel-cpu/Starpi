@@ -28,6 +28,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test \"tests/unit/*.test.mjs\"",
     "test:e2e": "playwright test",
+    "fakes": "node scripts/fakes/index.mjs",
     "verify:dist": "node scripts/verify-dist.mjs",
     "verify:receipt": "node scripts/verify-receipt.mjs",
     "build:core": "node scripts/build-core.mjs",

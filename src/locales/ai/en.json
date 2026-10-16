@@ -1,1 +1,27 @@
-{}
+{
+  "error": {
+    "auth": "The provider did not accept the key. Check it in Settings.",
+    "quota": "The provider account has no credit or quota left.",
+    "rate_limited": "The provider is receiving too many requests right now. Try again shortly.",
+    "not_found": "The provider does not offer this model.",
+    "bad_request": "The provider rejected the request.",
+    "context_length": "The conversation is too long for this model. Start a new chat or choose a model with a larger context.",
+    "server": "The provider has a problem right now. Try again later.",
+    "timeout": "The provider did not answer in time.",
+    "network": "The provider cannot be reached. Check your connection.",
+    "aborted": "Stopped.",
+    "bad_response": "The provider sent an answer Starpi cannot read.",
+    "cors": "The provider does not accept calls straight from the browser. Turn on the relay in Settings.",
+    "stream_cut": "The answer was cut off before it was complete.",
+    "refusal": "The provider declined to answer this request."
+  },
+  "retry_in": "Try again in {seconds} s.",
+  "stop": {
+    "max_tokens": "The answer reached its length limit.",
+    "refusal": "The model declined to answer.",
+    "pause": "The provider paused the answer; it continues automatically.",
+    "cancelled": "Stopped.",
+    "timeout": "The answer took too long and was stopped.",
+    "error": "The answer ended with an error."
+  }
+}
