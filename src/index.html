@@ -236,7 +236,7 @@
             <button type="button" data-action="pick-chat-file" class="btn btn-ghost btn-icon touch-target-min justify-center" data-i18n-aria="chat.attach_file" aria-label="Attach a file (added to the on-device workspace)" data-i18n-title="chat.attach_file" title="Attach a file (added to the on-device workspace)">
               <i data-lucide="paperclip" class="w-5 h-5"></i>
             </button>
-            <input type="file" id="chatFileInput" class="hidden" tabindex="-1" data-change="attach-file" accept=".pdf,.txt,.md,.markdown,.json,.csv,.log">
+            <input type="file" id="chatFileInput" class="hidden" tabindex="-1" data-change="attach-file" accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.txt,.md,.markdown,.json,.csv,.log">
             <button type="button" id="voiceBtn" data-action="toggle-voice" class="relative btn btn-ghost btn-icon touch-target-min justify-center" data-i18n-aria="chat.voice_input" aria-label="Voice input" aria-pressed="false" data-i18n-title="chat.voice_hint" title="Voice input: your browser's speech service turns speech into text">
               <i data-lucide="mic" class="w-5 h-5"></i>
               <span id="voicePulse" class="hidden absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
@@ -359,9 +359,9 @@
           <div id="dropZone" role="button" tabindex="0" data-action="pick-workspace-files" class="border-2 border-dashed border-slate-300 hover:border-amber-400 rounded-xl p-6 text-center transition cursor-pointer bg-slate-50/60 hover:bg-amber-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400" data-i18n-aria="workspace.drop_label" aria-label="Add files to the on-device workspace">
             <i data-lucide="upload" class="w-6 h-6 mx-auto mb-2 text-slate-500"></i>
             <p class="text-sm font-medium text-slate-900" data-i18n="workspace.drop_title">Drop files here or click to choose</p>
-            <p class="text-xs text-slate-500 mt-1" data-i18n="workspace.drop_hint">PDF, TXT, Markdown, JSON or CSV · up to 25 MB each</p>
+            <p class="text-xs text-slate-500 mt-1" data-i18n="workspace.drop_hint">PDF, DOCX, XLSX, PPTX, HTML, TXT, Markdown, JSON or CSV · up to 25 MB each</p>
           </div>
-          <input type="file" id="workspaceFileInput" class="hidden" multiple accept=".pdf,.txt,.md,.markdown,.json,.csv,.log" data-change="workspace-files">
+          <input type="file" id="workspaceFileInput" class="hidden" multiple accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.txt,.md,.markdown,.json,.csv,.log" data-change="workspace-files">
           <div class="flex flex-wrap gap-2">
             <button type="button" data-action="load-samples" class="btn btn-secondary">
               <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-600"></i>
@@ -819,7 +819,7 @@
           </div>
           <div>
             <label for="receiptSources" class="field-label" data-i18n="receipt.verify_pick_files">Original files</label>
-            <input type="file" id="receiptSources" multiple accept=".pdf,.txt,.md,.markdown,.json,.csv,.log" class="field">
+            <input type="file" id="receiptSources" multiple accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.txt,.md,.markdown,.json,.csv,.log" class="field">
           </div>
           <div>
             <label for="receiptPublicKey" class="field-label" data-i18n="receipt.verify_pick_key">Signer's public key (optional, JWK or PEM)</label>
