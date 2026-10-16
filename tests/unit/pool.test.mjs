@@ -269,9 +269,15 @@ describe('pools against the provider fakes', () => {
   });
 
   it('fails over on a provider 429 to the next key', async () => {
+    // The first key's requests ask the fake for a 429.
+    /** @type {typeof fetch} */
+    const firstKeyLimited = (input, init = {}) => {
+      const headers = /** @type {Record<string, string>} */ (init.headers ?? {});
+      return fetch(input, { ...init, headers: { ...headers, ...(headers.Authorization?.endsWith('1') ? { 'x-fake-fault': '429' } : {}) } });
+    };
     const pools = buildPools(
       { STARPI_POOL_PROVIDERS: 'groq', GROQ_API_KEYS: `${testKey('groq', 1)},${testKey('groq', 2)}`, STARPI_GROQ_BASE_URL: `${openaiUrl}/flavor/groq/openai` },
-      { fetch: async (input, init) => fetch(input, { ...init, headers: { ...(/** @type {Record<string, string>} */ (init?.headers)), ...(String(/** @type {Record<string, string>} */ (init?.headers).Authorization).endsWith('1') ? { 'x-fake-fault': '429' } : {}) } }), now: () => Date.now(), warn: () => {} },
+      { fetch: firstKeyLimited, now: () => Date.now(), warn: () => {} },
     );
     const res = await handlePool(jsonRequest(poolUrl('groq', '/v1/chat/completions'), { model: GROQ_MODEL, messages: [{ role: 'user', content: 'Hello pool' }] }), { ...frontGuards(), pools });
     assert.equal(res.status, 200);
