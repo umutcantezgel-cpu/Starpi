@@ -4,6 +4,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # A new release waits a week before it becomes a pull request, so a compromised release has
+    # time to be found and pulled from the registry first.
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       dev-tooling:
@@ -17,10 +21,14 @@ updates:
     directory: /backend
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 3
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 3
