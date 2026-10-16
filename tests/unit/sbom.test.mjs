@@ -7,7 +7,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { NAMESPACE_DNS, normalizeCoreSbom, normalizeSbom, SCHEMA_URL, SERIAL_PATTERN, uuidV5, validateSbom } from '../../scripts/lib/sbom.mjs';
+import { findSecrets, NAMESPACE_DNS, normalizeCoreSbom, normalizeSbom, SCHEMA_URL, SERIAL_PATTERN, uuidV5, validateSbom, wasmModels, webllmModels, withModels } from '../../scripts/lib/sbom.mjs';
+import { credentialRules } from '../../scripts/lib/secret-rules.mjs';
+import { WASM_CATALOG } from '../../src/js/models/wasm-catalog.js';
+import { MODEL_CATALOG } from '../../src/js/webgpu/models.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const PATH = 'cdx:npm:package:path';
@@ -182,6 +185,65 @@ describe('validateSbom', () => {
   });
 });
 
+describe('ML-BOM', () => {
+  const webgpu = webllmModels(MODEL_CATALOG, { runtime: '@mlc-ai/web-llm@0.2.85' });
+  const wasm = wasmModels(WASM_CATALOG, { runtime: '@huggingface/transformers@4.3.0' });
+
+  it('lists both kernel builds of every WebGPU preset, unpinned as WebLLM loads them', () => {
+    assert.equal(webgpu.length, Object.keys(MODEL_CATALOG).length * 2);
+    const ids = Object.values(MODEL_CATALOG).flatMap((m) => [m.f16, m.f32]);
+    assert.deepEqual(webgpu.map((c) => c.name), ids);
+    const first = webgpu[0];
+    assert.equal(first.type, 'machine-learning-model');
+    assert.equal(first.scope, 'optional');
+    assert.equal(first['bom-ref'], `model:webllm/${ids[0]}`);
+    assert.equal(first.purl, `pkg:huggingface/mlc-ai/${ids[0]}`);
+    assert.equal(first.version, undefined, 'the weights follow the main branch');
+    assert.deepEqual(first.modelCard, { modelParameters: { task: 'text-generation', inputs: [{ format: 'text' }], outputs: [{ format: 'text' }] } });
+    assert.ok(first.properties?.some((p) => p.name === 'starpi:runtime' && p.value === '@mlc-ai/web-llm@0.2.85'));
+  });
+
+  it('pins every processor model to its commit and lists the files it downloads', () => {
+    assert.equal(wasm.length, Object.keys(WASM_CATALOG).length);
+    for (const src of Object.values(WASM_CATALOG)) {
+      const c = wasm.find((m) => m['bom-ref'] === `model:transformers/${src.repo}@${src.revision}`);
+      assert.ok(c, src.repo);
+      assert.equal(c.version, src.revision);
+      assert.equal(c.purl, `pkg:huggingface/${src.repo}@${src.revision}`);
+      assert.deepEqual(
+        c.properties?.filter((p) => p.name === 'starpi:file').map((p) => p.value),
+        src.files.map(([file, bytes]) => `${file} ${bytes}`),
+      );
+    }
+  });
+
+  it('adds the models to a document as dependencies of the app, with a new serial number', () => {
+    const doc = normalizeSbom(raw(), { names });
+    const models = [...webgpu.slice(0, 2), ...wasm.slice(0, 1)];
+    const bom = withModels(doc, models);
+    assert.equal(bom.components.length, doc.components.length + 3);
+    const refs = models.map((m) => m['bom-ref']);
+    assert.deepEqual(bom.dependencies?.find((d) => d.ref === 'starpi@1.3.0')?.dependsOn, ['dompurify@3.4.16', 'pdfjs-dist@6.4.299', ...refs]);
+    assert.notEqual(bom.serialNumber, doc.serialNumber);
+    assert.deepEqual(validateSbom(bom, { ...APP, models: refs }), []);
+    assert.deepEqual(validateSbom(doc, { ...APP, models: refs.slice(0, 1) }), [`model ${refs[0]} is missing`]);
+    const broken = withModels(doc, [{ ...models[0], purl: 'pkg:npm/x@1', 'bom-ref': 'x' }]);
+    assert.ok(validateSbom(broken, APP).includes('model x has a bom-ref outside model:'));
+    assert.ok(validateSbom(broken, APP).includes('model x has no model hub purl'));
+  });
+
+  it('finds keys and secret environment values in a document, naming only what kind they are', () => {
+    const rules = credentialRules(ROOT);
+    const key = `nvapi-${'q'.repeat(64)}`;
+    assert.deepEqual(findSecrets(JSON.stringify({ note: key }), { rules }), ['starpi-nvidia-api-key']);
+    assert.deepEqual(findSecrets('{"url":"https://user:pa55word@registry.example/x"}'), ['URL with credentials']);
+    assert.deepEqual(findSecrets('{"x":"value-of-a-secret-1"}', { env: { DEPLOY_TOKEN: 'value-of-a-secret-1', HOME: 'value-of-a-secret-1' } }), ['value of DEPLOY_TOKEN']);
+    // npm describes the package in its own variables; a keyword is no secret.
+    assert.deepEqual(findSecrets('{"name":"@supabase/supabase-js"}', { env: { npm_package_keywords_4: 'supabase', SOME_KEYS: 'short' } }), []);
+    assert.deepEqual(findSecrets(JSON.stringify(withModels(normalizeSbom(raw(), { names }), [...webgpu, ...wasm])), { rules }), []);
+  });
+});
+
 describe('npm run sbom', () => {
   it('refuses a missing --out value and unknown arguments', () => {
     for (const argv of [['--out'], ['--out', '--json'], ['--out='], ['--bogus']]) {
@@ -210,8 +272,10 @@ describe('npm run sbom', () => {
 
     const app = JSON.parse(first[`starpi-${root.version}.cdx.json`]);
     assert.equal(app.metadata.timestamp, '2026-10-13T00:00:00.000Z');
-    assert.deepEqual(validateSbom(app, { name: 'starpi', version: root.version, type: 'application', required: Object.keys(root.dependencies) }), []);
+    const models = [...webllmModels(MODEL_CATALOG, { runtime: 'x' }), ...wasmModels(WASM_CATALOG, { runtime: 'x' })].map((m) => m['bom-ref']);
+    assert.deepEqual(validateSbom(app, { name: 'starpi', version: root.version, type: 'application', required: Object.keys(root.dependencies), models }), []);
     assert.ok(app.components.some((c) => c.name === 'esbuild' && c.scope === 'optional'), 'development tooling is listed and marked');
+    assert.equal(app.components.filter((c) => c.type === 'machine-learning-model').length, models.length);
 
     const pkg = JSON.parse(first[`starpi-core-${core.version}.cdx.json`]);
     assert.equal(pkg.metadata.component.name, '@starpi/core');
