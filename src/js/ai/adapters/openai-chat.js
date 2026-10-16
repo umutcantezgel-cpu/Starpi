@@ -15,7 +15,7 @@
 import { messageText, withoutForeignOpaque } from '../contract.js';
 import { AiError } from '../errors.js';
 import { fromLocal, fromOpenAiChat } from '../stop-reason.js';
-import { capsFor, parseModelList } from '../catalog/models.js';
+import { capsFor, findModel, parseModelList } from '../catalog/models.js';
 import { GENERIC_QUIRKS } from '../quirks/generic.js';
 import { createThinkSplitter, createToolCalls, dataUrl, fileAsText, isRecord, safeJson, streamError, usageEvent } from './common.js';
 
@@ -35,20 +35,20 @@ export const OPAQUE_REASONING_DETAILS = 'chat-reasoning-details';
 
 /**
  * Content of a user message: a plain string when it is text only (every server takes that), else
- * typed parts. Images go to vision models (and to models whose capabilities are only guessed);
- * PDFs only where the quirks allow file parts; text files as text.
+ * typed parts. Images go to vision models and to models the catalog does not describe (a local
+ * model may well read images); PDFs only where the quirks allow file parts; text files as text.
  * @param {Part[]} parts
  * @param {ChatQuirks} quirks
- * @param {Caps} caps
+ * @param {boolean} images
  */
-function userContent(parts, quirks, caps) {
+function userContent(parts, quirks, images) {
   /** @type {any[]} */
   const items = [];
   for (const p of parts) {
     if (p.type === 'text') {
       if (p.text) items.push({ type: 'text', text: p.text });
     } else if (p.type === 'image') {
-      if (caps.vision || !caps.verified) items.push({ type: 'image_url', image_url: { url: dataUrl(p.mime, p.data) } });
+      if (images) items.push({ type: 'image_url', image_url: { url: dataUrl(p.mime, p.data) } });
     } else if (p.type === 'file') {
       if (p.mime !== 'application/pdf') items.push({ type: 'text', text: fileAsText(p.name, p.data) });
       else if (quirks.filesAsParts) items.push({ type: 'file', file: { filename: p.name, file_data: dataUrl(p.mime, p.data) } });
@@ -66,6 +66,7 @@ function userContent(parts, quirks, caps) {
  * @param {Caps} caps
  */
 export function chatMessages(req, provider, quirks, caps) {
+  const images = caps.vision || !findModel(provider, req.model);
   /** @type {any[]} */
   const out = [];
   if (req.system) out.push({ role: 'system', content: req.system });
@@ -74,7 +75,7 @@ export function chatMessages(req, provider, quirks, caps) {
       const text = messageText(m);
       if (text) out.push({ role: 'system', content: text });
     } else if (m.role === 'user') {
-      const content = userContent(m.content, quirks, caps);
+      const content = userContent(m.content, quirks, images);
       if (content.length) out.push({ role: 'user', content });
     } else if (m.role === 'assistant') {
       const text = messageText(m);
