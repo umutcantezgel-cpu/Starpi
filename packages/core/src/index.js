@@ -60,3 +60,13 @@ export {
 } from '../../../src/js/rag/parser.js';
 export { CHUNKER, chunkText, DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE } from '../../../src/js/rag/chunker.js';
 export { BM25_PARAMS, BM25Index, STOPWORDS, STOPWORDS_DE, STOPWORDS_EN, tokenize } from '../../../src/js/rag/bm25.js';
+
+// Office documents, HTML pages and images (extraction rules version 2): the readers behind
+// extractText, usable on their own, and the dependency-free ZIP reader with its ZIP bomb limits.
+export { HTML_EXTENSIONS, IMAGE_EXTENSIONS, OFFICE_EXTENSIONS } from '../../../src/js/rag/parser.js';
+export { docxToText } from '../../../src/js/rag/formats/docx.js';
+export { decodeHtmlBytes, htmlToText } from '../../../src/js/rag/formats/html.js';
+export { describeImage, imageToText, OCR_PURPOSE } from '../../../src/js/rag/formats/image.js';
+export { pptxToText } from '../../../src/js/rag/formats/pptx.js';
+export { xlsxToText } from '../../../src/js/rag/formats/xlsx.js';
+export { isZip, openZip, ZIP_LIMITS } from '../../../src/js/rag/formats/zip.js';
