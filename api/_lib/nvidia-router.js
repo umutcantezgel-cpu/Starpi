@@ -20,6 +20,6 @@ export { parseRetryAfter, RETRY_AFTER_MAX_S } from './pool/key-router.js';
  *   url?: string, timing?: NvidiaProxyTiming }} options
  * @returns {KeyRouter}
  */
-export function createKeyRouter({ keys, fetch, now, log, url = NVIDIA_UPSTREAM_URL, timing = NVIDIA_PROXY }) {
-  return createPoolKeyRouter({ keys, fetch, now, log, timing, upstreamUrl: url, authHeader: bearerAuth, label: 'nvidia' });
+export function createKeyRouter({ keys, fetch: send, now, log, url = NVIDIA_UPSTREAM_URL, timing = NVIDIA_PROXY }) {
+  return createPoolKeyRouter({ keys, fetch: send, now, log, timing, upstreamUrl: url, authHeader: bearerAuth, label: 'nvidia' });
 }
