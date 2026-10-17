@@ -45,14 +45,16 @@ flowchart TD
       E2["webllm-worker: src/js/webgpu/worker.js"]
       E3["ingest-worker: src/js/rag/ingest.worker.js"]
       E5["wasm-worker: src/js/wasm/worker.js"]
+      E6["supabase: src/js/supabase-lib.js,<br/>the Supabase library, loaded on first use"]
       E4["app: src/styles/entry.css<br/>Plus Jakarta Sans font faces + .build/tailwind.css"]
       ORT["plugin ort-wasm-only: onnxruntime-web/webgpu and<br/>onnxruntime-common resolve to onnxruntime-web/wasm,<br/>one ONNX Runtime without new Function"]
-      URLS["plugin starpi-asset-urls: onLoad of src/js files writes<br/>this pass's URLs over __STARPI_WEBLLM_WORKER_URL__,<br/>__STARPI_INGEST_WORKER_URL__, __STARPI_WASM_WORKER_URL__<br/>and __STARPI_ORT_WASM_URL__, none in pass 1"]
+      URLS["plugin starpi-asset-urls: onLoad of src/js files writes<br/>this pass's URLs over __STARPI_WEBLLM_WORKER_URL__,<br/>__STARPI_INGEST_WORKER_URL__, __STARPI_WASM_WORKER_URL__,<br/>__STARPI_ORT_WASM_URL__ and __STARPI_SUPABASE_LIB_URL__,<br/>none in pass 1"]
       ESB["bundle, splitting, esm, minify, target es2022,<br/>chrome113, safari17, firefox121, linked sourcemaps<br/>and legal comments, entries name-hash, chunks chunk-hash,<br/>fonts as files, define inlines __STARPI_SUPABASE_URL__,<br/>__STARPI_SUPABASE_ANON_KEY__ and __STARPI_VERSION__"]
       E1 --> ESB
       E2 --> ESB
       E3 --> ESB
       E5 --> ESB
+      E6 --> ESB
       E4 --> ESB
       ORT -.- ESB
       URLS -.- ESB
@@ -60,7 +62,7 @@ flowchart TD
     ESB -->|"build error"| FAIL
     ESB --> WARN{"esbuild warnings?"}
     WARN -->|"yes: warnings are errors"| FAIL
-    WARN -->|"no"| RES["resolveUrls: hashed URLs of the three workers,<br/>copyOrtWasm: ort-wasm-simd-threaded.wasm from the<br/>onnxruntime-web dist that was bundled, written to<br/>/assets/ort-wasm-simd-threaded-sha256 16 hex.wasm"]
+    WARN -->|"no"| RES["resolveUrls: hashed URLs of the three workers<br/>and the Supabase library, copyOrtWasm: ort-wasm-simd-threaded.wasm from the<br/>onnxruntime-web dist that was bundled, written to<br/>/assets/ort-wasm-simd-threaded-sha256 16 hex.wasm"]
     RES -->|"no output for an entry,<br/>onnxruntime-web/wasm not bundled"| FAIL
     RES --> SETTLED{"every URL equals the one<br/>written into this pass?"}
     SETTLED -->|"no, pass 4"| FAIL
@@ -73,12 +75,12 @@ flowchart TD
     HCHK -->|"yes"| FAIL
     HCHK -->|"no"| WHTML["write dist/index.html"]
     WHTML --> VER["buildVersion, scripts/lib/build-version.mjs:<br/>sha256 over index.html, the sorted asset URLs<br/>without .map and .LEGAL.txt plus the ONNX Runtime binary,<br/>each public file as URL plus bytes, then the src/sw.js<br/>template, first 12 hex chars"]
-    VER --> SHELL["precache shell: /, app CSS, main JS, ingest worker,<br/>the Latin plus-jakarta-sans woff2 when present,<br/>static imports of main, public files,<br/>/index.html, the WASM worker and the binary are not listed"]
+    VER --> SHELL["precache shell: /, app CSS, main JS, ingest worker,<br/>the Latin plus-jakarta-sans woff2 when present,<br/>static imports of main, public files,<br/>/index.html, the WASM worker, the binary<br/>and the Supabase library are not listed"]
     SHELL --> SW["src/sw.js: __STARPI_BUILD_VERSION__ gets the version,<br/>__STARPI_PRECACHE__ the deduplicated shell,<br/>__STARPI_ASSETS__ the sorted asset URLs"]
     SW --> SCHK{"any __STARPI_ left?"}
     SCHK -->|"yes"| FAIL
     SCHK -->|"no"| WSW["write dist/sw.js"]
-    WSW --> MAN["write dist/build-manifest.json: version, entries<br/>mainJs, workerJs, ingestWorkerJs, wasmWorkerJs,<br/>ortWasm, appCss, then assets, public, precache"]
+    WSW --> MAN["write dist/build-manifest.json: version, entries<br/>mainJs, workerJs, ingestWorkerJs, wasmWorkerJs,<br/>ortWasm, appCss, supabaseJs, then assets,<br/>public, precache"]
     MAN --> DONE(["log built main JS, app CSS,<br/>version and duration"])
     FAIL(["main().catch prints the message,<br/>process.exit(1)"])
 ```
