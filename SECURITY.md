@@ -128,6 +128,11 @@ Out of scope:
   upstream URL is fixed (`https://integrate.api.nvidia.com/v1/chat/completions`) and redirects are
   not followed. The unit tests run the validation against the shared cases in
   `backend/test_fixtures/nvidia_validation.json`.
+  The route runs in the site pool handler (`api/_lib/pool/handler.js`): when the site sets
+  `STARPI_ACCESS_CODE`, the code is checked right after the rate limit (401), and a request that
+  passes the validation also counts against the per-IP daily budget (`STARPI_POOL_DAILY_PER_IP`,
+  default 200: 429). The relay, the other pools and the access code are described in
+  [docs/SERVER.md](docs/SERVER.md).
 - **Failover and time limits.** Each request starts at the next key and moves on while no stream
   has started: a key answered with 429 waits for its `Retry-After` (1 s to 5 minutes, 20 s when
   missing), a key rejected with 401 or 403 for 30 minutes, and a key that failed (408, 5xx, a

@@ -710,8 +710,12 @@ show them.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `NVIDIA_API_KEYS` | empty: the chat route answers `503 nvidia_not_configured` | The key pool, comma separated: `nvapi-<64 characters>` per key. On Vercel an environment variable of type **Sensitive** for **Production** and **Preview**. Entries of another shape are ignored and only counted in the log. |
-| `NVIDIA_RATE_LIMIT_PER_MINUTE` | `20` | Chat requests per client IP and minute, counted in each function instance |
-| `NVIDIA_ALLOWED_ORIGINS` | empty | Further origins, comma separated, whose pages may call the chat route; the site's own origin always may |
+| `NVIDIA_RATE_LIMIT_PER_MINUTE` | `20` | Chat requests per client IP and minute, counted in each function instance (the older name of `STARPI_POOL_RPM_PER_IP`, which wins when set) |
+| `NVIDIA_ALLOWED_ORIGINS` | empty | Further origins, comma separated, whose pages may call the chat route; the site's own origin always may (the older name of `STARPI_ALLOWED_ORIGINS`) |
+
+`POST /api/chat/nvidia` is the NVIDIA pool of the site's key pools. The relay for keys of your own,
+the further pools, `GET /api/health`, the shared variables and the optional access code are
+described in [docs/SERVER.md](docs/SERVER.md).
 
 Vercel reads environment variables when it creates a deployment: set them first, then deploy, and
 redeploy after a change. Each request starts at the next key and moves on to the following keys
