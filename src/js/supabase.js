@@ -345,6 +345,9 @@ function scheduleReconnect() {
     if (retryTimer !== null) clearTimeout(retryTimer);
     retryTimer = null;
     globalThis.removeEventListener?.('online', retry);
+    // The reset above can be undone: an attempt that finds the browser offline schedules this
+    // before connect() has stored its promise, which then replaces the null with the settled result.
+    connectPromise = null;
     void connect();
   };
   retryTimer = setTimeout(retry, delay);
