@@ -591,6 +591,18 @@ by the service worker; **Settings › Advanced › Delete downloaded model data*
 **Diagnostics** tab reports the WebGPU adapter and measures time to first token and decode speed on
 the loaded model.
 
+Every downloaded model file is checked before the model runs. [`src/js/models/model-lock.json`](src/js/models/model-lock.json)
+holds the SHA-256 and size of each file the runtimes store (WebLLM configs, tokenizers, parameter
+shards and model libraries; the processor and search models' files; the self-hosted ONNX Runtime
+binary). After a download, and before stored files are read, a worker hashes each Cache Storage
+entry of the model and compares it with the lock: a match is remembered in IndexedDB by URL and
+size, a mismatch is deleted and the model is not loaded. WebLLM downloads its presets at `main`,
+so a model may change upstream after a release; files without a pinned hash are refused as
+unverified until you choose **Load unverified (upstream changed)** for that model in
+**Settings › Trust › Model downloads**, which also shows the result of each check.
+`node scripts/models-lock.mjs` refreshes the lock from the model hosts, and `--check` reports a
+lock that no longer matches them.
+
 ### NVIDIA NIM cloud models (T4)
 
 These models run on NVIDIA's servers and are reached only through the site's proxy
