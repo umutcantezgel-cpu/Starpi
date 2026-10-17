@@ -654,9 +654,10 @@ export function createWorkspace(options = {}) {
   }
 
   /**
-   * Re-checks an answer receipt against original files. Originals kept on this device are added
-   * for every receipt document the given files do not cover, so a receipt of a stored document
-   * verifies without picking the file again.
+   * Re-checks an answer receipt against original files. When the user picks no files, the
+   * originals kept on this device stand in, so a receipt of a stored document verifies without
+   * picking the file again; picked files are checked on their own (a changed copy must not be
+   * covered up by the stored one).
    * @param {unknown} receipt
    * @param {File[]} given
    * @param {string | null} publicKeyText
@@ -677,16 +678,13 @@ export function createWorkspace(options = {}) {
     }
     /** @type {Array<{ name: string, bytes: Uint8Array }>} */
     const files = [];
-    /** @type {Set<string>} */
-    const covered = new Set();
-    for (const f of (Array.isArray(given) ? given : []).slice(0, MAX_VERIFY_FILES)) {
+    const picked = (Array.isArray(given) ? given : []).slice(0, MAX_VERIFY_FILES);
+    for (const f of picked) {
       if (f.size > MAX_FILE_BYTES) continue;
-      const bytes = new Uint8Array(await f.arrayBuffer());
-      files.push({ name: f.name, bytes });
-      if (globalThis.crypto?.subtle) covered.add(await sha256Hex(bytes));
+      files.push({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
     }
-    if (opts.stored !== false && store) {
-      const wanted = new Set(parsed.receipt.citations.map((c) => c.document?.fileSha256).filter((h) => typeof h === 'string' && !covered.has(h)));
+    if (opts.stored !== false && store && picked.length === 0) {
+      const wanted = new Set(parsed.receipt.citations.map((c) => c.document?.fileSha256).filter((h) => typeof h === 'string'));
       for (const doc of documents.values()) {
         if (!doc.stored || !doc.fileSha256 || !wanted.has(doc.fileSha256)) continue;
         const blob = await store.files.read(doc.docId);

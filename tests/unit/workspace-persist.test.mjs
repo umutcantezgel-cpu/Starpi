@@ -271,6 +271,10 @@ describe('persistent workspace', () => {
     // Without the stored originals the file is missing.
     const without = /** @type {import('../../src/js/core/receipt.js').VerifyReport} */ (await later.verifyReceipt(receipt, [], null, { stored: false }));
     assert.equal(without.citations[0].file, 'missing');
+    // A picked file is checked on its own: a changed copy is not covered up by the stored one.
+    const changed = file(PLAN.replace('480,000', '520,000'), 'plan.md');
+    const tampered = /** @type {import('../../src/js/core/receipt.js').VerifyReport} */ (await later.verifyReceipt(receipt, [changed], null));
+    assert.equal(tampered.citations[0].file, 'missing');
     assert.ok('invalid' in (await later.verifyReceipt({ schema: 'nope' }, [], null)));
   });
 });

@@ -346,7 +346,7 @@ export async function removeFromWorkspace(docId) {
 
 /**
  * Re-checks an answer receipt against original files, in the worker (extraction and chunking are
- * too heavy for the UI thread). Originals kept on this device stand in for files not given. Adds
+ * too heavy for the UI thread). Without files, the originals kept on this device stand in. Adds
  * nothing to the workspace.
  * @param {unknown} receipt  parsed JSON
  * @param {File[]} files

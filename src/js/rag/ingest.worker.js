@@ -24,6 +24,7 @@
 //   put-vectors { model, items: [{ docId, idx, vector: Float32Array }] } -> { added, total }
 //   stats     {}                                         -> WorkspaceState & { storedBytes }
 //   verify-receipt { receipt, files: File[], publicKey, stored? } -> VerifyReport | { invalid } | { invalidKey }
+//             (no files: the originals kept on this device stand in, unless stored is false)
 // Replies: { id, ok: true, result } | { id, ok: false, error: { code, message, details } }
 // Progress: { id, progress: { stage: 'reading' | 'parsing' | 'chunking' | 'indexing' | 'storing', done, total } }
 // OCR: { id, ocr: { seq, name, mime, width, height, purpose, bytes } } asks the main thread to read an image
