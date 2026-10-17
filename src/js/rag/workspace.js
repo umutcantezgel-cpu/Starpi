@@ -4,8 +4,9 @@
 // user chose "memory only"; this module keeps the document list for rendering and the workspace
 // state (stored or not, vectors). If the worker crashes, pending requests reject, and the next
 // request starts a new worker, which restores the stored documents.
-import { appDb, storeProfileName } from '../store/schema.js';
 import { searchWithQueryVector } from '../retrieval.js';
+import { requestPersistence } from '../store/quota.js';
+import { appDb, storeProfileName } from '../store/schema.js';
 
 /** Replaced at build time with the hashed worker URL (scripts/build.mjs). */
 const INGEST_WORKER_URL = '__STARPI_INGEST_WORKER_URL__';
@@ -254,6 +255,9 @@ export function onWorkspaceStatus(fn) {
  * @returns {Promise<WorkspaceDocument>}
  */
 export async function addToWorkspace(file, options = {}) {
+  // The first file kept on this device: ask the browser once to protect the site's data from
+  // eviction (store/quota.js asks at most once per page).
+  if (status.keep !== false) void requestPersistence();
   const doc = /** @type {WorkspaceDocument} */ (
     await request('ingest', { file, chunkSize: options.chunkSize, chunkOverlap: options.chunkOverlap, ocr: Boolean(options.ocr) }, { onProgress: options.onProgress, ocr: options.ocr })
   );

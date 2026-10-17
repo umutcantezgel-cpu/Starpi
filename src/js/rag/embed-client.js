@@ -11,7 +11,6 @@
 import { DEFAULT_EMBED_MODEL, EMBED_BATCH_SIZE, EMBED_CATALOG, embedModelId, embedSource, suggestSemanticSearch } from '../models/embed-catalog.js';
 import { detectMobile } from '../models/device.js';
 import { readLocalJson, writeLocalJson } from '../storage.js';
-import { matchKnowledgeVector } from '../supabase.js';
 import { QUERY_EMBED_TIMEOUT_MS, withinTimeout } from '../retrieval.js';
 import { embedCacheStatus, WasmEmbedClient } from '../wasm/client.js';
 import { onWorkspaceChange, pendingVectors, putVectors, setQueryEmbedder, setVectorModel, workspaceStatus } from './workspace.js';
@@ -80,6 +79,11 @@ export function semanticState() {
 export function onSemanticChange(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
+}
+
+/** Whether the user ever answered (turned it on, off, or chose "not now"). */
+export function semanticDecided() {
+  return readLocalJson(SEMANTIC_SETTING_KEY, null) !== null;
 }
 
 /** The catalog entry of the selected model. */
@@ -272,6 +276,8 @@ export async function libraryHitsByMeaning(query, limit) {
   if (!state.enabled || !semanticModel().library) return null;
   const vector = await withinTimeout(embedQuery(query), QUERY_EMBED_TIMEOUT_MS);
   if (!vector) return null;
+  // Loaded on use: the database client starts timers on import, which this module does not need.
+  const { matchKnowledgeVector } = await import('../supabase.js');
   const res = await matchKnowledgeVector(vector, limit);
   return res.ok ? res.data : null;
 }
