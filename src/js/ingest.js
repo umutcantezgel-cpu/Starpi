@@ -1,7 +1,9 @@
 // @ts-check
 // "Add knowledge" tab with two separate paths:
 //  1. On-device workspace: files are parsed, chunked and BM25-indexed in a Web Worker and kept in
-//     memory only. Nothing is uploaded; the chat searches them alongside the knowledge base.
+//     this browser's storage unless the user chooses memory only (asked at the first file). Nothing
+//     is uploaded; the chat searches them alongside the knowledge base, by meaning as well once
+//     semantic search on this device is turned on.
 //  2. Shared knowledge base: text is saved to Supabase (RLS-protected, owned by this browser session).
 import { invalidateKnownTitles } from './chat.js';
 import { LIMITS } from './config.js';
@@ -10,10 +12,27 @@ import { refreshIcons } from './icons.js';
 import { formatNumber, onLocaleChange, setText, t } from './i18n/index.js';
 import { describeDataError } from './library.js';
 import { citationButton, registerCitations } from './rag/citations.js';
-import { addToWorkspace, clearWorkspace, getDocumentText, listWorkspace, onWorkspaceChange, removeFromWorkspace, searchWorkspace } from './rag/workspace.js';
+import { initSemanticSearch, onSemanticChange, semanticDecided, semanticModel, semanticState, semanticSuggested, setSemanticSearch } from './rag/embed-client.js';
+import { IMAGE_EXTENSIONS } from './rag/formats/image.js';
+import { OCR_ACCEPT, ocrAvailable, ocrHook } from './rag/ocr-hook.js';
+import {
+  addToWorkspace,
+  clearWorkspace,
+  getDocumentText,
+  listWorkspace,
+  onWorkspaceChange,
+  onWorkspaceStatus,
+  removeFromWorkspace,
+  restoreWorkspace,
+  searchWorkspace,
+  setKeepFiles,
+  workspaceStatus,
+} from './rag/workspace.js';
 import { escapeHtml, renderMarkdown } from './render.js';
-import { assignCitations } from './retrieval.js';
+import { assignCitations, workspaceHit } from './retrieval.js';
 import { getConnection, insertDocument } from './supabase.js';
+import { formatBytes } from './bench/diagnostics.js';
+import { toast } from './ui/kit.js';
 
 const SOURCE_TYPES = new Set(['meeting_notes', 'file', 'chat', 'text']);
 const WORKSPACE_EXTENSIONS = /\.(pdf|txt|md|markdown|json|csv|log|docx|xlsx|pptx|html?|png|jpe?g|gif|webp)$/i;
@@ -97,6 +116,12 @@ function setWorkspaceReport(lines) {
   setHidden(el, !lines.length);
 }
 
+/** Text recognition for images: whether a vision model is set up (checked once, at boot). */
+let ocrReady = false;
+
+/** @param {string} name */
+const isImage = (name) => IMAGE_EXTENSIONS.has(name.split('.').pop()?.toLowerCase() ?? '');
+
 /** @param {File[]} files */
 async function addFiles(files) {
   /** @type {Array<[string, Record<string, string | number>]>} */
@@ -108,9 +133,17 @@ async function addFiles(files) {
       show(null);
       continue;
     }
+    // An image is read by a vision model only after the user agreed, for this one file.
+    const image = ocrReady && isImage(file.name);
+    if (image && !window.confirm(t('workspace.ocr_confirm', { name: file.name }))) {
+      report.push(['workspace.ocr_declined', { name: file.name }]);
+      show(null);
+      continue;
+    }
     show(['workspace.progress_parsing', { name: file.name, done: 0, total: 1 }]);
     try {
       const doc = await addToWorkspace(file, {
+        ocr: image ? ocrHook() : undefined,
         onProgress: (p) => show([`workspace.progress_${p.stage}`, { name: file.name, done: formatNumber(p.done), total: formatNumber(p.total) }]),
       });
       report.push(doc.duplicate ? ['workspace.duplicate', { name: doc.name }] : ['workspace.added', { name: doc.name, chunks: formatNumber(doc.chunks) }]);
@@ -136,18 +169,7 @@ async function runWorkspaceSearch() {
     setHtml(box, `<p class="text-xs text-slate-500" data-i18n="workspace.no_results">${escapeHtml(t('workspace.no_results'))}</p>`);
     return;
   }
-  const citations = assignCitations(
-    hits.map((h) => ({
-      documentId: h.docId,
-      documentTitle: h.docName,
-      heading: '',
-      content: h.text,
-      tags: [],
-      rank: h.score,
-      workspace: { docId: h.docId, chunkIndex: h.chunkIndex, start: h.start, end: h.end },
-    })),
-    { excerptChars: 100_000 },
-  );
+  const citations = assignCitations(hits.map(workspaceHit), { excerptChars: 100_000 });
   const scope = registerCitations(citations);
   const items = hits.map((hit, i) => {
     const li = document.createElement('li');
@@ -156,7 +178,10 @@ async function runWorkspaceSearch() {
     head.className = 'flex flex-wrap items-center justify-between gap-2';
     const score = document.createElement('span');
     score.className = 'badge badge-ok font-mono workspace-score';
-    setText(score, 'workspace.score', { score: formatNumber(hit.score, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) });
+    const digits = { minimumFractionDigits: 3, maximumFractionDigits: 3 };
+    // A hybrid hit shows its fused rank score; a keyword hit its BM25 score.
+    if (hit.similarity !== undefined) setText(score, 'workspace.score_hybrid', { score: formatNumber(hit.score, digits) });
+    else setText(score, 'workspace.score', { score: formatNumber(hit.score, digits) });
     head.append(scope ? citationButton(scope, i, 'badge') : document.createTextNode(hit.docName), score);
     const snippet = document.createElement('p');
     snippet.className = 'text-xs text-slate-600 leading-relaxed line-clamp-3';
@@ -187,6 +212,91 @@ async function copyToForm(docId) {
   } catch {
     setWorkspaceStatus('workspace.error_empty', { name: '' });
   }
+}
+
+/**
+ * The panel under the drop zone: the first-file question "Keep files on this device after
+ * reload?" (kept until answered), then where the files are kept with "Forget all", and, on
+ * devices that can run it well, the offer of semantic search on this device.
+ */
+function renderPersistence() {
+  const status = byId('workspaceStatus');
+  if (!status) return;
+  let panel = byId('workspacePersist');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'workspacePersist';
+    panel.className = 'space-y-2';
+    status.after(panel);
+  }
+  const docs = listWorkspace();
+  const ws = workspaceStatus();
+  /** @type {HTMLElement[]} */
+  const parts = [];
+  /**
+   * @param {string} key
+   * @param {Record<string, string | number>} [params]
+   * @param {Array<{ key: string, action: string, arg: string, primary?: boolean, danger?: boolean }>} [buttons]
+   * @param {string} [testId]
+   */
+  const row = (key, params, buttons = [], testId) => {
+    const box = document.createElement('div');
+    box.className = 'flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700';
+    if (testId) box.dataset.state = testId;
+    const text = document.createElement('p');
+    text.className = 'min-w-0 flex-1';
+    setText(text, key, params);
+    const actions = document.createElement('div');
+    actions.className = 'flex flex-wrap gap-1.5';
+    for (const b of buttons) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `btn ${b.primary ? 'btn-primary' : b.danger ? 'btn-danger' : 'btn-secondary'} py-1`;
+      btn.dataset.action = b.action;
+      btn.dataset.arg = b.arg;
+      setText(btn, b.key);
+      actions.append(btn);
+    }
+    box.append(text, actions);
+    parts.push(box);
+    return box;
+  };
+  if (docs.length && ws.ready && !ws.persistent) {
+    row('workspace.not_persistent', undefined, [], 'volatile');
+  } else if (docs.length && ws.ready && ws.keep === null) {
+    const box = row('workspace.keep_prompt', undefined, [
+      { key: 'workspace.keep_yes', action: 'workspace-keep', arg: 'yes', primary: true },
+      { key: 'workspace.keep_no', action: 'workspace-keep', arg: 'no' },
+    ], 'ask');
+    const hint = document.createElement('p');
+    hint.className = 'w-full text-[11px] text-slate-500';
+    setText(hint, 'workspace.keep_prompt_hint');
+    box.append(hint);
+  } else if (docs.length && ws.keep === false) {
+    row('workspace.memory_only', undefined, [{ key: 'workspace.keep_yes', action: 'workspace-keep', arg: 'yes' }], 'memory');
+  } else if (docs.length && ws.persistent) {
+    const bytes = docs.filter((d) => d.stored).reduce((sum, d) => sum + d.bytes, 0);
+    row('workspace.kept', { size: formatBytes(bytes, formatNumber) }, [{ key: 'workspace.forget_all', action: 'workspace-forget-all', arg: '', danger: true }], 'kept');
+  }
+  if (docs.length && !semanticState().enabled && !semanticDecided() && semanticSuggested()) {
+    row('workspace.semantic_offer', { size: formatNumber(semanticModel().approxDownloadMB) }, [
+      { key: 'workspace.semantic_turn_on', action: 'workspace-semantic', arg: 'on', primary: true },
+      { key: 'workspace.semantic_not_now', action: 'workspace-semantic', arg: 'off' },
+    ], 'semantic');
+  }
+  panel.replaceChildren(...parts);
+  setHidden(panel, parts.length === 0);
+}
+
+async function forgetAll() {
+  try {
+    await clearWorkspace();
+  } catch (err) {
+    console.warn('[starpi] forgetting the workspace failed', err);
+  }
+  byId('workspaceResults')?.replaceChildren();
+  setWorkspaceStatus('workspace.cleared');
+  toast('workspace.forgotten', { tone: 'ok' });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -271,10 +381,13 @@ export function initIngest() {
   onAction('workspace-to-form', (el) => copyToForm(el.dataset.arg ?? ''));
   onAction('workspace-clear', () => {
     if (!window.confirm(t('workspace.clear_confirm'))) return;
-    clearWorkspace();
+    void clearWorkspace().catch((err) => console.warn('[starpi] clearing the workspace failed', err));
     byId('workspaceResults')?.replaceChildren();
     setWorkspaceStatus('workspace.cleared');
   });
+  onAction('workspace-forget-all', () => forgetAll());
+  onAction('workspace-keep', (el) => void setKeepFiles(el.dataset.arg === 'yes').catch((err) => console.warn('[starpi] could not change where files are kept', err)));
+  onAction('workspace-semantic', (el) => void setSemanticSearch(el.dataset.arg === 'on').then(renderPersistence));
   onChange('workspace-files', (el) => {
     const input = /** @type {HTMLInputElement} */ (el);
     const files = [...(input.files ?? [])];
@@ -287,9 +400,24 @@ export function initIngest() {
     void runWorkspaceSearch();
   });
 
-  onWorkspaceChange(() => renderWorkspace());
+  onWorkspaceChange(() => {
+    renderWorkspace();
+    renderPersistence();
+  });
+  onWorkspaceStatus(() => renderPersistence());
+  onSemanticChange(() => renderPersistence());
   onLocaleChange(() => renderWorkspace());
   renderWorkspace();
+  renderPersistence();
+  // Files kept on this device come back after a reload; semantic search picks them up.
+  void restoreWorkspace()
+    .then(() => initSemanticSearch())
+    .catch((err) => console.warn('[starpi] restoring the workspace failed', err));
+  void ocrAvailable().then((ok) => {
+    ocrReady = ok;
+    const input = /** @type {HTMLInputElement | null} */ (byId('workspaceFileInput'));
+    if (ok && input && !input.accept.includes('.png')) input.accept = `${input.accept},${OCR_ACCEPT}`;
+  });
 
   const zone = byId('dropZone');
   const highlight = ['border-amber-500', 'bg-amber-50'];

@@ -1,131 +1,62 @@
 // @ts-check
 /// <reference lib="webworker" />
-// Ingestion worker: parsing, chunking and BM25 search run here so the UI thread stays responsive.
-// All documents live in this worker's memory only; terminating the worker discards them.
+// Ingestion worker: parsing, chunking, BM25 and vector search run here so the UI thread stays
+// responsive. The workspace (rag/workspace-core.js) keeps its documents in the app database unless
+// the user chose "memory only"; on start it rebuilds the index from the stored chunks.
 //
 // Protocol (main -> worker): { id, type, payload }
-//   ingest   { file: File, chunkSize?, chunkOverlap? }  -> DocumentInfo       (progress events on the way;
-//            the same file again returns the existing document with duplicate: true)
-//   search   { query, topK? }                             -> SearchResult[]
-//   context  { docId, start, end, pad? }                  -> { before, match, after, start, end, length }
-//   head     { docId, count? }                            -> SearchResult[] (first chunks, score 0)
-//   text     { docId }                                    -> { name, text }
-//   remove   { docId }                                    -> { removed }
-//   clear    {}                                           -> { cleared: true }
-//   verify-receipt { receipt, files: File[], publicKey }  -> VerifyReport | { invalid: { error, path } } | { invalidKey }
+//   init      { dbName, model? }                         -> WorkspaceState (sent first; the database name of the build)
+//   ingest    { file: File, chunkSize?, chunkOverlap?, ocr? } -> DocumentInfo (progress events on the way;
+//             the same file again returns the existing document with duplicate: true; with ocr: true an
+//             image is read through the main thread, see "OCR" below)
+//   search    { query, topK? }                           -> SearchResult[]   (BM25)
+//   searchHybrid { query, vector?, topK? }               -> SearchResult[]   (BM25 top 50 + cosine top 50, RRF k=60;
+//             BM25 alone without a vector or without vectors of the active model)
+//   probe     { question, k? }                           -> WorkspaceProbe
+//   context   { docId, start, end, pad? }                -> { before, match, after, start, end, length }
+//   head      { docId, count? }                          -> SearchResult[] (first chunks, score 0)
+//   text      { docId }                                  -> { name, text }
+//   remove    { docId }                                  -> { removed }
+//   clear     {}                                         -> { cleared: true }   (memory and this device)
+//   keep      { keep: boolean }                          -> { keep, stored, persistent }
+//   model     { model: { id, dim } | null }              -> { vectors, model }
+//   pending-vectors { limit? }                           -> Array<{ docId, idx, text }>
+//   put-vectors { model, items: [{ docId, idx, vector: Float32Array }] } -> { added, total }
+//   stats     {}                                         -> WorkspaceState & { storedBytes }
+//   verify-receipt { receipt, files: File[], publicKey, stored? } -> VerifyReport | { invalid } | { invalidKey }
+//             (no files: the originals kept on this device stand in, unless stored is false)
 // Replies: { id, ok: true, result } | { id, ok: false, error: { code, message, details } }
-// Progress: { id, progress: { stage: 'reading' | 'parsing' | 'chunking' | 'indexing', done, total } }
-import { sha256Hex, validateReceipt, verifyReceipt } from '../core/receipt.js';
-import { importPublicKey } from '../core/signature.js';
-import { BM25Index } from './bm25.js';
-import { CHUNKER, chunkText, DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE } from './chunker.js';
-import { EXTRACTOR, EXTRACTOR_COMPATIBLE, extractText, MAX_FILE_BYTES, ParseError } from './parser.js';
+// Progress: { id, progress: { stage: 'reading' | 'parsing' | 'chunking' | 'indexing' | 'storing', done, total } }
+// OCR: { id, ocr: { seq, name, mime, width, height, purpose, bytes } } asks the main thread to read an image
+//   the user agreed to have read; it answers { type: 'ocr-reply', seq, text, provider?, model? } or
+//   { type: 'ocr-reply', seq, error }. Provider and model go into the document's extractor (receipts
+//   mark text recognised this way as not reproducible).
+import { appDb, configureStore } from '../store/schema.js';
+import { ParseError } from './parser.js';
+import { createWorkspace, WorkspaceCoreError } from './workspace-core.js';
+
+/** @typedef {import('./workspace-core.js').WorkspaceOcrHook} WorkspaceOcrHook */
+
+const workspace = createWorkspace({ openDb: () => appDb() });
+
+let ocrSeq = 0;
+/** @type {Map<number, { resolve: (reply: { text: string, provider: string | null, model: string | null }) => void, reject: (err: Error) => void }>} */
+const ocrWaiting = new Map();
 
 /**
- * @typedef {object} DocumentInfo
- * @property {string} docId
- * @property {string} name
- * @property {string} kind
- * @property {number} chars
- * @property {number} chunks
- * @property {number | null} pages
- * @property {number} bytes
- * @property {string | null} fileSha256  SHA-256 of the file bytes, null where WebCrypto is unavailable
- * @property {string} textSha256
- * @property {{ id: string, version: number, pdfjs: string | null }} extractor
- * @property {{ id: string, version: number, size: number, overlap: number }} chunker
+ * An OCR hook that hands the image to the main thread (where the AI layer runs) and waits.
+ * @param {number} id  the ingest request
+ * @returns {WorkspaceOcrHook}
  */
-
-const MAX_VERIFY_FILES = 20;
-
-const index = new BM25Index();
-/** @type {Map<string, DocumentInfo & { text: string }>} */
-const documents = new Map();
-// Document ids must stay unique across worker instances: Clear workspace and a crash replace the
-// worker, and an earlier citation must never resolve to a file added afterwards.
-const instanceId = crypto.randomUUID();
-let nextId = 1;
-
-/**
- * @param {number} id
- * @param {string} stage
- * @param {number} done
- * @param {number} total
- */
-function progress(id, stage, done, total) {
-  self.postMessage({ id, progress: { stage, done, total } });
-}
-
-/**
- * @param {number} id
- * @param {{ file: File, chunkSize?: number, chunkOverlap?: number }} payload
- * @returns {Promise<DocumentInfo & { duplicate?: boolean }>}
- */
-async function ingest(id, payload) {
-  const { file } = payload;
-  // The fingerprint is taken before parsing: pdf.js takes ownership of (detaches) the buffer it reads.
-  progress(id, 'reading', 0, 1);
-  const fileSha256 = globalThis.crypto?.subtle && file.size <= MAX_FILE_BYTES ? await sha256Hex(await file.arrayBuffer()) : null;
-  const size = payload.chunkSize ?? DEFAULT_CHUNK_SIZE;
-  const overlap = payload.chunkOverlap ?? DEFAULT_CHUNK_OVERLAP;
-  // The same file added again is not indexed twice: its chunks would crowd out other results.
-  for (const doc of documents.values()) {
-    if (fileSha256 && doc.fileSha256 === fileSha256 && doc.chunker.size === size && doc.chunker.overlap === overlap) {
-      const info = /** @type {DocumentInfo & { text?: string, duplicate?: boolean }} */ ({ ...doc, duplicate: true });
-      delete info.text;
-      return info;
-    }
-  }
-  progress(id, 'parsing', 0, 1);
-  const { text, kind, pages, pdfjs } = await extractText(file, (page, total) => progress(id, 'parsing', page, total));
-  const textSha256 = await sha256Hex(text);
-  progress(id, 'chunking', 0, 1);
-  const name = uniqueName(file.name);
-  const chunks = chunkText(text, { chunkSize: size, chunkOverlap: overlap });
-  const docId = `ws-${instanceId}-${nextId++}`;
-  progress(id, 'indexing', 0, chunks.length);
-  index.add(chunks.map((c) => ({ docId, docName: name, chunkIndex: c.index, start: c.start, end: c.end, text: c.text })));
-  /** @type {DocumentInfo} */
-  const info = {
-    docId,
-    name,
-    kind,
-    chars: text.length,
-    chunks: chunks.length,
-    pages,
-    bytes: file.size,
-    fileSha256,
-    textSha256,
-    extractor: { ...EXTRACTOR, pdfjs },
-    chunker: { ...CHUNKER, size, overlap },
-  };
-  documents.set(docId, { ...info, text });
-  progress(id, 'indexing', chunks.length, chunks.length);
-  return info;
-}
-
-/**
- * A different file with the name of one already in the workspace gets a numbered name
- * ("report (2).pdf"), so every citation label names exactly one document.
- * @param {string} name
- */
-function uniqueName(name) {
-  const taken = new Set([...documents.values()].map((d) => d.name));
-  if (!taken.has(name)) return name;
-  const dot = name.lastIndexOf('.');
-  const stem = dot > 0 ? name.slice(0, dot) : name;
-  const ext = dot > 0 ? name.slice(dot) : '';
-  for (let n = 2; ; n += 1) {
-    const candidate = `${stem} (${n})${ext}`;
-    if (!taken.has(candidate)) return candidate;
-  }
-}
-
-/** @param {string} docId */
-function requireDoc(docId) {
-  const doc = documents.get(docId);
-  if (!doc) throw new ParseError('empty', 'Document is no longer in the workspace');
-  return doc;
+function ocrThroughMain(id) {
+  return (request) =>
+    new Promise((resolve, reject) => {
+      const seq = ++ocrSeq;
+      ocrWaiting.set(seq, { resolve, reject });
+      const { bytes, ...info } = request;
+      const copy = bytes.slice();
+      self.postMessage({ id, ocr: { seq, ...info, bytes: copy } }, [copy.buffer]);
+    });
 }
 
 /**
@@ -135,101 +66,74 @@ function requireDoc(docId) {
  */
 async function handle(type, payload, id) {
   switch (type) {
+    case 'init':
+      if (typeof payload.dbName === 'string' && payload.dbName) configureStore({ name: payload.dbName });
+      return workspace.init({ model: payload.model ?? null });
     case 'ingest':
-      return ingest(id, payload);
-    case 'search': {
-      const topK = Math.min(Math.max(Number(payload.topK) || 5, 1), 50);
-      return index.search(String(payload.query ?? ''), topK).map((hit) => ({
-        docId: hit.chunk.docId,
-        docName: hit.chunk.docName,
-        chunkIndex: hit.chunk.chunkIndex,
-        start: hit.chunk.start,
-        end: hit.chunk.end,
-        text: hit.chunk.text,
-        score: hit.score,
-        matchedTerms: hit.matchedTerms,
-      }));
-    }
-    case 'context': {
-      const doc = requireDoc(payload.docId);
-      const start = Math.max(0, Math.min(Number(payload.start) || 0, doc.text.length));
-      const end = Math.max(start, Math.min(Number(payload.end) || 0, doc.text.length));
-      const pad = Math.min(Math.max(Number(payload.pad) || 300, 0), 2_000);
-      const from = Math.max(0, start - pad);
-      const to = Math.min(doc.text.length, end + pad);
-      return {
-        before: doc.text.slice(from, start),
-        match: doc.text.slice(start, end),
-        after: doc.text.slice(end, to),
-        start,
-        end,
-        length: doc.text.length,
-      };
-    }
-    case 'head': {
-      const count = Math.min(Math.max(Number(payload.count) || 3, 1), 10);
-      return index.entries
-        .filter((e) => e.docId === payload.docId)
-        .slice(0, count)
-        .map((e) => ({ docId: e.docId, docName: e.docName, chunkIndex: e.chunkIndex, start: e.start, end: e.end, text: e.text, score: 0, matchedTerms: [] }));
-    }
-    case 'text': {
-      const doc = requireDoc(payload.docId);
-      return { name: doc.name, text: doc.text };
-    }
-    case 'remove': {
-      const removed = index.remove(payload.docId);
-      documents.delete(payload.docId);
-      return { removed };
-    }
+      return workspace.ingest(payload.file, {
+        chunkSize: payload.chunkSize,
+        chunkOverlap: payload.chunkOverlap,
+        ocr: payload.ocr === true ? ocrThroughMain(id) : undefined,
+        onProgress: (p) => self.postMessage({ id, progress: p }),
+      });
+    case 'search':
+      await workspace.init();
+      return workspace.search(payload.query, payload.topK);
+    case 'searchHybrid':
+      await workspace.init();
+      return workspace.searchHybrid(payload.query, payload.vector ?? null, payload.topK);
+    case 'probe':
+      await workspace.init();
+      return workspace.probe(payload.question, payload.k);
+    case 'context':
+      await workspace.init();
+      return workspace.context(payload.docId, payload.start, payload.end, payload.pad);
+    case 'head':
+      await workspace.init();
+      return workspace.head(payload.docId, payload.count);
+    case 'text':
+      await workspace.init();
+      return workspace.text(payload.docId);
+    case 'remove':
+      return workspace.remove(payload.docId);
     case 'clear':
-      index.clear();
-      documents.clear();
-      return { cleared: true };
-    case 'verify-receipt': {
-      const parsed = validateReceipt(payload.receipt);
-      if (!parsed.ok) return { invalid: { error: parsed.error, path: parsed.path } };
-      /** @type {CryptoKey | undefined} */
-      let publicKey;
-      if (typeof payload.publicKey === 'string') {
-        try {
-          publicKey = await importPublicKey(payload.publicKey);
-        } catch (err) {
-          return { invalidKey: err instanceof Error ? err.message : String(err) };
-        }
-      }
-      /** @type {File[]} */
-      const given = Array.isArray(payload.files) ? payload.files.slice(0, MAX_VERIFY_FILES) : [];
-      const files = [];
-      for (const f of given) {
-        if (f.size <= MAX_FILE_BYTES) files.push({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) });
-      }
-      return verifyReceipt(
-        parsed.receipt,
-        files,
-        {
-          extractor: EXTRACTOR,
-          compatible: EXTRACTOR_COMPATIBLE,
-          extract: async (bytes, name) => {
-            const r = await extractText(new File([/** @type {Uint8Array<ArrayBuffer>} */ (bytes)], name));
-            return { text: r.text, pdfjs: r.pdfjs };
-          },
-        },
-        { publicKey },
-      );
-    }
+      return workspace.clear();
+    case 'keep':
+      return workspace.setKeep(payload.keep === true);
+    case 'model':
+      return workspace.setModel(payload.model && typeof payload.model.id === 'string' ? { id: payload.model.id, dim: Number(payload.model.dim) } : null);
+    case 'pending-vectors':
+      await workspace.init();
+      return workspace.pendingVectors(payload.limit);
+    case 'put-vectors':
+      return workspace.putVectors(String(payload.model ?? ''), payload.items);
+    case 'stats':
+      return workspace.stats();
+    case 'verify-receipt':
+      return workspace.verifyReceipt(payload.receipt, payload.files, typeof payload.publicKey === 'string' ? payload.publicKey : null, { stored: payload.stored !== false });
     default:
       throw new ParseError('unsupported_type', `Unknown request: ${type}`);
   }
 }
 
 self.addEventListener('message', (event) => {
-  const { id, type, payload } = /** @type {{ id: number, type: string, payload: any }} */ (event.data ?? {});
+  const data = /** @type {{ id: number, type: string, payload: any, seq?: number, text?: unknown, provider?: unknown, model?: unknown, error?: unknown }} */ (event.data ?? {});
+  if (data.type === 'ocr-reply') {
+    const waiting = ocrWaiting.get(Number(data.seq));
+    if (!waiting) return;
+    ocrWaiting.delete(Number(data.seq));
+    const named = (/** @type {unknown} */ v) => (typeof v === 'string' && v ? v : null);
+    if (typeof data.text === 'string') waiting.resolve({ text: data.text, provider: named(data.provider), model: named(data.model) });
+    else waiting.reject(new ParseError('needs_ocr', typeof data.error === 'string' ? data.error : 'Text recognition failed'));
+    return;
+  }
+  const { id, type, payload } = data;
   handle(type, payload ?? {}, id).then(
     (result) => self.postMessage({ id, ok: true, result }),
     (err) => {
-      const code = err instanceof ParseError ? err.code : 'internal';
-      const details = err instanceof ParseError ? err.details : {};
+      const known = err instanceof ParseError || err instanceof WorkspaceCoreError;
+      const code = known ? err.code : 'internal';
+      const details = known ? err.details : {};
       self.postMessage({ id, ok: false, error: { code, message: err instanceof Error ? err.message : String(err), details } });
     },
   );

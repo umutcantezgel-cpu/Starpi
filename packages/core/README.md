@@ -396,6 +396,11 @@ single characters, the same way for documents and queries.
   all, from the context text actually sent.
 - `canonicalJson`: RFC 8785 compatible serialization for the values receipts contain.
 - `BM25Index`, `tokenize`, `STOPWORDS_EN`, `STOPWORDS_DE`: Okapi BM25 (k1 = 1.2, b = 0.75).
+- `fuseRrf(rankings, { key, k, limit })`: reciprocal rank fusion, score = Σ 1 / (k + rank) with
+  k = 60 (`RRF_K`) by default. `hybridSearch(index, vectors, question, vector, k)` fuses the BM25
+  top 50 (`HYBRID_DEPTH`) with the cosine top 50 of a `VectorIndex` (int8 vectors from
+  `quantizeInt8`); `probeIndex(index, question)` gives the normalised best BM25 score and the share
+  of the question's terms in the best chunk.
 - `sentenceSpans`, `splitSentences`: deterministic sentence splitting with offsets.
 - `languagePack`, `LANGUAGES`, `registerLanguage`: the English and German language packs the
   checks and the gate read; a registered pack is validated, frozen and read from then on.

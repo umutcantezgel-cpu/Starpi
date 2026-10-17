@@ -380,8 +380,40 @@ export async function searchKnowledge(query, limit = LIMITS.retrievalRows) {
 }
 
 /**
- * Inserts a document and its single Markdown section. Embeddings are left NULL; the backend
- * computes real vectors (the browser never writes placeholder embeddings).
+ * Ranks the shared library by meaning through the `match_knowledge_vector_384` RPC (optional
+ * migration 20261101000000_embedding_384.sql; RLS applies, SECURITY INVOKER). Only the vector goes
+ * to the server, never the question text: an on-device "query: " embedding of
+ * multilingual-e5-small, the model and revision the library publisher embeds the sections with.
+ * Sections without a vector are not ranked. Fails with 'missing_function' without the migration.
+ * @param {ArrayLike<number>} vector  384 values, L2-normalised
+ * @param {number} [limit]
+ * @returns {Promise<Result<KnowledgeHit[]>>}
+ */
+export async function matchKnowledgeVector(vector, limit = LIMITS.retrievalRows) {
+  if (vector.length !== 384) return { ok: false, error: { kind: 'unknown', message: `A query vector has 384 values, not ${vector.length}` } };
+  // Six decimals keep the request small and change no ranking.
+  const embedding = Array.from(vector, (v) => Math.round(v * 1e6) / 1e6);
+  const res = await run(sb.rpc('match_knowledge_vector_384', { query_embedding: embedding, match_count: Math.min(Math.max(limit, 1), 20) }));
+  if (!res.ok) return res;
+  const rows = /** @type {Array<Record<string, unknown>>} */ (Array.isArray(res.data) ? res.data : []);
+  return {
+    ok: true,
+    data: rows.map((r) => ({
+      documentId: /** @type {string | null} */ (r.document_id ?? null),
+      documentTitle: String(r.document_title ?? ''),
+      heading: String(r.heading ?? ''),
+      content: String(r.markdown_content ?? ''),
+      tags: /** @type {string[]} */ (Array.isArray(r.tags) ? r.tags : []),
+      rank: typeof r.similarity === 'number' ? Math.round(r.similarity * 1000) / 1000 : null,
+    })),
+  };
+}
+
+/**
+ * Inserts a document and its single Markdown section. Both vector columns stay NULL: the browser
+ * never writes embeddings. Only sections published with tools/library-publisher get an
+ * embedding_384, so a document saved here is found by full-text search (search_knowledge) and
+ * not by match_knowledge_vector_384.
  * @param {{ title: string, sourceType: string, rawContent: string, summary: string, tags: string[], markdown: string, heading: string }} input
  * @returns {Promise<Result<{ id: string }>>}
  */

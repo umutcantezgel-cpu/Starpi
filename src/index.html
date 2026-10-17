@@ -428,10 +428,10 @@
             </h3>
             <span class="badge badge-ok">
               <i data-lucide="lock" class="w-3 h-3"></i>
-              <span data-i18n="workspace.badge">Private · memory only</span>
+              <span data-i18n="workspace.badge">Private · on this device</span>
             </span>
           </div>
-          <p class="text-[13px] text-slate-600" data-i18n="workspace.description">Files are parsed, split into chunks and indexed with BM25 in a background worker on this device, and removed when you reload the page. Nothing is uploaded or synced. Only when a model outside this device answers (the cloud assistant, NVIDIA NIM cloud through Starpi's server, or your own server) does file text go along with the question: in source mode the matching excerpts, in free chat the text of a file attached to that question (up to about 12,000 characters). Answers cite excerpts as [Doc: file, Chunk: n].</p>
+          <p class="text-[13px] text-slate-600" data-i18n="workspace.description">Files are parsed, split into chunks and indexed with BM25 in a background worker on this device, and kept in this browser's storage unless you choose memory only. Nothing is uploaded or synced. Only when a model outside this device answers (the cloud assistant, NVIDIA NIM cloud through Starpi's server, or your own server) does file text go along with the question: in source mode the matching excerpts, in free chat the text of a file attached to that question (up to about 12,000 characters). Answers cite excerpts as [Doc: file, Chunk: n].</p>
 
           <div id="dropZone" role="button" tabindex="0" data-action="pick-workspace-files" class="border-2 border-dashed border-slate-300 hover:border-amber-400 rounded-xl p-6 text-center transition cursor-pointer bg-slate-50/60 hover:bg-amber-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400" data-i18n-aria="workspace.drop_label" aria-label="Add files to the on-device workspace">
             <i data-lucide="upload" class="w-6 h-6 mx-auto mb-2 text-slate-500"></i>
@@ -680,7 +680,7 @@
             </div>
             <div class="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-slate-50 border border-slate-200">
               <dt class="text-slate-600" data-i18n="settings.search">Search</dt>
-              <dd class="font-medium text-slate-900 text-right" data-i18n="settings.search_value">BM25 on device · Postgres full-text · pgvector (backend)</dd>
+              <dd class="font-medium text-slate-900 text-right" data-i18n="settings.search_value">BM25 and optional vectors on device · Postgres full-text and vectors (shared library)</dd>
             </div>
             <div class="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-slate-50 border border-slate-200">
               <dt class="text-slate-600" data-i18n="settings.chat_history">Chat history</dt>
@@ -692,6 +692,7 @@
           </dl>
         </div>
 
+        <div id="workspaceSettings" class="empty:hidden" data-mount></div>
         <div id="memorySettings" class="empty:hidden" data-mount></div>
         <div id="trustSettings" class="empty:hidden" data-mount></div>
         <div id="voiceSettings" class="empty:hidden" data-mount></div>

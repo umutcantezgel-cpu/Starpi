@@ -1,6 +1,7 @@
 // @ts-check
 // Pure retrieval helpers: local keyword ranking (used in local mode so questions never leave the
-// device, and as a fallback when the search RPC is unavailable) and context assembly for prompts.
+// device, and as a fallback when the search RPC is unavailable), the choice between hybrid and
+// keyword search of the workspace, and context assembly for prompts.
 
 import { citationLabel, fenceSafe, labelName } from './core/labels.js';
 import { safeSlice } from './core/sentences.js';
@@ -9,6 +10,57 @@ export { CITATION_PATTERN, citationLabel } from './core/labels.js';
 
 /** @typedef {import('./supabase.js').KnowledgeHit} KnowledgeHit */
 /** @typedef {import('./rag/workspace.js').WorkspaceHit} WorkspaceHit */
+
+/** How long a search waits for the question's vector before it ranks by keywords alone. */
+export const QUERY_EMBED_TIMEOUT_MS = 2_000;
+
+/**
+ * The value of a promise, or null when it rejects or takes longer than `ms`.
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} ms
+ * @returns {Promise<T | null>}
+ */
+export function withinTimeout(promise, ms) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(null);
+      },
+    );
+  });
+}
+
+/**
+ * Workspace search as the chat runs it: hybrid when the workspace holds vectors and the question's
+ * vector arrives within the timeout, keyword search (BM25) otherwise. The question is embedded on
+ * this device; a slow or missing model never holds an answer back by more than the timeout.
+ * @template H
+ * @param {string} query
+ * @param {number} topK
+ * @param {{ hasVectors: () => boolean, embed: ((text: string) => Promise<Float32Array | null>) | null, search: (query: string, topK: number, vector: Float32Array | null) => Promise<H[]>, timeoutMs?: number }} deps
+ * @returns {Promise<H[]>}
+ */
+export async function searchWithQueryVector(query, topK, deps) {
+  const vector = deps.embed && deps.hasVectors() ? await withinTimeout(deps.embed(query), deps.timeoutMs ?? QUERY_EMBED_TIMEOUT_MS) : null;
+  return deps.search(query, topK, vector instanceof Float32Array && vector.length > 0 ? vector : null);
+}
+
+/**
+ * Runs of two or more angle brackets in excerpt text, the shape of the markers around an excerpt.
+ * Each bracket becomes its single-guillemet look-alike, so the text keeps its length and line
+ * breaks but can neither close its excerpt early nor forge another one.
+ * @param {string} text
+ */
+export function defuseFences(text) {
+  return text.replace(/<{2,}|>{2,}/g, (run) => (run[0] === '<' ? '\u2039' : '\u203a').repeat(run.length));
+}
 
 /**
  * A workspace search hit in the shape of a knowledge-base hit, so both flow through one pipeline.
@@ -22,7 +74,8 @@ export function workspaceHit(h) {
     heading: '',
     content: h.text,
     tags: [],
-    rank: h.score,
+    // The BM25 score where there is one (a hybrid hit found by meaning alone has none).
+    rank: h.keywordScore !== undefined ? h.keywordScore : h.score,
     workspace: { docId: h.docId, chunkIndex: h.chunkIndex, start: h.start, end: h.end },
   };
 }
@@ -160,14 +213,15 @@ export function buildContext(citations, limits) {
   const blocks = [];
   let used = 0;
   citations.forEach((c, i) => {
-    // A heading comes from the document: it must not end the marker early or forge another one.
+    // Heading and text come from the document: they must not end the marker early or forge another one.
     const heading = c.heading ? ` · ${fenceSafe(c.heading)}` : '';
+    const body = defuseFences(c.text);
     const open = `<<<EXCERPT ${i + 1} ${c.label}${heading}>>>\n`;
     const close = `\n<<<END EXCERPT ${i + 1}>>>`;
     const separator = blocks.length ? 2 : 0;
     const room = limits.maxChars - used - separator - open.length - close.length;
-    if (room < Math.min(MIN_EXCERPT_CHARS, c.text.length)) return;
-    const text = c.text.length <= room ? c.text : `${safeSlice(c.text, room - 1).trimEnd()}…`;
+    if (room < Math.min(MIN_EXCERPT_CHARS, body.length)) return;
+    const text = body.length <= room ? body : `${safeSlice(body, room - 1).trimEnd()}…`;
     blocks.push(`${open}${text}${close}`);
     used += separator + open.length + text.length + close.length;
   });
