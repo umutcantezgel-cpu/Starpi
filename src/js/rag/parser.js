@@ -25,6 +25,13 @@ export const MAX_PDF_PAGES = 2_000;
  */
 export const EXTRACTOR = Object.freeze({ id: 'starpi-extract', version: 2 });
 
+/**
+ * Earlier extractor versions whose text equals that of the current version, by document kind. The
+ * receipt verifier treats a text recorded with such a version as made by the current rules.
+ * @type {Readonly<Record<number, readonly string[]>>}
+ */
+export const EXTRACTOR_COMPATIBLE = Object.freeze({ 1: Object.freeze(['txt', 'md', 'csv', 'json', 'log', 'pdf']) });
+
 export const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'csv', 'log']);
 export const OFFICE_EXTENSIONS = new Set(['docx', 'xlsx', 'pptx']);
 export const HTML_EXTENSIONS = new Set(['html', 'htm']);

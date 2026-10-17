@@ -145,7 +145,7 @@
       "required": ["name", "kind", "bytes", "fileSha256", "textSha256", "textChars", "pages", "extractor", "chunker"],
       "properties": {
         "name": { "type": "string", "maxLength": 600 },
-        "kind": { "type": "string", "maxLength": 20, "description": "pdf, md, txt, csv, json or log" },
+        "kind": { "type": "string", "maxLength": 20, "description": "pdf, md, txt, csv, json or log; with starpi-extract 2 also docx, xlsx, pptx and html" },
         "bytes": { "type": "integer", "minimum": 0 },
         "fileSha256": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/sha256" }] },
         "textSha256": { "$ref": "#/$defs/sha256" },

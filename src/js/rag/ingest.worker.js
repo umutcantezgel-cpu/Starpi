@@ -19,7 +19,7 @@ import { sha256Hex, validateReceipt, verifyReceipt } from '../core/receipt.js';
 import { importPublicKey } from '../core/signature.js';
 import { BM25Index } from './bm25.js';
 import { CHUNKER, chunkText, DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE } from './chunker.js';
-import { EXTRACTOR, extractText, MAX_FILE_BYTES, ParseError } from './parser.js';
+import { EXTRACTOR, EXTRACTOR_COMPATIBLE, extractText, MAX_FILE_BYTES, ParseError } from './parser.js';
 
 /**
  * @typedef {object} DocumentInfo
@@ -209,6 +209,7 @@ async function handle(type, payload, id) {
         files,
         {
           extractor: EXTRACTOR,
+          compatible: EXTRACTOR_COMPATIBLE,
           extract: async (bytes, name) => {
             const r = await extractText(new File([/** @type {Uint8Array<ArrayBuffer>} */ (bytes)], name));
             return { text: r.text, pdfjs: r.pdfjs };
