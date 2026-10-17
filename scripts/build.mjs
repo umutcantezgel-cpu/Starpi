@@ -11,12 +11,14 @@
 // Optional sources join the build once they exist: the lazy rendering extras
 // (src/js/render-extras.js), the blocking theme script (src/js/theme-boot.js, a classic script in
 // <head> so the first paint has the right theme) and the scripts of the sandboxed frames
-// (public/render-frame.js, public/grounding-frame.js, bundled into one classic file each).
+// (public/render-frame.js, public/grounding-frame.js, bundled into one classic file each). Packages
+// that scripts/license-allowlist.json lists as excluded are replaced in every bundle, and every
+// package a frame script bundles must carry a license that file allows.
 //
 // Usage: node scripts/build.mjs [--watch] [--serve]
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +27,7 @@ import { buildVersion } from './lib/build-version.mjs';
 import { BUILD_PROFILES, CORE_PROFILES, DEFAULT_PROFILE, headersDigest, resolveHeaderRules } from './lib/headers.mjs';
 import { injectThemeBoot } from './lib/html.mjs';
 import { assertPublicKey } from './lib/supabase-key.mjs';
+import { evaluateLicense, manifestLicense } from './license-gate.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(ROOT, 'src');
@@ -68,8 +71,12 @@ const HEADERS_DIGEST = headersDigest(HEADER_RULES);
 /** @param {string} file relative to the repository root */
 const present = (file) => existsSync(path.join(ROOT, file));
 
-/** Packages the license gate skips because the browser build never bundles them (scripts/license-allowlist.json). */
-const NOT_SHIPPED = Object.keys(JSON.parse(await readFile(path.join(ROOT, 'scripts', 'license-allowlist.json'), 'utf8')).notShipped ?? {});
+/** The license policy (scripts/license-allowlist.json). */
+const LICENSE_POLICY = JSON.parse(await readFile(path.join(ROOT, 'scripts', 'license-allowlist.json'), 'utf8'));
+/** Packages the license gate skips because the browser build never bundles them. */
+const NOT_SHIPPED = Object.keys(LICENSE_POLICY.notShipped ?? {});
+/** Packages no bundle may contain although a bundled library imports them ("excluded"). */
+const EXCLUDED = Object.keys(LICENSE_POLICY.excluded ?? {});
 
 /**
  * Fails when a bundle contains code of a package the license gate assumes is never shipped.
@@ -80,6 +87,48 @@ function assertNotShipped(metafile) {
     const name = NOT_SHIPPED.find((pkg) => input.includes(`node_modules/${pkg}/`));
     if (name) throw new Error(`${input} is bundled, but scripts/license-allowlist.json lists ${name} as never shipped`);
   }
+}
+
+/**
+ * Replaces every excluded package with a module that throws when it is evaluated, so none of its
+ * code ships. The libraries that import them reach them through lazy imports only (mermaid loads
+ * its ELK layout on demand), so the failure surfaces where that optional part is asked for.
+ * @type {import('esbuild').Plugin}
+ */
+const excludedPackages = {
+  name: 'starpi-excluded-packages',
+  setup(build) {
+    if (EXCLUDED.length === 0) return;
+    const names = EXCLUDED.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    build.onResolve({ filter: new RegExp(`^(?:${names.join('|')})(?:/|$)`) }, (args) => ({ path: args.path, namespace: 'starpi-excluded' }));
+    build.onLoad({ filter: /.*/, namespace: 'starpi-excluded' }, (args) => ({
+      contents: `throw new Error(${JSON.stringify(`${args.path} is not part of this build`)});`,
+      loader: 'js',
+    }));
+  },
+};
+
+/**
+ * Fails unless every package a frame script bundles carries a license the policy allows (declared,
+ * or recorded under "packages" after a review). A frame may bundle devDependencies (the render frame's diagram library), which the license gate, reading
+ * the production tree only, never sees.
+ * @param {import('esbuild').Metafile} metafile
+ * @param {string} name the frame script
+ */
+function assertFrameLicenses(metafile, name) {
+  const packages = new Set();
+  for (const input of Object.keys(metafile.inputs)) {
+    const dir = /^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(input)?.[1];
+    if (dir) packages.add(path.resolve(ROOT, dir));
+  }
+  const problems = [];
+  for (const dir of packages) {
+    const manifest = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const license = LICENSE_POLICY.packages?.[`${manifest.name}@${manifest.version}`]?.license ?? manifestLicense(manifest);
+    const { verdict, reason } = evaluateLicense(license, LICENSE_POLICY);
+    if (verdict !== 'allowed') problems.push(`${manifest.name}@${manifest.version}: ${license ?? 'no license'}, ${reason}`);
+  }
+  if (problems.length > 0) throw new Error(`public/${name} bundles packages scripts/license-allowlist.json does not allow:\n - ${problems.join('\n - ')}`);
 }
 
 /**
@@ -184,7 +233,7 @@ const esbuildOptions = {
   metafile: true,
   logLevel: 'silent',
   loader: { '.woff2': 'file', '.woff': 'file' },
-  plugins: [ortWasmOnly, assetUrlPlugin],
+  plugins: [ortWasmOnly, excludedPackages, assetUrlPlugin],
   define: {
     __STARPI_SUPABASE_URL__: JSON.stringify(SUPABASE_URL),
     __STARPI_SUPABASE_ANON_KEY__: JSON.stringify(SUPABASE_ANON_KEY),
@@ -247,9 +296,10 @@ async function bundleFrameScripts() {
   const bundled = [];
   for (const name of FRAME_SCRIPTS) {
     if (!present(`public/${name}`)) continue;
-    const result = await esbuild.build({ ...classicOptions, entryPoints: [`public/${name}`], outfile: path.join(DIST, name), legalComments: 'eof' });
+    const result = await esbuild.build({ ...classicOptions, entryPoints: [`public/${name}`], outfile: path.join(DIST, name), legalComments: 'eof', plugins: [excludedPackages] });
     if (reportWarnings(result)) throw new Error(`esbuild emitted warnings for public/${name}`);
     assertNotShipped(/** @type {import('esbuild').Metafile} */ (result.metafile));
+    assertFrameLicenses(/** @type {import('esbuild').Metafile} */ (result.metafile), name);
     bundled.push(`/${name}`);
   }
   return bundled;
@@ -298,6 +348,8 @@ async function postProcess(result, urls) {
   // Precache the app shell: the page, its CSS and JS (the theme script included), the ingest worker
   // (the workspace must work offline), the Latin font and the public files. WebLLM, pdf.js, the WASM
   // worker (Transformers.js), the rendering extras and the ONNX Runtime binary are cached on first use.
+  // The frame scripts stay out: a sandboxed frame has an opaque origin, which no service worker
+  // controls, and the render frame's script carries the diagram library.
   const latinFont = assetUrls.find((u) => /plus-jakarta-sans-latin-wght-normal-[\w-]+\.woff2$/.test(u));
   const shell = [
     '/',
@@ -307,7 +359,7 @@ async function postProcess(result, urls) {
     ingestWorkerJs,
     ...(latinFont ? [latinFont] : []),
     ...directImports(result.metafile, mainJs),
-    ...publicFiles,
+    ...publicFiles.filter((url) => !frameScripts.includes(url)),
   ];
   const sw = swTemplate
     .replace("'__STARPI_BUILD_VERSION__'", JSON.stringify(version))

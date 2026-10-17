@@ -1,0 +1,27 @@
+<!doctype html>
+<!--
+  Render frame: previews HTML, SVG and mermaid diagrams from answers, away from the app. The app
+  embeds it as <iframe sandbox="allow-scripts" src="/render-frame">; its header rule in
+  scripts/headers.json adds the CSP sandbox, so the page has an opaque origin even when opened on its
+  own, fetches nothing (connect-src 'none') and loads no script but /render-frame.js. Inline styles
+  and scripts are allowed here and only here: diagrams carry <style>, and an HTML preview runs its
+  scripts after the user clicked "Run preview". See render-frame.js for the message protocol.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preview</title>
+<style>
+html { color-scheme: light; background: #ffffff; color: #0f172a; }
+html[data-theme="dark"] { color-scheme: dark; background: #111a2b; color: #e2e8f0; }
+body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+#preview { display: flow-root; padding: 12px; overflow-wrap: anywhere; }
+#preview.diagram > svg, #preview.vector > svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+</style>
+<script src="/render-frame.js" defer></script>
+</head>
+<body>
+<div id="preview"></div>
+</body>
+</html>

@@ -23,6 +23,8 @@
   },
   "include": [
     "src/js/globals.d.ts",
+    "public/grounding-frame.js",
+    "public/render-frame.js",
     "api/_lib/access.js",
     "api/_lib/env.js",
     "api/_lib/guards.js",
@@ -162,6 +164,7 @@
     "src/js/rag/parser.js",
     "src/js/rag/receipts.js",
     "src/js/rag/workspace.js",
+    "src/js/render-extras.js",
     "src/js/render.js",
     "src/js/retrieval.js",
     "src/js/settings.js",
