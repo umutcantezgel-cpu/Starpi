@@ -1,0 +1,30 @@
+{
+  "$comment": "Harmlose und angreifende Sätze auf Deutsch, Quellenmodus, sofern ein Fall nichts anderes sagt. Each case lists the texts the gate releases and the [reason, token] of each unit it withholds, in order.",
+  "locale": "de",
+  "cases": [
+    { "name": "Zahl wie in der Quelle", "text": "Das Budget beträgt 1.200 Euro [Doc: bericht.md, Chunk: 2].", "released": ["Das Budget beträgt 1.200 Euro."], "withheld": [] },
+    { "name": "mehrdeutige Form anders geschrieben", "text": "Das Budget beträgt 1200 Euro [Doc: bericht.md, Chunk: 2].", "released": [], "withheld": [["unsupported_number", "1200"]] },
+    { "name": "mehrdeutige Form mit Komma", "text": "Das Budget beträgt 1,200 Euro [Doc: bericht.md, Chunk: 2].", "released": [], "withheld": [["unsupported_number", "1,200"]] },
+    { "name": "geänderte Zahl", "text": "Die Umfrage hatte 1.251 Antworten [Doc: bericht.md, Chunk: 2].", "released": [], "withheld": [["unsupported_number", "1.251"]] },
+    { "name": "Bruch mit Zahlwort", "text": "Drei Viertel der Nutzer arbeiten im Büro [Doc: bericht.md, Chunk: 2].", "released": ["Drei Viertel der Nutzer arbeiten im Büro."], "withheld": [] },
+    { "name": "geänderter Bruch", "text": "Zwei Drittel der Nutzer arbeiten im Büro [Doc: bericht.md, Chunk: 2].", "released": [], "withheld": [["number_word", "Zwei Drittel"]] },
+    { "name": "zusammengesetztes Zahlwort", "text": "Die Schulung dauert zweieinhalb Stunden [Doc: bericht.md, Chunk: 2].", "released": ["Die Schulung dauert zweieinhalb Stunden."], "withheld": [] },
+    { "name": "langes Zahlwort", "text": "Die Anlage hat 325 Plätze [Doc: bericht.md, Chunk: 2].", "released": ["Die Anlage hat 325 Plätze."], "withheld": [] },
+    { "name": "geändertes langes Zahlwort", "text": "Die Anlage hat dreihundertsechsundzwanzig Plätze [Doc: bericht.md, Chunk: 2].", "released": [], "withheld": [["number_word", "dreihundertsechsundzwanzig"]] },
+    { "name": "Vervielfältigung", "text": "Das Team trifft sich zweimal pro Woche [Doc: bericht.md, Chunk: 2].", "released": ["Das Team trifft sich zweimal pro Woche."], "withheld": [] },
+    { "name": "geänderte Vervielfältigung", "text": "Das Team trifft sich viermal pro Woche [Doc: bericht.md, Chunk: 2].", "released": [], "withheld": [["number_word", "viermal"]] },
+    { "name": "einmal, einfach, erste halten nie zurück", "text": "Einmal im Jahr gibt es eine erste Bilanz. Das ist einfach. Achten Sie auf die achte Regel.", "released": ["Einmal im Jahr gibt es eine erste Bilanz.", "Das ist einfach.", "Achten Sie auf die achte Regel."], "withheld": [] },
+    { "name": "doppelt ohne Zählwort", "text": "Bitte doppelt prüfen. Die erste Hälfte war ruhig.", "released": ["Bitte doppelt prüfen.", "Die erste Hälfte war ruhig."], "withheld": [] },
+    { "name": "doppelt mit Zählwort", "text": "Die doppelte Menge reicht [S2].", "released": [], "withheld": [["number_word", "doppelte"]] },
+    { "name": "halb mit Einheit", "text": "Das dauert eine halbe Stunde [S2].", "released": [], "withheld": [["number_word", "eine halbe"]] },
+    { "name": "Abkürzungen beenden keinen Satz", "text": "Das sind z. B. 1.200 Euro [Doc: bericht.md, Chunk: 2]. Nr. 5 fehlt.", "released": ["Das sind z. B. 1.200 Euro."], "withheld": [["unsupported_number", "5"]] },
+    { "name": "Datum mit Ordinalpunkt", "text": "Am 3. März beginnt die Schulung [Doc: bericht.md, Chunk: 2].", "released": ["Am 3. März beginnt die Schulung."], "withheld": [] },
+    { "name": "Einheit mit Hochzahl", "text": "Der Raum ist 25 m² groß [Doc: bericht.md, Chunk: 2].", "released": ["Der Raum ist 25 m² groß."], "withheld": [] },
+    { "name": "großes Eszett", "mode": "free", "text": "GROẞE PAUSE.", "released": ["GROẞE PAUSE."], "withheld": [] },
+    { "name": "Zahl ohne Beleg", "text": "Das Budget beträgt 1.200 Euro.", "released": [], "withheld": [["unsupported_number", "1.200"]] },
+    { "name": "Ziffern neben einem Zahlwort", "text": "Es waren 5 hundert Antworten [Doc: bericht.md, Chunk: 2].", "released": [], "withheld": [["joined", "5 hundert"]] },
+    { "name": "Ziffern, die zusammen gelesen werden", "text": "Es waren 1.2 50 Antworten [Doc: bericht.md, Chunk: 2].", "released": [], "withheld": [["joined", "1.2 50"]] },
+    { "name": "Link", "text": "Mehr unter www.beispiel.de/bericht.", "released": [], "withheld": [["link", "www.beispiel.de/bericht"]] },
+    { "name": "unbekannte Quelle", "text": "Das Budget beträgt 1.200 Euro [Doc: bericht.md, Chunk: 3].", "released": [], "withheld": [["unknown_source", "[Doc: bericht.md, Chunk: 3]"]] }
+  ]
+}

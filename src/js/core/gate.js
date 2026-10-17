@@ -174,6 +174,18 @@ const LINK = new RegExp(
 const HTTP = /^https?:\/\//i;
 
 /**
+ * A link as reported: without the punctuation of the sentence after it, and without a closing
+ * bracket it did not open.
+ * @param {string} link
+ */
+function linkToken(link) {
+  let token = link.replace(/[.,;:!?]+$/, '');
+  const count = (/** @type {string} */ ch) => token.split(ch).length - 1;
+  while ((token.endsWith(')') && count(')') > count('(')) || (token.endsWith(']') && count(']') > count('['))) token = token.slice(0, -1).replace(/[.,;:!?]+$/, '');
+  return token || link;
+}
+
+/**
  * The key a label is found by: the document and chunk of the long form, read leniently, or the
  * bracketed text without spaces, in lowercase.
  * @param {string} label  canonical text of the label
@@ -379,7 +391,7 @@ export function createSentenceGate(options = {}) {
     const bad = firstDisallowed(bare.text);
     if (bad) return withhold('chars', describeChar(bad.char));
     const link = LINK.exec(bare.text);
-    if (link) return withhold('link', link[0]);
+    if (link) return withhold('link', linkToken(link[0]));
 
     const locale = opts.pack?.code ?? guessLanguage(bare.text);
     const items = scanNumbers(bare.text, { locale, identifierPatterns: patterns });

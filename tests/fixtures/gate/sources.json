@@ -1,0 +1,23 @@
+{
+  "$comment": "Excerpts the gate corpus cites. Neutral text written for these tests.",
+  "plan": {
+    "label": "[Doc: plan.md, Chunk: 1]",
+    "kind": "doc",
+    "text": "The approved budget for the project is 480,000 EUR. The team has twelve members and meets twice a week. The pilot runs for 6 weeks and starts on 2026-03-02. Half of the budget goes to staff. The service is certified to ISO 9001 and supports IPv6. Version 2.4.1 was released at 14:30. Response time fell by 35 % to 1.5 seconds. Outside it was minus 5 degrees."
+  },
+  "notes": {
+    "label": "[S2]",
+    "kind": "note",
+    "text": "The office printer uses A4 paper. The archive stores MP3 files. Tests with GPT-4o took 3 days. The COVID-19 rules ended in 2023. The O2 sensor is in room 3."
+  },
+  "bericht": {
+    "label": "[Doc: bericht.md, Chunk: 2]",
+    "kind": "doc",
+    "text": "Das Budget beträgt 1.200 Euro. Drei Viertel der Nutzer arbeiten im Büro. Die Schulung dauert zweieinhalb Stunden. Das Team trifft sich zweimal pro Woche. Die Umfrage hatte 1.250 Antworten. Ein Drittel kam per E-Mail. Der Raum ist 25 m² groß. Die Anlage hat dreihundertfünfundzwanzig Plätze. Am 3. März beginnt die Schulung."
+  },
+  "tool": {
+    "label": "[T1]",
+    "kind": "tool",
+    "text": "{\"orders\": 1250, \"open\": 17, \"share\": 0.25}"
+  }
+}

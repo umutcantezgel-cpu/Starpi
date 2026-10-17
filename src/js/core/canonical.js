@@ -12,7 +12,8 @@
 //   3. A small explicit normalisation: the minus sign and the Unicode hyphens become "-", fullwidth
 //      ASCII becomes ASCII (fullwidth digits are then read as digits), the Greek mu becomes the micro
 //      sign; then NFC, never NFKC (NFKC would turn "m²" into "m2" and "½" into "1⁄2").
-//   4. White space collapses to single spaces, without a space before . , ; : ! ? ) ] or after ( [.
+//   4. White space collapses to single spaces, without a space before . , ; : ! ? ) ] or after ( [
+//      (but " .5" keeps its space: the dot belongs to the number).
 //
 // The character allowlist says what a released sentence may contain: Latin letters (ASCII, Latin-1
 // and Latin Extended-A), the digits 0–9, the space, a fixed set of punctuation and signs, and the
@@ -27,7 +28,7 @@ import { fromPacks } from './lang/index.js';
  * Text with, for each of its UTF-16 code units, the index in the input it came from.
  * @typedef {object} Canonical
  * @property {string} text
- * @property {Int32Array} map
+ * @property {number[]} map
  */
 
 /** @typedef {'sentence' | 'item' | 'row' | 'heading' | 'code'} UnitKind */
@@ -89,12 +90,20 @@ const DROP_CHAR = /[\p{Default_Ignorable_Code_Point}\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{C
 const SPACE_CHAR = /[\p{Zs}\u2028\u2029]/u;
 const MARK = /\p{M}/u;
 
+/** Signs that may be Markdown anywhere in a line, and the starts of lines that may be. */
+const INLINE_MARKS = /[*_`~\\<|]/;
+const BLOCK_MARKS = /(?:^|\n)[ \t]*(?:[>#|*+•-]|\d{1,9}[.)])/;
+const NO_MARKS = { drop: new Uint8Array(0), swap: new Map() };
+
 /**
  * Marks the Markdown of one unit: 1 drops a character, a string in `swap` replaces it.
  * @param {string} text
  * @param {UnitKind | undefined} kind
+ * @returns {{ drop: Uint8Array, swap: Map<number, string> }}
  */
 function markdownMarks(text, kind) {
+  // Most sentences have no Markdown at all.
+  if (kind !== 'code' && !INLINE_MARKS.test(text) && !BLOCK_MARKS.test(text)) return NO_MARKS;
   const drop = new Uint8Array(text.length);
   /** @type {Map<number, string>} */
   const swap = new Map();
@@ -149,8 +158,10 @@ function markdownMarks(text, kind) {
   for (const m of text.matchAll(HTML_TAG)) {
     const at = /** @type {number} */ (m.index);
     if (drop[at]) continue;
-    if (/^<br\b/i.test(m[0])) swap.set(at, ' ');
-    else dropRange(at, at + m[0].length);
+    if (/^<br\b/i.test(m[0])) {
+      swap.set(at, ' '); // a line break is a space
+      dropRange(at + 1, at + m[0].length);
+    } else dropRange(at, at + m[0].length);
   }
   for (const m of text.matchAll(STRIKE)) dropRange(/** @type {number} */ (m.index), /** @type {number} */ (m.index) + m[0].length);
   for (let i = 0; i < text.length; i += 1) {
@@ -215,7 +226,8 @@ class Builder {
     this.source = source;
     /** @type {string[]} */
     this.parts = [];
-    this.map = new Int32Array(source.length);
+    /** @type {number[]} */
+    this.map = [];
     this.len = 0;
     this.runStart = 0;
     this.runEnd = -1;
@@ -242,11 +254,15 @@ class Builder {
     this.runEnd = -1;
   }
 
-  /** @param {number} code  the character that follows the pending space */
-  flushSpace(code) {
+  /**
+   * @param {number} code  the character that follows the pending space
+   * @param {number} next  the code unit after that character (a digit after "." keeps the space: " .5")
+   */
+  flushSpace(code, next) {
     const at = this.pending;
     this.pending = -1;
-    if (!this.len || noSpaceBefore(code) || this.last === 40 || this.last === 91) return;
+    const decimal = (code === 46 || code === 44) && next >= 48 && next <= 57;
+    if (!this.len || (noSpaceBefore(code) && !decimal) || this.last === 40 || this.last === 91) return;
     if (this.pendingAt >= 0 && this.pendingAt === this.runEnd) this.runEnd += 1; // the single space continues the run
     else {
       this.flushRun();
@@ -263,7 +279,7 @@ class Builder {
    * @param {number} at     map value
    */
   keep(i, code, width, at) {
-    if (this.pending >= 0) this.flushSpace(code);
+    if (this.pending >= 0) this.flushSpace(code, this.source.charCodeAt(i + 1));
     if (this.runEnd !== i) {
       this.flushRun();
       this.runStart = i;
@@ -281,7 +297,7 @@ class Builder {
    */
   char(ch, at) {
     const code = ch.charCodeAt(0);
-    if (this.pending >= 0) this.flushSpace(code);
+    if (this.pending >= 0) this.flushSpace(code, -1);
     this.flushRun();
     this.parts.push(ch);
     this.map[this.len++] = at;
@@ -291,9 +307,8 @@ class Builder {
   /** @returns {Canonical} */
   finish() {
     this.flushRun();
-    const text = this.parts.join('');
-    const map = this.map.subarray(0, this.len);
-    return this.marks ? compose(text, map) : { text, map };
+    const text = this.parts.length === 1 ? this.parts[0] : this.parts.join('');
+    return this.marks ? compose(text, this.map) : { text, map: this.map };
   }
 }
 
@@ -303,14 +318,15 @@ const composed = new Map();
 /**
  * NFC, one base character with its combining marks at a time, so the map stays exact.
  * @param {string} text
- * @param {Int32Array} map
+ * @param {number[]} map
  * @returns {Canonical}
  */
 function compose(text, map) {
   if (text.normalize('NFC') === text) return { text, map };
   /** @type {string[]} */
   const parts = [];
-  const out = new Int32Array(text.length);
+  /** @type {number[]} */
+  const out = [];
   let len = 0;
   let i = 0;
   while (i < text.length) {
@@ -338,7 +354,7 @@ function compose(text, map) {
     parts.push(group);
     for (let k = 0; k < group.length; k += 1) out[len++] = map[start];
   }
-  return { text: parts.join(''), map: out.subarray(0, len) };
+  return { text: parts.join(''), map: out };
 }
 
 /**

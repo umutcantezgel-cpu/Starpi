@@ -253,7 +253,7 @@ function validateGate(gate) {
   const { abbreviations, units, approx } = gate.spoken;
   if (!abbreviations || typeof abbreviations !== 'object' || Array.isArray(abbreviations)) fail('spoken.abbreviations" must map abbreviations to words');
   for (const [from, to] of Object.entries(abbreviations)) {
-    if (!from.trim() || /[\p{N}\s]$|^\s/u.test(from) || typeof to !== 'string' || !SPOKEN_WORDS.test(to)) fail('spoken.abbreviations" must map abbreviations without digits to words');
+    if (!from.trim() || /\p{N}|\s$|^\s/u.test(from) || typeof to !== 'string' || !SPOKEN_WORDS.test(to)) fail('spoken.abbreviations" must map abbreviations without digits to words');
   }
   if (!units || typeof units !== 'object' || Array.isArray(units)) fail('spoken.units" must map unit signs to [singular, plural]');
   for (const [from, forms] of Object.entries(units)) {

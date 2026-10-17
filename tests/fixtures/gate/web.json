@@ -1,0 +1,53 @@
+{
+  "$comment": "Web mode: a number must lie inside a grounded segment that rests on an http(s) source. Segments are given by the text they cover; the test turns them into offsets.",
+  "cases": [
+    {
+      "name": "grounded and ungrounded sentence",
+      "locale": "en",
+      "text": "The tower is 330 m tall. It opened in 1889.",
+      "grounding": { "segments": [{ "text": "The tower is 330 m tall.", "sources": [0] }], "sources": [{ "uri": "https://example.org/tower", "title": "Tower" }] },
+      "released": ["The tower is 330 m tall."],
+      "withheld": [["web_ungrounded", "1889"]]
+    },
+    {
+      "name": "a segment without an http source grounds nothing",
+      "locale": "en",
+      "text": "The tower is 330 m tall.",
+      "grounding": { "segments": [{ "text": "The tower is 330 m tall.", "sources": [0] }], "sources": [{ "uri": "ftp://example.org/tower" }] },
+      "released": [],
+      "withheld": [["web_ungrounded", "330"]]
+    },
+    {
+      "name": "a segment that covers only part of the number",
+      "locale": "en",
+      "text": "The bridge is 1,280 m long.",
+      "grounding": { "segments": [{ "text": "The bridge is 1,2", "sources": [0] }], "sources": [{ "uri": "https://example.org/bridge" }] },
+      "released": [],
+      "withheld": [["web_ungrounded", "1,280"]]
+    },
+    {
+      "name": "sentences without numbers need no grounding",
+      "locale": "en",
+      "text": "The tower is a landmark. Many people visit it.",
+      "grounding": { "segments": [], "sources": [] },
+      "released": ["The tower is a landmark.", "Many people visit it."],
+      "withheld": []
+    },
+    {
+      "name": "number words need grounding too",
+      "locale": "de",
+      "text": "Der Turm hat drei Plattformen. Er ist zweihundert Jahre alt.",
+      "grounding": { "segments": [{ "text": "Der Turm hat drei Plattformen.", "sources": [1] }], "sources": [{ "uri": "file:///x" }, { "uri": "https://example.org/turm" }] },
+      "released": ["Der Turm hat drei Plattformen."],
+      "withheld": [["number_word", "zweihundert"]]
+    },
+    {
+      "name": "links and joins still withhold",
+      "locale": "en",
+      "text": "It is 4 80 m tall. See https://example.org.",
+      "grounding": { "segments": [{ "text": "It is 4 80 m tall. See https://example.org.", "sources": [0] }], "sources": [{ "uri": "https://example.org" }] },
+      "released": [],
+      "withheld": [["joined", "4 80"], ["link", "https://example.org"]]
+    }
+  ]
+}
