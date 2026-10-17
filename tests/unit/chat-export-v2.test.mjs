@@ -263,6 +263,14 @@ describe('import', () => {
     const parsed = parseChatImport(JSON.stringify(doc));
     assert.deepEqual(parsed.nodes[0].parts, [{ type: 'tool_call', id: 't', name: 'x', args: { q: 'ok' } }]);
   });
+
+  it('drops a __proto__ key instead of letting it change what a part inherits', () => {
+    const text = `{"schema":"${CHAT_EXPORT_V2}","nodes":[{"id":"a","parentId":null,"role":"user","parts":[{"type":"text","__proto__":{"text":"inherited"}}]}]}`;
+    const [part] = parseChatImport(text).nodes[0].parts;
+    assert.equal(Object.getPrototypeOf(part), Object.prototype);
+    assert.equal(Object.hasOwn(part, '__proto__'), false);
+    assert.equal(/** @type {any} */ (part).text, undefined);
+  });
 });
 
 describe('file names', () => {

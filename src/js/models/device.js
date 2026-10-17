@@ -201,8 +201,9 @@ export function recommendModels(hw, options = {}) {
     if (r.tokPerSec > FAST_TOK_PER_SEC && presetSize(ref) > presetSize(local) && (!fast || presetSize(ref) > presetSize(fast))) fast = /** @type {PresetRef} */ (ref);
   }
   if (fast) return { cls, local, pro: fast, stepDown, proTokPerSec: rates.get(fast)?.tokPerSec ?? null };
-  // The unmeasured guess stays unless it measured slow (or is no longer larger than the pick).
-  const pro = guess && !slow(guess) && presetSize(guess) > presetSize(local) ? guess : null;
+  // The hardware guess stays only while it is unmeasured (and still larger than the pick): once
+  // measured, it is suggested like any other model, that is only above FAST_TOK_PER_SEC.
+  const pro = guess && !rates.has(guess) && presetSize(guess) > presetSize(local) ? guess : null;
   return { cls, local, pro, stepDown, proTokPerSec: null };
 }
 

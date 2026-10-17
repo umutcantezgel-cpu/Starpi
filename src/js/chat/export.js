@@ -121,7 +121,8 @@ function scrub(value, depth = 0) {
   if (!isRecord(value)) return value;
   /** @type {Record<string, unknown>} */
   const out = {};
-  for (const [key, v] of Object.entries(value)) if (!SECRET_KEY.test(key)) out[key] = scrub(v, depth + 1);
+  // `__proto__` arrives as an own key from JSON.parse; assigning it would swap the copy's prototype.
+  for (const [key, v] of Object.entries(value)) if (key !== '__proto__' && !SECRET_KEY.test(key)) out[key] = scrub(v, depth + 1);
   return out;
 }
 

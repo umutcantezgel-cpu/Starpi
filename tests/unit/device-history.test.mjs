@@ -131,8 +131,9 @@ describe('recommendModels with a history', () => {
     // The 7B guess measured slow here: no suggestion.
     const slowGuess = recommendModels(pro, { history: [runOf('webgpu:qwen-7b', 'desktop-pro', 4)] });
     assert.equal(slowGuess.pro, null);
-    // Measured fine, but not fast: the guess stays.
-    assert.equal(recommendModels(pro, { history: [runOf('webgpu:qwen-7b', 'desktop-pro', 12)] }).pro, 'webgpu:qwen-7b');
+    // Measured fine, but not fast: a measured model is only suggested above the fast line, so the
+    // guess is not shown as an untested suggestion either.
+    assert.deepEqual(recommendModels(pro, { history: [runOf('webgpu:qwen-7b', 'desktop-pro', 12)] }), { cls: 'desktop-pro', local: 'webgpu:qwen-3b', pro: null, stepDown: null, proTokPerSec: null });
   });
 
   it('suggests a larger model after a step down when one ran fast', () => {
