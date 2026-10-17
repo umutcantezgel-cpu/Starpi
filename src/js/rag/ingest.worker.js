@@ -28,23 +28,25 @@
 // Replies: { id, ok: true, result } | { id, ok: false, error: { code, message, details } }
 // Progress: { id, progress: { stage: 'reading' | 'parsing' | 'chunking' | 'indexing' | 'storing', done, total } }
 // OCR: { id, ocr: { seq, name, mime, width, height, purpose, bytes } } asks the main thread to read an image
-//   the user agreed to have read; it answers { type: 'ocr-reply', seq, text } or { type: 'ocr-reply', seq, error }.
+//   the user agreed to have read; it answers { type: 'ocr-reply', seq, text, provider?, model? } or
+//   { type: 'ocr-reply', seq, error }. Provider and model go into the document's extractor (receipts
+//   mark text recognised this way as not reproducible).
 import { appDb, configureStore } from '../store/schema.js';
 import { ParseError } from './parser.js';
 import { createWorkspace, WorkspaceCoreError } from './workspace-core.js';
 
-/** @typedef {import('./formats/image.js').OcrHook} OcrHook */
+/** @typedef {import('./workspace-core.js').WorkspaceOcrHook} WorkspaceOcrHook */
 
 const workspace = createWorkspace({ openDb: () => appDb() });
 
 let ocrSeq = 0;
-/** @type {Map<number, { resolve: (text: string) => void, reject: (err: Error) => void }>} */
+/** @type {Map<number, { resolve: (reply: { text: string, provider: string | null, model: string | null }) => void, reject: (err: Error) => void }>} */
 const ocrWaiting = new Map();
 
 /**
  * An OCR hook that hands the image to the main thread (where the AI layer runs) and waits.
  * @param {number} id  the ingest request
- * @returns {OcrHook}
+ * @returns {WorkspaceOcrHook}
  */
 function ocrThroughMain(id) {
   return (request) =>
@@ -115,12 +117,13 @@ async function handle(type, payload, id) {
 }
 
 self.addEventListener('message', (event) => {
-  const data = /** @type {{ id: number, type: string, payload: any, seq?: number, text?: unknown, error?: unknown }} */ (event.data ?? {});
+  const data = /** @type {{ id: number, type: string, payload: any, seq?: number, text?: unknown, provider?: unknown, model?: unknown, error?: unknown }} */ (event.data ?? {});
   if (data.type === 'ocr-reply') {
     const waiting = ocrWaiting.get(Number(data.seq));
     if (!waiting) return;
     ocrWaiting.delete(Number(data.seq));
-    if (typeof data.text === 'string') waiting.resolve(data.text);
+    const named = (/** @type {unknown} */ v) => (typeof v === 'string' && v ? v : null);
+    if (typeof data.text === 'string') waiting.resolve({ text: data.text, provider: named(data.provider), model: named(data.model) });
     else waiting.reject(new ParseError('needs_ocr', typeof data.error === 'string' ? data.error : 'Text recognition failed'));
     return;
   }

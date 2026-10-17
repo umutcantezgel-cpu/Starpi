@@ -226,12 +226,19 @@ describe('persistent workspace', () => {
     const doc = await ws.ingest(new File([png], 'scan.png', { type: 'image/png' }), {
       ocr: async (request) => {
         asked.push({ name: request.name, mime: request.mime, width: request.width, height: request.height, bytes: request.bytes.length });
-        return 'Delivery note: 12 crates of apples for the market hall.';
+        return { text: 'Delivery note: 12 crates of apples for the market hall.', provider: 'openai', model: 'vision-model-1' };
       },
     });
     assert.deepEqual(asked, [{ name: 'scan.png', mime: 'image/png', width: 2, height: 3, bytes: png.length }]);
     assert.equal(doc.kind, 'png');
+    // Receipts read the provenance from here and mark the image's excerpts as not reproducible.
+    assert.deepEqual(doc.extractor.ocr, { provider: 'openai', model: 'vision-model-1' });
     assert.equal(ws.search('apples crates', 1)[0].docId, doc.docId);
+    // A hook that names nobody still marks the text as recognised.
+    const other = await ws.ingest(new File([png, new Uint8Array([1])], 'scan2.png', { type: 'image/png' }), { ocr: async () => 'Pallet label: 40 boxes of pears.' });
+    assert.deepEqual(other.extractor.ocr, { provider: 'unknown', model: 'unknown' });
+    // A plain text file has no OCR mark.
+    assert.equal((await ws.ingest(file(NOTES, 'notes.md'))).extractor.ocr, undefined);
   });
 
   it('reports a duplicate instead of indexing the same file twice', async () => {

@@ -30,7 +30,12 @@ import { chunkKey, quantizeInt8, VectorIndex } from './vectors.js';
 /** @typedef {import('../store/schema.js').SettingsRecord} SettingsRecord */
 /** @typedef {import('./bm25.js').Entry} Entry */
 /** @typedef {import('./hybrid.js').WorkspaceProbe} WorkspaceProbe */
-/** @typedef {import('./formats/image.js').OcrHook} OcrHook */
+/** @typedef {import('./formats/image.js').OcrRequest} OcrRequest */
+/**
+ * Text recognition for one image the user agreed to have read. It may name the provider and model
+ * that read it; receipts then record them, and mark the image's excerpts as not reproducible.
+ * @typedef {(request: OcrRequest & { bytes: Uint8Array }) => Promise<string | { text: string, provider?: string | null, model?: string | null }>} WorkspaceOcrHook
+ */
 
 /**
  * @typedef {object} DocumentInfo
@@ -43,7 +48,8 @@ import { chunkKey, quantizeInt8, VectorIndex } from './vectors.js';
  * @property {number} bytes
  * @property {string | null} fileSha256  SHA-256 of the file bytes, null where WebCrypto is unavailable
  * @property {string} textSha256
- * @property {{ id: string, version: number, pdfjs: string | null }} extractor
+ * @property {{ id: string, version: number, pdfjs: string | null, ocr?: { provider: string, model: string } }} extractor
+ *   ocr: text recognition made the text (an image), with the provider and model that read it
  * @property {{ id: string, version: number, size: number, overlap: number }} chunker
  * @property {number} addedAt
  * @property {boolean} stored  kept in the database (survives a reload)
@@ -383,7 +389,7 @@ export function createWorkspace(options = {}) {
 
   /**
    * @param {File} file
-   * @param {{ chunkSize?: number, chunkOverlap?: number, ocr?: OcrHook, onProgress?: (p: Progress) => void }} [opts]
+   * @param {{ chunkSize?: number, chunkOverlap?: number, ocr?: WorkspaceOcrHook, onProgress?: (p: Progress) => void }} [opts]
    * @returns {Promise<DocumentInfo & { duplicate?: boolean }>}
    */
   async function ingest(file, opts = {}) {
@@ -400,7 +406,18 @@ export function createWorkspace(options = {}) {
       if (fileSha256 && doc.fileSha256 === fileSha256 && doc.chunker.size === size && doc.chunker.overlap === overlap) return { ...publicInfo(doc), duplicate: true };
     }
     progress({ stage: 'parsing', done: 0, total: 1 });
-    const { text, kind, pages, pdfjs } = await extractText(file, (page, total) => progress({ stage: 'parsing', done: page, total }), { ocr: opts.ocr });
+    /** @type {{ provider: string, model: string } | null} */
+    let recognised = null;
+    const userOcr = opts.ocr;
+    const ocr = userOcr
+      ? async (/** @type {OcrRequest & { bytes: Uint8Array }} */ request) => {
+          const answer = await userOcr(request);
+          const reply = typeof answer === 'string' ? { text: answer } : answer;
+          recognised = { provider: String(reply.provider || 'unknown').slice(0, 40), model: String(reply.model || 'unknown').slice(0, 200) };
+          return String(reply.text ?? '');
+        }
+      : undefined;
+    const { text, kind, pages, pdfjs } = await extractText(file, (page, total) => progress({ stage: 'parsing', done: page, total }), { ocr });
     const textSha256 = await sha256Hex(text);
     progress({ stage: 'chunking', done: 0, total: 1 });
     const chunks = chunkText(text, { chunkSize: size, chunkOverlap: overlap });
@@ -421,7 +438,7 @@ export function createWorkspace(options = {}) {
       bytes: file.size,
       fileSha256,
       textSha256,
-      extractor: { ...EXTRACTOR, pdfjs },
+      extractor: { ...EXTRACTOR, pdfjs, ...(recognised ? { ocr: recognised } : {}) },
       chunker: { ...CHUNKER, size, overlap },
       addedAt: now(),
       stored: false,

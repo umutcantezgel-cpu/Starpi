@@ -23,7 +23,7 @@ const INGEST_WORKER_URL = '__STARPI_INGEST_WORKER_URL__';
  * @property {number} bytes
  * @property {string | null} fileSha256
  * @property {string} textSha256
- * @property {{ id: string, version: number, pdfjs: string | null }} extractor
+ * @property {{ id: string, version: number, pdfjs: string | null, ocr?: { provider: string, model: string } }} extractor
  * @property {{ id: string, version: number, size: number, overlap: number }} chunker
  * @property {number} [addedAt]
  * @property {boolean} [stored]  kept on this device (survives a reload)
@@ -52,7 +52,7 @@ const INGEST_WORKER_URL = '__STARPI_INGEST_WORKER_URL__';
  * @property {string | null} model
  */
 /** @typedef {import('./hybrid.js').WorkspaceProbe} WorkspaceProbe */
-/** @typedef {import('./formats/image.js').OcrHook} OcrHook */
+/** @typedef {import('./workspace-core.js').WorkspaceOcrHook} OcrHook */
 /** @typedef {{ stage: string, done: number, total: number }} Progress */
 /** @typedef {{ resolve: (value: any) => void, reject: (err: Error) => void, onProgress?: (p: Progress) => void, ocr?: OcrHook }} Pending */
 
@@ -135,8 +135,9 @@ function applyState(state) {
 async function answerOcr(w, id, entry, request) {
   try {
     if (!entry.ocr) throw new Error('No text recognition was agreed for this file');
-    const text = await entry.ocr({ needsOcr: true, name: request.name, mime: /** @type {any} */ (request.mime), width: request.width, height: request.height, purpose: request.purpose, bytes: request.bytes });
-    w.postMessage({ type: 'ocr-reply', seq: request.seq, text: String(text ?? '') });
+    const answer = await entry.ocr({ needsOcr: true, name: request.name, mime: /** @type {any} */ (request.mime), width: request.width, height: request.height, purpose: request.purpose, bytes: request.bytes });
+    const reply = typeof answer === 'string' ? { text: answer } : answer;
+    w.postMessage({ type: 'ocr-reply', seq: request.seq, text: String(reply.text ?? ''), provider: reply.provider ?? null, model: reply.model ?? null });
   } catch (err) {
     w.postMessage({ type: 'ocr-reply', seq: request.seq, error: err instanceof Error ? err.message : String(err) });
   }

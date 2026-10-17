@@ -5,7 +5,7 @@
 // nothing else. The AI layer loads on first use, so the app's first load stays small.
 import { IMAGE_EXTENSIONS, OCR_PURPOSE } from './formats/image.js';
 
-/** @typedef {import('./formats/image.js').OcrHook} OcrHook */
+/** @typedef {import('./workspace-core.js').WorkspaceOcrHook} WorkspaceOcrHook */
 
 /** Extensions the pickers accept once text recognition is available. */
 export const OCR_ACCEPT = [...IMAGE_EXTENSIONS].map((ext) => `.${ext}`).join(',');
@@ -32,14 +32,15 @@ function base64(bytes) {
 }
 
 /**
- * The OCR hook for one consented image: the recognised text, or an error when no model answered.
- * @returns {OcrHook}
+ * The OCR hook for one consented image: the recognised text with the provider and model that read
+ * it (receipts record them), or an error when no model answered.
+ * @returns {WorkspaceOcrHook}
  */
 export function ocrHook() {
   return async (request) => {
     const { runPurpose } = await import('../ai/router.js');
     const result = await runPurpose(OCR_PURPOSE, { image: { mime: request.mime, data: base64(request.bytes) } }, { cache: 'off' });
     if (!result.ok || typeof result.text !== 'string') throw new Error(result.fallbackReason ?? 'No model could read the image');
-    return result.text;
+    return { text: result.text, provider: result.provider, model: result.model };
   };
 }
