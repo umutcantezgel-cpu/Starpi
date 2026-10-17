@@ -8,7 +8,7 @@ import { closeDialog, openDialog } from './dialog.js';
 import { byId, installDelegation, onAction, onChange, reportUnexpected, setHidden } from './dom.js';
 import { initEngineUi } from './engine-ui.js';
 import { mountFeatures } from './features/index.js';
-import { initGraph, loadKnowledgeGraph } from './graph.js';
+import { initGraphTab } from './graph-tab.js';
 import { initI18n, onLocaleChange, setLocale } from './i18n/index.js';
 import { refreshIcons } from './icons.js';
 import { initIngest } from './ingest.js';
@@ -72,7 +72,6 @@ async function boot() {
   onChange('set-locale', (el) => setLocale(/** @type {HTMLSelectElement} */ (el).value));
 
   onTabOpen('library', () => void loadDocuments());
-  onTabOpen('graph', () => void loadKnowledgeGraph());
   onTabOpen('bench', () => void refreshDiagnostics());
 
   initMessages();
@@ -83,7 +82,7 @@ async function boot() {
   initChat();
   initLibrary();
   initIngest();
-  initGraph();
+  initGraphTab();
   initVoice();
   initBenchUi();
   initCitations();

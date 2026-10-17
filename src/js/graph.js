@@ -1,5 +1,6 @@
 // @ts-check
 // Knowledge graph: entities/relations from Supabase drawn on a canvas (text via fillText only).
+// Loaded with its tab (graph-tab.js), which also handles the tab's reload and new-entity buttons.
 import { submitChat } from './chat.js';
 import { closeDialog, openDialog } from './dialog.js';
 import { byId, onAction, setHidden, setHtml } from './dom.js';
@@ -314,6 +315,14 @@ function clearEntityForm() {
   if (desc) desc.value = '';
 }
 
+/**
+ * Opens the new-entity dialog.
+ * @param {HTMLElement} trigger
+ */
+export function openEntityModal(trigger) {
+  openDialog(byId('entityModal'), { trigger, initialFocus: byId('newEntityName'), onClose: clearEntityForm });
+}
+
 function closeEntityModal() {
   // The form is cleared by onClose, also when Escape closes the dialog.
   closeDialog(byId('entityModal'));
@@ -337,8 +346,6 @@ async function saveEntity() {
 }
 
 export function initGraph() {
-  onAction('reload-graph', () => loadKnowledgeGraph());
-  onAction('open-entity-modal', (el) => openDialog(byId('entityModal'), { trigger: el, initialFocus: byId('newEntityName'), onClose: clearEntityForm }));
   onAction('close-entity-modal', () => closeEntityModal());
   onAction('save-entity', () => saveEntity());
   onAction('select-entity', (el) => selectEntity(el.dataset.arg ?? ''));

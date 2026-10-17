@@ -101,6 +101,45 @@ test.describe('migration pending, anonymous sign-ins disabled', () => {
   });
 });
 
+test.describe('knowledge graph view', () => {
+  test('says the graph cannot be reached when its view does not load, and draws it after a reload', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    // The graph view is a chunk the page loads when the tab first opens; refuse it once.
+    let refuse = true;
+    let refused = 0;
+    await page.route(/\/assets\/chunk-[A-Z0-9]+\.js$/, async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      if (refuse && body.includes('graphEntityList')) {
+        refused += 1;
+        return route.fulfill({ status: 404, contentType: 'text/plain', body: 'gone' });
+      }
+      return route.fulfill({ response, body });
+    });
+    await page.goto('/');
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
+    await openTab(page, 'graph');
+    await expect(page.locator('#graphLoading')).toBeHidden();
+    await expect(page.locator('#graphStatus')).toHaveText(/cannot be reached/);
+    expect(refused).toBe(1);
+
+    // The browser keeps a failed module import for the page's lifetime; after a reload the tab
+    // draws the (empty) graph.
+    refuse = false;
+    await page.reload();
+    await openTab(page, 'graph');
+    await expect(page.locator('#graphLoading')).toBeHidden();
+    await expect(page.locator('#graphStatus')).toHaveText('The graph has no entities yet.');
+    // The tab's own buttons reach the view.
+    await page.click('[data-action="open-entity-modal"]');
+    await expect(page.locator('#entityModal')).toBeVisible();
+    await expect(page.locator('#newEntityName')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#entityModal')).toBeHidden();
+    expect(diagnostics).toEqual([]);
+  });
+});
+
 test.describe('saving settings', () => {
   /** @param {import('@playwright/test').Page} page */
   async function saveAndReadDialog(page) {
