@@ -2,6 +2,7 @@
 // answer without a CSP violation; HTML, SVG and diagram previews in the sandboxed render frame, where
 // scripts run only after "Run preview", nothing can be fetched and the parent stays out of reach; the
 // frames report their height; and the grounding frame shows search suggestions without running them.
+import AxeBuilder from '@axe-core/playwright';
 import { expect, mockSupabase, test } from './fixtures.mjs';
 
 const PAGE = [
@@ -131,6 +132,20 @@ test.describe('rendered answers', () => {
     await expect(block(answer, 'js').locator('[data-action="preview-code"]')).toHaveCount(0);
   });
 });
+
+for (const scheme of /** @type {const} */ (['light', 'dark'])) {
+  test(`code tools, math and an open preview have no serious axe violations (${scheme})`, async ({ page, diagnostics: _diagnostics }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    const answer = await answerWith(page, ANSWER);
+    await expect(page.locator('html')).toHaveClass(scheme);
+    await block(answer, 'html').locator('[data-action="preview-code"]').click();
+    await expect(page.frameLocator('.code-preview iframe').locator('#t')).toHaveText('Static');
+    // The preview's content is the answer's, not the app's; the frame element itself is checked.
+    const results = await new AxeBuilder({ page }).include('#chatMessages').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).disableRules(['frame-tested']).analyze();
+    const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+    expect(serious.map((v) => `${v.id} ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
+  });
+}
 
 test.describe('render frame', () => {
   test('shows HTML without its scripts until "Run preview", and reports its height', async ({ page, diagnostics }) => {

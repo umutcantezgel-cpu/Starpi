@@ -4,10 +4,9 @@
     "download_aria": "Download code as a file",
     "canvas": "Open in canvas",
     "preview": "Preview",
-    "hide_preview": "Hide preview",
     "preview_title": "Preview of the code block (sandboxed, no network)",
     "run_preview": "Run preview",
-    "run_preview_aria": "Run the scripts of this preview in its sandbox",
+    "run_preview_aria": "Run preview (its scripts run in the sandbox, without network)",
     "preview_error": "This preview could not be shown. The code above is unchanged.",
     "diagram_error": "This diagram could not be drawn here. Its source is shown above."
   }

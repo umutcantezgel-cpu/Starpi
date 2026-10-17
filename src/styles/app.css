@@ -331,7 +331,7 @@ body {
   .code-action {
     @apply inline-flex items-center gap-1 min-h-[24px] min-w-[24px] rounded-md border border-slate-200 bg-white px-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900;
   }
-  .code-action[aria-pressed='true'] {
+  .code-action[aria-expanded='true'] {
     @apply bg-slate-200 text-slate-900;
   }
   .free-note {

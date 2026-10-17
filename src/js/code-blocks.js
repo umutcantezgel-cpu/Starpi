@@ -83,6 +83,8 @@ const previews = new WeakMap();
 /** Markdown sources of answers, for copyAnswer(). @type {WeakMap<Element, string>} */
 const answerSources = new WeakMap();
 let canvasEnabled = false;
+/** Numbers the preview panels (their ids tie them to their button). */
+let previewCount = 0;
 
 /**
  * Called by the canvas once it listens for OPEN_CANVAS_EVENT: code blocks decorated from then on get
@@ -161,6 +163,8 @@ export function decorateCodeBlocks(root) {
     const head = document.createElement('div');
     head.className = 'code-head';
     wrap.append(head, pre);
+    // Long lines scroll sideways; the keyboard needs a stop to scroll them.
+    pre.tabIndex = 0;
     const info = /** @type {NonNullable<ReturnType<typeof codeBlockInfo>>} */ (codeBlockInfo(pre));
     if (info.language) head.dataset.lang = info.language;
     head.append(
@@ -173,7 +177,7 @@ export function decorateCodeBlocks(root) {
     const kind = PREVIEW_LANGUAGES[info.language];
     if (kind && info.code.trim() && info.code.length <= MAX_PREVIEW_CHARS) {
       const preview = toolButton({ action: 'preview-code', icon: 'monitor', label: 'chat.code.preview' });
-      preview.setAttribute('aria-pressed', 'false');
+      preview.setAttribute('aria-expanded', 'false');
       head.append(preview);
     }
   }
@@ -267,18 +271,18 @@ export function togglePreview(btn) {
   const info = codeBlockInfo(btn);
   const kind = info ? PREVIEW_LANGUAGES[info.language] : undefined;
   if (!info || !kind) return false;
-  const label = btn.querySelector('.code-action-label');
   const open = previews.get(info.block);
   if (open) {
     open.destroy();
     previews.delete(info.block);
     info.block.querySelector(':scope > .code-preview')?.remove();
-    btn.setAttribute('aria-pressed', 'false');
-    setText(label, 'chat.code.preview');
+    btn.setAttribute('aria-expanded', 'false');
+    btn.removeAttribute('aria-controls');
     return false;
   }
   const panel = document.createElement('div');
   panel.className = 'code-preview';
+  panel.id = `code-preview-${++previewCount}`;
   const host = document.createElement('div');
   host.className = 'code-preview-frame';
   const note = document.createElement('p');
@@ -303,8 +307,8 @@ export function togglePreview(btn) {
   });
   frame.frame.setAttribute('data-i18n-title', 'chat.code.preview_title');
   previews.set(info.block, frame);
-  btn.setAttribute('aria-pressed', 'true');
-  setText(label, 'chat.code.hide_preview');
+  btn.setAttribute('aria-expanded', 'true');
+  btn.setAttribute('aria-controls', panel.id);
   refreshIcons(panel);
   return true;
 }

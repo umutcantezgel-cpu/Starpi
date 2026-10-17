@@ -64,6 +64,7 @@ describe('decorateCodeBlocks', () => {
     for (const wrap of wraps) {
       assert.deepEqual([...wrap.children].map((c) => c.className || c.tagName), ['code-head', 'PRE']);
       assert.deepEqual(actions(wrap), ['copy-code', 'download-code']);
+      assert.equal(/** @type {HTMLElement} */ (wrap.querySelector('pre')).tabIndex, 0, 'a scrolling block is reachable by keyboard');
       // The bar holds no text of its own outside its buttons (the language label is CSS).
       const head = /** @type {HTMLElement} */ (wrap.querySelector('.code-head'));
       assert.equal([...head.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).length, 0);
@@ -115,7 +116,7 @@ describe('decorateCodeBlocks', () => {
         ['copy-code', 'download-code'],
       ]);
       const preview = /** @type {HTMLElement} */ (after.querySelector('[data-action="preview-code"]'));
-      assert.equal(preview.getAttribute('aria-pressed'), 'false');
+      assert.equal(preview.getAttribute('aria-expanded'), 'false');
       assert.equal(preview.textContent, 'Preview');
     } finally {
       blocks.enableCanvas(false);
@@ -265,8 +266,8 @@ describe('preview', () => {
     blocks.decorateCodeBlocks(content);
     const toggle = /** @type {HTMLElement} */ (content.querySelector('[data-action="preview-code"]'));
     assert.equal(blocks.togglePreview(toggle), true);
-    assert.equal(toggle.getAttribute('aria-pressed'), 'true');
-    assert.equal(toggle.textContent, 'Hide preview');
+    assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+    assert.equal(toggle.getAttribute('aria-controls'), content.querySelector('.code-preview')?.id);
     const iframe = /** @type {HTMLIFrameElement} */ (content.querySelector('.code-preview iframe'));
     assert.equal(iframe.getAttribute('sandbox'), 'allow-scripts');
     assert.equal(iframe.getAttribute('src'), '/render-frame');
@@ -295,12 +296,14 @@ describe('preview', () => {
 
     const run = /** @type {HTMLElement} */ (content.querySelector('[data-action="run-preview"]'));
     assert.equal(run.textContent, 'Run preview');
+    assert.match(/** @type {string} */ (run.getAttribute('aria-label')), /^Run preview /);
     assert.equal(blocks.runPreview(run), true);
     assert.deepEqual(sent.at(-1), [{ type: 'starpi-render', kind: 'html', source: PAGE, theme: 'light', run: true }, '*']);
 
     assert.equal(blocks.togglePreview(toggle), false);
     assert.equal(content.querySelector('.code-preview'), null);
-    assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+    assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+    assert.equal(toggle.getAttribute('aria-controls'), null);
     assert.equal(blocks.runPreview(run), false);
     // The closed frame's listener is gone.
     fromFrame(iframe, { type: 'starpi-render-height', height: 300 });
