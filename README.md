@@ -447,7 +447,7 @@ flowchart LR
             wasmw["wasm/worker.js<br/>Transformers.js 4.3.0, ONNX Runtime WASM,<br/>one thread, catalog models only,<br/>env.fetch pinned to the model revision"]
         end
         subgraph ingestWorker["Web Worker starpi-ingest"]
-            ingest["rag/ingest.worker.js<br/>extractText with pdf.js, chunkText,<br/>BM25Index in worker memory only,<br/>SHA-256 of file and text, verify-receipt"]
+            ingest["rag/ingest.worker.js, rag/workspace-core.js<br/>extractText with pdf.js, chunkText,<br/>BM25Index rebuilt from stored chunks,<br/>hybrid search, SHA-256 of file and text, verify-receipt"]
         end
         sw["sw.js service worker<br/>same-origin GET only,<br/>cross-origin requests bypass it,<br/>a new version skips waiting only<br/>when no window is open"]
         subgraph browserStores["Per-origin browser storage"]

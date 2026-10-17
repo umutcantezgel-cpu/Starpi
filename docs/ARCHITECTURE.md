@@ -182,7 +182,7 @@ flowchart LR
             wasmw["wasm/worker.js<br/>Transformers.js 4.3.0, ONNX Runtime WASM,<br/>one thread, catalog models only,<br/>env.fetch pinned to the model revision"]
         end
         subgraph ingestWorker["Web Worker starpi-ingest"]
-            ingest["rag/ingest.worker.js<br/>extractText with pdf.js, chunkText,<br/>BM25Index in worker memory only,<br/>SHA-256 of file and text, verify-receipt"]
+            ingest["rag/ingest.worker.js, rag/workspace-core.js<br/>extractText with pdf.js, chunkText,<br/>BM25Index rebuilt from stored chunks,<br/>hybrid search, SHA-256 of file and text, verify-receipt"]
         end
         sw["sw.js service worker<br/>same-origin GET only,<br/>cross-origin requests bypass it,<br/>a new version skips waiting only<br/>when no window is open"]
         subgraph browserStores["Per-origin browser storage"]
@@ -2492,6 +2492,12 @@ flowchart TD
 
 Files added to the workspace are parsed, chunked and indexed in a dedicated worker and are never uploaded. Only the on-device mode keeps their matching excerpts on the device as well: the cloud assistant, an own server and NVIDIA cloud receive the excerpts, labelled with their file name, together with the question, and in free chat the text of a file attached to that question. Retrieved chunks are labelled `[Doc: <name>, Chunk: <n>]`; only labels the app registered itself become clickable citations. The worker also records a SHA-256 fingerprint of each file and of its extracted text; answer receipts copy them, so that a cited excerpt can later be reproduced from the same file.
 
+### Keeping files on this device and searching by meaning
+
+The worker runs rag/workspace-core.js, which keeps every document in the app database (store/schema.js) unless the user chose "Memory only": a `docs` record with the fingerprints and the extractor and chunker identity, every chunk with its exact offsets in `chunks`, int8 vectors in `vectors`, and the original bytes and the extracted text in the file store (store/opfs.js: OPFS, or the database's blobs). Files are written first and the records last, in one transaction, so a record never points to missing files; a document whose files are gone is dropped when the worker starts. On start the worker rebuilds the BM25 index from the stored chunks and reads a document's text back only when the citation drawer or a receipt check needs it. The first file asks "Keep files on this device after reload?" in the workspace card; until it is answered files are kept, and the first kept file asks the browser once to protect the site's data (store/quota.js requestPersistence). "Forget all" (the workspace card and Settings → Files on this device) and Clear workspace delete every document, chunk, vector and file. A receipt check adds the stored originals for every receipt document the user did not pick again.
+
+Semantic search on this device is off until the user turns it on in Settings (desktop-class devices are offered it in the workspace card once files are there). It then loads an embedding model of models/embed-catalog.js (multilingual-e5-small by default, pinned to the revision and files the shared library's vectors were computed with) in a WASM worker of its own (wasm/worker.js embed, rag/embed-client.js), embeds every chunk without a vector in batches of 16 ("passage: " prefix, mean pooling, L2-normalised), and stores the vectors int8-quantised with their scale. A question is embedded with the "query: " prefix; workspace.js asks the worker for searchHybrid when the workspace has vectors and the question's vector arrives within 2 s (retrieval.js searchWithQueryVector), which fuses the BM25 top 50 and the cosine top 50 with reciprocal rank fusion (k = 60, rag/hybrid.js fuseRrf); otherwise it searches with BM25 alone. In on-device mode the same vector ranks the shared library through match_knowledge_vector_384, so the question text stays on the device. workspaceProbe(question) returns the normalised best BM25 score and the share of the question's terms in the best chunk for the Auto mode.
+
 ### On-device workspace: from file drop to the document list
 
 Files dropped on dropZone or picked in workspaceFileInput go through addFiles one at a time; names outside WORKSPACE_EXTENSIONS are rejected on the main thread and the rest are structured-cloned to the lazily created module worker (its URL patched in by scripts/build.mjs) in an ingest request. The status line keeps one line per finished file and shows the current file's progress below them: reading while the worker fingerprints the file, then parsing, chunking and indexing. A file whose fingerprint and chunk settings match a document already in this worker is not indexed again: the worker returns that document with duplicate true and the list stays unchanged. Otherwise the worker extracts the text, chunks it with chunkText (500/50, no caller overrides them), gives the document a unique name and the id ws-instanceId-N and adds the chunks to its BM25Index. A ParseError returns as ok false with its code (any other exception as internal) and is reported as workspace.error_<code>; a worker error or messageerror event rejects every pending request with worker_crashed and resets the workspace; success appends the document and re-renders workspaceList.
@@ -2710,7 +2716,7 @@ flowchart TD
 
 ### Workspace RPCs: search, head, context, text, remove, clear
 
-Every workspace call goes through request(), which posts {id, type, payload} to the worker and settles on the reply with the same id. searchWorkspace resolves to an empty list without sending anything when there are no documents or the query is blank; the worker clamps topK to 1..50 (default 5), head counts to 1..10 (default 3) and the context pad to 0..2000 (default 300, workspace.js sends 400). chat.js asks for the top 6 (LIMITS.retrievalRows) and for the first 3 chunks of an attached file when none of the hits comes from it; in free chat it reads an attached file's whole text and, for a file over 12,000 characters, its first 2 chunks and the top 12 hits; the workspace search form and the demo's check answer ask for 5. context and text reply with code empty for an unknown docId while head replies with an empty list, and chat.js swallows any retrieval rejection. clearWorkspace rejects pending calls with cleared and terminates the worker instead of sending the worker's clear request. The remaining request type besides ingest, verify-receipt, is shown in workspace-ingestion-verify-receipt.
+Every workspace call goes through request(), which posts {id, type, payload} to the worker and settles on the reply with the same id. searchWorkspace resolves to an empty list without sending anything when there are no documents or the query is blank; the worker clamps topK to 1..50 (default 5), head counts to 1..10 (default 3) and the context pad to 0..2000 (default 300, workspace.js sends 400). chat.js asks for the top 6 (LIMITS.retrievalRows) and for the first 3 chunks of an attached file when none of the hits comes from it; in free chat it reads an attached file's whole text and, for a file over 12,000 characters, its first 2 chunks and the top 12 hits; the workspace search form and the demo's check answer ask for 5. context and text reply with code empty for an unknown docId while head replies with an empty list, and chat.js swallows any retrieval rejection. clearWorkspace rejects pending calls with cleared and sends the worker's clear request, which empties memory and deletes the stored documents; an ingest that started before the clear is cancelled with cleared. The remaining request type besides ingest, verify-receipt, is shown in workspace-ingestion-verify-receipt.
 
 <!-- diagram: workspace-ingestion-rpcs -->
 ```mermaid
@@ -2769,10 +2775,12 @@ sequenceDiagram
     W-->>WS: removed chunk count, documents entry deleted
     WS->>ING: docs filtered, notify() re-renders the list
     ING->>WS: clearWorkspace() after window.confirm
-    WS->>WS: failAll rejects pending requests with cleared, reset() terminates the worker
-    WS->>ING: docs emptied and notify() only when there were documents
+    WS->>WS: failAll rejects pending requests with cleared
+    WS->>W: clear
+    W->>IX: clear(), documents, vectors and stored copies deleted
+    WS->>ING: docs emptied, notify()
     ING->>ING: workspaceResults emptied, status workspace.cleared
-    Note over W,IX: the worker also handles a clear request, but nothing sends it.<br/>rag/receipts.js sends verify-receipt through verifyReceiptFiles,<br/>see workspace-ingestion-verify-receipt
+    Note over W,IX: rag/receipts.js sends verify-receipt through verifyReceiptFiles,<br/>see workspace-ingestion-verify-receipt
 ```
 
 <sub>Sources: [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/config.js`](../src/js/config.js), [`src/js/prompts.js`](../src/js/prompts.js)</sub>
@@ -2830,7 +2838,7 @@ flowchart TD
 
 ### Worker crash, Clear workspace and restart
 
-A worker error or messageerror event and a confirmed Clear workspace both end in failAll plus reset(): every pending request rejects (worker_crashed or cleared), the worker is terminated and the document list is emptied. Each caller handles the rejection in its own way (a status line, a chat notice, the demo's error notice, retrieval without workspace hits, citation.note_missing, a receipt check message, a logged error; the workspace search form does not catch it). The next request starts a fresh worker with a new random instanceId and an empty document map, so its document ids (ws-instanceId-n) never repeat an earlier one, an old citation span always ends in citation.note_missing, and a file added again is indexed anew instead of being reported as a duplicate.
+A worker error or messageerror event ends in failAll plus reset(): every pending request rejects with worker_crashed, the worker is terminated and the document list is emptied; the next request starts a worker that restores the stored documents. A confirmed Clear workspace rejects pending requests with cleared and then deletes every document in the running worker and on this device. Each caller handles the rejection in its own way (a status line, a chat notice, the demo's error notice, retrieval without workspace hits, citation.note_missing, a receipt check message, a logged error; the workspace search form does not catch it). The next request starts a fresh worker with a new random instanceId and an empty document map, so its document ids (ws-instanceId-n) never repeat an earlier one, an old citation span always ends in citation.note_missing, and a file added again is indexed anew instead of being reported as a duplicate.
 
 <!-- diagram: workspace-ingestion-reset -->
 ```mermaid
@@ -2840,7 +2848,7 @@ flowchart TD
     clickClear(["workspace-clear button"])
     confirmQ{"window.confirm(workspace.clear_confirm)?"}
     keepAll(["nothing changes"])
-    failClear["clearWorkspace(): failAll(WorkspaceError cleared)<br/>the worker's clear request is never sent"]
+    failClear["clearWorkspace(): failAll(WorkspaceError cleared),<br/>then the worker's clear request deletes every document<br/>from memory and from this device"]
     reset["reset(): worker.terminate(), worker = null"]
     docsQ{"docs non-empty?"}
     emptyDocs["docs = [], notify()<br/>renderWorkspace shows workspaceEmpty"]
@@ -2864,7 +2872,7 @@ flowchart TD
     clickClear --> confirmQ
     confirmQ -->|"no"| keepAll
     confirmQ -->|"yes"| failClear
-    failClear --> reset
+    failClear --> emptyDocs
     failCrash -.->|"rejects"| pending
     failClear -.->|"rejects"| pending
     pending --> rIngest
