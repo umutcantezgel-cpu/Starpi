@@ -14,7 +14,6 @@ import { refreshIcons } from './icons.js';
 import { startLocalEngine } from './engine-ui.js';
 import { formatDate, getLocale, hasKey, setText, t } from './i18n/index.js';
 import { appendLoading, appendMessage, appendNotice, createStreamingMessage, markFreeAnswer, resetMessages } from './messages.js';
-import { localAnswerTokens } from './models/bench-rates.js';
 import { findNvidiaModel, NVIDIA_LIMITS } from './models/nvidia-catalog.js';
 import {
   attachmentSection,
@@ -343,7 +342,8 @@ async function answerWithLocalModel(req) {
   const { plan } = req;
   const free = plan.kind === 'free';
   const local = localModelProfile(model);
-  const maxTokens = await localAnswerTokens(model, { free });
+  // The device's output budget; a processor model's measured rate is read from the benchmark history.
+  const maxTokens = await (await import('./models/bench-rates.js')).localAnswerTokens(model, { free });
   const budget = budgetPrompt({
     contextWindow: model.chatOptions.context_window_size,
     maxOutputTokens: maxTokens,

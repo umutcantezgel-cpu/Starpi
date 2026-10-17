@@ -1,4 +1,4 @@
-// The benchmark on a device without WebGPU (src/js/bench/diagnostics.js benchRuntime and
+// The benchmark on a device without WebGPU (src/js/bench/measure.js benchRuntime and
 // measureModel): it measures a processor (WASM) model instead of refusing, through a stand-in engine
 // with the controller API of webgpu/engine.js. The run goes into the history, and a seeded history
 // changes the recommendation for the device.
@@ -6,7 +6,8 @@ import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { IDBFactory } from 'fake-indexeddb';
-import { benchRuntime, computeBenchmarkMetrics, measureModel } from '../../src/js/bench/diagnostics.js';
+import { computeBenchmarkMetrics } from '../../src/js/bench/diagnostics.js';
+import { benchRuntime, measureModel } from '../../src/js/bench/measure.js';
 import { benchEntry, readHistory, recordRun } from '../../src/js/models/bench-history.js';
 import { recommendModels } from '../../src/js/models/device.js';
 import { openAppDb } from '../../src/js/store/schema.js';
