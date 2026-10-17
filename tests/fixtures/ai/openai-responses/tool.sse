@@ -1,0 +1,30 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_3fake","object":"response","created_at":1767225603,"model":"gpt-5-mini","store":false,"status":"in_progress","output":[]}}
+
+event: response.in_progress
+data: {"type":"response.in_progress","sequence_number":1,"response":{"id":"resp_3fake","object":"response","created_at":1767225603,"model":"gpt-5-mini","store":false,"status":"in_progress","output":[]}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":2,"output_index":0,"item":{"id":"fc_3fake","type":"function_call","status":"in_progress","call_id":"call_3fake","name":"lookup","arguments":""}}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","sequence_number":3,"item_id":"fc_3fake","output_index":0,"delta":"{\"query"}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","sequence_number":4,"item_id":"fc_3fake","output_index":0,"delta":"\":\"Look"}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","sequence_number":5,"item_id":"fc_3fake","output_index":0,"delta":" it up\""}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","sequence_number":6,"item_id":"fc_3fake","output_index":0,"delta":"}"}
+
+event: response.function_call_arguments.done
+data: {"type":"response.function_call_arguments.done","sequence_number":7,"item_id":"fc_3fake","output_index":0,"arguments":"{\"query\":\"Look it up\"}"}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":8,"output_index":0,"item":{"id":"fc_3fake","type":"function_call","status":"completed","call_id":"call_3fake","name":"lookup","arguments":"{\"query\":\"Look it up\"}"}}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":9,"response":{"id":"resp_3fake","object":"response","created_at":1767225603,"model":"gpt-5-mini","store":false,"status":"completed","output":[{"id":"fc_3fake","type":"function_call","status":"completed","call_id":"call_3fake","name":"lookup","arguments":"{\"query\":\"Look it up\"}"}],"usage":{"input_tokens":6,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":7},"output_text":""}}
+

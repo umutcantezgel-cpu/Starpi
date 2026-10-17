@@ -1,18 +1,18 @@
 // @ts-check
-// /api/relay/:provider/:path* (Vercel Function): the stateless relay that forwards a request with
-// the user's own key to an allowlisted provider path. vercel.json rewrites the route to this file;
-// the function sees the original URL and reads the provider and the path from it.
-// Until it is built, every method answers 501 with the JSON body { "error": "not_implemented" }.
-import { json } from './_lib/guards.js';
+// GET or POST /api/relay/:provider/:path* (Vercel Function): the stateless relay that forwards one
+// request with the user's own key to an allowlisted provider path (api/_lib/relay/handler.js).
+// vercel.json rewrites the route to this file; the function sees the original URL and reads the
+// provider and the path from it. Every other method gets 405.
+import { methodNotAllowed } from './_lib/guards.js';
+import { relayRuntimeDeps, serveRelay } from './_lib/relay/handler.js';
 
-const notImplemented = () => json(501, { error: 'not_implemented' });
+/** @param {Request} request */
+function relay(request) {
+  return serveRelay(request, relayRuntimeDeps());
+}
 
-export {
-  notImplemented as DELETE,
-  notImplemented as GET,
-  notImplemented as HEAD,
-  notImplemented as OPTIONS,
-  notImplemented as PATCH,
-  notImplemented as POST,
-  notImplemented as PUT,
-};
+function notAllowed() {
+  return methodNotAllowed('GET, POST');
+}
+
+export { notAllowed as DELETE, relay as GET, notAllowed as HEAD, notAllowed as OPTIONS, notAllowed as PATCH, relay as POST, notAllowed as PUT };

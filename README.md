@@ -469,13 +469,12 @@ flowchart LR
         rest["PostgREST<br/>/rest/v1 tables and /rest/v1/rpc"]
         subgraph pg["Postgres, RLS enabled on every table"]
             tables[("knowledge_documents, knowledge_entities,<br/>knowledge_relations: read is_public or owner_id = auth.uid(),<br/>knowledge_sections: visible with their document,<br/>writes only to own private rows<br/>chat_history: owner only, no anon grant<br/>brain_settings: no policy, service_role only")]
-            rpcFns["SECURITY INVOKER functions<br/>search_knowledge: anon, authenticated, service_role<br/>match_knowledge_sections, match_knowledge_hybrid:<br/>authenticated, service_role<br/>ingest_document_atomic: service_role only"]
+            rpcFns["SECURITY INVOKER functions<br/>search_knowledge: anon, authenticated, service_role<br/>match_knowledge_vector_384, optional migration:<br/>anon, authenticated, service_role<br/>match_knowledge_sections, match_knowledge_hybrid:<br/>authenticated, service_role<br/>ingest_document_atomic: service_role only"]
         end
     end
 
-    subgraph backendHost["Optional backend host, operator-controlled"]
-        caller["HTTP client of /api/brain/*, or the app<br/>when the NVIDIA routes share its origin"]
-        brain["backend/server.py<br/>default bind 127.0.0.1:9200<br/>/api/brain/* never called by the browser bundle"]
+    subgraph backendHost["Optional library publisher, operator machine"]
+        brain["tools/library-publisher<br/>python -m publisher, no listener:<br/>publish, backfill, list, test-query"]
     end
 
     subgraph thirdParty["Third-party services outside Starpi control"]
@@ -486,7 +485,7 @@ flowchart LR
         hf["Hugging Face<br/>huggingface.co/mlc-ai weights,<br/>WASM model repositories at pinned revisions"]
         ghLibs["raw.githubusercontent.com<br/>binary-mlc-llm-libs wasm"]
         speech["Browser speech recognition<br/>vendor servers in most browsers"]
-        backendApis["Backend upstreams<br/>LLM_BASE_URL, EMBEDDING_BASE_URL,<br/>GEMINI_API_KEYS, OPENROUTER_API_KEYS"]
+        backendApis["Publisher upstreams<br/>Hugging Face model files at a pinned revision,<br/>LLM_BASE_URL only for publish --structure"]
     end
 
     host -->|"app shell, hashed assets and<br/>public files with security headers"| sw
@@ -520,10 +519,8 @@ flowchart LR
     provJs -->|"same-origin GET /api/models/nvidia,<br/>POST /api/chat/nvidia without a key,<br/>answer streamed back as SSE"| fn
     fn -->|"Bearer key from the pool,<br/>failover before the first byte"| nvidia
     voiceJs -->|"microphone audio, handled by the browser"| speech
-    caller -->|"Bearer BRAIN_API_TOKEN when set,<br/>else loopback Host only,<br/>/api/chat/nvidia: an allowed Origin or the token"| brain
-    brain -->|"service_role key bypasses RLS:<br/>knowledge_documents, knowledge_sections,<br/>rpc match_knowledge_sections,<br/>reads kept to is_public or no owner"| rest
-    brain -->|"chat/completions, embeddings,<br/>generateContent"| backendApis
-    brain -->|"/api/chat/nvidia: Bearer key<br/>from its own NVIDIA_API_KEYS pool"| nvidia
+    brain -->|"service_role key bypasses RLS:<br/>rpc ingest_document_atomic, PATCH is_public<br/>and embedding_384, reads kept to is_public or no owner"| rest
+    brain -->|"fetch-model, chat/completions"| backendApis
 
     classDef external stroke-dasharray: 5 5
     class gemini,openrouter,ownServer,nvidia,hf,ghLibs,speech,backendApis external
@@ -534,7 +531,7 @@ flowchart LR
 The [architecture atlas](docs/ARCHITECTURE.md) documents every subsystem with diagrams checked
 against the code: boot, chat in both modes, retrieval and citations, the source check and
 receipts, the on-device engines (WebGPU and WASM), storage and offline use, the database and its
-policies, the backend, the NVIDIA cloud proxy, and build, test and deployment.
+policies, the library publisher, the NVIDIA cloud proxy, and build, test and deployment.
 
 ## On-device models
 
@@ -640,7 +637,7 @@ Network Access permission prompt (Chrome 142+), and Ollama must allow the origin
 
 ## Quickstart
 
-Prerequisites: Node.js 22.13+ (`.nvmrc`), npm 10+. Python 3.11+ only for the optional backend.
+Prerequisites: Node.js 22.13+ (`.nvmrc`), npm 10+. Python 3.11+ only for the optional library publisher.
 
 ```bash
 git clone https://github.com/umutcantezgel-cpu/Starpi.git
@@ -713,8 +710,12 @@ show them.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `NVIDIA_API_KEYS` | empty: the chat route answers `503 nvidia_not_configured` | The key pool, comma separated: `nvapi-<64 characters>` per key. On Vercel an environment variable of type **Sensitive** for **Production** and **Preview**. Entries of another shape are ignored and only counted in the log. |
-| `NVIDIA_RATE_LIMIT_PER_MINUTE` | `20` | Chat requests per client IP and minute, counted in each function instance |
-| `NVIDIA_ALLOWED_ORIGINS` | empty | Further origins, comma separated, whose pages may call the chat route; the site's own origin always may |
+| `NVIDIA_RATE_LIMIT_PER_MINUTE` | `20` | Chat requests per client IP and minute, counted in each function instance (the older name of `STARPI_POOL_RPM_PER_IP`, which wins when set) |
+| `NVIDIA_ALLOWED_ORIGINS` | empty | Further origins, comma separated, whose pages may call the chat route; the site's own origin always may (the older name of `STARPI_ALLOWED_ORIGINS`) |
+
+`POST /api/chat/nvidia` is the NVIDIA pool of the site's key pools. The relay for keys of your own,
+the further pools, `GET /api/health`, the shared variables and the optional access code are
+described in [docs/SERVER.md](docs/SERVER.md).
 
 Vercel reads environment variables when it creates a deployment: set them first, then deploy, and
 redeploy after a change. Each request starts at the next key and moves on to the following keys
@@ -728,13 +729,13 @@ hosts in `NVIDIA_ALLOWED_ORIGINS`; the end-to-end tests run without them and moc
 ```bash
 npm run build
 NVIDIA_API_KEYS=nvapi-<64 characters> npm run preview   # app and both routes on :3000
-npm run nvidia:sync                     # copy src/js/models/nvidia-catalog.js for the backend
 NVIDIA_API_KEYS=… npm run nvidia:ping   # maintainers: one request per model, real quota
 ```
 
 `nvidia:ping` prints the number of keys and, per model, only the id, the status, the time to the
-first byte and whether reasoning and content arrived, never a key or a response. The Python backend serves the same two
-routes ([below](#optional-backend)).
+first byte and whether reasoning and content arrived, never a key or a response. On a host without
+Vercel, `node scripts/serve.mjs --functions` serves the built app together with both routes, behind
+a TLS reverse proxy ([backend/README.md](backend/README.md#what-changed-in-30)).
 
 ## Database setup (Supabase)
 
@@ -748,16 +749,16 @@ rollback.
    `backend/supabase/migrations/` in file-name order.
 3. Check the result with Supabase's security advisors.
 
-## Optional backend
+## Library publisher (optional)
 
-`backend/` is a dependency-light Python service for server-side ingestion (Markdown structuring,
-chunking, 1536-dimensional embeddings) and pgvector retrieval. It holds the **service role** key,
-binds to `127.0.0.1` by default and requires `BRAIN_API_TOKEN` on any other interface. It also
-serves the NVIDIA routes `GET /api/models/nvidia` and `POST /api/chat/nvidia` with the same model
-list, limits, validation and error codes as the Vercel Functions (plus two codes of its own), for
-hosts without Vercel. The app calls them only on its own origin, so the backend has to be served
-behind a reverse proxy on the app's origin for that. See
-[backend/README.md](backend/README.md#nvidia-routes-on-the-apps-origin).
+`tools/library-publisher/` is a Python command line tool that fills the shared library: it splits
+text and Markdown files into sections, embeds each one with multilingual-e5-small (384 dimensions,
+the model the browser uses for its query vectors, run through ONNX Runtime with pinned and
+hash-checked model files) and stores them with the **service role** key on a machine you control.
+It opens no port, and its reads stay within published rows and rows without an owner. The vectors
+need the optional migration `backend/supabase/migrations/20261101000000_embedding_384.sql`. See
+[backend/README.md](backend/README.md#library-publisher). The Python HTTP service of earlier
+releases (`/api/brain/*` and its NVIDIA routes) has been removed.
 
 ## Security
 
@@ -790,15 +791,15 @@ Details and known limitations are in [SECURITY.md](SECURITY.md).
 
 | Job | Checks |
 | --- | --- |
-| `frontend` | ESLint, TypeScript, unit tests (including golden tests for extraction, chunking and the source check, receipt round trips, the model catalogs and device classes, both chat modes, the streaming parser, the NVIDIA proxy with its guards and failover, and its copy for the Python backend), a typed build and dry-run pack of `@starpi/core`, production build, `verify-dist` (also: no NVIDIA key in the bundles) |
+| `frontend` | ESLint, TypeScript, unit tests (including golden tests for extraction, chunking and the source check, receipt round trips, the model catalogs and device classes, both chat modes, the streaming parser, the NVIDIA proxy with its guards and failover), a typed build and dry-run pack of `@starpi/core`, production build, `verify-dist` (also: no NVIDIA key in the bundles) |
 | `e2e` | Playwright on desktop and mobile viewports under the production CSP: zero CSP violations, sample files, source check, receipts verified against the original files, axe (no serious or critical violations), privacy of on-device turns, inert XSS payloads, offline reconnect, the model menu, free chat, chat export and delete, and NVIDIA answers from a mocked proxy |
-| `backend` | ruff, byte-compilation and offline unit tests on Python 3.11 and 3.12, including the NVIDIA routes with a mocked upstream and the validation cases shared with the Vercel Functions |
+| `backend` | The library publisher on Python 3.11 and 3.13: ruff, byte-compilation and offline unit tests of chunking, the e5 prefixes and pooling, the pinned model files, the Supabase payloads and filters and every command, against mocked HTTP |
 | `database` | Migration and RLS suite on PostgreSQL 16 with pgvector: live, fresh and legacy schemas, idempotency, schema parity, cross-user isolation, search |
-| `audit` | `npm audit` with no advisory of any severity allowed in runtime dependencies (development tooling is reported, not blocking), `pip-audit` on the backend requirements, CycloneDX SBOMs of the app and of `@starpi/core` from the lockfile, kept as the `sbom` artifact |
+| `audit` | `npm audit` with no advisory of any severity allowed in runtime dependencies (development tooling is reported, not blocking), `pip-audit` on the library publisher's requirements, CycloneDX SBOMs of the app and of `@starpi/core` from the lockfile, kept as the `sbom` artifact |
 | `secrets` | gitleaks on the working tree and on the commits of a pull request, with a rule for NVIDIA API keys (also when pasted with Markdown escapes) |
 
 In numbers: 479 unit tests in 38 files, 94 end-to-end tests (the desktop and mobile runs counted
-separately; the diagram check runs on desktop only) and 146 backend tests.
+separately; the diagram check runs on desktop only) and 76 library publisher tests.
 
 The unit and end-to-end suites also check the documentation: every Mermaid block renders, diagram
 copies match the atlas, and links and anchors resolve.

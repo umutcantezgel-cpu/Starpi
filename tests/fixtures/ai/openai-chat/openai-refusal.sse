@@ -1,0 +1,14 @@
+data: {"id":"chatcmpl-9fake","object":"chat.completion.chunk","created":1767225609,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-9fake","object":"chat.completion.chunk","created":1767225609,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"content":"I can't "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-9fake","object":"chat.completion.chunk","created":1767225609,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"content":"help with "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-9fake","object":"chat.completion.chunk","created":1767225609,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"content":"that request."},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-9fake","object":"chat.completion.chunk","created":1767225609,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{},"finish_reason":"content_filter","logprobs":null}]}
+
+data: {"id":"chatcmpl-9fake","object":"chat.completion.chunk","created":1767225609,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[],"usage":{"prompt_tokens":7,"completion_tokens":8,"total_tokens":15,"completion_tokens_details":{"reasoning_tokens":0}}}
+
+data: [DONE]
+

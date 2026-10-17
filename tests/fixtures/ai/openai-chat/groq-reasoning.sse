@@ -1,0 +1,38 @@
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"reasoning":"The question "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"reasoning":"is short. "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"reasoning":"I recall "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"reasoning":"the key "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"reasoning":"facts first, "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"reasoning":"then answer "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"reasoning":"in one "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"reasoning":"or two "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"reasoning":"sentences."},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"content":"This is "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"content":"a simulated "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"content":"answer from "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"content":"the local "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"content":"test provider. "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"content":"You asked: "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{"content":"\"Think first\"."},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-11fake","object":"chat.completion.chunk","created":1767225611,"model":"fake-groq-reasoner","choices":[{"index":0,"delta":{},"finish_reason":"stop","logprobs":null}],"x_groq":{"id":"req_11fake","usage":{"prompt_tokens":8,"completion_tokens":44,"total_tokens":52,"completion_tokens_details":{"reasoning_tokens":23}}}}
+
+data: [DONE]
+

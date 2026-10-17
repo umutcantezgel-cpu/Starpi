@@ -3,9 +3,9 @@
 -- ==============================================================================
 --
 -- Canonical schema for a new Supabase project: knowledge base (documents,
--- sections with 1536-dim pgvector embeddings and an HNSW index, German
--- full-text search), knowledge graph, chat history, settings and the RPCs
--- used by the browser and the backend.
+-- sections with 1536-dim and 384-dim pgvector embeddings and HNSW indexes,
+-- German full-text search), knowledge graph, chat history, settings and the
+-- RPCs used by the browser and the library publisher.
 --
 -- Existing databases are upgraded with the files in migrations/ instead; this
 -- file refuses to run on a pre-hardening schema. After a fresh install the
@@ -16,7 +16,8 @@
 -- Security model (details in README.md):
 --   * The browser uses the anon key and Supabase anonymous sign-ins. Signed-in
 --     clients have the role "authenticated" and only reach their own rows.
---   * The backend uses the service role, which bypasses RLS.
+--   * The library publisher (tools/library-publisher) uses the service role,
+--     which bypasses RLS.
 --   * Knowledge rows are public (is_public, set by the service role) or
 --     private to owner_id. Published rows are read-only for browser roles.
 --     chat_history is always private to its owner; brain_settings is service
@@ -107,6 +108,14 @@ create table if not exists public.knowledge_sections (
         to_tsvector('german', coalesce(heading, '') || ' ' || coalesce(markdown_content, ''))
     ) stored
 );
+
+-- multilingual-e5-small vectors (migrations/20261101000000_embedding_384.sql).
+-- Added after the table, like the migration does, so the column order of
+-- fresh and upgraded schemas is the same.
+alter table public.knowledge_sections add column if not exists embedding_384 public.vector(384);
+
+comment on column public.knowledge_sections.embedding_384 is
+    'multilingual-e5-small, 384 dimensions, L2-normalised: "passage: " + section text. Queries use "query: " + question with the same model.';
 
 -- ------------------------------------------------------------------------------
 -- 3. Chat history (private to the signed-in user)
@@ -231,6 +240,8 @@ create index if not exists idx_kdocs_fts on public.knowledge_documents using gin
 
 create index if not exists idx_ksections_embedding_hnsw on public.knowledge_sections
     using hnsw (embedding public.vector_cosine_ops) with (m = 16, ef_construction = 64);
+create index if not exists idx_ksections_embedding_384_hnsw on public.knowledge_sections
+    using hnsw (embedding_384 public.vector_cosine_ops) with (m = 16, ef_construction = 64);
 create index if not exists idx_ksections_doc_id on public.knowledge_sections (document_id);
 create index if not exists idx_ksections_fts on public.knowledge_sections using gin (fts);
 
@@ -446,7 +457,8 @@ begin
         from pg_proc p
         where p.pronamespace = 'public'::regnamespace
           and p.proname in ('match_knowledge_sections', 'match_knowledge_hybrid',
-                            'ingest_document_atomic', 'search_knowledge')
+                            'ingest_document_atomic', 'search_knowledge',
+                            'match_knowledge_vector_384')
     loop
         execute format('drop function %s', fn);
     end loop;
@@ -693,9 +705,66 @@ as $$
     limit greatest(1, least(coalesce(match_count, 6), 20));
 $$;
 
--- Atomic ingestion of a document and its sections, used by the backend with
--- the service role. SECURITY INVOKER: the service role has the table
--- privileges it needs, and nobody else may execute it.
+-- Vector ranking for the browser (anon and signed-in users). Returns the
+-- visible sections most similar to query_embedding, best first, with the
+-- columns of search_knowledge plus the cosine similarity. Sections without
+-- embedding_384 are never returned; a null query returns no rows; a query of
+-- another dimension fails with SQLSTATE 22023. match_count is clamped to
+-- 1..20, only rows above match_threshold (default 0) are returned.
+-- With the HNSW index the ranking is approximate (it looks at hnsw.ef_search
+-- candidates, 40 by default) and RLS filters those candidates, so a caller who
+-- can see only a small part of the table may get fewer rows than asked for.
+create function public.match_knowledge_vector_384(
+    query_embedding public.vector(384),
+    match_count integer default 6,
+    match_threshold double precision default 0
+)
+returns table (
+    section_id uuid,
+    document_id uuid,
+    document_title text,
+    heading text,
+    markdown_content text,
+    tags text[],
+    similarity double precision
+)
+language plpgsql
+stable
+security invoker
+set search_path = ''
+as $$
+begin
+    if query_embedding is null then
+        return;
+    end if;
+    if public.vector_dims(query_embedding) <> 384 then
+        raise exception 'query_embedding has % dimensions, expected 384', public.vector_dims(query_embedding)
+            using errcode = '22023';
+    end if;
+
+    return query
+        select
+            ks.id,
+            ks.document_id,
+            kd.title,
+            ks.heading,
+            ks.markdown_content,
+            kd.tags,
+            (1 - (ks.embedding_384 operator(public.<=>) query_embedding))::double precision
+        from public.knowledge_sections ks
+        join public.knowledge_documents kd on kd.id = ks.document_id
+        where ks.embedding_384 is not null
+          and 1 - (ks.embedding_384 operator(public.<=>) query_embedding) > coalesce(match_threshold, 0)
+        order by ks.embedding_384 operator(public.<=>) query_embedding
+        limit greatest(1, least(coalesce(match_count, 6), 20));
+end;
+$$;
+
+-- Atomic ingestion of a document and its sections, used by the library
+-- publisher with the service role. SECURITY INVOKER: the service role has the
+-- table privileges it needs, and nobody else may execute it. A section's
+-- "embedding" (1536) and "embedding_384" are optional; an empty or missing
+-- array stores null, an array of another length fails the whole call.
 create function public.ingest_document_atomic(
     doc_title text,
     doc_summary text,
@@ -732,7 +801,7 @@ begin
     returning id into new_doc_id;
 
     insert into public.knowledge_sections (
-        document_id, section_index, heading, markdown_content, token_count, embedding
+        document_id, section_index, heading, markdown_content, token_count, embedding, embedding_384
     )
     select
         new_doc_id,
@@ -744,6 +813,11 @@ begin
             when jsonb_typeof(s.elem -> 'embedding') = 'array'
                  and jsonb_array_length(s.elem -> 'embedding') > 0
             then (s.elem ->> 'embedding')::public.vector(1536)
+        end,
+        case
+            when jsonb_typeof(s.elem -> 'embedding_384') = 'array'
+                 and jsonb_array_length(s.elem -> 'embedding_384') > 0
+            then (s.elem ->> 'embedding_384')::public.vector(384)
         end
     from jsonb_array_elements(payload) with ordinality as s (elem, ord);
 
@@ -791,6 +865,11 @@ revoke all on function public.match_knowledge_hybrid(text, public.vector, intege
     from public, anon, authenticated, service_role;
 grant execute on function public.match_knowledge_hybrid(text, public.vector, integer, integer)
     to authenticated, service_role;
+
+revoke all on function public.match_knowledge_vector_384(public.vector, integer, double precision)
+    from public, anon, authenticated, service_role;
+grant execute on function public.match_knowledge_vector_384(public.vector, integer, double precision)
+    to anon, authenticated, service_role;
 
 revoke all on function public.ingest_document_atomic(text, text, text[], text, text, text, jsonb)
     from public, anon, authenticated, service_role;

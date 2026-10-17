@@ -15,10 +15,10 @@ npm run dev               # watch build + local server with production headers o
 `NVIDIA_API_KEYS=nvapi-<64 characters>` in the environment to use them. The end-to-end tests run
 without the functions and mock `/api/*`, so they never reach NVIDIA.
 
-Backend (optional):
+Library publisher (optional, Python 3.11+):
 
 ```bash
-python -m pip install -r backend/requirements-dev.txt
+cd tools/library-publisher && python -m pip install -r requirements-dev.txt
 ```
 
 Database tests need PostgreSQL 16 and pgvector
@@ -90,18 +90,17 @@ flowchart TD
 | Frontend | `npm run verify` (lint, typecheck, unit tests, build, output verification) |
 | `@starpi/core` | `npm run pack:core` (typed build, lists the files the package would publish) |
 | End-to-end | `npm run build && npm run test:e2e` (first run: `npx playwright install chromium`) |
-| Backend | `ruff check backend && ruff format --check backend && python -m unittest discover -s backend -p 'test_*.py'` |
+| Library publisher | `ruff check tools/library-publisher backend && ruff format --check tools/library-publisher backend`, then `python -m unittest discover` in `tools/library-publisher` |
 | Database | `bash backend/supabase/tests/run_rls_tests.sh` |
 | Dependencies | `npm audit --omit=dev`, `pip-audit -r backend/requirements-dev.txt` and `npm run sbom` (CycloneDX SBOMs into `sbom/`) |
-| NVIDIA model list | `npm run nvidia:sync -- --check` (the backend's copy `backend/core/nvidia_catalog.json` matches `src/js/models/nvidia-catalog.js`; `npm run nvidia:sync` rewrites it) |
 
-CI runs all of them (the NVIDIA copy is checked by the unit tests), plus gitleaks.
+CI runs all of them, plus gitleaks.
 `npm run nvidia:ping` checks the NVIDIA list against the live API with real keys and quota; run it
-before changing the list, never in CI. `backend/scripts/brain_smoke.py` is a manual end-to-end
-check against live endpoints and is not part of the automated suite.
+before changing the list, never in CI. The library publisher's test against the real model runs only when
+`PUBLISHER_TEST_MODEL_DIR` points at the files `python -m publisher fetch-model` wrote.
 
-When the NVIDIA list changes, change `src/js/models/nvidia-catalog.js`, run `npm run nvidia:sync`
-and update the T4 table in the README; the unit tests fail until all three agree.
+When the NVIDIA list changes, change `src/js/models/nvidia-catalog.js` and update the T4 table in
+the README; the unit tests fail until both agree.
 
 <!-- diagram: test-strategy-ci-gates -->
 ```mermaid
@@ -124,15 +123,15 @@ flowchart LR
         rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
     end
 
-    subgraph jobBack["Job backend, matrix Python 3.11 and 3.12"]
-        ruff["ruff check backend,<br/>ruff format --check backend"]
-        comp["python -m compileall -q backend"]
-        ut["python -m unittest discover -s backend -p test_*.py, 146 tests<br/>test_core.py: chunker, embeddings, config, structurer,<br/>supabase_client incl. private rows kept out of reads,<br/>ingestion pipeline, rag<br/>test_server.py: routing, body validation, timeouts, proxy and<br/>token auth, length limits, CORS, startup, the NVIDIA routes,<br/>shutdown waits for requests in flight, Content-Length parsing<br/>test_nvidia.py: keys, shared validation vectors, Retry-After,<br/>key pool, failover, stream ends, rate limiter<br/>offline: httpx.Client and MockTransport, fakes behind a 127.0.0.1 server"]
+    subgraph jobBack["Job backend, library publisher, matrix Python 3.11 and 3.13"]
+        ruff["ruff check tools/library-publisher backend,<br/>ruff format --check tools/library-publisher backend"]
+        comp["python -m compileall -q tools/library-publisher backend"]
+        ut["python -m unittest discover in tools/library-publisher, 76 tests<br/>chunker, config, structurer, e5 prefixes, mean pooling and<br/>L2 norm with a fake session, pinned model files with a fake hub,<br/>Supabase payloads, shared-row filters and errors,<br/>pipeline and every command against MockTransport<br/>the test against the real model is skipped without<br/>PUBLISHER_TEST_MODEL_DIR"]
     end
 
     subgraph jobDb["Job database"]
         apt["apt-get install postgresql-16,<br/>postgresql-16-pgvector"]
-        rls["bash backend/supabase/tests/run_rls_tests.sh<br/>PG_BIN /usr/lib/postgresql/16/bin<br/>live, fresh, fresh_rerun, legacy_v2, legacy_v1,<br/>guard, guard_order, schema parity via pg_dump<br/>rls_test.sql: 191 checks, 198 with legacy rows"]
+        rls["bash backend/supabase/tests/run_rls_tests.sh<br/>PG_BIN /usr/lib/postgresql/16/bin<br/>live, fresh, fresh_rerun, legacy_v2, legacy_v1,<br/>guard, guard_order, guard_vectors, schema parity via pg_dump<br/>rls_test.sql: 220 checks, 227 with legacy rows"]
     end
 
     subgraph jobAudit["Job audit"]
@@ -386,7 +385,7 @@ flowchart TD
         fs0["create extension if not exists vector with schema public"]
         fs1{"vector in schema public and<br/>auth.users, auth.uid() present?"}
         fs2{"knowledge_documents, knowledge_entities,<br/>knowledge_relations or chat_history<br/>exists without owner_id?"}
-        fs3["create table if not exists, 16 size CHECKs NOT VALID<br/>only if the name is new, create index if not exists,<br/>drop every policy, create the 19 policies,<br/>drop every RPC overload and recreate SECURITY INVOKER,<br/>search_knowledge as in 20260924120000,<br/>revoke all, then grant per role"]
+        fs3["create table if not exists, 16 size CHECKs NOT VALID<br/>only if the name is new, create index if not exists,<br/>drop every policy, create the 19 policies,<br/>drop every RPC overload and recreate SECURITY INVOKER,<br/>search_knowledge as in 20260924120000,<br/>embedding_384, its index and match_knowledge_vector_384<br/>as in 20261101000000, revoke all, then grant per role"]
     end
     fs0 --> fs1
     fs1 -->|"yes"| fs2
@@ -419,11 +418,19 @@ flowchart TD
     m2d -->|"notify pgrst, commit,<br/>then the next file in file-name order"| m3a
     m3a -->|"yes"| m3b
 
+    subgraph sg_m4["20261101000000_embedding_384.sql, optional, one transaction, lock_timeout 15s"]
+        m4a{"knowledge tables with owner_id and is_public,<br/>search_knowledge and<br/>ingest_document_atomic exist?"}
+        m4b["add column if not exists embedding_384 vector(384),<br/>column comment, HNSW cosine index if not exists,<br/>create or replace match_knowledge_vector_384,<br/>EXECUTE for anon, authenticated, service_role,<br/>create or replace ingest_document_atomic with embedding_384"]
+    end
+    m3b -->|"commit, then the next file in file-name order"| m4a
+    m4a -->|"yes"| m4b
+
     abortVec["raise exception: vector extension not in public<br/>or not a Supabase database"]
     abortOld["raise exception: older Starpi schema,<br/>apply migrations/ in file-name order instead"]
     abortFresh["raise exception: Starpi tables not found,<br/>use full_schema.sql for a fresh install"]
     abortOrder["raise exception: apply<br/>20260923000000_harden_rls_anonymous_auth.sql first"]
     abortSearch["raise exception: public.search_knowledge not found,<br/>apply 20260923000000 and 20260924000000 first"]
+    abortSchema["raise exception: Starpi knowledge schema not found,<br/>apply the three earlier migrations first"]
     rollback(["That file's transaction is rolled back: nothing from it<br/>is committed, files applied before it stay committed"])
     fs1 -->|"no"| abortVec
     m1a -->|"no"| abortVec
@@ -431,16 +438,20 @@ flowchart TD
     m1b -->|"no"| abortFresh
     m2a -->|"no"| abortOrder
     m3a -->|"no"| abortSearch
+    m4a -->|"no"| abortSchema
     abortVec --> rollback
     abortOld --> rollback
     abortFresh --> rollback
     abortOrder --> rollback
     abortSearch --> rollback
+    abortSchema --> rollback
 
     fsDone(["notify pgrst, reload schema, then commit<br/>running all migrations afterwards changes nothing"])
     m3Done(["commit, this file sends no notify pgrst"])
     fs3 --> fsDone
     m3b --> m3Done
+    m4Done(["notify pgrst, reload schema, then commit"])
+    m4b --> m4Done
     rerun["Re-running 20260923000000 alone drops the 20260924000000 policies,<br/>restores brain_settings_select_all with the SELECT grant to anon<br/>and authenticated, and the full-match-only search_knowledge:<br/>always re-run the whole set"]
     rerun -.- m1e
 ```

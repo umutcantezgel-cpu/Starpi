@@ -1,9 +1,22 @@
 // @ts-check
 // /api/voice/transcribe (Vercel Function): speech to text for dictation.
-// Until it is built, every method answers 501 with the JSON body { "error": "not_implemented" }.
-import { json } from '../_lib/guards.js';
+// Until it is built, every method answers 501 with the JSON body { "error": "not_implemented" }, after
+// the access code check when the site sets STARPI_ACCESS_CODE (api/_lib/access.js).
+import { checkAccess, readAccessCode } from '../_lib/access.js';
+import { readEnv } from '../_lib/env.js';
+import { json, refuse } from '../_lib/guards.js';
 
-const notImplemented = () => json(501, { error: 'not_implemented' });
+/**
+ * Whether this route serves requests; GET /api/health reports it as `voice.stt`.
+ * @param {Record<string, string | undefined>} _env
+ */
+export const available = (_env) => false;
+
+/** @param {Request} request */
+async function notImplemented(request) {
+  const denied = await checkAccess(request, readAccessCode(readEnv()));
+  return denied ? refuse(denied) : json(501, { error: 'not_implemented' });
+}
 
 export {
   notImplemented as DELETE,

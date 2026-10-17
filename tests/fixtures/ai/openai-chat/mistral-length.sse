@@ -1,0 +1,14 @@
+data: {"id":"chatcmpl-14fake","object":"chat.completion.chunk","created":1767225614,"model":"fake-mistral-small","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-14fake","object":"chat.completion.chunk","created":1767225614,"model":"fake-mistral-small","choices":[{"index":0,"delta":{"content":"This is "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-14fake","object":"chat.completion.chunk","created":1767225614,"model":"fake-mistral-small","choices":[{"index":0,"delta":{"content":"a simulated "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-14fake","object":"chat.completion.chunk","created":1767225614,"model":"fake-mistral-small","choices":[{"index":0,"delta":{"content":"answer from "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-14fake","object":"chat.completion.chunk","created":1767225614,"model":"fake-mistral-small","choices":[{"index":0,"delta":{"content":"the local "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-14fake","object":"chat.completion.chunk","created":1767225614,"model":"fake-mistral-small","choices":[{"index":0,"delta":{},"finish_reason":"model_length","logprobs":null}],"usage":{"prompt_tokens":8,"completion_tokens":11,"total_tokens":19,"completion_tokens_details":{"reasoning_tokens":0}}}
+
+data: [DONE]
+
