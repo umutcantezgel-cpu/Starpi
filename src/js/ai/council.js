@@ -96,6 +96,8 @@ export const MAX_MEMBERS = 3;
 /** Time limit of a free-chat draft. */
 export const FREE_DRAFT_TIMEOUT_MS = 120_000;
 const ON_DEVICE = new Set(['webgpu', 'wasm', 'local']);
+/** Taken off an on-device model's strength: more than any cloud model scores, so cloud models rank first. */
+const ON_DEVICE_PENALTY = 12;
 /** Roles a member may come from after the purpose's own one. */
 const MEMBER_ROLES = /** @type {const} */ (['reasoning', 'fast', 'judge']);
 
@@ -113,7 +115,7 @@ export function strengthScore(entry, caps) {
   if (c?.latency === 'slow') score += 1;
   else if (c?.latency === 'normal') score += 0.5;
   if (entry.roles.length === 1 && entry.roles[0] === 'fast') score -= 1;
-  if (ON_DEVICE.has(entry.provider)) score -= 3;
+  if (ON_DEVICE.has(entry.provider)) score -= ON_DEVICE_PENALTY;
   return score;
 }
 
