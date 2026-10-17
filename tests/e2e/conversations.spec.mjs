@@ -174,6 +174,26 @@ test.describe('conversation list', () => {
     expect(diagnostics).toEqual([]);
   });
 
+  test('is accessible in the dark theme with the current chat pinned and its menu open', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await seedLegacyChat(page);
+    await page.addInitScript(() => localStorage.setItem('starpi_theme', 'dark'));
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+    await showList(page);
+    await row(page, LEGACY_ID).locator('[data-action="conv-open"]').click();
+    await expect(page.locator('#chatMessages')).toContainText('Tides follow the pull of the moon.');
+    await showList(page);
+    await row(page, LEGACY_ID).locator('[data-action="conv-menu"]').click();
+    await page.getByRole('menuitem', { name: 'Pin' }).click();
+    await expect(group(page, 'Pinned').locator('[aria-current="true"]')).toContainText('How do tides work?');
+    await axe(page, 'dark list');
+    await row(page, LEGACY_ID).locator('[data-action="conv-menu"]').click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await axe(page, 'dark menu');
+    expect(diagnostics).toEqual([]);
+  });
+
   test('exports a conversation from its menu as starpi.chat/v2 and imports it back', async ({ page, diagnostics }, testInfo) => {
     test.skip(isMobile(page), 'the export is the same on phones; the drawer is covered above');
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
