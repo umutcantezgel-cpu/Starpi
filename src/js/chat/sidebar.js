@@ -77,6 +77,19 @@ export function groupConversations(conversations, now) {
 }
 
 /**
+ * The first element under `root` whose data attribute has this value (ids are never put into a
+ * selector).
+ * @param {HTMLElement} root
+ * @param {string} name  data attribute without the data- prefix
+ * @param {string} value
+ * @returns {HTMLElement | null}
+ */
+function withData(root, name, value) {
+  const attr = `data-${name}`;
+  return /** @type {HTMLElement | null} */ ([...root.querySelectorAll(`[${attr}]`)].find((el) => el.getAttribute(attr) === value) ?? null);
+}
+
+/**
  * Speaker labels for the Markdown export of a conversation.
  * @param {ExportTurn[]} turns
  * @param {string} exportedAt
@@ -237,7 +250,7 @@ export function mountConversationList(root, ctx, deps) {
     refreshIcons(list);
     placeMenu();
     const key = focusKey ?? active;
-    if (key) /** @type {HTMLElement | null} */ (list.querySelector(`[data-focus="${CSS.escape(key)}"]`))?.focus();
+    if (key) withData(list, 'focus', key)?.focus();
     const input = /** @type {HTMLInputElement | null} */ (list.querySelector('[data-rename]'));
     if (input && key?.startsWith('rename:')) input.select();
   }
@@ -393,7 +406,7 @@ export function mountConversationList(root, ctx, deps) {
    */
   async function endRename(id, save) {
     if (state.renaming !== id) return;
-    const input = /** @type {HTMLInputElement | null} */ (list.querySelector(`[data-rename="${CSS.escape(id)}"]`));
+    const input = /** @type {HTMLInputElement | null} */ (withData(list, 'rename', id));
     const title = input?.value.trim() ?? '';
     state.renaming = null;
     const conversation = find(id);
@@ -610,7 +623,8 @@ export function mountConversationList(root, ctx, deps) {
     (event) => {
       if (!state.menu) return;
       const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest('[role="menu"]') || target?.closest(`[data-action="conv-menu"][data-arg="${CSS.escape(state.menu.id)}"]`)) return;
+      const trigger = target?.closest('[data-action="conv-menu"]');
+      if (target?.closest('[role="menu"]') || (trigger instanceof HTMLElement && trigger.dataset.arg === state.menu.id)) return;
       closeMenu(false);
     },
     document,
