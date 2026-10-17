@@ -1,7 +1,7 @@
 // @ts-check
 // Pure model catalog, model selection and prompt budgeting for on-device inference. No DOM or WebGPU
 // access, so everything here is unit-tested under Node (tests/unit/models.test.mjs).
-import { recommendModels } from '../models/device.js';
+import { classifyDevice, outputBudget, recommendModels } from '../models/device.js';
 import { WASM_CATALOG } from '../models/wasm-catalog.js';
 
 export { detectMobile } from '../models/device.js';
@@ -12,6 +12,7 @@ export { detectMobile } from '../models/device.js';
  * @typedef {import('../models/wasm-catalog.js').WasmModelKey} WasmModelKey
  * @typedef {import('../models/wasm-catalog.js').WasmSource} WasmSource
  * @typedef {import('../models/device.js').HardwareProfile} HardwareProfile
+ * @typedef {import('../models/device.js').DeviceClass} DeviceClass
  *
  * @typedef {`webgpu:${ModelKey}` | `wasm:${WasmModelKey}`} PresetRef A preset of either runtime.
  * @typedef {'auto' | PresetRef} LocalModelRef Stored in starpi_webgpu_model.
@@ -38,7 +39,8 @@ export { detectMobile } from '../models/device.js';
  * @property {number} approxDownloadMB
  * @property {number | null} vramMB null for WASM models, which use system memory.
  * @property {{ context_window_size: number, prefill_chunk_size: number }} chatOptions
- * @property {number} maxOutputTokens
+ * @property {number} maxOutputTokens Length of a grounded answer (the preset's own limit).
+ * @property {DeviceClass} deviceClass The device class the choice was made for (output budgets).
  * @property {'manual' | 'auto'} reason
  * @property {WasmSource} [wasm] The pinned source of a WASM model.
  */
@@ -209,9 +211,10 @@ export function normalizePreference(value) {
  * @param {WasmSource} src
  * @param {PresetRef} ref
  * @param {'manual' | 'auto'} reason
+ * @param {DeviceClass} deviceClass
  * @returns {ModelChoice}
  */
-function wasmChoice(src, ref, reason) {
+function wasmChoice(src, ref, reason, deviceClass) {
   return {
     runtime: 'wasm',
     ref,
@@ -224,6 +227,7 @@ function wasmChoice(src, ref, reason) {
     vramMB: null,
     chatOptions: { context_window_size: src.contextWindow, prefill_chunk_size: 256 },
     maxOutputTokens: src.maxOutputTokens,
+    deviceClass,
     reason,
     wasm: src,
   };
@@ -240,7 +244,8 @@ export function chooseModel(hw, preference) {
   const pref = normalizePreference(preference);
   const ref = pref === 'auto' ? recommendModels(hw).local : pref;
   const reason = pref === 'auto' ? 'auto' : 'manual';
-  if (ref.startsWith('wasm:')) return wasmChoice(WASM_CATALOG[/** @type {WasmModelKey} */ (ref.slice('wasm:'.length))], ref, reason);
+  const deviceClass = classifyDevice(hw);
+  if (ref.startsWith('wasm:')) return wasmChoice(WASM_CATALOG[/** @type {WasmModelKey} */ (ref.slice('wasm:'.length))], ref, reason, deviceClass);
 
   const key = /** @type {ModelKey} */ (ref.slice('webgpu:'.length));
   const spec = MODEL_CATALOG[key];
@@ -261,8 +266,26 @@ export function chooseModel(hw, preference) {
       prefill_chunk_size: hw.isMobile ? 128 : context >= 4_096 ? 512 : 256,
     },
     maxOutputTokens: spec.maxOutputTokens,
+    deviceClass,
     reason,
   };
+}
+
+/**
+ * Output tokens of one answer of a loaded on-device model. A free answer gets the device's output
+ * budget (models/device.js outputBudget), at most half the context window so the conversation keeps
+ * the other half; a grounded answer keeps the preset's length within the same budget. A model
+ * without a device class counts as a phone (WebGPU) or a device without WebGPU (processor).
+ * @param {{ runtime?: 'webgpu' | 'wasm', deviceClass?: DeviceClass, chatOptions: { context_window_size: number }, maxOutputTokens?: number }} model
+ * @param {{ free: boolean, tokPerSec?: number | null }} options tokPerSec: the measured median rate
+ *   of a processor model on this device (models/bench-rates.js)
+ * @returns {number}
+ */
+export function answerTokens(model, options) {
+  const runtime = model.runtime === 'wasm' ? 'wasm' : 'webgpu';
+  const cls = model.deviceClass ?? (runtime === 'wasm' ? 'cpu-only' : 'mobile');
+  const budget = Math.min(outputBudget(cls, runtime, options.tokPerSec ?? null), Math.floor(model.chatOptions.context_window_size / 2));
+  return options.free ? budget : Math.min(model.maxOutputTokens ?? 512, budget);
 }
 
 /** Conservative characters-per-token estimate (German text tokenizes denser than English). */

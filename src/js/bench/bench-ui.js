@@ -1,18 +1,41 @@
 // @ts-check
-// Diagnostics & Benchmark tab: WebGPU adapter properties and a real inference benchmark on the
-// on-device model (time to first token and decode throughput measured on actual generation).
+// Diagnostics & Benchmark tab: WebGPU adapter properties, a real inference benchmark on the
+// on-device model (time to first token and decode throughput measured on actual generation) and the
+// history of those runs. Without WebGPU the benchmark measures a processor (WASM) model. The history
+// card, its store and the charts load with the tab (history-view.js), not with the app.
 import { isChatBusy } from '../chat.js';
-import { byId, onAction, setHidden } from '../dom.js';
+import { byId, onAction, reportUnexpected, setHidden } from '../dom.js';
 import { startLocalEngine } from '../engine-ui.js';
 import { refreshIcons } from '../icons.js';
 import { formatNumber, onLocaleChange, setText } from '../i18n/index.js';
 import * as engine from '../webgpu/engine.js';
-import { BYTE_LIMITS, computeBenchmarkMetrics, formatBytes } from './diagnostics.js';
+import { benchRuntime, BYTE_LIMITS, formatBytes, measureModel } from './diagnostics.js';
 
 const OUTPUT_TOKENS = 128;
 let running = false;
 /** @type {Awaited<ReturnType<typeof engine.probeWebGPU>> | null} */
 let lastProbe = null;
+/** @type {import('../models/device.js').HardwareProfile | null} */
+let lastHw = null;
+/** @type {Promise<ReturnType<typeof import('./history-view.js').mountHistoryView> | null> | null} */
+let historyView = null;
+
+/** The history card, mounted on first use; null when its code could not be loaded. */
+function openHistory() {
+  historyView ??= (async () => {
+    const host = byId('benchHistory');
+    if (!host) return null;
+    try {
+      const { mountHistoryView } = await import('./history-view.js');
+      return mountHistoryView(host, { onAction });
+    } catch (err) {
+      historyView = null;
+      reportUnexpected(err);
+      return null;
+    }
+  })();
+  return historyView;
+}
 
 /**
  * @param {string} id
@@ -56,20 +79,23 @@ function renderRunner() {
   const btn = /** @type {HTMLButtonElement | null} */ (byId('btnRunBenchmark'));
   const label = byId('benchRunLabel');
   const hint = byId('benchModelHint');
-  const supported = Boolean(lastProbe?.supported);
+  // Without WebGPU the benchmark measures a processor (WASM) model; nothing runs without WebAssembly.
+  const runtime = lastProbe ? benchRuntime(lastProbe) : null;
   const s = engine.getEngineState();
-  if (btn) btn.disabled = running || !supported;
+  if (btn) btn.disabled = running || !runtime;
   if (running) setText(label, 'diagnostics.running');
   else setText(label, s.status === 'ready' ? 'diagnostics.run' : 'diagnostics.load_and_run');
-  if (!supported) setText(hint, 'diagnostics.hint_unsupported');
+  if (!runtime) setText(hint, lastProbe ? 'diagnostics.hint_unsupported' : 'diagnostics.checking');
   else if (s.status === 'ready' && s.model) setText(hint, 'diagnostics.hint_ready', { model: s.model.modelId });
-  else setText(hint, 'diagnostics.hint_load');
+  else setText(hint, runtime === 'wasm' ? 'diagnostics.hint_load_wasm' : 'diagnostics.hint_load');
 }
 
-/** Reads the adapter and fills the hardware card. */
+/** Reads the adapter, fills the hardware card and shows the history for this device. */
 export async function refreshDiagnostics() {
-  const probe = await engine.probeWebGPU();
+  const { webgpu: probe, hw } = await engine.probeDevice();
   lastProbe = probe;
+  lastHw = hw;
+  void openHistory().then((view) => view?.setDevice(lastHw));
   const nav = /** @type {Navigator & { deviceMemory?: number }} */ (navigator);
   const cores = nav.hardwareConcurrency ? formatNumber(nav.hardwareConcurrency) : '–';
   if (nav.deviceMemory) setText(byId('benchMemory'), 'diagnostics.memory_value', { gb: formatNumber(nav.deviceMemory), cores });
@@ -116,15 +142,19 @@ async function executeBenchmark() {
   running = true;
   renderRunner();
   try {
-    if (!engine.isReady()) {
-      const loaded = await startLocalEngine({ interactive: true });
-      if (!loaded) return;
-    }
-    const run = await engine.runBenchmark({
+    const result = await measureModel(engine, {
+      load: () => startLocalEngine({ interactive: true }),
       outputTokens: OUTPUT_TOKENS,
       onPhase: (phase, done, total) => showProgress(done, total, `diagnostics.phase_${phase}`),
     });
-    const m = computeBenchmarkMetrics(run);
+    if (result.model && result.recordable) {
+      const model = result.model;
+      void openHistory().then((view) => view?.record({ model, metrics: result.metrics, loadMs: result.loadMs }));
+    }
+    if (result.status === 'declined') return;
+    if (result.status === 'failed') throw result.error;
+    const run = /** @type {import('../webgpu/engine.js').BenchmarkRun} */ (result.run);
+    const m = /** @type {import('./diagnostics.js').BenchmarkMetrics} */ (result.metrics);
     setValue('benchResultTTFT', `${formatNumber(m.ttftMs, { maximumFractionDigits: 0 })} ms`);
     setValue('benchResultTPS', `${formatNumber(m.decodeTokensPerSec, { maximumFractionDigits: 1 })} tok/s`);
     setValue('benchResultPrefill', m.prefillTokensPerSec === null ? '–' : `${formatNumber(m.prefillTokensPerSec, { maximumFractionDigits: 1 })} tok/s`);
@@ -152,6 +182,8 @@ export function initBenchUi() {
   engine.onEngineChange(() => renderRunner());
   onLocaleChange(() => {
     renderLimits();
+    // Numbers and chart labels follow the language; a mounted card re-renders (icons included).
+    void historyView?.then((view) => view?.render());
     refreshIcons(byId('tab-bench') ?? document);
   });
 }
