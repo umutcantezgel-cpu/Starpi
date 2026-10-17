@@ -1,7 +1,8 @@
 // @ts-check
 // Supabase data layer: timeouts, error classification, anonymous auth bootstrap and typed queries.
 // Every exported query resolves to a Result and never rejects, so callers cannot leak unhandled rejections.
-import { createClient } from '@supabase/supabase-js';
+// The Supabase library itself is not part of the first load: connect() (or the first query) loads it
+// on demand, while the connection state and its listeners answer synchronously from the start.
 import { LIMITS, SUPABASE_ANON_KEY, SUPABASE_URL, TIMEOUTS_MS } from './config.js';
 import { withTimeoutSignal } from './signals.js';
 
@@ -52,18 +53,40 @@ function fetchWithTimeout(input, init = {}) {
   return fetch(input, { ...init, signal: withTimeoutSignal(init.signal, TIMEOUTS_MS.supabase) });
 }
 
-export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: false,
-    storageKey: 'starpi-auth',
-  },
-  global: { fetch: fetchWithTimeout },
-  // postgrest-js would retry timed-out reads three more times (about a minute per request); the app
-  // handles failures itself: it marks the connection offline and reconnects in the background.
-  db: { retry: false },
-});
+/** @typedef {import('@supabase/supabase-js').SupabaseClient} SupabaseClient */
+
+/** @type {Promise<SupabaseClient> | null} */
+let clientPromise = null;
+
+/**
+ * The one Supabase client, created when it is first needed. Its library is a chunk of its own that
+ * the service worker caches on first use (Supabase needs the network anyway). A failed load (the
+ * browser is offline, or the chunk is gone after a deploy) is not kept, so the next attempt loads
+ * it again; classifyError() reads that failure as 'network'.
+ * @returns {Promise<SupabaseClient>}
+ */
+function client() {
+  clientPromise ??= import('@supabase/supabase-js')
+    .then(({ createClient }) =>
+      createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: false,
+          storageKey: 'starpi-auth',
+        },
+        global: { fetch: fetchWithTimeout },
+        // postgrest-js would retry timed-out reads three more times (about a minute per request); the app
+        // handles failures itself: it marks the connection offline and reconnects in the background.
+        db: { retry: false },
+      }),
+    )
+    .catch((err) => {
+      clientPromise = null;
+      throw err;
+    });
+  return clientPromise;
+}
 
 /**
  * Maps Supabase/PostgREST/Auth/network failures onto a small set of actionable kinds.
@@ -82,7 +105,11 @@ export function classifyError(err) {
     return { kind: 'timeout', message, code };
   }
   // postgrest-js/auth-js wrap fetch failures in plain objects ({ message: 'TypeError: Failed to fetch' }).
-  if (/Failed to fetch|NetworkError|Load failed|fetch failed|ERR_[A-Z_]+/i.test(message) || (name === 'TypeError' && /fetch|network/i.test(message))) {
+  // A library chunk that does not load fails with the browser's own words for a dynamic import.
+  if (
+    /Failed to fetch|NetworkError|Load failed|fetch failed|ERR_[A-Z_]+|dynamically imported module|Importing a module script failed/i.test(message) ||
+    (name === 'TypeError' && /fetch|network/i.test(message))
+  ) {
     return { kind: 'network', message, code };
   }
   if (code === 'anonymous_provider_disabled' || /anonymous sign-ins are disabled/i.test(message)) {
@@ -99,14 +126,16 @@ export function classifyError(err) {
 }
 
 /**
+ * Builds a request on the client (loading it first) and maps its answer, or any failure on the way,
+ * onto a Result.
  * @template T
- * @param {PromiseLike<{ data: T | null, error: unknown }>} request
+ * @param {(sb: SupabaseClient) => PromiseLike<{ data: T | null, error: unknown }>} request
  * @returns {Promise<Result<T>>}
  */
 async function run(request) {
   let result;
   try {
-    const { data, error } = await request;
+    const { data, error } = await request(await client());
     result = error ? { ok: /** @type {const} */ (false), error: classifyError(error) } : { ok: /** @type {const} */ (true), data: /** @type {T} */ (data) };
   } catch (err) {
     result = { ok: /** @type {const} */ (false), error: classifyError(err) };
@@ -185,6 +214,7 @@ async function anonymousSignInsEnabled() {
 /** @returns {Promise<DataError | null>} */
 async function ensureSession() {
   try {
+    const sb = await client();
     const { data, error } = await sb.auth.getSession();
     if (error) return classifyError(error);
     if (data.session) return null;
@@ -217,8 +247,17 @@ export function connect() {
         scheduleReconnect();
         return connection;
       }
+      // Without its library Supabase cannot be reached either: the same state as a failed request.
+      try {
+        await client();
+      } catch (err) {
+        const error = classifyError(err);
+        updateConnection({ status: 'offline', signedIn: false, authError: error, hardened: false, probeError: error });
+        scheduleReconnect();
+        return connection;
+      }
       const authError = await ensureSession();
-      const probe = await run(sb.from('knowledge_documents').select('id, is_public').limit(1));
+      const probe = await run((sb) => sb.from('knowledge_documents').select('id, is_public').limit(1));
       const offline = !probe.ok && (probe.error.kind === 'network' || probe.error.kind === 'timeout');
       updateConnection({
         status: offline ? 'offline' : 'ready',
@@ -259,14 +298,16 @@ function scheduleReconnect() {
 async function deleteOwnMessages(sessionId) {
   let uid;
   try {
-    const { data } = await sb.auth.getSession();
+    const { data } = await (await client()).auth.getSession();
     uid = data.session?.user?.id;
   } catch (err) {
     return { ok: false, error: classifyError(err) };
   }
   if (!uid) return { ok: true, data: null };
-  const own = sb.from('chat_history').delete().eq('owner_id', uid);
-  return run(sessionId ? own.eq('session_id', sessionId) : own);
+  return run((sb) => {
+    const own = sb.from('chat_history').delete().eq('owner_id', uid);
+    return sessionId ? own.eq('session_id', sessionId) : own;
+  });
 }
 
 /**
@@ -297,7 +338,7 @@ export function canSyncChats() {
 
 /** @returns {Promise<Result<DocumentRow[]>>} */
 export function listDocuments() {
-  return run(
+  return run((sb) =>
     sb
       .from('knowledge_documents')
       .select('id, title, source_type, summary, raw_content, tags, created_at')
@@ -312,8 +353,8 @@ export function listDocuments() {
  */
 export async function getDocument(id) {
   const [doc, sections] = await Promise.all([
-    run(sb.from('knowledge_documents').select('id, title, source_type, summary, raw_content, tags, created_at').eq('id', id).maybeSingle()),
-    run(sb.from('knowledge_sections').select('heading, markdown_content').eq('document_id', id).order('section_index', { ascending: true })),
+    run((sb) => sb.from('knowledge_documents').select('id, title, source_type, summary, raw_content, tags, created_at').eq('id', id).maybeSingle()),
+    run((sb) => sb.from('knowledge_sections').select('heading, markdown_content').eq('document_id', id).order('section_index', { ascending: true })),
   ]);
   if (!doc.ok) return doc;
   if (!doc.data) return { ok: false, error: { kind: 'not_found', message: 'Document not found or not shared.' } };
@@ -327,7 +368,7 @@ export async function getDocument(id) {
  * @returns {Promise<Result<KnowledgeHit[]>>}
  */
 export async function recentKnowledge(limit) {
-  const res = await run(
+  const res = await run((sb) =>
     sb
       .from('knowledge_documents')
       .select('id, title, summary, raw_content, tags, knowledge_sections(heading, markdown_content, section_index)')
@@ -363,7 +404,7 @@ export async function recentKnowledge(limit) {
  * @returns {Promise<Result<KnowledgeHit[]>>}
  */
 export async function searchKnowledge(query, limit = LIMITS.retrievalRows) {
-  const res = await run(sb.rpc('search_knowledge', { query_text: query.slice(0, 1_000), match_count: limit }));
+  const res = await run((sb) => sb.rpc('search_knowledge', { query_text: query.slice(0, 1_000), match_count: limit }));
   if (!res.ok) return res;
   const rows = /** @type {Array<Record<string, unknown>>} */ (Array.isArray(res.data) ? res.data : []);
   return {
@@ -393,7 +434,7 @@ export async function matchKnowledgeVector(vector, limit = LIMITS.retrievalRows)
   if (vector.length !== 384) return { ok: false, error: { kind: 'unknown', message: `A query vector has 384 values, not ${vector.length}` } };
   // Six decimals keep the request small and change no ranking.
   const embedding = Array.from(vector, (v) => Math.round(v * 1e6) / 1e6);
-  const res = await run(sb.rpc('match_knowledge_vector_384', { query_embedding: embedding, match_count: Math.min(Math.max(limit, 1), 20) }));
+  const res = await run((sb) => sb.rpc('match_knowledge_vector_384', { query_embedding: embedding, match_count: Math.min(Math.max(limit, 1), 20) }));
   if (!res.ok) return res;
   const rows = /** @type {Array<Record<string, unknown>>} */ (Array.isArray(res.data) ? res.data : []);
   return {
@@ -418,7 +459,7 @@ export async function matchKnowledgeVector(vector, limit = LIMITS.retrievalRows)
  * @returns {Promise<Result<{ id: string }>>}
  */
 export async function insertDocument(input) {
-  const doc = await run(
+  const doc = await run((sb) =>
     sb
       .from('knowledge_documents')
       .insert({
@@ -434,7 +475,7 @@ export async function insertDocument(input) {
   );
   if (!doc.ok) return doc;
   const id = /** @type {{ id: string }} */ (/** @type {unknown} */ (doc.data)).id;
-  const section = await run(
+  const section = await run((sb) =>
     sb.from('knowledge_sections').insert({
       document_id: id,
       section_index: 0,
@@ -446,7 +487,7 @@ export async function insertDocument(input) {
   );
   if (!section.ok) {
     // Do not leave a document without content behind (best effort; requires owner delete rights).
-    await run(sb.from('knowledge_documents').delete().eq('id', id));
+    await run((sb) => sb.from('knowledge_documents').delete().eq('id', id));
     return section;
   }
   return { ok: true, data: { id } };
@@ -454,12 +495,12 @@ export async function insertDocument(input) {
 
 /** @returns {Promise<Result<Array<{ id: string, name: string, entity_type: string, description: string | null }>>>} */
 export function listEntities() {
-  return run(sb.from('knowledge_entities').select('id, name, entity_type, description').order('name').limit(500));
+  return run((sb) => sb.from('knowledge_entities').select('id, name, entity_type, description').order('name').limit(500));
 }
 
 /** @returns {Promise<Result<Array<{ source_entity_id: string, target_entity_id: string, relation_type: string }>>>} */
 export function listRelations() {
-  return run(sb.from('knowledge_relations').select('source_entity_id, target_entity_id, relation_type').limit(2_000));
+  return run((sb) => sb.from('knowledge_relations').select('source_entity_id, target_entity_id, relation_type').limit(2_000));
 }
 
 /**
@@ -467,7 +508,7 @@ export function listRelations() {
  * @returns {Promise<Result<null>>}
  */
 export function insertEntity(input) {
-  return run(
+  return run((sb) =>
     sb.from('knowledge_entities').insert({
       name: input.name,
       entity_type: input.entityType,
@@ -486,7 +527,7 @@ export function insertEntity(input) {
  * @returns {Promise<Result<null>>}
  */
 export function insertChatMessage(sessionId, message) {
-  return run(
+  return run((sb) =>
     sb.from('chat_history').insert({
       session_id: sessionId,
       role: message.role,
@@ -504,7 +545,7 @@ export function insertChatMessage(sessionId, message) {
  */
 export async function loadChatSession(sessionId) {
   /** @type {Result<ChatRow[]>} */
-  const res = await run(
+  const res = await run((sb) =>
     sb
       .from('chat_history')
       .select('role, content, sources, metadata, created_at')
@@ -518,7 +559,7 @@ export async function loadChatSession(sessionId) {
 /** @returns {Promise<Result<number>>} */
 export async function countChatMessages() {
   try {
-    const { count, error } = await sb.from('chat_history').select('id', { count: 'exact', head: true });
+    const { count, error } = await (await client()).from('chat_history').select('id', { count: 'exact', head: true });
     if (error) return { ok: false, error: classifyError(error) };
     return { ok: true, data: count ?? 0 };
   } catch (err) {
