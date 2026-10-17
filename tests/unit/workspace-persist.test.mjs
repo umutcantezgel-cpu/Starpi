@@ -215,6 +215,25 @@ describe('persistent workspace', () => {
     assert.deepEqual(ws.state().documents, []);
   });
 
+  it('reads an image only through the OCR hook the user agreed to', async () => {
+    const ws = open(dbName());
+    await ws.init();
+    // The first bytes of a 2×3 PNG: enough for the image reader to know what it is.
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 2, 0, 0, 0, 3, 8, 2, 0, 0, 0]);
+    await assert.rejects(ws.ingest(new File([png], 'scan.png', { type: 'image/png' })), (err) => /** @type {{ code?: string }} */ (err).code === 'needs_ocr');
+    /** @type {Array<{ name: string, mime: string, width: number, height: number, bytes: number }>} */
+    const asked = [];
+    const doc = await ws.ingest(new File([png], 'scan.png', { type: 'image/png' }), {
+      ocr: async (request) => {
+        asked.push({ name: request.name, mime: request.mime, width: request.width, height: request.height, bytes: request.bytes.length });
+        return 'Delivery note: 12 crates of apples for the market hall.';
+      },
+    });
+    assert.deepEqual(asked, [{ name: 'scan.png', mime: 'image/png', width: 2, height: 3, bytes: png.length }]);
+    assert.equal(doc.kind, 'png');
+    assert.equal(ws.search('apples crates', 1)[0].docId, doc.docId);
+  });
+
   it('reports a duplicate instead of indexing the same file twice', async () => {
     const name = dbName();
     const ws = open(name);

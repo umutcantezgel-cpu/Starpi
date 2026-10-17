@@ -114,7 +114,7 @@ test.describe('persistent workspace', () => {
     await card.scrollIntoViewIfNeeded();
     await expect(card).toContainText('Files on this device');
     await expect(card.locator('#wsUsage')).toContainText(/used by this site|does not report/);
-    await expect(card.locator('#wsFiles')).toContainText('1 files kept');
+    await expect(card.locator('#wsFiles')).toContainText('1 file kept');
     await expect(card.locator('#wsKeep')).toBeChecked();
     await expect(card.locator('#wsSemantic')).not.toBeChecked();
     await expect(card.locator('#wsSemanticStatus')).toHaveText('Off.');
