@@ -142,7 +142,7 @@ function toolButton({ action, icon, label, aria, className = '' }) {
  * @param {string} title
  */
 function canvasCandidate(code, language, title) {
-  if (language === 'html' || language === 'svg' || language === 'mermaid') return true;
+  if (PREVIEW_LANGUAGES[language]) return true;
   if ((language === 'markdown' || language === 'md') && title) return true;
   return code.split('\n').length > CANVAS_MIN_LINES;
 }

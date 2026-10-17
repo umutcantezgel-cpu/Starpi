@@ -70,7 +70,8 @@ function installHooks() {
     const value = data.attrValue;
     const keep =
       (node.tagName === 'CODE' && node.parentElement?.tagName === 'PRE' && LANGUAGE_CLASS.test(value)) ||
-      ((node.tagName === 'SPAN' || node.tagName === 'DIV') && MATH_CLASSES.has(value) && (node.tagName === 'SPAN' || value === 'math-display'));
+      (node.tagName === 'SPAN' && MATH_CLASSES.has(value)) ||
+      (node.tagName === 'DIV' && value === 'math-display');
     if (keep) data.forceKeepAttr = true;
   });
   DOMPurify.addHook('afterSanitizeAttributes', (node) => {
