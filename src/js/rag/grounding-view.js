@@ -114,6 +114,12 @@ export function blocksFromElement(root, scope, sources) {
     }
     if (!(node instanceof Element)) return;
     if (node.tagName === 'PRE') return;
+    // Typeset math (render-extras.js) reads as its TeX, the text it had before it was typeset, not
+    // as the text of its MathML.
+    if (node.classList.contains('math-rendered')) {
+      add(blockOf(node), { type: 'text', text: node.getAttribute('data-tex') ?? '' });
+      return;
+    }
     if (node.tagName === 'BUTTON') {
       const el = /** @type {HTMLElement} */ (node);
       if (el.dataset.action === 'open-citation') {

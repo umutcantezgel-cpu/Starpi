@@ -100,6 +100,25 @@ describe('source check in the rendered answer', () => {
     assert.equal(bar.querySelector('summary [data-lucide]')?.getAttribute('data-lucide'), 'shield');
   });
 
+  it('reads typeset math as its TeX, the same text as before it was typeset', () => {
+    const { scope, sources } = register();
+    const text = (/** @type {HTMLElement} */ el) =>
+      view
+        .blocksFromElement(/** @type {HTMLElement} */ (el.querySelector('.message-content')), scope, sources)
+        .blocks.map((b) => b.segments.map((s) => (s.type === 'text' ? s.text : '')).join(''))
+        .join('|');
+    const placeholder = message('The ratio is $a/b$ at most [Doc: plan.md, Chunk: 1].', scope);
+    const typeset = message('The ratio is $a/b$ at most [Doc: plan.md, Chunk: 1].', scope);
+    const math = /** @type {HTMLElement} */ (typeset.querySelector('.math-inline'));
+    assert.ok(math, 'the renderer marks inline math');
+    // What render-extras.js leaves behind: MathML (with a TeX annotation) and the TeX in data-tex.
+    math.setAttribute('data-tex', math.textContent ?? '');
+    math.innerHTML = '<math><semantics><mrow><mi>a</mi><mo>/</mo><mi>b</mi></mrow><annotation encoding="application/x-tex">a/b</annotation></semantics></math>';
+    math.classList.add('math-rendered');
+    assert.equal(text(placeholder), 'The ratio is a/b at most .');
+    assert.equal(text(typeset), text(placeholder));
+  });
+
   it('works without the CSS Custom Highlight API and renders nothing for answers without statements', () => {
     const { scope, sources } = register();
     assert.equal(typeof globalThis.Highlight, 'undefined');
