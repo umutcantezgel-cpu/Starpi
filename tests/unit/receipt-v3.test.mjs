@@ -334,8 +334,8 @@ describe('receipts of the earlier formats', () => {
   it('a signed v2 receipt written before v3 verifies, trusted with its public key', async () => {
     const r = parsed(JSON.parse(readFileSync(path.join(ROOT, 'tests/fixtures/receipts/v2.1-signed-receipt.json'), 'utf8')));
     assert.equal(r.schema, RECEIPT_SCHEMA_V2);
-    const pem = readFileSync(path.join(ROOT, 'tests/fixtures/receipts/v2.1-signer.pem'), 'utf8');
-    const report = await verifyReceipt(r, [PLAN, RISKS], tools, { publicKey: pem });
+    const jwk = readFileSync(path.join(ROOT, 'tests/fixtures/receipts/v2.1-signer.jwk'), 'utf8');
+    const report = await verifyReceipt(r, [PLAN, RISKS], tools, { publicKey: jwk });
     assert.equal(report.idMatches, true);
     assert.deepEqual(report.merkle, { size: 4, rootMatches: true, validProofs: 4 });
     assert.deepEqual(report.signature, { status: 'valid', alg: 'Ed25519', keyId: r.signature?.keyId, trusted: true });
@@ -407,7 +407,7 @@ describe('scripts/verify-receipt.mjs with v3 receipts', () => {
     assert.match(ok.stdout, /warn sign\.png: text recognised by OCR/);
     assert.equal(run([receiptPath, files[0]]).status, 1, 'the image itself must be given');
 
-    const v2 = run([path.join(ROOT, 'tests/fixtures/receipts/v2.1-signed-receipt.json'), ...files, '--public-key', path.join(ROOT, 'tests/fixtures/receipts/v2.1-signer.pem'), '--require-signature']);
+    const v2 = run([path.join(ROOT, 'tests/fixtures/receipts/v2.1-signed-receipt.json'), ...files, '--public-key', path.join(ROOT, 'tests/fixtures/receipts/v2.1-signer.jwk'), '--require-signature']);
     assert.equal(v2.status, 0, v2.stdout + v2.stderr);
     assert.match(v2.stdout, /4\/4 workspace excerpts reproduced/);
     const v1 = run([path.join(ROOT, 'tests/fixtures/receipts/v1.3.0-receipt.json'), ...files]);
