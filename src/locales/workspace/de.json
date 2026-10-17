@@ -36,5 +36,6 @@
   "semantic_error": "Das Suchmodell konnte nicht geladen werden: {reason}",
   "retrieval_vector": "gemeinsame Bibliothek nach Bedeutung (Vektor von diesem Gerät)",
   "ocr_confirm": "Den Text im Bild {name} lesen? Das Bild wird an das von Ihnen eingerichtete Bildmodell geschickt, behalten wird nur der erkannte Text.",
-  "ocr_declined": "{name} wurde nicht hinzugefügt: Die Texterkennung wurde abgelehnt."
+  "ocr_declined": "{name} wurde nicht hinzugefügt: Die Texterkennung wurde abgelehnt.",
+  "score_hybrid": "Hybrid {score}"
 }

@@ -36,5 +36,6 @@
   "semantic_error": "The search model could not be loaded: {reason}",
   "retrieval_vector": "shared library by meaning (vector from this device)",
   "ocr_confirm": "Read the text in the image {name}? The image is sent to the vision model you set up, and only the recognised text is kept.",
-  "ocr_declined": "{name} was not added: text recognition was declined."
+  "ocr_declined": "{name} was not added: text recognition was declined.",
+  "score_hybrid": "Hybrid {score}"
 }

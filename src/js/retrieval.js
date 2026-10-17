@@ -74,7 +74,8 @@ export function workspaceHit(h) {
     heading: '',
     content: h.text,
     tags: [],
-    rank: h.score,
+    // The BM25 score where there is one (a hybrid hit found by meaning alone has none).
+    rank: h.keywordScore !== undefined ? h.keywordScore : h.score,
     workspace: { docId: h.docId, chunkIndex: h.chunkIndex, start: h.start, end: h.end },
   };
 }

@@ -29,7 +29,7 @@ import {
   workspaceStatus,
 } from './rag/workspace.js';
 import { escapeHtml, renderMarkdown } from './render.js';
-import { assignCitations } from './retrieval.js';
+import { assignCitations, workspaceHit } from './retrieval.js';
 import { getConnection, insertDocument } from './supabase.js';
 import { formatBytes } from './bench/diagnostics.js';
 import { toast } from './ui/kit.js';
@@ -169,18 +169,7 @@ async function runWorkspaceSearch() {
     setHtml(box, `<p class="text-xs text-slate-500" data-i18n="workspace.no_results">${escapeHtml(t('workspace.no_results'))}</p>`);
     return;
   }
-  const citations = assignCitations(
-    hits.map((h) => ({
-      documentId: h.docId,
-      documentTitle: h.docName,
-      heading: '',
-      content: h.text,
-      tags: [],
-      rank: h.score,
-      workspace: { docId: h.docId, chunkIndex: h.chunkIndex, start: h.start, end: h.end },
-    })),
-    { excerptChars: 100_000 },
-  );
+  const citations = assignCitations(hits.map(workspaceHit), { excerptChars: 100_000 });
   const scope = registerCitations(citations);
   const items = hits.map((hit, i) => {
     const li = document.createElement('li');
@@ -189,7 +178,10 @@ async function runWorkspaceSearch() {
     head.className = 'flex flex-wrap items-center justify-between gap-2';
     const score = document.createElement('span');
     score.className = 'badge badge-ok font-mono workspace-score';
-    setText(score, 'workspace.score', { score: formatNumber(hit.score, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) });
+    const digits = { minimumFractionDigits: 3, maximumFractionDigits: 3 };
+    // A hybrid hit shows its fused rank score; a keyword hit its BM25 score.
+    if (hit.similarity !== undefined) setText(score, 'workspace.score_hybrid', { score: formatNumber(hit.score, digits) });
+    else setText(score, 'workspace.score', { score: formatNumber(hit.score, digits) });
     head.append(scope ? citationButton(scope, i, 'badge') : document.createTextNode(hit.docName), score);
     const snippet = document.createElement('p');
     snippet.className = 'text-xs text-slate-600 leading-relaxed line-clamp-3';

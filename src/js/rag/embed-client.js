@@ -304,7 +304,12 @@ export async function initSemanticSearch() {
   const src = semanticModel();
   setQueryEmbedder(embedQuery);
   await setVectorModel({ id: embedModelId(src), dim: src.dim });
-  if (workspaceStatus().vectors > 0) update({ phase: 'ready' });
+  if (workspaceStatus().vectors > 0) {
+    update({ phase: 'ready' });
+    // Start the model in the background, so the first question after a reload can be searched by
+    // meaning within the query timeout (the files are in the browser's cache by now).
+    void embedBatch([' '], 'query').catch((err) => update({ phase: 'error', error: err instanceof Error ? err.message : String(err) }));
+  }
   void indexWorkspace();
 }
 
