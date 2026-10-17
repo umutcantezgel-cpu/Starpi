@@ -206,8 +206,8 @@ export async function callLocalServer(baseUrl, messages, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------------
-// NVIDIA NIM cloud through Starpi's own proxy (api/chat/nvidia.js, or backend/server.py behind the same
-// origin). The browser holds no NVIDIA key: it calls same-origin URLs without an Authorization header,
+// NVIDIA NIM cloud through Starpi's own proxy (api/chat/nvidia.js, the site's NVIDIA pool). The
+// browser holds no NVIDIA key: it calls same-origin URLs without an Authorization header,
 // and the proxy adds a key from its pool. Error texts come only from i18n keys chosen by the proxy's
 // error code; text the server or NVIDIA sends is never shown.
 
@@ -417,7 +417,7 @@ export function resolveNvidiaModel(catalog, preferred) {
   return { model, replaced: Boolean(preferred) && model !== null && model !== preferred };
 }
 
-/** i18n key per proxy error code (api/_lib, backend/core/nvidia.py). */
+/** i18n key per proxy error code (api/_lib). */
 const NVIDIA_ERRORS = /** @type {Record<string, string>} */ ({
   nvidia_not_configured: 'provider.nvidia_not_configured',
   rate_limited: 'provider.nvidia_rate_limited',
