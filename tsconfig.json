@@ -148,6 +148,7 @@
     "src/js/rag/parser.js",
     "src/js/rag/receipts.js",
     "src/js/rag/workspace.js",
+    "src/js/render-extras.js",
     "src/js/render.js",
     "src/js/retrieval.js",
     "src/js/settings.js",
