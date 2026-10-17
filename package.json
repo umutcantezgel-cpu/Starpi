@@ -45,6 +45,7 @@
     "icons:gen": "node scripts/gen-icons.mjs",
     "providers:ping": "node scripts/provider-ping.mjs",
     "models:sync": "node scripts/sync-model-catalog.mjs",
+    "models:lock": "node scripts/models-lock.mjs",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run verify:dist && npm run headers:check && npm run license:check && npm run eol:check"
   },
   "keywords": [
