@@ -188,6 +188,16 @@ if (initialBytes > INITIAL_JS_BUDGET_BYTES) {
   );
 }
 for (const url of initial) if (!manifest.precache.includes(url)) problems.push(`${url} is part of the first load but not precached`);
+// The workspace works offline only when everything the ingest worker imports statically is precached.
+const workerScripts = new Set();
+const workerPending = [manifest.entries.ingestWorkerJs];
+while (workerPending.length > 0) {
+  const url = /** @type {string} */ (workerPending.pop());
+  if (workerScripts.has(url)) continue;
+  workerScripts.add(url);
+  workerPending.push(...staticImports(sources.get(url) ?? '', url));
+}
+for (const url of workerScripts) if (!manifest.precache.includes(url)) problems.push(`${url} is loaded by the ingest worker but not precached`);
 
 // 7. The headers of the build profile are strict and isolating: the page's CSP, cross-origin
 // isolation (COOP + COEP, CORP same-origin), no referrer, and Google named only by the profile

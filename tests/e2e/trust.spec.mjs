@@ -1,10 +1,15 @@
 // End-to-end tests for the features that make answers checkable: the sample files, the source
 // check, answer receipts, and the privacy and accessibility guarantees around them.
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import AxeBuilder from '@axe-core/playwright';
-import { signReceipt } from '../../src/js/core/receipt.js';
+import { canonicalJson, sha256Hex, signReceipt } from '../../src/js/core/receipt.js';
 import { expect, mockSupabase, test } from './fixtures.mjs';
+
+const CLI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../scripts/verify-receipt.mjs');
 
 const BUDGET_MD = '# Budget\n\nThe approved budget for Project Nebula is 480,000 EUR. The steering group meets every Tuesday at 10:00.';
 
@@ -159,7 +164,7 @@ test.describe('source check on model answers', () => {
 });
 
 test.describe('answer receipts', () => {
-  test('download a receipt whose fingerprints match the file, and verify it in the app', async ({ page, diagnostics: _diagnostics }, testInfo) => {
+  test('download a receipt signed by this device, verify it in the app and with the exported public key', async ({ page, diagnostics: _diagnostics }, testInfo) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await page.goto('/');
     await attach(page, 'budget.md', BUDGET_MD);
@@ -171,16 +176,22 @@ test.describe('answer receipts', () => {
     const dialog = page.locator('#receiptModal');
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('#receiptCounts')).toContainText('1 workspace');
+    // Signing is on by default: the first export makes the device key.
+    await expect(dialog.locator('#receiptSigning')).toContainText("Signed with this device's key");
     const [download] = await Promise.all([page.waitForEvent('download'), dialog.locator('[data-action="download-receipt"]').click()]);
     const receiptPath = testInfo.outputPath('receipt.json');
     await download.saveAs(receiptPath);
     const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
-    expect(receipt.schema).toBe('starpi.receipt/v2');
+    expect(receipt.schema).toBe('starpi.receipt/v3');
     expect(receipt.citations[0].document.fileSha256).toBe(createHash('sha256').update(BUDGET_MD).digest('hex'));
+    expect(receipt.signer.keyId).toMatch(/^[0-9a-f]{64}$/);
+    expect(receipt.signature.keyId).toBe(receipt.signer.keyId);
+    expect(receipt.signature.alg).toBe(receipt.signer.alg);
     await expect(dialog.locator('#receiptRoot')).toHaveText(receipt.merkle.root.slice(0, 16));
+    await expect(dialog.locator('#receiptId')).toHaveText(receipt.id.slice(0, 16));
+    const key = `${receipt.signer.keyId.slice(0, 16)}…`;
 
     const mdPath = testInfo.outputPath('budget.md');
-    const { writeFileSync } = await import('node:fs');
     writeFileSync(mdPath, BUDGET_MD);
     await dialog.locator('#receiptFile').setInputFiles(receiptPath);
     await dialog.locator('#receiptSources').setInputFiles(mdPath);
@@ -189,37 +200,112 @@ test.describe('answer receipts', () => {
     await expect(result).toContainText('1/1 workspace excerpts reproduced from your files');
     await expect(result).toContainText('exact passage found in budget.md');
     await expect(result).toContainText('Merkle root reproduced from the citations; 2/2 inclusion proofs valid.');
-    await expect(result).toContainText('Not signed.');
+    await expect(result).toContainText(`Signer named in the receipt: key ${key} (${receipt.signer.alg}).`);
+    await expect(result).toContainText(`Signed with the key in the receipt (${receipt.signer.alg}, key ${key}) and unchanged since.`);
+    await expect(result).toContainText('Not trusted: no public key of the signer was chosen');
+    await expect(result).toContainText('The key belongs to this device.');
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
 
-    // Signed outside the app (as a deployment would), checked in the app with the signer's key.
-    const keys = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']));
-    const signed = await signReceipt(receipt, keys.privateKey);
-    const signedPath = testInfo.outputPath('receipt.signed.json');
-    const keyPath = testInfo.outputPath('signer.jwk');
-    writeFileSync(signedPath, JSON.stringify(signed));
-    writeFileSync(keyPath, JSON.stringify(await crypto.subtle.exportKey('jwk', keys.publicKey)));
-    await dialog.locator('#receiptFile').setInputFiles(signedPath);
+    // Settings › Trust shows the key and exports its public key.
+    await page.click((page.viewportSize()?.width ?? 1280) < 768 ? '#mobile-nav-settings' : '#nav-settings');
+    const trust = page.locator('#trustSettings');
+    await expect(trust.locator('[data-trust="key-id"]')).toHaveText(receipt.signer.keyId);
+    const [pemDownload] = await Promise.all([page.waitForEvent('download'), trust.locator('[data-action="trust-export-pem"]').first().click()]);
+    expect(pemDownload.suggestedFilename()).toBe(`starpi-signing-key-${receipt.signer.keyId.slice(0, 12)}.pem`);
+    const keyPath = testInfo.outputPath('device.pem');
+    await pemDownload.saveAs(keyPath);
+    await expect(trust.locator('[data-tv="result"]')).toContainText('Saved starpi-signing-key-');
+
+    // The exported receipt verifies outside the app with that key, and only with it.
+    const cli = spawnSync(process.execPath, [CLI, receiptPath, mdPath, '--public-key', keyPath, '--require-signature'], { encoding: 'utf8' });
+    expect(cli.status, cli.stdout + cli.stderr).toBe(0);
+    expect(cli.stdout).toContain(`signature valid (${receipt.signer.alg}, key ${key}, the public key you gave)`);
+
+    // In the app, with the exported key: trusted.
+    await page.click((page.viewportSize()?.width ?? 1280) < 768 ? '#mobile-nav-ingest' : '#nav-ingest');
+    await page.locator('[data-action="open-receipt-verify"]').first().click();
+    await expect(dialog).toBeVisible();
+    await dialog.locator('#receiptFile').setInputFiles(receiptPath);
+    await dialog.locator('#receiptSources').setInputFiles(mdPath);
     await dialog.locator('#receiptPublicKey').setInputFiles(keyPath);
     await dialog.locator('[data-action="verify-receipt"]').click();
-    await expect(result).toContainText(`Signed with the public key you chose (ES256, key ${signed.signature?.keyId.slice(0, 16)}…) and unchanged since.`);
+    await expect(result).toContainText(`Signed with the public key you chose (${receipt.signer.alg}, key ${key}) and unchanged since.`);
+    await expect(result).toContainText('Trusted: checked with the public key you chose.');
+
+    // Another key: not the signer. A removed signature is noticed.
     const other = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']));
-    writeFileSync(keyPath, JSON.stringify(await crypto.subtle.exportKey('jwk', other.publicKey)));
-    await dialog.locator('#receiptPublicKey').setInputFiles(keyPath);
+    const otherPath = testInfo.outputPath('other.jwk');
+    writeFileSync(otherPath, JSON.stringify(await crypto.subtle.exportKey('jwk', other.publicKey)));
+    await dialog.locator('#receiptPublicKey').setInputFiles(otherPath);
     await dialog.locator('[data-action="verify-receipt"]').click();
     await expect(result).toContainText('not with the public key you chose');
     await dialog.locator('#receiptPublicKey').setInputFiles([]);
-    await dialog.locator('#receiptFile').setInputFiles(receiptPath);
+    const strippedPath = testInfo.outputPath('stripped.json');
+    writeFileSync(strippedPath, JSON.stringify({ ...receipt, signature: undefined }));
+    await dialog.locator('#receiptFile').setInputFiles(strippedPath);
+    await dialog.locator('[data-action="verify-receipt"]').click();
+    await expect(result).toContainText(`The receipt names signer key ${key} (${receipt.signer.alg}), but its signature was removed.`);
 
+    // A receipt signed elsewhere (as a deployment would), checked with the signer's key.
+    const unnamed = { ...receipt, signer: undefined, signature: undefined };
+    const deployment = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']));
+    const signed = await signReceipt(await rebuild(unnamed), deployment.privateKey);
+    const signedPath = testInfo.outputPath('receipt.signed.json');
+    writeFileSync(signedPath, JSON.stringify(signed));
+    writeFileSync(otherPath, JSON.stringify(await crypto.subtle.exportKey('jwk', deployment.publicKey)));
+    await dialog.locator('#receiptFile').setInputFiles(signedPath);
+    await dialog.locator('#receiptPublicKey').setInputFiles(otherPath);
+    await dialog.locator('[data-action="verify-receipt"]').click();
+    await expect(result).toContainText(`Signed with the public key you chose (ES256, key ${signed.signature?.keyId.slice(0, 16)}…) and unchanged since.`);
+    await dialog.locator('#receiptPublicKey').setInputFiles([]);
+
+    await dialog.locator('#receiptFile').setInputFiles(receiptPath);
     writeFileSync(mdPath, BUDGET_MD.replace('480,000', '520,000'));
     await dialog.locator('#receiptSources').setInputFiles(mdPath);
     await dialog.locator('[data-action="verify-receipt"]').click();
     await expect(dialog.locator('#receiptVerifyResult')).toContainText('none of the chosen files has the recorded fingerprint');
-
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
-    await expect(answer.locator('[data-action="open-receipt"]')).toBeFocused();
+  });
+
+  test('turning signing off in Settings › Trust exports unsigned receipts', async ({ page, diagnostics: _diagnostics }, testInfo) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await page.goto('/');
+    await page.click((page.viewportSize()?.width ?? 1280) < 768 ? '#mobile-nav-settings' : '#nav-settings');
+    const trust = page.locator('#trustSettings');
+    await expect(trust).toContainText('Sign exported receipts');
+    await trust.locator('#tvSign').uncheck();
+    await expect(trust.locator('[data-tv="result"]')).toContainText('Exported receipts are not signed.');
+    await page.click((page.viewportSize()?.width ?? 1280) < 768 ? '#mobile-nav-chat' : '#nav-chat');
+    await attach(page, 'budget.md', BUDGET_MD);
+    await ask(page, 'What is the approved budget?');
+    const answer = page.locator('#chatMessages > div').last();
+    await expect(answer.locator('.grounding-bar')).toBeVisible();
+    await answer.locator('[data-action="open-receipt"]').click();
+    const dialog = page.locator('#receiptModal');
+    await expect(dialog.locator('#receiptSigning')).toContainText('Not signed: signing is turned off');
+    const [download] = await Promise.all([page.waitForEvent('download'), dialog.locator('[data-action="download-receipt"]').click()]);
+    const receiptPath = testInfo.outputPath('receipt.json');
+    await download.saveAs(receiptPath);
+    const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
+    expect(receipt.schema).toBe('starpi.receipt/v3');
+    expect(receipt.signer).toBeUndefined();
+    expect(receipt.signature).toBeUndefined();
   });
 });
+
+/**
+ * The same receipt without signer and signature, with its id recomputed (as a deployment would build it).
+ * @param {any} receipt
+ */
+async function rebuild(receipt) {
+  const body = { ...receipt };
+  delete body.id;
+  delete body.signer;
+  delete body.signature;
+  return { schema: receipt.schema, id: await sha256Hex(canonicalJson(body)), ...body };
+}
 
 test.describe('privacy of on-device turns', () => {
   test('never sends a turn that used the workspace to a cloud provider as history', async ({ page, diagnostics: _diagnostics }) => {

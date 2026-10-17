@@ -182,6 +182,8 @@
     "src/js/supabase.js",
     "src/js/synthesizer.js",
     "src/js/theme-boot.js",
+    "src/js/trust/settings-view.js",
+    "src/js/trust/signing.js",
     "src/js/ui.js",
     "src/js/ui/kit.js",
     "src/js/ui/council-panel.js",

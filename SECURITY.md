@@ -208,11 +208,15 @@ Out of scope:
   the device only as a file you download. Verification reads the receipt and the original files on
   the device, in the ingest worker; nothing is uploaded.
 - **What it proves.** That each workspace excerpt is an unchanged passage of the file with the
-  recorded fingerprint and, in format v2, that each citation belongs to the receipt through its
-  Merkle inclusion proof. The app does **not sign** the receipts it writes. A deployment can sign
-  receipts with `signReceipt` from `@starpi/core` (Ed25519 or ECDSA P-256); a signature checked with
-  the signer's public key shows that the receipt is unchanged since that key signed it, while a
-  signature checked only with the key embedded in the receipt shows integrity, not authorship.
+  recorded fingerprint and, in formats v2 and v3, that each citation belongs to the receipt through
+  its Merkle inclusion proof. The app signs the receipts it exports with a key of the device
+  (**Settings › Trust**, on by default): Ed25519, or ECDSA P-256 where WebCrypto lacks Ed25519,
+  generated as a non-extractable WebCrypto key whose handle IndexedDB keeps, so the page never sees
+  the private key's bytes; it is never synced. A deployment can sign receipts with `signReceipt` from
+  `@starpi/core`. A signature checked with the signer's public key shows that the receipt is
+  unchanged since that key signed it, while a signature checked only with the key embedded in the
+  receipt shows integrity, not authorship. A v3 receipt names its signer inside its id, so a removed
+  or swapped signature is detected.
   Receipts do not prove which excerpts a model read, or that the answer is correct. See
   [docs/spec/receipts.md](docs/spec/receipts.md).
 - **Untrusted receipts.** A receipt is JSON from anywhere. It is checked against size and field
