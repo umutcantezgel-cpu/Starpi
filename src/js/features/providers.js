@@ -3,8 +3,6 @@
 // also installs the transport resolver of the AI layer (keys, site pools, relay setting, remembered
 // routes) and reports clicks and key presses to the key vault, whose auto-lock counts inactivity.
 import { noteActivity } from '../ai/keys.js';
-import { installTransportResolver } from '../ai/transport-select.js';
-import { mountProvidersView } from '../settings/providers-view.js';
 import { getLlmUrl } from '../state.js';
 import { registerFeature } from './registry.js';
 
@@ -25,9 +23,11 @@ function watchActivity() {
 /** @type {import('./registry.js').Feature} */
 const feature = {
   id: 'providers',
-  mount(el, ctx) {
-    installTransportResolver({ localUrl: getLlmUrl });
+  async mount(el, ctx) {
     watchActivity();
+    // The view and the transport selection load as their own chunk, after the first paint.
+    const [{ installTransportResolver }, { mountProvidersView }] = await Promise.all([import('../ai/transport-select.js'), import('../settings/providers-view.js')]);
+    installTransportResolver({ localUrl: getLlmUrl });
     mountProvidersView(el, ctx);
   },
 };

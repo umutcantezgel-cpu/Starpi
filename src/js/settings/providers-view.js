@@ -178,9 +178,7 @@ export function mountProvidersView(el, services, deps = {}) {
     } else if (state === 'unlocked') {
       controls = html`<div class="flex flex-wrap gap-2"><button type="button" class="btn btn-secondary" data-action="providers-lock">${icon('lock', 'w-3.5 h-3.5')}${label(`${NS}.vault.lock`)}</button></div>`;
     }
-    return html`<div class="flex items-center justify-between gap-2">
-        ${label(`${NS}.vault.title`, { tag: 'h4', className: 'text-sm font-semibold text-slate-800', id: 'pvVaultTitle' })}${vaultChip()}
-      </div>${body}${controls}
+    return html`${label(`${NS}.vault.title`, { tag: 'h4', className: 'text-sm font-semibold text-slate-800', id: 'pvVaultTitle' })}${body}${controls}
       <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
         <p class="text-xs min-w-0" role="status" aria-live="polite" data-pv="vault-result"></p>
         <button type="button" class="btn btn-danger" data-action="providers-forget">${icon('trash-2', 'w-3.5 h-3.5')}${label(`${NS}.vault.forget`)}</button>
