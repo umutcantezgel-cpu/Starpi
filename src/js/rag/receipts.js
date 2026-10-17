@@ -3,8 +3,8 @@
 // stored), and the receipt dialog downloads it as JSON or verifies a receipt against original
 // files. Everything shown here is set with textContent; receipts and files are read on this device.
 // With "Sign exported receipts" on (Settings › Trust), a download names this device's key as its
-// signer and is signed with it; the signer (trust/signing.js) loads only when the dialog needs it.
-import { buildReceipt, RECEIPT_LIMITS } from '../core/receipt.js';
+// signer and is signed with it. The receipt code (core/receipt.js) and the signer (trust/signing.js)
+// load only when the dialog builds or checks a receipt, not with the page.
 import { closeDialog, openDialog } from '../dialog.js';
 import { byId, downloadText, onAction, setHidden } from '../dom.js';
 import { refreshIcons } from '../icons.js';
@@ -14,6 +14,9 @@ import { verifyReceiptFiles } from './workspace.js';
 /** @typedef {import('../core/receipt.js').ReceiptDraft} ReceiptDraft */
 /** @typedef {import('../core/receipt.js').VerifyReport} VerifyReport */
 /** @typedef {import('../trust/signing.js').ExportSigner} ExportSigner */
+
+/** The receipt format code, loaded on first use. */
+const receiptCore = () => import('../core/receipt.js');
 
 const MAX_DRAFTS = 50;
 const MAX_KEY_BYTES = 16_384;
@@ -99,7 +102,7 @@ async function preview() {
   const draft = current ? drafts.get(current) : undefined;
   if (!draft) return;
   const run = ++buildSeq;
-  const { exporter, reason } = await signingForExport();
+  const [{ buildReceipt }, { exporter, reason }] = await Promise.all([receiptCore(), signingForExport()]);
   const receipt = await buildReceipt(draft, { ...options(), signer: exporter?.signer });
   if (run !== buildSeq) return;
   showSigning(exporter, reason);
@@ -127,7 +130,7 @@ function openReceiptDialog(mode, trigger) {
 async function download() {
   const draft = current ? drafts.get(current) : undefined;
   if (!draft) return;
-  const { exporter, reason } = await signingForExport();
+  const [{ buildReceipt }, { exporter, reason }] = await Promise.all([receiptCore(), signingForExport()]);
   showSigning(exporter, reason);
   const built = await buildReceipt(draft, { ...options(), signer: exporter?.signer });
   const receipt = exporter ? await exporter.sign(built) : built;
@@ -250,6 +253,7 @@ async function verify() {
     out?.replaceChildren(p);
   };
   if (!receiptFile) return message('receipt.verify_need_receipt');
+  const { RECEIPT_LIMITS } = await receiptCore();
   if (receiptFile.size > RECEIPT_LIMITS.bytes) return message('receipt.verify_invalid', { reason: 'size' });
   let parsed;
   try {
