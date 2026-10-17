@@ -50,6 +50,7 @@ const APP_VERSION = JSON.parse(await readFile(path.join(ROOT, 'package.json'), '
 const WORKER_PLACEHOLDER = '__STARPI_WEBLLM_WORKER_URL__';
 const INGEST_WORKER_PLACEHOLDER = '__STARPI_INGEST_WORKER_URL__';
 const WASM_WORKER_PLACEHOLDER = '__STARPI_WASM_WORKER_URL__';
+const INTEGRITY_WORKER_PLACEHOLDER = '__STARPI_INTEGRITY_WORKER_URL__';
 const ORT_WASM_PLACEHOLDER = '__STARPI_ORT_WASM_URL__';
 const RENDER_EXTRAS_PLACEHOLDER = '__STARPI_RENDER_EXTRAS_URL__';
 
@@ -153,6 +154,7 @@ const URL_PLACEHOLDERS = Object.freeze({
   [WORKER_PLACEHOLDER]: 'src/js/webgpu/worker.js',
   [INGEST_WORKER_PLACEHOLDER]: 'src/js/rag/ingest.worker.js',
   [WASM_WORKER_PLACEHOLDER]: 'src/js/wasm/worker.js',
+  [INTEGRITY_WORKER_PLACEHOLDER]: 'src/js/models/integrity.worker.js',
   [ORT_WASM_PLACEHOLDER]: 'ort-wasm-simd-threaded.wasm',
   [RENDER_EXTRAS_PLACEHOLDER]: RENDER_EXTRAS,
 });
@@ -210,6 +212,7 @@ function entryPoints() {
     'webllm-worker': 'src/js/webgpu/worker.js',
     'ingest-worker': 'src/js/rag/ingest.worker.js',
     'wasm-worker': 'src/js/wasm/worker.js',
+    'integrity-worker': 'src/js/models/integrity.worker.js',
     ...(present(RENDER_EXTRAS) ? { 'render-extras': RENDER_EXTRAS } : {}),
     app: 'src/styles/entry.css',
   };

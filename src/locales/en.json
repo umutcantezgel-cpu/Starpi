@@ -102,6 +102,7 @@
       "init": "Preparing the on-device model…",
       "download": "Downloading weights…",
       "cache": "Loading weights from the browser cache…",
+      "verify": "Checking the downloaded files…",
       "shaders": "Preparing WebGPU shaders…",
       "finalizing": "Finishing up…"
     },
@@ -129,7 +130,9 @@
       "busy": "The model is busy with another request. Try again when it has finished.",
       "not-loaded": "The on-device model is not loaded.",
       "unknown": "Unexpected error: {reason}",
-      "code-download": "The on-device engine could not be downloaded (connection interrupted). Reload the page to try again."
+      "code-download": "The on-device engine could not be downloaded (connection interrupted). Reload the page to try again.",
+      "integrity": "A downloaded file of {model} does not match the hash this app pinned for it ({files}). The file was deleted and the model was not loaded. Ask again to download it afresh. If the check fails again, the model may have changed upstream: Settings › Trust › Model downloads lets you load it unverified.",
+      "unverified": "{model} has downloaded files this app has no pinned hash for ({files}), probably because the model changed upstream. It was not loaded. To use it anyway, choose “Load unverified” in Settings › Trust › Model downloads."
     }
   },
   "models": {

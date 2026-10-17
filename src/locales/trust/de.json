@@ -64,5 +64,36 @@
     "second_opinions": "Zweitmeinungen zu {n} {n:Aussage|Aussagen} aufgezeichnet, {contradicted} widersprechen (nur Hinweis, nicht neu berechnet).",
     "relations": "{n} {n:Beziehung|Beziehungen} zwischen Aussagen aufgezeichnet, {flagged} umgekehrt oder nicht gestützt (nicht neu berechnet).",
     "check_ocr": "{label}: Die Datei stimmt; ihr Text wurde per Texterkennung (OCR) gewonnen und lässt sich nicht erneut extrahieren."
+  },
+  "models": {
+    "title": "Vertrauen · Modell-Downloads",
+    "subtitle": "Bevor ein Modell auf diesem Gerät antwortet, wird jede heruntergeladene Datei mit dem SHA-256-Hash verglichen, den diese Starpi-Version festlegt. Eine abweichende Datei wird gelöscht und das Modell nicht geladen.",
+    "empty": "Auf diesem Gerät wurde noch kein Modell geprüft. Die Prüfung läuft, wenn ein Modell geladen wird.",
+    "state": {
+      "verified": "Geprüft",
+      "override": "Ungeprüft geladen",
+      "mismatch": "Datei gelöscht",
+      "unverified": "Ungeprüft"
+    },
+    "runtime": {
+      "webgpu": "GPU (WebGPU)",
+      "wasm": "Prozessor (WASM)",
+      "embed": "Suchmodell"
+    },
+    "checked": "{n} {n:Datei|Dateien} geprüft · {date}",
+    "mismatched": "Weicht vom festgelegten Hash ab: {files}",
+    "unpinned": "Kein festgelegter Hash: {files}",
+    "allow": "Ungeprüft laden (beim Anbieter geändert)",
+    "allow_confirm": "{model} ohne passende festgelegte Hashes laden? Tun Sie das nur, wenn Sie darauf vertrauen, dass das Modell an seiner Quelle geändert wurde, nachdem diese Starpi-Version erschienen ist. Seine Dateien werden dann so verwendet, wie sie sind, ohne Schutz vor Manipulation.",
+    "allowed": "Darf ungeprüft laden: Dateien, die keinem festgelegten Hash entsprechen, werden so verwendet, wie sie sind.",
+    "revoke": "Prüfung wieder verlangen",
+    "note": "Geprüfte Dateien werden mit Adresse und Größe vermerkt, spätere Ladevorgänge vergleichen nur noch die Größe. Das Löschen der heruntergeladenen Modelle setzt die Prüfungen zurück.",
+    "result": {
+      "allowed": "{model} darf ungeprüft laden. Laden Sie es erneut, um es zu nutzen.",
+      "revoked": "{model} lädt wieder nur mit geprüften Dateien."
+    },
+    "error": {
+      "storage": "Die Einstellung konnte auf diesem Gerät nicht gespeichert werden."
+    }
   }
 }

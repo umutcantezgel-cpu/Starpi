@@ -26,6 +26,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { webllmBase } from '../src/js/models/integrity.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const LOCK_FILE = 'src/js/models/model-lock.json';
@@ -65,16 +66,6 @@ export class OfflineError extends Error {
 
 // ---------------------------------------------------------------------------------------------
 // Sources
-
-/**
- * The URL directory WebLLM reads a model from (its cleanModelUrl): ".../resolve/main/" unless the
- * record names a revision itself.
- * @param {string} model ModelRecord.model
- */
-export function webllmBase(model) {
-  const url = model.endsWith('/') ? model : `${model}/`;
-  return new URL(/\/resolve\/.+\//.test(url) ? url : `${url}resolve/main/`).href;
-}
 
 /**
  * Download URL (and Transformers.js cache key) of a file at a pinned commit.
