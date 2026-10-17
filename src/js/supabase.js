@@ -54,6 +54,7 @@ function fetchWithTimeout(input, init = {}) {
 }
 
 /** @typedef {import('@supabase/supabase-js').SupabaseClient} SupabaseClient */
+/** @typedef {typeof import('./supabase-lib.js')} SupabaseLib */
 
 /**
  * The library's URL in a build (scripts/build.mjs writes it here: a lazy entry of its own, not
@@ -64,21 +65,69 @@ const SUPABASE_LIB_URL = '__STARPI_SUPABASE_LIB_URL__';
 
 /** @type {Promise<SupabaseClient> | null} */
 let clientPromise = null;
-/** Loads of the library that failed so far. */
+/** Loads of the library that failed or ran out of time so far. */
 let failedLoads = 0;
+/** @type {SupabaseLib | null} */
+let arrivedLib = null;
+/** @type {(lib: SupabaseLib) => void} */
+let libArrived = () => {};
+/**
+ * Resolves with the library once any load of it succeeds, including one that ran out of time
+ * earlier: a module import cannot be cancelled, and a slow download that finishes after all is
+ * used instead of being fetched again.
+ * @type {Promise<SupabaseLib>}
+ */
+const libArrival = new Promise((resolve) => {
+  libArrived = (lib) => {
+    arrivedLib ??= lib;
+    resolve(lib);
+  };
+});
 
 /**
- * The one Supabase client, created when it is first needed. A failed load (the network is gone, or
- * the file is gone after a deploy) is not kept, so the next attempt loads the library again;
- * classifyError() reads that failure as 'network'. The browser remembers a failed module import for
- * the life of the page, so a retry asks for the same file under another URL.
+ * Rejects with a TimeoutError when `promise` has not settled within `ms`.
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} ms
+ * @param {string} message
+ * @returns {Promise<T>}
+ */
+function withDeadline(promise, ms, message) {
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timer;
+  /** @type {Promise<never>} */
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new DOMException(message, 'TimeoutError')), ms);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Starts one load of the library, or hands over the one that has already arrived. A load gets the
+ * same time as a Supabase request: a stalled network must not keep connect() and every query
+ * waiting, it ends in the offline state like a request that times out (classifyError() reads the
+ * TimeoutError as 'timeout'). The browser remembers a failed module import for the life of the
+ * page, so after a failure or a timeout the next load asks for the same file under another URL.
+ * @returns {Promise<SupabaseLib>}
+ */
+function loadLib() {
+  if (arrivedLib) return Promise.resolve(arrivedLib);
+  const url = SUPABASE_LIB_URL.startsWith('/') ? SUPABASE_LIB_URL : './supabase-lib.js';
+  const specifier = failedLoads > 0 && url.startsWith('/') ? `${url}?attempt=${failedLoads}` : url;
+  const load = /** @type {Promise<SupabaseLib>} */ (import(specifier));
+  load.then(libArrived, () => {});
+  return withDeadline(Promise.race([load, libArrival]), TIMEOUTS_MS.supabase, `The Supabase library did not load within ${TIMEOUTS_MS.supabase} ms`);
+}
+
+/**
+ * The one Supabase client, created when it is first needed. A failed or timed-out load (the
+ * network is gone or stalls, or the file is gone after a deploy) is not kept, so the next attempt
+ * loads the library again; classifyError() reads that failure as 'network' or 'timeout'.
  * @returns {Promise<SupabaseClient>}
  */
 function client() {
   if (clientPromise) return clientPromise;
-  const url = SUPABASE_LIB_URL.startsWith('/') ? SUPABASE_LIB_URL : './supabase-lib.js';
-  const specifier = failedLoads > 0 && url.startsWith('/') ? `${url}?attempt=${failedLoads}` : url;
-  clientPromise = /** @type {Promise<typeof import('./supabase-lib.js')>} */ (import(specifier))
+  clientPromise = loadLib()
     .then(({ createClient }) =>
       createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         auth: {

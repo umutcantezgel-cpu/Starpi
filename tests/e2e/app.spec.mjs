@@ -251,6 +251,52 @@ test.describe('offline start', () => {
     // The 404 is logged by the browser and filtered as a mocked 4xx; nothing else may be logged.
     expect(diagnostics).toEqual([]);
   });
+
+  test('goes offline and restores the local chat when the Supabase library stalls, and uses it once it arrives', async ({ page, diagnostics }) => {
+    // One Supabase timeout (12 s) to the offline state, then the reconnect.
+    test.setTimeout(60_000);
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      localStorage.setItem('starpi_chat_session_id', 'starpi_stalled-session');
+      localStorage.setItem(
+        'starpi_local_chats_v1',
+        JSON.stringify({
+          'starpi_stalled-session': {
+            updatedAt: Date.now(),
+            messages: [
+              { role: 'user', content: 'Where is the kickoff?', sources: [], metadata: { local_only: true }, created_at: '2026-10-01T10:00:00Z' },
+              { role: 'assistant', content: 'The kickoff is in room Aurora.', sources: [], metadata: { local_only: true }, created_at: '2026-10-01T10:00:01Z' },
+            ],
+          },
+        }),
+      );
+    });
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    // A stalled network: the library's download never finishes, until the test lets it.
+    /** @type {import('@playwright/test').Route[]} */
+    const held = [];
+    /** @type {string[]} */
+    const requested = [];
+    await page.route(/\/assets\/supabase-[A-Z0-9]+\.js(?:\?|$)/, (route) => {
+      requested.push(new URL(route.request().url()).search);
+      held.push(route);
+    });
+    await page.goto('/');
+    // The load gets the time of a Supabase request; then the app is offline and finishes booting.
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Offline', { timeout: 20_000 });
+    await expect(page.locator('#chatMessages')).toContainText('The kickoff is in room Aurora.');
+    expect(requested).toEqual(['']);
+
+    // The reconnect asks under another URL, and that download stalls as well; the first one then
+    // arrives after all and is used.
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect.poll(() => requested).toEqual(['', '?attempt=1']);
+    await held[0].fallback();
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
+    await held[1].fallback();
+    expect(diagnostics).toEqual([]);
+  });
 });
 
 test.describe('local mode without WebGPU', () => {
