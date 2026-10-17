@@ -17,13 +17,16 @@ import { WASM_CACHE_NAME, wasmFileUrl } from '../models/wasm-catalog.js';
  * @typedef {{ type: 'generate', messages: ChatMessage[], maxTokens: number, temperature: number, ignoreEos: boolean }} GenerateRequest
  * @typedef {{ type: 'embed', source: { repo: string, revision: string, dtype: string }, texts: string[], kind: 'query' | 'passage' }} EmbedBody
  * @typedef {EmbedBody & { id: number }} EmbedRequest
- * @typedef {(ControlRequest | GenerateRequest | EmbedBody) & { id: number } | { type: 'interrupt', upTo: number }} WorkerRequest
+ * @typedef {{ type: 'nli', source: { repo: string, revision: string, dtype: string }, pairs: Array<{ premise: string, hypothesis: string }> }} NliBody
+ * @typedef {NliBody & { id: number }} NliRequest
+ * @typedef {(ControlRequest | GenerateRequest | EmbedBody | NliBody) & { id: number } | { type: 'interrupt', upTo: number }} WorkerRequest
  * @typedef {{ prompt_tokens: number, completion_tokens: number }} Usage
  * @typedef {{ id: number, type: 'progress', file: string, loaded: number, done: boolean }
  *   | { id: number, type: 'ready' | 'unloaded' }
  *   | { id: number, type: 'delta', text: string }
  *   | { id: number, type: 'done', usage: Usage }
  *   | { id: number, type: 'embedded', dim: number, count: number, data: Float32Array }
+ *   | { id: number, type: 'classified', scores: Array<{ entailment: number, neutral: number, contradiction: number }> }
  *   | { id: number, type: 'error', name: string, message: string }} WorkerReply
  *
  * @typedef {{ progress: number, stage: 'files' | 'session' }} WasmLoadProgress share of the model's

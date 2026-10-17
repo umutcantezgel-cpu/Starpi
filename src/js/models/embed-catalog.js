@@ -177,7 +177,7 @@ export function suggestSemanticSearch(hints) {
  * @property {string} label Name shown in the app (a proper name, never translated).
  * @property {string} repo Hugging Face repository.
  * @property {string} revision Commit every file is downloaded from.
- * @property {'q8'} dtype Transformers.js dtype; q8 loads the quantized ONNX weights.
+ * @property {'fp16'} dtype Transformers.js dtype; fp16 loads the 16-bit ONNX weights.
  * @property {string} weights ONNX file the dtype maps to.
  * @property {ReadonlyArray<readonly [string, number, string]>} files Every downloaded file: path, size in bytes, SHA-256.
  * @property {readonly string[]} cacheProbe Files whose presence in the cache means the model is stored.
@@ -187,9 +187,17 @@ export function suggestSemanticSearch(hints) {
  * @property {'multilingual'} languages
  */
 
+/** Premise and statement pairs per entailment request to the worker. */
+export const NLI_BATCH_SIZE = 8;
+
+/** The 16-bit weights of the entailment model: its 8-bit weights lose most of the entailment class. */
+const NLI_WEIGHTS = 'onnx/model_fp16.onnx';
+
 /**
  * Entailment models: a statement and a passage go in, the probabilities of entailment, neutral and
- * contradiction come out. One small multilingual model (MiniLM, trained on MNLI and XNLI).
+ * contradiction come out. One small multilingual model (MiniLM, trained on MNLI and XNLI), in 16-bit
+ * weights: the 8-bit build of the same model rates even "A cat is sitting on a mat." after "The cat
+ * sat on the mat." as neutral.
  * @type {Readonly<Record<NliModelKey, NliSource>>}
  */
 export const NLI_CATALOG = Object.freeze({
@@ -198,16 +206,16 @@ export const NLI_CATALOG = Object.freeze({
     label: 'multilingual-MiniLMv2-L6-mnli-xnli',
     repo: 'onnx-community/multilingual-MiniLMv2-L6-mnli-xnli-ONNX',
     revision: 'ca5daf3d11b6c4b3143b1f4602a2edfb64c3ad7e',
-    dtype: 'q8',
-    weights: WEIGHTS,
+    dtype: 'fp16',
+    weights: NLI_WEIGHTS,
     files: [
       ['config.json', 989, '3ebbbdf3c3803649b49715fd169207c0f42c4250dfea5dd304b1d8b8f745852a'],
       ['tokenizer.json', 17_082_832, 'd0091a328b3441d754e481db5a390d7f3b8dabc6016869fd13ba350d23ddc4cd'],
       ['tokenizer_config.json', 1286, '329b7d21f02c6c6c9d358733b03a34a89cd8e4fe36998869a6ab824b98e9bf9d'],
-      [WEIGHTS, 107_415_176, '55614f3c7da74184742eaa0006b978744437aa91de9ba4913db42f94d7844a8f'],
+      [NLI_WEIGHTS, 214_160_435, '911561370b93632d5c6f5c1541454382ebc263ee7915e695a8565fcc8830175e'],
     ],
-    cacheProbe: CACHE_PROBE,
-    approxDownloadMB: 125,
+    cacheProbe: ['config.json', 'tokenizer.json', NLI_WEIGHTS],
+    approxDownloadMB: 232,
     labels: { 0: 'entailment', 1: 'neutral', 2: 'contradiction' },
     maxTokens: 512,
     languages: 'multilingual',

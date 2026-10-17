@@ -4,8 +4,8 @@
 // model, so Settings › Trust can show them without loading the check or its lock file:
 //   models.integrity.check/<model id>  -> ModelCheck (the result of the last check)
 //   models.integrity.allow/<model id>  -> true (the "Load unverified (upstream changed)" override)
-// A model id names exactly what was downloaded: 'webgpu:<WebLLM model id>', 'wasm:<repository>'
-// or 'embed:<repository>'.
+// A model id names exactly what was downloaded: 'webgpu:<WebLLM model id>', 'wasm:<repository>',
+// 'embed:<repository>' or 'nli:<repository>' (the entailment model of the second opinion).
 import { appDb } from '../store/schema.js';
 
 /** @typedef {import('../store/idb.js').StoreDb} StoreDb */
@@ -19,7 +19,7 @@ import { appDb } from '../store/schema.js';
  * @typedef {object} ModelCheck
  * @property {string} id
  * @property {string} label  model name as the picker shows it
- * @property {'webgpu' | 'wasm' | 'embed'} runtime
+ * @property {'webgpu' | 'wasm' | 'embed' | 'nli'} runtime
  * @property {CheckStatus} status
  * @property {number} files  stored files checked
  * @property {string[]} mismatched  files that differ from their pinned hash (paths within the model)
