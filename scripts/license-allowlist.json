@@ -10,6 +10,6 @@
     "sharp": { "reason": "Node-only image backend of @huggingface/transformers (LGPL libvips binaries). The browser build resolves the package's web entry (dist/transformers.web.js), which does not import it." }
   },
   "excluded": {
-    "elkjs": { "reason": "EPL-2.0. The optional ELK layout engine of mermaid (a devDependency that only the render frame, public/render-frame.js, bundles). Mermaid loads it lazily; without it a diagram that asks for the ELK layout shows its source with a note, and every other layout works." }
+    "elkjs": { "reason": "EPL-2.0. The optional ELK layout engine of mermaid (a devDependency that only the render frame, public/render-frame.js, bundles). The frame sets mermaid's layout to dagre, which a diagram cannot switch back, so every diagram is drawn without it; a diagram that still reaches the ELK layout shows its source with a note." }
   }
 }

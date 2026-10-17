@@ -1,4 +1,4 @@
-/* global window, document, location, DOMParser, Element, ResizeObserver */
+/* global window, document, location, console, DOMParser, Element, ResizeObserver */
 // Script of the render frame (public/render-frame.html). scripts/build.mjs bundles it with everything
 // it imports into one classic file: the frame's opaque origin can load nothing but its own
 // exact-path script. The diagram library is part of that file but only evaluated when a diagram
@@ -106,12 +106,19 @@ async function drawDiagram(source, theme, current) {
       suppressErrorRendering: true,
       theme: theme === 'dark' ? 'dark' : 'default',
       fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+      // The ELK layout is not part of this build (scripts/license-allowlist.json, "excluded"):
+      // mermaid's default layout becomes dagre, which a diagram cannot switch back.
+      layout: 'dagre',
+      state: { layout: 'dagre' },
+      class: { layout: 'dagre' },
+      secure: ['secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'suppressErrorRendering', 'maxEdges', 'layout'],
     });
     const { svg } = await mermaid.render(id, source);
     if (current !== generation) return;
     show(/** @type {string} */ (/** @type {unknown} */ (DOMPurify.sanitize(svg, DIAGRAM))), 'diagram');
-  } catch {
+  } catch (err) {
     if (current !== generation) return;
+    console.warn('render frame: the diagram could not be drawn', err);
     show('', '');
     tell({ type: 'starpi-render-error', code: 'diagram' });
   } finally {
