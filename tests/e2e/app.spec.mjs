@@ -183,6 +183,35 @@ test.describe('offline start', () => {
     diagnostics.splice(0, diagnostics.length, ...diagnostics.filter((p) => !expected(p)));
     expect(diagnostics).toEqual([]);
   });
+
+  test('shows the offline state when the Supabase library does not load, and connects once it does', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    // The library is a lazy entry of its own (scripts/build.mjs), loaded on the first connect;
+    // answer it with a 404 as a server does for a file of an older deploy. The browser keeps a
+    // failed module import, so the retry must ask for it under another URL.
+    let missing = true;
+    /** @type {string[]} */
+    const requested = [];
+    await page.route(/\/assets\/supabase-[A-Z0-9]+\.js(?:\?|$)/, (route) => {
+      requested.push(new URL(route.request().url()).search);
+      return missing ? route.fulfill({ status: 404, contentType: 'text/plain', body: 'gone' }) : route.fallback();
+    });
+    await page.goto('/');
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Offline');
+    expect(requested).toEqual(['']);
+    // The views and the chat stay usable.
+    await openTab(page, 'library');
+    await openTab(page, 'chat');
+
+    missing = false;
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
+    // Every attempt (the library view tried once more) asked under a URL of its own.
+    expect(requested.length).toBeGreaterThan(1);
+    expect(new Set(requested).size).toBe(requested.length);
+    // The 404 is logged by the browser and filtered as a mocked 4xx; nothing else may be logged.
+    expect(diagnostics).toEqual([]);
+  });
 });
 
 test.describe('local mode without WebGPU', () => {

@@ -187,6 +187,7 @@
     "src/js/store/quota.js",
     "src/js/store/schema.js",
     "src/js/supabase.js",
+    "src/js/supabase-lib.js",
     "src/js/synthesizer.js",
     "src/js/theme-boot.js",
     "src/js/trust/settings-view.js",

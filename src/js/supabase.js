@@ -55,18 +55,30 @@ function fetchWithTimeout(input, init = {}) {
 
 /** @typedef {import('@supabase/supabase-js').SupabaseClient} SupabaseClient */
 
+/**
+ * The library's URL in a build (scripts/build.mjs writes it here: a lazy entry of its own, not
+ * precached, kept by the service worker once loaded); unbundled (tests, Node), the module next to
+ * this one.
+ */
+const SUPABASE_LIB_URL = '__STARPI_SUPABASE_LIB_URL__';
+
 /** @type {Promise<SupabaseClient> | null} */
 let clientPromise = null;
+/** Loads of the library that failed so far. */
+let failedLoads = 0;
 
 /**
- * The one Supabase client, created when it is first needed. Its library is a chunk of its own that
- * the service worker caches on first use (Supabase needs the network anyway). A failed load (the
- * browser is offline, or the chunk is gone after a deploy) is not kept, so the next attempt loads
- * it again; classifyError() reads that failure as 'network'.
+ * The one Supabase client, created when it is first needed. A failed load (the network is gone, or
+ * the file is gone after a deploy) is not kept, so the next attempt loads the library again;
+ * classifyError() reads that failure as 'network'. The browser remembers a failed module import for
+ * the life of the page, so a retry asks for the same file under another URL.
  * @returns {Promise<SupabaseClient>}
  */
 function client() {
-  clientPromise ??= import('@supabase/supabase-js')
+  if (clientPromise) return clientPromise;
+  const url = SUPABASE_LIB_URL.startsWith('/') ? SUPABASE_LIB_URL : './supabase-lib.js';
+  const specifier = failedLoads > 0 && url.startsWith('/') ? `${url}?attempt=${failedLoads}` : url;
+  clientPromise = /** @type {Promise<typeof import('./supabase-lib.js')>} */ (import(specifier))
     .then(({ createClient }) =>
       createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         auth: {
@@ -83,6 +95,7 @@ function client() {
     )
     .catch((err) => {
       clientPromise = null;
+      failedLoads += 1;
       throw err;
     });
   return clientPromise;

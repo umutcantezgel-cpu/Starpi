@@ -154,7 +154,7 @@ if (typeof ortWasm !== 'string' || !/^\/assets\/ort-wasm-simd-threaded-[0-9a-f]{
   if (!magic.equals(Buffer.from([0x00, 0x61, 0x73, 0x6d]))) problems.push(`${ortWasm} is not a WebAssembly binary`);
   if (!manifest.assets.includes(ortWasm)) problems.push('the ONNX Runtime binary is not listed in the build assets');
 }
-for (const url of [wasmWorkerJs, ortWasm, manifest.entries.renderExtrasJs].filter(Boolean)) {
+for (const url of [wasmWorkerJs, ortWasm, manifest.entries.renderExtrasJs, manifest.entries.supabaseJs].filter(Boolean)) {
   if (manifest.precache.includes(url)) problems.push(`${url} is precached; it loads on first use`);
 }
 const scripts = manifest.assets.filter((/** @type {string} */ a) => a.endsWith('.js'));
