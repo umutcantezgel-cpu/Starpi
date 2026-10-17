@@ -1,0 +1,36 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_5fake","object":"response","created_at":1767225605,"model":"gpt-5-nano","store":false,"status":"in_progress","output":[]}}
+
+event: response.in_progress
+data: {"type":"response.in_progress","sequence_number":1,"response":{"id":"resp_5fake","object":"response","created_at":1767225605,"model":"gpt-5-nano","store":false,"status":"in_progress","output":[]}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":2,"output_index":0,"item":{"id":"msg_5fake","type":"message","status":"in_progress","role":"assistant","content":[]}}
+
+event: response.content_part.added
+data: {"type":"response.content_part.added","sequence_number":3,"item_id":"msg_5fake","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":4,"item_id":"msg_5fake","output_index":0,"content_index":0,"delta":"This is "}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":5,"item_id":"msg_5fake","output_index":0,"content_index":0,"delta":"a simulated "}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":6,"item_id":"msg_5fake","output_index":0,"content_index":0,"delta":"answer from "}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":7,"item_id":"msg_5fake","output_index":0,"content_index":0,"delta":"the local "}
+
+event: response.output_text.done
+data: {"type":"response.output_text.done","sequence_number":8,"item_id":"msg_5fake","output_index":0,"content_index":0,"text":"This is a simulated answer from the local "}
+
+event: response.content_part.done
+data: {"type":"response.content_part.done","sequence_number":9,"item_id":"msg_5fake","output_index":0,"content_index":0,"part":{"type":"output_text","text":"This is a simulated answer from the local ","annotations":[]}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":10,"output_index":0,"item":{"id":"msg_5fake","type":"message","status":"incomplete","role":"assistant","content":[{"type":"output_text","text":"This is a simulated answer from the local ","annotations":[]}]}}
+
+event: response.incomplete
+data: {"type":"response.incomplete","sequence_number":11,"response":{"id":"resp_5fake","object":"response","created_at":1767225605,"model":"gpt-5-nano","store":false,"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"id":"msg_5fake","type":"message","status":"incomplete","role":"assistant","content":[{"type":"output_text","text":"This is a simulated answer from the local ","annotations":[]}]}],"usage":{"input_tokens":8,"input_tokens_details":{"cached_tokens":0},"output_tokens":11,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":19}}}
+

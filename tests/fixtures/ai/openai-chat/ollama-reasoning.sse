@@ -1,0 +1,42 @@
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"<think>"},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"The question "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"is short. "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"I recall "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"the key "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"facts first, "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"then answer "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"in one "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"or two "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"sentences."},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"</think>\n\n"},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"This is "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"a simulated "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"answer from "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"the local "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"test provider. "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"You asked: "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{"content":"\"Think first\"."},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-19fake","object":"chat.completion.chunk","created":1767225619,"model":"fake-local-reasoner:4b","choices":[{"index":0,"delta":{},"finish_reason":"stop","logprobs":null}],"usage":{"prompt_tokens":8,"completion_tokens":44,"total_tokens":52,"completion_tokens_details":{"reasoning_tokens":23}}}
+
+data: [DONE]
+

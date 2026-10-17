@@ -1,0 +1,18 @@
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"The example "}]},"index":0}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":23,"totalTokenCount":27},"modelVersion":"gemini-2.5-flash","responseId":"resp-3-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"overview explains "}]},"index":0}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":23,"totalTokenCount":27},"modelVersion":"gemini-2.5-flash","responseId":"resp-3-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"the topic "}]},"index":0}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":23,"totalTokenCount":27},"modelVersion":"gemini-2.5-flash","responseId":"resp-3-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"in plain "}]},"index":0}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":23,"totalTokenCount":27},"modelVersion":"gemini-2.5-flash","responseId":"resp-3-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"words. The "}]},"index":0}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":23,"totalTokenCount":27},"modelVersion":"gemini-2.5-flash","responseId":"resp-3-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"reference page "}]},"index":0}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":23,"totalTokenCount":27},"modelVersion":"gemini-2.5-flash","responseId":"resp-3-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"adds the "}]},"index":0}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":23,"totalTokenCount":27},"modelVersion":"gemini-2.5-flash","responseId":"resp-3-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"details."}]},"index":0}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":23,"totalTokenCount":27},"modelVersion":"gemini-2.5-flash","responseId":"resp-3-fake"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[]},"index":0,"finishReason":"STOP","groundingMetadata":{"webSearchQueries":["Search the topic"],"searchEntryPoint":{"renderedContent":"<div class=\"fake-search-entry\">Simulated search suggestions</div>"},"groundingChunks":[{"web":{"uri":"https://example.com/articles/overview","title":"Example overview"}},{"web":{"uri":"https://example.org/reference/details","title":"Example reference"}}],"groundingSupports":[{"segment":{"startIndex":0,"endIndex":55,"text":"The example overview explains the topic in plain words."},"groundingChunkIndices":[0]},{"segment":{"startIndex":56,"endIndex":92,"text":"The reference page adds the details."},"groundingChunkIndices":[1]}]}}],"usageMetadata":{"promptTokenCount":4,"candidatesTokenCount":23,"totalTokenCount":27},"modelVersion":"gemini-2.5-flash","responseId":"resp-3-fake"}
+

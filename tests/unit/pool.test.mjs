@@ -57,7 +57,7 @@ function poolDeps(fetches, guards = {}) {
     pools[id] = {
       spec,
       simulated: false,
-      router: fetch ? createKeyRouter({ keys: [testKey('plain', 1), testKey('plain', 2)], fetch, upstreamUrl: `${spec.root}/v1/chat/completions`, timing: TIMING, log: () => {}, ...(authHeader ? { authHeader } : {}) }) : null,
+      router: fetch ? createKeyRouter({ keys: [testKey('plain', 1), testKey('plain', 2)], fetch, upstreamUrl: `${spec.root}/v1/chat/completions`, timing: TIMING, log: () => {}, ...(authHeader ? { authHeader } : {}), ...(guards.now ? { now: guards.now } : {}) }) : null,
     };
   }
   return { ...frontGuards(guards), pools };

@@ -1,0 +1,18 @@
+data: {"id":"chatcmpl-8fake","object":"chat.completion.chunk","created":1767225608,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-8fake","object":"chat.completion.chunk","created":1767225608,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_8fake","type":"function","function":{"name":"lookup","arguments":""}}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-8fake","object":"chat.completion.chunk","created":1767225608,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"query"}}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-8fake","object":"chat.completion.chunk","created":1767225608,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\":\"Look"}}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-8fake","object":"chat.completion.chunk","created":1767225608,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":" it up\""}}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-8fake","object":"chat.completion.chunk","created":1767225608,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"}"}}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-8fake","object":"chat.completion.chunk","created":1767225608,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls","logprobs":null}]}
+
+data: {"id":"chatcmpl-8fake","object":"chat.completion.chunk","created":1767225608,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[],"usage":{"prompt_tokens":6,"completion_tokens":1,"total_tokens":7,"completion_tokens_details":{"reasoning_tokens":0}}}
+
+data: [DONE]
+

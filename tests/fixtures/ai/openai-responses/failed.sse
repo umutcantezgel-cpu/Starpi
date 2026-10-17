@@ -1,0 +1,9 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_6fake","object":"response","created_at":1767225606,"model":"gpt-5-nano","store":false,"status":"in_progress","output":[]}}
+
+event: response.in_progress
+data: {"type":"response.in_progress","sequence_number":1,"response":{"id":"resp_6fake","object":"response","created_at":1767225606,"model":"gpt-5-nano","store":false,"status":"in_progress","output":[]}}
+
+event: response.failed
+data: {"type":"response.failed","sequence_number":2,"response":{"id":"resp_6fake","object":"response","created_at":1767225606,"model":"gpt-5-nano","store":false,"status":"failed","error":{"code":"server_error","message":"Simulated failure."},"output":[],"usage":null}}
+
