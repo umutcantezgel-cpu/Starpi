@@ -14,6 +14,7 @@
 // caller forces it. With thinking on, the token limit grows (reasoning counts against it) and the
 // call gets more time.
 import { readLocal, removeLocal, writeLocal } from '../storage.js';
+import { capsFor } from './catalog/models.js';
 
 /** @typedef {import('./contract.js').AiRequest} AiRequest */
 /** @typedef {import('./contract.js').Caps} Caps */
@@ -97,19 +98,14 @@ export function isQwenFamily(model) {
 }
 
 /**
- * How a model's thinking is controlled when the catalog does not say: from the provider and the id.
+ * How a model's thinking is controlled when the caller has no capabilities at hand: the shipped
+ * catalog's entry, else the catalog's guess from the provider and the id.
  * @param {ProviderId} provider
  * @param {string} model
  * @returns {Caps['reasoning']}
  */
 export function guessReasoning(provider, model) {
-  const id = String(model).toLowerCase();
-  if (provider === 'anthropic') return 'adaptive';
-  if (provider === 'gemini') return /gemini-2\.5/.test(id) ? 'budget' : /gemini-[3-9]/.test(id) ? 'effort' : 'none';
-  if (provider === 'openai') return /^(?:o\d|gpt-5)/.test(id) ? 'effort' : 'none';
-  if (/gpt-oss|grok-3-mini/.test(id)) return 'effort';
-  if (/qwen3|qwq|deepseek-r1|reasoner|magistral|thinking|nemotron-3-(?:super|ultra)/.test(id)) return 'tagged';
-  return 'none';
+  return capsFor(provider, String(model)).reasoning;
 }
 
 /**

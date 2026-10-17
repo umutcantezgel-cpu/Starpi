@@ -21,6 +21,7 @@
 // and real answers never stand in for each other. runPurpose() never rejects, except with an
 // AbortError when the caller's signal aborts.
 import { getLocale } from '../i18n/index.js';
+import { findModel } from './catalog/models.js';
 import { isProviderId, textPart } from './contract.js';
 import { providerSimulated } from './health-client.js';
 import { complete as completeCall } from './index.js';
@@ -111,7 +112,7 @@ import { readLocalJson, writeLocalJson } from '../storage.js';
  * @property {(req: AiRequest, options: { signal?: AbortSignal }) => { result: Promise<CompletionResult> }} complete
  * @property {() => readonly ProviderId[]} configured       providers with a key, pool or server, in the user's priority order
  * @property {(provider: ProviderId) => readonly string[] | null} liveModels  the provider's live model ids, null while unknown
- * @property {(provider: ProviderId, model: string) => Caps | null} caps
+ * @property {(provider: ProviderId, model: string) => Caps | null} caps  default: the shipped catalog's entry (null for a model it does not know)
  * @property {() => ModelRef | null} device                 the model loaded on this device
  * @property {(provider: ProviderId) => ModelRef | null} selection  the user's choice at a provider (pin or strength)
  * @property {ModelWheel} wheel
@@ -216,7 +217,7 @@ const defaults = {
   complete: completeCall,
   configured: () => [],
   liveModels: () => null,
-  caps: () => null,
+  caps: (provider, model) => findModel(provider, model)?.caps ?? null,
   device: () => null,
   selection: (provider) => selectedModel(provider),
   wheel: modelWheel,

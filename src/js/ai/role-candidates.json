@@ -1,6 +1,6 @@
 {
   "format": "starpi.role-candidates/v1",
-  "note": "Preferred models per provider and role, most preferred first. Only models a provider's live model list names are used; an id it does not list is skipped. Edit freely: this file is data, not code.",
+  "note": "Preferred models per provider and router role, most preferred first. Each list starts with the model catalog's tiers (catalog/snapshot.json): fast with the catalog's fast model; reasoning with balanced, then max (where balanced is the fast model, the list names a middle model first and max after it); judge with max; vision with those of balanced, fast and max that see images. Other models of the snapshot may follow. At run time only models a provider's live model list names are used. Edit freely: this file is data, and a unit test checks that it still agrees with the catalog.",
   "providers": {
     "anthropic": {
       "fast": ["claude-haiku-5-5", "claude-sonnet-5-5"],
@@ -28,14 +28,14 @@
     },
     "groq": {
       "fast": ["llama-3.1-8b-instant", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"],
-      "reasoning": ["openai/gpt-oss-120b", "qwen/qwen3-32b"],
+      "reasoning": ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "qwen/qwen3-32b"],
       "vision": [],
       "judge": ["openai/gpt-oss-120b"]
     },
     "mistral": {
       "fast": ["mistral-small-latest", "mistral-medium-latest"],
-      "reasoning": ["mistral-medium-latest", "magistral-medium-latest", "mistral-large-latest"],
-      "vision": ["mistral-small-latest", "mistral-medium-latest", "mistral-large-latest"],
+      "reasoning": ["mistral-medium-latest", "mistral-large-latest", "magistral-medium-latest"],
+      "vision": ["mistral-medium-latest", "mistral-small-latest", "mistral-large-latest"],
       "judge": ["mistral-large-latest", "magistral-medium-latest"]
     },
     "deepseek": {
@@ -46,9 +46,9 @@
     },
     "openrouter": {
       "fast": ["meta-llama/llama-3.3-70b-instruct:free"],
-      "reasoning": ["deepseek/deepseek-r1:free", "openrouter/auto"],
-      "vision": ["google/gemma-3-27b-it:free"],
-      "judge": ["deepseek/deepseek-r1:free", "openrouter/auto"]
+      "reasoning": ["openrouter/auto", "deepseek/deepseek-r1:free"],
+      "vision": ["openrouter/auto", "google/gemma-3-27b-it:free"],
+      "judge": ["openrouter/auto", "deepseek/deepseek-r1:free"]
     },
     "nvidia": {
       "fast": ["nvidia/nemotron-3.5-lightning-30b-a3b", "openai/gpt-oss-20b", "poolside/laguna-xs-2.1"],

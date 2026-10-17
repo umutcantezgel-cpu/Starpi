@@ -6,6 +6,18 @@
 // provider's live model list, so an id the provider no longer lists is never tried. A model the user
 // pinned comes first. When every model of a role is busy the router moves on along ROLE_FALLBACK;
 // vision has no substitute, because a text model cannot read the picture.
+//
+// The model catalog (catalog/models.js) sorts each provider's models into three tiers: fast,
+// balanced and max. The roles build on them (CATALOG_ROLE_MAP):
+//   fast       starts with the catalog's fast model
+//   reasoning  starts with balanced, then max; a provider whose balanced model is its fast one has
+//              no middle tier, so its list names a middle model first and max after it
+//   judge      starts with max, the strongest model
+//   vision     those of balanced, fast and max (in that order) whose capabilities say they see images
+// Further models of the provider's snapshot may follow in each list. A provider the data leaves out
+// gets these catalog models alone (catalogRoleModels), so a provider added to the catalog works
+// before anyone writes its candidates.
+import { findModel, roleModel } from './catalog/models.js';
 import { isProviderId, PROVIDER_IDS } from './contract.js';
 import candidateData from './role-candidates.json' with { type: 'json' };
 
@@ -14,6 +26,13 @@ import candidateData from './role-candidates.json' with { type: 'json' };
 /** @typedef {'fast' | 'reasoning' | 'vision' | 'judge'} ModelRole */
 /** @typedef {Readonly<Partial<Record<ProviderId, Readonly<Partial<Record<ModelRole, readonly string[]>>>>>>} RoleCandidates */
 /** @typedef {{ provider: ProviderId, model: string }} ModelRef */
+/** @typedef {import('./catalog/models.js').ModelRole} CatalogTier */
+/**
+ * What the catalog says about a provider's models; the default reads the shipped snapshot.
+ * @typedef {object} CatalogView
+ * @property {(provider: ProviderId, tier: CatalogTier) => string | null} tier
+ * @property {(provider: ProviderId, model: string) => Caps | null} caps
+ */
 
 /**
  * @typedef {object} ResolveOptions
@@ -42,6 +61,45 @@ export const ROLE_FALLBACK = /** @type {Readonly<Record<ModelRole, readonly Mode
     judge: Object.freeze(['reasoning']),
   })
 );
+
+/** The catalog tiers each role starts with, in order (see the header for the reasoning and vision rules). */
+export const CATALOG_ROLE_MAP = /** @type {Readonly<Record<ModelRole, readonly CatalogTier[]>>} */ (
+  Object.freeze({
+    fast: Object.freeze(['fast']),
+    reasoning: Object.freeze(['balanced', 'max']),
+    vision: Object.freeze(['balanced', 'fast', 'max']),
+    judge: Object.freeze(['max']),
+  })
+);
+
+/** @type {CatalogView} */
+const SHIPPED_CATALOG = Object.freeze({
+  tier: (provider, tier) => roleModel(provider, tier),
+  caps: (provider, model) => findModel(provider, model)?.caps ?? null,
+});
+
+/**
+ * The models the catalog's tiers give a role at a provider, without repeats: for reasoning the fast
+ * model is left out (a provider without a middle tier starts with max), for vision only models that
+ * see images.
+ * @param {ProviderId} provider
+ * @param {ModelRole} role
+ * @param {CatalogView} [catalog]
+ * @returns {string[]}
+ */
+export function catalogRoleModels(provider, role, catalog = SHIPPED_CATALOG) {
+  const fast = catalog.tier(provider, 'fast');
+  /** @type {string[]} */
+  const out = [];
+  for (const tier of CATALOG_ROLE_MAP[role] ?? []) {
+    const model = catalog.tier(provider, tier);
+    if (!model || out.includes(model)) continue;
+    if (role === 'reasoning' && model === fast) continue;
+    if (role === 'vision' && catalog.caps(provider, model)?.vision !== true) continue;
+    out.push(model);
+  }
+  return out;
+}
 
 /**
  * @template T
@@ -123,14 +181,16 @@ export function parseModelRef(value) {
 }
 
 /**
- * The preferred models of a provider for one role, from the data alone.
+ * The preferred models of a provider for one role: the data's list, or the catalog's models for the
+ * role when the data has no entry for the provider at all.
  * @param {ProviderId} provider
  * @param {ModelRole} role
  * @param {RoleCandidates} [candidates]
  * @returns {string[]}
  */
 export function roleCandidates(provider, role, candidates = ROLE_CANDIDATES) {
-  return [...(candidates[provider]?.[role] ?? [])];
+  const table = candidates[provider];
+  return table ? [...(table[role] ?? [])] : catalogRoleModels(provider, role);
 }
 
 /**

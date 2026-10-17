@@ -1,15 +1,19 @@
 // @ts-check
 // Origin: generic infrastructure first written for a related project of the same author (MIT); re-expressed for Starpi.
-// How strong a model the user wants, and the model they pinned. Four strengths:
-//   max    the provider's strongest model (catalog role "max", else its first judge candidate)
-//   super  a model that reasons at length (its first reasoning candidate, else catalog "balanced")
+// How strong a model the user wants, and the model they pinned. Four strengths, mapped onto the
+// model catalog's tiers (catalog/models.js roleModel) and the role candidates (roles.js):
+//   max    the provider's strongest model: the catalog's max tier, else its first judge candidate
+//   super  a strong model that reasons, below max: the first reasoning candidate (the catalog's
+//          balanced tier, or the middle model the data names where balanced is the fast model),
+//          else the catalog's balanced tier
 //   auto   no model fixed: the router walks the role chain and the wheel steers around busy models
-//   fast   the quickest model (catalog role "fast", else its first fast candidate)
-// A pinned model ("provider:model") always wins over the strength. Both are kept in this browser's
-// localStorage; without a choice the strength is auto, so a busy model never ends a request in the
-// deterministic fallback while another one is free. The catalog is reached through a lookup the
-// catalog module installs (setCatalogRoleLookup), so this module works before and without it.
+//   fast   the quickest model: the catalog's fast tier, else its first fast candidate
+// A model the provider's live list does not name is passed over. A pinned model ("provider:model")
+// always wins over the strength. Both are kept in this browser's localStorage; without a choice the
+// strength is auto, so a busy model never ends a request in the deterministic fallback while
+// another one is free. setCatalogRoleLookup() replaces the catalog lookup (tests, a live catalog).
 import { readLocal, removeLocal, writeLocal } from '../storage.js';
+import { roleModel } from './catalog/models.js';
 import { modelRef, parseModelRef, resolveRoleModels } from './roles.js';
 
 /** @typedef {import('./contract.js').ProviderId} ProviderId */
@@ -17,7 +21,7 @@ import { modelRef, parseModelRef, resolveRoleModels } from './roles.js';
 /** @typedef {import('./roles.js').ModelRole} ModelRole */
 /** @typedef {import('./roles.js').RoleCandidates} RoleCandidates */
 /** @typedef {'max' | 'super' | 'auto' | 'fast'} ModelStrength */
-/** @typedef {'fast' | 'balanced' | 'max'} CatalogRole */
+/** @typedef {import('./catalog/models.js').ModelRole} CatalogRole */
 /** @typedef {(provider: ProviderId, role: CatalogRole) => string | null} CatalogRoleLookup */
 
 /**
@@ -49,8 +53,10 @@ const listeners = new Set();
 /** Values for this page when the browser would not store them; null: the stored value holds. */
 let pageStrength = /** @type {ModelStrength | null} */ (null);
 let pagePinned = /** @type {ModelRef | null | undefined} */ (undefined);
+/** @type {CatalogRoleLookup} */
+const SHIPPED_LOOKUP = (provider, role) => roleModel(provider, role);
 /** @type {CatalogRoleLookup | null} */
-let catalogLookup = null;
+let catalogLookup = SHIPPED_LOOKUP;
 
 /**
  * @param {unknown} value
@@ -61,11 +67,12 @@ export function isModelStrength(value) {
 }
 
 /**
- * Installs the catalog's role lookup (for example `roleModel` of the model catalog); null removes it.
- * @param {CatalogRoleLookup | null} lookup
+ * Replaces the catalog's tier lookup (the shipped snapshot's roleModel by default); null leaves only
+ * the role candidates, undefined restores the default.
+ * @param {CatalogRoleLookup | null | undefined} lookup
  */
 export function setCatalogRoleLookup(lookup) {
-  catalogLookup = lookup;
+  catalogLookup = lookup === undefined ? SHIPPED_LOOKUP : lookup;
 }
 
 /** @returns {ModelStrength} */
