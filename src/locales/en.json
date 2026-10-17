@@ -361,7 +361,7 @@
     "proves_title": "What it proves",
     "proves": "Each workspace excerpt is an exact, unchanged passage of the file with the recorded fingerprint, at the recorded position, and belongs to this receipt through its Merkle proof. The source check can be recomputed from it.",
     "not_proves_title": "What it does not prove",
-    "not_proves": "That Starpi wrote the answer (the app does not sign receipts), which excerpts the model actually read, that the answer is correct, or anything about knowledge-base excerpts.",
+    "not_proves": "Who wrote the answer: a signature only shows the receipt is unchanged since a key signed it, and whose key that is only a public key from the signer shows. Nor which excerpts the model actually read, that the answer is correct, or anything about knowledge-base excerpts.",
     "include_question": "Include the question",
     "include_excerpts": "Include the excerpt texts",
     "privacy": "The file is created on this device and contains excerpts of your documents and fingerprints that identify them. It only leaves this device if you share it.",

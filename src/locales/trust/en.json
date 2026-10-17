@@ -1,1 +1,68 @@
-{}
+{
+  "title": "Trust · receipt signing",
+  "subtitle": "This device can sign the answer receipts you download, with a key that never leaves the browser. Share its public key with whoever checks your receipts.",
+  "state": {
+    "on": "Signing",
+    "off": "Not signing",
+    "ready": "Key on first export",
+    "unavailable": "Not available here"
+  },
+  "sign": {
+    "label": "Sign exported receipts",
+    "hint": "Each downloaded receipt names this device's key as its signer and carries its signature. Anyone can then check that the receipt is unchanged; with your public key they can also check that this device signed it."
+  },
+  "key": {
+    "title": "Signing key of this device",
+    "alg": "Algorithm",
+    "id": "Key ID",
+    "created": "Created",
+    "retired": "Replaced",
+    "export_jwk": "Public key (JWK)",
+    "export_pem": "Public key (PEM)",
+    "rotate": "New key",
+    "rotate_confirm": "Make a new signing key? Receipts are signed with the new key from now on; the old key never signs again, and its public key stays available for export.",
+    "delete": "Delete",
+    "delete_confirm": "Delete the signing key of this device? Receipts it signed still verify with its public key, if you exported it. A new key is made at the next signed export.",
+    "create": "Create signing key",
+    "none": "No signing key yet. One is made when you first download a receipt with signing on, or now.",
+    "unavailable": "This browser cannot make signing keys here (WebCrypto needs a secure connection). Receipts are downloaded without a signature.",
+    "not_persistent": "This browser does not keep data for this site (for example in a private window): the key lasts only until the page is closed."
+  },
+  "retired": {
+    "title": "Earlier keys",
+    "body": "Keys replaced by a new one no longer sign. Their public keys still check the receipts they signed.",
+    "delete_confirm": "Delete this earlier key? Its public key can then no longer be exported here."
+  },
+  "check": {
+    "title": "Checking a signed receipt",
+    "body": "Give the receipt, the original files and your public key to the person who checks. Only a public key they received from you shows who signed; the key inside a receipt only shows that it is unchanged."
+  },
+  "result": {
+    "exported": "Saved {file}.",
+    "created": "Signing key created.",
+    "rotated": "New signing key made. Export its public key for whoever checks your receipts.",
+    "deleted": "Key deleted.",
+    "sign_on": "Exported receipts are signed.",
+    "sign_off": "Exported receipts are not signed.",
+    "sign_page": "Saved for this page only: this browser does not keep data for this site."
+  },
+  "error": {
+    "unavailable": "This browser cannot make or use signing keys here.",
+    "not_found": "That key no longer exists.",
+    "storage": "The key could not be stored on this device."
+  },
+  "receipt": {
+    "signed_by": "Signed with this device's key {key} ({alg}).",
+    "unsigned_off": "Not signed: signing is turned off in Settings › Trust.",
+    "unsigned_unavailable": "Not signed: this browser cannot make a signing key here.",
+    "signer": "Signer named in the receipt: key {key} ({alg}).",
+    "signature_missing": "The receipt names signer key {key} ({alg}), but its signature was removed.",
+    "trusted": "Trusted: checked with the public key you chose.",
+    "not_trusted": "Not trusted: no public key of the signer was chosen, and the key inside a receipt can be anyone's.",
+    "own_key": "The key belongs to this device.",
+    "gate": "Sentence gate ({mode} mode, as recorded): {released} released, {withheld} withheld.",
+    "second_opinions": "Second opinions recorded for {n} {n:statement|statements}, {contradicted} contradicted (advisory, not recomputed).",
+    "relations": "{n} {n:relation|relations} between statements recorded, {flagged} inverted or unsupported (not recomputed).",
+    "check_ocr": "{label}: the file matches; its text was recognised by OCR and cannot be extracted again."
+  }
+}

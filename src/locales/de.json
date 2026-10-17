@@ -361,7 +361,7 @@
     "proves_title": "Was er beweist",
     "proves": "Jeder Auszug aus dem Arbeitsbereich ist eine exakte, unveränderte Passage der Datei mit dem aufgezeichneten Fingerabdruck, an der aufgezeichneten Position, und gehört über seinen Merkle-Beweis zu diesem Beleg. Die Quellenprüfung lässt sich daraus neu berechnen.",
     "not_proves_title": "Was er nicht beweist",
-    "not_proves": "Dass Starpi die Antwort geschrieben hat (die App signiert keine Belege), welche Auszüge das Modell tatsächlich gelesen hat, dass die Antwort stimmt, oder irgendetwas über Auszüge aus der Wissensdatenbank.",
+    "not_proves": "Wer die Antwort geschrieben hat: Eine Signatur zeigt nur, dass der Beleg seit der Signatur mit einem Schlüssel unverändert ist, und wem der Schlüssel gehört, zeigt nur ein öffentlicher Schlüssel vom Unterzeichner. Auch nicht, welche Auszüge das Modell tatsächlich gelesen hat, dass die Antwort stimmt, oder irgendetwas über Auszüge aus der Wissensdatenbank.",
     "include_question": "Frage einschließen",
     "include_excerpts": "Auszugstexte einschließen",
     "privacy": "Die Datei entsteht auf diesem Gerät und enthält Auszüge Ihrer Dokumente sowie Fingerabdrücke, die sie identifizieren. Sie verlässt das Gerät nur, wenn Sie sie weitergeben.",
