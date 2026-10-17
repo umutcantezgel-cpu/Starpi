@@ -7,6 +7,7 @@
 // A migration must be safe to repeat: when a tab closes between its data write and its marker,
 // the next start runs it again. The chat migration writes both in one transaction and derives
 // every id from the legacy data, so a repeat finds its own records and skips them.
+import { migrateLegacyKeys } from '../ai/keys.js';
 import { STORAGE_KEYS } from '../config.js';
 import { readLocal, removeLocal } from '../storage.js';
 import { StoreError } from './idb.js';
@@ -45,6 +46,7 @@ import { StoreError } from './idb.js';
 
 export const MIGRATION_MARKER_PREFIX = 'migration:';
 export const LEGACY_CHATS_MIGRATION_ID = 'local-chats-v1';
+export const LEGACY_KEYS_MIGRATION_ID = 'legacy-keys-v1';
 const TITLE_CHARS = 60;
 
 /** @returns {LockManager | null} */
@@ -286,8 +288,24 @@ export function legacyChatsMigration(options = {}) {
   return { id: LEGACY_CHATS_MIGRATION_ID, run: (ctx) => migrateLegacyChats(ctx, options) };
 }
 
+// ---------------------------------------------------------------------------------------------
+// 2.x plaintext keys from localStorage
+
+/**
+ * The provider keys 2.x remembered in plaintext move into this tab's session storage and leave
+ * localStorage, together with the "remember keys" switch. A vault needs the user's passphrase, so
+ * the keys view then suggests setting one, which moves them into the vault (ai/keys.js). The key
+ * store runs the same move on its first use, so the keys are safe even before this runs; the marker
+ * records only which providers moved.
+ * @param {Partial<import('../ai/keys.js').LegacyStorage>} [storage]
+ * @returns {Migration}
+ */
+export function legacyKeysMigration(storage) {
+  return { id: LEGACY_KEYS_MIGRATION_ID, run: () => migrateLegacyKeys(storage) };
+}
+
 /** The app's migrations, oldest first. New ones are appended, never reordered. */
-export const APP_MIGRATIONS = Object.freeze([legacyChatsMigration()]);
+export const APP_MIGRATIONS = Object.freeze([legacyChatsMigration(), legacyKeysMigration()]);
 
 /**
  * Runs the app's migrations against the app database.

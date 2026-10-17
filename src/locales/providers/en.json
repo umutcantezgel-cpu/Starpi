@@ -1,1 +1,130 @@
-{}
+{
+  "title": "Model providers and keys",
+  "subtitle": "Your own keys for cloud models, the free models this site offers, and your own server.",
+  "vault": {
+    "title": "Key vault",
+    "state": {
+      "none": "This tab only",
+      "locked": "Vault locked",
+      "unlocked": "Vault open",
+      "unavailable": "No vault here"
+    },
+    "none_body": "Keys are kept until this tab is closed. Set a passphrase to keep them on this device, encrypted with a key that only your passphrase opens. The keys of this tab move into the vault.",
+    "locked_body": "Your keys are stored encrypted on this device. Enter the passphrase to use them in this tab.",
+    "unlocked_body": "The vault is open in this tab. It locks itself after 30 minutes without activity.",
+    "unavailable_body": "This browser cannot keep a vault (for example in a private window). Keys are kept until this tab is closed.",
+    "passphrase": "Vault passphrase",
+    "passphrase_new_hint": "At least 8 characters. It cannot be recovered: if you forget it, forget all keys and add them again.",
+    "create": "Set passphrase",
+    "unlock": "Unlock",
+    "lock": "Lock now",
+    "forget": "Forget all keys",
+    "forget_confirm": "Delete every key from this tab and from the vault on this device?",
+    "working": "Working…",
+    "suggest": "Keys this browser kept in plain text were moved: they now last until this tab is closed. Set a vault passphrase to keep them on this device, encrypted.",
+    "suggest_dismiss": "Dismiss",
+    "result": {
+      "created": "Vault created. The keys of this tab are now stored in it.",
+      "unlocked": "Vault unlocked.",
+      "wrong": "That passphrase does not open the vault.",
+      "too_short": "The passphrase needs at least 8 characters.",
+      "unavailable": "This browser cannot keep a vault.",
+      "locked": "Vault locked.",
+      "forgotten": "All keys were deleted.",
+      "idle": "The key vault locked itself after 30 minutes without activity."
+    }
+  },
+  "error": {
+    "invalid_slot": "Unknown provider.",
+    "invalid_key": "Use printable characters only (letters, digits, punctuation); a key has no spaces.",
+    "locked": "Unlock the vault first, or set a passphrase.",
+    "unavailable": "This browser cannot keep a vault.",
+    "storage": "The browser did not store it (private window, blocked or full storage)."
+  },
+  "access": {
+    "title": "Access code",
+    "body": "This site asks for an access code before its relay, its free models, voice and research answer. The code goes only to this site.",
+    "label": "Access code",
+    "placeholder": "Enter the code",
+    "placeholder_saved": "Saved; enter a new code to replace it",
+    "save": "Save code",
+    "saved": "Access code saved.",
+    "removed": "Access code removed."
+  },
+  "relay": {
+    "label": "Use the Starpi relay for providers that block browsers",
+    "hint": "Some providers refuse calls straight from a web page. With this on, such a call is sent once more through this site's relay, which forwards it with your key and keeps nothing. The way that worked is remembered per provider.",
+    "reset": "Forget remembered ways",
+    "reset_done": "The next call to each provider tries the direct way first again.",
+    "on": "Relay fallback on.",
+    "off": "Relay fallback off: providers that block browsers cannot be reached."
+  },
+  "pool": {
+    "title": "Free models via this site",
+    "loading": "Asking the site…",
+    "unreachable": "This site offers no free models (it runs without server functions).",
+    "on": "{provider}: {count} free models",
+    "off": "{provider}: not offered"
+  },
+  "list": {
+    "title": "Your own keys"
+  },
+  "key": {
+    "label": "{provider} API key",
+    "placeholder": "Paste a key",
+    "hint_prefix": "Keys start with {prefix}. The field never shows a saved key.",
+    "hint_any": "Paste the key exactly as the provider shows it. The field never shows a saved key.",
+    "mismatch": "Saved, but this does not look like a key from {provider}. Use Test key to check it.",
+    "remember": "Keep in the vault on this device",
+    "remember_locked": "Open the vault (or set a passphrase) to keep keys on this device.",
+    "save": "Save key",
+    "test": "Test key",
+    "remove": "Remove key",
+    "get": "Get a key",
+    "none": "No key",
+    "session": "Key for this tab (••••{last4})",
+    "vault": "Key in the vault (••••{last4})",
+    "saved": "Key saved for this tab.",
+    "saved_vault": "Key saved in the vault.",
+    "removed": "Key removed.",
+    "empty": "Paste a key first."
+  },
+  "route": {
+    "direct": "Direct from the browser",
+    "auto": "Direct, relay if blocked",
+    "relay": "Through the relay",
+    "pool": "Free via this site",
+    "device": "On this device",
+    "reason": {
+      "unknown": "Unknown provider",
+      "no_key": "Needs a key",
+      "relay_off": "Needs the relay",
+      "no_server": "No server address",
+      "in_browser": "On this device"
+    }
+  },
+  "test": {
+    "running": "Testing the key…",
+    "ok_direct": "The key works (direct from the browser).",
+    "ok_relay": "The key works (through the relay).",
+    "failed": "Test failed ({code}): {reason}"
+  },
+  "local": {
+    "title": "Your own server",
+    "presets": "Presets:",
+    "url": "Server address",
+    "url_hint": "An OpenAI-compatible endpoint. Allowed: https:// addresses, http://localhost and http://127.0.0.1.",
+    "key": "Server key (optional)",
+    "key_hint": "Only if your server asks for one.",
+    "saved": "Server address saved.",
+    "cors_title": "Let this site call your server",
+    "cors": {
+      "ollama": "Ollama: start it with {setting} set to {origin}.",
+      "lmstudio": "LM Studio: switch on “{setting}” in the server settings.",
+      "vllm": "vLLM: start it with {setting} listing {origin}.",
+      "llamacpp": "llama.cpp: its server accepts calls from web pages without extra setup."
+    },
+    "chrome": "Chrome asks whether this site may reach devices on your local network. Allow it, or the browser blocks calls to your server.",
+    "relay_never": "Calls to your own server always go straight from this browser; the relay never reaches your network."
+  }
+}

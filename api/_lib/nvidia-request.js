@@ -1,13 +1,13 @@
 // @ts-check
-// Validation of POST /api/chat/nvidia bodies and the upstream request built from them. The Python
-// backend applies the same rules in the same order (backend/core/nvidia.py); both test suites run the
-// shared vectors in backend/test_fixtures/nvidia_validation.json.
+// Validation of NVIDIA chat bodies and the upstream request built from them. The pool's request
+// validator (pool/request.js) applies the same rules to text-only models; the shared vectors in
+// backend/test_fixtures/nvidia_validation.json pin both down.
 import { findNvidiaModel, NVIDIA_LIMITS } from '../../src/js/models/nvidia-catalog.js';
 
 /** @typedef {import('../../src/js/models/nvidia-catalog.js').NvidiaModel} NvidiaModel */
 
 const ROLES = ['system', 'user', 'assistant'];
-// Only ASCII whitespace counts as blank, so JavaScript and Python agree on every string.
+// Only ASCII whitespace counts as blank, so every implementation agrees on every string.
 const BLANK = /^[\t\n\v\f\r ]*$/;
 
 /**
@@ -41,7 +41,7 @@ function validMessages(messages) {
     if (!isObject(message)) return null;
     const { role, content } = message;
     if (typeof role !== 'string' || !ROLES.includes(role) || (role === 'system' && index > 0)) return null;
-    // Lengths in UTF-16 code units, as String#length counts them (the Python side counts the same way).
+    // Lengths in UTF-16 code units, as String#length counts them.
     if (typeof content !== 'string' || content.length > NVIDIA_LIMITS.maxMessageChars) return null;
     total += content.length;
     clean.push({ role, content });

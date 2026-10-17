@@ -1,6 +1,8 @@
-// NVIDIA proxy (api/): key parsing, request validation (shared vectors with the Python backend), the
-// failover router, the stream relay, the guard order of the handlers and the Vercel wiring. Upstream
-// calls go to an injected fetch; timings are a few milliseconds and cooldowns use a fake clock.
+// NVIDIA proxy (api/): key parsing, request validation (the shared vectors in
+// backend/test_fixtures/nvidia_validation.json), the failover router, the stream relay, the request
+// guards, the models route and the Vercel wiring (the chat route itself runs the pool handler, see
+// pool.test.mjs). Upstream calls go to an injected fetch; timings are a few milliseconds and
+// cooldowns use a fake clock.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -8,10 +10,11 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { parseKeys, parseOrigins, positiveInt } from '../../api/_lib/env.js';
 import { checkSameOrigin, clientIp, createRateLimiter, readJsonBody } from '../../api/_lib/guards.js';
-import { FUNCTION_MAX_MS, handleChat, handleModels, runtimeDeps } from '../../api/_lib/handlers.js';
+import { handleModels, runtimeDeps } from '../../api/_lib/handlers.js';
 import { validateChatRequest } from '../../api/_lib/nvidia-request.js';
 import { createKeyRouter, parseRetryAfter } from '../../api/_lib/nvidia-router.js';
 import { relayStream, sseError } from '../../api/_lib/nvidia-stream.js';
+import { POOL_FUNCTION_MAX_MS } from '../../api/_lib/pool/handler.js';
 import * as chatRoute from '../../api/chat/nvidia.js';
 import * as modelsRoute from '../../api/models/nvidia.js';
 import { NVIDIA_DEFAULT_MODEL, NVIDIA_MODELS, NVIDIA_PROXY, NVIDIA_UPSTREAM_URL } from '../../src/js/models/nvidia-catalog.js';
@@ -499,7 +502,7 @@ describe('relayStream', () => {
   });
 });
 
-// ---------------------------------------------------------------- handlers
+// ---------------------------------------------------------------- guards and models route
 
 const HOST = 'starpi.test';
 const SAME_ORIGIN = { origin: `https://${HOST}`, 'sec-fetch-site': 'same-origin' };
@@ -514,10 +517,10 @@ function chatRequest({ headers = {}, body = JSON.stringify(BODY), ip = '203.0.11
 }
 
 /**
- * @param {{ router?: ReturnType<typeof createKeyRouter> | null, limit?: number, extraOrigins?: string[], now?: () => number }} [options]
+ * @param {{ router?: ReturnType<typeof createKeyRouter> | null }} [options]
  */
-function deps({ router = null, limit = 20, extraOrigins = [], now = () => Date.now() } = {}) {
-  return { router, limiter: createRateLimiter({ limit, windowMs: 60_000, now }), extraOrigins, now };
+function deps({ router = null } = {}) {
+  return { router };
 }
 
 /** @param {Response} res */
@@ -525,10 +528,8 @@ async function errorOf(res) {
   return { status: res.status, ...(await res.json()) };
 }
 
-describe('handleChat', () => {
-  it('refuses foreign, missing and cross-site origins with 403 before anything else', async () => {
-    const fetch = fakeFetch(sse());
-    const d = deps({ router: makeRouter(1, fetch).router });
+describe('request guards', () => {
+  it('refuse foreign, missing and cross-site origins', () => {
     const cases = [
       [{ origin: 'https://evil.example', 'sec-fetch-site': undefined }, 'origin_not_allowed'],
       [{ origin: `https://${HOST}.evil.example`, 'sec-fetch-site': undefined }, 'origin_not_allowed'],
@@ -537,38 +538,27 @@ describe('handleChat', () => {
       [{ 'sec-fetch-site': 'cross-site' }, 'cross_site_request'],
       [{ 'sec-fetch-site': 'same-site' }, 'cross_site_request'],
     ];
-    for (const [headers, error] of cases) {
-      const res = await handleChat(chatRequest({ headers }), d);
-      assert.deepEqual(await errorOf(res), { status: 403, error }, JSON.stringify(headers));
-      assert.equal(res.headers.get('cache-control'), 'no-store');
-    }
-    assert.equal(fetch.calls.length, 0);
+    for (const [headers, error] of cases) assert.deepEqual(checkSameOrigin(chatRequest({ headers }), []), { status: 403, error }, JSON.stringify(headers));
   });
 
-  it('accepts same-origin requests, the forwarded host and NVIDIA_ALLOWED_ORIGINS entries', async () => {
-    const d = deps({ extraOrigins: ['https://starpi.app'] });
+  it('accept same-origin requests, the forwarded host and extra origins', () => {
     const allowed = [
       SAME_ORIGIN,
       { origin: `http://${HOST}`, 'sec-fetch-site': undefined },
       { origin: 'https://www.starpi.app', host: 'internal.vercel', 'x-forwarded-host': 'www.starpi.app' },
       { origin: 'https://starpi.app', 'sec-fetch-site': 'cross-site' },
     ];
-    for (const headers of allowed) {
-      // No router: a request past the origin check ends at nvidia_not_configured.
-      assert.deepEqual(await errorOf(await handleChat(chatRequest({ headers }), d)), { status: 503, error: 'nvidia_not_configured' }, JSON.stringify(headers));
-    }
-    assert.equal(checkSameOrigin(chatRequest({ headers: { origin: 'https://starpi.app', 'sec-fetch-site': 'cross-site' } }), []).error, 'cross_site_request');
+    for (const headers of allowed) assert.equal(checkSameOrigin(chatRequest({ headers }), ['https://starpi.app']), null, JSON.stringify(headers));
+    assert.equal(checkSameOrigin(chatRequest({ headers: { origin: 'https://starpi.app', 'sec-fetch-site': 'cross-site' } }), [])?.error, 'cross_site_request');
   });
 
-  it('reads the client address from x-real-ip, then x-forwarded-for', () => {
+  it('read the client address from x-real-ip, then x-forwarded-for', () => {
     assert.equal(clientIp(chatRequest({ ip: '198.51.100.1' })), '198.51.100.1');
     assert.equal(clientIp(chatRequest({ headers: { 'x-real-ip': undefined, 'x-forwarded-for': '198.51.100.2, 10.0.0.1' } })), '198.51.100.2');
     assert.equal(clientIp(chatRequest({ headers: { 'x-real-ip': undefined } })), 'unknown');
   });
 
-  it('checks size before media type, then bytes, UTF-8, JSON and the top-level type', async () => {
-    const fetch = fakeFetch(sse());
-    const d = deps({ router: makeRouter(1, fetch).router });
+  it('check size before media type, then bytes, UTF-8, JSON and the top-level type', async () => {
     const big = 'x'.repeat(262_145);
     const streamed = new ReadableStream({
       start(controller) {
@@ -586,63 +576,33 @@ describe('handleChat', () => {
       [{ body: new Uint8Array([0x7b, 0xff, 0x7d]) }, 400, 'invalid_json'],
       [{ body: '[1,2]' }, 400, 'json_body_must_be_object'],
       [{ body: 'null' }, 400, 'json_body_must_be_object'],
-      [{ body: JSON.stringify({ ...BODY, model: 'evil/model' }) }, 400, 'model_not_allowed'],
     ];
     for (const [options, status, error] of cases) {
-      assert.deepEqual(await errorOf(await handleChat(chatRequest(options), d)), { status, error }, error);
+      const read = await readJsonBody(chatRequest(options), 262_144);
+      assert.deepEqual(read.ok ? read : { status: read.status, error: read.error }, { status, error }, error);
     }
-    const invalid = await handleChat(chatRequest({ body: JSON.stringify({ ...BODY, temperature: 9 }) }), d);
-    assert.deepEqual(await errorOf(invalid), { status: 400, error: 'invalid_field', field: 'temperature' });
-    assert.equal(fetch.calls.length, 0, 'an invalid request reached the upstream');
     assert.deepEqual(await readJsonBody(chatRequest({ headers: { 'content-type': 'application/json; charset=UTF-8' } }), 1024), { ok: true, data: BODY });
   });
 
-  it('limits requests per IP and window, with Retry-After', async () => {
+  it('limit requests per IP and window, with a retry time', () => {
     const clock = fakeClock();
-    const d = deps({ limit: 2, now: clock.now });
-    const status = async (/** @type {string} */ ip) => (await handleChat(chatRequest({ ip }), d)).status;
-    assert.equal(await status('198.51.100.1'), 503);
+    const limiter = createRateLimiter({ limit: 2, windowMs: 60_000, now: clock.now });
+    assert.ok(limiter.hit('198.51.100.1').ok);
     clock.t += 15_000;
-    assert.equal(await status('198.51.100.1'), 503);
-    const limited = await handleChat(chatRequest({ ip: '198.51.100.1' }), d);
-    assert.deepEqual(await errorOf(limited), { status: 429, error: 'rate_limited' });
-    assert.equal(limited.headers.get('retry-after'), '45');
-    assert.equal(await status('198.51.100.2'), 503, 'another IP is not limited');
+    assert.ok(limiter.hit('198.51.100.1').ok);
+    assert.deepEqual(limiter.hit('198.51.100.1'), { ok: false, retryAfterS: 45 });
+    assert.ok(limiter.hit('198.51.100.2').ok, 'another IP is not limited');
     clock.t += 45_000;
-    assert.equal(await status('198.51.100.1'), 503, 'a new window starts');
+    assert.ok(limiter.hit('198.51.100.1').ok, 'a new window starts');
   });
 
-  it('forgets expired windows, then the oldest, when the limiter is full', () => {
+  it('forget expired windows, then the oldest, when the limiter is full', () => {
     const clock = fakeClock();
     const limiter = createRateLimiter({ limit: 1, windowMs: 1000, now: clock.now, maxEntries: 2 });
     assert.ok(limiter.hit('a').ok && !limiter.hit('a').ok);
     assert.ok(limiter.hit('b').ok);
     assert.ok(limiter.hit('c').ok, 'a third address fits after dropping the oldest');
     assert.ok(limiter.hit('a').ok, 'the dropped address starts a new window');
-  });
-
-  it('streams the upstream bytes as text/event-stream that no cache keeps', async () => {
-    const d = deps({ router: makeRouter(2, fakeFetch(sse())).router });
-    const res = await handleChat(chatRequest(), d);
-    assert.equal(res.status, 200);
-    assert.equal(res.headers.get('content-type'), 'text/event-stream; charset=utf-8');
-    assert.equal(res.headers.get('cache-control'), 'no-store, no-transform');
-    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
-    assert.equal(await res.text(), SSE.join(''));
-  });
-
-  it('maps router failures to 502, 503 and 504 with Retry-After where it helps', async () => {
-    const cases = [
-      [fakeFetch(answer(429, { 'retry-after': '9' })), 503, 'all_keys_exhausted', '9'],
-      [fakeFetch(hanging()), 504, 'upstream_timeout', null],
-      [fakeFetch(answer(404)), 502, 'model_unavailable', null],
-    ];
-    for (const [fetch, status, error, retryAfter] of cases) {
-      const router = createKeyRouter({ keys: [key(1)], fetch, log: () => {}, timing: TIMING });
-      const res = await handleChat(chatRequest(), deps({ router }));
-      assert.deepEqual(await errorOf(res), { status, error });
-      assert.equal(res.headers.get('retry-after'), retryAfter, error);
-    }
   });
 });
 
@@ -714,19 +674,19 @@ describe('Vercel wiring', () => {
     const message = String(warn.mock.calls[0].arguments[0]);
     assert.match(message, /ignored 1 malformed/);
     assert.ok(!message.includes('not-a-key') && !message.includes('nvapi-'));
-    process.env.NVIDIA_ALLOWED_ORIGINS = 'https://starpi.app';
+    process.env.NVIDIA_API_KEYS = key(3);
     const second = runtimeDeps();
     assert.notEqual(second, first);
-    assert.deepEqual(second.extraOrigins, ['https://starpi.app']);
+    assert.equal(second.router?.size, 1);
   });
 
   it('keeps vercel.json and the proxy timings in step', () => {
     const vercel = JSON.parse(readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
     const chat = vercel.functions['api/chat/nvidia.js'];
-    assert.equal(chat.maxDuration * 1000, FUNCTION_MAX_MS);
+    assert.equal(chat.maxDuration * 1000, POOL_FUNCTION_MAX_MS);
     assert.equal(chat.supportsCancellation, true);
     assert.equal(vercel.functions['api/models/nvidia.js'].maxDuration, 10);
-    assert.ok(FUNCTION_MAX_MS - 3000 >= NVIDIA_PROXY.streamMaxMs, 'the stream must end before the function is stopped');
+    assert.ok(POOL_FUNCTION_MAX_MS - 3000 >= NVIDIA_PROXY.streamMaxMs, 'the stream must end before the function is stopped');
     assert.ok(NVIDIA_PROXY.failoverBudgetMs < NVIDIA_PROXY.streamMaxMs);
     const csp = vercel.headers.flatMap((/** @type {{ headers: Array<{ key: string, value: string }> }} */ h) => h.headers).find((/** @type {{ key: string }} */ h) => h.key === 'Content-Security-Policy').value;
     assert.match(csp, /connect-src 'self'/);
