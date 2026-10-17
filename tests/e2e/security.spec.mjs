@@ -161,12 +161,15 @@ test.describe('cross-origin isolation', () => {
     const manifest = await buildManifest(page.request);
     for (const url of [manifest.entries.ingestWorkerJs, manifest.entries.wasmWorkerJs, manifest.entries.workerJs]) {
       const worker = await startWorker(page, /** @type {string} */ (url));
-      expect(await worker.evaluate(isolationProbe), url ?? '').toEqual(ISOLATED);
+      // Playwright reports a worker as soon as it exists, possibly before its script (and with it the
+      // headers that isolate it) has arrived; a worker that is never isolated still fails here.
+      await expect.poll(() => worker.evaluate(isolationProbe), { message: url ?? '' }).toEqual(ISOLATED);
       expect(await worker.evaluate(evalProbe), url ?? '').toBe('blocked');
       await stopWorkers(page);
     }
     // The self-hosted ONNX Runtime binary compiles in an isolated worker, with shared memory.
     const wasmWorker = await startWorker(page, /** @type {string} */ (manifest.entries.wasmWorkerJs));
+    await expect.poll(() => wasmWorker.evaluate(isolationProbe)).toEqual(ISOLATED);
     const compiled = await wasmWorker.evaluate(async (url) => {
       const module = await WebAssembly.compileStreaming(fetch(url));
       return WebAssembly.Module.imports(module).some((i) => i.kind === 'memory');
