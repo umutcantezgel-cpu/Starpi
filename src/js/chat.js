@@ -30,6 +30,7 @@ import { callGemini, callLocalServer, callNvidia, callOpenRouter, getNvidiaCatal
 import { registerCitations } from './rag/citations.js';
 import { applyGrounding } from './rag/grounding-view.js';
 import { receiptButton, storeReceiptDraft } from './rag/receipts.js';
+import { libraryHitsByMeaning } from './rag/embed-client.js';
 import { addToWorkspace, firstChunks, getDocumentText, listWorkspace, searchWorkspace } from './rag/workspace.js';
 import { sanitizeModelNames } from './render.js';
 import { assignCitations, buildContext, distinctSources, mergeHits, rankHitsLocally, workspaceHit } from './retrieval.js';
@@ -174,7 +175,11 @@ async function retrieve(query, mode, focusDocId, workspaceOnly) {
     return result(merge(ranked), t('retrieval.keyword', { why: t(why) }), false);
   }
 
-  // Local mode: candidates are fetched without the question and ranked in the browser.
+  // Local mode: with semantic search on, the library is ranked by the question's vector (made on
+  // this device; the text stays here). Otherwise candidates are fetched without the question and
+  // ranked in the browser.
+  const byMeaning = await libraryHitsByMeaning(query, LIMITS.retrievalRows);
+  if (byMeaning?.length) return result(merge(byMeaning), t('workspace.retrieval_vector'), false);
   const recent = await recentKnowledge(30);
   const ranked = recent.ok ? rankHitsLocally(query, recent.data, LIMITS.retrievalRows) : [];
   return result(merge(ranked), t(recent.ok ? 'retrieval.local' : 'retrieval.offline'), !recent.ok);
