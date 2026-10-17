@@ -125,4 +125,78 @@ export const de = {
     restrictive: ['nur', 'ausschliesslich', 'lediglich', 'erst'],
     without: ['ohne'],
   },
+
+  gate: {
+    // The capital sharp s is not in the shared Latin ranges.
+    chars: 'ẞ',
+    numberWords: {
+      // German writes a number as one word ("dreihundertfünfundzwanzig"): number-words.js splits it
+      // into these words. Spellings without umlaut and ß are listed too.
+      cardinals: {
+        null: 0, ein: 1, eins: 1, eine: 1, zwei: 2, zwo: 2, drei: 3, vier: 4, fünf: 5, fuenf: 5, sechs: 6, sieben: 7, acht: 8,
+        neun: 9, zehn: 10, elf: 11, zwölf: 12, zwoelf: 12, dreizehn: 13, vierzehn: 14, fünfzehn: 15, fuenfzehn: 15,
+        sechzehn: 16, siebzehn: 17, achtzehn: 18, neunzehn: 19, zwanzig: 20, dreißig: 30, dreissig: 30, vierzig: 40,
+        fünfzig: 50, fuenfzig: 50, sechzig: 60, siebzig: 70, achtzig: 80, neunzig: 90, einhalb: 0.5, eineinhalb: 1.5,
+        anderthalb: 1.5,
+      },
+      scales: { hundert: 100, dutzend: 12, tausend: 1e3, million: 1e6, millionen: 1e6, milliarde: 1e9, milliarden: 1e9, billion: 1e12, billionen: 1e12 },
+      // "ein", "eine" are the article; "einhalb" only follows a count ("zweieinhalb").
+      parts: ['ein', 'eins', 'eine', 'einhalb'],
+      joiners: ['und'],
+      fractions: {
+        ...inflected({ halb: 0.5 }), hälfte: 0.5, haelfte: 0.5, drittel: 1 / 3, achtel: 0.125, siebtel: 1 / 7,
+      },
+      multipliers: { ...inflected({ doppelt: 2 }), ...inflected({ zweifach: 2, dreifach: 3, vierfach: 4 }) },
+      // The stems take an ending: "acht" alone is the cardinal.
+      ordinals: inflected({ erst: 1, zweit: 2, dritt: 3, viert: 4, fünft: 5, fuenft: 5, sechst: 6, siebt: 7, acht: 8, neunt: 9, zehnt: 10 }, false),
+      adverbs: ['einmal', 'einfach', 'einfache', 'einfachen', 'einfacher', 'einfaches', 'erstens', 'zweitens', 'drittens', 'einst', 'einzeln'],
+      contextual: [...Object.keys(inflected({ halb: 0, doppelt: 0 })), 'hälfte', 'haelfte'],
+      countNouns: [
+        'sekunde', 'sekunden', 'minute', 'minuten', 'stunde', 'stunden', 'tag', 'tage', 'tagen', 'woche', 'wochen', 'monat',
+        'monate', 'monaten', 'jahr', 'jahre', 'jahren', 'jahrzehnt', 'jahrhundert', 'meter', 'kilometer', 'liter', 'gramm',
+        'kilogramm', 'pfund', 'tasse', 'tassen', 'dosis', 'portion', 'portionen', 'stück', 'stueck', 'teil', 'teile', 'seite',
+        'seiten', 'person', 'personen', 'menge', 'anzahl', 'zahl', 'preis', 'preise', 'kosten', 'größe', 'groesse', 'rate',
+        'geschwindigkeit', 'budget', 'anteil', 'prozent', 'euro', 'dollar', 'nutzer', 'mitarbeiter',
+      ],
+      fractionLeads: [],
+      negative: ['minus'],
+      compound: true,
+      suffixes: {
+        ordinal: ['ste', 'sten', 'ster', 'stes', 'stem', 'te', 'ten', 'ter', 'tes', 'tem'],
+        fraction: ['stel', 'tel'],
+        multiplier: ['fach', 'fache', 'fachen', 'facher', 'faches', 'fachem', 'mal'],
+      },
+    },
+    spoken: {
+      abbreviations: {
+        'z. B.': 'zum Beispiel', 'd. h.': 'das heißt', 'u. a.': 'unter anderem', 'bzw.': 'beziehungsweise', 'ca.': 'circa',
+        'usw.': 'und so weiter', 'etc.': 'et cetera', 'inkl.': 'inklusive', 'ggf.': 'gegebenenfalls', 'evtl.': 'eventuell',
+        'vgl.': 'vergleiche', 'Nr.': 'Nummer', 'Dr.': 'Doktor', 'Prof.': 'Professor', 'Tel.': 'Telefon', 'Abs.': 'Absatz',
+        'Abb.': 'Abbildung', 'mind.': 'mindestens', 'zzgl.': 'zuzüglich',
+      },
+      units: {
+        '%': ['Prozent', 'Prozent'], 'km/h': ['Kilometer pro Stunde', 'Kilometer pro Stunde'], km: ['Kilometer', 'Kilometer'],
+        cm: ['Zentimeter', 'Zentimeter'], mm: ['Millimeter', 'Millimeter'], kg: ['Kilogramm', 'Kilogramm'],
+        mg: ['Milligramm', 'Milligramm'], ml: ['Milliliter', 'Milliliter'], h: ['Stunde', 'Stunden'], 'Std.': ['Stunde', 'Stunden'],
+        min: ['Minute', 'Minuten'], ms: ['Millisekunde', 'Millisekunden'], '°C': ['Grad Celsius', 'Grad Celsius'],
+        kB: ['Kilobyte', 'Kilobyte'], MB: ['Megabyte', 'Megabyte'], GB: ['Gigabyte', 'Gigabyte'], TB: ['Terabyte', 'Terabyte'],
+        MHz: ['Megahertz', 'Megahertz'], GHz: ['Gigahertz', 'Gigahertz'], kW: ['Kilowatt', 'Kilowatt'],
+        kWh: ['Kilowattstunde', 'Kilowattstunden'], '€': ['Euro', 'Euro'], 'm²': ['Quadratmeter', 'Quadratmeter'],
+        'km²': ['Quadratkilometer', 'Quadratkilometer'], 'm³': ['Kubikmeter', 'Kubikmeter'], 'Mio.': ['Million', 'Millionen'],
+        'Mrd.': ['Milliarde', 'Milliarden'], 'Tsd.': ['Tausend', 'Tausend'],
+      },
+      approx: 'etwa',
+    },
+  },
 };
+
+/**
+ * A word with the endings of a German adjective ("halb", "halbe", "halben", …), each with the same value.
+ * @param {Record<string, number>} words
+ * @param {boolean} [bare]  also the word without an ending
+ * @returns {Record<string, number>}
+ */
+function inflected(words, bare = true) {
+  const endings = bare ? ['', 'e', 'en', 'er', 'es', 'em'] : ['e', 'en', 'er', 'es', 'em'];
+  return Object.fromEntries(Object.entries(words).flatMap(([w, n]) => endings.map((e) => [`${w}${e}`, n])));
+}

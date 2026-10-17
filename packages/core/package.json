@@ -41,6 +41,7 @@
   },
   "types": "./dist/index.d.ts",
   "bin": {
+    "starpi-gate": "dist/gate.js",
     "starpi-ground": "dist/ground.js",
     "starpi-verify-receipt": "dist/verify-receipt.js"
   },

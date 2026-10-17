@@ -9,8 +9,12 @@ import { fromPacks } from './lang/index.js';
  */
 const abbreviations = fromPacks((packs) => new Set(packs.flatMap((p) => [...p.abbreviations, ...Object.keys(p.monthAbbreviations)])));
 
-/** @param {string} token lowercase, without the final dot */
-function isAbbreviation(token) {
+/**
+ * Whether a dot after this token leaves the sentence open: an ordinal or a day and month ("3.",
+ * "1.6."), or an abbreviation of a language pack. Also used by the streaming releaser (release.js).
+ * @param {string} token lowercase, without the final dot
+ */
+export function isAbbreviation(token) {
   const word = token.replace(/^[^\p{L}\p{N}]+/u, '');
   if (/^\d{1,2}$/.test(word)) return true; // ordinals: "am 3. März"; a year ends a sentence
   if (/^\d{1,2}\.\d{1,2}$/.test(word)) return true; // German day and month: "vom 1.6. bis 31.8."

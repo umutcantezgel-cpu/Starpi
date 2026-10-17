@@ -18,7 +18,7 @@ describe('@starpi/core', () => {
   it('builds a bundle and both commands', () => {
     assert.equal(built.status, 0, built.stderr);
     assert.ok(existsSync(path.join(OUT, 'index.js')));
-    for (const bin of ['verify-receipt.js', 'ground.js']) assert.ok(readFileSync(path.join(OUT, bin), 'utf8').startsWith('#!/usr/bin/env node'), bin);
+    for (const bin of ['verify-receipt.js', 'ground.js', 'gate.js']) assert.ok(readFileSync(path.join(OUT, bin), 'utf8').startsWith('#!/usr/bin/env node'), bin);
   });
 
   it('exports exactly what its entry declares, with no import outside the bundle except pdf.js', async () => {
@@ -98,7 +98,7 @@ describe('@starpi/core', () => {
     assert.equal(pkg.name, '@starpi/core');
     assert.equal(pkg.exports['.'].default, './dist/index.js');
     assert.equal(pkg.exports['.'].types, './dist/index.d.ts');
-    assert.deepEqual(pkg.bin, { 'starpi-ground': 'dist/ground.js', 'starpi-verify-receipt': 'dist/verify-receipt.js' });
+    assert.deepEqual(pkg.bin, { 'starpi-gate': 'dist/gate.js', 'starpi-ground': 'dist/ground.js', 'starpi-verify-receipt': 'dist/verify-receipt.js' });
     assert.deepEqual(pkg.dependencies ?? {}, {});
     assert.deepEqual(pkg.optionalDependencies ?? {}, {});
     assert.deepEqual(pkg.bundleDependencies ?? pkg.bundledDependencies ?? [], []);
