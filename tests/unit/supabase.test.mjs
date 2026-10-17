@@ -1,6 +1,6 @@
 import './setup.mjs';
 import assert from 'node:assert/strict';
-import { registerHooks } from 'node:module';
+import * as nodeModule from 'node:module';
 import { afterEach, describe, it } from 'node:test';
 
 // Records every module the data layer asks for, to tell whether the Supabase library was loaded,
@@ -8,7 +8,10 @@ import { afterEach, describe, it } from 'node:test';
 /** @type {string[]} */
 const requested = [];
 let libraryMissing = false;
-registerHooks({
+// module.registerHooks exists from Node 22.15; the tests that need it are skipped before that.
+const hooks = typeof nodeModule.registerHooks === 'function';
+const needsHooks = hooks ? {} : { skip: 'module.registerHooks needs Node 22.15 or later' };
+nodeModule.registerHooks?.({
   resolve(specifier, context, nextResolve) {
     requested.push(specifier);
     if (libraryMissing && specifier.endsWith('/supabase-lib.js')) throw new TypeError(`Failed to fetch dynamically imported module: ${specifier}`);
@@ -26,7 +29,7 @@ afterEach(() => {
 });
 
 describe('Supabase data layer', () => {
-  it('answers the connection state synchronously without loading the library', () => {
+  it('answers the connection state synchronously without loading the library', needsHooks, () => {
     assert.equal(libraryAtImport, false);
     assert.equal(supabase.getConnection().status, 'pending');
     assert.equal(supabase.canSyncChats(), false);
@@ -36,7 +39,7 @@ describe('Supabase data layer', () => {
     assert.equal(loadedLibrary(), false);
   });
 
-  it('fails a query as a network error while the library does not load, and loads it for the next one', async () => {
+  it('fails a query as a network error while the library does not load, and loads it for the next one', needsHooks, async () => {
     let requests = 0;
     globalThis.fetch = /** @type {typeof fetch} */ (
       async () => {
@@ -58,7 +61,7 @@ describe('Supabase data layer', () => {
     assert.equal(loadedLibrary(), true);
   });
 
-  it('answers the next query with the client it loaded', async () => {
+  it('answers a query with the client it loaded', async () => {
     /** @type {string[]} */
     const urls = [];
     globalThis.fetch = /** @type {typeof fetch} */ (
