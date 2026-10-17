@@ -40,8 +40,9 @@ const BAR = 14;
 const TOP = 18;
 const BOTTOM = 6;
 const VALUE_WIDTH = 72;
-/** Average glyph width of the 12 px label font, to fit labels without measuring them. */
+/** Average glyph widths of the 12 px label font and the 10 px mark font, to fit labels without measuring them. */
 const CHAR_PX = 6.6;
+const MARK_CHAR_PX = 5.6;
 const RADIUS = 4;
 
 /**
@@ -63,15 +64,39 @@ const safe = (v) => (Number.isFinite(v) && v > 0 ? v : 0);
 /** @param {number} v */
 const px = (v) => String(Math.round(v * 10) / 10);
 
+/** Multiples of a power of ten that end a scale; close steps keep the longest bar long. */
+const NICE_STEPS = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+
 /**
- * A round number at or above `value` (1, 2, 2.5 or 5 times a power of ten), for the end of a scale.
+ * A round number at or above `value`, for the end of a scale.
  * @param {number} value
  */
 export function niceMax(value) {
   if (!(value > 0) || !Number.isFinite(value)) return 1;
   const power = 10 ** Math.floor(Math.log10(value));
-  for (const step of [1, 2, 2.5, 5, 10]) if (step * power >= value) return step * power;
+  for (const step of NICE_STEPS) if (step * power >= value) return Number((step * power).toPrecision(12));
   return 10 * power;
+}
+
+/**
+ * Text anchors for labels centred above x positions (ascending): two neighbours that would overlap
+ * move apart, the left one ending at its line and the right one starting there.
+ * @param {readonly number[]} xs
+ * @param {readonly string[]} labels
+ * @param {number} charPx average glyph width of the label font
+ * @returns {Array<'start' | 'middle' | 'end'>}
+ */
+export function labelAnchors(xs, labels, charPx) {
+  /** @type {Array<'start' | 'middle' | 'end'>} */
+  const anchors = xs.map(() => 'middle');
+  for (let i = 0; i < xs.length - 1; i += 1) {
+    const need = ((labels[i].length + labels[i + 1].length) * charPx) / 2 + 6;
+    if (xs[i + 1] - xs[i] < need) {
+      if (anchors[i] === 'middle') anchors[i] = 'end';
+      anchors[i + 1] = 'start';
+    }
+  }
+  return anchors;
 }
 
 /**
@@ -115,13 +140,21 @@ export function barChart(bars, options) {
   const scale = (/** @type {number} */ v) => (Math.min(safe(v), max) / max) * plot;
 
   const svg = /** @type {SVGSVGElement} */ (/** @type {unknown} */ (el(doc, 'svg', { width, height, viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': options.label }, 'block max-w-full')));
-  for (const m of marks) {
-    const x = x0 + scale(m.value);
+  const sorted = [...marks].sort((a, b) => a.value - b.value);
+  const xs = sorted.map((m) => x0 + scale(m.value));
+  const anchors = labelAnchors(
+    xs,
+    sorted.map((m) => m.label),
+    MARK_CHAR_PX,
+  );
+  sorted.forEach((m, i) => {
+    const x = xs[i];
     svg.append(el(doc, 'line', { x1: px(x), x2: px(x), y1: TOP - 4, y2: height - BOTTOM, 'stroke-width': 1 }, 'stroke-slate-300'));
-    const text = el(doc, 'text', { x: px(x), y: TOP - 7, 'text-anchor': 'middle' }, 'fill-slate-500 text-[10px]');
+    const shift = anchors[i] === 'end' ? -3 : anchors[i] === 'start' ? 3 : 0;
+    const text = el(doc, 'text', { x: px(x + shift), y: TOP - 7, 'text-anchor': anchors[i] }, 'fill-slate-500 text-[10px]');
     text.textContent = m.label;
     svg.append(text);
-  }
+  });
   svg.append(el(doc, 'line', { x1: x0, x2: x0, y1: TOP - 4, y2: height - BOTTOM, 'stroke-width': 1 }, 'stroke-slate-300'));
 
   bars.forEach((bar, i) => {

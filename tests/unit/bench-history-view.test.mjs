@@ -257,7 +257,11 @@ describe('charts', () => {
   });
 
   it('round the scale and the bar ends', () => {
-    assert.deepEqual([0, 0.4, 1, 3, 8, 21, 33, 260].map(charts.niceMax), [1, 0.5, 1, 5, 10, 25, 50, 500]);
+    assert.deepEqual([0, 0.4, 1, 3, 7, 21, 25.2, 33, 260, 9000].map(charts.niceMax), [1, 0.4, 1, 3, 8, 25, 30, 40, 300, 10000]);
+    // Close threshold labels move apart instead of overlapping.
+    assert.deepEqual(charts.labelAnchors([100, 300], ['8 tok/s', '20 tok/s'], 5.6), ['middle', 'middle']);
+    assert.deepEqual(charts.labelAnchors([100, 130], ['8 tok/s', '20 tok/s'], 5.6), ['end', 'start']);
+    assert.deepEqual(charts.labelAnchors([100, 120, 140], ['a', 'b', 'c'], 5.6), ['middle', 'middle', 'middle']);
     assert.equal(charts.barPath(10, 0, 0, 14), '');
     assert.match(charts.barPath(10, 0, 100, 14), /^M10 0H106A4 4 0 0 1 110 4V10A4 4 0 0 1 106 14H10Z$/);
     // A bar shorter than the radius stays a valid shape.

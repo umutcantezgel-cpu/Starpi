@@ -97,10 +97,10 @@ export function mountHistoryView(el, deps) {
     const body = rows.map(
       (row) => html`<tr class="border-t border-slate-100" data-bh-row="${row.ref}">
         <th scope="row" class="py-2 pr-3 text-left font-medium text-slate-900">${row.label} <span class="block text-[11px] font-normal text-slate-500">${label(row.runtime === 'wasm' ? 'models.runtime_wasm' : 'models.runtime_webgpu')}</span></th>
-        <td class="py-2 pr-3 text-right tabular-nums">${formatNumber(row.runs)}${row.failures ? html` <span class="text-[11px] text-rose-700">${label({ key: 'diagnostics.history_failed_runs', params: { n: row.failures } })}</span>` : ''}</td>
-        <td class="py-2 pr-3 text-right font-semibold tabular-nums">${rate(row.tokPerSec)}</td>
+        <td class="py-2 pr-3 text-right tabular-nums whitespace-nowrap">${formatNumber(row.runs)}${row.failures ? html` <span class="text-[11px] text-rose-700">${label({ key: 'diagnostics.history_failed_runs', params: { n: row.failures } })}</span>` : ''}</td>
+        <td class="py-2 pr-3 text-right font-semibold tabular-nums whitespace-nowrap">${rate(row.tokPerSec)}</td>
         <td class="py-2 pr-3" data-bh-trend="${row.ref}"></td>
-        <td class="py-2 text-right tabular-nums">${row.ttftMs === null ? '–' : `${formatNumber(row.ttftMs)} ms`}</td>
+        <td class="py-2 text-right tabular-nums whitespace-nowrap">${row.ttftMs === null ? '–' : `${formatNumber(row.ttftMs)} ms`}</td>
       </tr>`,
     );
     return html`<div class="overflow-x-auto"><table class="w-full text-xs text-slate-700">
