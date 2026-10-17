@@ -4,8 +4,7 @@
 // synthesizer) -> render with verifiable citations, the source check and a receipt -> persist. Free
 // chat: the conversation and an attached file go to the configured model, without retrieval, source
 // check or receipt.
-import { currentSessionId, deleteSession, loadCurrentSession, persistMessage, refreshSyncStatus, startNewSession } from './chat-store.js';
-import { chatToJson, chatToMarkdown, exportFileName } from './chat-export.js';
+import { currentSessionId, deleteSession, loadCurrentSession, persistMessage, refreshSyncStatus, startNewSession, switchSession } from './chat-store.js';
 import { splitReasoning } from './chat-stream.js';
 import { APP_VERSION, LIMITS } from './config.js';
 import { contextCoverage } from './core/grounding.js';
@@ -836,8 +835,13 @@ async function readAttachment(file, token) {
   }
 }
 
+/** Counts history loads, so only the newest one fills the chat (conversations opened in a row). */
+let restoreSeq = 0;
+
 export async function restoreHistory() {
+  const seq = ++restoreSeq;
   const messages = await loadCurrentSession();
+  if (seq !== restoreSeq) return;
   // Notices or answers shown while the history was loading (e.g. "on-device mode not available")
   // stay visible after the restored messages.
   const container = byId('chatMessages');
@@ -856,6 +860,16 @@ export async function restoreHistory() {
   }
   container?.append(...shownSinceBoot);
   conversation.push(...live);
+}
+
+/**
+ * Shows a stored conversation (chosen in the conversation list).
+ * @param {string} id
+ */
+export async function openConversation(id) {
+  switchSession(id);
+  resetConversation();
+  await restoreHistory();
 }
 
 /**
@@ -881,10 +895,11 @@ function renderChatMode() {
 }
 
 /**
- * Downloads the conversation on screen as Markdown or as JSON (schema starpi.chat/v1).
+ * Downloads the conversation as Markdown (the turns on screen) or as JSON (schema starpi.chat/v2,
+ * the stored message tree). The formats load on first use.
  * @param {'md' | 'json'} format
  */
-function exportChat(format) {
+async function exportChat(format) {
   if (!conversation.length) {
     appendNotice({ icon: 'info', tone: 'info', title: 'chat.export_empty' });
     return;
@@ -899,9 +914,10 @@ function exportChat(format) {
     model: c.model ?? null,
     chatMode: c.chatMode ?? null,
   }));
+  const { chatToMarkdown, exportFileName, exportSessionJson } = await import('./chat-export.js');
   const text =
     format === 'json'
-      ? chatToJson(turns, { sessionId, exportedAt, version: APP_VERSION, locale: getLocale() })
+      ? await exportSessionJson(sessionId, { exportedAt, version: APP_VERSION, locale: getLocale() }, turns)
       : chatToMarkdown(turns, {
           title: t('chat.export_title'),
           subtitle: t('chat.export_meta', { date: formatDate(new Date(exportedAt), { dateStyle: 'long', timeStyle: 'short' }), n: turns.length }),
@@ -997,7 +1013,7 @@ export function initChat() {
 
   onAction('export-chat', (el) => {
     closeChatMenu(el);
-    exportChat(el.dataset.arg === 'json' ? 'json' : 'md');
+    return exportChat(el.dataset.arg === 'json' ? 'json' : 'md');
   });
   onAction('delete-chat', (el) => {
     closeChatMenu(el);
