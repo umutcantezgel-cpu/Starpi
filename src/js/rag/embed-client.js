@@ -147,7 +147,8 @@ async function embedBatch(texts, kind) {
   });
   if (!modelReady) {
     modelReady = true;
-    update({ progress: 1 });
+    // Loaded for a question or the warm-up: on to the state the workspace is in.
+    update({ progress: 1, ...(state.phase === 'loading' && !indexing ? { phase: workspaceStatus().vectors > 0 ? 'ready' : 'idle' } : {}) });
   }
   return vectors;
 }
@@ -210,7 +211,7 @@ async function indexPass(mine) {
     if (mine !== epoch || !state.enabled) return;
     const batch = await pendingVectors(ROUND);
     if (batch.length === 0) break;
-    update({ phase: 'indexing', done, total: Math.max(state.total, done + batch.length), error: null });
+    update({ phase: modelReady ? 'indexing' : 'loading', done, total: Math.max(state.total, done + batch.length), error: null });
     for (let i = 0; i < batch.length; i += EMBED_BATCH_SIZE) {
       if (mine !== epoch) return;
       const part = batch.slice(i, i + EMBED_BATCH_SIZE);
@@ -225,6 +226,7 @@ async function indexPass(mine) {
         return;
       }
       if (mine !== epoch) return;
+      if (state.phase === 'loading') update({ phase: 'indexing' });
       // The vectors are views of one buffer per batch, which moves to the ingest worker.
       const items = part.map((c, k) => ({ docId: c.docId, idx: c.idx, vector: vectors[k] }));
       const result = await putVectors(model, items);
