@@ -6,6 +6,8 @@ import { MOUNT_POINTS } from '../../src/js/features/registry.js';
 import { expect, mockSupabase, test } from './fixtures.mjs';
 
 const TABS = ['chat', 'research', 'library', 'ingest', 'graph', 'bench', 'settings'];
+/** Mount points whose feature renders content. */
+const RENDERED = new Set(['providerSettings', 'trustSettings']);
 const DARK_PAGE = 'rgb(11, 17, 32)';
 const LIGHT_PAGE = 'rgb(248, 250, 252)';
 
@@ -44,8 +46,12 @@ test.describe('mount points', () => {
     for (const id of MOUNT_POINTS) {
       const el = page.locator(`#${id}[data-mount]`);
       await expect(el, id).toHaveCount(1);
-      expect(await el.innerHTML(), id).toBe('');
+      // Features that render already fill their mount point; the stubs leave theirs empty.
+      if (RENDERED.has(id)) await expect(el, id).not.toBeEmpty();
+      else expect(await el.innerHTML(), id).toBe('');
     }
+    await expect(page.locator('#providerSettings')).toHaveAttribute('data-mounted', 'providers');
+    await expect(page.locator('#trustSettings')).toHaveAttribute('data-mounted', 'trust');
     // The stubs of later features are mounted (they render nothing yet).
     await expect(page.locator('#tab-research')).toHaveAttribute('data-mounted', 'research');
     await expect(page.locator('#liveSheet')).toHaveAttribute('data-mounted', 'live');

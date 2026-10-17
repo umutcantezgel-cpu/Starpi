@@ -14,11 +14,11 @@ retrieval-augmented generation (RAG) application:
   "verboten") and whether it puts a name or a value next to something else than the excerpt
   does. It reports `supported`, `weak`, `unsupported` or `unchecked` per statement, with a reason
   that names the missing value or quotes the passage that says otherwise.
-- **Answer receipts** (`starpi.receipt/v2`): a JSON record of the cited excerpts with SHA-256
+- **Answer receipts** (`starpi.receipt/v3`): a JSON record of the cited excerpts with SHA-256
   fingerprints of the source files and passage offsets, a Merkle tree (RFC 6962) with an
-  inclusion proof per citation, optional Ed25519 or ECDSA P-256 signatures, and a verifier that
-  reproduces every passage from the original files. Receipts of the first format
-  (`starpi.receipt/v1`) are still verified.
+  inclusion proof per citation, optional Ed25519 or ECDSA P-256 signatures with a named signer,
+  and a verifier that reproduces every passage from the original files. Receipts of the earlier
+  formats (`starpi.receipt/v2` and `/v1`) are still verified.
 - **`starpi-ground`**, a command that checks a Markdown document of any length against source
   files and writes text, JSON or SARIF 2.1.0, so a CI job can fail on an unsupported statement
   and show it in GitHub code scanning.
@@ -159,7 +159,7 @@ Verdicts and reason codes:
 ## Create and verify receipts
 
 ```js
-import { buildReceipt, chunkText, CHUNKER, EXTRACTOR, extractText, sha256Hex, validateReceipt, verifyReceipt } from '@starpi/core';
+import { buildReceipt, chunkText, CHUNKER, EXTRACTOR, EXTRACTOR_COMPATIBLE, extractText, sha256Hex, validateReceipt, verifyReceipt } from '@starpi/core';
 
 // When indexing: fingerprint the file before parsing, then the extracted text.
 const file = new File([bytes], 'plan.md');
@@ -193,6 +193,7 @@ const parsed = validateReceipt(JSON.parse(json));
 if (!parsed.ok) throw new Error(`${parsed.error} at ${parsed.path}`);
 const result = await verifyReceipt(parsed.receipt, [{ name: 'plan.md', bytes }], {
   extractor: EXTRACTOR,
+  compatible: EXTRACTOR_COMPATIBLE, // earlier extraction rules that give the same text
   extract: async (data, name) => {
     const r = await extractText(new File([data], name));
     return { text: r.text, pdfjs: r.pdfjs };
@@ -204,10 +205,11 @@ console.log(result.summary); // { reproduced: 1, verifiable: 1 }
 `verifyReceipt` checks the receipt hash, the answer hash and, per workspace excerpt, the file
 fingerprint (files are matched by hash, not by name), the extracted text, the passage at the
 recorded offsets and the chunk bounds, and recomputes the source check with the rules version the
-receipt records. For a v2 receipt it also recomputes the Merkle root and checks every inclusion
-proof (`result.merkle`, `result.citations[i].proof`) and the signature, if there is one
-(`result.signature`). `buildReceipt(draft, { schema: RECEIPT_SCHEMA_V1 })` still writes the first
-format for verifiers that only read v1.
+receipt records. For a v2 or v3 receipt it also recomputes the Merkle root and checks every
+inclusion proof (`result.merkle`, `result.citations[i].proof`) and the signature, if there is one
+or the receipt names a signer (`result.signature`, `result.signer`). `buildReceipt(draft, { schema:
+RECEIPT_SCHEMA_V2 })` or `RECEIPT_SCHEMA_V1` still writes an earlier format for verifiers that only
+read those.
 
 One citation can be checked against the root without the others:
 
@@ -219,8 +221,10 @@ const included = await verifyCitationProof(receipt.citations[2], 2, receipt.merk
 
 ### Sign receipts
 
-The app does not sign receipts; a deployment that produces receipts can, with a key it controls.
-Ed25519 and ECDSA on P-256 (`ES256`) are supported, with WebCrypto only:
+The Starpi app signs the receipts it exports with a key of the device; a deployment that produces
+receipts can sign them with a key it controls. Pass `{ signer: { keyId, alg } }` to `buildReceipt`
+to name the key inside the receipt, so a removed or swapped signature is detected. Ed25519 and
+ECDSA on P-256 (`ES256`) are supported, with WebCrypto only:
 
 ```bash
 openssl genpkey -algorithm ed25519 -out signer-private.pem

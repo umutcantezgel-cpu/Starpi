@@ -64,7 +64,8 @@ next to it says what the source says. Starpi makes that visible and checkable:
   exact offsets of each cited passage, the source-check verdicts and a Merkle tree (RFC 6962) over
   the citations, so one cited passage can be shown with its inclusion proof without the others.
   Anyone with the same files can reproduce every passage, in the app or with a command-line
-  verifier; a deployment can sign receipts with Ed25519 or ECDSA P-256. The format is specified
+  verifier. The app signs the receipts it exports with a key of the device (Ed25519, or ECDSA
+  P-256), whose public key you can hand out from **Settings › Trust**. The format is specified
   in [`docs/spec/receipts.md`](docs/spec/receipts.md).
 - **A check for CI.** `starpi-ground` checks release notes, generated documentation or any
   Markdown document against source files and writes SARIF 2.1.0, so a pull request shows an
@@ -90,9 +91,9 @@ next to it says what the source says. Starpi makes that visible and checkable:
 
 Both checks have limits, and the app says so where it shows them. The source check compares text;
 a match does not prove a statement true, and a flag means "open the source and look". Receipts
-show that the excerpts are reproducible from the same files, not what a model read. The app does
-not sign the receipts it exports; a signature made by a deployment shows who signed only when it
-is checked with a public key obtained from the signer, not with the key inside the receipt.
+show that the excerpts are reproducible from the same files, not what a model read. A signature
+shows who signed only when it is checked with a public key obtained from the signer, not with the
+key inside the receipt.
 
 <table>
   <tr>
@@ -345,7 +346,7 @@ flowchart TD
     subgraph dev["Stays in this browser"]
         WsSearch["retrieveWorkspace: BM25 in the ingest worker, source mode<br/>an attached file pins up to 3 chunks<br/>worker error: no workspace hits"]
         FreeCtx["free chat: no search, the attached file's text<br/>from the ingest worker, up to 12000 chars"]
-        Keys[("provider keys<br/>readSecret: sessionStorage, then localStorage")]
+        Keys[("provider keys<br/>ai/keys.js: sessionStorage,<br/>or the unlocked key vault")]
         Hist["shareableHistory: turns not marked localOnly,<br/>last 4 in source mode,<br/>16 turns and 24000 chars in free chat"]
         LGen["client: WebLLM worker on WebGPU or WASM worker<br/>on the processor, budgeted excerpts or file text,<br/>history and question stay in the browser"]
         Synth["source mode: synthesizeAnswer, extractive quotes<br/>with citation labels, no model<br/>free chat: a notice, no answer"]
@@ -451,8 +452,8 @@ flowchart LR
         end
         sw["sw.js service worker<br/>same-origin GET only,<br/>cross-origin requests bypass it,<br/>a new version skips waiting only<br/>when no window is open"]
         subgraph browserStores["Per-origin browser storage"]
-            ls[("localStorage<br/>starpi_local_chats_v1, starpi_chat_session_id,<br/>starpi_compute_mode, starpi_webgpu_model,<br/>starpi_nvidia_model, starpi_chat_mode,<br/>starpi_llm_url, starpi_remember_keys,<br/>starpi_locale, starpi-auth session")]
-            ss[("sessionStorage<br/>Gemini and OpenRouter keys for this tab,<br/>in localStorage instead if remember is on")]
+            ls[("localStorage<br/>starpi_local_chats_v1, starpi_chat_session_id,<br/>starpi_compute_mode, starpi_webgpu_model,<br/>starpi_nvidia_model, starpi_chat_mode,<br/>starpi_llm_url, starpi_relay_fallback,<br/>starpi_transport_*, starpi_locale,<br/>starpi-auth session")]
+            ss[("sessionStorage<br/>provider keys for this tab;<br/>kept longer only in the encrypted<br/>key vault (IndexedDB keyvault)")]
             swCache[("CacheStorage<br/>starpi-shell-VERSION, starpi-assets")]
             modelCache[("Cache API owned by WebLLM<br/>webllm/model, webllm/config, webllm/wasm")]
             tfCache[("Cache API owned by Transformers.js<br/>transformers-cache")]
@@ -817,8 +818,6 @@ SBOMs and the checksums to the release.
   source check as one of the measures.
 - **Model-based checks:** an optional second opinion (entailment) for statements the deterministic
   check can only mark as weak.
-- **Signing in the app:** receipts can be signed since 2.0.0 (`signReceipt`, `starpi-verify-receipt
-  --public-key`); a deployment setting would let the app sign every receipt it exports.
 - **Relations across statements:** the source check compares one statement at a time, so a receipt
   can recompute it; a wrong relation spread over two statements is not seen yet.
 - **Hybrid retrieval in the browser:** on-device query embeddings, so on-device mode can use

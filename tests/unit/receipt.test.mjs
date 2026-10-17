@@ -8,7 +8,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { blocksFromMarkdown, groundAnswer, REASON_CODES, REASON_CODES_V1 } from '../../src/js/core/grounding.js';
-import { buildReceipt, canonicalJson, RECEIPT_SCHEMA, RECEIPT_SCHEMA_V1, sha256Hex, signReceipt, validateReceipt, verifyReceipt } from '../../src/js/core/receipt.js';
+import { buildReceipt, canonicalJson, RECEIPT_SCHEMA, RECEIPT_SCHEMA_V1, RECEIPT_SCHEMA_V2, sha256Hex, signReceipt, validateReceipt, verifyReceipt } from '../../src/js/core/receipt.js';
 import { CHUNKER, chunkText } from '../../src/js/rag/chunker.js';
 import { EXTRACTOR, extractText } from '../../src/js/rag/parser.js';
 import { makePdf } from '../fixtures/pdf.mjs';
@@ -117,7 +117,7 @@ describe('validateReceipt', () => {
   it('rejects other schemas, bad hashes, out-of-range citation indexes and oversized text', async () => {
     const r = JSON.parse(JSON.stringify(await receiptFor(MD, 'plan.md', 'The budget is 480,000 EUR {label}.')));
     assert.deepEqual(validateReceipt({ schema: 'x' }), { ok: false, error: 'not_a_receipt', path: 'schema' });
-    assert.deepEqual(validateReceipt({ ...r, schema: 'starpi.receipt/v3' }), { ok: false, error: 'unsupported_version', path: 'schema' });
+    assert.deepEqual(validateReceipt({ ...r, schema: 'starpi.receipt/v9' }), { ok: false, error: 'unsupported_version', path: 'schema' });
     assert.equal(validateReceipt({ ...r, id: 'abc' }).ok, false);
     const badCite = structuredClone(r);
     badCite.grounding.sentences[0].cites = [9];
@@ -273,7 +273,8 @@ describe('scripts/verify-receipt.mjs', () => {
 
 for (const [file, format] of /** @type {const} */ ([
   ['receipt.schema.json', RECEIPT_SCHEMA_V1],
-  ['receipt-v2.schema.json', RECEIPT_SCHEMA],
+  ['receipt-v2.schema.json', RECEIPT_SCHEMA_V2],
+  ['receipt-v3.schema.json', RECEIPT_SCHEMA],
 ])) {
   describe(`docs/spec/${file}`, () => {
     const schema = JSON.parse(readFileSync(path.join(ROOT, 'docs/spec', file), 'utf8'));
@@ -304,6 +305,7 @@ for (const [file, format] of /** @type {const} */ ([
       if (type === 'integer' && s.maximum !== undefined && value > s.maximum) errors.push(`${at}: above maximum`);
       if (type === 'array') {
         if (s.maxItems !== undefined && value.length > s.maxItems) errors.push(`${at}: too many items`);
+        if (s.minItems !== undefined && value.length < s.minItems) errors.push(`${at}: too few items`);
         if (s.items) value.forEach((/** @type {any} */ v, /** @type {number} */ i) => errors.push(...check(v, s.items, `${at}[${i}]`)));
       }
       if (type === 'object') {
@@ -318,7 +320,7 @@ for (const [file, format] of /** @type {const} */ ([
     }
 
     it('uses only the keywords the checker above implements', () => {
-      const known = new Set(['$schema', '$id', '$ref', '$defs', 'title', 'description', 'type', 'additionalProperties', 'required', 'properties', 'const', 'enum', 'anyOf', 'items', 'maxItems', 'maxLength', 'pattern', 'minimum', 'maximum']);
+      const known = new Set(['$schema', '$id', '$ref', '$defs', 'title', 'description', 'type', 'additionalProperties', 'required', 'properties', 'const', 'enum', 'anyOf', 'items', 'maxItems', 'minItems', 'maxLength', 'pattern', 'minimum', 'maximum']);
       /** @param {any} node @param {boolean} names  the keys are names (properties, $defs), not keywords */
       const walk = (node, names = false) => {
         if (Array.isArray(node)) return node.forEach((n) => walk(n));
@@ -344,8 +346,8 @@ for (const [file, format] of /** @type {const} */ ([
 
     it('rejects what validateReceipt rejects, and a field the format does not have', async () => {
       const r = JSON.parse(JSON.stringify(await build(MD, 'plan.md', 'The approved budget is 480,000 EUR {label}.')));
-      assert.notDeepEqual(check({ ...r, schema: 'starpi.receipt/v3' }, schema), []);
-      assert.notDeepEqual(check({ ...r, schema: format === RECEIPT_SCHEMA ? RECEIPT_SCHEMA_V1 : RECEIPT_SCHEMA }, schema), []);
+      assert.notDeepEqual(check({ ...r, schema: 'starpi.receipt/v9' }, schema), []);
+      for (const other of [RECEIPT_SCHEMA_V1, RECEIPT_SCHEMA_V2, RECEIPT_SCHEMA].filter((f) => f !== format)) assert.notDeepEqual(check({ ...r, schema: other }, schema), []);
       assert.notDeepEqual(check({ ...r, id: 'abc' }, schema), []);
       assert.notDeepEqual(check({ ...r, extra: 1 }, schema), []);
       assert.notDeepEqual(check({ ...r, signature: 'trust me' }, schema), []);
@@ -358,13 +360,53 @@ for (const [file, format] of /** @type {const} */ ([
       const typedef = /@typedef \{([^}]+)\} ReasonCode/.exec(source)?.[1] ?? '';
       const codes = [...typedef.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]).sort();
       assert.deepEqual([...REASON_CODES].sort(), codes);
-      // Format v1 keeps the codes of version 1 of the rules; v2 has every code.
-      assert.deepEqual([...schema.$defs.reason.properties.code.enum].sort(), format === RECEIPT_SCHEMA ? codes : [...REASON_CODES_V1].sort());
+      // Format v1 keeps the codes of version 1 of the rules; v2 and v3 have every code.
+      assert.deepEqual([...schema.$defs.reason.properties.code.enum].sort(), format !== RECEIPT_SCHEMA_V1 ? codes : [...REASON_CODES_V1].sort());
       assert.deepEqual(schema.$defs.sentence.properties.verdict.enum, ['supported', 'weak', 'unsupported', 'unchecked']);
       assert.equal(schema.properties.schema.const, format);
     });
 
     if (format === RECEIPT_SCHEMA) {
+      it('describes the v3 members: signer, gate, second opinions, relations and OCR provenance', async () => {
+        const keys = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify']));
+        const { publicKeyId } = await import('../../src/js/core/signature.js');
+        const plain = await build(MD, 'plan.md', 'The approved budget is 480,000 EUR {label}.');
+        const doc = /** @type {NonNullable<typeof plain.citations[0]['document']>} */ (plain.citations[0].document);
+        const r = await buildReceipt(
+          {
+            createdAt: plain.createdAt,
+            version: '3.0.0',
+            answer: { text: plain.answer.text, engine: 'cloud', locale: 'en' },
+            question: 'Budget?',
+            grounding: null,
+            gate: { mode: 'sources', released: 1, withheld: 0 },
+            citations: [{ label: plain.citations[0].label, doc: 'plan.md', heading: '', source: 'workspace', delivered: 'full', text: plain.citations[0].excerpt.text ?? '', truncated: false, document: { ...doc, kind: 'png', extractor: { ...doc.extractor, ocr: { provider: 'example-provider', model: 'example-vision-1' } } }, chunk: { index: 0, start: 0, end: 10 } }],
+          },
+          { signer: { keyId: await publicKeyId(keys.publicKey), alg: 'Ed25519' } },
+        );
+        const full = JSON.parse(JSON.stringify(await signReceipt({ ...r }, keys.privateKey, { publicKey: keys.publicKey })));
+        full.grounding = { algorithm: { id: 'starpi-grounding', version: 2 }, counts: { supported: 1, weak: 0, unsupported: 0, unchecked: 0 }, sentences: [{ text: 'The approved budget is 480,000 EUR.', cites: [0], citeSource: 'own', verdict: 'supported', reasons: [] }] };
+        full.secondOpinion = [{ sentence: 0, cites: [0], engine: 'nli', model: 'example-nli', result: 'entailed' }];
+        full.relations = [{ kind: 'comparative', sentences: [0], cites: [0], verdict: 'supported', text: 'more than' }];
+        assert.deepEqual(check(full, schema), []);
+        assert.equal(validateReceipt(full).ok, true);
+        for (const [edit, what] of /** @type {Array<[(x: any) => void, string]>} */ ([
+          [(x) => (x.signer.alg = 'RS256'), 'signer alg'],
+          [(x) => (x.gate.mode = 'strict'), 'gate mode'],
+          [(x) => (x.secondOpinion[0].engine = 'oracle'), 'second opinion engine'],
+          [(x) => (x.relations[0].sentences = []), 'no statement'],
+          [(x) => (x.relations[0].sentences = [0, 0, 0]), 'three statements'],
+          [(x) => (x.citations[0].document.extractor.ocr.extra = 1), 'OCR member'],
+        ])) {
+          const bad = structuredClone(full);
+          edit(bad);
+          assert.notDeepEqual(check(bad, schema), [], what);
+          assert.equal(validateReceipt(bad).ok, false, what);
+        }
+      });
+    }
+
+    if (format !== RECEIPT_SCHEMA_V1) {
       it('describes signed receipts of both algorithms and refuses a mismatched key type', async () => {
         for (const params of [{ name: 'Ed25519' }, { name: 'ECDSA', namedCurve: 'P-256' }]) {
           const keys = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey(params, true, ['sign', 'verify']));

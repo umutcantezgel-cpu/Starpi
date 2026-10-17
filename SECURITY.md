@@ -208,11 +208,15 @@ Out of scope:
   the device only as a file you download. Verification reads the receipt and the original files on
   the device, in the ingest worker; nothing is uploaded.
 - **What it proves.** That each workspace excerpt is an unchanged passage of the file with the
-  recorded fingerprint and, in format v2, that each citation belongs to the receipt through its
-  Merkle inclusion proof. The app does **not sign** the receipts it writes. A deployment can sign
-  receipts with `signReceipt` from `@starpi/core` (Ed25519 or ECDSA P-256); a signature checked with
-  the signer's public key shows that the receipt is unchanged since that key signed it, while a
-  signature checked only with the key embedded in the receipt shows integrity, not authorship.
+  recorded fingerprint and, in formats v2 and v3, that each citation belongs to the receipt through
+  its Merkle inclusion proof. The app signs the receipts it exports with a key of the device
+  (**Settings › Trust**, on by default): Ed25519, or ECDSA P-256 where WebCrypto lacks Ed25519,
+  generated as a non-extractable WebCrypto key whose handle IndexedDB keeps, so the page never sees
+  the private key's bytes; it is never synced. A deployment can sign receipts with `signReceipt` from
+  `@starpi/core`. A signature checked with the signer's public key shows that the receipt is
+  unchanged since that key signed it, while a signature checked only with the key embedded in the
+  receipt shows integrity, not authorship. A v3 receipt names its signer inside its id, so a removed
+  or swapped signature is detected.
   Receipts do not prove which excerpts a model read, or that the answer is correct. See
   [docs/spec/receipts.md](docs/spec/receipts.md).
 - **Untrusted receipts.** A receipt is JSON from anywhere. It is checked against size and field
@@ -365,7 +369,7 @@ flowchart LR
         cCheck["CHECK size limits on browser-writable columns<br/>violations fail with SQLSTATE 23514"]
         cSync["canSyncChats: signedIn and hardened,<br/>otherwise chats stay in localStorage"]
         cBuildKey["build.mjs assertPublicKey, lib/supabase-key.mjs<br/>sb_publishable_ key or a JWT with role anon,<br/>empty, sb_secret_, not a JWT or another role:<br/>the build fails"]
-        cSecret["storage.js writeSecret<br/>sessionStorage for this tab,<br/>localStorage only with remember keys,<br/>inputs cleared after save, clearKeys"]
+        cSecret["ai/keys.js and storage.js writeSecret<br/>sessionStorage for this tab, or the<br/>key vault: AES-GCM under a PBKDF2 key<br/>held in memory, auto-lock after 30 min"]
         cHeader["providers.js: Gemini key in x-goog-api-key header,<br/>OpenRouter key as Authorization Bearer, never in a URL,<br/>NVIDIA requests carry no key, same origin only"]
         cProxy["api/_lib guards on the NVIDIA routes:<br/>same-origin check, per-IP rate limit, keys configured,<br/>JSON body at most 256 KiB, model and field allowlist,<br/>no-store, keys by index and bodies never logged"]
         cNorm["providers.js normalizeServerUrl<br/>https anywhere, http only for localhost and 127.0.0.1,<br/>the plain-http hosts in connect-src, no user or password,<br/>query and hash dropped"]

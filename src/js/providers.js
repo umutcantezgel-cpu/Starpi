@@ -3,12 +3,13 @@
 // Chat Completions-compatible server (/v1/chat/completions: MLX, Ollama, vLLM) and NVIDIA NIM cloud
 // models through Starpi's own proxy. Keys never leave the browser except to their provider; the
 // NVIDIA keys never reach the browser at all.
+import { ACCESS_SLOT, getKey } from './ai/keys.js';
+import { ACCESS_HEADER } from './ai/transport.js';
 import { createChatStreamAssembler, createSseParser, splitStreamingText } from './chat-stream.js';
 import { t } from './i18n/index.js';
-import { STORAGE_KEYS, TIMEOUTS_MS } from './config.js';
+import { TIMEOUTS_MS } from './config.js';
 import { findNvidiaModel, NVIDIA_CLIENT_TIMEOUTS, NVIDIA_LIMITS } from './models/nvidia-catalog.js';
 import { withTimeoutSignal } from './signals.js';
-import { readSecret } from './storage.js';
 
 /** @typedef {{ role: 'system' | 'user' | 'assistant', content: string }} ChatMessage */
 
@@ -26,11 +27,11 @@ export class ProviderError extends Error {
 }
 
 export function hasGeminiKey() {
-  return readSecret(STORAGE_KEYS.geminiKey).trim().length > 0;
+  return getKey('gemini').length > 0;
 }
 
 export function hasOpenRouterKey() {
-  return readSecret(STORAGE_KEYS.openrouterKey).trim().length > 0;
+  return getKey('openrouter').length > 0;
 }
 
 /**
@@ -59,7 +60,7 @@ async function httpError(res, label) {
  * @returns {Promise<{ text: string }>}
  */
 export async function callGemini(prompt, opts = {}) {
-  const key = (opts.key || readSecret(STORAGE_KEYS.geminiKey)).trim();
+  const key = (opts.key || getKey('gemini')).trim();
   if (!key) throw new ProviderError(t('provider.no_gemini_key'), { notConfigured: true });
   const contents = [
     ...(opts.history ?? []).map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
@@ -90,7 +91,7 @@ const OPENROUTER_MAX_ATTEMPTS = 3;
  * @returns {Promise<{ text: string, model: string }>}
  */
 export async function callOpenRouter(messages, opts = {}) {
-  const key = (opts.key || readSecret(STORAGE_KEYS.openrouterKey)).trim();
+  const key = (opts.key || getKey('openrouter')).trim();
   if (!key) {
     throw new ProviderError(t('provider.no_openrouter_key'), { notConfigured: true });
   }
@@ -205,8 +206,8 @@ export async function callLocalServer(baseUrl, messages, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------------
-// NVIDIA NIM cloud through Starpi's own proxy (api/chat/nvidia.js, or backend/server.py behind the same
-// origin). The browser holds no NVIDIA key: it calls same-origin URLs without an Authorization header,
+// NVIDIA NIM cloud through Starpi's own proxy (api/chat/nvidia.js, the site's NVIDIA pool). The
+// browser holds no NVIDIA key: it calls same-origin URLs without an Authorization header,
 // and the proxy adds a key from its pool. Error texts come only from i18n keys chosen by the proxy's
 // error code; text the server or NVIDIA sends is never shown.
 
@@ -416,7 +417,7 @@ export function resolveNvidiaModel(catalog, preferred) {
   return { model, replaced: Boolean(preferred) && model !== null && model !== preferred };
 }
 
-/** i18n key per proxy error code (api/_lib, backend/core/nvidia.py). */
+/** i18n key per proxy error code (api/_lib). */
 const NVIDIA_ERRORS = /** @type {Record<string, string>} */ ({
   nvidia_not_configured: 'provider.nvidia_not_configured',
   rate_limited: 'provider.nvidia_rate_limited',
@@ -544,7 +545,8 @@ export async function callNvidia(messages, opts) {
     try {
       res = await fetch(NVIDIA_CHAT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        // The site's access code, when it asks for one (key vault slot).
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...(getKey(ACCESS_SLOT) ? { [ACCESS_HEADER]: getKey(ACCESS_SLOT) } : {}) },
         body: JSON.stringify({ model: opts.model, messages, max_tokens: opts.maxTokens, temperature: opts.temperature }),
         signal: local.signal,
         cache: 'no-store',

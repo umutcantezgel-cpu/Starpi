@@ -4,10 +4,15 @@
 // verdicts, and a hash over all of it. Anyone who has the same files can reproduce every passage
 // (verifyReceipt below, in the app or with scripts/verify-receipt.mjs).
 //
-// Format "starpi.receipt/v2" (written by default) adds a Merkle tree over the citations (RFC 6962,
-// merkle.js) with an inclusion proof per citation, and an optional signature (Ed25519 or ECDSA P-256,
-// signature.js) over the id and the Merkle root. "starpi.receipt/v1" receipts are still read and
-// verified, and can still be written ({ schema: RECEIPT_SCHEMA_V1 }).
+// Format "starpi.receipt/v2" added a Merkle tree over the citations (RFC 6962, merkle.js) with an
+// inclusion proof per citation, and an optional signature (Ed25519 or ECDSA P-256, signature.js) over
+// the id and the Merkle root. Format "starpi.receipt/v3" (written by default) keeps all of that and
+// adds optional members: `signer` (the key the receipt is meant to be signed with, inside the id, so
+// a signature cannot be removed or swapped unnoticed), `gate` (what the sentence gate released and
+// withheld), `secondOpinion` (advisory checks of single statements), `relations` (relations between
+// statements checked against the excerpts) and, per file, where OCR text came from. v1 and v2
+// receipts are still read and verified, and can still be written ({ schema: RECEIPT_SCHEMA_V1 } or
+// RECEIPT_SCHEMA_V2).
 //
 // What a receipt proves: each workspace excerpt is an exact, unchanged passage of the file with the
 // recorded fingerprint, at the recorded position, under the recorded extraction rules; a signed
@@ -26,9 +31,15 @@ import { signHead, SIGNATURE_ALGS, verifyHead } from './signature.js';
 export { canonicalJson, sha256Hex };
 
 /** The format buildReceipt writes. */
-export const RECEIPT_SCHEMA = 'starpi.receipt/v2';
+export const RECEIPT_SCHEMA = 'starpi.receipt/v3';
+/** Merkle tree and signature, without the members v3 added. Still read, verified and, on request, written. */
+export const RECEIPT_SCHEMA_V2 = 'starpi.receipt/v2';
 /** The first format: no Merkle tree, no signature. Still read, verified and, on request, written. */
 export const RECEIPT_SCHEMA_V1 = 'starpi.receipt/v1';
+/** Every format this code reads, oldest first. */
+export const RECEIPT_SCHEMAS = Object.freeze([RECEIPT_SCHEMA_V1, RECEIPT_SCHEMA_V2, RECEIPT_SCHEMA]);
+
+/** @typedef {typeof RECEIPT_SCHEMA | typeof RECEIPT_SCHEMA_V2 | typeof RECEIPT_SCHEMA_V1} ReceiptSchema */
 
 export const RECEIPT_LIMITS = Object.freeze({
   bytes: 2_000_000,
@@ -43,6 +54,11 @@ export const RECEIPT_LIMITS = Object.freeze({
   textChars: 1_000,
   // An audit path has one hash per tree level: at most ceil(log2(64)) = 6 for 64 citations.
   proof: 6,
+  // v3
+  secondOpinions: 500,
+  relations: 500,
+  relationChars: 500,
+  modelChars: 100,
 });
 
 /**
@@ -54,8 +70,19 @@ export const RECEIPT_LIMITS = Object.freeze({
  * @property {string} textSha256        SHA-256 of the extracted, normalized text (UTF-8)
  * @property {number} textChars         length of that text in UTF-16 code units
  * @property {number | null} pages
- * @property {{ id: string, version: number, pdfjs: string | null }} extractor
+ * @property {ReceiptExtractor} extractor
  * @property {{ id: string, version: number, size: number, overlap: number }} chunker
+ */
+
+/**
+ * The extraction rules a document's text was made with. `ocr` (v3) marks text that text recognition
+ * produced from an image: it names the service and model, because that text cannot be extracted
+ * again from the file without running the recognition again.
+ * @typedef {object} ReceiptExtractor
+ * @property {string} id
+ * @property {number} version
+ * @property {string | null} pdfjs
+ * @property {{ provider: string, model: string }} [ocr]
  */
 
 /**
@@ -91,17 +118,55 @@ export const RECEIPT_LIMITS = Object.freeze({
  */
 
 /**
+ * v3: the key a receipt is meant to be signed with. It is part of the id, so the signature cannot be
+ * removed or replaced by one from another key without the verifier noticing.
+ * @typedef {{ keyId: string, alg: import('./signature.js').SignatureAlg }} ReceiptSigner
+ */
+
+/**
+ * v3: what the sentence gate (gate.js) let through for this answer: its mode and how many sentences
+ * it released and withheld.
+ * @typedef {{ mode: 'sources' | 'web' | 'free', released: number, withheld: number }} ReceiptGate
+ */
+
+/**
+ * v3: an advisory second check of one statement against its excerpts, by an on-device entailment
+ * model (`nli`) or a judge model (`judge`). It never changes a verdict.
+ * @typedef {object} ReceiptSecondOpinion
+ * @property {number} sentence  index into grounding.sentences
+ * @property {number[]} cites   the citations the statement was checked against
+ * @property {'nli' | 'judge'} engine
+ * @property {string} model
+ * @property {'entailed' | 'neutral' | 'contradicted'} result
+ */
+
+/**
+ * v3: a relation one or two statements state (a comparison, an order in time, a value carried over
+ * from an earlier statement), checked against the cited excerpts.
+ * @typedef {object} ReceiptRelation
+ * @property {'comparative' | 'temporal' | 'reference'} kind
+ * @property {number[]} sentences  one or two indexes into grounding.sentences
+ * @property {number[]} cites
+ * @property {'supported' | 'inverted' | 'unsupported'} verdict
+ * @property {string} text  the words that state the relation
+ */
+
+/**
  * @typedef {object} Receipt
  * @property {string} schema
  * @property {string} id  SHA-256 of the canonical JSON of the receipt without `id` and `signature`
  * @property {string} createdAt  device clock, ISO 8601
  * @property {{ name: string, version: string }} generator
+ * @property {ReceiptSigner} [signer]  v3, optional
  * @property {{ text: string, sha256: string, engine: string, locale: string }} answer
  * @property {{ text: string } | null} question
  * @property {ReceiptCitation[]} citations
  * @property {{ algorithm: { id: string, version: number }, counts: Record<string, number>, sentences: ReceiptSentence[] } | null} grounding
- * @property {ReceiptMerkle} [merkle]  v2
- * @property {import('./signature.js').ReceiptSignature} [signature]  v2, optional
+ * @property {ReceiptGate} [gate]  v3, optional
+ * @property {ReceiptSecondOpinion[]} [secondOpinion]  v3, optional
+ * @property {ReceiptRelation[]} [relations]  v3, optional
+ * @property {ReceiptMerkle} [merkle]  v2 and v3
+ * @property {import('./signature.js').ReceiptSignature} [signature]  v2 and v3, optional
  */
 
 /**
@@ -112,6 +177,17 @@ export const RECEIPT_LIMITS = Object.freeze({
  * @property {string} question
  * @property {Array<{ label: string, doc: string, heading: string, source: 'workspace' | 'knowledge', delivered: 'full' | 'partial' | 'omitted', deliveredChars?: number, text: string, truncated: boolean, document?: ReceiptDocument, chunk?: { index: number, start: number, end: number }, documentId?: string | null }>} citations
  * @property {import('./grounding.js').GroundingReport | null} grounding
+ * @property {ReceiptGate | null} [gate]  v3
+ * @property {ReceiptSecondOpinion[]} [secondOpinion]  v3
+ * @property {ReceiptRelation[]} [relations]  v3
+ */
+
+/**
+ * @typedef {object} BuildOptions
+ * @property {boolean} [includeQuestion]  default true
+ * @property {boolean} [includeExcerpts]  default true
+ * @property {ReceiptSchema} [schema]     default RECEIPT_SCHEMA (v3)
+ * @property {ReceiptSigner} [signer]     v3: the key the receipt will be signed with
  */
 
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -168,17 +244,30 @@ function withoutExcerpt(reason, includeExcerpts) {
 }
 
 /**
- * Builds a receipt for one answer: v2 (with a Merkle tree over the citations) unless `schema` asks
- * for v1.
+ * Builds a receipt for one answer: v3 (with a Merkle tree over the citations) unless `schema` asks
+ * for v2 or v1. The members v3 added (signer, gate, second opinions, relations, OCR provenance)
+ * cannot be written in an older format: a draft that has them is refused there rather than written
+ * without them.
  * @param {ReceiptDraft} draft
- * @param {{ includeQuestion?: boolean, includeExcerpts?: boolean, schema?: typeof RECEIPT_SCHEMA | typeof RECEIPT_SCHEMA_V1 }} [options]
+ * @param {BuildOptions} [options]
  * @returns {Promise<Receipt>}
  */
 export async function buildReceipt(draft, options = {}) {
   const includeQuestion = options.includeQuestion ?? true;
   const includeExcerpts = options.includeExcerpts ?? true;
   const schema = options.schema ?? RECEIPT_SCHEMA;
-  if (schema !== RECEIPT_SCHEMA && schema !== RECEIPT_SCHEMA_V1) throw new TypeError(`buildReceipt: unknown schema ${schema}`);
+  if (!RECEIPT_SCHEMAS.includes(schema)) throw new TypeError(`buildReceipt: unknown schema ${schema}`);
+  const v3 = schema === RECEIPT_SCHEMA;
+  if (!v3) {
+    const newer = [
+      options.signer && 'signer',
+      draft.gate && 'gate',
+      draft.secondOpinion?.length && 'secondOpinion',
+      draft.relations?.length && 'relations',
+      draft.citations.some((c) => c.document?.extractor.ocr) && 'OCR text',
+    ].find(Boolean);
+    if (newer) throw new TypeError(`buildReceipt: ${newer} needs ${RECEIPT_SCHEMA}`);
+  }
   /** @type {ReceiptCitation[]} */
   const citations = [];
   for (const c of draft.citations) {
@@ -191,7 +280,8 @@ export async function buildReceipt(draft, options = {}) {
       source: c.source,
       delivered: c.delivered,
       excerpt: { text: includeExcerpts ? c.text : null, sha256: sha, truncated: c.truncated },
-      verifiable: c.source === 'workspace' && Boolean(c.document?.fileSha256) && Boolean(c.chunk),
+      // OCR text cannot be extracted again from the file alone, so its passages are not verifiable.
+      verifiable: c.source === 'workspace' && Boolean(c.document?.fileSha256) && Boolean(c.chunk) && !c.document?.extractor.ocr,
     };
     // The source check of a model answer ran on the part of a cut excerpt that reached the model;
     // its length lets a verifier recompute on exactly that part.
@@ -217,17 +307,25 @@ export async function buildReceipt(draft, options = {}) {
           })),
       }
     : null;
+  const answerSha256 = await sha256Hex(draft.answer.text);
   /** @type {Omit<Receipt, 'id'>} */
   const body = {
     schema,
     createdAt: draft.createdAt,
     generator: { name: 'starpi', version: draft.version },
-    answer: { text: draft.answer.text, sha256: await sha256Hex(draft.answer.text), engine: draft.answer.engine, locale: draft.answer.locale },
+    // Next to the generator, for people reading the file; the id covers it wherever it stands.
+    ...(v3 && options.signer ? { signer: { keyId: options.signer.keyId, alg: options.signer.alg } } : {}),
+    answer: { text: draft.answer.text, sha256: answerSha256, engine: draft.answer.engine, locale: draft.answer.locale },
     question: includeQuestion ? { text: draft.question } : null,
     citations,
     grounding,
   };
-  if (schema === RECEIPT_SCHEMA) {
+  if (v3) {
+    if (draft.gate) body.gate = { mode: draft.gate.mode, released: draft.gate.released, withheld: draft.gate.withheld };
+    if (draft.secondOpinion?.length) body.secondOpinion = draft.secondOpinion.map((o) => ({ sentence: o.sentence, cites: o.cites.slice(), engine: o.engine, model: o.model, result: o.result }));
+    if (draft.relations?.length) body.relations = draft.relations.map((r) => ({ kind: r.kind, sentences: r.sentences.slice(), cites: r.cites.slice(), verdict: r.verdict, text: r.text }));
+  }
+  if (schema !== RECEIPT_SCHEMA_V1) {
     const tree = await merkleTree(await Promise.all(citations.map(citationLeafHash)));
     citations.forEach((c, i) => {
       c.proof = tree.proofs[i];
@@ -240,46 +338,60 @@ export async function buildReceipt(draft, options = {}) {
 }
 
 /**
- * Signs a v2 receipt (Ed25519, or ECDSA P-256 with SHA-256) and returns a copy with `signature`.
- * The signature covers the receipt id and the Merkle root; the public key is embedded as a JWK, and
- * its key id is the SHA-256 of its SPKI. Signing again replaces the signature.
- * @param {Receipt} receipt  a v2 receipt from buildReceipt
+ * Signs a v3 or v2 receipt (Ed25519, or ECDSA P-256 with SHA-256) and returns a copy with
+ * `signature`. The signature covers the receipt id and the Merkle root; the public key is embedded
+ * as a JWK, and its key id is the SHA-256 of its SPKI. A v3 receipt that names a `signer` can only be
+ * signed with that key. Signing again replaces the signature.
+ * @param {Receipt} receipt  a v3 or v2 receipt from buildReceipt
  * @param {CryptoKey} privateKey
  * @param {{ publicKey?: CryptoKey | JsonWebKey | string }} [options]  needed unless the private key is extractable
  * @returns {Promise<Receipt>}
  */
 export async function signReceipt(receipt, privateKey, options = {}) {
-  if (receipt.schema !== RECEIPT_SCHEMA || !receipt.merkle) throw new TypeError(`signReceipt: only ${RECEIPT_SCHEMA} receipts can be signed`);
+  if ((receipt.schema !== RECEIPT_SCHEMA && receipt.schema !== RECEIPT_SCHEMA_V2) || !receipt.merkle) throw new TypeError(`signReceipt: only ${RECEIPT_SCHEMA_V2} and ${RECEIPT_SCHEMA} receipts can be signed`);
   // A signature over an id or root that does not match the contents would vouch for nothing.
   if ((await receiptId(receipt)) !== receipt.id) throw new Error('signReceipt: the receipt id does not match its contents');
   const tree = await merkleTree(await Promise.all(receipt.citations.map(citationLeafHash)));
   if (tree.root !== receipt.merkle.root || receipt.merkle.size !== receipt.citations.length) throw new Error('signReceipt: the Merkle root does not match the citations');
   const signature = await signHead({ id: receipt.id, merkle: receipt.merkle }, privateKey, options.publicKey);
+  if (receipt.signer && (receipt.signer.keyId !== signature.keyId || receipt.signer.alg !== signature.alg)) throw new Error('signReceipt: the receipt names another signer key');
   return { ...receipt, signature };
 }
+
+/**
+ * The result of a receipt's signature check: the statuses of signature.js, plus `missing` for a v3
+ * receipt that names a signer but carries no signature (it was removed).
+ * @typedef {Omit<import('./signature.js').SignatureCheck, 'status'> & { status: import('./signature.js').SignatureCheck['status'] | 'missing' }} ReceiptSignatureCheck
+ */
 
 /**
  * Checks the signature of a receipt: `valid` when the signature verifies and the id and Merkle root
  * still match the receipt's contents. `trusted` is true only for a public key the caller supplies;
  * without one, the key embedded in the receipt is used, which shows that the receipt is unchanged
- * since signing, not who signed it.
+ * since signing, not who signed it. A v3 receipt that names a signer must carry a signature by that
+ * key: without one the status is `missing`, with another key's it is `invalid`.
  * @param {Receipt} receipt  validated with validateReceipt()
  * @param {CryptoKey | JsonWebKey | string} [publicKey]
- * @returns {Promise<import('./signature.js').SignatureCheck>}
+ * @returns {Promise<ReceiptSignatureCheck>}
  */
 export async function verifyReceiptSignature(receipt, publicKey) {
-  if (receipt.schema !== RECEIPT_SCHEMA || !receipt.signature || !receipt.merkle) return { status: 'unsigned', alg: null, keyId: null, trusted: false };
+  const signer = receipt.schema === RECEIPT_SCHEMA ? receipt.signer : undefined;
+  if (receipt.schema === RECEIPT_SCHEMA_V1 || !receipt.merkle || !receipt.signature) {
+    return signer ? { status: 'missing', alg: signer.alg, keyId: signer.keyId, trusted: false } : { status: 'unsigned', alg: null, keyId: null, trusted: false };
+  }
   const check = await verifyHead({ id: receipt.id, merkle: receipt.merkle }, receipt.signature, publicKey);
   if (check.status !== 'valid') return check;
   const tree = await merkleTree(await Promise.all(receipt.citations.map(citationLeafHash)));
   const unchanged = (await receiptId(receipt)) === receipt.id && tree.root === receipt.merkle.root && receipt.merkle.size === receipt.citations.length;
-  return unchanged ? check : { ...check, status: 'invalid', trusted: false };
+  const bySigner = !signer || (signer.keyId === check.keyId && signer.alg === check.alg);
+  return unchanged && bySigner ? check : { ...check, status: 'invalid', trusted: false };
 }
 
 /**
- * Checks that a parsed JSON value is a well-formed v1 or v2 receipt within the size limits. Every
- * string that is later shown in the app is bounded; nothing is interpreted as HTML. Each version has
- * its own allowlist of members: a v1 receipt with a Merkle tree or a signature is refused.
+ * Checks that a parsed JSON value is a well-formed v1, v2 or v3 receipt within the size limits.
+ * Every string that is later shown in the app is bounded; nothing is interpreted as HTML. Each
+ * version has its own allowlist of members: a v1 receipt with a Merkle tree or a signature, or a v2
+ * receipt with a member v3 added, is refused.
  * @param {unknown} value
  * @returns {{ ok: true, receipt: Receipt } | { ok: false, error: string, path: string }}
  */
@@ -321,13 +433,15 @@ export function validateReceipt(value) {
 
   if (!isObj(value)) return { ok: false, error: 'not_a_receipt', path: '' };
   const r = /** @type {Record<string, any>} */ (value);
-  if (r.schema !== RECEIPT_SCHEMA && r.schema !== RECEIPT_SCHEMA_V1) {
+  if (!RECEIPT_SCHEMAS.includes(r.schema)) {
     return typeof r.schema === 'string' && r.schema.startsWith('starpi.receipt/')
       ? { ok: false, error: 'unsupported_version', path: 'schema' }
       : { ok: false, error: 'not_a_receipt', path: 'schema' };
   }
-  const v2 = r.schema === RECEIPT_SCHEMA;
-  only(r, '', ['schema', 'id', 'createdAt', 'generator', 'answer', 'question', 'citations', 'grounding', ...(v2 ? ['merkle', 'signature'] : [])]);
+  // v2 and v3 have the Merkle tree and the signature; v3 adds the optional members below.
+  const v2 = r.schema !== RECEIPT_SCHEMA_V1;
+  const v3 = r.schema === RECEIPT_SCHEMA;
+  only(r, '', ['schema', 'id', 'createdAt', 'generator', 'answer', 'question', 'citations', 'grounding', ...(v2 ? ['merkle', 'signature'] : []), ...(v3 ? ['signer', 'gate', 'secondOpinion', 'relations'] : [])]);
   hex(r.id, 'id');
   str(r.createdAt, 'createdAt', 64);
   if (!isObj(r.generator)) fail('generator', 'object');
@@ -377,7 +491,13 @@ export function validateReceipt(value) {
         int(d.textChars, `${p}.document.textChars`);
         if (d.pages !== null) int(d.pages, `${p}.document.pages`);
         if (!isObj(d.extractor)) fail(`${p}.document.extractor`, 'object');
-        else only(d.extractor, `${p}.document.extractor`, ['id', 'version', 'pdfjs']) && str(d.extractor.id, `${p}.document.extractor.id`, 40) && int(d.extractor.version, `${p}.document.extractor.version`) && optStr(d.extractor.pdfjs, `${p}.document.extractor.pdfjs`, 40);
+        else {
+          const e = d.extractor;
+          only(e, `${p}.document.extractor`, ['id', 'version', 'pdfjs', ...(v3 ? ['ocr'] : [])]) && str(e.id, `${p}.document.extractor.id`, 40) && int(e.version, `${p}.document.extractor.version`) && optStr(e.pdfjs, `${p}.document.extractor.pdfjs`, 40);
+          if (e.ocr !== undefined && !(isObj(e.ocr) && only(e.ocr, `${p}.document.extractor.ocr`, ['provider', 'model']) && str(e.ocr.provider, `${p}.document.extractor.ocr.provider`, 40) && str(e.ocr.model, `${p}.document.extractor.ocr.model`, RECEIPT_LIMITS.modelChars))) {
+            fail(`${p}.document.extractor.ocr`, 'object');
+          }
+        }
         if (!isObj(d.chunker)) fail(`${p}.document.chunker`, 'object');
         else {
           only(d.chunker, `${p}.document.chunker`, ['id', 'version', 'size', 'overlap']);
@@ -461,6 +581,51 @@ export function validateReceipt(value) {
       }
     }
   }
+  if (v3) {
+    const sentenceCount = isObj(r.grounding) && Array.isArray(r.grounding.sentences) ? r.grounding.sentences.length : 0;
+    const citationCount = Array.isArray(r.citations) ? r.citations.length : 0;
+    const indexes = (/** @type {unknown} */ list, /** @type {string} */ path, /** @type {number} */ n, /** @type {string} */ what) =>
+      (Array.isArray(list) && list.every((i) => Number.isInteger(i) && i >= 0 && i < n)) || fail(path, what);
+    if (r.signer !== undefined) {
+      if (!isObj(r.signer)) fail('signer', 'object');
+      else only(r.signer, 'signer', ['keyId', 'alg']) && hex(r.signer.keyId, 'signer.keyId') && oneOf(r.signer.alg, 'signer.alg', SIGNATURE_ALGS);
+    }
+    if (r.gate !== undefined) {
+      if (!isObj(r.gate)) fail('gate', 'object');
+      else only(r.gate, 'gate', ['mode', 'released', 'withheld']) && oneOf(r.gate.mode, 'gate.mode', ['sources', 'web', 'free']) && int(r.gate.released, 'gate.released') && int(r.gate.withheld, 'gate.withheld');
+    }
+    if (r.secondOpinion !== undefined) {
+      if (!Array.isArray(r.secondOpinion) || r.secondOpinion.length > RECEIPT_LIMITS.secondOpinions) fail('secondOpinion', 'array');
+      else {
+        r.secondOpinion.forEach((/** @type {any} */ o, /** @type {number} */ i) => {
+          const p = `secondOpinion[${i}]`;
+          if (!isObj(o)) return fail(p, 'object');
+          only(o, p, ['sentence', 'cites', 'engine', 'model', 'result']);
+          indexes([o.sentence], `${p}.sentence`, sentenceCount, 'statement index');
+          indexes(o.cites, `${p}.cites`, citationCount, 'citation indexes');
+          oneOf(o.engine, `${p}.engine`, ['nli', 'judge']);
+          str(o.model, `${p}.model`, RECEIPT_LIMITS.modelChars);
+          return oneOf(o.result, `${p}.result`, ['entailed', 'neutral', 'contradicted']);
+        });
+      }
+    }
+    if (r.relations !== undefined) {
+      if (!Array.isArray(r.relations) || r.relations.length > RECEIPT_LIMITS.relations) fail('relations', 'array');
+      else {
+        r.relations.forEach((/** @type {any} */ rel, /** @type {number} */ i) => {
+          const p = `relations[${i}]`;
+          if (!isObj(rel)) return fail(p, 'object');
+          only(rel, p, ['kind', 'sentences', 'cites', 'verdict', 'text']);
+          oneOf(rel.kind, `${p}.kind`, ['comparative', 'temporal', 'reference']);
+          if (!Array.isArray(rel.sentences) || rel.sentences.length < 1 || rel.sentences.length > 2) fail(`${p}.sentences`, 'one or two statement indexes');
+          else indexes(rel.sentences, `${p}.sentences`, sentenceCount, 'statement indexes');
+          indexes(rel.cites, `${p}.cites`, citationCount, 'citation indexes');
+          oneOf(rel.verdict, `${p}.verdict`, ['supported', 'inverted', 'unsupported']);
+          return str(rel.text, `${p}.text`, RECEIPT_LIMITS.relationChars);
+        });
+      }
+    }
+  }
   if (failure) return { ok: false, .../** @type {{ error: string, path: string }} */ (failure) };
   return { ok: true, receipt: /** @type {Receipt} */ (/** @type {unknown} */ (value)) };
 }
@@ -474,25 +639,38 @@ const squash = (text) => text.replace(/\s+/g, ' ').trim();
  * @property {string} label
  * @property {'workspace' | 'knowledge'} source
  * @property {'match' | 'missing' | 'not_verifiable'} file        L0: a provided file has the recorded fingerprint
- * @property {'match' | 'mismatch' | 'version_differs' | null} text  L1: extracting it gives the recorded text
+ * @property {'match' | 'mismatch' | 'version_differs' | 'ocr' | null} text  L1: extracting it gives the recorded text ('ocr': text recognition made it, so it cannot be extracted again)
  * @property {'match' | 'moved' | 'mismatch' | null} passage      L2: the passage at the recorded offsets is the excerpt
  * @property {'match' | 'mismatch' | 'version_differs' | null} chunk  L3: chunking gives the recorded bounds
  * @property {boolean | null} excerptConsistent  the excerpt text in the receipt matches its fingerprint
  * @property {string | null} fileName  name of the provided file that matched
- * @property {boolean | null} proof  v2: the citation's inclusion proof leads to the recorded Merkle root
+ * @property {boolean | null} proof  v2 and v3: the citation's inclusion proof leads to the recorded Merkle root
  */
 
 /**
  * @typedef {object} VerifyReport
- * @property {string} schema          the receipt format, starpi.receipt/v1 or /v2
+ * @property {string} schema          the receipt format, starpi.receipt/v1, /v2 or /v3
  * @property {boolean} idMatches      the receipt hash matches its contents
  * @property {boolean} answerMatches  the answer hash matches the answer text
  * @property {CitationCheck[]} citations
  * @property {{ reproduced: number, verifiable: number }} summary  workspace passages reproduced from the provided files
  * @property {{ recomputed: number, differences: Array<{ sentence: number, recorded: string, now: string }>, needsConversation: boolean } | null} grounding
- * @property {{ size: number, rootMatches: boolean, validProofs: number } | null} merkle  v2: the root recomputed from the citations, and how many inclusion proofs lead to it
- * @property {import('./signature.js').SignatureCheck | null} signature  v2: the signature check (status `unsigned` without one); null for v1
+ * @property {{ size: number, rootMatches: boolean, validProofs: number } | null} merkle  v2 and v3: the root recomputed from the citations, and how many inclusion proofs lead to it
+ * @property {ReceiptSignatureCheck | null} signature  v2 and v3: the signature check (status `unsigned` without one); null for v1
+ * @property {ReceiptSigner | null} signer  v3: the signer the receipt names
+ * @property {ReceiptGate | null} gate  v3: what the sentence gate released and withheld, as recorded
+ * @property {{ secondOpinions: number, contradicted: number, relations: number, flagged: number }} advisory  v3: recorded second opinions (and how many contradict) and relations (and how many are inverted or unsupported); not recomputed
  * @property {string[]} warnings
+ */
+
+/**
+ * What verifyReceipt needs to extract a file again: the extraction code, its rules and, optionally,
+ * the earlier rule versions whose text equals that of the current ones per document kind (a text
+ * recorded with such a version is then compared without a note).
+ * @typedef {object} VerifyTools
+ * @property {(bytes: Uint8Array, name: string) => Promise<{ text: string, pdfjs: string | null }>} extract
+ * @property {{ id: string, version: number }} extractor
+ * @property {Readonly<Record<number, readonly string[]>>} [compatible]
  */
 
 /**
@@ -509,11 +687,12 @@ function deliveredPart(c, text) {
 
 /**
  * Re-checks a receipt against the original files: file fingerprints, extracted text, the passage at
- * each offset, the chunk bounds, and the source-check verdicts (recomputed, not trusted). For a v2
- * receipt also the Merkle root, every inclusion proof and the signature, if there is one.
+ * each offset, the chunk bounds, and the source-check verdicts (recomputed, not trusted). For a v2 or
+ * v3 receipt also the Merkle root, every inclusion proof and the signature, if there is one. Text
+ * that OCR recognised (v3) is not extracted again: only its file fingerprint is checked.
  * @param {Receipt} receipt  validated with validateReceipt()
  * @param {Array<{ name: string, bytes: Uint8Array }>} files
- * @param {{ extract: (bytes: Uint8Array, name: string) => Promise<{ text: string, pdfjs: string | null }>, extractor: { id: string, version: number } }} tools
+ * @param {VerifyTools} tools
  * @param {{ publicKey?: CryptoKey | JsonWebKey | string }} [options]  the signer's public key, to check who signed
  * @returns {Promise<VerifyReport>}
  */
@@ -527,20 +706,27 @@ export async function verifyReceipt(receipt, files, tools, options = {}) {
   let merkle = null;
   /** @type {boolean[]} */
   let proofs = [];
-  if (receipt.schema === RECEIPT_SCHEMA && receipt.merkle) {
+  if (receipt.schema !== RECEIPT_SCHEMA_V1 && receipt.merkle) {
     const recorded = receipt.merkle;
     const leaves = await Promise.all(receipt.citations.map(citationLeafHash));
     const tree = await merkleTree(leaves);
     proofs = await Promise.all(receipt.citations.map((c, i) => verifyMerkleProof(leaves[i], i, recorded.size, c.proof ?? [], recorded.root)));
     merkle = { size: recorded.size, rootMatches: tree.root === recorded.root && recorded.size === leaves.length, validProofs: proofs.filter(Boolean).length };
   }
-  const signature = receipt.schema === RECEIPT_SCHEMA ? await verifyReceiptSignature(receipt, options.publicKey) : null;
+  const signature = receipt.schema !== RECEIPT_SCHEMA_V1 ? await verifyReceiptSignature(receipt, options.publicKey) : null;
 
   /** @type {Map<string, { name: string, bytes: Uint8Array }>} */
   const byHash = new Map();
   for (const f of files) byHash.set(await sha256Hex(f.bytes), f);
   /** @type {Map<string, Promise<{ text: string, pdfjs: string | null } | null>>} */
   const extracted = new Map();
+  /** One note per file, not one per citation of it. */
+  const noted = new Set();
+  const note = (/** @type {string} */ key, /** @type {string} */ text) => {
+    if (noted.has(key)) return;
+    noted.add(key);
+    warnings.push(text);
+  };
 
   /** @type {CitationCheck[]} */
   const checks = [];
@@ -563,6 +749,12 @@ export async function verifyReceipt(receipt, files, tools, options = {}) {
     check.file = 'match';
     check.fileName = file.name;
     const key = c.document.fileSha256;
+    const ocr = c.document.extractor.ocr;
+    if (ocr) {
+      check.text = 'ocr';
+      note(`ocr:${key}`, `${file.name}: text recognised by OCR (${ocr.provider}, ${ocr.model}); it cannot be extracted again, only the file fingerprint was checked`);
+      continue;
+    }
     if (!extracted.has(key)) {
       extracted.set(
         key,
@@ -575,12 +767,18 @@ export async function verifyReceipt(receipt, files, tools, options = {}) {
     const result = await extracted.get(key);
     if (!result) continue;
     const { text } = result;
-    const versionDiffers =
-      c.document.extractor.id !== tools.extractor.id ||
-      c.document.extractor.version !== tools.extractor.version ||
-      (c.document.extractor.pdfjs !== null && result.pdfjs !== null && c.document.extractor.pdfjs !== result.pdfjs);
-    if (versionDiffers) warnings.push(`${file.name}: extracted with ${c.document.extractor.id} ${c.document.extractor.version}${c.document.extractor.pdfjs ? ` (pdf.js ${c.document.extractor.pdfjs})` : ''}, verified with ${tools.extractor.id} ${tools.extractor.version}${result.pdfjs ? ` (pdf.js ${result.pdfjs})` : ''}`);
-    check.text = (await sha256Hex(text)) === c.document.textSha256 ? 'match' : versionDiffers ? 'version_differs' : 'mismatch';
+    const recordedRules = c.document.extractor;
+    // An earlier version whose text equals the current one for this kind counts as the same rules.
+    const sameRules =
+      recordedRules.id === tools.extractor.id && (recordedRules.version === tools.extractor.version || (tools.compatible?.[recordedRules.version]?.includes(c.document.kind) ?? false));
+    const pdfjsDiffers = recordedRules.pdfjs !== null && result.pdfjs !== null && recordedRules.pdfjs !== result.pdfjs;
+    const versionDiffers = !sameRules || pdfjsDiffers;
+    const textMatches = (await sha256Hex(text)) === c.document.textSha256;
+    // The note explains a text that may differ for that reason; compatible rules that gave the same text need none.
+    if (versionDiffers && !(textMatches && sameRules)) {
+      note(`rules:${key}`, `${file.name}: extracted with ${recordedRules.id} ${recordedRules.version}${recordedRules.pdfjs ? ` (pdf.js ${recordedRules.pdfjs})` : ''}, verified with ${tools.extractor.id} ${tools.extractor.version}${result.pdfjs ? ` (pdf.js ${result.pdfjs})` : ''}`);
+    }
+    check.text = textMatches ? 'match' : versionDiffers ? 'version_differs' : 'mismatch';
 
     const passage = text.slice(c.chunk.start, c.chunk.end);
     const expected = c.chunk.sha256 ?? c.excerpt.sha256;
@@ -649,5 +847,27 @@ export async function verifyReceipt(receipt, files, tools, options = {}) {
     grounding = { recomputed, differences, needsConversation };
   }
 
-  return { schema: receipt.schema, idMatches, answerMatches, citations: checks, summary: { reproduced, verifiable }, grounding, merkle, signature, warnings };
+  const v3 = receipt.schema === RECEIPT_SCHEMA;
+  const opinions = v3 ? (receipt.secondOpinion ?? []) : [];
+  const relations = v3 ? (receipt.relations ?? []) : [];
+  const advisory = {
+    secondOpinions: opinions.length,
+    contradicted: opinions.filter((o) => o.result === 'contradicted').length,
+    relations: relations.length,
+    flagged: relations.filter((r) => r.verdict !== 'supported').length,
+  };
+  return {
+    schema: receipt.schema,
+    idMatches,
+    answerMatches,
+    citations: checks,
+    summary: { reproduced, verifiable },
+    grounding,
+    merkle,
+    signature,
+    signer: v3 && receipt.signer ? { ...receipt.signer } : null,
+    gate: v3 && receipt.gate ? { ...receipt.gate } : null,
+    advisory,
+    warnings,
+  };
 }

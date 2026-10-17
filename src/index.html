@@ -721,12 +721,8 @@
               <p id="cfgOpenrouterKeyHint" class="text-[11px] text-slate-500 mt-1" data-i18n="settings.key_none">No key saved.</p>
             </div>
             <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-              <label class="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
-                <input type="checkbox" id="cfgRememberKeys" class="rounded border-slate-300 text-amber-500 focus:ring-amber-300">
-                <span data-i18n="settings.remember_keys">Remember keys on this device</span>
-              </label>
+              <p class="flex-1 min-w-0 text-[11px] text-slate-500" data-i18n="settings.keys_notice">Keys are kept until this tab is closed. To keep them on this device, set a vault passphrase under Model providers and keys.</p>
               <button type="button" data-action="clear-keys" class="btn btn-ghost py-1 text-rose-700" data-i18n="settings.clear_keys">Delete keys</button>
-              <p class="w-full text-[11px] text-slate-500" data-i18n="settings.keys_notice">Unless you tick the box, keys are kept only until this tab is closed.</p>
             </div>
             <div>
               <label for="cfgLlmUrl" class="field-label" data-i18n="settings.server_label">Own server base URL</label>
@@ -890,7 +886,7 @@
             </div>
             <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p class="font-semibold text-slate-900 mb-1" data-i18n="receipt.not_proves_title">What it does not prove</p>
-              <p class="text-slate-700" data-i18n="receipt.not_proves">That Starpi wrote the answer (the app does not sign receipts), which excerpts the model actually read, that the answer is correct, or anything about knowledge-base excerpts.</p>
+              <p class="text-slate-700" data-i18n="receipt.not_proves">Who wrote the answer: a signature only shows the receipt is unchanged since a key signed it, and whose key that is only a public key from the signer shows. Nor which excerpts the model actually read, that the answer is correct, or anything about knowledge-base excerpts.</p>
             </div>
           </div>
           <div class="space-y-1.5">

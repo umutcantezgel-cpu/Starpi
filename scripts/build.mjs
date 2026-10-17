@@ -359,6 +359,8 @@ async function postProcess(result, urls) {
     ingestWorkerJs,
     ...(latinFont ? [latinFont] : []),
     ...directImports(result.metafile, mainJs),
+    // The worker's own imports too: code the page loads only on demand (receipts) is static there.
+    ...directImports(result.metafile, ingestWorkerJs),
     ...publicFiles.filter((url) => !frameScripts.includes(url)),
   ];
   const sw = swTemplate

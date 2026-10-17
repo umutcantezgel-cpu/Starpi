@@ -63,7 +63,7 @@ export function clientIp(request) {
 }
 
 /**
- * Reads a JSON object body of at most `maxBytes` bytes. The same order as the Python backend:
+ * Reads a JSON object body of at most `maxBytes` bytes, checking in this order:
  * a declared size above the cap (413) before the media type (415), then the streamed size (413),
  * UTF-8 and JSON (400 invalid_json) and the top-level type (400 json_body_must_be_object).
  * @param {Request} request

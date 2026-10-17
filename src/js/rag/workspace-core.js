@@ -18,7 +18,7 @@ import { createFileStore } from '../store/opfs.js';
 import { BM25Index } from './bm25.js';
 import { CHUNKER, chunkText, DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE } from './chunker.js';
 import { hybridSearch, probeIndex } from './hybrid.js';
-import { EXTRACTOR, extractText, MAX_FILE_BYTES, ParseError } from './parser.js';
+import { EXTRACTOR, EXTRACTOR_COMPATIBLE, extractText, MAX_FILE_BYTES, ParseError } from './parser.js';
 import { chunkKey, quantizeInt8, VectorIndex } from './vectors.js';
 
 /** @typedef {import('../store/idb.js').StoreDb} StoreDb */
@@ -698,6 +698,7 @@ export function createWorkspace(options = {}) {
       files,
       {
         extractor: EXTRACTOR,
+        compatible: EXTRACTOR_COMPATIBLE,
         extract: async (bytes, name) => {
           const r = await extractText(new File([/** @type {Uint8Array<ArrayBuffer>} */ (bytes)], name));
           return { text: r.text, pdfjs: r.pdfjs };

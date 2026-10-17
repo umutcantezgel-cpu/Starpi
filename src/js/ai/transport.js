@@ -5,8 +5,13 @@
 //
 // - directTransport: browser to provider, key in the provider's header
 // - relayTransport:  browser to this site's stateless relay (/api/relay/<provider><path>), the key
-//                    travels per request in the provider's native header
+//                    travels per request in the provider's native header; besides the model
+//                    providers the relay serves the voice and search services (ServiceId)
 // - poolTransport:   browser to this site's key pools (/api/pool), no key in the browser
+//
+// A site may ask for an access code (GET /api/health reports `access: true`); relay and pool
+// transports then send it in the x-starpi-access header (`options.access`). A direct call never
+// carries it, so the code only ever goes to this site.
 //
 // Paths: an adapter builds the path below the provider's API root, as the relay's allowlist sees it
 // (/v1/messages, /v1/chat/completions, /v1beta/models/<id>:streamGenerateContent?alt=sse). A
@@ -21,6 +26,8 @@
 import { AiError, toAiError } from './errors.js';
 
 /** @typedef {import('./contract.js').ProviderId} ProviderId */
+/** @typedef {'elevenlabs' | 'brave' | 'tavily'} ServiceId */
+/** @typedef {ProviderId | ServiceId} RelayTarget */
 /** @typedef {(input: string | URL | Request, init?: RequestInit) => Promise<Response>} FetchLike */
 /** @typedef {(key: string) => [string, string]} AuthHeaderFn */
 
@@ -37,7 +44,7 @@ import { AiError, toAiError } from './errors.js';
 /**
  * @typedef {object} TransportInfo
  * @property {'direct' | 'relay' | 'pool'} kind
- * @property {ProviderId | null} provider
+ * @property {RelayTarget | null} provider
  * @property {string} baseURL   absolute when an origin is known; SDK adapters send their requests below it
  * @property {FetchLike} fetch  for SDK adapters: applies this transport's auth and guards
  */
@@ -50,34 +57,44 @@ import { AiError, toAiError } from './errors.js';
  * @typedef {object} TransportOptions
  * @property {FetchLike} [fetch]   defaults to globalThis.fetch, looked up at call time
  * @property {string} [origin]     origin of this site, for the relay and pool (defaults to location.origin)
+ * @property {string | (() => string)} [access]  the site's access code, for the relay and pool (read per request)
  */
 
 export const RELAY_BASE_PATH = '/api/relay';
 export const POOL_ENDPOINT = '/api/pool';
+/** Header that carries the site's access code to its own endpoints. */
+export const ACCESS_HEADER = 'x-starpi-access';
 
-/** Header names that carry provider credentials; adapters and SDKs never get to set them. */
-export const AUTH_HEADER_NAMES = Object.freeze(['authorization', 'x-api-key', 'x-goog-api-key', 'api-key', 'xi-api-key', 'x-subscription-token', 'cookie']);
+/** Header names that carry credentials; adapters and SDKs never get to set them. */
+export const AUTH_HEADER_NAMES = Object.freeze(['authorization', 'x-api-key', 'x-goog-api-key', 'api-key', 'xi-api-key', 'x-subscription-token', 'cookie', ACCESS_HEADER]);
 
-/** Providers whose native auth header is not `Authorization: Bearer`. */
-const NATIVE_AUTH = /** @type {Readonly<Partial<Record<ProviderId, string>>>} */ (Object.freeze({ anthropic: 'x-api-key', gemini: 'x-goog-api-key' }));
+/** Providers and services whose native auth header is not `Authorization: Bearer`. */
+const NATIVE_AUTH = /** @type {Readonly<Partial<Record<RelayTarget, string>>>} */ (
+  Object.freeze({ anthropic: 'x-api-key', gemini: 'x-goog-api-key', elevenlabs: 'xi-api-key', brave: 'x-subscription-token' })
+);
 
 /** Providers the site can relay or pool; local servers and in-browser engines never leave the device. */
 const REMOTE_PROVIDERS = new Set(['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter', 'nvidia']);
+/** Voice and search services the relay also forwards to (never pooled). */
+export const RELAY_SERVICES = /** @type {readonly ServiceId[]} */ (Object.freeze(['elevenlabs', 'brave', 'tavily']));
+const RELAY_TARGETS = new Set([...REMOTE_PROVIDERS, ...RELAY_SERVICES]);
 
 /** Printable ASCII without spaces: anything else would break or inject a header. */
 const KEY_PATTERN = /^[\x21-\x7e]{1,1024}$/;
+/** An access code as a header value: printable ASCII, inner spaces allowed. */
+const ACCESS_PATTERN = /^[\x21-\x7e](?:[\x20-\x7e]{0,254}[\x21-\x7e])?$/;
 /** A path below the base URL: one leading slash, no parent segments, no backslashes, no fragment. */
 const PATH_PATTERN = /^\/(?!\/)[^\s\\#]*$/;
 const KEY_IN_QUERY = /[?&](?:key|api[_-]?key|access[_-]?token)=/i;
 
 /**
- * The provider's own auth header for a key.
+ * The provider's (or service's) own auth header for a key.
  * @param {string} provider
  * @param {string} key
  * @returns {[string, string]}
  */
 export function nativeAuthHeader(provider, key) {
-  const name = NATIVE_AUTH[/** @type {ProviderId} */ (provider)];
+  const name = NATIVE_AUTH[/** @type {RelayTarget} */ (provider)];
   return name ? [name, key] : ['authorization', `Bearer ${key}`];
 }
 
@@ -146,13 +163,14 @@ const trimSlash = (trimmed) => trimmed.replace(/\/+$/, '');
 /**
  * @typedef {object} TransportSpec
  * @property {'direct' | 'relay' | 'pool'} kind
- * @property {ProviderId | null} provider
+ * @property {RelayTarget | null} provider
  * @property {string} baseURL
  * @property {(path: string) => string} urlFor          URL of a wire request's path
  * @property {(url: string) => string | null} rewrite   URL an SDK request goes to; null when outside baseURL
  * @property {(adapter: { authHeader?: AuthHeaderFn } | null | undefined) => [string, string] | null} auth
  * @property {RequestCredentials} credentials
  * @property {FetchLike} fetchImpl
+ * @property {() => string} [access]  the site's access code ('' for none)
  */
 
 /**
@@ -182,6 +200,8 @@ function makeTransport(spec) {
   const authorize = (headers, adapter) => {
     const pair = spec.auth(adapter);
     if (pair) headers.set(pair[0], pair[1]);
+    const code = spec.access?.().trim() ?? '';
+    if (code && ACCESS_PATTERN.test(code)) headers.set(ACCESS_HEADER, code);
   };
 
   /** @type {(adapter: { authHeader?: AuthHeaderFn } | null | undefined, built: BuiltRequest, options?: { signal?: AbortSignal }) => Promise<Response>} */
@@ -231,6 +251,23 @@ function remoteProvider(provider) {
 }
 
 /**
+ * @param {string} target
+ */
+function relayTarget(target) {
+  if (!RELAY_TARGETS.has(target)) throw new TypeError(`Provider ${String(target).slice(0, 40)} cannot go through this site`);
+  return /** @type {RelayTarget} */ (target);
+}
+
+/**
+ * @param {TransportOptions} options
+ * @returns {() => string}
+ */
+function accessFrom(options) {
+  const { access } = options;
+  return typeof access === 'function' ? () => String(access() ?? '') : () => access ?? '';
+}
+
+/**
  * Browser straight to the provider. `baseUrl` is the API root (see the paths note above).
  * `authHeader` is a header name ('authorization' sends a Bearer token) or a function returning
  * [name, value]; without it the adapter's authHeader() is used, else the native header of
@@ -275,14 +312,15 @@ export function directTransport(baseUrl, key, authHeader, options = {}) {
 
 /**
  * Browser to this site's relay, which forwards to the provider and keeps nothing. The key goes in
- * the provider's native header, as it would on a direct call.
- * @param {string} providerId
+ * the provider's native header, as it would on a direct call (xi-api-key for ElevenLabs,
+ * x-subscription-token for Brave Search, Bearer for Tavily).
+ * @param {string} providerId a model provider or a service (RELAY_SERVICES)
  * @param {string} key
  * @param {TransportOptions & { basePath?: string }} [options]
  * @returns {Transport}
  */
 export function relayTransport(providerId, key, options = {}) {
-  const provider = remoteProvider(providerId);
+  const provider = relayTarget(providerId);
   const prefix = `${siteOrigin(options)}${trimSlash(options.basePath ?? RELAY_BASE_PATH)}/${provider}`;
   return makeTransport({
     kind: 'relay',
@@ -293,6 +331,7 @@ export function relayTransport(providerId, key, options = {}) {
     auth: () => nativeAuthHeader(provider, checkedKey(key, provider)),
     credentials: 'same-origin',
     fetchImpl: fetchFrom(options),
+    access: accessFrom(options),
   });
 }
 
@@ -318,5 +357,6 @@ export function poolTransport(providerId, options = {}) {
     auth: () => null,
     credentials: 'same-origin',
     fetchImpl: fetchFrom(options),
+    access: accessFrom(options),
   });
 }

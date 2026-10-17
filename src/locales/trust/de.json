@@ -1,1 +1,68 @@
-{}
+{
+  "title": "Vertrauen · Belege signieren",
+  "subtitle": "Dieses Gerät kann die Antwortbelege, die Sie herunterladen, mit einem Schlüssel signieren, der den Browser nie verlässt. Geben Sie den öffentlichen Schlüssel an alle, die Ihre Belege prüfen.",
+  "state": {
+    "on": "Signiert",
+    "off": "Signiert nicht",
+    "ready": "Schlüssel mit dem ersten Beleg",
+    "unavailable": "Hier nicht verfügbar"
+  },
+  "sign": {
+    "label": "Exportierte Belege signieren",
+    "hint": "Jeder heruntergeladene Beleg nennt den Schlüssel dieses Geräts als Unterzeichner und trägt seine Signatur. Dann kann jeder prüfen, dass der Beleg unverändert ist; mit Ihrem öffentlichen Schlüssel auch, dass dieses Gerät ihn signiert hat."
+  },
+  "key": {
+    "title": "Signaturschlüssel dieses Geräts",
+    "alg": "Verfahren",
+    "id": "Schlüssel-ID",
+    "created": "Erstellt",
+    "retired": "Ersetzt",
+    "export_jwk": "Öffentlicher Schlüssel (JWK)",
+    "export_pem": "Öffentlicher Schlüssel (PEM)",
+    "rotate": "Neuer Schlüssel",
+    "rotate_confirm": "Einen neuen Signaturschlüssel erstellen? Belege werden ab jetzt mit dem neuen Schlüssel signiert; der alte signiert nie wieder, sein öffentlicher Schlüssel bleibt exportierbar.",
+    "delete": "Löschen",
+    "delete_confirm": "Den Signaturschlüssel dieses Geräts löschen? Von ihm signierte Belege lassen sich weiter mit seinem öffentlichen Schlüssel prüfen, falls Sie ihn exportiert haben. Mit dem nächsten signierten Beleg entsteht ein neuer Schlüssel.",
+    "create": "Signaturschlüssel erstellen",
+    "none": "Noch kein Signaturschlüssel. Er entsteht, wenn Sie zum ersten Mal einen Antwortbeleg mit eingeschalteter Signatur öffnen, oder jetzt.",
+    "unavailable": "Dieser Browser kann hier keine Signaturschlüssel erzeugen (WebCrypto braucht eine sichere Verbindung). Belege werden ohne Signatur heruntergeladen.",
+    "not_persistent": "Dieser Browser speichert für diese Seite keine Daten (zum Beispiel in einem privaten Fenster): Der Schlüssel gilt nur, bis die Seite geschlossen wird."
+  },
+  "retired": {
+    "title": "Frühere Schlüssel",
+    "body": "Durch einen neuen ersetzte Schlüssel signieren nicht mehr. Mit ihren öffentlichen Schlüsseln lassen sich die Belege prüfen, die sie signiert haben.",
+    "delete_confirm": "Diesen früheren Schlüssel löschen? Sein öffentlicher Schlüssel lässt sich dann hier nicht mehr exportieren."
+  },
+  "check": {
+    "title": "Einen signierten Beleg prüfen",
+    "body": "Geben Sie der prüfenden Person den Beleg, die Originaldateien und Ihren öffentlichen Schlüssel. Nur ein öffentlicher Schlüssel, den sie von Ihnen erhalten hat, zeigt, wer signiert hat; der Schlüssel im Beleg zeigt nur, dass er unverändert ist."
+  },
+  "result": {
+    "exported": "{file} gespeichert.",
+    "created": "Signaturschlüssel erstellt.",
+    "rotated": "Neuer Signaturschlüssel erstellt. Exportieren Sie seinen öffentlichen Schlüssel für alle, die Ihre Belege prüfen.",
+    "deleted": "Schlüssel gelöscht.",
+    "sign_on": "Exportierte Belege werden signiert.",
+    "sign_off": "Exportierte Belege werden nicht signiert.",
+    "sign_page": "Nur für diese Seite gespeichert: Dieser Browser speichert für diese Seite keine Daten."
+  },
+  "error": {
+    "unavailable": "Dieser Browser kann hier keine Signaturschlüssel erzeugen oder verwenden.",
+    "not_found": "Diesen Schlüssel gibt es nicht mehr.",
+    "storage": "Der Schlüssel konnte auf diesem Gerät nicht gespeichert werden."
+  },
+  "receipt": {
+    "signed_by": "Signiert mit dem Schlüssel {key} dieses Geräts ({alg}).",
+    "unsigned_off": "Nicht signiert: Die Signatur ist unter Einstellungen › Vertrauen ausgeschaltet.",
+    "unsigned_unavailable": "Nicht signiert: Dieser Browser kann hier keinen Signaturschlüssel erzeugen.",
+    "signer": "Im Beleg genannter Unterzeichner: Schlüssel {key} ({alg}).",
+    "signature_missing": "Der Beleg nennt den Unterzeichner-Schlüssel {key} ({alg}), aber seine Signatur wurde entfernt.",
+    "trusted": "Vertrauenswürdig: mit dem gewählten öffentlichen Schlüssel geprüft.",
+    "not_trusted": "Nicht vertrauenswürdig: Es wurde kein öffentlicher Schlüssel des Unterzeichners gewählt, und der Schlüssel im Beleg kann jedem gehören.",
+    "own_key": "Der Schlüssel gehört zu diesem Gerät.",
+    "gate": "Satzprüfung (Modus {mode}, wie aufgezeichnet): {released} freigegeben, {withheld} zurückgehalten.",
+    "second_opinions": "Zweitmeinungen zu {n} {n:Aussage|Aussagen} aufgezeichnet, {contradicted} widersprechen (nur Hinweis, nicht neu berechnet).",
+    "relations": "{n} {n:Beziehung|Beziehungen} zwischen Aussagen aufgezeichnet, {flagged} umgekehrt oder nicht gestützt (nicht neu berechnet).",
+    "check_ocr": "{label}: Die Datei stimmt; ihr Text wurde per Texterkennung (OCR) gewonnen und lässt sich nicht erneut extrahieren."
+  }
+}

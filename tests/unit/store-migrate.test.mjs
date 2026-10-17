@@ -11,6 +11,7 @@ import {
   APP_MIGRATIONS,
   isMigrationDone,
   LEGACY_CHATS_MIGRATION_ID,
+  LEGACY_KEYS_MIGRATION_ID,
   legacyChatsMigration,
   legacyChatsToRecords,
   MIGRATION_MARKER_PREFIX,
@@ -211,7 +212,7 @@ describe('the legacy chat migration', () => {
   });
 
   it('is part of the app migrations', () => {
-    assert.deepEqual(APP_MIGRATIONS.map((m) => m.id), [LEGACY_CHATS_MIGRATION_ID]);
+    assert.deepEqual(APP_MIGRATIONS.map((m) => m.id), [LEGACY_CHATS_MIGRATION_ID, LEGACY_KEYS_MIGRATION_ID]);
   });
 });
 
