@@ -6,18 +6,30 @@
 //
 // Sync is off in this version: CHAT_SYNC_ENABLED stays false until end-to-end encrypted sync
 // replaces the plaintext chat table. The code behind the flag is kept for that work. Deleting still
-// removes the messages an earlier version synced.
+// removes the messages an earlier version synced. The data layer (supabase.js) is loaded only for
+// that, so this module and the conversation list do not depend on it.
 import { formatNumber, setText } from './i18n/index.js';
 import { STORAGE_KEYS } from './config.js';
 import { byId } from './dom.js';
 import { readLocal, writeLocal } from './storage.js';
-import { canSyncChats, countChatMessages, deleteChatSession, deleteOwnChats, getConnection, insertChatMessage, loadChatSession } from './supabase.js';
 
 /** @typedef {import('./supabase.js').ChatRow} ChatRow */
 /** @typedef {import('./chat/store.js').ChatStore} ChatStore */
 
 /** Plaintext chat sync. Stays false until end-to-end encrypted sync lands. */
 export const CHAT_SYNC_ENABLED = false;
+
+/** @type {Promise<typeof import('./supabase.js')> | null} */
+let dataLayer = null;
+
+/** The data layer, for the chat sync and for deleting synced messages; loaded on first use. */
+function loadDataLayer() {
+  dataLayer ??= import('./supabase.js').catch((err) => {
+    dataLayer = null;
+    throw err;
+  });
+  return dataLayer;
+}
 
 const SESSION_ID = /^starpi_[\w-]{6,120}$/;
 
@@ -181,8 +193,10 @@ async function writeMessage(sid, message, opts) {
     return;
   }
   // Off until end-to-end encrypted sync (CHAT_SYNC_ENABLED). On-device turns never sync.
-  if (!CHAT_SYNC_ENABLED || opts.localOnly || !canSyncChats()) return;
-  const res = await insertChatMessage(sid, message);
+  if (!CHAT_SYNC_ENABLED || opts.localOnly) return;
+  const data = await loadDataLayer().catch(() => null);
+  if (!data?.canSyncChats()) return;
+  const res = await data.insertChatMessage(sid, message);
   if (!res.ok) console.warn('[starpi] chat sync failed, the message stays on this device:', res.error.kind, res.error.message);
   else void refreshSyncStatus();
 }
@@ -194,7 +208,9 @@ async function writeMessage(sid, message, opts) {
  * @param {string} sid
  */
 async function restoreSynced(m, store, sid) {
-  const res = await loadChatSession(sid);
+  const data = await loadDataLayer();
+  if (!data.canSyncChats()) return null;
+  const res = await data.loadChatSession(sid);
   if (!res.ok) {
     console.warn('[starpi] could not load the synced chat:', res.error.kind, res.error.message);
     return null;
@@ -213,7 +229,7 @@ export async function loadCurrentSession() {
     const m = await loadStoreModule();
     const store = await m.openChatStore();
     let thread = await store.loadThread(sid);
-    if (!thread && CHAT_SYNC_ENABLED && canSyncChats()) thread = await restoreSynced(m, store, sid);
+    if (!thread && CHAT_SYNC_ENABLED) thread = await restoreSynced(m, store, sid);
     if (!thread) return [];
     return thread.path.filter((n) => n.role === 'user' || n.role === 'assistant').map(m.nodeToRow);
   } catch (err) {
@@ -257,15 +273,22 @@ export function mergeByTime(remote, local) {
 
 /**
  * Removes what an earlier version synced, when that can have happened.
- * @param {() => ReturnType<typeof deleteOwnChats>} remove
+ * @param {(data: typeof import('./supabase.js')) => Promise<{ ok: boolean }>} remove
  * @returns {Promise<boolean>}
  */
 async function deleteSynced(remove) {
+  let data;
+  try {
+    data = await loadDataLayer();
+  } catch (err) {
+    console.warn('[starpi] synced chats could not be deleted now', err);
+    return false;
+  }
   // Nothing was synced from this browser when the connection is up and chats cannot sync (no
   // session, or an older schema). Offline or still connecting, the delete is attempted and reports
   // a failure instead of claiming success.
-  if (getConnection().status === 'ready' && !canSyncChats()) return true;
-  const res = await remove();
+  if (data.getConnection().status === 'ready' && !data.canSyncChats()) return true;
+  const res = await remove(data);
   void refreshSyncStatus();
   return res.ok;
 }
@@ -286,7 +309,7 @@ export async function deleteChatHistory() {
     local = false;
   }
   startNewSession();
-  return (await deleteSynced(() => deleteOwnChats())) && local;
+  return (await deleteSynced((data) => data.deleteOwnChats())) && local;
 }
 
 /**
@@ -305,7 +328,7 @@ export async function deleteSession(sid) {
     local = false;
   }
   if (sid === sessionId) startNewSession();
-  return (await deleteSynced(() => deleteChatSession(sid))) && local;
+  return (await deleteSynced((data) => data.deleteChatSession(sid))) && local;
 }
 
 export async function refreshSyncStatus() {
@@ -315,16 +338,17 @@ export async function refreshSyncStatus() {
     setText(el, 'chat.list.device_only');
     return;
   }
-  const c = getConnection();
-  if (c.status !== 'ready') {
+  const data = await loadDataLayer().catch(() => null);
+  const c = data?.getConnection();
+  if (!data || c?.status !== 'ready') {
     setText(el, 'sync.device_offline');
     return;
   }
-  if (!canSyncChats()) {
+  if (!data.canSyncChats()) {
     setText(el, c.hardened ? 'sync.device_no_session' : 'sync.device_migration');
     return;
   }
-  const res = await countChatMessages();
+  const res = await data.countChatMessages();
   if (res.ok) setText(el, 'sync.synced_count', { n: formatNumber(res.data ?? 0) });
   else setText(el, 'sync.synced');
 }
