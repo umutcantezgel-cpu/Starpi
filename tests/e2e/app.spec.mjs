@@ -353,13 +353,13 @@ test.describe('local mode without WebGPU', () => {
     expect(diagnostics).toEqual([]);
   });
 
-  test('diagnostics report the missing WebGPU support instead of numbers', async ({ page, diagnostics }) => {
+  test('diagnostics report the missing WebGPU support and offer the processor benchmark instead', async ({ page, diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await page.goto('/');
     await openTab(page, 'bench');
     await expect(page.locator('#benchWebgpuStatusText')).toHaveText('WebGPU not supported');
-    await expect(page.locator('#btnRunBenchmark')).toBeDisabled();
-    await expect(page.locator('#benchModelHint')).toContainText('needs WebGPU');
+    await expect(page.locator('#benchModelHint')).toContainText('processor (WASM) model');
+    await expect(page.locator('#btnRunBenchmark')).toBeEnabled();
     await expect(page.locator('#benchResultTTFT')).toHaveText('–');
     expect(diagnostics).toEqual([]);
   });

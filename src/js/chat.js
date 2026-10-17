@@ -308,18 +308,12 @@ async function answerWithCloud(req) {
 }
 
 /**
- * Engine id and output budgets of the loaded on-device model. A model without a runtime field is a
- * WebGPU preset; the free chat may answer longer, within a third of the context window.
- * @param {{ chatOptions: { context_window_size: number }, runtime?: 'webgpu' | 'wasm', maxOutputTokens?: number }} model
+ * Engine id of the loaded on-device model. A model without a runtime field is a WebGPU preset. Its
+ * output tokens follow the device's budget (models/bench-rates.js localAnswerTokens).
+ * @param {{ runtime?: 'webgpu' | 'wasm' }} model
  */
 function localModelProfile(model) {
-  const wasm = model.runtime === 'wasm';
-  const groundedTokens = model.maxOutputTokens ?? 512;
-  return {
-    engineId: /** @type {'client' | 'wasm'} */ (wasm ? 'wasm' : 'client'),
-    groundedTokens,
-    freeTokens: wasm ? groundedTokens : Math.min(768, Math.floor(model.chatOptions.context_window_size / 3)),
-  };
+  return { engineId: /** @type {'client' | 'wasm'} */ (model.runtime === 'wasm' ? 'wasm' : 'client') };
 }
 
 /**
@@ -348,7 +342,8 @@ async function answerWithLocalModel(req) {
   const { plan } = req;
   const free = plan.kind === 'free';
   const local = localModelProfile(model);
-  const maxTokens = free ? local.freeTokens : local.groundedTokens;
+  // The device's output budget; a processor model's measured rate is read from the benchmark history.
+  const maxTokens = await (await import('./models/bench-rates.js')).localAnswerTokens(model, { free });
   const budget = budgetPrompt({
     contextWindow: model.chatOptions.context_window_size,
     maxOutputTokens: maxTokens,

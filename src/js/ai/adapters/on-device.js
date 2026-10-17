@@ -12,6 +12,7 @@
 import { messageText } from '../contract.js';
 import { AiError } from '../errors.js';
 import { capsFor } from '../catalog/models.js';
+import { answerTokens } from '../../webgpu/models.js';
 import { createThinkSplitter, fileAsText, usageEvent } from './common.js';
 
 /** @typedef {import('../contract.js').AiRequest} AiRequest */
@@ -27,7 +28,11 @@ import { createThinkSplitter, fileAsText, usageEvent } from './common.js';
  * @typedef {object} EngineController
  * @property {(req: { messages: any[], maxTokens: number, temperature: number, onDelta: (text: string) => void }) => Promise<string>} generate
  * @property {() => void} interrupt
- * @property {() => { status: string, model: { ref?: string, runtime?: string } | null }} getEngineState
+ * @property {() => { status: string, model: LoadedModel | null }} getEngineState
+ *
+ * The loaded model as the controller reports it (webgpu/models.js ModelChoice); its device class
+ * and context size give the output budget.
+ * @typedef {{ ref?: string, runtime?: 'webgpu' | 'wasm', modelId?: string, deviceClass?: import('../../models/device.js').DeviceClass, chatOptions?: { context_window_size: number }, maxOutputTokens?: number }} LoadedModel
  */
 
 /**
@@ -35,7 +40,15 @@ import { createThinkSplitter, fileAsText, usageEvent } from './common.js';
  * @property {LocalEngine | (() => LocalEngine | null | Promise<LocalEngine | null>)} [engine]  a chat engine (or a getter)
  * @property {() => Promise<EngineController>} [loadController]  the engine controller (default: webgpu/engine.js)
  * @property {number} [temperature]  when the request names none (default 0.7)
+ * @property {(model: LoadedModel) => Promise<number | null>} [measuredRate]  measured decode rate of a
+ *   loaded processor model on this device (default: the benchmark history, models/bench-rates.js)
  */
+
+/** @param {LoadedModel} model */
+async function historyRate(model) {
+  const { measuredRate } = await import('../../models/bench-rates.js');
+  return measuredRate({ modelId: model.modelId ?? '', runtime: model.runtime ?? 'wasm', deviceClass: model.deviceClass });
+}
 
 /** Engine error kinds (webgpu/engine.js) mapped onto AI error codes. */
 const ENGINE_ERRORS = /** @type {Readonly<Record<string, AiErrorCode>>} */ ({
@@ -138,7 +151,7 @@ export function createOnDeviceAdapter(provider, dialect, options = {}) {
     capabilities: (modelId, catalog) => capsFor(provider, modelId, catalog),
     async *stream(req, context) {
       const caps = capsFor(provider, req.model);
-      const maxTokens = Math.max(1, Math.min(req.maxOutputTokens ?? caps.maxOutput, caps.maxOutput));
+      const limit = (/** @type {number} */ cap) => Math.max(1, Math.min(req.maxOutputTokens ?? cap, cap));
       const temperature = req.temperature ?? options.temperature ?? 0.7;
       const messages = localMessages(req);
       const queue = textQueue();
@@ -151,7 +164,7 @@ export function createOnDeviceAdapter(provider, dialect, options = {}) {
       if (engine) {
         stop = () => engine.interruptGenerate();
         (async () => {
-          const chunks = await engine.chat.completions.create({ messages, max_tokens: maxTokens, temperature, stream: true, stream_options: { include_usage: true } });
+          const chunks = await engine.chat.completions.create({ messages, max_tokens: limit(caps.maxOutput), temperature, stream: true, stream_options: { include_usage: true } });
           for await (const chunk of chunks) {
             const text = chunk.choices[0]?.delta?.content;
             if (text) queue.push(text);
@@ -170,6 +183,15 @@ export function createOnDeviceAdapter(provider, dialect, options = {}) {
         const state = controller.getEngineState();
         const loaded = state.model?.ref;
         if (state.status !== 'ready' || (req.model !== 'auto' && loaded && loaded !== req.model)) throw new AiError('not_found', { provider, providerCode: 'not_loaded' });
+        // The device's output budget for the loaded model (models/device.js outputBudget), within half
+        // its context; a processor model measured faster on this device may answer longer.
+        const model = state.model;
+        let cap = caps.maxOutput;
+        if (model?.chatOptions) {
+          const tokPerSec = model.runtime === 'wasm' ? await (options.measuredRate ?? historyRate)(model).catch(() => null) : null;
+          cap = answerTokens({ ...model, chatOptions: model.chatOptions }, { free: true, tokPerSec });
+        }
+        const maxTokens = limit(cap);
         stop = () => controller.interrupt();
         let seen = 0;
         controller
