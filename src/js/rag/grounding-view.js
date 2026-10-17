@@ -249,7 +249,8 @@ function flaggedItem(s, sources, scope, id) {
 /**
  * Runs the source check on a rendered answer and shows the result.
  * @param {HTMLElement} messageEl  the message element returned by appendMessage / createStreamingMessage
- * @param {{ scope: string, sources: GroundingSource[], given?: string[], citedOnly?: boolean }} input
+ * @param {{ scope: string, sources: GroundingSource[], given?: string[], citedOnly?: boolean, localOnly?: boolean }} input
+ *   localOnly: the answer stays on this device (it quotes the on-device workspace): no AI judge is offered
  * @returns {GroundingReport | null}
  */
 export function applyGrounding(messageEl, input) {
@@ -405,9 +406,11 @@ function showOpinion(details, report, sources, run, opinion) {
 
 /**
  * The second-opinion controls under a report with weak statements: what it is, and one button per
- * engine. Nothing runs, and nothing downloads, before a button is pressed.
+ * engine. Nothing runs, and nothing downloads, before a button is pressed. The AI judge sends each
+ * statement and its passages to the user's AI provider, so it is not offered for an answer that
+ * stays on this device.
  * @param {GroundingReport} report
- * @param {{ scope: string, sources: GroundingSource[] }} input
+ * @param {{ scope: string, sources: GroundingSource[], localOnly?: boolean }} input
  * @param {string} run
  * @param {HTMLElement} details
  */
@@ -419,7 +422,7 @@ function secondOpinionPanel(report, input, run, details) {
   setText(title, 'grounding.second_title');
   const intro = document.createElement('p');
   intro.className = 'grounding-note';
-  setText(intro, 'grounding.second_intro');
+  setText(intro, input.localOnly ? 'grounding.second_intro_local' : 'grounding.second_intro');
   const row = document.createElement('div');
   row.className = 'flex flex-wrap gap-1.5';
   const status = document.createElement('p');
@@ -476,7 +479,7 @@ function secondOpinionPanel(report, input, run, details) {
 
   const nliButton = button('nli');
   nliButton.hidden = true;
-  setText(button('judge'), 'grounding.second_judge');
+  if (!input.localOnly) setText(button('judge'), 'grounding.second_judge');
   void import('../wasm/nli.js').then(async (nli) => {
     if (!nli.nliAvailable()) return;
     const stored = await nli.nliModelStored();

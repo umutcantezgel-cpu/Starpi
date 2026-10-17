@@ -215,4 +215,14 @@ describe('grounding version 3 in the rendered answer', () => {
     await until(() => (status.textContent ?? '').length > 0 && !judge.disabled);
     assert.equal(status.textContent, 'No AI judge is available: set up a provider in Settings.');
   });
+
+  it('does not offer the AI judge for an answer that stays on this device', () => {
+    const { scope, sources } = registerReport();
+    const el = message('Members praised the friendly staff and the long opening hours of the library [Doc: report.md, Chunk: 1].', scope);
+    view.applyGrounding(el, { scope, sources, localOnly: true });
+    const panel = /** @type {HTMLElement} */ (el.querySelector('.grounding-second'));
+    assert.ok(panel);
+    assert.equal(panel.querySelector('[data-second-opinion="judge"]'), null);
+    assert.match(panel.textContent ?? '', /this answer stays on this device, so no AI judge is asked/);
+  });
 });
