@@ -209,9 +209,9 @@ describe('persistent workspace', () => {
   it('cancels an ingest that a clear overtook', async () => {
     const ws = open(dbName());
     await ws.init();
-    const running = ws.ingest(file(PLAN, 'plan.md'));
+    const running = assert.rejects(ws.ingest(file(PLAN, 'plan.md')), (err) => /** @type {{ code?: string }} */ (err).code === 'cleared');
     await ws.clear();
-    await assert.rejects(running, (err) => /** @type {{ code?: string }} */ (err).code === 'cleared');
+    await running;
     assert.deepEqual(ws.state().documents, []);
   });
 
