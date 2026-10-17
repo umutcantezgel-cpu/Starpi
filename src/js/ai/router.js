@@ -163,39 +163,6 @@ const OUTCOME_OF_CODE = Object.freeze({
   refusal: 'refused',
 });
 
-/** @type {RouterDeps} */
-const defaults = {
-  complete: completeCall,
-  configured: () => [],
-  liveModels: () => null,
-  caps: () => null,
-  device: () => null,
-  selection: (provider) => selectedModel(provider),
-  wheel: modelWheel,
-  cache: createPurposeCache(),
-  simulated: providerSimulated,
-  now: () => Date.now(),
-  locale: () => (getLocale() === 'de' ? 'de' : 'en'),
-};
-
-/**
- * Installs the app's parts of the router's world: which providers are configured, their live
- * model lists and capabilities, the on-device model, the cache. Parts not given stay.
- * @param {Partial<RouterDeps>} deps
- */
-export function configureRouter(deps) {
-  for (const [key, value] of Object.entries(deps)) if (value !== undefined) /** @type {Record<string, unknown>} */ (defaults)[key] = value;
-}
-
-/**
- * The router's world with the run's replacements.
- * @param {Partial<RouterDeps>} [overrides]
- * @returns {RouterDeps}
- */
-export function routerDeps(overrides = {}) {
-  return { ...defaults, ...overrides };
-}
-
 // ---------------------------------------------------------------------------------------------
 // Cache
 // ---------------------------------------------------------------------------------------------
@@ -242,6 +209,39 @@ export function createPurposeCache(options = {}) {
     },
     size: () => load().size,
   };
+}
+
+/** @type {RouterDeps} */
+const defaults = {
+  complete: completeCall,
+  configured: () => [],
+  liveModels: () => null,
+  caps: () => null,
+  device: () => null,
+  selection: (provider) => selectedModel(provider),
+  wheel: modelWheel,
+  cache: createPurposeCache(),
+  simulated: providerSimulated,
+  now: () => Date.now(),
+  locale: () => (getLocale() === 'de' ? 'de' : 'en'),
+};
+
+/**
+ * Installs the app's parts of the router's world: which providers are configured, their live
+ * model lists and capabilities, the on-device model, the cache. Parts not given stay.
+ * @param {Partial<RouterDeps>} deps
+ */
+export function configureRouter(deps) {
+  for (const [key, value] of Object.entries(deps)) if (value !== undefined) /** @type {Record<string, unknown>} */ (defaults)[key] = value;
+}
+
+/**
+ * The router's world with the run's replacements.
+ * @param {Partial<RouterDeps>} [overrides]
+ * @returns {RouterDeps}
+ */
+export function routerDeps(overrides = {}) {
+  return { ...defaults, ...overrides };
 }
 
 /**
@@ -344,6 +344,24 @@ function fromCache(purpose, entry, attempts) {
 /** @typedef {{ tier: RouteTier, provider: ProviderId, model: string, role: ModelRole | null }} Step */
 
 /**
+ * The role chain of a provider, each role's models in the wheel's calling order (a slow fast model
+ * moves behind the other fast ones).
+ * @param {ProviderId} provider
+ * @param {ModelRole} role
+ * @param {RouterDeps} deps
+ * @returns {Array<{ model: string, role: ModelRole }>}
+ */
+function orderedRoleChain(provider, role, deps) {
+  const chain = roleChainModels(provider, role, { live: deps.liveModels(provider) });
+  /** @type {Array<{ model: string, role: ModelRole }>} */
+  const out = [];
+  for (const r of [...new Set(chain.map((e) => e.role))]) {
+    for (const model of deps.wheel.order(provider, chain.filter((e) => e.role === r).map((e) => e.model), r)) out.push({ model, role: r });
+  }
+  return out;
+}
+
+/**
  * The model steps of a run, in order and without repeats.
  * @param {PurposeDef} def
  * @param {RunOptions} opts
@@ -370,12 +388,12 @@ export function planChain(def, opts, deps) {
     if (chosen && chosen.provider === primary) add('selected', primary, chosen.model, def.role);
   }
   if (opts.fallback === false) return steps;
-  if (primary) for (const { model, role } of roleChainModels(primary, def.role, { live: deps.liveModels(primary) })) add('role', primary, model, role);
+  if (primary) for (const { model, role } of orderedRoleChain(primary, def.role, deps)) add('role', primary, model, role);
   for (const provider of providers) {
     if (provider === primary) continue;
     const chosen = deps.selection(provider);
     if (chosen && chosen.provider === provider) add('provider', provider, chosen.model, def.role);
-    for (const { model, role } of roleChainModels(provider, def.role, { live: deps.liveModels(provider) })) add('provider', provider, model, role);
+    for (const { model, role } of orderedRoleChain(provider, def.role, deps)) add('provider', provider, model, role);
   }
   const device = def.deviceCapable ? deps.device() : null;
   if (device && isProviderId(device.provider)) add('device', device.provider, device.model, null);
