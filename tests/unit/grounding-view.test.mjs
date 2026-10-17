@@ -1,5 +1,5 @@
 // The source check on real rendered answers: Markdown -> DOMPurify -> citation buttons -> blocks.
-/* global document */
+/* global document, window */
 import './setup.mjs';
 import assert from 'node:assert/strict';
 import { before, describe, it } from 'node:test';
