@@ -175,6 +175,42 @@ export async function useNvidia(page, model = NVIDIA_DEFAULT_MODEL) {
   }, model);
 }
 
+/**
+ * The chat messages stored on this device (the app database's `nodes` store), oldest first; only
+ * those of one conversation when an id is given. Call after the app has opened its database.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} [conversationId]
+ * @returns {Promise<Array<{ id: string, conversationId: string, role: string, localOnly: boolean, createdAt: number, parts: Array<{ type: string, text?: string }> }>>}
+ */
+export function storedChatNodes(page, conversationId) {
+  return page.evaluate(
+    (id) =>
+      new Promise((resolve, reject) => {
+        const req = indexedDB.open('starpi');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const nodes = db.transaction('nodes').objectStore('nodes');
+          const all = id ? nodes.index('conversationId').getAll(id) : nodes.getAll();
+          all.onerror = () => reject(all.error);
+          all.onsuccess = () => {
+            db.close();
+            resolve(all.result.sort((/** @type {{ createdAt: number }} */ a, /** @type {{ createdAt: number }} */ b) => a.createdAt - b.createdAt));
+          };
+        };
+      }),
+    conversationId ?? null,
+  );
+}
+
+/**
+ * The text of the stored chat messages, one message per line.
+ * @param {import('@playwright/test').Page} page
+ */
+export async function storedChatText(page) {
+  return (await storedChatNodes(page)).map((n) => n.parts.map((p) => p.text ?? '').join(' ')).join('\n');
+}
+
 export const test = base.extend({
   /** Collects CSP violations, uncaught errors and unexpected console errors. */
   diagnostics: async ({ page }, use) => {

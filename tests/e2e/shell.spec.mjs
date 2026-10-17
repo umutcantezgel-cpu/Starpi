@@ -7,7 +7,7 @@ import { expect, mockSupabase, test } from './fixtures.mjs';
 
 const TABS = ['chat', 'research', 'library', 'ingest', 'graph', 'bench', 'settings'];
 /** Mount points whose feature renders content. */
-const RENDERED = new Set(['providerSettings', 'trustSettings']);
+const RENDERED = new Set(['chat-sidebar', 'providerSettings', 'trustSettings']);
 const DARK_PAGE = 'rgb(11, 17, 32)';
 const LIGHT_PAGE = 'rgb(248, 250, 252)';
 
@@ -52,6 +52,7 @@ test.describe('mount points', () => {
     }
     await expect(page.locator('#providerSettings')).toHaveAttribute('data-mounted', 'providers');
     await expect(page.locator('#trustSettings')).toHaveAttribute('data-mounted', 'trust');
+    await expect(page.locator('#chat-sidebar')).toHaveAttribute('data-mounted', 'conversations');
     // The stubs of later features are mounted (they render nothing yet).
     await expect(page.locator('#tab-research')).toHaveAttribute('data-mounted', 'research');
     await expect(page.locator('#liveSheet')).toHaveAttribute('data-mounted', 'live');
