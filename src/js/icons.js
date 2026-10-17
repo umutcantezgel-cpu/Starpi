@@ -89,9 +89,9 @@ import {
 
 const SHELL_ICONS = { CircleDashed, Columns2, EyeOff, Globe, Inbox, Monitor, Moon, OctagonAlert, PanelLeftClose, PanelLeftOpen, PanelRight, Plug, SquarePen, Sun, Telescope };
 // Conversation list (chat/sidebar.js).
-import { Ellipsis, FolderInput, Pencil, Pin, PinOff } from 'lucide';
+import { Ellipsis, Pin } from 'lucide';
 
-const CONVERSATION_ICONS = { Ellipsis, FolderInput, Pencil, Pin, PinOff };
+const CONVERSATION_ICONS = { Ellipsis, Pin };
 
 const ICONS = {
   ...SHELL_ICONS,

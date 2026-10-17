@@ -724,6 +724,55 @@ export function createChatStore(options = {}) {
 
 /** @typedef {ReturnType<typeof createChatStore>} ChatStore */
 
+// ---------------------------------------------------------------------------------------------
+// Flat chat rows (the chat view's messages and the rows of the 2.x sync table)
+
+/** @typedef {import('../supabase.js').ChatRow} ChatRow */
+
+/**
+ * A chat row as a message of the tree. Its metadata (engine, mode, reasoning trace, duration) stays
+ * as the node's meta, as in the 2.x migration; the on-device flag moves to the node itself.
+ * @param {ChatRow} row
+ * @param {boolean} localOnly
+ * @returns {Omit<NodeInput, 'parentId'>}
+ */
+export function rowToNode(row, localOnly) {
+  /** @type {Record<string, unknown>} */
+  const meta = { ...(isRecord(row.metadata) ? row.metadata : {}) };
+  delete meta.local_only;
+  const ms = row.created_at ? Date.parse(row.created_at) : Number.NaN;
+  const mode = meta.chat_mode === 'free' || meta.chat_mode === 'grounded' ? meta.chat_mode : null;
+  return {
+    role: row.role,
+    parts: [{ type: 'text', text: row.content }],
+    model: typeof meta.model === 'string' ? meta.model : null,
+    label: row.role === 'assistant' ? mode : null,
+    sources: Array.isArray(row.sources) ? row.sources : [],
+    localOnly,
+    ...(Object.keys(meta).length ? { meta } : {}),
+    ...(Number.isFinite(ms) ? { createdAt: ms } : {}),
+  };
+}
+
+/**
+ * A stored message as a chat row.
+ * @param {NodeRecord} node
+ * @returns {ChatRow}
+ */
+export function nodeToRow(node) {
+  /** @type {Record<string, unknown>} */
+  const meta = { ...node.meta };
+  if (node.model && typeof meta.model !== 'string') meta.model = node.model;
+  if (meta.chat_mode !== 'free' && meta.chat_mode !== 'grounded' && (node.label === 'free' || node.label === 'grounded')) meta.chat_mode = node.label;
+  return {
+    role: node.role === 'user' ? 'user' : 'assistant',
+    content: nodeText(node),
+    sources: Array.isArray(node.sources) ? node.sources : [],
+    metadata: { ...meta, local_only: node.localOnly === true },
+    created_at: new Date(node.createdAt).toISOString(),
+  };
+}
+
 /** @type {ChatStore | null} */
 let shared = null;
 /** @type {Promise<ChatStore> | null} */

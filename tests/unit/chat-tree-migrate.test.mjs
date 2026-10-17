@@ -185,8 +185,9 @@ describe('chat-store.js over the conversation store', () => {
     assert.deepEqual(seen, [fresh, SID]);
   });
 
-  it('maps rows to nodes and back', () => {
-    const node = facade.rowToNode({ role: 'assistant', content: 'A', sources: [], metadata: { engine: 'nvidia', model: 'm', chat_mode: 'free', local_only: true }, created_at: '2026-10-17T08:00:00.000Z' }, false);
+  it('maps rows to nodes and back', async () => {
+    const { nodeToRow, rowToNode } = await import('../../src/js/chat/store.js');
+    const node = rowToNode({ role: 'assistant', content: 'A', sources: [], metadata: { engine: 'nvidia', model: 'm', chat_mode: 'free', local_only: true }, created_at: '2026-10-17T08:00:00.000Z' }, false);
     assert.deepEqual(node, {
       role: 'assistant',
       parts: [{ type: 'text', text: 'A' }],
@@ -197,10 +198,7 @@ describe('chat-store.js over the conversation store', () => {
       meta: { engine: 'nvidia', model: 'm', chat_mode: 'free' },
       createdAt: Date.parse('2026-10-17T08:00:00.000Z'),
     });
-    const row = facade.nodeToRow(
-      { id: 'n', conversationId: 'c', parentId: null, role: 'assistant', parts: [{ type: 'text', text: 'B' }], opaque: [], model: 'x', provider: 'openai', label: 'grounded', usage: null, localOnly: true, createdAt: 0 },
-      (n) => String(n.parts[0].text),
-    );
+    const row = nodeToRow({ id: 'n', conversationId: 'c', parentId: null, role: 'assistant', parts: [{ type: 'text', text: 'B' }], opaque: [], model: 'x', provider: 'openai', label: 'grounded', usage: null, localOnly: true, createdAt: 0 });
     assert.deepEqual(row, { role: 'assistant', content: 'B', sources: [], metadata: { model: 'x', chat_mode: 'grounded', local_only: true }, created_at: '1970-01-01T00:00:00.000Z' });
   });
 });

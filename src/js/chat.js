@@ -4,7 +4,7 @@
 // synthesizer) -> render with verifiable citations, the source check and a receipt -> persist. Free
 // chat: the conversation and an attached file go to the configured model, without retrieval, source
 // check or receipt.
-import { currentSessionId, deleteSession, loadCurrentSession, persistMessage, refreshSyncStatus, startNewSession, switchSession } from './chat-store.js';
+import { bindChatView, currentSessionId, deleteSession, loadCurrentSession, loadSessionThread, persistMessage, refreshSyncStatus, startNewSession, switchSession } from './chat-store.js';
 import { splitReasoning } from './chat-stream.js';
 import { APP_VERSION, LIMITS } from './config.js';
 import { contextCoverage } from './core/grounding.js';
@@ -914,10 +914,10 @@ async function exportChat(format) {
     model: c.model ?? null,
     chatMode: c.chatMode ?? null,
   }));
-  const { chatToMarkdown, exportFileName, exportSessionJson } = await import('./chat-export.js');
+  const [{ chatToMarkdown, exportFileName, sessionToJson }, thread] = await Promise.all([import('./chat-export.js'), format === 'json' ? loadSessionThread(sessionId) : null]);
   const text =
     format === 'json'
-      ? await exportSessionJson(sessionId, { exportedAt, version: APP_VERSION, locale: getLocale() }, turns)
+      ? sessionToJson(thread, sessionId, { exportedAt, version: APP_VERSION, locale: getLocale() }, turns)
       : chatToMarkdown(turns, {
           title: t('chat.export_title'),
           subtitle: t('chat.export_meta', { date: formatDate(new Date(exportedAt), { dateStyle: 'long', timeStyle: 'short' }), n: turns.length }),
@@ -969,6 +969,8 @@ function initChatMenu() {
 }
 
 export function initChat() {
+  // The conversation list opens chats through the facade (chat-store.js).
+  bindChatView({ open: openConversation, isBusy: isChatBusy, reset: resetConversation });
   const form = byId('chatForm');
   const input = /** @type {HTMLTextAreaElement | null} */ (byId('chatInput'));
   // Voice input and quick edits fire 'input' too.

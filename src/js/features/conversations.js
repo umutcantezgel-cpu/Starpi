@@ -2,27 +2,29 @@
 // Conversations: the conversation list in the sidebar (#chat-sidebar, chat/sidebar.js). Mounting it
 // also opens the conversation store, which runs the one-time start-up migrations (the 2.x chats in
 // localStorage, the plaintext provider keys; each runs once per browser profile). The list and the
-// store load as their own chunks; the chat modules they work with are part of the app already.
+// store load as their own chunks; the chat view is reached through the facade it binds itself to.
+import { chatData, currentSessionId, deleteSession, getChatView, onSessionChange, waitForWrites } from '../chat-store.js';
+import { APP_VERSION } from '../config.js';
 import { registerFeature } from './registry.js';
 
 /** @type {import('./registry.js').Feature} */
 const feature = {
   id: 'conversations',
   async mount(el, ctx) {
-    const facade = await import('../chat-store.js');
     // Started first: the store and the migrations load while the list does.
-    const ready = facade.chatData();
-    ready.catch(() => {});
-    const [{ mountConversationList }, chat, { APP_VERSION }] = await Promise.all([import('../chat/sidebar.js'), import('../chat.js'), import('../config.js')]);
+    chatData().catch(() => {});
+    const { mountConversationList } = await import('../chat/sidebar.js');
     mountConversationList(el, ctx, {
-      store: facade.chatData,
-      currentId: facade.currentSessionId,
-      onSessionChange: facade.onSessionChange,
-      open: (id) => chat.openConversation(id),
-      remove: (id) => facade.deleteSession(id),
-      isBusy: chat.isChatBusy,
-      afterRemoveCurrent: () => chat.resetConversation(),
-      settle: facade.waitForWrites,
+      store: chatData,
+      currentId: currentSessionId,
+      onSessionChange,
+      open: async (id) => {
+        await getChatView()?.open(id);
+      },
+      remove: deleteSession,
+      isBusy: () => getChatView()?.isBusy() ?? false,
+      afterRemoveCurrent: () => getChatView()?.reset(),
+      settle: waitForWrites,
       version: APP_VERSION,
     });
   },

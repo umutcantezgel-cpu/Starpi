@@ -15,8 +15,6 @@ import { canSyncChats, countChatMessages, deleteChatSession, deleteOwnChats, get
 
 /** @typedef {import('./supabase.js').ChatRow} ChatRow */
 /** @typedef {import('./chat/store.js').ChatStore} ChatStore */
-/** @typedef {import('./store/schema.js').NodeRecord} NodeRecord */
-/** @typedef {import('./chat/store.js').NodeInput} NodeInput */
 
 /** Plaintext chat sync. Stays false until end-to-end encrypted sync lands. */
 export const CHAT_SYNC_ENABLED = false;
@@ -79,21 +77,46 @@ export function onSessionChange(listener) {
   return () => sessionListeners.delete(listener);
 }
 
-/** @type {Promise<ChatStore> | null} */
-let storeReady = null;
+/**
+ * What the conversation list needs from the chat view; chat.js binds it at start-up, so the list
+ * never imports the chat view itself.
+ * @typedef {object} ChatView
+ * @property {(id: string) => Promise<void>} open  shows a stored conversation
+ * @property {() => boolean} isBusy  an answer is being written
+ * @property {() => void} reset  clears the chat on screen
+ */
+
+/** @type {ChatView | null} */
+let chatView = null;
+
+/** @param {ChatView} view */
+export function bindChatView(view) {
+  chatView = view;
+}
+
+/** @returns {ChatView | null} */
+export function getChatView() {
+  return chatView;
+}
+
+/** @type {Promise<typeof import('./chat/store.js')> | null} */
+let storeModule = null;
+
+/** The conversation store module, loaded on first use (after the first paint). */
+function loadStoreModule() {
+  storeModule ??= import('./chat/store.js').catch((err) => {
+    storeModule = null;
+    throw err;
+  });
+  return storeModule;
+}
 
 /**
- * The conversation store, loaded on first use, after the one-time migrations.
+ * The conversation store, once the one-time migrations ran.
  * @returns {Promise<ChatStore>}
  */
-export function chatData() {
-  storeReady ??= import('./chat/store.js')
-    .then((m) => m.openChatStore())
-    .catch((err) => {
-      storeReady = null;
-      throw err;
-    });
-  return storeReady;
+export async function chatData() {
+  return (await loadStoreModule()).openChatStore();
 }
 
 /** Message writes still under way, per session; a delete waits for them. */
@@ -101,61 +124,6 @@ export function chatData() {
 const pendingWrites = new Map();
 /** Sessions deleted in this tab: a write that ends later must not store them again. */
 const deletedSessions = new Set();
-
-/** @param {unknown} value @returns {value is Record<string, unknown>} */
-function isRecord(value) {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
-/** @param {Record<string, unknown>} meta @returns {'free' | 'grounded' | null} */
-function chatModeOf(meta) {
-  return meta.chat_mode === 'free' || meta.chat_mode === 'grounded' ? meta.chat_mode : null;
-}
-
-/**
- * A chat row as a message of the tree. Its metadata (engine, mode, reasoning trace, duration) is
- * kept as the node's meta, as the 2.x migration does.
- * @param {ChatRow} row
- * @param {boolean} localOnly
- * @returns {Omit<NodeInput, 'parentId'>}
- */
-export function rowToNode(row, localOnly) {
-  /** @type {Record<string, unknown>} */
-  const meta = { ...(isRecord(row.metadata) ? row.metadata : {}) };
-  // The flag lives on the node itself.
-  delete meta.local_only;
-  const ms = row.created_at ? Date.parse(row.created_at) : Number.NaN;
-  return {
-    role: row.role,
-    parts: [{ type: 'text', text: row.content }],
-    model: typeof meta.model === 'string' ? meta.model : null,
-    label: row.role === 'assistant' ? chatModeOf(meta) : null,
-    sources: Array.isArray(row.sources) ? row.sources : [],
-    localOnly,
-    ...(Object.keys(meta).length ? { meta } : {}),
-    ...(Number.isFinite(ms) ? { createdAt: ms } : {}),
-  };
-}
-
-/**
- * A stored message as the chat view's row.
- * @param {NodeRecord} node
- * @param {(node: NodeRecord) => string} textOf
- * @returns {ChatRow}
- */
-export function nodeToRow(node, textOf) {
-  /** @type {Record<string, unknown>} */
-  const meta = { ...node.meta };
-  if (node.model && typeof meta.model !== 'string') meta.model = node.model;
-  if (!chatModeOf(meta) && (node.label === 'free' || node.label === 'grounded')) meta.chat_mode = node.label;
-  return {
-    role: node.role === 'user' ? 'user' : 'assistant',
-    content: textOf(node),
-    sources: Array.isArray(node.sources) ? node.sources : [],
-    metadata: { ...meta, local_only: node.localOnly === true },
-    created_at: new Date(node.createdAt).toISOString(),
-  };
-}
 
 /**
  * Stores a message at the end of its session's thread. A delete of its session waits for it.
@@ -203,10 +171,11 @@ async function settleWrites(sids) {
 async function writeMessage(sid, message, opts) {
   if (!message.content || deletedSessions.has(sid)) return;
   try {
-    const store = await chatData();
+    const m = await loadStoreModule();
+    const store = await m.openChatStore();
     if (deletedSessions.has(sid)) return;
-    const node = rowToNode(message, opts.localOnly);
-    await store.appendToActive(sid, node, { create: { mode: chatModeOf(node.meta ?? {}) ?? 'grounded' } });
+    const mode = message.metadata?.chat_mode === 'free' ? 'free' : 'grounded';
+    await store.appendToActive(sid, m.rowToNode(message, opts.localOnly), { create: { mode } });
   } catch (err) {
     console.warn('[starpi] a chat message could not be stored on this device', err);
     return;
@@ -220,16 +189,17 @@ async function writeMessage(sid, message, opts) {
 
 /**
  * Copies a synced session into the store (only while sync is enabled).
+ * @param {typeof import('./chat/store.js')} m
  * @param {ChatStore} store
  * @param {string} sid
  */
-async function restoreSynced(store, sid) {
+async function restoreSynced(m, store, sid) {
   const res = await loadChatSession(sid);
   if (!res.ok) {
     console.warn('[starpi] could not load the synced chat:', res.error.kind, res.error.message);
     return null;
   }
-  for (const row of res.data ?? []) await store.appendToActive(sid, rowToNode(row, false), { create: { mode: 'grounded' } });
+  for (const row of res.data ?? []) await store.appendToActive(sid, m.rowToNode(row, false), { create: { mode: 'grounded' } });
   return store.loadThread(sid);
 }
 
@@ -240,15 +210,31 @@ async function restoreSynced(store, sid) {
 export async function loadCurrentSession() {
   const sid = sessionId;
   try {
-    const store = await chatData();
+    const m = await loadStoreModule();
+    const store = await m.openChatStore();
     let thread = await store.loadThread(sid);
-    if (!thread && CHAT_SYNC_ENABLED && canSyncChats()) thread = await restoreSynced(store, sid);
+    if (!thread && CHAT_SYNC_ENABLED && canSyncChats()) thread = await restoreSynced(m, store, sid);
     if (!thread) return [];
-    const { nodeText } = await import('./chat/tree.js');
-    return thread.path.filter((n) => n.role === 'user' || n.role === 'assistant').map((n) => nodeToRow(n, nodeText));
+    return thread.path.filter((n) => n.role === 'user' || n.role === 'assistant').map(m.nodeToRow);
   } catch (err) {
     console.warn('[starpi] could not load the chat history', err);
     return [];
+  }
+}
+
+/**
+ * A session's stored conversation once its messages still being written are stored; null when
+ * nothing is stored for it or the store cannot be read.
+ * @param {string} sid
+ * @returns {Promise<import('./chat/store.js').Thread | null>}
+ */
+export async function loadSessionThread(sid) {
+  await waitForWrites(sid);
+  try {
+    return await (await chatData()).loadThread(sid);
+  } catch (err) {
+    console.warn('[starpi] could not read the stored chat', err);
+    return null;
   }
 }
 

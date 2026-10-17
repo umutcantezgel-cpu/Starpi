@@ -201,9 +201,9 @@ export function mountConversationList(root, ctx, deps) {
             ...m.projects.map((p) => item('conv-move-to', c.projectId === p.id ? 'check' : 'folder-open', { text: p.name }, { arg: p.id, role: 'menuitemradio', checked: c.projectId === p.id })),
           ]
         : [
-            item('conv-rename', 'pencil', 'chat.list.rename'),
-            item('conv-pin', c.pinned ? 'pin-off' : 'pin', c.pinned ? 'chat.list.unpin' : 'chat.list.pin'),
-            m.projects.length ? item('conv-move', 'folder-input', 'chat.list.move') : '',
+            item('conv-rename', 'square-pen', 'chat.list.rename'),
+            item('conv-pin', 'pin', c.pinned ? 'chat.list.unpin' : 'chat.list.pin'),
+            m.projects.length ? item('conv-move', 'folder-open', 'chat.list.move') : '',
             item('conv-export', 'file-text', 'chat.list.export_md', { arg: 'md' }),
             item('conv-export', 'braces', 'chat.list.export_json', { arg: 'json' }),
             item('conv-delete', 'trash-2', 'chat.list.delete', { danger: true }),
