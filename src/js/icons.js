@@ -22,6 +22,7 @@ import {
   Cpu,
   Database,
   Download,
+  Ellipsis,
   File,
   FileCheck,
   FileText,
@@ -43,6 +44,7 @@ import {
   MousePointerClick,
   Network,
   Paperclip,
+  Pin,
   Plus,
   PlusCircle,
   Quote,
@@ -88,14 +90,9 @@ import {
 } from 'lucide';
 
 const SHELL_ICONS = { CircleDashed, Columns2, EyeOff, Globe, Inbox, Monitor, Moon, OctagonAlert, PanelLeftClose, PanelLeftOpen, PanelRight, Plug, SquarePen, Sun, Telescope };
-// Conversation list (chat/sidebar.js).
-import { Ellipsis, Pin } from 'lucide';
-
-const CONVERSATION_ICONS = { Ellipsis, Pin };
 
 const ICONS = {
   ...SHELL_ICONS,
-  ...CONVERSATION_ICONS,
   Activity,
   AlertCircle,
   ArrowLeft,
@@ -114,6 +111,7 @@ const ICONS = {
   Cpu,
   Database,
   Download,
+  Ellipsis,
   File,
   FileCheck,
   FileText,
@@ -135,6 +133,7 @@ const ICONS = {
   MousePointerClick,
   Network,
   Paperclip,
+  Pin,
   Plus,
   PlusCircle,
   Quote,

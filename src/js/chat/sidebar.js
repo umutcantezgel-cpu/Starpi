@@ -180,14 +180,12 @@ export function mountConversationList(root, ctx, deps) {
   }
 
   /**
-   * @param {string} action
-   * @param {string} iconName
-   * @param {import('../ui/kit.js').Label} text
-   * @param {{ arg?: string, role?: string, checked?: boolean, danger?: boolean }} [opts]
+   * A menu item.
+   * @param {{ action: string, icon: string, text: import('../ui/kit.js').Label, arg?: string, role?: string, checked?: boolean, danger?: boolean }} opts
    */
-  function item(action, iconName, text, opts = {}) {
+  function item(opts) {
     const role = opts.role ?? 'menuitem';
-    return html`<button type="button" role="${role}" tabindex="-1" data-action="${action}"${opts.arg !== undefined ? html` data-arg="${opts.arg}"` : ''}${role === 'menuitemradio' ? html` aria-checked="${String(Boolean(opts.checked))}"` : ''} class="chat-menu-item${opts.danger ? ' text-rose-700' : ''}">${icon(iconName, 'w-3.5 h-3.5')}${label(text)}</button>`;
+    return html`<button type="button" role="${role}" tabindex="-1" data-action="${opts.action}"${opts.arg !== undefined ? html` data-arg="${opts.arg}"` : ''}${role === 'menuitemradio' ? html` aria-checked="${String(Boolean(opts.checked))}"` : ''} class="chat-menu-item${opts.danger ? ' text-rose-700' : ''}">${icon(opts.icon, 'w-3.5 h-3.5')}${label(opts.text)}</button>`;
   }
 
   /** @param {ConversationRecord} c */
@@ -196,17 +194,17 @@ export function mountConversationList(root, ctx, deps) {
     const items =
       m.view === 'projects'
         ? [
-            item('conv-move-back', 'arrow-left', 'chat.list.move_back'),
-            item('conv-move-to', c.projectId ? 'circle-dashed' : 'check', 'chat.list.move_none', { arg: '', role: 'menuitemradio', checked: !c.projectId }),
-            ...m.projects.map((p) => item('conv-move-to', c.projectId === p.id ? 'check' : 'folder-open', { text: p.name }, { arg: p.id, role: 'menuitemradio', checked: c.projectId === p.id })),
+            item({ action: 'conv-move-back', icon: 'arrow-left', text: 'chat.list.move_back' }),
+            item({ action: 'conv-move-to', icon: c.projectId ? 'circle-dashed' : 'check', text: 'chat.list.move_none', arg: '', role: 'menuitemradio', checked: !c.projectId }),
+            ...m.projects.map((p) => item({ action: 'conv-move-to', icon: c.projectId === p.id ? 'check' : 'folder-open', text: { text: p.name }, arg: p.id, role: 'menuitemradio', checked: c.projectId === p.id })),
           ]
         : [
-            item('conv-rename', 'square-pen', 'chat.list.rename'),
-            item('conv-pin', 'pin', c.pinned ? 'chat.list.unpin' : 'chat.list.pin'),
-            m.projects.length ? item('conv-move', 'folder-open', 'chat.list.move') : '',
-            item('conv-export', 'file-text', 'chat.list.export_md', { arg: 'md' }),
-            item('conv-export', 'braces', 'chat.list.export_json', { arg: 'json' }),
-            item('conv-delete', 'trash-2', 'chat.list.delete', { danger: true }),
+            item({ action: 'conv-rename', icon: 'square-pen', text: 'chat.list.rename' }),
+            item({ action: 'conv-pin', icon: 'pin', text: c.pinned ? 'chat.list.unpin' : 'chat.list.pin' }),
+            m.projects.length ? item({ action: 'conv-move', icon: 'folder-open', text: 'chat.list.move' }) : '',
+            item({ action: 'conv-export', icon: 'file-text', text: 'chat.list.export_md', arg: 'md' }),
+            item({ action: 'conv-export', icon: 'braces', text: 'chat.list.export_json', arg: 'json' }),
+            item({ action: 'conv-delete', icon: 'trash-2', text: 'chat.list.delete', danger: true }),
           ];
     const name = m.view === 'projects' ? t('chat.list.move_menu') : t('chat.list.menu', { title: titleOf(c) });
     return html`<div id="chatListMenu" role="menu" aria-label="${name}" data-menu-for="${c.id}" class="absolute right-0 top-full z-30 mt-1 w-56 card p-1 flex flex-col">${items}</div>`;
