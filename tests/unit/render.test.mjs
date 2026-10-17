@@ -96,7 +96,7 @@ describe('math tokenizer extension', () => {
   });
 
   it('keeps prices and ordinary dollar signs as text', () => {
-    for (const text of ['It costs $5 and $10.', 'Between $5-$10 per unit.', 'Budget: $480,000 (was $310,000).', 'A lone $ sign.', 'Escaped \\$x\\$ stays.']) {
+    for (const text of ['It costs $5 and $10.', 'Between $5-$10 per unit.', 'Tickets: $7 (was $9), or $2 off.', 'A lone $ sign.', 'Escaped \\$x\\$ stays.']) {
       assert.deepEqual(math(plain(text)), [], text);
     }
     assert.deepEqual(math(plain('Costs $5, and $x$ is a variable.')), ['math-inline:x']);
