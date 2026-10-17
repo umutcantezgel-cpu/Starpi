@@ -25,8 +25,8 @@ models answer from the conversation alone, without retrieval, source check or re
   search).
 - Server functions: two Vercel Functions in `api/` that relay NVIDIA NIM requests with keys from
   the server environment.
-- Optional backend: a dependency-light Python service for server-side ingestion and retrieval,
-  which can also serve the NVIDIA routes.
+- Optional library publisher: a Python command line tool that stores text and Markdown files in
+  the shared library, with a 384-dimensional vector per section.
 - License: MIT. Live at [www.starpi.app](https://www.starpi.app).
 
 ## Ten minutes to a running app
@@ -56,7 +56,7 @@ local server also relays the NVIDIA models. Then try:
    model without sources; the answers are marked as not checked.
 
 Checks before a pull request: `npm run verify` (lint, typecheck, unit tests, build, output
-verification) and `npm run test:e2e`. [CONTRIBUTING.md](../CONTRIBUTING.md) lists the backend,
+verification) and `npm run test:e2e`. [CONTRIBUTING.md](../CONTRIBUTING.md) lists the library publisher,
 database and dependency checks.
 
 ## Repository map
@@ -76,9 +76,10 @@ database and dependency checks.
 | [`public/samples/`](../public/samples) | The English and German sample files (plan, risk register, kickoff PDF) |
 | [`packages/core/`](../packages/core) | `@starpi/core`: the source check, receipts, extraction, chunking and BM25 as an npm package (a workspace of the root package), built from `src/js` |
 | [`api/`](../api) | The two Vercel Functions of the NVIDIA proxy (`api/chat/nvidia.js`, `api/models/nvidia.js`) and their shared modules in `api/_lib/`: environment, request guards, validation, key rotation and the stream relay |
-| [`scripts/`](../scripts) | Build, output verification, local server with production headers (and the NVIDIA routes for `npm run dev` and `preview`), diagram sync, receipt verifier, `starpi-ground` (documents against sources, SARIF), source-check evaluation, `@starpi/core` build, CycloneDX SBOMs, the NVIDIA catalog copy for the backend and the NVIDIA model check |
+| [`scripts/`](../scripts) | Build, output verification, local server with production headers (and the NVIDIA routes for `npm run dev` and `preview`), diagram sync, receipt verifier, `starpi-ground` (documents against sources, SARIF), source-check evaluation, `@starpi/core` build, CycloneDX SBOMs and the NVIDIA model check |
 | [`tests/unit/`](../tests/unit), [`tests/e2e/`](../tests/e2e) | Node unit tests and Playwright end-to-end tests |
-| [`backend/`](../backend) | Optional Python API, ingestion and retrieval pipelines, the NVIDIA routes, EC2 deployment |
+| [`backend/`](../backend) | Database files and the documentation of the library publisher |
+| [`tools/library-publisher/`](../tools/library-publisher) | Optional Python publisher: sections, multilingual-e5-small vectors, Supabase writes with the service role |
 | [`backend/supabase/`](../backend/supabase) | Schema, idempotent migrations and the RLS test harness |
 | [`docs/`](.) | This walkthrough, the architecture atlas, the [receipt format](spec/receipts.md), [release notes](releases) and the README artwork |
 | [`.github/`](../.github) | CI and release workflows, Dependabot, issue and pull request templates |
@@ -196,25 +197,24 @@ token and decode speed through [`bench/diagnostics.js`](../src/js/bench/diagnost
 - **NVIDIA proxy:** the keys exist only in the server environment (`NVIDIA_API_KEYS`), never in
   the bundle. [`api/_lib/handlers.js`](../api/_lib/handlers.js) checks the origin, a per-IP rate
   limit, the body size and the request against the model allowlist before any upstream call, then
-  rotates keys until a stream starts and relays it; nothing is stored and no content is logged. The
-  Python backend applies the same rules in [`core/nvidia.py`](../backend/core/nvidia.py)
+  rotates keys until a stream starts and relays it; nothing is stored and no content is logged.
   ([SECURITY.md](../SECURITY.md#nvidia-cloud-models-and-offline-use)).
-- **Backend:** the only component with the service role key. It binds to loopback, requires a
-  bearer token on any other interface, and refuses proxied requests without one
-  ([backend/README.md](../backend/README.md)).
+- **Library publisher:** the only component with the service role key. It is a command line tool
+  for a machine the operator controls, opens no port and reads only published rows and rows
+  without an owner ([backend/README.md](../backend/README.md#library-publisher)).
 
 ## Quality gates
 
 | Layer | What it proves | Where |
 | --- | --- | --- |
-| Unit tests (Node) | Facts and the source check in English and German (both rules versions), receipts (round trip, tampering, Merkle trees against RFC 6962 test vectors, Ed25519 and ES256 signatures, v1 receipts of 1.3.0, the command-line verifier, the JSON Schemas), `starpi-ground` and its SARIF, golden pins for extraction, chunking and the source check, chunking, BM25 maths, parsing, prompts (both chat modes, fitting requests to the NVIDIA limits), retrieval, citations, the sample files, the model catalogs (WebGPU, the pinned WASM files and the NVIDIA allowlist, each against its README table, and the allowlist's copy for the backend), device classes and the model menu, the streaming parser, chat export, code copy buttons, the NVIDIA client, the NVIDIA proxy (guards, validation, key rotation, failover and the stream relay, with an injected `fetch`), no NVIDIA key in any tracked file, i18n key parity, icon and emoji rules, docs diagrams and links | [`tests/unit/`](../tests/unit) |
+| Unit tests (Node) | Facts and the source check in English and German (both rules versions), receipts (round trip, tampering, Merkle trees against RFC 6962 test vectors, Ed25519 and ES256 signatures, v1 receipts of 1.3.0, the command-line verifier, the JSON Schemas), `starpi-ground` and its SARIF, golden pins for extraction, chunking and the source check, chunking, BM25 maths, parsing, prompts (both chat modes, fitting requests to the NVIDIA limits), retrieval, citations, the sample files, the model catalogs (WebGPU, the pinned WASM files and the NVIDIA allowlist, each against its README table), device classes and the model menu, the streaming parser, chat export, code copy buttons, the NVIDIA client, the NVIDIA proxy (guards, validation, key rotation, failover and the stream relay, with an injected `fetch`), no NVIDIA key in any tracked file, i18n key parity, icon and emoji rules, docs diagrams and links | [`tests/unit/`](../tests/unit) |
 | End-to-end (Playwright, desktop and mobile) | The built app under the production headers: zero CSP violations, sample files, the source check on model answers, a downloaded receipt verified against the original file, axe accessibility scan, inert XSS payloads, privacy of workspace turns, offline reconnect, settings storage, citations, language switch, the model menu (recommendation, WASM fallback, no switch during an answer), both chat modes, chat export and delete, NVIDIA answers streamed from a mocked proxy and checked in source mode | [`tests/e2e/`](../tests/e2e) |
 | Source-check evaluation | Labelled answers, faithful or with one planted error, in four sets (two of them held out, see the [protocol](eval/v2-protocol.md)): no statement of a faithful answer is flagged as unsupported, and no published result may get worse | [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`tests/fixtures/grounding/`](../tests/fixtures/grounding) |
-| Backend (unittest) | Request guards, body limits, timeouts, shutdown, `.env` parsing, pipelines with mocked upstreams, the NVIDIA routes and key rotation with `httpx.MockTransport`, and the validation cases shared with the JavaScript proxy | [`backend/test_*.py`](../backend) |
-| Database | 191 RLS, privilege, search and size-limit assertions per scenario (198 with legacy rows) on fresh, upgraded and legacy schemas, plus schema parity | [`backend/supabase/tests/`](../backend/supabase/tests) |
+| Library publisher (unittest) | Chunking, `.env` parsing, the e5 prefixes, pooling and normalisation with a fake model, the pinned model files, Supabase payloads and shared-row filters, and every command, with `httpx.MockTransport` | [`tools/library-publisher/publisher/tests/`](../tools/library-publisher/publisher/tests) |
+| Database | 220 RLS, privilege, search, vector and size-limit assertions per scenario (227 with legacy rows) on fresh, upgraded and legacy schemas, plus schema parity | [`backend/supabase/tests/`](../backend/supabase/tests) |
 | Build gate | No inline code, every asset present, no `eval`, the service worker version recomputed from the build, the WASM worker and the ONNX Runtime binary present and kept out of the precached app shell, no NVIDIA API key in the JavaScript bundles, `index.html`, `sw.js` or the build manifest | [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs) |
 | Documentation | Every Mermaid block renders; diagram copies match the atlas; links and anchors resolve | [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs) |
-| Dependency audit | No known advisory in a runtime npm dependency (`npm audit`) or in the backend requirements (`pip-audit`); advisories in development tooling are reported | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) |
+| Dependency audit | No known advisory in a runtime npm dependency (`npm audit`) or in the library publisher's requirements (`pip-audit`); advisories in development tooling are reported | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) |
 | SBOM and package | CycloneDX SBOMs of the app and of `@starpi/core` on every CI run, deterministic and checked; the package's typed build and file list on every pull request; each release built read-only, smoke-tested and listed in `SHA256SUMS` | [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`.github/workflows/release.yml`](../.github/workflows/release.yml) |
 
 CI runs all of them, plus gitleaks, on every push and pull request to `main`

@@ -30,6 +30,8 @@
 #   legacy_v1    previous schema.sql + legacy rows, migrations x2, tests
 #   guard        full_schema.sql must refuse a pre-hardening database
 #   guard_order  20260924000000 must refuse a database without 20260923000000
+#   guard_vectors 20261101000000 must refuse a database without the earlier
+#                migrations
 # plus: the public schema dumps of live, fresh and fresh_rerun are identical.
 #
 # Exit code: 0 when everything passes, 1 on any failure, 2 on setup errors.
@@ -195,6 +197,8 @@ run_scenario legacy_v1 stub "$fixtures/legacy_schema_v1.sql" "$fixtures/legacy_s
 run_scenario guard stub "$fixtures/live_shape.sql" "expect-fail:$supabase_dir/full_schema.sql"
 run_scenario guard_order stub "$fixtures/live_shape.sql" \
     "expect-fail:$supabase_dir/migrations/20260924000000_lock_published_rows.sql"
+run_scenario guard_vectors stub "$fixtures/live_shape.sql" \
+    "expect-fail:$supabase_dir/migrations/20261101000000_embedding_384.sql"
 
 if dump_schema live && dump_schema fresh && dump_schema fresh_rerun \
     && diff -u "$work/logs/live.schema.sql" "$work/logs/fresh.schema.sql" \

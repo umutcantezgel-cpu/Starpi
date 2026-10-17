@@ -1,0 +1,6 @@
+data: {"id":"chatcmpl-20fake","object":"chat.completion.chunk","created":1767225620,"model":"fake-grok-fast","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-20fake","object":"chat.completion.chunk","created":1767225620,"model":"fake-grok-fast","choices":[{"index":0,"delta":{"content":"This is a simulated "},"finish_reason":null,"logprobs":null}]}
+
+data: {"error":{"message":"Simulated error in the middle of the stream.","type":"server_error","code":"overloaded"}}
+

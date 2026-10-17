@@ -1,0 +1,28 @@
+: OPENROUTER PROCESSING
+
+: OPENROUTER PROCESSING
+
+data: {"id":"chatcmpl-17fake","object":"chat.completion.chunk","created":1767225617,"model":"fake/router-small","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-17fake","object":"chat.completion.chunk","created":1767225617,"model":"fake/router-small","choices":[{"index":0,"delta":{"content":"The example "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-17fake","object":"chat.completion.chunk","created":1767225617,"model":"fake/router-small","choices":[{"index":0,"delta":{"content":"overview explains "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-17fake","object":"chat.completion.chunk","created":1767225617,"model":"fake/router-small","choices":[{"index":0,"delta":{"content":"the topic "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-17fake","object":"chat.completion.chunk","created":1767225617,"model":"fake/router-small","choices":[{"index":0,"delta":{"content":"in plain "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-17fake","object":"chat.completion.chunk","created":1767225617,"model":"fake/router-small","choices":[{"index":0,"delta":{"content":"words. The "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-17fake","object":"chat.completion.chunk","created":1767225617,"model":"fake/router-small","choices":[{"index":0,"delta":{"content":"reference page "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-17fake","object":"chat.completion.chunk","created":1767225617,"model":"fake/router-small","choices":[{"index":0,"delta":{"content":"adds the "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-17fake","object":"chat.completion.chunk","created":1767225617,"model":"fake/router-small","choices":[{"index":0,"delta":{"content":"details."},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-17fake","object":"chat.completion.chunk","created":1767225617,"model":"fake/router-small","choices":[{"index":0,"delta":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com/articles/overview","title":"Example overview","start_index":0,"end_index":55}},{"type":"url_citation","url_citation":{"url":"https://example.org/reference/details","title":"Example reference","start_index":56,"end_index":92}}]},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-17fake","object":"chat.completion.chunk","created":1767225617,"model":"fake/router-small","choices":[{"index":0,"delta":{},"finish_reason":"stop","logprobs":null}],"usage":{"prompt_tokens":4,"completion_tokens":23,"total_tokens":27,"completion_tokens_details":{"reasoning_tokens":0}}}
+
+data: [DONE]
+

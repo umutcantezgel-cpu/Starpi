@@ -1,0 +1,2 @@
+data: {"candidates":[{"content":{"role":"model","parts":[]},"index":0,"finishReason":"SAFETY","safetyRatings":[{"category":"HARM_CATEGORY_DANGEROUS_CONTENT","probability":"HIGH","blocked":true}]}],"usageMetadata":{"promptTokenCount":7,"candidatesTokenCount":8,"totalTokenCount":15},"modelVersion":"gemini-2.5-flash","responseId":"resp-6-fake"}
+

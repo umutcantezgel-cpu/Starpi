@@ -1,3 +1,3 @@
--r requirements.txt
-ruff==0.16.10
-pip-audit==2.10.1
+# The Python code of this repository is the library publisher in tools/library-publisher; this file
+# keeps the dependency audit job pointed at its requirements (paths are relative to this file).
+-r ../tools/library-publisher/requirements-dev.txt

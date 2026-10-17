@@ -26,7 +26,7 @@
       "name": "Python",
       "version": "3.11",
       "kind": "runtime",
-      "usedFor": "backend/ in the CI test matrix",
+      "usedFor": "tools/library-publisher in the CI test matrix",
       "eol": "2027-10",
       "source": "https://peps.python.org/pep-0664/"
     },
@@ -34,7 +34,7 @@
       "name": "Python",
       "version": "3.12",
       "kind": "runtime",
-      "usedFor": "backend/ in the CI test matrix and the dependency audit job",
+      "usedFor": "the dependency audit job",
       "eol": "2028-10",
       "source": "https://peps.python.org/pep-0693/"
     },
@@ -42,7 +42,7 @@
       "name": "Python",
       "version": "3.13",
       "kind": "runtime",
-      "usedFor": "newest Python supported for backend/ and the local tools",
+      "usedFor": "tools/library-publisher in the CI test matrix, newest Python supported",
       "eol": "2029-10",
       "source": "https://peps.python.org/pep-0719/"
     },

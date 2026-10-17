@@ -1,16 +1,17 @@
 // @ts-check
-// /api/pool (Vercel Function): streams a chat completion through the site's provider key pools.
-// Until it is built, every method answers 501 with the JSON body { "error": "not_implemented" }.
-import { json } from './_lib/guards.js';
+// POST /api/pool?provider=<id>&path=<upstream path> (Vercel Function): streams an answer through
+// the site's provider key pools (api/_lib/pool/handler.js); the browser sends no key. Every other
+// method gets 405.
+import { methodNotAllowed } from './_lib/guards.js';
+import { handlePool, poolRuntimeDeps } from './_lib/pool/handler.js';
 
-const notImplemented = () => json(501, { error: 'not_implemented' });
+/** @param {Request} request */
+export function POST(request) {
+  return handlePool(request, poolRuntimeDeps());
+}
 
-export {
-  notImplemented as DELETE,
-  notImplemented as GET,
-  notImplemented as HEAD,
-  notImplemented as OPTIONS,
-  notImplemented as PATCH,
-  notImplemented as POST,
-  notImplemented as PUT,
-};
+function notAllowed() {
+  return methodNotAllowed('POST');
+}
+
+export { notAllowed as DELETE, notAllowed as GET, notAllowed as HEAD, notAllowed as OPTIONS, notAllowed as PATCH, notAllowed as PUT };

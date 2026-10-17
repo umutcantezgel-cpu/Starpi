@@ -1095,6 +1095,200 @@ select rls_test.expect_error('anon cannot execute match_knowledge_hybrid', $q$
 $q$);
 
 -- ------------------------------------------------------------------------------
+-- 384-dimensional vectors: embedding_384 and match_knowledge_vector_384
+-- ------------------------------------------------------------------------------
+:as_super
+-- 384-dim vector with weight wa on axis a and wb on axis b (default: unit vector on a).
+create function rls_test.vec384(a integer, wa real default 1, b integer default 0, wb real default 0)
+returns public.vector
+language sql immutable as $$
+    select ('[' || string_agg(case when i = a then wa::text when i = b then wb::text else '0' end, ','
+                              order by i) || ']')::public.vector
+    from generate_series(1, 384) as i
+$$;
+
+select rls_test.expect_true('knowledge_sections.embedding_384 is a nullable vector(384)', $q$
+    select atttypid = 'public.vector'::regtype and atttypmod = 384 and not attnotnull
+    from pg_attribute
+    where attrelid = 'public.knowledge_sections'::regclass and attname = 'embedding_384'
+$q$);
+
+select rls_test.expect_true('embedding_384 has an HNSW cosine index', $q$
+    select count(*) = 1 from pg_indexes
+    where schemaname = 'public' and tablename = 'knowledge_sections'
+      and indexname = 'idx_ksections_embedding_384_hnsw'
+      and indexdef like '%USING hnsw (embedding_384 %vector_cosine_ops)%'
+$q$);
+
+select rls_test.expect_none('match_knowledge_vector_384: SECURITY INVOKER, search_path pinned, one overload', $q$
+    select p.oid::regprocedure, p.prosecdef, p.proconfig
+    from pg_proc p
+    where p.pronamespace = 'public'::regnamespace and p.proname = 'match_knowledge_vector_384'
+      and (p.prosecdef or p.proconfig is distinct from array['search_path=""'])
+    union all
+    select null, null, array['expected 1 function, found ' || count(*)]
+    from pg_proc p
+    where p.pronamespace = 'public'::regnamespace and p.proname = 'match_knowledge_vector_384'
+    having count(*) <> 1
+$q$);
+
+select rls_test.expect_none('match_knowledge_vector_384 EXECUTE: anon, authenticated, service_role, not PUBLIC', $q$
+    select r from (values ('anon'), ('authenticated'), ('service_role')) as m(r)
+    where not has_function_privilege(r, 'public.match_knowledge_vector_384(public.vector, integer, double precision)', 'EXECUTE')
+    union all
+    select 'PUBLIC'
+    from pg_proc p, aclexplode(p.proacl) a
+    where p.oid = 'public.match_knowledge_vector_384(public.vector, integer, double precision)'::regprocedure
+      and a.grantee = 0
+$q$);
+
+:as_service
+select rls_test.expect_ok('service_role ingests sections with embedding_384', $q$
+    select public.ingest_document_atomic(
+        'Vektor Handbuch', 'Bibliothek', array['vektor'], 'markdown', 'handbuch.md', 'Rohtext',
+        jsonb_build_array(
+            jsonb_build_object('heading', 'Oeffnungszeiten', 'markdown_content', 'Samstags 10 bis 14 Uhr',
+                               'embedding_384', rls_test.vec384(1)::text::jsonb),
+            jsonb_build_object('heading', 'Gebuehren', 'markdown_content', 'Mitgliedschaft kostenlos',
+                               'embedding_384', rls_test.vec384(1, 0.6, 2, 0.8)::text::jsonb),
+            jsonb_build_object('heading', 'Ohne Vektor', 'markdown_content', 'Noch nicht eingebettet',
+                               'embedding_384', '[]'::jsonb)
+        )
+    )
+$q$);
+
+select rls_test.expect_true('ingested sections keep their embedding_384, an empty array stores null', $q$
+    select array_agg(public.vector_dims(s.embedding_384) order by s.section_index)
+           is not distinct from array[384, 384, null]::integer[]
+       and bool_and(s.embedding is null)
+    from public.knowledge_sections s
+    join public.knowledge_documents d on d.id = s.document_id
+    where d.title = 'Vektor Handbuch'
+$q$);
+
+select rls_test.expect_error('ingest_document_atomic refuses an embedding_384 of another length', $q$
+    select public.ingest_document_atomic(
+        'Vektor kaputt', null, null, null, null, null,
+        jsonb_build_array(jsonb_build_object('markdown_content', 'x',
+                                             'embedding_384', rls_test.onehot(1)::text::jsonb))
+    )
+$q$, '22000');
+
+select rls_test.expect_count('... and stores nothing of that call', $q$
+    select 1 from public.knowledge_documents where title = 'Vektor kaputt'
+$q$, 0);
+
+select rls_test.expect_affected('service_role publishes the vector handbook', $q$
+    update public.knowledge_documents set is_public = true where title = 'Vektor Handbuch'
+$q$, 1);
+
+select rls_test.expect_ok('service_role adds 25 public sections on another axis', $q$
+    insert into public.knowledge_sections (document_id, section_index, heading, markdown_content, embedding_384)
+    select d.id, 10 + i, 'Achse ' || i, 'Andere Richtung', rls_test.vec384(3)
+    from public.knowledge_documents d, generate_series(1, 25) as i
+    where d.title = 'Vektor Handbuch'
+$q$);
+
+select rls_test.expect_ok('service_role stores an ownerless private section with a vector', $q$
+    with d as (
+        insert into public.knowledge_documents (title) values ('Vektor intern') returning id
+    )
+    insert into public.knowledge_sections (document_id, heading, markdown_content, embedding_384)
+    select d.id, 'Intern', 'Nur fuer den Dienst', rls_test.vec384(1) from d
+$q$);
+
+:as_a
+select rls_test.expect_ok('A inserts a private document for vectors', $q$
+    insert into public.knowledge_documents (id, title) values ('d0000000-0000-4000-8000-0000000003a1', 'A Vektor')
+$q$);
+
+select rls_test.expect_ok('A stores embedding_384 on a section of own private document', $q$
+    insert into public.knowledge_sections (document_id, heading, markdown_content, embedding_384)
+    values ('d0000000-0000-4000-8000-0000000003a1', 'A Abschnitt', 'Privat', rls_test.vec384(1))
+$q$);
+
+select rls_test.expect_affected('A cannot change embedding_384 of a published section', $q$
+    update public.knowledge_sections s set embedding_384 = rls_test.vec384(2)
+    from public.knowledge_documents d
+    where d.id = s.document_id and d.title = 'Vektor Handbuch'
+$q$, 0);
+
+:as_b
+select rls_test.expect_ok('B inserts a private document for vectors', $q$
+    insert into public.knowledge_documents (id, title) values ('d0000000-0000-4000-8000-0000000003b1', 'B Vektor')
+$q$);
+
+select rls_test.expect_ok('B stores embedding_384 on a section of own private document', $q$
+    insert into public.knowledge_sections (document_id, heading, markdown_content, embedding_384)
+    values ('d0000000-0000-4000-8000-0000000003b1', 'B Abschnitt', 'Privat', rls_test.vec384(1))
+$q$);
+
+select rls_test.expect_none('B: vector ranking returns only public and own sections', $q$
+    select m.document_title, m.heading
+    from public.match_knowledge_vector_384(rls_test.vec384(1), 20) m
+    where m.document_title not in ('Vektor Handbuch', 'B Vektor')
+$q$);
+
+:as_a
+select rls_test.expect_none('A: vector ranking returns only public and own sections', $q$
+    select m.document_title, m.heading
+    from public.match_knowledge_vector_384(rls_test.vec384(1), 20) m
+    where m.document_title not in ('Vektor Handbuch', 'A Vektor')
+$q$);
+
+select rls_test.expect_count('A: own private and public exact matches are both ranked', $q$
+    select 1 from public.match_knowledge_vector_384(rls_test.vec384(1), 20, 0.99)
+$q$, 2);
+
+:as_anon
+select rls_test.expect_true('anon: public sections ranked by similarity, none without a vector', $q$
+    select array_agg(m.heading order by m.similarity desc) = array['Oeffnungszeiten', 'Gebuehren']
+       and abs(max(m.similarity) - 1) < 1e-6 and abs(min(m.similarity) - 0.6) < 1e-6
+       and bool_and(m.document_title = 'Vektor Handbuch' and m.tags = array['vektor'])
+    from public.match_knowledge_vector_384(rls_test.vec384(1), 20) m
+$q$);
+
+select rls_test.expect_true('anon: the closest section comes first', $q$
+    select m.heading = 'Oeffnungszeiten' and m.section_id is not null
+    from public.match_knowledge_vector_384(rls_test.vec384(1)) m
+    limit 1
+$q$);
+
+select rls_test.expect_count('anon: match_threshold filters by similarity', $q$
+    select 1 from public.match_knowledge_vector_384(rls_test.vec384(1), 20, 0.7)
+$q$, 1);
+
+select rls_test.expect_count('anon: match_count is clamped to 20', $q$
+    select 1 from public.match_knowledge_vector_384(rls_test.vec384(3), 1000)
+$q$, 20);
+
+select rls_test.expect_count('anon: match_count below 1 returns one row', $q$
+    select 1 from public.match_knowledge_vector_384(rls_test.vec384(3), 0)
+$q$, 1);
+
+select rls_test.expect_count('anon: a null query returns no rows', $q$
+    select 1 from public.match_knowledge_vector_384(null, 5)
+$q$, 0);
+
+select rls_test.expect_error('anon: a query of another dimension is refused', $q$
+    select 1 from public.match_knowledge_vector_384(rls_test.onehot(1))
+$q$, '22023');
+
+select rls_test.expect_error('anon cannot write embedding_384', $q$
+    update public.knowledge_sections set embedding_384 = null
+$q$);
+
+:as_service
+select rls_test.expect_count('service_role: vector ranking reaches every row', $q$
+    select 1 from public.match_knowledge_vector_384(rls_test.vec384(1), 20, 0.99)
+$q$, 4);
+
+select rls_test.expect_affected('service_role removes the vector test documents', $q$
+    delete from public.knowledge_documents
+    where title in ('Vektor Handbuch', 'Vektor intern', 'A Vektor', 'B Vektor')
+$q$, 4);
+
+-- ------------------------------------------------------------------------------
 -- Publishing (service role) and cleanup paths
 -- ------------------------------------------------------------------------------
 :as_service

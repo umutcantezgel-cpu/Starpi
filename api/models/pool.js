@@ -1,16 +1,15 @@
 // @ts-check
-// /api/models/pool (Vercel Function): the models the site's provider pools offer.
-// Until it is built, every method answers 501 with the JSON body { "error": "not_implemented" }.
-import { json } from '../_lib/guards.js';
+// GET /api/models/pool (Vercel Function): per pool whether the site serves it and the models it
+// allows, never keys or a key count. Every other method gets 405.
+import { methodNotAllowed } from '../_lib/guards.js';
+import { handlePoolModels, poolRuntimeDeps } from '../_lib/pool/handler.js';
 
-const notImplemented = () => json(501, { error: 'not_implemented' });
+export function GET() {
+  return handlePoolModels(poolRuntimeDeps());
+}
 
-export {
-  notImplemented as DELETE,
-  notImplemented as GET,
-  notImplemented as HEAD,
-  notImplemented as OPTIONS,
-  notImplemented as PATCH,
-  notImplemented as POST,
-  notImplemented as PUT,
-};
+function notAllowed() {
+  return methodNotAllowed('GET');
+}
+
+export { notAllowed as DELETE, notAllowed as HEAD, notAllowed as OPTIONS, notAllowed as PATCH, notAllowed as POST, notAllowed as PUT };
