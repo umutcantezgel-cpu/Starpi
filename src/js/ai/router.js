@@ -114,7 +114,7 @@ import { readLocalJson, writeLocalJson } from '../storage.js';
  * @property {(provider: ProviderId) => readonly string[] | null} liveModels  the provider's live model ids, null while unknown
  * @property {(provider: ProviderId, model: string) => Caps | null} caps  default: the shipped catalog's entry (null for a model it does not know)
  * @property {() => ModelRef | null} device                 the model loaded on this device
- * @property {(provider: ProviderId) => ModelRef | null} selection  the user's choice at a provider (pin or strength)
+ * @property {(provider: ProviderId, live: readonly string[] | null) => ModelRef | null} selection  the user's choice at a provider (pin, or the strength's model among the live ids)
  * @property {ModelWheel} wheel
  * @property {PurposeCache} cache
  * @property {(provider: ProviderId) => boolean | null} simulated
@@ -219,7 +219,7 @@ const defaults = {
   liveModels: () => null,
   caps: (provider, model) => findModel(provider, model)?.caps ?? null,
   device: () => null,
-  selection: (provider) => selectedModel(provider),
+  selection: (provider, live) => selectedModel(provider, { live }),
   wheel: modelWheel,
   cache: createPurposeCache(),
   simulated: providerSimulated,
@@ -382,7 +382,7 @@ export function planChain(def, opts, deps) {
     steps.push({ tier, provider, model, role });
   };
   /** @param {ProviderId} provider */
-  const choice = (provider) => (opts.model && provider === primary ? { provider, model: opts.model } : deps.selection(provider));
+  const choice = (provider) => (opts.model && provider === primary ? { provider, model: opts.model } : deps.selection(provider, deps.liveModels(provider)));
 
   if (primary) {
     const chosen = choice(primary);
@@ -392,7 +392,7 @@ export function planChain(def, opts, deps) {
   if (primary) for (const { model, role } of orderedRoleChain(primary, def.role, deps)) add('role', primary, model, role);
   for (const provider of providers) {
     if (provider === primary) continue;
-    const chosen = deps.selection(provider);
+    const chosen = deps.selection(provider, deps.liveModels(provider));
     if (chosen && chosen.provider === provider) add('provider', provider, chosen.model, def.role);
     for (const { model, role } of orderedRoleChain(provider, def.role, deps)) add('provider', provider, model, role);
   }

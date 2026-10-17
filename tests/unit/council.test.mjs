@@ -24,6 +24,9 @@ const POOL = [
   entry('groq', 'llama-3.1-8b-instant', ['fast']),
 ];
 
+/** @param {import('../../src/js/ai/council.js').CouncilResult} res */
+const summaryOf = (res) => /** @type {{ summary?: string } | undefined} */ (res.output?.value)?.summary;
+
 const caps = (/** @type {any} */ provider, /** @type {string} */ model) => findModel(provider, model)?.caps ?? null;
 
 const BRIEF_INPUT = { question: 'Which bridge is older?', notes: [{ id: 'n1', text: 'The old bridge was built in 1820.' }, { id: 'n2', text: 'The new bridge opened in 1990.' }] };
@@ -96,7 +99,7 @@ describe('runCouncil with a purpose', () => {
     assert.equal(res.judge?.chosen, 1);
     assert.deepEqual(res.judge?.reasons, ['Clear and sourced.']);
     assert.equal(res.bestIndex, 1);
-    assert.deepEqual(/** @type {any} */ (res.output?.value).summary, 'The old bridge is older.');
+    assert.deepEqual(summaryOf(res), 'The old bridge is older.');
     assert.equal(providers.calls.length, 4, 'three drafts, one verdict');
     const judgeCall = providers.calls.find((c) => c.model === 'gpt-5');
     assert.match(String(judgeCall?.req.messages.at(-1)?.content.map((p) => (p.type === 'text' ? p.text : '')).join('')), /Draft 2/);
@@ -112,13 +115,13 @@ describe('runCouncil with a purpose', () => {
     const merged = await runCouncil({ purpose: 'research_brief', input: BRIEF_INPUT, pool: POOL, deps: world(drafts, { text: JSON.stringify({ chosen: 0, reasons: ['Both agree.'], merged: brief('The old bridge from 1820 is older.') }) }).deps });
     assert.equal(merged.decidedBy, 'merged');
     assert.equal(merged.judge?.merged, true);
-    assert.equal(/** @type {any} */ (merged.output?.value).summary, 'The old bridge from 1820 is older.');
+    assert.equal(summaryOf(merged), 'The old bridge from 1820 is older.');
     assert.equal(merged.members[2].status, 'error');
     assert.deepEqual(merged.members[2].errors, ['server']);
 
     const badMerge = await runCouncil({ purpose: 'research_brief', input: BRIEF_INPUT, pool: POOL, deps: world(drafts, { text: JSON.stringify({ chosen: 1, reasons: ['ok'], merged: 'not json' }) }).deps });
     assert.equal(badMerge.decidedBy, 'judge', 'an unusable merge falls back to the chosen draft');
-    assert.equal(/** @type {any} */ (badMerge.output?.value).summary, 'The 1820 bridge.');
+    assert.equal(summaryOf(badMerge), 'The 1820 bridge.');
   });
 
   it('lets the best draft stand without a judge when fewer than two drafts are valid', async () => {

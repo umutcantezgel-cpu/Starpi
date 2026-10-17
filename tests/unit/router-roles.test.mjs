@@ -186,6 +186,17 @@ describe('model strengths max, super, auto and fast', () => {
     assert.equal(selection.getModelStrength(), 'auto');
   });
 
+  it('starts the router with the strength model among the live ids', async () => {
+    const { planChain, routerDeps } = await import('../../src/js/ai/router.js');
+    const { getPurpose } = await import('../../src/js/ai/purposes.js');
+    const def = /** @type {import('../../src/js/ai/purposes.js').PurposeDef} */ (getPurpose('research_brief'));
+    selection.setModelStrength('max');
+    const deps = routerDeps({ configured: () => ['openai'], liveModels: () => ['gpt-5-mini', 'gpt-5-nano'], device: () => null });
+    assert.deepEqual(planChain(def, {}, deps)[0], { tier: 'selected', provider: 'openai', model: 'gpt-5-mini', role: 'reasoning' }, 'gpt-5 is not listed, the next judge candidate is');
+    selection.setModelStrength('auto');
+    assert.equal(planChain(def, {}, deps)[0].tier, 'role', 'auto fixes no model: the role chain starts');
+  });
+
   it('holds the choice for the page when the browser keeps nothing', () => {
     const saved = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
     Object.defineProperty(globalThis, 'localStorage', {
