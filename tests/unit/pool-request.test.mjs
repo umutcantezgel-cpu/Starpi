@@ -7,7 +7,8 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { validateChatRequest } from '../../api/_lib/nvidia-request.js';
-import { findPoolSpec, POOL_IDS, POOL_SPECS } from '../../api/_lib/pool/allowlist.js';
+import { enabledPoolIds, findPoolModel, findPoolSpec, POOL_IDS, POOL_SPECS } from '../../api/_lib/pool/allowlist.js';
+import { POOLS } from '../../src/js/ai/catalog/pools.js';
 import { poolRoute, validatePoolRequest } from '../../api/_lib/pool/request.js';
 import { NVIDIA_MODELS, NVIDIA_UPSTREAM_URL } from '../../src/js/models/nvidia-catalog.js';
 
@@ -45,6 +46,24 @@ describe('pool allowlists', () => {
     }
     assert.equal(`${nvidia.root}/v1/chat/completions`, NVIDIA_UPSTREAM_URL);
     assert.deepEqual(nvidia.models.map((m) => m.id), NVIDIA_MODELS.map((m) => m.id));
+  });
+
+  it('take their models, defaults and caps from the browser catalog', () => {
+    for (const spec of Object.values(POOL_SPECS)) {
+      const pool = POOLS[/** @type {import('../../src/js/ai/catalog/pools.js').PoolId} */ (spec.id)];
+      assert.deepEqual(spec.models.map((m) => m.id), [...pool.models], spec.id);
+      assert.deepEqual(spec.models.filter((m) => m.vision).map((m) => m.id), [...pool.visionModels], spec.id);
+      assert.equal(spec.defaultModel, pool.defaultModel, spec.id);
+      assert.equal(spec.limits.maxOutputTokens, pool.maxOutputTokens, spec.id);
+      for (const m of spec.models) assert.ok(m.maxOutputTokens <= pool.maxOutputTokens, m.id);
+    }
+    assert.equal(findPoolModel(groq, 'llama-3.3-70b-versatile')?.id, 'llama-3.3-70b-versatile');
+    assert.equal(findPoolModel(groq, 'LLAMA-3.3-70B-VERSATILE'), undefined, 'exact ids only');
+    assert.equal(findPoolModel(groq, 42), undefined);
+    assert.deepEqual(enabledPoolIds(undefined), [...POOL_IDS]);
+    assert.deepEqual(enabledPoolIds(' , '), [...POOL_IDS]);
+    assert.deepEqual(enabledPoolIds('openrouter groq,unknown'), ['groq', 'openrouter']);
+    assert.deepEqual(enabledPoolIds('unknown'), [], 'an unknown name enables nothing');
   });
 });
 
@@ -154,7 +173,8 @@ describe('Gemini pool requests', () => {
         { role: 'user', parts: [{ text: 'Describe' }, { inlineData: { mimeType: 'image/jpeg', data: 'AAAA' } }] },
       ],
       systemInstruction: { parts: [{ text: 'Answer briefly.' }] },
-      generationConfig: { maxOutputTokens: 8192, temperature: 0.5, topP: 0.9, thinkingConfig: { includeThoughts: true, thinkingBudget: 8192 } },
+      // Both clamped to the pool's output cap.
+      generationConfig: { maxOutputTokens: gemini.limits.maxOutputTokens, temperature: 0.5, topP: 0.9, thinkingConfig: { includeThoughts: true, thinkingBudget: gemini.limits.maxOutputTokens } },
     });
   });
 

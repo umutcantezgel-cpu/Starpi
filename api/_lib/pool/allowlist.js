@@ -3,11 +3,13 @@
 // speaks, its endpoint and key variable, per-key pacing, request limits and the model allowlist.
 // A pool model must be free or cheap to serve and must not need tools; nothing else is forwarded.
 //
-// The NVIDIA section comes from src/js/models/nvidia-catalog.js. The other lists are a curated
-// start: check them with `npm run providers:ping -- --provider <id>` before a release (the ids of
-// free models change often). Once the browser catalog carries pool allowlists of its own
-// (src/js/ai/catalog/pools.js), these lists should be read from there instead.
-import { NVIDIA_DEFAULT_MODEL, NVIDIA_LIMITS, NVIDIA_MODELS, NVIDIA_PROXY, NVIDIA_UPSTREAM_URL } from '../../../src/js/models/nvidia-catalog.js';
+// The model lists, default models and output caps come from the browser catalog
+// (src/js/ai/catalog/pools.js), so the picker and the server always agree on what a pool allows;
+// NVIDIA's per-model limits and fixed upstream fields come from src/js/models/nvidia-catalog.js.
+// Check the lists with `npm run providers:ping -- --provider <id>` before a release (the ids of
+// free models change often).
+import { isPoolModel, parsePoolIds, POOLS } from '../../../src/js/ai/catalog/pools.js';
+import { findNvidiaModel, NVIDIA_LIMITS, NVIDIA_PROXY, NVIDIA_UPSTREAM_URL } from '../../../src/js/models/nvidia-catalog.js';
 import { KEY_PATTERN as NVIDIA_KEY_PATTERN } from '../env.js';
 
 /**
@@ -63,8 +65,41 @@ const GENERIC_KEY = /^[A-Za-z0-9._~+/=-]{16,512}$/;
 /** Limits shared by the pools; the NVIDIA text limits stay those of its catalog. */
 const IMAGE_LIMITS = { maxBodyBytes: 4_000_000, maxImages: 4, maxImageChars: 3_600_000 };
 
-/** @param {string} id @param {string} label @param {string} vendor @param {Partial<PoolModel>} [rest] */
-const model = (id, label, vendor, rest = {}) => ({ id, label, vendor, reasoning: false, vision: false, maxOutputTokens: 4096, defaultMaxTokens: 1024, ...rest });
+/** Output a request gets when it names no limit; reasoning models need room for their thinking. */
+const DEFAULT_MAX_TOKENS = 1024;
+const DEFAULT_MAX_TOKENS_REASONING = 2048;
+
+/**
+ * The models of a pool as the catalog lists them, capped at the pool's output limit.
+ * @param {import('../../../src/js/ai/catalog/pools.js').PoolId} id
+ * @returns {PoolModel[]}
+ */
+function catalogModels(id) {
+  const pool = POOLS[id];
+  return pool.entries.map(({ id: modelId, label, vendor, reasoning, vision }) => ({
+    id: modelId,
+    label,
+    vendor,
+    reasoning,
+    vision,
+    maxOutputTokens: pool.maxOutputTokens,
+    defaultMaxTokens: Math.min(pool.maxOutputTokens, reasoning ? DEFAULT_MAX_TOKENS_REASONING : DEFAULT_MAX_TOKENS),
+  }));
+}
+
+/**
+ * The NVIDIA pool's models: the catalog's list with NVIDIA's own per-model limits and fixed
+ * upstream fields.
+ * @returns {PoolModel[]}
+ */
+function nvidiaModels() {
+  return POOLS.nvidia.models.flatMap((modelId) => {
+    const m = findNvidiaModel(modelId);
+    if (!m) return [];
+    const { id, label, vendor, reasoning, vision, maxOutputTokens, defaultMaxTokens, upstream } = m;
+    return [{ id, label, vendor, reasoning, vision, maxOutputTokens, defaultMaxTokens, ...(upstream ? { upstream } : {}) }];
+  });
+}
 
 /** @type {Readonly<Record<string, PoolSpec>>} */
 export const POOL_SPECS = deepFreeze({
@@ -77,10 +112,10 @@ export const POOL_SPECS = deepFreeze({
     keysVariable: 'NVIDIA_API_KEYS',
     keyPattern: NVIDIA_KEY_PATTERN,
     keyRpm: 40,
-    defaultModel: NVIDIA_DEFAULT_MODEL,
-    limits: { maxMessages: NVIDIA_LIMITS.maxMessages, maxMessageChars: NVIDIA_LIMITS.maxMessageChars, maxTotalChars: NVIDIA_LIMITS.maxTotalChars, maxOutputTokens: NVIDIA_LIMITS.maxOutputTokens, ...IMAGE_LIMITS },
+    defaultModel: POOLS.nvidia.defaultModel,
+    limits: { maxMessages: NVIDIA_LIMITS.maxMessages, maxMessageChars: NVIDIA_LIMITS.maxMessageChars, maxTotalChars: NVIDIA_LIMITS.maxTotalChars, maxOutputTokens: POOLS.nvidia.maxOutputTokens, ...IMAGE_LIMITS },
     timing: NVIDIA_PROXY,
-    models: NVIDIA_MODELS.map(({ id, label, vendor, reasoning, vision, maxOutputTokens, defaultMaxTokens, upstream }) => ({ id, label, vendor, reasoning, vision, maxOutputTokens, defaultMaxTokens, ...(upstream ? { upstream } : {}) })),
+    models: nvidiaModels(),
   },
   groq: {
     id: 'groq',
@@ -91,17 +126,10 @@ export const POOL_SPECS = deepFreeze({
     keysVariable: 'GROQ_API_KEYS',
     keyPattern: GENERIC_KEY,
     keyRpm: 30,
-    defaultModel: 'llama-3.3-70b-versatile',
-    limits: { maxMessages: 40, maxMessageChars: 24000, maxTotalChars: 64000, maxOutputTokens: 4096, ...IMAGE_LIMITS },
+    defaultModel: POOLS.groq.defaultModel,
+    limits: { maxMessages: 40, maxMessageChars: 24000, maxTotalChars: 64000, maxOutputTokens: POOLS.groq.maxOutputTokens, ...IMAGE_LIMITS },
     timing: NVIDIA_PROXY,
-    models: [
-      model('llama-3.3-70b-versatile', 'Llama 3.3 70B Versatile', 'Meta'),
-      model('llama-3.1-8b-instant', 'Llama 3.1 8B Instant', 'Meta'),
-      model('meta-llama/llama-4-scout-17b-16e-instruct', 'Llama 4 Scout 17B 16E', 'Meta', { vision: true }),
-      model('openai/gpt-oss-120b', 'GPT-OSS 120B', 'OpenAI', { reasoning: true, defaultMaxTokens: 2048 }),
-      model('openai/gpt-oss-20b', 'GPT-OSS 20B', 'OpenAI', { reasoning: true, defaultMaxTokens: 2048 }),
-      model('qwen/qwen3-32b', 'Qwen3 32B', 'Alibaba', { reasoning: true, defaultMaxTokens: 2048 }),
-    ],
+    models: catalogModels('groq'),
   },
   gemini: {
     id: 'gemini',
@@ -112,13 +140,10 @@ export const POOL_SPECS = deepFreeze({
     keysVariable: 'GEMINI_API_KEYS',
     keyPattern: GENERIC_KEY,
     keyRpm: 10,
-    defaultModel: 'gemini-2.5-flash',
-    limits: { maxMessages: 40, maxMessageChars: 24000, maxTotalChars: 64000, maxOutputTokens: 8192, ...IMAGE_LIMITS },
+    defaultModel: POOLS.gemini.defaultModel,
+    limits: { maxMessages: 40, maxMessageChars: 24000, maxTotalChars: 64000, maxOutputTokens: POOLS.gemini.maxOutputTokens, ...IMAGE_LIMITS },
     timing: NVIDIA_PROXY,
-    models: [
-      model('gemini-2.5-flash', 'Gemini 2.5 Flash', 'Google', { reasoning: true, vision: true, maxOutputTokens: 8192, defaultMaxTokens: 2048 }),
-      model('gemini-2.5-flash-lite', 'Gemini 2.5 Flash-Lite', 'Google', { vision: true, maxOutputTokens: 8192, defaultMaxTokens: 1024 }),
-    ],
+    models: catalogModels('gemini'),
   },
   openrouter: {
     id: 'openrouter',
@@ -129,15 +154,10 @@ export const POOL_SPECS = deepFreeze({
     keysVariable: 'OPENROUTER_API_KEYS',
     keyPattern: GENERIC_KEY,
     keyRpm: 20,
-    defaultModel: 'meta-llama/llama-3.3-70b-instruct:free',
-    limits: { maxMessages: 40, maxMessageChars: 24000, maxTotalChars: 64000, maxOutputTokens: 4096, ...IMAGE_LIMITS },
+    defaultModel: POOLS.openrouter.defaultModel,
+    limits: { maxMessages: 40, maxMessageChars: 24000, maxTotalChars: 64000, maxOutputTokens: POOLS.openrouter.maxOutputTokens, ...IMAGE_LIMITS },
     timing: NVIDIA_PROXY,
-    models: [
-      model('meta-llama/llama-3.3-70b-instruct:free', 'Llama 3.3 70B Instruct (free)', 'Meta'),
-      model('openai/gpt-oss-20b:free', 'GPT-OSS 20B (free)', 'OpenAI', { reasoning: true, defaultMaxTokens: 2048 }),
-      model('deepseek/deepseek-chat-v3.1:free', 'DeepSeek V3.1 (free)', 'DeepSeek'),
-      model('google/gemma-3-27b-it:free', 'Gemma 3 27B (free)', 'Google', { vision: true }),
-    ],
+    models: catalogModels('openrouter'),
   },
 });
 
@@ -152,12 +172,13 @@ export function findPoolSpec(id) {
 }
 
 /**
+ * A model of the pool's allowlist (exact ids only, as the catalog's isPoolModel decides).
  * @param {PoolSpec} spec
  * @param {unknown} id
  * @returns {PoolModel | undefined}
  */
 export function findPoolModel(spec, id) {
-  return typeof id === 'string' ? spec.models.find((m) => m.id === id) : undefined;
+  return isPoolModel(spec.id, id) ? spec.models.find((m) => m.id === id) : undefined;
 }
 
 /**
@@ -188,7 +209,8 @@ export function parsePoolKeys(spec, raw) {
  * @returns {string[]}
  */
 export function enabledPoolIds(raw) {
-  const names = (raw ?? '').split(/[\s,]+/).map((n) => n.trim().toLowerCase()).filter(Boolean);
-  if (names.length === 0) return [...POOL_IDS];
+  const text = (raw ?? '').replace(/\s+/g, ',');
+  if (!text.split(',').some(Boolean)) return [...POOL_IDS];
+  const names = /** @type {readonly string[]} */ (parsePoolIds(text));
   return POOL_IDS.filter((id) => names.includes(id));
 }
