@@ -366,6 +366,46 @@ for (const [file, format] of /** @type {const} */ ([
       assert.equal(schema.properties.schema.const, format);
     });
 
+    if (format === RECEIPT_SCHEMA) {
+      it('describes the v3 members: signer, gate, second opinions, relations and OCR provenance', async () => {
+        const keys = /** @type {CryptoKeyPair} */ (await crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify']));
+        const { publicKeyId } = await import('../../src/js/core/signature.js');
+        const plain = await build(MD, 'plan.md', 'The approved budget is 480,000 EUR {label}.');
+        const doc = /** @type {NonNullable<typeof plain.citations[0]['document']>} */ (plain.citations[0].document);
+        const r = await buildReceipt(
+          {
+            createdAt: plain.createdAt,
+            version: '3.0.0',
+            answer: { text: plain.answer.text, engine: 'cloud', locale: 'en' },
+            question: 'Budget?',
+            grounding: null,
+            gate: { mode: 'sources', released: 1, withheld: 0 },
+            citations: [{ label: plain.citations[0].label, doc: 'plan.md', heading: '', source: 'workspace', delivered: 'full', text: plain.citations[0].excerpt.text ?? '', truncated: false, document: { ...doc, kind: 'png', extractor: { ...doc.extractor, ocr: { provider: 'example-provider', model: 'example-vision-1' } } }, chunk: { index: 0, start: 0, end: 10 } }],
+          },
+          { signer: { keyId: await publicKeyId(keys.publicKey), alg: 'Ed25519' } },
+        );
+        const full = JSON.parse(JSON.stringify(await signReceipt({ ...r }, keys.privateKey, { publicKey: keys.publicKey })));
+        full.grounding = { algorithm: { id: 'starpi-grounding', version: 2 }, counts: { supported: 1, weak: 0, unsupported: 0, unchecked: 0 }, sentences: [{ text: 'The approved budget is 480,000 EUR.', cites: [0], citeSource: 'own', verdict: 'supported', reasons: [] }] };
+        full.secondOpinion = [{ sentence: 0, cites: [0], engine: 'nli', model: 'example-nli', result: 'entailed' }];
+        full.relations = [{ kind: 'comparative', sentences: [0], cites: [0], verdict: 'supported', text: 'more than' }];
+        assert.deepEqual(check(full, schema), []);
+        assert.equal(validateReceipt(full).ok, true);
+        for (const [edit, what] of /** @type {Array<[(x: any) => void, string]>} */ ([
+          [(x) => (x.signer.alg = 'RS256'), 'signer alg'],
+          [(x) => (x.gate.mode = 'strict'), 'gate mode'],
+          [(x) => (x.secondOpinion[0].engine = 'oracle'), 'second opinion engine'],
+          [(x) => (x.relations[0].sentences = []), 'no statement'],
+          [(x) => (x.relations[0].sentences = [0, 0, 0]), 'three statements'],
+          [(x) => (x.citations[0].document.extractor.ocr.extra = 1), 'OCR member'],
+        ])) {
+          const bad = structuredClone(full);
+          edit(bad);
+          assert.notDeepEqual(check(bad, schema), [], what);
+          assert.equal(validateReceipt(bad).ok, false, what);
+        }
+      });
+    }
+
     if (format !== RECEIPT_SCHEMA_V1) {
       it('describes signed receipts of both algorithms and refuses a mismatched key type', async () => {
         for (const params of [{ name: 'Ed25519' }, { name: 'ECDSA', namedCurve: 'P-256' }]) {
