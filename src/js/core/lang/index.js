@@ -81,6 +81,55 @@ import { en } from './en.js';
  * @property {string[]} abbreviations    tokens that end with a dot without ending a sentence
  * @property {string} letters            lowercase letters that mark the language among the packs
  * @property {PolarityRules} polarity
+ * @property {GateRules} gate
+ */
+
+/**
+ * Numbers written as words, for the sentence gate (number-words.js). Every word is lowercase and
+ * made of letters only. A word is tagged with one of five kinds: cardinal, fraction and multiplier
+ * state a quantity (a claim the gate checks), ordinal and adverb do not ("first", "once").
+ * @typedef {object} GateNumberWords
+ * @property {Record<string, number>} cardinals    counts that combine into larger numbers ("twenty" and "five": "twenty-five")
+ * @property {Record<string, number>} scales       words that multiply the count before them ("hundred", "thousand", "million")
+ * @property {string[]} parts           cardinals that state nothing on their own, only inside a larger number ("one", the article "ein")
+ * @property {string[]} joiners         words between the parts of one number ("a hundred and five"); inside a word in a compound language
+ * @property {Record<string, number>} fractions     fraction words and their value ("quarter" 0.25)
+ * @property {Record<string, number>} multipliers   multiplier words and their factor ("twice" 2)
+ * @property {Record<string, number>} ordinals      ordinal words and their position ("third" 3)
+ * @property {string[]} adverbs         words formed from a number that state no quantity ("once", "einfach")
+ * @property {string[]} contextual      fractions and multipliers that are a claim only with a unit or count noun at most two words later ("half", "double")
+ * @property {string[]} countNouns      units and counted things for that rule, in addition to the pack's unitWords, percentWords and currencyWords
+ * @property {string[]} fractionLeads   words before an ordinal from three on that make it a fraction ("a third")
+ * @property {string[]} negative        words before a number that make it negative ("minus")
+ * @property {boolean} compound         numbers are written as one word ("einundzwanzig") and read by splitting the word into the words above
+ * @property {{ ordinal: string[], fraction: string[], multiplier: string[] }} suffixes
+ *   endings that turn a cardinal into another kind ("zwanzig" + "ste", "vier" + "tel", "drei" + "fach", "ten" + "fold")
+ */
+
+/**
+ * The spoken form of released sentences (spoken.js): only expansions that cannot change a number.
+ * @typedef {object} GateSpoken
+ * @property {Record<string, string>} abbreviations  abbreviation as written (spaces inside optional) → the words spoken for it
+ * @property {Record<string, [string, string]>} units  unit sign after a number → the words spoken after one and after any other number
+ * @property {string} approx            the word spoken for "~" before a number
+ */
+
+/**
+ * What the sentence gate (gate.js) needs from a language.
+ * @typedef {object} GateRules
+ * @property {string} chars             characters the language writes beyond the shared allowlist of canonical.js (Latin letters, digits, common signs)
+ * @property {GateNumberWords} numberWords
+ * @property {GateSpoken} spoken
+ */
+
+/**
+ * A pack as written: every entry except the code may be left out, and so may the parts of the
+ * polarity and gate rules.
+ * @typedef {Omit<Partial<LanguagePack>, 'polarity' | 'gate'> & {
+ *   code: string,
+ *   polarity?: Partial<PolarityRules>,
+ *   gate?: { chars?: string, numberWords?: Partial<GateNumberWords>, spoken?: Partial<GateSpoken> },
+ * }} PackInput
  */
 
 /** @type {Map<string, LanguagePack>} */
@@ -121,7 +170,7 @@ const POLARITY_LISTS = /** @type {const} */ ([
 /**
  * A complete pack from a partial one: missing lists are empty, so a pack only states what its
  * language has (German has no "a.m.", English no "Uhr").
- * @param {Partial<LanguagePack> & { code: string, polarity?: Partial<PolarityRules> }} pack
+ * @param {PackInput} pack
  * @returns {LanguagePack}
  */
 function complete(pack) {
@@ -141,7 +190,78 @@ function complete(pack) {
     numberFormat: pack.numberFormat ?? { decimal: '.', group: ',' },
     letters: pack.letters ?? '',
     polarity,
+    gate: completeGate(pack.gate),
   });
+}
+
+const NUMBER_WORD_MAPS = /** @type {const} */ (['cardinals', 'scales', 'fractions', 'multipliers', 'ordinals']);
+const NUMBER_WORD_LISTS = /** @type {const} */ (['parts', 'joiners', 'adverbs', 'contextual', 'countNouns', 'fractionLeads', 'negative']);
+const SUFFIX_KINDS = /** @type {const} */ (['ordinal', 'fraction', 'multiplier']);
+
+/**
+ * The gate rules of a pack, with what it leaves out empty.
+ * @param {{ chars?: string, numberWords?: Partial<GateNumberWords>, spoken?: Partial<GateSpoken> } | undefined} gate
+ * @returns {GateRules}
+ */
+function completeGate(gate) {
+  const words = /** @type {Partial<GateNumberWords>} */ (gate?.numberWords ?? {});
+  const spoken = /** @type {Partial<GateSpoken>} */ (gate?.spoken ?? {});
+  return {
+    chars: gate?.chars ?? '',
+    numberWords: /** @type {GateNumberWords} */ ({
+      ...Object.fromEntries(NUMBER_WORD_MAPS.map((k) => [k, words[k] ?? {}])),
+      ...Object.fromEntries(NUMBER_WORD_LISTS.map((k) => [k, words[k] ?? []])),
+      compound: words.compound ?? false,
+      suffixes: { ordinal: [], fraction: [], multiplier: [], ...words.suffixes },
+    }),
+    spoken: { abbreviations: spoken.abbreviations ?? {}, units: spoken.units ?? {}, approx: spoken.approx ?? '' },
+  };
+}
+
+/** A word of the gate lists: lowercase letters, nothing else. */
+const GATE_WORD = /^[\p{Ll}\p{Lo}]+$/u;
+/** Spoken words: letters and single spaces, no digits, so an expansion never adds a number of its own. */
+const SPOKEN_WORDS = /^\p{L}+(?: \p{L}+)*$/u;
+
+/**
+ * Checks the gate rules of a completed pack.
+ * @param {GateRules} gate
+ */
+function validateGate(gate) {
+  const fail = (/** @type {string} */ message) => {
+    throw new TypeError(`registerLanguage: "gate.${message}`);
+  };
+  if (typeof gate.chars !== 'string' || /[\p{N}\p{C}\p{Z}\p{M}]/u.test(gate.chars)) {
+    fail('chars" must be text without digits, spaces, marks or control characters');
+  }
+  const words = gate.numberWords;
+  for (const key of NUMBER_WORD_MAPS) {
+    const map = words[key];
+    if (!map || typeof map !== 'object' || Array.isArray(map)) fail(`numberWords.${key}" must map words to numbers`);
+    for (const [w, n] of Object.entries(map)) {
+      if (!GATE_WORD.test(w) || typeof n !== 'number' || !Number.isFinite(n) || n < 0) fail(`numberWords.${key}" must map lowercase words to finite numbers`);
+    }
+  }
+  for (const key of NUMBER_WORD_LISTS) {
+    if (!Array.isArray(words[key]) || !words[key].every((w) => typeof w === 'string' && GATE_WORD.test(w))) fail(`numberWords.${key}" must list lowercase words`);
+  }
+  if (typeof words.compound !== 'boolean') fail('numberWords.compound" must be true or false');
+  for (const kind of SUFFIX_KINDS) {
+    const list = words.suffixes?.[kind];
+    if (!Array.isArray(list) || !list.every((w) => typeof w === 'string' && GATE_WORD.test(w))) fail(`numberWords.suffixes.${kind}" must list lowercase endings`);
+  }
+  const { abbreviations, units, approx } = gate.spoken;
+  if (!abbreviations || typeof abbreviations !== 'object' || Array.isArray(abbreviations)) fail('spoken.abbreviations" must map abbreviations to words');
+  for (const [from, to] of Object.entries(abbreviations)) {
+    if (!from.trim() || /\p{N}|\s$|^\s/u.test(from) || typeof to !== 'string' || !SPOKEN_WORDS.test(to)) fail('spoken.abbreviations" must map abbreviations without digits to words');
+  }
+  if (!units || typeof units !== 'object' || Array.isArray(units)) fail('spoken.units" must map unit signs to [singular, plural]');
+  for (const [from, forms] of Object.entries(units)) {
+    if (!from || /[\p{Nd}\s]/u.test(from) || !Array.isArray(forms) || forms.length !== 2 || !forms.every((f) => typeof f === 'string' && SPOKEN_WORDS.test(f))) {
+      fail('spoken.units" must map unit signs to [singular, plural] words');
+    }
+  }
+  if (typeof approx !== 'string' || (approx !== '' && !SPOKEN_WORDS.test(approx))) fail('spoken.approx" must be a word');
 }
 
 /** Lists of plain words that are looked up in a set, never joined into a pattern. */
@@ -229,13 +349,14 @@ function validate(pack) {
     }
   }
   if (typeof polarity.nothingAgainst.allowed !== 'string') throw new TypeError('registerLanguage: "polarity.nothingAgainst.allowed" must be a word');
+  validateGate(pack.gate);
 }
 
 /**
  * Adds a language. Its words take part in every check from the next call on, also for text in the
  * other languages, so a new pack must be measured with the source-check eval before it ships. A
  * code can be registered once; the pack is checked, then frozen (its lists included).
- * @param {Partial<LanguagePack> & { code: string, polarity?: Partial<PolarityRules> }} pack
+ * @param {PackInput} pack
  * @returns {LanguagePack} the registered pack, completed and frozen
  */
 export function registerLanguage(pack) {

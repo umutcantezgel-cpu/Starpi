@@ -135,4 +135,66 @@ export const en = {
     restrictive: ['only', 'solely', 'exclusively', 'merely'],
     without: ['without'],
   },
+
+  gate: {
+    // Latin letters, digits and the common signs are shared (canonical.js); English adds nothing.
+    chars: '',
+    numberWords: {
+      cardinals: {
+        zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11,
+        twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
+        twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+      },
+      scales: { dozen: 12, hundred: 100, thousand: 1e3, million: 1e6, billion: 1e9, trillion: 1e12 },
+      // "one of the reasons", "the new one": a pronoun far more often than a count.
+      parts: ['one'],
+      joiners: ['and'],
+      fractions: {
+        half: 0.5, halves: 0.5, quarter: 0.25, quarters: 0.25, thirds: 1 / 3, fourths: 0.25, fifths: 0.2, sixths: 1 / 6,
+        sevenths: 1 / 7, eighths: 0.125, ninths: 1 / 9, tenths: 0.1, hundredths: 0.01, thousandths: 0.001,
+      },
+      multipliers: {
+        double: 2, twice: 2, triple: 3, thrice: 3, treble: 3, quadruple: 4, quintuple: 5, twofold: 2, threefold: 3,
+        doubled: 2, tripled: 3, quadrupled: 4,
+      },
+      ordinals: {
+        first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10,
+        eleventh: 11, twelfth: 12, thirteenth: 13, fourteenth: 14, fifteenth: 15, sixteenth: 16, seventeenth: 17,
+        eighteenth: 18, nineteenth: 19, twentieth: 20, thirtieth: 30, fortieth: 40, fiftieth: 50, sixtieth: 60,
+        seventieth: 70, eightieth: 80, ninetieth: 90, hundredth: 100, thousandth: 1000, millionth: 1e6,
+      },
+      adverbs: ['once', 'firstly', 'secondly', 'thirdly', 'single', 'singly'],
+      contextual: ['half', 'double', 'doubled'],
+      countNouns: [
+        'second', 'seconds', 'minute', 'minutes', 'hour', 'hours', 'day', 'days', 'week', 'weeks', 'month', 'months',
+        'year', 'years', 'decade', 'decades', 'century', 'meter', 'meters', 'metre', 'metres', 'kilometer', 'kilometers',
+        'mile', 'miles', 'liter', 'liters', 'litre', 'litres', 'gram', 'grams', 'kilogram', 'kilograms', 'pound', 'pounds',
+        'ounce', 'ounces', 'inch', 'inches', 'foot', 'feet', 'cup', 'cups', 'dose', 'doses', 'piece', 'pieces', 'item',
+        'items', 'unit', 'units', 'page', 'pages', 'person', 'persons', 'amount', 'number', 'quantity', 'price', 'cost',
+        'costs', 'size', 'rate', 'speed', 'budget', 'share', 'percent', 'dollars', 'euros',
+      ],
+      fractionLeads: ['a', 'one'],
+      negative: ['minus', 'negative'],
+      compound: false,
+      suffixes: { ordinal: [], fraction: [], multiplier: ['fold'] },
+    },
+    spoken: {
+      abbreviations: {
+        'e.g.': 'for example', 'i.e.': 'that is', 'etc.': 'et cetera', 'approx.': 'approximately', 'vs.': 'versus',
+        'incl.': 'including', 'excl.': 'excluding', 'Mr.': 'Mister', 'Mrs.': 'Missus', 'Dr.': 'Doctor', 'Prof.': 'Professor',
+        'Fig.': 'Figure',
+      },
+      units: {
+        '%': ['percent', 'percent'], 'km/h': ['kilometer per hour', 'kilometers per hour'], km: ['kilometer', 'kilometers'],
+        cm: ['centimeter', 'centimeters'], mm: ['millimeter', 'millimeters'], kg: ['kilogram', 'kilograms'],
+        mg: ['milligram', 'milligrams'], ml: ['milliliter', 'milliliters'], h: ['hour', 'hours'], min: ['minute', 'minutes'],
+        ms: ['millisecond', 'milliseconds'], '°C': ['degree Celsius', 'degrees Celsius'], '°F': ['degree Fahrenheit', 'degrees Fahrenheit'],
+        kB: ['kilobyte', 'kilobytes'], MB: ['megabyte', 'megabytes'], GB: ['gigabyte', 'gigabytes'], TB: ['terabyte', 'terabytes'],
+        MHz: ['megahertz', 'megahertz'], GHz: ['gigahertz', 'gigahertz'], kW: ['kilowatt', 'kilowatts'],
+        kWh: ['kilowatt hour', 'kilowatt hours'], '€': ['euro', 'euros'], 'm²': ['square meter', 'square meters'],
+        'km²': ['square kilometer', 'square kilometers'], 'm³': ['cubic meter', 'cubic meters'],
+      },
+      approx: 'about',
+    },
+  },
 };

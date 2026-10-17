@@ -5,6 +5,7 @@
 //                            is imported only when a PDF is read, as an optional peer dependency)
 //   dist/verify-receipt.js   the receipt verifier CLI (scripts/verify-receipt.mjs) for Node
 //   dist/ground.js           the source check CLI with SARIF output (scripts/ground.mjs) for Node
+//   dist/gate.js             the sentence gate CLI with JSON or SARIF output (scripts/gate.mjs) for Node
 //   dist/index.d.ts, types/  type declarations generated from the JSDoc types
 //
 // Usage: node scripts/build-core.mjs [--out <dir>] [--no-types]
@@ -41,7 +42,7 @@ await build({
   logLevel: 'warning',
 });
 
-for (const name of ['verify-receipt', 'ground']) {
+for (const name of ['verify-receipt', 'ground', 'gate']) {
   await build({
     entryPoints: [path.join(ROOT, `scripts/${name}.mjs`)],
     outfile: path.join(OUT, `${name}.js`),

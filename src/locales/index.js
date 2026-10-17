@@ -14,6 +14,7 @@
 // - New language: add `<lang>.json` (plus `<ns>/<lang>.json` where translated) and list it in
 //   SHIPPED_LOCALES. Untranslated keys show the English text.
 import aiEn from './ai/en.json' with { type: 'json' };
+import aiOrchestrationEn from './ai-orchestration/en.json' with { type: 'json' };
 import chatEn from './chat/en.json' with { type: 'json' };
 import companionEn from './companion/en.json' with { type: 'json' };
 import en from './en.json' with { type: 'json' };
@@ -29,7 +30,7 @@ import voiceEn from './voice/en.json' with { type: 'json' };
 /** @typedef {{ root: Dictionary, namespaces: Record<string, Dictionary> }} LocaleFiles */
 
 /** Namespaces, in merge order. */
-export const NAMESPACES = Object.freeze(['shell', 'chat', 'ai', 'providers', 'research', 'voice', 'live', 'trust', 'memory', 'companion']);
+export const NAMESPACES = Object.freeze(['shell', 'chat', 'ai', 'ai-orchestration', 'providers', 'research', 'voice', 'live', 'trust', 'memory', 'companion']);
 
 /** Languages with a root dictionary; the language switch offers exactly these. */
 export const SHIPPED_LOCALES = Object.freeze(['en', 'de']);
@@ -41,6 +42,7 @@ export const ENGLISH = Object.freeze({
     shell: shellEn,
     chat: chatEn,
     ai: aiEn,
+    'ai-orchestration': aiOrchestrationEn,
     providers: providersEn,
     research: researchEn,
     voice: voiceEn,

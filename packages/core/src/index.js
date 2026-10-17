@@ -22,6 +22,17 @@ export {
   THRESHOLDS,
 } from '../../../src/js/core/grounding.js';
 
+// Language packs: the words and conventions the checks read a language with; English and German
+// are built in, registerLanguage() adds one.
+export { languagePack, LANGUAGES, registerLanguage } from '../../../src/js/core/lang/index.js';
+
+// Sentence gate: releases a streamed answer unit by unit, only what its sources support (the
+// starpi-gate command), with the canonical and spoken forms it judges and the streaming releaser.
+export { checkText, createSentenceGate, isReleased } from '../../../src/js/core/gate.js';
+export { canonicalText } from '../../../src/js/core/canonical.js';
+export { spokenText } from '../../../src/js/core/spoken.js';
+export { createSentenceReleaser } from '../../../src/js/core/release.js';
+
 // Whole documents of any length, and SARIF 2.1.0 for code scanning (the starpi-ground command).
 export { checkDocument } from '../../../src/js/core/document.js';
 export { describeReason, REASON_MESSAGES, SARIF_SCHEMA, SARIF_VERSION, toSarif } from '../../../src/js/core/sarif.js';

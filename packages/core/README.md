@@ -22,6 +22,10 @@ retrieval-augmented generation (RAG) application:
 - **`starpi-ground`**, a command that checks a Markdown document of any length against source
   files and writes text, JSON or SARIF 2.1.0, so a CI job can fail on an unsupported statement
   and show it in GitHub code scanning.
+- **Sentence gate:** releases a streamed answer sentence by sentence (list items, table rows and
+  code blocks whole) and only what its sources support: every number and number word must appear
+  in a cited excerpt, identifiers as written, no links and no characters outside an allowlist. The
+  `starpi-gate` command runs it over a file and writes JSON or SARIF.
 - The **text extraction** (Markdown, text, CSV, JSON, PDF), **chunking** with exact offsets and
   **BM25** index that produce those excerpts in Starpi.
 
@@ -41,6 +45,7 @@ so its behaviour is covered by the app's tests.
 | Reproduce every excerpt from the original files | `verifyReceipt(receipt, files, { extractor: EXTRACTOR, extract })`, `npx starpi-verify-receipt` | [Receipts](#create-and-verify-receipts) |
 | Sign a receipt, check a signature | `signReceipt(receipt, privateKey)`, `verifyReceiptSignature(receipt, publicKey)` | [Sign receipts](#sign-receipts) |
 | Check a whole document in CI, as SARIF | `npx starpi-ground --answer notes.md --source docs/ --format sarif`, `checkDocument`, `toSarif` | [Check documents in CI](#check-documents-in-ci) |
+| Release a streamed answer unit by unit, only what its sources support | `createSentenceGate({ sources }).push(delta)`, `checkText`, `npx starpi-gate` | [Gate a streamed answer](#gate-a-streamed-answer) |
 | Split text into chunks with exact offsets | `chunkText(text)` | [Chunk and search](#chunk-and-search) |
 | Rank chunks for a question | `new BM25Index()`, `.add(chunks)`, `.search(query)` | [Chunk and search](#chunk-and-search) |
 | Read Markdown, text, CSV, JSON and PDF files | `extractText(file)` | [Receipts](#create-and-verify-receipts) |
@@ -315,6 +320,44 @@ same when the statement moves. In GitHub Actions (the job needs `security-events
 
 `checkDocument(markdown, sources)` and `toSarif(documents, tool)` do the same in code.
 
+## Gate a streamed answer
+
+```js
+import { createSentenceGate, isReleased } from '@starpi/core';
+
+const sources = [{ label: '[Doc: plan.md, Chunk: 1]', text: 'The approved budget is 480,000 EUR. The team has twelve members.' }];
+const gate = createSentenceGate({ mode: 'sources', locale: 'en', sources });
+const speak = (units) => units.filter(isReleased).forEach((u) => console.log(u.spoken, u.cites));
+
+speak(gate.push('The team has 12 mem'));
+speak(gate.push('bers [Doc: plan.md, Chunk: 1]. The budget is 520,000 EUR [Doc: plan.md, Chunk: 1]. '));
+// The team has 12 members. [ 0 ]
+const { released, withheld } = gate.end();
+speak(released);
+console.log(withheld.map((w) => [w.reason, w.token]));
+// [ [ 'unsupported_number', '520,000' ] ]
+```
+
+The gate judges each unit once, as soon as it can no longer change: a sentence, or a whole list
+item, table row, heading or code block. In `sources` mode every number, in digits or as a number
+word ("twelve", "drei Viertel", "twice"), must appear with the same value in an excerpt the unit
+cites; a form whose value depends on the convention ("1.200") must appear as written, and an
+identifier ("ISO 9001", "IPv6", "GPT-4o") literally, in a cited excerpt or the question. Ordinals
+and adverbs ("first", "once", "einmal") are never claims. `web` mode needs every number inside a
+grounded segment with an http(s) source; `free` mode keeps only the rules that hold in every mode:
+no links, and no characters outside the allowlist (other scripts, look-alike digits, invisible
+characters). Released units are frozen and `isReleased` recognizes them, so a speech queue can
+refuse anything else; `spoken` writes out abbreviations and units only when that changes no
+number. `checkText(text, options)` judges a complete text, and `canonicalText`, `spokenText` and
+`createSentenceReleaser` are the parts the gate is built from.
+
+```sh
+npx --yes --package=@starpi/core starpi-gate --text answer.md --source docs/ --format sarif --output gate.sarif
+```
+
+`starpi-gate` exits with 1 when it withholds a unit, 0 when it releases everything, 2 on a usage
+error.
+
 ## Chunk and search
 
 ```js
@@ -350,6 +393,8 @@ single characters, the same way for documents and queries.
 - `canonicalJson`: RFC 8785 compatible serialization for the values receipts contain.
 - `BM25Index`, `tokenize`, `STOPWORDS_EN`, `STOPWORDS_DE`: Okapi BM25 (k1 = 1.2, b = 0.75).
 - `sentenceSpans`, `splitSentences`: deterministic sentence splitting with offsets.
+- `languagePack`, `LANGUAGES`, `registerLanguage`: the English and German language packs the
+  checks and the gate read; a registered pack is validated, frozen and read from then on.
 - `GROUNDING`, `EXTRACTOR`, `CHUNKER`: the rule versions recorded in receipts; `GROUNDING_VERSIONS`
   lists the source-check versions `groundAnswer` can run, `REASON_CODES` (and `REASON_CODES_V1`)
   the reason codes.

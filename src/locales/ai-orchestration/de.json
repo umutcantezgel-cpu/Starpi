@@ -1,0 +1,123 @@
+{
+  "tier": {
+    "selected": "Dein Modell",
+    "role": "Anderes Modell des Anbieters",
+    "provider": "Nächster Anbieter",
+    "device": "Dieses Gerät",
+    "cache": "Gespeicherte Antwort",
+    "template": "Ohne KI"
+  },
+  "outcome": {
+    "ok": "Beantwortet",
+    "invalid": "Antwort abgelehnt",
+    "truncated": "Antwort abgeschnitten",
+    "refused": "Abgelehnt",
+    "rate_limited": "Zu viele Anfragen",
+    "not_found": "Modell nicht im Angebot",
+    "unavailable": "Nicht erreichbar",
+    "timeout": "Keine Antwort in der Zeit",
+    "error": "Fehlgeschlagen",
+    "skipped": "Übersprungen"
+  },
+  "blocked": {
+    "cooldown": "Wartet nach zu vielen Anfragen",
+    "circuit_open": "Pausiert nach wiederholten Fehlern",
+    "probing": "Wird erneut versucht",
+    "not_found": "Gerade nicht im Angebot"
+  },
+  "attempt": {
+    "retry": "Zweiter Versuch",
+    "served": "Stattdessen hat {model} geantwortet",
+    "latency": "{time}"
+  },
+  "result": {
+    "switched": "{requested} hat nicht geantwortet; stattdessen hat {served} geantwortet.",
+    "cached": "Gespeicherte Antwort vom {time}",
+    "template": "Kein Modell hat geantwortet; diese Antwort entstand ohne KI.",
+    "unavailable": "Kein Modell hat geantwortet, und ohne KI gibt es dafür keine Antwort.",
+    "simulated": "Simulierter Anbieter"
+  },
+  "thinking": {
+    "label": "Erweitertes Denken",
+    "hint": "Lässt fähige Modelle nachdenken, bevor sie antworten. Langsamer und verbraucht mehr Tokens."
+  },
+  "strength": {
+    "label": "Modellstärke",
+    "max": "Maximum",
+    "max_desc": "Das stärkste Modell des Anbieters. Beste Ergebnisse, am langsamsten und am teuersten.",
+    "super": "Stark",
+    "super_desc": "Ein starkes Modell eine Stufe unter dem Maximum: gründliche Antworten, schneller und günstiger.",
+    "auto": "Automatisch",
+    "auto_desc": "Starpi wählt für jede Aufgabe ein freies Modell und weicht ausgelasteten aus.",
+    "fast": "Schnell",
+    "fast_desc": "Das schnellste Modell. Gut für kurze Fragen."
+  },
+  "health": {
+    "on": "Verfügbar",
+    "off": "Nicht eingerichtet",
+    "unknown": "Status unbekannt"
+  },
+  "council": {
+    "title": "Rat",
+    "drafts_label": "Entwürfe des Rats",
+    "draft": "Entwurf {n}",
+    "phase_start": "Der Rat beginnt.",
+    "phase_members": "Fertige Entwürfe: {done} von {total}.",
+    "phase_judge": "Der Richter vergleicht {valid} Entwürfe.",
+    "phase_done_judge": "Der Richter hat einen Entwurf gewählt.",
+    "phase_done_merged": "Der Richter hat die Entwürfe zusammengeführt.",
+    "phase_done_best": "Der beste gültige Entwurf gilt.",
+    "phase_done_none": "Kein gültiger Entwurf kam zurück.",
+    "phase_aborted": "Der Rat wurde angehalten.",
+    "status": {
+      "pending": "Schreibt",
+      "ok": "Gültig",
+      "invalid": "Abgelehnt",
+      "error": "Fehlgeschlagen",
+      "timeout": "Zu langsam",
+      "skipped": "Übersprungen"
+    },
+    "latency": "Dauer {time}",
+    "rejected": "Warum abgelehnt",
+    "read_draft": "Entwurf lesen",
+    "thinking": "Hat vor dem Antworten nachgedacht",
+    "chosen": "Vom Richter gewählt",
+    "used_best": "Als bester Entwurf verwendet",
+    "judge": "Richter",
+    "judge_pending": "Der Richter liest die Entwürfe.",
+    "judge_reasons": "Gründe",
+    "judge_chose": "Gewählt: {draft}",
+    "judge_merged": "Hat die Entwürfe zu einer Antwort verbunden",
+    "judge_failed": "Der Richter gab kein brauchbares Urteil.",
+    "result": "Ergebnis",
+    "decided": {
+      "judge": "Vom Richter gewählt",
+      "merged": "Vom Richter zusammengeführt",
+      "best": "Bester gültiger Entwurf",
+      "none": "Kein Ergebnis"
+    },
+    "valid_count": "{valid} von {total} Entwürfen gültig",
+    "finished_at": "Fertig um {time}",
+    "reason": {
+      "no_models": "Für einen Rat ist kein Modell verfügbar.",
+      "no_valid_draft": "Keiner der Entwürfe war verwendbar.",
+      "one_valid_draft": "Nur ein Entwurf war verwendbar, daher brauchte es keinen Richter.",
+      "no_judge": "Kein anderes Modell war als Richter frei, daher gilt der beste gültige Entwurf.",
+      "judge_invalid": "Das Urteil des Richters war nicht verwendbar, daher gilt der beste gültige Entwurf.",
+      "judge_error": "Der Richter ist ausgefallen, daher gilt der beste gültige Entwurf.",
+      "judge_timeout": "Der Richter brauchte zu lange, daher gilt der beste gültige Entwurf.",
+      "judge_skipped": "Der Richter war nicht verfügbar, daher gilt der beste gültige Entwurf."
+    },
+    "error": {
+      "empty": "Der Entwurf war leer.",
+      "truncated": "Der Entwurf erreichte seine Längengrenze.",
+      "too_long": "Der Entwurf war zu lang.",
+      "refusal": "Das Modell hat abgelehnt.",
+      "no_json": "Die Antwort enthielt kein JSON-Objekt.",
+      "schema": "Die Antwort hatte nicht die erwartete Form ({detail}).",
+      "quote_not_found": "Ein Zitat stand nicht in der Quelle.",
+      "unknown_source": "Die Antwort nannte eine Quelle, die es nicht gibt ({detail}).",
+      "other": "Abgelehnt ({code})."
+    }
+  }
+}
