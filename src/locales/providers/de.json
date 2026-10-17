@@ -36,7 +36,7 @@
   },
   "error": {
     "invalid_slot": "Unbekannter Anbieter.",
-    "invalid_key": "Ein Schlüssel ist ein Wort aus druckbaren Zeichen, ohne Leerzeichen.",
+    "invalid_key": "Nur druckbare Zeichen verwenden (Buchstaben, Ziffern, Satzzeichen); ein Schlüssel hat keine Leerzeichen.",
     "locked": "Entsperre zuerst den Tresor oder lege eine Passphrase fest.",
     "unavailable": "Dieser Browser kann keinen Tresor halten.",
     "storage": "Der Browser hat es nicht gespeichert (privates Fenster, gesperrter oder voller Speicher)."

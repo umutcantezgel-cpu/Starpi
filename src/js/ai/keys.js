@@ -108,6 +108,8 @@ export const LEGACY_KEY_NAMES = Object.freeze({ gemini: STORAGE_KEYS.geminiKey, 
 
 /** Printable ASCII without spaces: anything else would break or inject a header. */
 const KEY_PATTERN = /^[\x21-\x7e]{1,1024}$/;
+/** An access code is chosen by the site's operator: printable ASCII, inner spaces allowed. */
+const ACCESS_PATTERN = /^[\x21-\x7e](?:[\x20-\x7e]{0,254}[\x21-\x7e])?$/;
 const ENCODER = new TextEncoder();
 /** Binds the ciphertext to its purpose and format version. */
 const AAD = ENCODER.encode('starpi-keyvault/v1');
@@ -131,13 +133,14 @@ export function sessionName(slot) {
 }
 
 /**
- * A key as stored: trimmed; null when it is not usable.
+ * A key as stored: trimmed; null when it is not usable as a header value.
  * @param {unknown} key
+ * @param {string} [slot]  the access code may contain inner spaces
  * @returns {string | null}
  */
-export function cleanKey(key) {
+export function cleanKey(key, slot) {
   const value = typeof key === 'string' ? key.trim() : '';
-  return KEY_PATTERN.test(value) ? value : null;
+  return (slot === ACCESS_SLOT ? ACCESS_PATTERN : KEY_PATTERN).test(value) ? value : null;
 }
 
 /**
@@ -325,7 +328,7 @@ export function createKeyStore(options = {}) {
       /** @type {Map<string, string>} */
       const keys = new Map();
       for (const [slot, value] of Object.entries(data?.keys ?? {})) {
-        const clean = cleanKey(value);
+        const clean = cleanKey(value, slot);
         if (isKeySlot(slot) && clean) keys.set(slot, clean);
       }
       return keys;
@@ -448,7 +451,7 @@ export function createKeyStore(options = {}) {
     getKey(slot) {
       if (!isKeySlot(slot)) return '';
       ensureMigrated();
-      const own = cleanKey(session.read(sessionName(slot)));
+      const own = cleanKey(session.read(sessionName(slot)), slot);
       if (own) return own;
       return vaultKeys?.get(slot) ?? '';
     },
@@ -469,7 +472,7 @@ export function createKeyStore(options = {}) {
     keyLocation(slot) {
       if (!isKeySlot(slot)) return null;
       ensureMigrated();
-      if (cleanKey(session.read(sessionName(slot)))) return 'session';
+      if (cleanKey(session.read(sessionName(slot)), slot)) return 'session';
       return vaultKeys?.has(slot) ? 'vault' : null;
     },
 
@@ -483,7 +486,7 @@ export function createKeyStore(options = {}) {
      */
     setKey(slot, key, opts = {}) {
       assertSlot(slot);
-      const value = cleanKey(key);
+      const value = cleanKey(key, slot);
       if (!value) return Promise.reject(new KeyStoreError('invalid_key'));
       ensureMigrated();
       return serial(async () => {
@@ -548,7 +551,7 @@ export function createKeyStore(options = {}) {
           /** @type {Map<string, string>} */
           const keys = new Map();
           for (const slot of KEY_SLOTS) {
-            const own = cleanKey(session.read(sessionName(slot)));
+            const own = cleanKey(session.read(sessionName(slot)), slot);
             if (own) keys.set(slot, own);
           }
           const written = await encrypt(key, keys, { salt, kdf });

@@ -36,7 +36,7 @@
   },
   "error": {
     "invalid_slot": "Unknown provider.",
-    "invalid_key": "A key is one word of printable characters, without spaces.",
+    "invalid_key": "Use printable characters only (letters, digits, punctuation); a key has no spaces.",
     "locked": "Unlock the vault first, or set a passphrase.",
     "unavailable": "This browser cannot keep a vault.",
     "storage": "The browser did not store it (private window, blocked or full storage)."
@@ -74,7 +74,7 @@
     "placeholder": "Paste a key",
     "hint_prefix": "Keys start with {prefix}. The field never shows a saved key.",
     "hint_any": "Paste the key exactly as the provider shows it. The field never shows a saved key.",
-    "mismatch": "Saved, but this does not look like a {provider} key. Use Test key to check it.",
+    "mismatch": "Saved, but this does not look like a key from {provider}. Use Test key to check it.",
     "remember": "Keep in the vault on this device",
     "remember_locked": "Open the vault (or set a passphrase) to keep keys on this device.",
     "save": "Save key",

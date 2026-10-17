@@ -102,6 +102,8 @@ describe('key slots', () => {
   it('accept printable keys without spaces only', () => {
     assert.equal(cleanKey('  abc-123  '), 'abc-123');
     for (const bad of ['', 'two words', 'line\nbreak', 'ümlaut', 'x'.repeat(1025), null, 7]) assert.equal(cleanKey(bad), null, String(bad));
+    assert.equal(cleanKey(' open sesame ', ACCESS_SLOT), 'open sesame', 'the access code may contain inner spaces');
+    assert.equal(cleanKey('line\nbreak', ACCESS_SLOT), null);
   });
 });
 
