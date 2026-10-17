@@ -1,1 +1,14 @@
-{}
+{
+  "code": {
+    "download": "Herunterladen",
+    "download_aria": "Code als Datei herunterladen",
+    "canvas": "Im Canvas öffnen",
+    "preview": "Vorschau",
+    "hide_preview": "Vorschau ausblenden",
+    "preview_title": "Vorschau des Codeblocks (abgeschottet, ohne Netzwerk)",
+    "run_preview": "Vorschau ausführen",
+    "run_preview_aria": "Skripte dieser Vorschau in ihrer Sandbox ausführen",
+    "preview_error": "Diese Vorschau ließ sich nicht anzeigen. Der Code oben bleibt unverändert.",
+    "diagram_error": "Dieses Diagramm ließ sich hier nicht zeichnen. Seine Quelle steht oben."
+  }
+}

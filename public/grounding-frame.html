@@ -1,0 +1,25 @@
+<!doctype html>
+<!--
+  Grounding frame: the search suggestions a provider sends with a grounded web answer, shown exactly
+  as delivered (the provider's terms ask for that). They are HTML with inline CSS, which the app's
+  CSP refuses and which never enters the app's DOM. The header rule of this exact path
+  (scripts/headers.json) gives the page an opaque origin, no network and no script but
+  /grounding-frame.js, which receives the HTML from the app; inline styles are allowed, inline
+  scripts are not. Suggestion links open a new browsing context. Protocol: grounding-frame.js.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<base target="_blank">
+<title>Search suggestions</title>
+<style>
+html, body { margin: 0; padding: 0; background: transparent; }
+#content { display: flow-root; }
+</style>
+<script src="/grounding-frame.js" defer></script>
+</head>
+<body>
+<div id="content"></div>
+</body>
+</html>

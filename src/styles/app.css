@@ -108,10 +108,39 @@ body {
 .prose-custom th { background: rgb(var(--sp-slate-100)); font-weight: 700; color: rgb(var(--sp-slate-900)); }
 .prose-custom blockquote { border-left: 3px solid #ffca00; padding-left: 0.85rem; margin: 0.6rem 0; color: rgb(var(--sp-slate-600)); background: rgb(var(--sp-amber-50)); padding-top: 0.4rem; padding-bottom: 0.4rem; border-radius: 0 0.5rem 0.5rem 0; }
 .prose-custom a { color: rgb(var(--sp-amber-700)); text-decoration: underline; text-underline-offset: 2px; }
-/* Code blocks with a copy button (code-blocks.js): the wrapper takes the block's margin, so the button
-   sits inside the code box, and the code leaves room for it. */
-.prose-custom .code-block { position: relative; margin: 0.6rem 0; }
-.prose-custom .code-block > pre { margin: 0; padding-right: 5rem; }
+/* Code blocks with their tools (code-blocks.js): a bar of buttons above the code, whose language label
+   comes from data-lang (so the source check reads no extra text), and the preview frame below. */
+.prose-custom .code-block { margin: 0.6rem 0; border: 1px solid rgb(var(--sp-slate-200)); border-radius: 0.75rem; overflow: hidden; background: rgb(var(--sp-slate-50)); }
+.prose-custom .code-block > pre { margin: 0; border: 0; border-radius: 0; }
+.prose-custom .code-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.25rem; padding: 0.3rem 0.4rem; border-bottom: 1px solid rgb(var(--sp-slate-200)); background: rgb(var(--sp-slate-100)); }
+.prose-custom .code-head[data-lang]::before { content: attr(data-lang); margin-right: auto; padding-left: 0.3rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.72rem; font-weight: 600; color: rgb(var(--sp-slate-600)); }
+.prose-custom .code-preview { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; padding: 0.5rem; border-top: 1px solid rgb(var(--sp-slate-200)); background: rgb(var(--sp-white)); }
+.prose-custom .code-preview-frame { width: 100%; }
+.prose-custom .code-preview-note { margin: 0; font-size: 0.78rem; color: rgb(var(--sp-amber-800)); }
+/* The sandboxed frames (render.js) size themselves from the height their page reports. */
+.sandbox-frame { display: block; width: 100%; height: 3rem; border: 0; border-radius: 0.5rem; background: transparent; }
+
+/* Math (render.js): the TeX source until render-extras.js typesets it as MathML, which needs no styles
+   of its own. A formula KaTeX could not read stays TeX with a dotted underline. */
+.prose-custom .math-inline:not(.math-rendered), .prose-custom .math-display:not(.math-rendered) { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85em; color: rgb(var(--sp-slate-700)); }
+.prose-custom .math-display { display: block; margin: 0.6rem 0; overflow-x: auto; overflow-y: hidden; }
+.prose-custom .math-error { text-decoration: underline dotted rgb(var(--sp-slate-400)); }
+.prose-custom math { font-size: 1.08em; }
+
+/* Syntax highlighting (render-extras.js, highlight.js token classes). The palette tokens switch with
+   the theme and keep their text contrast on the code background in both. */
+.hljs-comment, .hljs-quote { color: rgb(var(--sp-slate-500)); font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-doctag, .hljs-template-tag { color: rgb(var(--sp-violet-700)); }
+.hljs-string, .hljs-regexp, .hljs-addition, .hljs-char { color: rgb(var(--sp-emerald-700)); }
+.hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet { color: rgb(var(--sp-amber-800)); }
+.hljs-title, .hljs-section, .hljs-function { color: rgb(var(--sp-sky-700)); }
+.hljs-built_in, .hljs-type, .hljs-class { color: rgb(var(--sp-indigo-700)); }
+.hljs-attr, .hljs-attribute, .hljs-property, .hljs-variable, .hljs-template-variable, .hljs-tag, .hljs-name, .hljs-selector-id, .hljs-selector-class, .hljs-selector-attr { color: rgb(var(--sp-rose-700)); }
+.hljs-meta { color: rgb(var(--sp-slate-600)); }
+.hljs-deletion { color: rgb(var(--sp-red-700)); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 700; }
+.hljs-link { text-decoration: underline; }
 
 /* Touch target optimizations for mobile buttons */
 .touch-target-min {
@@ -299,8 +328,11 @@ body {
   .chat-menu-item {
     @apply w-full flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs font-medium text-slate-800 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900;
   }
-  .code-copy {
-    @apply absolute top-1.5 right-1.5 inline-flex items-center gap-1 min-h-[24px] min-w-[24px] rounded-md border border-slate-200 bg-white/90 px-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900;
+  .code-action {
+    @apply inline-flex items-center gap-1 min-h-[24px] min-w-[24px] rounded-md border border-slate-200 bg-white px-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900;
+  }
+  .code-action[aria-pressed='true'] {
+    @apply bg-slate-200 text-slate-900;
   }
   .free-note {
     @apply mt-2 flex items-center gap-1.5 text-[11px] text-slate-500;

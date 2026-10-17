@@ -275,7 +275,7 @@ export function loadRenderExtras() {
  */
 export function renderMarkdown(markdown) {
   installHooks();
-  const html = md.parse(String(markdown ?? ''));
+  const html = /** @type {string} */ (md.parse(String(markdown ?? '')));
   const clean = /** @type {string} */ (/** @type {unknown} */ (DOMPurify.sanitize(html, PURIFY_CONFIG)));
   if (!EXTRAS_MARKER.test(clean)) return clean;
   if (!extras) {
