@@ -2,7 +2,7 @@
 // receipts (rag/receipts.js): the switch, the key with its id, JWK and PEM export, rotate and delete
 // with confirmation, earlier keys, both languages; a download that names this device's key as its
 // signer, carries its signature and has the id the dialog previewed.
-/* global document */
+/* global document, window */
 import './setup.mjs';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
