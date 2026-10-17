@@ -218,6 +218,12 @@ excerpts:
 | `verdict` | `supported`, `inverted` (the excerpts state the opposite) or `unsupported`. |
 | `text` | The words that state the relation, at most 500 characters. |
 
+The entries themselves are shown as recorded. With version 3 of the source check, a relation that
+is `inverted` or `unsupported` is also a reason of its last statement (`relation_inverted`,
+`relation_unsupported`); those reasons, and the verdicts they give, are recomputed like every other
+reason, over the recorded statements in their order. A statement whose relation rests on a citation
+that cannot be reproduced is not recomputed.
+
 ## Hashing and offsets
 
 - SHA-256, written as 64 lowercase hex characters.

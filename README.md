@@ -184,11 +184,21 @@ with 843 faithful paraphrases showed that reading negations by their words also 
 restatements ("only allowed after the update" for "prohibited until the update"), and no faithful
 statement may be marked unsupported.
 
+Version 3 (the current rules) adds relations between values or events, within a statement and with
+the statement before it: a change, comparison, order in time or carried-over value that the cited
+excerpts give the other way round ("costs rose from 420,000 to 210,000 EUR") is marked weak with the
+excerpt's passage. On two relation sets written for 3.0 (fictitious reports in English and German,
+[sets and results](docs/eval/v3-relations.md)) it detects 30 of 30 and, on the held-out set, 23 of
+24 planted relation errors, where version 2 detected 2 and 5, and it marks no statement of a
+faithful answer weak or unsupported. On all earlier sets it gives the results of version 2, with one
+more misplaced value detected in the set for 2.0.
+
 The answers were written by language models following fixed instructions, and every label was
 confirmed by two independent model reviewers; they are not answers from real users, and each
 category has 10 to 24 answers per set. Read the table as what the check can and cannot see: it is
 reliable for changed values and finds most reversed statements, wrong names and misplaced values
-within one statement, but not all, and not a wrong relation spread over two statements. The
+within one statement, but not all; relations across statements are checked only with the statement
+directly before. The
 labelled answers are in [`tests/fixtures/grounding/`](tests/fixtures/grounding), and a unit test
 fails if any of these results gets worse.
 
