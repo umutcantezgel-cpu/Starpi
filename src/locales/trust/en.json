@@ -4,7 +4,7 @@
   "state": {
     "on": "Signing",
     "off": "Not signing",
-    "ready": "Key on first export",
+    "ready": "Key with the first receipt",
     "unavailable": "Not available here"
   },
   "sign": {
@@ -22,9 +22,9 @@
     "rotate": "New key",
     "rotate_confirm": "Make a new signing key? Receipts are signed with the new key from now on; the old key never signs again, and its public key stays available for export.",
     "delete": "Delete",
-    "delete_confirm": "Delete the signing key of this device? Receipts it signed still verify with its public key, if you exported it. A new key is made at the next signed export.",
+    "delete_confirm": "Delete the signing key of this device? Receipts it signed still verify with its public key, if you exported it. A new key is made with the next signed receipt.",
     "create": "Create signing key",
-    "none": "No signing key yet. One is made when you first download a receipt with signing on, or now.",
+    "none": "No signing key yet. One is made when you first open an answer receipt with signing on, or now.",
     "unavailable": "This browser cannot make signing keys here (WebCrypto needs a secure connection). Receipts are downloaded without a signature.",
     "not_persistent": "This browser does not keep data for this site (for example in a private window): the key lasts only until the page is closed."
   },

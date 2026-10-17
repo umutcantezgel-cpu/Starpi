@@ -5,8 +5,9 @@
 // bytes the page could read or send. The key id is the SHA-256 of the public key's SPKI
 // (core/signature.js publicKeyId), the same id a signed receipt names.
 //
-// - "Sign exported receipts" (on by default, store `settings`) makes every downloaded receipt name
-//   this key as its signer and carry its signature (core/receipt.js signReceipt).
+// - "Sign exported receipts" (on by default, store `settings`) makes every receipt the dialog
+//   builds name this key as its signer and carry its signature (core/receipt.js signReceipt); the
+//   key is made with the first such receipt.
 // - The public key is exported as a JWK or a PEM file. Whoever has it from the user can check who
 //   signed a receipt: `starpi-verify-receipt receipt.json <files> --public-key key.pem --require-signature`.
 // - Rotate makes a new key; the old one is kept only so its public key can still be exported, and

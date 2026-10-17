@@ -4,7 +4,7 @@
   "state": {
     "on": "Signiert",
     "off": "Signiert nicht",
-    "ready": "Schlüssel beim ersten Export",
+    "ready": "Schlüssel mit dem ersten Beleg",
     "unavailable": "Hier nicht verfügbar"
   },
   "sign": {
@@ -22,9 +22,9 @@
     "rotate": "Neuer Schlüssel",
     "rotate_confirm": "Einen neuen Signaturschlüssel erstellen? Belege werden ab jetzt mit dem neuen Schlüssel signiert; der alte signiert nie wieder, sein öffentlicher Schlüssel bleibt exportierbar.",
     "delete": "Löschen",
-    "delete_confirm": "Den Signaturschlüssel dieses Geräts löschen? Von ihm signierte Belege lassen sich weiter mit seinem öffentlichen Schlüssel prüfen, falls Sie ihn exportiert haben. Beim nächsten signierten Export entsteht ein neuer Schlüssel.",
+    "delete_confirm": "Den Signaturschlüssel dieses Geräts löschen? Von ihm signierte Belege lassen sich weiter mit seinem öffentlichen Schlüssel prüfen, falls Sie ihn exportiert haben. Mit dem nächsten signierten Beleg entsteht ein neuer Schlüssel.",
     "create": "Signaturschlüssel erstellen",
-    "none": "Noch kein Signaturschlüssel. Er entsteht beim ersten Herunterladen eines Belegs mit eingeschalteter Signatur, oder jetzt.",
+    "none": "Noch kein Signaturschlüssel. Er entsteht, wenn Sie zum ersten Mal einen Antwortbeleg mit eingeschalteter Signatur öffnen, oder jetzt.",
     "unavailable": "Dieser Browser kann hier keine Signaturschlüssel erzeugen (WebCrypto braucht eine sichere Verbindung). Belege werden ohne Signatur heruntergeladen.",
     "not_persistent": "Dieser Browser speichert für diese Seite keine Daten (zum Beispiel in einem privaten Fenster): Der Schlüssel gilt nur, bis die Seite geschlossen wird."
   },
