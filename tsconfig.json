@@ -167,6 +167,7 @@
     "src/js/render.js",
     "src/js/retrieval.js",
     "src/js/settings.js",
+    "src/js/settings/providers-view.js",
     "src/js/signals.js",
     "src/js/state.js",
     "src/js/storage.js",

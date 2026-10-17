@@ -1,1 +1,130 @@
-{}
+{
+  "title": "Modellanbieter und Schlüssel",
+  "subtitle": "Eigene Schlüssel für Cloud-Modelle, die freien Modelle dieser Website und dein eigener Server.",
+  "vault": {
+    "title": "Schlüsseltresor",
+    "state": {
+      "none": "Nur dieser Tab",
+      "locked": "Tresor gesperrt",
+      "unlocked": "Tresor offen",
+      "unavailable": "Kein Tresor möglich"
+    },
+    "none_body": "Schlüssel bleiben erhalten, bis dieser Tab geschlossen wird. Lege eine Passphrase fest, um sie auf diesem Gerät zu behalten, verschlüsselt mit einem Schlüssel, den nur deine Passphrase öffnet. Die Schlüssel dieses Tabs wandern in den Tresor.",
+    "locked_body": "Deine Schlüssel liegen verschlüsselt auf diesem Gerät. Gib die Passphrase ein, um sie in diesem Tab zu nutzen.",
+    "unlocked_body": "Der Tresor ist in diesem Tab offen. Er sperrt sich nach 30 Minuten ohne Aktivität selbst.",
+    "unavailable_body": "Dieser Browser kann keinen Tresor halten (etwa in einem privaten Fenster). Schlüssel bleiben erhalten, bis dieser Tab geschlossen wird.",
+    "passphrase": "Tresor-Passphrase",
+    "passphrase_new_hint": "Mindestens 8 Zeichen. Sie lässt sich nicht wiederherstellen: Wer sie vergisst, löscht alle Schlüssel und fügt sie neu hinzu.",
+    "create": "Passphrase festlegen",
+    "unlock": "Entsperren",
+    "lock": "Jetzt sperren",
+    "forget": "Alle Schlüssel löschen",
+    "forget_confirm": "Alle Schlüssel aus diesem Tab und aus dem Tresor auf diesem Gerät löschen?",
+    "working": "Wird bearbeitet …",
+    "suggest": "Schlüssel, die dieser Browser im Klartext gespeichert hatte, wurden verschoben: Sie bleiben jetzt nur bis zum Schließen dieses Tabs erhalten. Lege eine Tresor-Passphrase fest, um sie verschlüsselt auf diesem Gerät zu behalten.",
+    "suggest_dismiss": "Ausblenden",
+    "result": {
+      "created": "Tresor angelegt. Die Schlüssel dieses Tabs liegen jetzt darin.",
+      "unlocked": "Tresor entsperrt.",
+      "wrong": "Diese Passphrase öffnet den Tresor nicht.",
+      "too_short": "Die Passphrase braucht mindestens 8 Zeichen.",
+      "unavailable": "Dieser Browser kann keinen Tresor halten.",
+      "locked": "Tresor gesperrt.",
+      "forgotten": "Alle Schlüssel wurden gelöscht.",
+      "idle": "Der Schlüsseltresor hat sich nach 30 Minuten ohne Aktivität gesperrt."
+    }
+  },
+  "error": {
+    "invalid_slot": "Unbekannter Anbieter.",
+    "invalid_key": "Ein Schlüssel ist ein Wort aus druckbaren Zeichen, ohne Leerzeichen.",
+    "locked": "Entsperre zuerst den Tresor oder lege eine Passphrase fest.",
+    "unavailable": "Dieser Browser kann keinen Tresor halten.",
+    "storage": "Der Browser hat es nicht gespeichert (privates Fenster, gesperrter oder voller Speicher)."
+  },
+  "access": {
+    "title": "Zugangscode",
+    "body": "Diese Website verlangt einen Zugangscode, bevor ihr Relay, ihre freien Modelle, Sprache und Recherche antworten. Der Code geht nur an diese Website.",
+    "label": "Zugangscode",
+    "placeholder": "Code eingeben",
+    "placeholder_saved": "Gespeichert; neuen Code eingeben, um ihn zu ersetzen",
+    "save": "Code speichern",
+    "saved": "Zugangscode gespeichert.",
+    "removed": "Zugangscode entfernt."
+  },
+  "relay": {
+    "label": "Das Starpi-Relay für Anbieter nutzen, die Browser blockieren",
+    "hint": "Manche Anbieter lehnen Aufrufe direkt aus einer Webseite ab. Ist dies an, geht ein solcher Aufruf noch einmal über das Relay dieser Website, das ihn mit deinem Schlüssel weiterleitet und nichts behält. Der funktionierende Weg wird je Anbieter gemerkt.",
+    "reset": "Gemerkte Wege vergessen",
+    "reset_done": "Der nächste Aufruf an jeden Anbieter versucht wieder zuerst den direkten Weg.",
+    "on": "Relay als Ausweg an.",
+    "off": "Relay als Ausweg aus: Anbieter, die Browser blockieren, sind nicht erreichbar."
+  },
+  "pool": {
+    "title": "Freie Modelle über diese Website",
+    "loading": "Website wird gefragt …",
+    "unreachable": "Diese Website bietet keine freien Modelle an (sie läuft ohne Serverfunktionen).",
+    "on": "{provider}: {count} freie Modelle",
+    "off": "{provider}: nicht angeboten"
+  },
+  "list": {
+    "title": "Eigene Schlüssel"
+  },
+  "key": {
+    "label": "API-Schlüssel für {provider}",
+    "placeholder": "Schlüssel einfügen",
+    "hint_prefix": "Schlüssel beginnen mit {prefix}. Das Feld zeigt einen gespeicherten Schlüssel nie an.",
+    "hint_any": "Füge den Schlüssel genau so ein, wie der Anbieter ihn zeigt. Das Feld zeigt einen gespeicherten Schlüssel nie an.",
+    "mismatch": "Gespeichert, aber das sieht nicht nach einem Schlüssel für {provider} aus. Prüfe ihn mit „Schlüssel testen“.",
+    "remember": "Im Tresor auf diesem Gerät behalten",
+    "remember_locked": "Öffne den Tresor (oder lege eine Passphrase fest), um Schlüssel auf diesem Gerät zu behalten.",
+    "save": "Schlüssel speichern",
+    "test": "Schlüssel testen",
+    "remove": "Schlüssel entfernen",
+    "get": "Schlüssel holen",
+    "none": "Kein Schlüssel",
+    "session": "Schlüssel für diesen Tab (••••{last4})",
+    "vault": "Schlüssel im Tresor (••••{last4})",
+    "saved": "Schlüssel für diesen Tab gespeichert.",
+    "saved_vault": "Schlüssel im Tresor gespeichert.",
+    "removed": "Schlüssel entfernt.",
+    "empty": "Füge zuerst einen Schlüssel ein."
+  },
+  "route": {
+    "direct": "Direkt aus dem Browser",
+    "auto": "Direkt, bei Sperre über das Relay",
+    "relay": "Über das Relay",
+    "pool": "Frei über diese Website",
+    "device": "Auf diesem Gerät",
+    "reason": {
+      "unknown": "Unbekannter Anbieter",
+      "no_key": "Braucht einen Schlüssel",
+      "relay_off": "Braucht das Relay",
+      "no_server": "Keine Serveradresse",
+      "in_browser": "Auf diesem Gerät"
+    }
+  },
+  "test": {
+    "running": "Schlüssel wird getestet …",
+    "ok_direct": "Der Schlüssel funktioniert (direkt aus dem Browser).",
+    "ok_relay": "Der Schlüssel funktioniert (über das Relay).",
+    "failed": "Test fehlgeschlagen ({code}): {reason}"
+  },
+  "local": {
+    "title": "Eigener Server",
+    "presets": "Vorlagen:",
+    "url": "Serveradresse",
+    "url_hint": "Ein OpenAI-kompatibler Endpunkt. Erlaubt: https://-Adressen, http://localhost und http://127.0.0.1.",
+    "key": "Serverschlüssel (optional)",
+    "key_hint": "Nur wenn dein Server einen verlangt.",
+    "saved": "Serveradresse gespeichert.",
+    "cors_title": "Dieser Website Aufrufe an deinen Server erlauben",
+    "cors": {
+      "ollama": "Ollama: mit {setting} auf {origin} gesetzt starten.",
+      "lmstudio": "LM Studio: in den Servereinstellungen „{setting}“ einschalten.",
+      "vllm": "vLLM: mit {setting} starten, das {origin} enthält.",
+      "llamacpp": "llama.cpp: Sein Server nimmt Aufrufe aus Webseiten ohne weitere Einrichtung an."
+    },
+    "chrome": "Chrome fragt, ob diese Website Geräte in deinem lokalen Netzwerk erreichen darf. Erlaube es, sonst blockiert der Browser Aufrufe an deinen Server.",
+    "relay_never": "Aufrufe an deinen eigenen Server gehen immer direkt aus diesem Browser; das Relay erreicht dein Netzwerk nie."
+  }
+}
