@@ -29,7 +29,9 @@ const WASM_WORKER_URL = '__STARPI_WASM_WORKER_URL__';
  */
 
 /**
- * @typedef {'unsupported' | 'no-adapter' | 'quota' | 'network' | 'code-download' | 'device-lost' | 'out-of-memory' | 'cancelled' | 'busy' | 'not-loaded' | 'unknown'} EngineErrorKind
+ * @typedef {'unsupported' | 'no-adapter' | 'quota' | 'network' | 'code-download' | 'device-lost' | 'out-of-memory' | 'cancelled' | 'busy' | 'not-loaded' | 'integrity' | 'unverified' | 'unknown'} EngineErrorKind
+ *   integrity: a downloaded file did not match its pinned hash and was deleted; unverified: files
+ *   without a pinned hash, and the user has not allowed this model to load unverified
  */
 
 /**
@@ -50,7 +52,7 @@ export class EngineError extends Error {
   }
 }
 
-/** @typedef {'init' | 'download' | 'cache' | 'shaders' | 'finalizing'} LoadPhase */
+/** @typedef {'init' | 'download' | 'cache' | 'verify' | 'shaders' | 'finalizing'} LoadPhase */
 
 /**
  * Maps WebLLM's progress text onto a load phase the UI can name in any language.
@@ -288,6 +290,9 @@ export function classifyEngineError(err) {
   if (err instanceof EngineError) return err;
   const name = err instanceof Error ? err.name : '';
   const message = err instanceof Error ? err.message : String(err);
+  if (isIntegrityFailure(err)) {
+    return new EngineError('integrity', 'A downloaded model file does not match its pinned hash', err, { model: state.progress?.label ?? '–', files: '–' });
+  }
   if (name === 'QuotaExceededError' || /quota/i.test(message)) {
     return new EngineError('quota', 'Storage quota exceeded while caching model data', err);
   }
@@ -346,6 +351,54 @@ async function agreeToDownload(choice, options) {
   if (options.confirmDownload && !(await options.confirmDownload(choice))) return false;
   await requestPersistence();
   return true;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Integrity hook: every stored file of a model is checked against models/model-lock.json before a
+// runtime reads it, and new downloads right after the load (models/integrity.js, loaded with the
+// first model load). A file that does not match is deleted and the load fails ('integrity'); files
+// without a pinned hash fail it as 'unverified' unless the user allowed this model to load
+// unverified in Settings › Trust.
+
+/** @type {Promise<typeof import('../models/integrity.js')> | null} */
+let integrityModule = null;
+
+function loadIntegrity() {
+  integrityModule ??= import('../models/integrity.js').catch((err) => {
+    integrityModule = null;
+    throw err;
+  });
+  return integrityModule;
+}
+
+/**
+ * WebLLM's own check of a config, tokenizer or model library (ModelRecord.integrity) failed.
+ * @param {unknown} err
+ */
+function isIntegrityFailure(err) {
+  return err instanceof Error && (err.name === 'IntegrityError' || /Integrity verification failed/i.test(err.message));
+}
+
+/**
+ * Checks the stored files of the model being loaded; resolves when it may go on.
+ * @param {import('../models/integrity.js').ModelTarget} target
+ * @param {ModelChoice} choice
+ * @param {() => boolean} current
+ */
+async function checkModelFiles(target, choice, current) {
+  const { IntegrityError, verifyModel } = await loadIntegrity();
+  try {
+    await verifyModel(target, {
+      cancelled: () => !current(),
+      onProgress: (done, total) => {
+        if (current() && total > 0) setState({ progress: { progress: done / total, text: '', phase: 'verify', label: choice.label } });
+      },
+    });
+  } catch (err) {
+    if (!(err instanceof IntegrityError)) throw err;
+    const files = err.files.slice(0, 3).join(', ') + (err.files.length > 3 ? ', …' : '');
+    throw new EngineError(err.code === 'mismatch' ? 'integrity' : 'unverified', err.message, err, { model: choice.label, files });
+  }
 }
 
 /** Releases the engine and its worker. Never throws. */
@@ -414,6 +467,10 @@ export function loadModel(options) {
     setState({ status: 'loading', error: null, model: null, progress: { progress: 0, text: '', phase: 'init', label: choice.label } });
 
     if (wasm) {
+      const target = (await loadIntegrity()).wasmTarget(wasm);
+      // Integrity hook: stored files before the worker reads them.
+      if (!missing) await Promise.race([checkModelFiles(target, choice, current), aborted]);
+      if (!current()) return false;
       const w = new Worker(new URL(WASM_WORKER_URL, location.href), { type: 'module', name: 'starpi-wasm' });
       worker = w;
       const created = await Promise.race([
@@ -422,6 +479,12 @@ export function loadModel(options) {
         }),
         aborted,
       ]);
+      if (!current()) {
+        w.terminate();
+        return false;
+      }
+      // Integrity hook: new downloads before the model answers (files checked above only compare sizes).
+      await Promise.race([checkModelFiles(target, choice, current), aborted]);
       if (!current()) {
         w.terminate();
         return false;
@@ -435,6 +498,13 @@ export function loadModel(options) {
     if (!current()) return false;
     const record = webllm.prebuiltAppConfig.model_list.find((m) => m.model_id === choice.modelId);
     if (!record) throw new EngineError('unknown', `Model ${choice.modelId} is not in this WebLLM build`, undefined, { reason: choice.modelId });
+
+    const integrity = await loadIntegrity();
+    const target = integrity.webllmTarget(choice, record);
+    // Integrity hook: stored files before WebLLM reads them; a mismatch deletes the file and fails here.
+    if (!missing) await Promise.race([checkModelFiles(target, choice, current), aborted]);
+    if (!current()) return false;
+    const appConfig = await integrity.webllmAppConfig(webllm.prebuiltAppConfig, target, record);
 
     const cached = missing ? false : await webllm.hasModelInCache(choice.modelId).catch(() => false);
     if (!cached && !missing) {
@@ -456,11 +526,22 @@ export function loadModel(options) {
           initProgressCallback: (/** @type {InitProgressReport} */ report) => {
             if (current()) setState({ progress: { progress: report.progress, text: report.text, phase: classifyProgress(report.text), label: choice.label } });
           },
+          ...(appConfig ? { appConfig } : {}),
         },
         choice.chatOptions,
       ),
       aborted,
-    ]);
+    ]).catch(async (err) => {
+      // WebLLM's own check failed on a fresh download: find the file, delete it and say which.
+      if (isIntegrityFailure(err) && current()) await checkModelFiles(target, choice, current);
+      throw err;
+    });
+    if (!current()) {
+      w.terminate();
+      return false;
+    }
+    // Integrity hook: new downloads before the model answers (files checked above only compare sizes).
+    await Promise.race([checkModelFiles(target, choice, current), aborted]);
     if (!current()) {
       w.terminate();
       return false;
@@ -672,5 +753,11 @@ export async function deleteCachedModels() {
     } catch (err) {
       console.warn('[starpi] could not delete cached model', id, err);
     }
+  }
+  // Integrity hook: a new download of a deleted file is hashed again, even with the same size.
+  try {
+    await (await loadIntegrity()).forgetVerified();
+  } catch (err) {
+    console.warn('[starpi] could not reset the model download checks', err);
   }
 }

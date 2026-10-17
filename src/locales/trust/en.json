@@ -64,5 +64,36 @@
     "second_opinions": "Second opinions recorded for {n} {n:statement|statements}, {contradicted} contradicted (advisory, not recomputed).",
     "relations": "{n} {n:relation|relations} between statements recorded, {flagged} inverted or unsupported (not recomputed).",
     "check_ocr": "{label}: the file matches; its text was recognised by OCR and cannot be extracted again."
+  },
+  "models": {
+    "title": "Trust · model downloads",
+    "subtitle": "Before an on-device model answers, every file it downloaded is checked against the SHA-256 hash pinned in this version of Starpi. A file that does not match is deleted, and the model is not loaded.",
+    "empty": "No model has been checked on this device yet. The check runs when a model loads.",
+    "state": {
+      "verified": "Verified",
+      "override": "Loaded unverified",
+      "mismatch": "File deleted",
+      "unverified": "Unverified"
+    },
+    "runtime": {
+      "webgpu": "GPU (WebGPU)",
+      "wasm": "Processor (WASM)",
+      "embed": "Search model"
+    },
+    "checked": "{n} {n:file|files} checked · {date}",
+    "mismatched": "Did not match the pinned hash: {files}",
+    "unpinned": "No pinned hash: {files}",
+    "allow": "Load unverified (upstream changed)",
+    "allow_confirm": "Load {model} without matching pinned hashes? Do this only if you trust that the model changed at its source after this version of Starpi was released. Its files are then used as they are, without protection against tampering.",
+    "allowed": "Allowed to load unverified: files that do not match a pinned hash are used as they are.",
+    "revoke": "Require verification",
+    "note": "Verified files are remembered by address and size, so a later load compares sizes only. Deleting the downloaded models resets the checks.",
+    "result": {
+      "allowed": "{model} may load unverified. Load it again to use it.",
+      "revoked": "{model} loads only with verified files again."
+    },
+    "error": {
+      "storage": "The setting could not be stored on this device."
+    }
   }
 }

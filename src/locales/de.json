@@ -102,6 +102,7 @@
       "init": "Lokales Modell wird vorbereitet…",
       "download": "Modellgewichte werden heruntergeladen…",
       "cache": "Modellgewichte werden aus dem Browser-Cache geladen…",
+      "verify": "Heruntergeladene Dateien werden geprüft…",
       "shaders": "WebGPU-Shader werden vorbereitet…",
       "finalizing": "Wird abgeschlossen…"
     },
@@ -129,7 +130,9 @@
       "busy": "Das Modell bearbeitet gerade eine andere Anfrage. Versuchen Sie es danach erneut.",
       "not-loaded": "Das lokale Modell ist nicht geladen.",
       "unknown": "Unerwarteter Fehler: {reason}",
-      "code-download": "Die lokale KI-Engine konnte nicht geladen werden (Verbindung unterbrochen). Laden Sie die Seite neu, um es erneut zu versuchen."
+      "code-download": "Die lokale KI-Engine konnte nicht geladen werden (Verbindung unterbrochen). Laden Sie die Seite neu, um es erneut zu versuchen.",
+      "integrity": "Eine heruntergeladene Datei von {model} stimmt nicht mit dem Hash überein, den diese App für sie festgelegt hat ({files}). Die Datei wurde gelöscht und das Modell nicht geladen. Stellen Sie die Frage erneut, um sie neu herunterzuladen. Schlägt die Prüfung wieder fehl, wurde das Modell vielleicht beim Anbieter geändert: Unter Einstellungen › Vertrauen › Modell-Downloads können Sie es ungeprüft laden.",
+      "unverified": "{model} hat heruntergeladene Dateien, für die diese App keinen festgelegten Hash kennt ({files}), vermutlich weil das Modell beim Anbieter geändert wurde. Es wurde nicht geladen. Um es trotzdem zu nutzen, wählen Sie „Ungeprüft laden“ unter Einstellungen › Vertrauen › Modell-Downloads."
     }
   },
   "models": {

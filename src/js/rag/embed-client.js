@@ -63,6 +63,10 @@ const memo = new Map();
 /** @type {Map<string, number>} */
 const loadedBytes = new Map();
 let modelReady = false;
+/** Integrity check of the model's stored files before the worker reads them. @type {Promise<void> | null} */
+let checkedBefore = null;
+/** Integrity check of new downloads after the worker's first answer. @type {Promise<void> | null} */
+let checkedAfter = null;
 
 /** @param {Partial<SemanticState>} next */
 function update(next) {
@@ -125,8 +129,26 @@ function stopClient() {
   client?.terminate();
   client = null;
   modelReady = false;
+  checkedBefore = null;
+  checkedAfter = null;
   loadedBytes.clear();
   memo.clear();
+}
+
+/**
+ * Integrity hook (models/integrity.js, loaded with the model): checks the model's stored files
+ * against model-lock.json. A file that does not match is deleted and the model does not load.
+ * @param {EmbedSource} src
+ * @param {Promise<void> | null} pending a check already running
+ * @returns {Promise<void>}
+ */
+function checkModelFiles(src, pending) {
+  return (
+    pending ??
+    import('../models/integrity.js').then(async ({ embedTarget, verifyModel }) => {
+      await verifyModel(embedTarget(src));
+    })
+  );
 }
 
 /**
@@ -139,12 +161,28 @@ async function embedBatch(texts, kind) {
   const sizes = new Map(src.files.map(([file, bytes]) => [file, bytes]));
   const total = src.files.reduce((sum, [, bytes]) => sum + bytes, 0);
   if (!modelReady && state.phase !== 'loading' && state.phase !== 'indexing') update({ phase: 'loading', error: null });
+  if (!modelReady) {
+    // Stored files are checked before the worker reads them.
+    checkedBefore = checkModelFiles(src, checkedBefore).catch((err) => {
+      checkedBefore = null;
+      throw err;
+    });
+    await checkedBefore;
+  }
   const vectors = await getClient().embed(src, texts, kind, (p) => {
     const size = sizes.get(p.file) ?? 0;
     loadedBytes.set(p.file, Math.min(p.done ? size : p.loaded, size));
     const loaded = [...loadedBytes.values()].reduce((sum, n) => sum + n, 0);
     update({ progress: total ? loaded / total : 0 });
   });
+  if (!modelReady) {
+    // New downloads are checked before the first vector is used; a failed check stops the worker.
+    checkedAfter = checkModelFiles(src, checkedAfter).catch((err) => {
+      stopClient();
+      throw err;
+    });
+    await checkedAfter;
+  }
   if (!modelReady) {
     modelReady = true;
     // Loaded for a question or the warm-up: on to the state the workspace is in.
