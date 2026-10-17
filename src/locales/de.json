@@ -335,7 +335,7 @@
     "only_unchecked": "Nicht verglichen: Antwort und Auszüge sind in verschiedenen Sprachen",
     "unchecked": "{n} Aussage(n) wurden nicht verglichen, weil Antwort und Auszug in verschiedenen Sprachen sind.",
     "too_long": "Diese Antwort ist für die Quellenprüfung zu lang",
-    "disclaimer": "Die Prüfung vergleicht Zahlen, Daten, Uhrzeiten, Codes, Zitate und Wortlaut jeder Aussage mit den Auszügen, die sie zitiert, und, in deren Sprache, ob sie deren Verneinungen beibehält und Namen und Werte dort lässt, wo die Auszüge sie nennen. Eine Übereinstimmung beweist nicht, dass die Aussage stimmt; eine Markierung heißt: Quelle öffnen und prüfen.",
+    "disclaimer": "Die Prüfung vergleicht Zahlen, Daten, Uhrzeiten, Codes, Zitate und Wortlaut jeder Aussage mit den Auszügen, die sie zitiert, und, in deren Sprache, ob sie deren Verneinungen beibehält, Namen und Werte dort lässt, wo die Auszüge sie nennen, und Veränderungen, Vergleiche und zeitliche Abfolgen in dieselbe Richtung gibt. Eine Übereinstimmung beweist nicht, dass die Aussage stimmt; eine Markierung heißt: Quelle öffnen und prüfen.",
     "reason_missing_fact": "{fact} steht nicht in {label}.",
     "reason_fact_elsewhere": "{fact} steht in {other}, nicht im zitierten {label}.",
     "reason_fact_context": "{fact} steht in {label}, aber bei etwas anderem: „{found}“.",

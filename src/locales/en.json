@@ -335,7 +335,7 @@
     "only_unchecked": "Not compared: the answer and its excerpts are in different languages",
     "unchecked": "{n} statement(s) were not compared because the answer and the excerpt are in different languages.",
     "too_long": "This answer is too long for the source check",
-    "disclaimer": "The check compares the numbers, dates, times, codes, quotations and wording of each statement with the excerpts it cites and, in their language, whether it keeps their negations and puts names and values where they do. A match does not prove a statement correct; a flag means: open the source and check.",
+    "disclaimer": "The check compares the numbers, dates, times, codes, quotations and wording of each statement with the excerpts it cites and, in their language, whether it keeps their negations, puts names and values where they do and gives changes, comparisons and orders in time the same direction. A match does not prove a statement correct; a flag means: open the source and check.",
     "reason_missing_fact": "{fact} is not in {label}.",
     "reason_fact_elsewhere": "{fact} is in {other}, not in the cited {label}.",
     "reason_fact_context": "{fact} is in {label}, but next to something else: “{found}”.",

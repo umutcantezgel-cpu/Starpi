@@ -9,6 +9,7 @@ import { closeDialog, openDialog } from '../dialog.js';
 import { byId, downloadText, onAction, setHidden } from '../dom.js';
 import { refreshIcons } from '../icons.js';
 import { formatNumber, setText } from '../i18n/index.js';
+import { receiptAdvisory } from '../core/grounding.js';
 import { verifyReceiptFiles } from './workspace.js';
 
 /** @typedef {import('../core/receipt.js').ReceiptDraft} ReceiptDraft */
@@ -52,6 +53,19 @@ export function receiptButton(id) {
   setText(label, 'receipt.button');
   btn.append(icon, label);
   return btn;
+}
+
+/**
+ * A draft with the relations and second opinions of its source-check report, as the receipt records
+ * them, unless the draft names its own. Second opinions are added to the report after the answer
+ * (grounding-view.js), so they are read when the receipt is built.
+ * @param {ReceiptDraft} draft
+ * @returns {ReceiptDraft}
+ */
+function withAdvisory(draft) {
+  if (!draft.grounding) return draft;
+  const advisory = receiptAdvisory(draft.grounding);
+  return { ...draft, relations: draft.relations ?? advisory.relations, secondOpinion: draft.secondOpinion ?? advisory.secondOpinion };
 }
 
 function options() {
@@ -103,7 +117,7 @@ async function preview() {
   if (!draft) return;
   const run = ++buildSeq;
   const [{ buildReceipt }, { exporter, reason }] = await Promise.all([receiptCore(), signingForExport()]);
-  const receipt = await buildReceipt(draft, { ...options(), signer: exporter?.signer });
+  const receipt = await buildReceipt(withAdvisory(draft), { ...options(), signer: exporter?.signer });
   if (run !== buildSeq) return;
   showSigning(exporter, reason);
   const idEl = byId('receiptId');
@@ -132,7 +146,7 @@ async function download() {
   if (!draft) return;
   const [{ buildReceipt }, { exporter, reason }] = await Promise.all([receiptCore(), signingForExport()]);
   showSigning(exporter, reason);
-  const built = await buildReceipt(draft, { ...options(), signer: exporter?.signer });
+  const built = await buildReceipt(withAdvisory(draft), { ...options(), signer: exporter?.signer });
   const receipt = exporter ? await exporter.sign(built) : built;
   downloadText(`starpi-receipt-${receipt.id.slice(0, 12)}.json`, `${JSON.stringify(receipt, null, 2)}\n`, 'application/json');
 }

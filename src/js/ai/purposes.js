@@ -396,7 +396,9 @@ const ENTAIL_SCHEMA = {
 
 export const ENTAIL_CHECK = definePurpose({
   name: 'entail_check',
-  role: 'fast',
+  // The source check's second opinion (core/entail.js) asks the judge: a verdict over another
+  // model's statement.
+  role: 'judge',
   jsonSchema: ENTAIL_SCHEMA,
   maxTokens: 250,
   temperature: 0,
