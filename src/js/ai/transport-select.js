@@ -202,7 +202,7 @@ function autoTransport(id, direct, relay, memory) {
       if (!(err instanceof AiError) || err.code !== 'cors' || signal?.aborted) throw err;
       const res = await viaRelay();
       if (relayMissing(res)) {
-        await res.body?.cancel().catch(() => {});
+        void res.body?.cancel().catch(() => {});
         throw err;
       }
       remember('relay');
@@ -318,7 +318,7 @@ export async function fetchPools(opts = {}) {
       signal: AbortSignal.timeout(opts.timeoutMs ?? POOL_TIMEOUT_MS),
     });
     if (!res.ok || !/json/i.test(res.headers.get('content-type') ?? '')) {
-      await res.body?.cancel().catch(() => {});
+      void res.body?.cancel().catch(() => {});
       return { reachable: false, pools: {} };
     }
     const text = await res.text();
@@ -374,7 +374,7 @@ export async function testKey(id, key, opts = {}) {
   try {
     const res = await transport(null, { path: info.modelsPath, method: 'GET', headers: listHeaders(id) }, { signal });
     if (res.ok) {
-      await res.body?.cancel().catch(() => {});
+      void res.body?.cancel().catch(() => {});
       return { ok: true, via: via(), status: res.status };
     }
     const snippet = (await res.text().catch(() => '')).slice(0, MAX_ERROR_SNIPPET_CHARS);
