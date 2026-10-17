@@ -26,20 +26,18 @@ export function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (ch) => HTML_ESCAPES[ch] ?? ch);
 }
 
-/** Characters escapeMarkdown() writes as character references: as backslash escapes they would open math (\( and \[). */
-const MARKDOWN_REFERENCES = /** @type {Record<string, string>} */ ({ '(': '&#40;', ')': '&#41;', '[': '&#91;', ']': '&#93;' });
-
 /**
  * Makes untrusted text inert inside a Markdown document: escapes Markdown/HTML control characters
- * and collapses line breaks so values cannot open links, images, headings, HTML blocks or math.
- * Brackets and parentheses become character references, which Markdown shows as the character but
- * never reads as syntax.
+ * and collapses line breaks so values cannot open links, images, headings or HTML blocks. Its
+ * escaped parentheses and brackets never open math (looksLikeTex); dollar signs stay as written,
+ * and prices never meet the rules of $…$ math (inlineDollar). The source check parses this output
+ * (core/grounding.js), so its form stays as it is.
  * @param {unknown} value
  */
 export function escapeMarkdown(value) {
   return String(value ?? '')
     .replace(/\s*[\r\n]+\s*/g, ' ')
-    .replace(/[\\`*_{}[\]()#+!|<>~&$]/g, (ch) => MARKDOWN_REFERENCES[ch] ?? `\\${ch}`);
+    .replace(/[\\`*_{}[\]()#+!|<>~&]/g, '\\$&');
 }
 
 const ALLOWED_LINK_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
@@ -124,6 +122,47 @@ const BLOCK_DOLLAR = new RegExp(String.raw`^ {0,3}\$\$((?:(?!\n[ \t]*\n)[\s\S]){
 const BLOCK_BRACKET = new RegExp(String.raw`^ {0,3}\\\[((?:(?!\n[ \t]*\n)[\s\S]){1,${MAX_TEX}}?)\\\][ \t]*(?:\n|$)`);
 
 /**
+ * Whether text inside \( \) or \[ \] is TeX: an unescaped command (\alpha), ^, _, { or }. Markdown
+ * writes "\(" for a plain parenthesis too, and escapeMarkdown() escapes every parenthesis, bracket,
+ * backslash, underscore and brace of a value, so its output never passes; "\(x\)" without TeX stays
+ * "(x)".
+ * @param {string} text
+ */
+export function looksLikeTex(text) {
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '\\') {
+      if (/[a-z]/i.test(text[i + 1] ?? '')) return true;
+      i += 1;
+    } else if (ch === '^' || ch === '_' || ch === '{' || ch === '}') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Inline \(…\) math at the start of src.
+ * @param {string} src
+ */
+function inlineParen(src) {
+  const m = INLINE_PAREN.exec(src);
+  return m && m[1].trim() && looksLikeTex(m[1]) ? m : null;
+}
+
+/**
+ * A display block at the start of src: $$…$$, or \[…\] around TeX or spread over lines (a value
+ * escapeMarkdown() wrote never has a line break).
+ * @param {string} src
+ */
+function blockMath(src) {
+  const dollar = BLOCK_DOLLAR.exec(src);
+  if (dollar) return dollar;
+  const bracket = BLOCK_BRACKET.exec(src);
+  return bracket && (looksLikeTex(bracket[1]) || /^[ \t]*\n/.test(bracket[1])) ? bracket : null;
+}
+
+/**
  * The tokenizer extension that protects math from marked. Its renderers write placeholders that the
  * sanitizer keeps (the TeX as escaped text); render-extras.js turns them into MathML.
  * @type {import('marked').TokenizerAndRendererExtension[]}
@@ -138,7 +177,7 @@ export const mathExtensions = [
       return m ? m.index + m[1].length : undefined;
     },
     tokenizer(src) {
-      const m = BLOCK_DOLLAR.exec(src) ?? BLOCK_BRACKET.exec(src);
+      const m = blockMath(src);
       const text = m?.[1].trim();
       return m && text ? { type: 'mathBlock', raw: m[0], text } : undefined;
     },
@@ -156,8 +195,8 @@ export const mathExtensions = [
     tokenizer(src) {
       const display = INLINE_DISPLAY.exec(src);
       if (display?.[1].trim()) return { type: 'math', raw: display[0], text: display[1].trim(), display: true };
-      const paren = INLINE_PAREN.exec(src);
-      if (paren?.[1].trim()) return { type: 'math', raw: paren[0], text: paren[1].trim(), display: false };
+      const paren = inlineParen(src);
+      if (paren) return { type: 'math', raw: paren[0], text: paren[1].trim(), display: false };
       const dollar = inlineDollar(src);
       return dollar ? { type: 'math', raw: dollar.raw, text: dollar.text, display: false } : undefined;
     },
@@ -201,7 +240,7 @@ export function maskInlineMath(src) {
       continue;
     }
     const rest = src.slice(at);
-    const raw = INLINE_DISPLAY.exec(rest)?.[0] ?? INLINE_PAREN.exec(rest)?.[0] ?? inlineDollar(rest)?.raw;
+    const raw = INLINE_DISPLAY.exec(rest)?.[0] ?? inlineParen(rest)?.[0] ?? inlineDollar(rest)?.raw;
     if (raw) {
       const open = raw.startsWith('$$') ? 2 : raw.startsWith('$') ? 1 : 2;
       out += raw.slice(0, open) + 'a'.repeat(raw.length - 2 * open) + raw.slice(-open);
@@ -271,13 +310,14 @@ export function loadRenderExtras() {
  * loading it and returns the plain form (call enhanceRendered() on the inserted element, or render
  * again, to upgrade it).
  * @param {unknown} markdown
+ * @param {{ extras?: boolean }} [options]  extras: false returns the plain form and loads nothing
  * @returns {string}
  */
-export function renderMarkdown(markdown) {
+export function renderMarkdown(markdown, { extras: useExtras = true } = {}) {
   installHooks();
   const html = /** @type {string} */ (md.parse(String(markdown ?? '')));
   const clean = /** @type {string} */ (/** @type {unknown} */ (DOMPurify.sanitize(html, PURIFY_CONFIG)));
-  if (!EXTRAS_MARKER.test(clean)) return clean;
+  if (!useExtras || !EXTRAS_MARKER.test(clean)) return clean;
   if (!extras) {
     loadRenderExtras().catch(() => {});
     return clean;
@@ -419,16 +459,17 @@ export function mountRenderFrame(host, { kind, source, title, onError }) {
     title,
     prefix: 'starpi-render',
     maxHeight: 720,
-    content: () => ({ type: 'starpi-render', kind, source, theme, run }),
+    content: () => {
+      theme = currentTheme();
+      return { type: 'starpi-render', kind, source, theme, run };
+    },
     onError,
   });
   /** @type {MutationObserver | null} */
   let observer = null;
   if (kind === 'mermaid' && typeof MutationObserver === 'function') {
     observer = new MutationObserver(() => {
-      if (currentTheme() === theme) return;
-      theme = currentTheme();
-      frame.resend();
+      if (currentTheme() !== theme) frame.resend();
     });
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
   }
