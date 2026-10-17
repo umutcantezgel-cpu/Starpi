@@ -1,5 +1,5 @@
 // @ts-check
-// Origin: generic infrastructure first written for Fluid Systems (same author, MIT); re-expressed for Starpi.
+// Origin: generic infrastructure first written for a related project of the same author (MIT); re-expressed for Starpi.
 //
 // Streaming sentence releaser: turns a streamed text (a model answer arriving in deltas) into units
 // that can no longer change, hands each to `check(unit)` once, and returns what the check returned
@@ -118,9 +118,9 @@ function lineStart(head, indentedInItem) {
 /**
  * Creates a releaser.
  * @template T
- * @param {{ check: (unit: Unit) => T | null | undefined | false, blocks?: 'markdown' | 'none', trailer?: RegExp, abbreviation?: (token: string) => boolean }} options
+ * @param {{ check: (unit: Unit) => T | null | undefined | false, blocks?: 'markdown' | 'none', trailer?: { test: (text: string) => boolean }, abbreviation?: (token: string) => boolean }} options
  *   check: judges a unit and returns what to release, or null/false to withhold it;
- *   trailer: text after a sentence end that still belongs to the sentence (default TRAILING_LABEL);
+ *   trailer: whether a bracketed text after a sentence end still belongs to the sentence (default TRAILING_LABEL);
  *   abbreviation: whether a dot after a (lowercase) token leaves the sentence open (default: sentences.js)
  * @returns {Releaser<T>}
  */
@@ -324,6 +324,7 @@ export function createSentenceReleaser(options) {
   /** A complete line that was held until its end ("hold" or not decided yet). */
   const heldLine = (/** @type {number} */ p, /** @type {boolean} */ final) => {
     const line = slice(lineBegin, p);
+    /** @type {ReturnType<typeof lineType>} */
     const t = markdown ? lineType(line, item !== null, indent) : { type: line.trim() ? 'para' : 'blank' };
     const start = ink;
     const end = lastInk + 1;
@@ -340,7 +341,7 @@ export function createSentenceReleaser(options) {
         return;
       case 'fence':
         closeItem();
-        fence = { char: /** @type {{ char: string }} */ (t.fence).char, len: /** @type {{ len: number }} */ (t.fence).len, start, line: lineNo };
+        fence = { char: t.fence?.char ?? '`', len: t.fence?.len ?? 3, start, line: lineNo };
         return;
       case 'heading':
       case 'row':

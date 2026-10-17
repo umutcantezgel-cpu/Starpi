@@ -1,5 +1,5 @@
 // @ts-check
-// Origin: generic infrastructure first written for Fluid Systems (same author, MIT); re-expressed for Starpi.
+// Origin: generic infrastructure first written for a related project of the same author (MIT); re-expressed for Starpi.
 //
 // Canonical text for the sentence gate (gate.js): the single form of a sentence that is judged, shown
 // and spoken, so nothing the gate did not read can hide or join a number afterwards. The steps:
@@ -27,7 +27,7 @@ import { fromPacks } from './lang/index.js';
  * Text with, for each of its UTF-16 code units, the index in the input it came from.
  * @typedef {object} Canonical
  * @property {string} text
- * @property {number[]} map
+ * @property {Int32Array} map
  */
 
 /** @typedef {'sentence' | 'item' | 'row' | 'heading' | 'code'} UnitKind */
@@ -81,16 +81,13 @@ const LINE_START = /^[ \t]*(?:>[ \t]?)*(?:#{1,6}(?=[ \t]|$)(?:[ \t]+\d{1,2}(?:\.
 const HEADING_CLOSE = /[ \t]+#+[ \t]*$/;
 const TABLE_SEPARATOR = /^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
 const FENCE_LINE = /^[ \t]*(?:`{3,}|~{3,})/;
-const HTML = /<!--[\s\S]*?-->|<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?\/?>/g;
+const HTML_TAG = /<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?\/?>/g;
 const STRIKE = /~~(?=\S)[^~\n]*?\S~~/g;
 const ESCAPABLE = /[!-/:-@[-`{-~]/;
 const IS_ALNUM = /[\p{L}\p{Nd}]/u;
 const DROP_CHAR = /[\p{Default_Ignorable_Code_Point}\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Cs}]/u;
-const SPACE_CHAR = /[\p{Zs}  ]/u;
+const SPACE_CHAR = /[\p{Zs}\u2028\u2029]/u;
 const MARK = /\p{M}/u;
-/** No space before these, and none after an opening bracket. */
-const NO_SPACE_BEFORE = new Set(['.', ',', ';', ':', '!', '?', ')', ']']);
-const NO_SPACE_AFTER = new Set(['(', '[']);
 
 /**
  * Marks the Markdown of one unit: 1 drops a character, a string in `swap` replaces it.
@@ -142,9 +139,18 @@ function markdownMarks(text, kind) {
       }
     }
   }
-  for (const m of text.matchAll(HTML)) {
-    if (/^<br\b/i.test(m[0])) swap.set(/** @type {number} */ (m.index), ' ');
-    else dropRange(/** @type {number} */ (m.index), /** @type {number} */ (m.index) + m[0].length);
+  // HTML comments: found with indexOf, so a text full of unclosed "<!--" stays linear.
+  for (let from = text.indexOf('<!--'); from >= 0; from = text.indexOf('<!--', from)) {
+    const close = text.indexOf('-->', from + 4);
+    if (close < 0) break;
+    dropRange(from, close + 3);
+    from = close + 3;
+  }
+  for (const m of text.matchAll(HTML_TAG)) {
+    const at = /** @type {number} */ (m.index);
+    if (drop[at]) continue;
+    if (/^<br\b/i.test(m[0])) swap.set(at, ' ');
+    else dropRange(at, at + m[0].length);
   }
   for (const m of text.matchAll(STRIKE)) dropRange(/** @type {number} */ (m.index), /** @type {number} */ (m.index) + m[0].length);
   for (let i = 0; i < text.length; i += 1) {
@@ -172,60 +178,167 @@ function markdownMarks(text, kind) {
   return { drop, swap };
 }
 
+/** No space before . , ; : ! ? ) ] (by code). */
+const noSpaceBefore = (/** @type {number} */ c) => c === 46 || c === 44 || c === 59 || c === 58 || c === 33 || c === 63 || c === 41 || c === 93;
+
+const KEEP = 0;
+const SPACE = 1;
+const DROP = 2;
+const COMBINING = 3;
+/** Classes of the code points outside ASCII seen so far (bounded, so a text of many scripts cannot grow it without end). */
+const classes = new Map();
+
 /**
- * Collapses white space in a sequence of [text, input index] pieces into a canonical text.
- * @param {Array<[string, number]>} pieces  single code points
+ * Whether a code point outside ASCII is white space, dropped, a combining mark or kept.
+ * @param {number} cp
+ */
+function classOf(cp) {
+  let k = classes.get(cp);
+  if (k === undefined) {
+    const ch = String.fromCodePoint(cp);
+    k = SPACE_CHAR.test(ch) ? SPACE : DROP_CHAR.test(ch) ? DROP : MARK.test(ch) ? COMBINING : KEEP;
+    if (classes.size >= 4096) classes.clear();
+    classes.set(cp, k);
+  }
+  return k;
+}
+
+/**
+ * Builds a canonical text one character at a time: white space collapses to one space, with none
+ * at either end, before closing punctuation or after an opening bracket; every UTF-16 unit keeps
+ * the input index it came from. Characters taken over unchanged are copied as runs of the source
+ * string, so plain text costs little more than its map.
+ */
+class Builder {
+  /** @param {string} source  the string `keep` copies from */
+  constructor(source) {
+    this.source = source;
+    /** @type {string[]} */
+    this.parts = [];
+    this.map = new Int32Array(source.length);
+    this.len = 0;
+    this.runStart = 0;
+    this.runEnd = -1;
+    this.pending = -1; // map value of a pending space
+    this.pendingAt = -1; // its source index, when it is a single ASCII space
+    this.last = 0;
+    this.marks = false;
+  }
+
+  /**
+   * A space in the source.
+   * @param {number} i   source index
+   * @param {number} at  map value
+   */
+  space(i, at) {
+    if (this.pending < 0) {
+      this.pending = at;
+      this.pendingAt = this.source.charCodeAt(i) === 32 ? i : -1;
+    } else this.pendingAt = -1;
+  }
+
+  flushRun() {
+    if (this.runEnd > this.runStart) this.parts.push(this.source.slice(this.runStart, this.runEnd));
+    this.runEnd = -1;
+  }
+
+  /** @param {number} code  the character that follows the pending space */
+  flushSpace(code) {
+    const at = this.pending;
+    this.pending = -1;
+    if (!this.len || noSpaceBefore(code) || this.last === 40 || this.last === 91) return;
+    if (this.pendingAt >= 0 && this.pendingAt === this.runEnd) this.runEnd += 1; // the single space continues the run
+    else {
+      this.flushRun();
+      this.parts.push(' ');
+    }
+    this.map[this.len++] = at;
+  }
+
+  /**
+   * A character of the source, taken over unchanged.
+   * @param {number} i      source index
+   * @param {number} code   its first UTF-16 unit
+   * @param {number} width  1, or 2 for a surrogate pair
+   * @param {number} at     map value
+   */
+  keep(i, code, width, at) {
+    if (this.pending >= 0) this.flushSpace(code);
+    if (this.runEnd !== i) {
+      this.flushRun();
+      this.runStart = i;
+    }
+    this.runEnd = i + width;
+    this.map[this.len++] = at;
+    if (width === 2) this.map[this.len++] = at;
+    this.last = code;
+  }
+
+  /**
+   * A character that replaces the source (one UTF-16 unit).
+   * @param {string} ch
+   * @param {number} at  map value
+   */
+  char(ch, at) {
+    const code = ch.charCodeAt(0);
+    if (this.pending >= 0) this.flushSpace(code);
+    this.flushRun();
+    this.parts.push(ch);
+    this.map[this.len++] = at;
+    this.last = code;
+  }
+
+  /** @returns {Canonical} */
+  finish() {
+    this.flushRun();
+    const text = this.parts.join('');
+    const map = this.map.subarray(0, this.len);
+    return this.marks ? compose(text, map) : { text, map };
+  }
+}
+
+/** Composed forms of base characters with their marks seen so far (bounded). */
+const composed = new Map();
+
+/**
+ * NFC, one base character with its combining marks at a time, so the map stays exact.
+ * @param {string} text
+ * @param {Int32Array} map
  * @returns {Canonical}
  */
-function collapse(pieces) {
+function compose(text, map) {
+  if (text.normalize('NFC') === text) return { text, map };
   /** @type {string[]} */
-  const out = [];
-  /** @type {number[]} */
-  const map = [];
-  let space = -1;
-  let last = '';
-  let marks = false;
-  for (const [ch, at] of pieces) {
-    if (ch === ' ') {
-      if (space < 0) space = at;
+  const parts = [];
+  const out = new Int32Array(text.length);
+  let len = 0;
+  let i = 0;
+  while (i < text.length) {
+    const start = i;
+    const first = /** @type {number} */ (text.codePointAt(i));
+    i += first > 0xffff ? 2 : 1;
+    const single = i;
+    while (i < text.length) {
+      const cp = /** @type {number} */ (text.codePointAt(i));
+      if (cp < 0x300 || classOf(cp) !== COMBINING) break;
+      i += cp > 0xffff ? 2 : 1;
+    }
+    if (i === single) {
+      parts.push(text.slice(start, i));
+      for (let k = start; k < i; k += 1) out[len++] = map[k];
       continue;
     }
-    if (space >= 0 && out.length && !NO_SPACE_BEFORE.has(ch) && !NO_SPACE_AFTER.has(last)) {
-      out.push(' ');
-      map.push(space);
+    const raw = text.slice(start, i);
+    let group = composed.get(raw);
+    if (group === undefined) {
+      group = raw.normalize('NFC');
+      if (composed.size >= 1024) composed.clear();
+      composed.set(raw, group);
     }
-    space = -1;
-    out.push(ch);
-    for (let k = 0; k < ch.length; k += 1) map.push(at);
-    last = ch;
-    if (!marks && ch.charCodeAt(0) >= 0x300 && MARK.test(ch)) marks = true;
+    parts.push(group);
+    for (let k = 0; k < group.length; k += 1) out[len++] = map[start];
   }
-  if (!marks) return { text: out.join(''), map };
-  // NFC, one base character with its marks at a time, so the map stays exact.
-  /** @type {Array<[string, number]>} */
-  const composed = [];
-  let group = '';
-  let groupAt = 0;
-  const flush = () => {
-    if (group) for (const ch of group.normalize('NFC')) composed.push([ch, groupAt]);
-    group = '';
-  };
-  let pos = 0;
-  for (const ch of out) {
-    if (MARK.test(ch) && group) group += ch;
-    else {
-      flush();
-      group = ch;
-      groupAt = map[pos];
-    }
-    pos += ch.length;
-  }
-  flush();
-  const text = composed.map(([ch]) => ch).join('');
-  /** @type {number[]} */
-  const composedMap = [];
-  for (const [ch, at] of composed) for (let k = 0; k < ch.length; k += 1) composedMap.push(at);
-  return { text, map: composedMap };
+  return { text: parts.join(''), map: out.subarray(0, len) };
 }
 
 /**
@@ -238,35 +351,38 @@ function collapse(pieces) {
 export function canonicalize(text, options = {}) {
   const input = String(text ?? '');
   const { drop, swap } = markdownMarks(input, options.kind);
-  /** @type {Array<[string, number]>} */
-  const pieces = [];
+  const b = new Builder(input);
+  const swaps = swap.size > 0;
   for (let i = 0; i < input.length; i += 1) {
     const code = input.charCodeAt(i);
     if (code < 128) {
       if (drop[i]) continue;
-      const s = swap.get(i);
-      if (s !== undefined) pieces.push([s, i]);
-      else if (code === 9 || code === 10 || code === 11 || code === 12 || code === 13) pieces.push([' ', i]);
-      else if (code >= 32 && code !== 127) pieces.push([input[i], i]);
+      const s = swaps ? swap.get(i) : undefined;
+      if (s !== undefined) {
+        if (s === ' ') b.space(i, i);
+        else b.char(s, i);
+      } else if (code === 32 || (code >= 9 && code <= 13)) b.space(i, i);
+      else if (code > 32 && code !== 127) b.keep(i, code, 1, i);
       continue;
     }
     const cp = /** @type {number} */ (input.codePointAt(i));
+    const at = i;
     const width = cp > 0xffff ? 2 : 1;
-    if (drop[i]) {
-      i += width - 1;
-      continue;
-    }
-    const ch = String.fromCodePoint(cp);
     i += width - 1;
-    if (SPACE_CHAR.test(ch)) pieces.push([' ', i - width + 1]);
-    else if (DROP_CHAR.test(ch)) continue;
-    else if (cp === 0x2212 || (cp >= 0x2010 && cp <= 0x2012)) pieces.push(['-', i]);
-    else if (cp >= 0xff01 && cp <= 0xff5e) pieces.push([String.fromCharCode(cp - 0xfee0), i]);
-    else if (cp === 0x3bc) pieces.push(['µ', i]);
-    else if (cp === 0x2126) pieces.push(['Ω', i]);
-    else pieces.push([ch, i - width + 1]);
+    if (drop[at]) continue;
+    const k = classOf(cp);
+    if (k === SPACE) b.space(at, at);
+    else if (k === DROP) continue;
+    else if (cp === 0x2212 || (cp >= 0x2010 && cp <= 0x2012)) b.char('-', at);
+    else if (cp >= 0xff01 && cp <= 0xff5e) b.char(String.fromCharCode(cp - 0xfee0), at);
+    else if (cp === 0x3bc) b.char('µ', at);
+    else if (cp === 0x2126) b.char('Ω', at);
+    else {
+      if (k === COMBINING) b.marks = true;
+      b.keep(at, code, width, at);
+    }
   }
-  return collapse(pieces);
+  return b.finish();
 }
 
 /**
@@ -288,21 +404,23 @@ export function canonicalText(text, options = {}) {
  * @returns {Canonical}
  */
 export function blankRanges(canonical, ranges, from = 0, to = canonical.text.length) {
-  /** @type {Array<[string, number]>} */
-  const pieces = [];
   const { text, map } = canonical;
+  const b = new Builder(text);
   let r = 0;
   for (let i = from; i < to; i += 1) {
     while (r < ranges.length && ranges[r][1] <= i) r += 1;
     if (r < ranges.length && ranges[r][0] <= i) {
-      if (ranges[r][0] === i || i === from) pieces.push([' ', map[i]]);
+      b.space(i, map[i]);
+      b.pendingAt = -1;
+      i = Math.min(ranges[r][1], to) - 1;
       continue;
     }
     const code = text.charCodeAt(i);
-    if (code >= 0xd800 && code <= 0xdbff && i + 1 < to) {
-      pieces.push([text.slice(i, i + 2), map[i]]);
+    if (code === 32) b.space(i, map[i]);
+    else if (code >= 0xd800 && code <= 0xdbff && i + 1 < to) {
+      b.keep(i, code, 2, map[i]);
       i += 1;
-    } else pieces.push([text[i], map[i]]);
+    } else b.keep(i, code, 1, map[i]);
   }
-  return collapse(pieces);
+  return b.finish();
 }

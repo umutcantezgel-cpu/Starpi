@@ -1,5 +1,5 @@
 // @ts-check
-// Origin: generic infrastructure first written for Fluid Systems (same author, MIT); re-expressed for Starpi.
+// Origin: generic infrastructure first written for a related project of the same author (MIT); re-expressed for Starpi.
 //
 // Numbers in a sentence, for the sentence gate (gate.js) and the spoken form (spoken.js): numbers
 // written in digits, numbers written as words, the identifiers that contain digits without being
@@ -68,11 +68,12 @@ export const NUMBER_WORD_KINDS = Object.freeze(/** @type {NumberWordKind[]} */ (
  */
 
 /**
- * @typedef {object} JoinedItem      digits a reader would hear as another number ("4 80", "5OO", "10³", "5 hundred")
+ * @typedef {object} JoinedItem      digits a reader would hear as another number ("4 80", "5OO", "10³", "5 hundred", "5‚5", ".5")
  * @property {'joined'} type
  * @property {string} raw
  * @property {number} start
  * @property {number} end
+ * @property {boolean} [lookalike]   letters that pass for digits ("5OO", "l5"); fine when a cited excerpt has the same token
  */
 
 /** @typedef {NumberItem | WordItem | IdentifierItem | JoinedItem} ScanItem */
@@ -100,7 +101,15 @@ const STANDARD_PREFIXES = new Set(['ISO', 'IEC', 'EN', 'DIN', 'RFC', 'IEEE', 'AN
 const TOKEN = /[\p{L}\p{Nd}]+(?:[-.,:'’/][\p{L}\p{Nd}]+)*/gu;
 /** Digit groups after a one- to three-digit number, separated by single spaces ("480 000", "1 234,5"). */
 const SPACE_GROUPS = /(?: \d{3}(?=[\s.,;:!?)\]\-–—/%]|$))+(?:[.,]\d+)?(?![\p{L}\p{Nd}])/uy;
+/** Signs between two numbers in digits that make them read as one ("5‚5", "5.,5", "5…5"); a single "." "," "'" or "’" is already part of the number. */
+const SEPARATOR_GAP = /^[.,'’‘‚´`…]+$/;
+/** Words before a standard number that name its body, at most ("DIN EN ISO 13485"). */
+const MAX_BODY_WORDS = 4;
 const DIGIT = /\d/;
+/** White space of a canonical text (and of plain text). */
+const isSpaceCode = (/** @type {number} */ c) => c === 32 || (c >= 9 && c <= 13) || c === 0xa0 || c === 0x202f;
+/** A letter right at `at`, or after one space: only then can a scale word follow a number. */
+const letterAt = (/** @type {string} */ text, /** @type {number} */ at) => LETTER.test(text[at] ?? '') || (text[at] === ' ' && LETTER.test(text[at + 1] ?? ''));
 const LETTER = /\p{L}/u;
 const ALNUM = /[\p{L}\p{Nd}]/u;
 
@@ -369,7 +378,7 @@ function continues(last, next) {
  * @returns {NumberItem}
  */
 function digitsItem(raw, start) {
-  const written = raw.replace(/’/g, "'");
+  const written = raw.includes('’') ? raw.replace(/’/g, "'") : raw;
   /** @type {NumberItem} */
   const item = { type: 'number', raw, start, end: start + raw.length, written, value: null, ambiguous: false, scale: 1 };
   if (/^\d+$/.test(written)) item.value = Number(written);
@@ -399,7 +408,11 @@ function elementsOf(text, patterns) {
   /** @type {Element[]} */
   const out = [];
   let prevEnd = -1;
-  const tightAt = (/** @type {number} */ at) => prevEnd >= 0 && /^\s*$/.test(text.slice(prevEnd, at));
+  const tightAt = (/** @type {number} */ at) => {
+    if (prevEnd < 0) return false;
+    for (let k = prevEnd; k < at; k += 1) if (!isSpaceCode(text.charCodeAt(k))) return false;
+    return true;
+  };
   const push = (/** @type {Element['t']} */ t, /** @type {string} */ s, /** @type {number} */ start, /** @type {boolean} */ tight) => {
     out.push({ t, text: t === 'word' ? s.toLowerCase() : s, start, end: start + s.length, tight });
   };
@@ -437,12 +450,16 @@ function elementsOf(text, patterns) {
       }
     }
     const tight = tightAt(start);
-    if (!DIGIT.test(raw)) {
-      let offset = 0;
-      raw.split('-').forEach((part, i) => {
-        if (part) push('word', part, start + offset, i === 0 ? tight : true);
-        offset += part.length + 1;
-      });
+    if (/^\d+$/.test(raw)) push('digits', raw, start, tight);
+    else if (!DIGIT.test(raw)) {
+      if (!raw.includes('-')) push('word', raw, start, tight);
+      else {
+        let offset = 0;
+        raw.split('-').forEach((part, i) => {
+          if (part) push('word', part, start + offset, i === 0 ? tight : true);
+          offset += part.length + 1;
+        });
+      }
     } else if (!LETTER.test(raw)) {
       // A hyphen between digits is a range ("3-5"), except in an ISO date.
       const parts = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? [raw] : raw.split('-');
@@ -496,7 +513,7 @@ export function scanNumbers(text, options = {}) {
     } else if (el.t === 'digits') {
       // A standard number after the name of its body: "ISO 9001", "DIN EN ISO 13485".
       let j = i;
-      while (j > 0 && elements[j - 1].t === 'word' && isStandardBody(text.slice(elements[j - 1].start, elements[j - 1].end)) && text.slice(elements[j - 1].end, elements[j].start) === ' ') j -= 1;
+      while (j > 0 && i - j < MAX_BODY_WORDS && elements[j - 1].t === 'word' && isStandardBody(text.slice(elements[j - 1].start, elements[j - 1].end)) && text.slice(elements[j - 1].end, elements[j].start) === ' ') j -= 1;
       if (j < i) {
         const end = el.end;
         const keys = elements.slice(j, i).map((e) => text.slice(e.start, end).toLowerCase());
@@ -504,7 +521,15 @@ export function scanNumbers(text, options = {}) {
         for (let k = j; k <= i; k += 1) elements[k].t = 'used';
         continue;
       }
-      const compound = /[:/]|-/.test(el.text) || ((el.text.match(/[.,]/g)?.length ?? 0) > 1 && !/^\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?$/.test(el.text));
+      // ".5", ",5" after no digit: a fraction a reader hears, not the 5 that would be checked.
+      const lead = text.charCodeAt(el.start - 1);
+      const beforeLead = text.charCodeAt(el.start - 2);
+      if ((lead === 46 || lead === 44) && !(beforeLead >= 48 && beforeLead <= 57)) {
+        items.push({ type: 'joined', raw: text.slice(el.start - 1, el.end), start: el.start - 1, end: el.end });
+        el.t = 'used';
+        continue;
+      }
+      const compound = !/^\d+$/.test(el.text) && (/[:/]|-/.test(el.text) || ((el.text.match(/[.,]/g)?.length ?? 0) > 1 && !/^\d{1,3}(?:[.,]\d{3})+(?:[.,]\d+)?$/.test(el.text)));
       /** @type {NumberItem} */
       const item = compound
         ? { type: 'number', raw: el.text, start: el.start, end: el.end, written: el.text, value: null, ambiguous: false, scale: 1 }
@@ -512,9 +537,42 @@ export function scanNumbers(text, options = {}) {
       i = finishNumber(item, text, elements, i, packs, t, items);
     }
   }
-  readWords(elements, items, packs, options.lenient ?? false);
-  markJoins(items, text);
-  return items.sort((a, b) => a.start - b.start || a.end - b.end);
+  /** @type {ScanItem[]} */
+  const words = [];
+  readWords(elements, words, packs, options.lenient ?? false);
+  /** @type {ScanItem[]} */
+  const joins = [];
+  markJoins(items, words, joins, text);
+  return merge(merge(items, words), joins);
+}
+
+/**
+ * Two lists in text order merged into one (by start, then end), in linear time.
+ * @param {ScanItem[]} a
+ * @param {ScanItem[]} b
+ * @returns {ScanItem[]}
+ */
+function merge(a, b) {
+  if (!b.length) return a;
+  if (!a.length) return b;
+  /** @type {ScanItem[]} */
+  const out = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    const x = a[i];
+    const y = b[j];
+    if (x.start < y.start || (x.start === y.start && x.end <= y.end)) {
+      out.push(x);
+      i += 1;
+    } else {
+      out.push(y);
+      j += 1;
+    }
+  }
+  while (i < a.length) out.push(a[i++]);
+  while (j < b.length) out.push(b[j++]);
+  return out;
 }
 
 /**
@@ -531,14 +589,15 @@ export function scanNumbers(text, options = {}) {
 function finishNumber(item, text, elements, i, packs, t, items) {
   elements[i].t = 'used';
   applySign(item, text, elements, i, packs);
-  if (item.scale === 1 && (item.value !== null || item.ambiguous)) applyScale(item, text, t);
+  if (item.scale === 1 && (item.value !== null || item.ambiguous) && letterAt(text, item.end)) applyScale(item, text, t);
   let last = i;
   while (last + 1 < elements.length && elements[last + 1].start < item.end) {
     last += 1;
     elements[last].t = 'used';
   }
   // A superscript right after the digits is an exponent: "10³" is read as a thousand.
-  if (/^[²³]/.test(text.slice(item.end, item.end + 1))) items.push({ type: 'joined', raw: text.slice(item.start, item.end + 1), start: item.start, end: item.end + 1 });
+  const after = text.charCodeAt(item.end);
+  if (after === 0xb2 || after === 0xb3) items.push({ type: 'joined', raw: text.slice(item.start, item.end + 1), start: item.start, end: item.end + 1 });
   else items.push(item);
   return last;
 }
@@ -577,7 +636,7 @@ function mixedItem(raw, start, t, packs) {
   const head = /^(\p{L}+)(\d+(?:[.,]\d+)*)$/u.exec(raw);
   if (head && (CURRENCY_CODES.has(head[1].toLowerCase()) || t.currencyWord.test(head[1]))) return digitsItem(head[2], start + head[1].length);
   const letters = [...raw].filter((ch) => LETTER.test(ch));
-  if (letters.every((ch) => LOOKALIKE.has(ch))) return { type: 'joined', raw, start, end };
+  if (letters.every((ch) => LOOKALIKE.has(ch))) return { type: 'joined', raw, start, end, lookalike: true };
   const parts = raw.toLowerCase().split('-');
   if (parts.some((p) => /^\d+$/.test(p)) && parts.some((p) => packs.some((pack) => tagIn(p, pack)?.kind === 'cardinal'))) return { type: 'joined', raw, start, end };
   return { type: 'identifier', raw, start, end, keys: identifierKeys(raw) };
@@ -777,26 +836,34 @@ function readWords(elements, items, packs, lenient) {
 }
 
 /**
- * Fills in the raw text of word items and marks numbers a reader would hear as one: two numbers
- * in digits with nothing but white space between them ("4 80", "2024 500"), or digits next to a
- * number word, also across a hyphen ("5 hundred", "5-hundred", "twenty 5"). A hyphen between two
- * numbers in digits is a range ("3-5").
- * @param {ScanItem[]} items
+ * Fills in the raw text of word items and lists the numbers a reader would hear as one: two numbers
+ * in digits with nothing but white space between them ("4 80", "2024 500") or only separator signs
+ * ("5‚5" with a low quote for a comma, "5.,5"), or digits next to a number word, also across a
+ * hyphen ("5 hundred", "5-hundred", "twenty 5"). A hyphen between two numbers in digits is a range ("3-5").
+ * @param {ScanItem[]} items  numbers, identifiers and joins in digits, in text order
+ * @param {ScanItem[]} words  number words, in text order
+ * @param {ScanItem[]} joins  receives the joins, in text order
  * @param {string} text
  */
-function markJoins(items, text) {
-  for (const item of items) if (item.type === 'word') item.raw = text.slice(item.start, item.end);
-  const numeric = items
-    .filter((x) => x.type === 'number' || (x.type === 'word' && x.kind === 'cardinal'))
-    .sort((a, b) => a.start - b.start);
+function markJoins(items, words, joins, text) {
+  for (const item of words) item.raw = text.slice(item.start, item.end);
+  const numeric = merge(
+    items.filter((x) => x.type === 'number'),
+    words.filter((x) => x.type === 'word' && x.kind === 'cardinal'),
+  );
   for (let k = 1; k < numeric.length; k += 1) {
     const a = numeric[k - 1];
     const b = numeric[k];
     if (b.start < a.end || (a.type === 'word' && b.type === 'word')) continue;
-    const gap = text.slice(a.end, b.start);
     const word = a.type === 'word' ? a : b.type === 'word' ? b : null;
     // A word that states nothing ("ein", "one") joins only a round number before it ("20 one").
     if (word && !word.claim && !(a.type === 'number' && a.value !== null && a.value % 10 === 0 && word === b)) continue;
-    if (word ? /^[\s-]*$/.test(gap) : /^\s*$/.test(gap)) items.push({ type: 'joined', raw: text.slice(a.start, b.end), start: a.start, end: b.end });
+    let blank = true;
+    for (let k = a.end; k < b.start && blank; k += 1) {
+      const c = text.charCodeAt(k);
+      blank = isSpaceCode(c) || (word !== null && c === 45);
+    }
+    const joined = blank || (!word && b.start - a.end <= 4 && SEPARATOR_GAP.test(text.slice(a.end, b.start)));
+    if (joined) joins.push({ type: 'joined', raw: text.slice(a.start, b.end), start: a.start, end: b.end });
   }
 }
