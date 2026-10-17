@@ -26,9 +26,13 @@ async function readFixture(name) {
   return JSON.parse(await readFile(path.join(FIXTURES, name), 'utf8'));
 }
 
-/** @param {{ data: Int8Array, scale: number }} q */
+/**
+ * Hex rather than base64: base64 text happens to contain words such as currency codes next to
+ * digits, which text scanners then report.
+ * @param {{ data: Int8Array, scale: number }} q
+ */
 function pack(q) {
-  return [Number(q.scale.toPrecision(9)), Buffer.from(q.data.buffer, q.data.byteOffset, q.data.byteLength).toString('base64')];
+  return [Number(q.scale.toPrecision(9)), Buffer.from(q.data.buffer, q.data.byteOffset, q.data.byteLength).toString('hex')];
 }
 
 async function main() {
@@ -66,7 +70,7 @@ async function main() {
 
   const fixture = {
     description:
-      'Embeddings for tests/unit/hybrid-paraphrase.test.mjs, written by scripts/embed-paraphrases.mjs: every section of kb-sample.json, sources-v2.json and paraphrases.json as a passage (key "<corpus>|<label>"), every statement of paraphrases.json without its citation as a query (key: item id). Each entry is [scale, base64 of the int8 values], value = int8 * scale.',
+      'Embeddings for tests/unit/hybrid-paraphrase.test.mjs, written by scripts/embed-paraphrases.mjs: every section of kb-sample.json, sources-v2.json and paraphrases.json as a passage (key "<corpus>|<label>"), every statement of paraphrases.json without its citation as a query (key: item id). Each entry is [scale, hex of the int8 values], value = int8 * scale.',
     model: embedModelId(src),
     dim: src.dim,
     passages,

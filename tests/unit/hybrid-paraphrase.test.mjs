@@ -26,9 +26,9 @@ const vectors = fixture('paraphrase-vectors.json');
 /** @type {Record<string, Array<{ label: string, doc: string, text: string }>>} */
 const corpora = { ...fixture('kb-sample.json'), ...fixture('sources-v2.json'), ...paraphrases.corpora };
 
-/** @param {[number, string]} entry */
-function unpack([scale, b64]) {
-  return { data: new Int8Array(Buffer.from(b64, 'base64')), scale };
+/** @param {[number, string]} entry  scale and the int8 values as hex */
+function unpack([scale, hex]) {
+  return { data: new Int8Array(Buffer.from(hex, 'hex')), scale };
 }
 
 /**
