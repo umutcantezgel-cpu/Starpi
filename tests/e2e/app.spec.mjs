@@ -101,6 +101,45 @@ test.describe('migration pending, anonymous sign-ins disabled', () => {
   });
 });
 
+test.describe('knowledge graph view', () => {
+  test('says the graph cannot be reached when its view does not load, and draws it after a reload', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    // The graph view is a chunk the page loads when the tab first opens; refuse it once.
+    let refuse = true;
+    let refused = 0;
+    await page.route(/\/assets\/chunk-[A-Z0-9]+\.js$/, async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      if (refuse && body.includes('graphEntityList')) {
+        refused += 1;
+        return route.fulfill({ status: 404, contentType: 'text/plain', body: 'gone' });
+      }
+      return route.fulfill({ response, body });
+    });
+    await page.goto('/');
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
+    await openTab(page, 'graph');
+    await expect(page.locator('#graphLoading')).toBeHidden();
+    await expect(page.locator('#graphStatus')).toHaveText(/cannot be reached/);
+    expect(refused).toBe(1);
+
+    // The browser keeps a failed module import for the page's lifetime; after a reload the tab
+    // draws the (empty) graph.
+    refuse = false;
+    await page.reload();
+    await openTab(page, 'graph');
+    await expect(page.locator('#graphLoading')).toBeHidden();
+    await expect(page.locator('#graphStatus')).toHaveText('The graph has no entities yet.');
+    // The tab's own buttons reach the view.
+    await page.click('[data-action="open-entity-modal"]');
+    await expect(page.locator('#entityModal')).toBeVisible();
+    await expect(page.locator('#newEntityName')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#entityModal')).toBeHidden();
+    expect(diagnostics).toEqual([]);
+  });
+});
+
 test.describe('saving settings', () => {
   /** @param {import('@playwright/test').Page} page */
   async function saveAndReadDialog(page) {
@@ -181,6 +220,81 @@ test.describe('offline start', () => {
     const expected = (/** @type {string} */ p) => /^console\.error: Failed to load resource: net::ERR_INTERNET_DISCONNECTED$/.test(p);
     expect(diagnostics.some(expected)).toBe(true);
     diagnostics.splice(0, diagnostics.length, ...diagnostics.filter((p) => !expected(p)));
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('shows the offline state when the Supabase library does not load, and connects once it does', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    // The library is a lazy entry of its own (scripts/build.mjs), loaded on the first connect;
+    // answer it with a 404 as a server does for a file of an older deploy. The browser keeps a
+    // failed module import, so the retry must ask for it under another URL.
+    let missing = true;
+    /** @type {string[]} */
+    const requested = [];
+    await page.route(/\/assets\/supabase-[A-Z0-9]+\.js(?:\?|$)/, (route) => {
+      requested.push(new URL(route.request().url()).search);
+      return missing ? route.fulfill({ status: 404, contentType: 'text/plain', body: 'gone' }) : route.fallback();
+    });
+    await page.goto('/');
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Offline');
+    expect(requested).toEqual(['']);
+    // The views and the chat stay usable.
+    await openTab(page, 'library');
+    await openTab(page, 'chat');
+
+    missing = false;
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
+    // Every attempt (the library view tried once more) asked under a URL of its own.
+    expect(requested.length).toBeGreaterThan(1);
+    expect(new Set(requested).size).toBe(requested.length);
+    // The 404 is logged by the browser and filtered as a mocked 4xx; nothing else may be logged.
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('goes offline and restores the local chat when the Supabase library stalls, and uses it once it arrives', async ({ page, diagnostics }) => {
+    // One Supabase timeout (12 s) to the offline state, then the reconnect.
+    test.setTimeout(60_000);
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      localStorage.setItem('starpi_chat_session_id', 'starpi_stalled-session');
+      localStorage.setItem(
+        'starpi_local_chats_v1',
+        JSON.stringify({
+          'starpi_stalled-session': {
+            updatedAt: Date.now(),
+            messages: [
+              { role: 'user', content: 'Where is the kickoff?', sources: [], metadata: { local_only: true }, created_at: '2026-10-01T10:00:00Z' },
+              { role: 'assistant', content: 'The kickoff is in room Aurora.', sources: [], metadata: { local_only: true }, created_at: '2026-10-01T10:00:01Z' },
+            ],
+          },
+        }),
+      );
+    });
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    // A stalled network: the library's download never finishes, until the test lets it.
+    /** @type {import('@playwright/test').Route[]} */
+    const held = [];
+    /** @type {string[]} */
+    const requested = [];
+    await page.route(/\/assets\/supabase-[A-Z0-9]+\.js(?:\?|$)/, (route) => {
+      requested.push(new URL(route.request().url()).search);
+      held.push(route);
+    });
+    await page.goto('/');
+    // The load gets the time of a Supabase request; then the app is offline and finishes booting.
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Offline', { timeout: 20_000 });
+    await expect(page.locator('#chatMessages')).toContainText('The kickoff is in room Aurora.');
+    expect(requested).toEqual(['']);
+
+    // The reconnect asks under another URL, and that download stalls as well; the first one then
+    // arrives after all and is used.
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect.poll(() => requested).toEqual(['', '?attempt=1']);
+    await held[0].fallback();
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
+    await held[1].fallback();
     expect(diagnostics).toEqual([]);
   });
 });

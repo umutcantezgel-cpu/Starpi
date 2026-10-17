@@ -8,6 +8,9 @@
 // installed service worker, and the manifest records profile and digest for serve.mjs and
 // verify-dist.mjs. A build for a profile the companion serves also gets dist/headers.json.
 //
+// The Supabase library is a lazy entry of its own (src/js/supabase-lib.js): src/js/supabase.js
+// imports it by URL on the first connect, so it is neither part of the first load nor precached.
+//
 // Optional sources join the build once they exist: the lazy rendering extras
 // (src/js/render-extras.js), the blocking theme script (src/js/theme-boot.js, a classic script in
 // <head> so the first paint has the right theme) and the scripts of the sandboxed frames
@@ -16,6 +19,9 @@
 // package a frame script bundles must carry a license that file allows.
 //
 // Usage: node scripts/build.mjs [--watch] [--serve]
+// STARPI_META_OUT=<file> also writes esbuild's metafile of the module build there, to measure what
+// each source contributes to the first load (the outputs main imports statically, their inputs'
+// bytesInOutput).
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -53,8 +59,10 @@ const WASM_WORKER_PLACEHOLDER = '__STARPI_WASM_WORKER_URL__';
 const INTEGRITY_WORKER_PLACEHOLDER = '__STARPI_INTEGRITY_WORKER_URL__';
 const ORT_WASM_PLACEHOLDER = '__STARPI_ORT_WASM_URL__';
 const RENDER_EXTRAS_PLACEHOLDER = '__STARPI_RENDER_EXTRAS_URL__';
+const SUPABASE_LIB_PLACEHOLDER = '__STARPI_SUPABASE_LIB_URL__';
 
 const RENDER_EXTRAS = 'src/js/render-extras.js';
+const SUPABASE_LIB = 'src/js/supabase-lib.js';
 const THEME_BOOT = 'src/js/theme-boot.js';
 /** Scripts of the sandboxed frames: served at these exact paths, under their own header rules. */
 const FRAME_SCRIPTS = ['render-frame.js', 'grounding-frame.js'];
@@ -157,6 +165,7 @@ const URL_PLACEHOLDERS = Object.freeze({
   [INTEGRITY_WORKER_PLACEHOLDER]: 'src/js/models/integrity.worker.js',
   [ORT_WASM_PLACEHOLDER]: 'ort-wasm-simd-threaded.wasm',
   [RENDER_EXTRAS_PLACEHOLDER]: RENDER_EXTRAS,
+  [SUPABASE_LIB_PLACEHOLDER]: SUPABASE_LIB,
 });
 /** Placeholders a source may use but need not: their entry is optional, or nothing refers to it by URL. */
 const OPTIONAL_PLACEHOLDERS = new Set([RENDER_EXTRAS_PLACEHOLDER]);
@@ -213,6 +222,7 @@ function entryPoints() {
     'ingest-worker': 'src/js/rag/ingest.worker.js',
     'wasm-worker': 'src/js/wasm/worker.js',
     'integrity-worker': 'src/js/models/integrity.worker.js',
+    supabase: SUPABASE_LIB,
     ...(present(RENDER_EXTRAS) ? { 'render-extras': RENDER_EXTRAS } : {}),
     app: 'src/styles/entry.css',
   };
@@ -322,6 +332,7 @@ async function postProcess(result, urls) {
   const appCss = entries['src/styles/entry.css'];
   if (!mainJs || !workerJs || !ingestWorkerJs || !wasmWorkerJs || !appCss) throw new Error(`missing entry outputs: ${JSON.stringify(entries)}`);
   const renderExtrasJs = entries[RENDER_EXTRAS] ?? null;
+  const supabaseJs = entries[SUPABASE_LIB] ?? null;
   const ortWasm = /** @type {string} */ (urls.get(ORT_WASM_PLACEHOLDER));
   for (const placeholder of Object.keys(URL_PLACEHOLDERS)) {
     if (!seenPlaceholders.has(placeholder) && !OPTIONAL_PLACEHOLDERS.has(placeholder)) throw new Error(`${placeholder} not found in any source file`);
@@ -350,7 +361,8 @@ async function postProcess(result, urls) {
 
   // Precache the app shell: the page, its CSS and JS (the theme script included), the ingest worker
   // (the workspace must work offline), the Latin font and the public files. WebLLM, pdf.js, the WASM
-  // worker (Transformers.js), the rendering extras and the ONNX Runtime binary are cached on first use.
+  // worker (Transformers.js), the rendering extras, the ONNX Runtime binary and the Supabase library
+  // (useless without the network) are cached on first use.
   // The frame scripts stay out: a sandboxed frame has an opaque origin, which no service worker
   // controls, and the render frame's script carries the diagram library.
   const latinFont = assetUrls.find((u) => /plus-jakarta-sans-latin-wght-normal-[\w-]+\.woff2$/.test(u));
@@ -380,7 +392,7 @@ async function postProcess(result, urls) {
         version,
         profile: PROFILE,
         headersDigest: HEADERS_DIGEST,
-        entries: { mainJs, workerJs, ingestWorkerJs, wasmWorkerJs, ortWasm, appCss, themeBootJs, renderExtrasJs },
+        entries: { mainJs, workerJs, ingestWorkerJs, wasmWorkerJs, ortWasm, appCss, themeBootJs, renderExtrasJs, supabaseJs },
         assets: assetUrls,
         public: [...publicFiles].sort(),
         frames: frameScripts,
@@ -470,6 +482,7 @@ async function buildOnce() {
     if (reportWarnings(result)) throw new Error('esbuild emitted warnings; the build treats warnings as errors');
     if (!result.metafile) throw new Error('esbuild did not return a metafile');
     assertNotShipped(result.metafile);
+    if (process.env.STARPI_META_OUT) await writeFile(process.env.STARPI_META_OUT, JSON.stringify(result.metafile));
     const urls = await resolveUrls(result.metafile);
     if ([...urls].every(([placeholder, url]) => urlValues.get(placeholder) === url)) return postProcess(result, urls);
     if (pass === 4) throw new Error('worker URLs did not settle after 4 bundling passes');
