@@ -362,10 +362,12 @@ export async function collectLock(sources, options) {
   const offline = [];
   /** @type {Array<{ id: string, message: string }>} */
   const failed = [];
+  let fetched = 0;
   for (const src of sources) {
     try {
       const entries = src.kind === 'webllm' ? await lockWebllm(ctx, src) : src.kind === 'hf' ? await lockHf(ctx, src) : await lockOrt(ctx, src);
       Object.assign(files, entries);
+      fetched += 1;
       log(`${src.id}: ${Object.keys(entries).length} files`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -373,7 +375,7 @@ export async function collectLock(sources, options) {
       else failed.push({ id: src.id, message });
       for (const [key, entry] of Object.entries(previous)) if (ownsKey(src, key)) files[key] = entry;
       // Once a host is unreachable the next model would wait for the same timeouts: stop early.
-      if (isNetworkError(err) && offline.length === 1 && Object.keys(files).length === 0) {
+      if (isNetworkError(err) && offline.length === 1 && fetched === 0) {
         for (const rest of sources.slice(sources.indexOf(src) + 1)) {
           offline.push(rest.id);
           for (const [key, entry] of Object.entries(previous)) if (ownsKey(rest, key)) files[key] = entry;
