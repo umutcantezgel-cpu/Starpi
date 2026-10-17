@@ -1,6 +1,6 @@
 import { WASM_CATALOG } from '../../src/js/models/wasm-catalog.js';
 import { makePdf } from '../fixtures/pdf.mjs';
-import { expect, mockSupabase, test } from './fixtures.mjs';
+import { expect, mockSupabase, storedChatNodes, storedChatText, test } from './fixtures.mjs';
 
 const WASM_LABELS = Object.values(WASM_CATALOG).map((src) => src.label);
 
@@ -140,7 +140,7 @@ test.describe('saving settings', () => {
 });
 
 test.describe('hardened schema with anonymous session', () => {
-  test('syncs chats through RLS-scoped requests and uses full-text search', async ({ page, diagnostics }) => {
+  test('keeps chats on the device (no plaintext chat sync) and uses full-text search', async ({ page, diagnostics }) => {
     const calls = await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await page.goto('/');
     await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
@@ -148,19 +148,16 @@ test.describe('hardened schema with anonymous session', () => {
     await ask(page, 'Wann ist der Launch?');
     await expect(page.locator('#chatMessages')).toContainText('3. März geplant');
 
-    await expect.poll(() => calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history')).length).toBe(2);
-    const inserts = calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history'));
-    for (const insert of inserts) {
-      expect(insert.auth).toBe('Bearer test-access-token');
-      expect(insert.body).not.toContain('owner_id');
-    }
+    // Both turns are stored in the browser; the chat table is never written.
+    await expect.poll(async () => (await storedChatNodes(page)).map((n) => n.role)).toEqual(['user', 'assistant']);
+    expect(calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history'))).toEqual([]);
     expect(calls.some((c) => c.url.startsWith('/rest/v1/rpc/search_knowledge'))).toBe(true);
     expect(diagnostics).toEqual([]);
   });
 });
 
 test.describe('offline start', () => {
-  test('reconnects when the browser is back online and then syncs chats', async ({ page, diagnostics }) => {
+  test('reconnects when the browser is back online and then answers from the knowledge base', async ({ page, diagnostics }) => {
     const calls = await mockSupabase(page, { hardened: true, anonymousAuth: true });
     const supabase = /\.supabase\.co\//;
     /** @param {import('@playwright/test').Route} route */
@@ -175,7 +172,9 @@ test.describe('offline start', () => {
 
     await ask(page, 'Wann ist der Launch?');
     await expect(page.locator('#chatMessages')).toContainText('3. März geplant');
-    await expect.poll(() => calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history')).length).toBe(2);
+    expect(calls.some((c) => c.url.startsWith('/rest/v1/rpc/search_knowledge'))).toBe(true);
+    await expect.poll(async () => (await storedChatNodes(page)).length).toBe(2);
+    expect(calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history'))).toEqual([]);
 
     // The browser logs the requests that failed while Supabase was unreachable; nothing else may be logged.
     const expected = (/** @type {string} */ p) => /^console\.error: Failed to load resource: net::ERR_INTERNET_DISCONNECTED$/.test(p);
@@ -345,17 +344,19 @@ test.describe('on-device workspace', () => {
     await expect(drawer).toBeHidden();
 
     // File contents never leave the device, and neither does a chat turn answered from them: the
-    // question and the answer are both kept locally although chats sync.
+    // question and the answer are both stored as on-device turns.
     const leaked = calls.filter((c) => /steering group|480000/.test(`${c.url} ${c.body ?? ''}`));
     expect(leaked).toEqual([]);
     expect(calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history'))).toEqual([]);
-    const stored = await page.evaluate(() => localStorage.getItem('starpi_local_chats_v1') ?? '');
+    await expect.poll(async () => (await storedChatNodes(page)).length).toBe(2);
+    const stored = await storedChatText(page);
     expect(stored).toContain('What is the approved budget for Project Nebula?');
     expect(stored).toContain('480000 EUR');
+    expect((await storedChatNodes(page)).map((n) => n.localOnly)).toEqual([true, true]);
     expect(diagnostics).toEqual([]);
   });
 
-  test('keeps a question about an attached file and its answer on the device while chats sync', async ({ page, diagnostics }) => {
+  test('keeps a question about an attached file and its answer on the device', async ({ page, diagnostics }) => {
     const calls = await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await page.goto('/');
     await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
@@ -366,9 +367,11 @@ test.describe('on-device workspace', () => {
     const answer = page.locator('#chatMessages > div').last();
     await expect(answer).toContainText('calendar week 38');
 
-    const stored = await page.evaluate(() => localStorage.getItem('starpi_local_chats_v1') ?? '');
+    await expect.poll(async () => (await storedChatNodes(page)).length).toBe(2);
+    const stored = await storedChatText(page);
     expect(stored).toContain('orion-roadmap.md');
     expect(stored).toContain('calendar week 38');
+    expect((await storedChatNodes(page)).map((n) => n.localOnly)).toEqual([true, true]);
     expect(calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history'))).toEqual([]);
     expect(diagnostics).toEqual([]);
   });

@@ -4,7 +4,7 @@
 // which closes when a chat is chosen. Accessibility is checked with the list and a row menu open.
 import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, mockSupabase, test } from './fixtures.mjs';
+import { expect, mockSupabase, storedChatNodes, test } from './fixtures.mjs';
 
 const LEGACY_ID = 'starpi_legacy-tides-0001';
 const DAY_MS = 86_400_000;
@@ -64,32 +64,6 @@ async function axe(page, label) {
   expect(serious.map((v) => `${label}: ${v.id} ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
 }
 
-/**
- * The stored messages of a conversation, read straight from the app database.
- * @param {import('@playwright/test').Page} page
- * @param {string} conversationId
- * @returns {Promise<Array<{ role: string, localOnly: boolean, parts: Array<{ type: string, text?: string }> }>>}
- */
-function storedNodes(page, conversationId) {
-  return page.evaluate(
-    (id) =>
-      new Promise((resolve, reject) => {
-        const req = indexedDB.open('starpi');
-        req.onerror = () => reject(req.error);
-        req.onsuccess = () => {
-          const db = req.result;
-          const all = db.transaction('nodes').objectStore('nodes').index('conversationId').getAll(id);
-          all.onerror = () => reject(all.error);
-          all.onsuccess = () => {
-            db.close();
-            resolve(all.result.sort((/** @type {{ createdAt: number }} */ a, /** @type {{ createdAt: number }} */ b) => a.createdAt - b.createdAt));
-          };
-        };
-      }),
-    conversationId,
-  );
-}
-
 /** @param {import('@playwright/test').Page} page @param {string} id */
 const row = (page, id) => page.locator(`#chat-sidebar li[data-conv-id="${id}"]`);
 /** @param {import('@playwright/test').Page} page @param {string} name */
@@ -106,7 +80,7 @@ test.describe('conversation list', () => {
     await showList(page);
     await expect(group(page, 'Older')).toContainText('How do tides work?');
     expect(await page.evaluate(() => localStorage.getItem('starpi_local_chats_v1'))).toBeNull();
-    const migrated = await storedNodes(page, LEGACY_ID);
+    const migrated = await storedChatNodes(page, LEGACY_ID);
     expect(migrated.map((n) => [n.role, n.localOnly])).toEqual([
       ['user', false],
       ['assistant', true],
@@ -178,7 +152,7 @@ test.describe('conversation list', () => {
     await page.getByRole('menuitem', { name: 'Delete' }).click();
     await expect(page.locator('#toastRegion')).toContainText('Chat deleted');
     await expect(row(page, betaId)).toHaveCount(0);
-    expect(await storedNodes(page, betaId)).toEqual([]);
+    expect(await storedChatNodes(page, betaId)).toEqual([]);
 
     // Both languages.
     await hideList(page);

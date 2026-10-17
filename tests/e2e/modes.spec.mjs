@@ -188,12 +188,15 @@ test.describe('chat menu', () => {
     const json = await exportAs('json');
     expect(json.name).toMatch(/^starpi-chat-\d{4}-\d{2}-\d{2}-[\w-]{1,8}\.json$/);
     const doc = JSON.parse(json.text);
-    expect(doc.schema).toBe('starpi.chat/v1');
+    // The stored message tree (schema v2): every node with its parent, and the thread shown.
+    expect(doc.schema).toBe('starpi.chat/v2');
     expect(doc.generator.name).toBe('starpi');
     expect(doc.locale).toBe('en');
-    expect(doc.messages.map((/** @type {{ role: string }} */ m) => m.role)).toEqual(['user', 'assistant']);
-    expect(doc.messages[1]).toMatchObject({ content: CODE_ANSWER, engine: 'cloud', model: null, chatMode: 'free' });
-    const sessionId = doc.sessionId;
+    expect(doc.nodes.map((/** @type {{ role: string }} */ m) => m.role)).toEqual(['user', 'assistant']);
+    expect(doc.nodes[1]).toMatchObject({ parentId: doc.nodes[0].id, parts: [{ type: 'text', text: CODE_ANSWER }], engine: 'cloud', model: null, label: 'free' });
+    expect(doc.activePath).toEqual(doc.nodes.map((/** @type {{ id: string }} */ m) => m.id));
+    expect(doc.conversation).toMatchObject({ title: 'Write hello world in Python.', mode: 'free' });
+    const sessionId = doc.conversation.id;
     expect(sessionId).toMatch(/^starpi_[\w-]+$/);
     expect(await page.evaluate(() => localStorage.getItem('starpi_chat_session_id'))).toBe(sessionId);
 
