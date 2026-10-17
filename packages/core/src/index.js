@@ -75,6 +75,11 @@ export {
 export { CHUNKER, chunkText, DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE } from '../../../src/js/rag/chunker.js';
 export { BM25_PARAMS, BM25Index, STOPWORDS, STOPWORDS_DE, STOPWORDS_EN, tokenize } from '../../../src/js/rag/bm25.js';
 
+// Hybrid retrieval: reciprocal rank fusion of rankings, and the BM25 probe of how well an index
+// matches a question.
+export { fuseRrf, HYBRID_DEPTH, hybridSearch, probeIndex, RRF_K } from '../../../src/js/rag/hybrid.js';
+export { quantizeInt8, VectorIndex } from '../../../src/js/rag/vectors.js';
+
 // Office documents, HTML pages and images (extraction rules version 2): the readers behind
 // extractText, usable on their own, and the dependency-free ZIP reader with its ZIP bomb limits.
 export { HTML_EXTENSIONS, IMAGE_EXTENSIONS, OFFICE_EXTENSIONS } from '../../../src/js/rag/parser.js';

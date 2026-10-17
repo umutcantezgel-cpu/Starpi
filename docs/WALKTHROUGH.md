@@ -158,8 +158,10 @@ conversation as Markdown or JSON ([`chat-export.js`](../src/js/chat-export.js)) 
    50-character overlap and exact offsets, and indexes the chunks with
    [`bm25.js`](../src/js/rag/bm25.js) `BM25Index` (k1 = 1.2, b = 0.75).
 3. Searches return chunks with their real BM25 scores. Opening a citation fetches the surrounding
-   text with `getChunkContext()` and highlights the exact span. Files live in worker memory only
-   and are gone after a reload ([atlas §4](ARCHITECTURE.md#4-on-device-workspace-and-citations)).
+   text with `getChunkContext()` and highlights the exact span. Files stay on this device after a
+   reload unless you choose "Memory only", and "Forget all" removes them; with semantic search on
+   this device turned on, searches also find passages by meaning
+   ([atlas §4](ARCHITECTURE.md#keeping-files-on-this-device-and-searching-by-meaning)).
 
 ## On-device inference
 

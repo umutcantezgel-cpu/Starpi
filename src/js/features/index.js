@@ -12,5 +12,6 @@ import './research.js';
 import './sources.js';
 import './trust.js';
 import './voice.js';
+import './workspace.js';
 
 export { listFeatures, MOUNT_POINTS, mountFeatures, registerFeature } from './registry.js';

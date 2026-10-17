@@ -294,7 +294,8 @@ test.describe('NVIDIA cloud', () => {
     const receiptPath = testInfo.outputPath('receipt.json');
     await download.saveAs(receiptPath);
     const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
-    expect(receipt.schema).toBe('starpi.receipt/v2');
+    expect(receipt.schema).toBe('starpi.receipt/v3');
+    expect(receipt.signer?.keyId).toBe(receipt.signature?.keyId);
     expect(receipt.answer.engine).toBe('nvidia');
     expect(receipt.answer.text).toBe('The approved budget for Project Nebula is 480,000 EUR [Doc: budget.md, Chunk: 1].');
     expect(receipt.citations[0].document.fileSha256).toBe(createHash('sha256').update(BUDGET_MD).digest('hex'));
