@@ -99,6 +99,22 @@ function button(iconName, key, className) {
 const hide = (node, hidden) => node.classList.toggle('hidden', hidden);
 
 /**
+ * A web source's address as a URL when it is http(s), else null. new URL() rather than URL.parse,
+ * which the browsers the build targets do not all have.
+ * @param {unknown} uri
+ * @returns {URL | null}
+ */
+function httpUrl(uri) {
+  if (typeof uri !== 'string') return null;
+  try {
+    const url = new URL(uri);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The progress line of a running job.
  * @param {ResearchJob} job
  * @returns {[string, Record<string, string | number>] | null}
@@ -242,8 +258,8 @@ export function renderReport(host, job, deps) {
       section.append(keyed('h5', 'pt-1 text-xs font-semibold uppercase tracking-wide text-slate-500', 'research.web_sources'));
       const ul = el('ul', 'space-y-1 text-xs');
       for (const s of web.sources) {
-        const url = URL.parse(s.uri);
-        if (!url || (url.protocol !== 'https:' && url.protocol !== 'http:')) continue;
+        const url = httpUrl(s.uri);
+        if (!url) continue;
         const li = el('li', 'break-words');
         const a = /** @type {HTMLAnchorElement} */ (el('a', 'text-sky-800 underline hover:text-sky-950', s.title || url.hostname));
         a.href = url.href;

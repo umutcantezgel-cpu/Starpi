@@ -123,6 +123,22 @@ describe('research views', () => {
     cleanup();
   });
 
+  it('render the web pages and the report actions where URL.parse does not exist (older browsers the build targets)', () => {
+    const saved = Object.getOwnPropertyDescriptor(URL, 'parse');
+    // @ts-ignore: removed on purpose
+    delete URL.parse;
+    try {
+      const host = document.createElement('div');
+      const cleanup = view.renderReport(host, doneJob(), { version: '0.0.0-test' });
+      assert.deepEqual([...host.querySelectorAll('a')].map((a) => a.getAttribute('href')), ['https://example.org/register']);
+      assert.ok(host.querySelector('[data-role="export"]'));
+      assert.ok(host.querySelector('[data-action="open-receipt"]'));
+      cleanup();
+    } finally {
+      if (saved) Object.defineProperty(URL, 'parse', saved);
+    }
+  });
+
   it('show nothing the gate would not release now, and no text of a withheld web part', () => {
     const job = doneJob();
     const sources = /** @type {any} */ (job.parts.sources);
