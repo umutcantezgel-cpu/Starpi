@@ -18,7 +18,8 @@
     "node": ">=22.13"
   },
   "workspaces": [
-    "packages/core"
+    "packages/core",
+    "packages/companion"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",

@@ -70,6 +70,19 @@ export default [
     },
   },
   {
+    // The local companion (packages/companion) is a Node.js service: Node globals, logs through its
+    // own logger only.
+    files: ['packages/companion/**/*.js', 'packages/companion/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+    rules: {
+      'no-console': ['error', { allow: ['warn', 'error', 'log'] }],
+    },
+  },
+  {
     files: ['src/sw.js'],
     languageOptions: {
       ecmaVersion: 'latest',

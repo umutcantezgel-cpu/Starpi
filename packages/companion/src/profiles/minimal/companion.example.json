@@ -1,0 +1,15 @@
+{
+  "$comment": "Example configuration of the companion with the minimal profile. Copy it to the configuration folder as config.json and change what you need; every member is optional.",
+  "profile": "minimal",
+  "port": 47821,
+  "allowedOrigins": ["https://www.starpi.app"],
+  "timeZone": null,
+  "brains": [
+    { "id": "local", "type": "openai-compat", "baseUrl": "http://127.0.0.1:11434/v1", "model": "llama3.2", "memoryMb": 4096 }
+  ],
+  "router": { "personalToCloud": false },
+  "egress": { "allow": {} },
+  "audit": { "anchorEvery": 256, "anchorIntervalS": 600 },
+  "sessions": { "days": 30 },
+  "admission": { "budgetMb": 8192, "reserveMb": 1024 }
+}
