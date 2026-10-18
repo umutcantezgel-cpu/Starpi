@@ -76,6 +76,8 @@ export async function contextOf(conversationId) {
  * @returns {Promise<string[]>}
  */
 export async function turnNotes(ctx) {
+  // "Continue" asks for the rest of an answer: no question to find notes for.
+  if (!ctx.question.trim()) return [];
   const { project } = await contextOf(ctx.conversationId);
   const { note } = await memoryStore().recall(ctx.question, scopesFor(project), ctx.locale);
   return note ? [note] : [];

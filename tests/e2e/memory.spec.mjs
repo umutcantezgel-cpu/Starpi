@@ -170,6 +170,47 @@ test.describe('projects, memory and assistants', () => {
     await expect(card).toContainText('I prefer short answers');
   });
 
+  test('suggests notes after a free answer only with suggestions on, and keeps one only when accepted', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    /** @type {string[]} */
+    const purposes = [];
+    page.on('request', (req) => {
+      const m = /starpi-purpose:(\w+)/.exec(req.postData() ?? '');
+      if (req.url().startsWith('https://api.anthropic.com/') && m) purposes.push(m[1]);
+    });
+    await routeAnthropic(page);
+    await useAnthropic(page);
+    await page.goto('/');
+    await page.click('#nav-settings');
+    const card = page.locator('[data-memory-settings]');
+    await card.locator('#mvEnabled').check();
+    await expect(card.locator('#mvSuggest')).toBeEnabled();
+    await page.click('#nav-chat');
+    await ask(page, 'I teach biology at a school in Porto. What is osmosis?');
+    await settled(page);
+    // Memory on, suggestions off: no suggestion call at all.
+    await page.waitForTimeout(300);
+    expect(purposes).not.toContain('memory_suggest');
+
+    await page.click('#nav-settings');
+    await card.locator('#mvSuggest').check();
+    await page.click('#nav-chat');
+    await ask(page, 'And what is diffusion?');
+    await settled(page);
+    const strip = page.locator('#chatMessages [data-memory-suggest]');
+    await expect(strip).toBeVisible();
+    expect(purposes).toContain('memory_suggest');
+    // Shown, not stored.
+    await page.click('#nav-settings');
+    await expect(card.locator('[data-fact]')).toHaveCount(0);
+    await page.click('#nav-chat');
+    await strip.locator('[data-ms="keep"]').first().click();
+    await expect(page.locator('#toastRegion')).toContainText('Note saved');
+    await page.click('#nav-settings');
+    await expect(card.locator('[data-fact]')).toHaveCount(1);
+    await expect(card.locator('[data-fact]')).toContainText('Suggested');
+  });
+
   test('an assistant brings its instructions and starters, and exports and imports as a file', async ({ page, diagnostics: _diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     const chats = await routeAnthropic(page);
