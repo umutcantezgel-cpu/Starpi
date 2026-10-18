@@ -427,6 +427,7 @@ async function teardown() {
  * @property {ModelPreference} preference
  * @property {(choice: ModelChoice) => Promise<boolean> | boolean} [confirmDownload] asked before a model is downloaded
  * @property {boolean} [onlyIfCached] do not download; resolve false when the model is not cached yet
+ * @property {readonly import('../models/device.js').MeasuredRun[]} [history] benchmark runs of this browser: 'auto' steps down from a pick measured slow
  */
 
 /**
@@ -447,7 +448,7 @@ export function loadModel(options) {
 
   const run = async () => {
     const { hw, webgpu } = await probeDeviceWithin(undefined, LOAD_PROBE_TIMEOUT_MS);
-    const choice = chooseModel(hw, options.preference);
+    const choice = chooseModel(hw, options.preference, { history: options.history });
     // A WebGPU preset picked on a device without WebGPU: say why instead of switching runtimes.
     if (choice.runtime === 'webgpu' && !webgpu.supported) throw webgpu.error;
 

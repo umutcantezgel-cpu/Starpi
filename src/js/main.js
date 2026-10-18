@@ -17,8 +17,9 @@ import { initMessages } from './messages.js';
 import { initModelPicker } from './model-picker.js';
 import { initCitations } from './rag/citations.js';
 import { initReceipts } from './rag/receipts.js';
+import { initProviders } from './providers.js';
 import { changeEngine, initSettings, renderPrivacyNotice } from './settings.js';
-import { getMode } from './state.js';
+import { getAssistant } from './state.js';
 import { connect, onConnectionChange } from './supabase.js';
 import { closeChatAside, detectAndDisplayDevice, initChatAside, onTabOpen, openChatAside, renderConnection, renderLanguageSwitch, switchTab } from './ui.js';
 import { toast } from './ui/kit.js';
@@ -75,6 +76,9 @@ async function boot() {
   onTabOpen('bench', () => void refreshDiagnostics());
 
   initMessages();
+  // The AI layer (adapters, transports, the router's world) is set up once the page is idle and
+  // again whenever keys, pools or the own server change.
+  initProviders();
   initSettings();
   // After the settings: the pickers show the stored choice, then the device's model groups.
   initModelPicker();
@@ -102,8 +106,8 @@ async function boot() {
     void refreshSyncStatus();
   });
 
-  // Apply the persisted mode without triggering downloads (only an already cached model is loaded).
-  void changeEngine(getMode(), { interactive: false });
+  // Apply the stored assistant without triggering downloads (only an already cached model is loaded).
+  void changeEngine(getAssistant(), { interactive: false });
 
   const state = await connect();
   renderConnection(state);
