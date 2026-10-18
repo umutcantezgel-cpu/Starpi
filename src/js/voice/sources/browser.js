@@ -5,29 +5,12 @@
 // (processLocally). Speech output uses speechSynthesis with a voice of the user's language; in the
 // on-device mode only voices on this device (localService) are used, because the others send the
 // text to the platform's vendor.
+import { speechRecognitionCtor } from '../recognition.js';
 import { pickBrowserVoice, SpeechError } from '../tts.js';
-import { SttError } from './shared.js';
 
 /** @typedef {import('./shared.js').SourceContext} SourceContext */
 /** @typedef {import('./shared.js').SttSource} SttSource */
 /** @typedef {import('./shared.js').TtsSource} TtsSource */
-
-/**
- * @typedef {{ lang: string, continuous: boolean, interimResults: boolean, processLocally?: boolean, start(): void, stop(): void, abort(): void,
- *   onstart: (() => void) | null, onend: (() => void) | null, onerror: ((e: { error: string }) => void) | null,
- *   onresult: ((e: { resultIndex: number, results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal?: boolean }> }) => void) | null }} Recognition
- * @typedef {new () => Recognition} RecognitionCtor
- */
-
-/**
- * The page's speech recognition constructor, if any.
- * @param {unknown} [scope]
- * @returns {RecognitionCtor | null}
- */
-export function recognitionCtor(scope = globalThis) {
-  const w = /** @type {{ SpeechRecognition?: RecognitionCtor, webkitSpeechRecognition?: RecognitionCtor }} */ (scope);
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
 
 /**
  * Whether recognition can run under the current mode.
@@ -35,81 +18,9 @@ export function recognitionCtor(scope = globalThis) {
  * @param {unknown} [scope]
  */
 export function canRecognize(ctx, scope = globalThis) {
-  const Ctor = recognitionCtor(scope);
+  const Ctor = speechRecognitionCtor(scope);
   if (!Ctor) return false;
   return !ctx.onDevice() || 'processLocally' in Ctor.prototype;
-}
-
-/**
- * Recognition errors after which another source may still succeed (the service, not the microphone,
- * is the problem).
- */
-export const FALLBACK_ERRORS = Object.freeze(['network', 'service-not-allowed', 'language-not-supported', 'unsupported', 'bad-grammar']);
-
-/** Recognition error codes and the dictionary keys that explain them. */
-export const RECOGNITION_MESSAGES = Object.freeze(
-  /** @type {Record<string, string>} */ ({
-    'not-allowed': 'chat.voice_error_denied',
-    'service-not-allowed': 'chat.voice_error_denied',
-    'audio-capture': 'chat.voice_error_microphone',
-    network: 'chat.voice_error_network',
-    'no-speech': 'chat.voice_error_no_speech',
-    'language-not-supported': 'chat.voice_error_language',
-  }),
-);
-
-/**
- * A recognition that failed; `reason` is the Web Speech error code.
- */
-export class RecognitionError extends SttError {
-  /** @param {string} reason */
-  constructor(reason) {
-    super(FALLBACK_ERRORS.includes(reason) ? 'unavailable' : reason === 'no-speech' ? 'empty' : 'failed', reason);
-    this.reason = reason;
-  }
-}
-
-/**
- * Listens once: resolves with the final text when the user stops (stop()) or the service ends the
- * utterance; reports interim text. Rejects with a RecognitionError.
- * @param {{ locale: string, onDevice: boolean, onInterim?: (text: string) => void, onStart?: () => void, signal?: AbortSignal, Ctor?: RecognitionCtor | null }} options
- * @returns {{ done: Promise<string>, stop: () => void }}
- */
-export function listen(options) {
-  const Ctor = options.Ctor === undefined ? recognitionCtor() : options.Ctor;
-  if (!Ctor) return { done: Promise.reject(new RecognitionError('unsupported')), stop: () => {} };
-  const recognition = new Ctor();
-  recognition.lang = options.locale;
-  recognition.continuous = false;
-  recognition.interimResults = true;
-  if (options.onDevice) recognition.processLocally = true;
-  let text = '';
-  const done = new Promise((resolve, reject) => {
-    let failed = false;
-    recognition.onstart = () => options.onStart?.();
-    recognition.onresult = (event) => {
-      let all = '';
-      for (let i = 0; i < event.results.length; i += 1) all += event.results[i][0]?.transcript ?? '';
-      text = all;
-      options.onInterim?.(text);
-    };
-    recognition.onerror = (event) => {
-      if (event.error === 'aborted' && options.signal?.aborted) return;
-      failed = true;
-      reject(new RecognitionError(event.error));
-    };
-    recognition.onend = () => {
-      if (!failed) resolve(text.trim());
-    };
-    options.signal?.addEventListener('abort', () => recognition.abort(), { once: true });
-    try {
-      recognition.start();
-    } catch (err) {
-      failed = true;
-      reject(new RecognitionError(err instanceof Error && err.name === 'NotAllowedError' ? 'not-allowed' : 'unsupported'));
-    }
-  });
-  return { done, stop: () => recognition.stop() };
 }
 
 /** @type {SttSource} */

@@ -3,5 +3,60 @@
     "free": "Freies Gespräch, die Antworten werden nicht geprüft.",
     "withheld": "{count} {count:Satz|Sätze} zurückgehalten.",
     "ended": "Das Live-Gespräch ist beendet."
-  }
+  },
+  "title": "Live-Gespräch",
+  "close": "Live-Gespräch schließen",
+  "open": "Live",
+  "open_hint": "Ein Live-Sprachgespräch beginnen",
+  "mode": {
+    "label": "Gesprächsmodus",
+    "free": "Freies Gespräch",
+    "sources": "Aus Ihren Quellen",
+    "free_hint": "Ein offenes Gespräch. Die Antworten werden nicht mit Ihren Dokumenten abgeglichen.",
+    "sources_hint": "Jeder Beitrag durchsucht Ihre Dokumente. Gesprochen werden nur Sätze, die die Prüfung freigibt; danach folgt die Zahl der zurückgehaltenen Sätze."
+  },
+  "state": {
+    "idle": "Bereit zum Start",
+    "connecting": "Verbindet…",
+    "ready": "Mikrofon drücken zum Sprechen",
+    "listening": "Hört zu",
+    "thinking": "Denkt nach…",
+    "speaking": "Spricht",
+    "ended": "Gespräch beendet"
+  },
+  "ended": {
+    "limit": "Nach 15 Minuten beendet.",
+    "silence": "Nach 3 Minuten Stille beendet.",
+    "hidden": "Beendet, weil der Tab verlassen wurde.",
+    "error": "Die Verbindung wurde unerwartet beendet.",
+    "no_source": "Für ein Live-Gespräch ist keine Sprachquelle verfügbar.",
+    "no_model": "Kein Modell verfügbar. Fügen Sie unter Einstellungen → Anbieter einen Schlüssel hinzu.",
+    "microphone": "Das Mikrofon konnte nicht starten."
+  },
+  "engine": {
+    "live": "Gemini Live",
+    "turns": "Drücken zum Sprechen"
+  },
+  "start": "Starten",
+  "talk": "Drücken zum Sprechen",
+  "talk_send": "Drücken zum Senden",
+  "talk_interrupt": "Drücken zum Unterbrechen",
+  "camera": "Kamerabild senden",
+  "stop": "Gespräch beenden",
+  "say_label": "Stattdessen eine Nachricht tippen",
+  "say_placeholder": "Oder hier tippen…",
+  "say": "Senden",
+  "limits": "Ein Gespräch endet nach 15 Minuten, nach 3 Minuten Stille oder wenn Sie diesen Tab verlassen. Nichts wird aufgezeichnet.",
+  "transcript": {
+    "empty": "Hier erscheint das Gespräch.",
+    "thinking": "Antwortet…",
+    "nothing": "Nichts von dieser Antwort wurde freigegeben."
+  },
+  "label": {
+    "free": "Frei · nicht geprüft",
+    "withheld": "{count} zurückgehalten"
+  },
+  "on_device": "Live braucht ein Modell außerhalb dieses Geräts. Schalten Sie den Gerätemodus aus, um es zu nutzen.",
+  "camera_failed": "Das Kamerabild konnte nicht aufgenommen werden.",
+  "camera_sent": "Kamerabild mit dem Gespräch gesendet."
 }

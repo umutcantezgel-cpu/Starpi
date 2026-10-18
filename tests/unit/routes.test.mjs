@@ -18,10 +18,6 @@ const vercel = JSON.parse(readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
 
 /** Routes that later work packages implement; until then each answers 501. */
 const STUBS = [
-  'api/voice/speak.js',
-  'api/voice/transcribe.js',
-  'api/voice/voices.js',
-  'api/voice/live-token.js',
   'api/research/step.js',
 ];
 
@@ -134,10 +130,10 @@ describe('scripts/serve.mjs --functions', () => {
       ['GET', '/api/models/pool', 200],
       ['POST', '/api/relay/openai/v1/chat/completions', 401, 'key_required'],
       ['GET', '/api/relay/gemini/v1beta/models', 401, 'key_required'],
-      ['POST', '/api/voice/speak', 501, 'not_implemented'],
-      ['POST', '/api/voice/transcribe', 501, 'not_implemented'],
-      ['GET', '/api/voice/voices', 501, 'not_implemented'],
-      ['POST', '/api/voice/live-token', 501, 'not_implemented'],
+      ['POST', '/api/voice/speak', 415, 'unsupported_media_type'],
+      ['POST', '/api/voice/transcribe', 415, 'unsupported_media_type'],
+      ['GET', '/api/voice/voices', 200],
+      ['POST', '/api/voice/live-token', 415, 'unsupported_media_type'],
       ['POST', '/api/research/step', 501, 'not_implemented'],
     ]) {
       const res = await fetch(base + url, { method, headers: { origin: base } });
