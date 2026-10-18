@@ -75,7 +75,8 @@ export function resetConversation() {
 /**
  * Sends a question: the composer's draft, or the given text.
  * @param {string} [rawText]  a question from elsewhere (quick prompts, the graph); omitted: the draft
- * @param {{ workspaceOnly?: boolean, chatMode?: 'grounded' | 'free' }} [options]
+ * @param {{ workspaceOnly?: boolean, chatMode?: 'grounded' | 'free', localOnly?: boolean }} [options]
+ *   localOnly: the question stays on this device (thread.js sendQuestion)
  */
 export async function submitChat(rawText, options = {}) {
   starting = true;

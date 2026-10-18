@@ -76,11 +76,12 @@ export function composerInput() {
 /**
  * The speaker button of an answer (its action row); a click reads the answer aloud, a second one stops.
  * @param {string} answerId
- * @param {{ className?: string }} [options]
+ * @param {{ className?: string, compact?: boolean }} [options]  compact: the size of the small buttons of a message's action bar
  */
 export function speakerButton(answerId, options = {}) {
   const name = t('voice.read.button');
-  return html`<button type="button" class="btn btn-ghost btn-icon${options.className ? ` ${options.className}` : ''}" data-action="voice-read-aloud" data-arg="${answerId}" data-voice-answer="${answerId}" aria-pressed="false" data-i18n-aria="voice.read.button" aria-label="${name}" data-i18n-title="voice.read.button" title="${name}">${icon('volume-2', 'w-4 h-4')}</button>`;
+  const size = options.compact ? 'px-1.5 py-1 text-[11px]' : 'btn-icon';
+  return html`<button type="button" class="btn btn-ghost ${size}${options.className ? ` ${options.className}` : ''}" data-action="voice-read-aloud" data-arg="${answerId}" data-voice-answer="${answerId}" aria-pressed="false" data-i18n-aria="voice.read.button" aria-label="${name}" data-i18n-title="voice.read.button" title="${name}">${icon('volume-2', options.compact ? 'w-3.5 h-3.5' : 'w-4 h-4')}</button>`;
 }
 
 /**
