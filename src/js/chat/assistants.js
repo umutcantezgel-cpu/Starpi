@@ -2,10 +2,13 @@
 // Assistants: saved presets for a chat ({ name, icon, instructions, model, tools, starters }).
 //
 // - Starting a chat with an assistant sets the model picker to its model (when it has one), its
-//   tools (the Web and Thinking switches) and shows its conversation starters; its instructions go
-//   into the free chat's system prompt of that chat (the conversation keeps the assistantId).
+//   tools (the Web and Thinking switches, and switches on the chat's built-in tools it names) and
+//   shows its conversation starters; its instructions go into the free chat's system prompt of that
+//   chat (the conversation keeps the assistantId).
 // - Assistants run no code: the only tools they may switch on are those in ASSISTANT_TOOLS, and an
-//   import drops every other tool it names (and reports them).
+//   import drops every other tool it names (and reports them). An import does not switch on the
+//   tools that read the user's files or cost money (ASSISTANT_TOOLS_ASKED); the user may tick them
+//   in the editor. Tools of MCP servers are not assistant tools: each server's approvals decide.
 // - Import and export as `starpi.assistant/v1`: one assistant per file, validated field by field,
 //   every text cut to its limit. Unknown fields are ignored.
 //
@@ -31,8 +34,14 @@ export const ASSISTANT_LIMITS = Object.freeze({
   /** Bytes of an import file. */
   fileBytes: 64 * 1024,
 });
-/** Tools an assistant may switch on: web search and extended thinking (no code execution). */
-export const ASSISTANT_TOOLS = Object.freeze(['web', 'thinking']);
+/**
+ * Tools an assistant may switch on: the model's own web search and extended thinking, and the chat's
+ * built-in tools (chat/tools.js: date and time, calculator, searching the files on this device,
+ * the saved notes, web search through the search service, images). None of them runs code.
+ */
+export const ASSISTANT_TOOLS = Object.freeze(['web', 'thinking', 'datetime', 'calculator', 'workspace_search', 'memory_lookup', 'web_search', 'generate_image']);
+/** Tools an imported assistant does not bring along (they let a model read the user's files or cost money). */
+export const ASSISTANT_TOOLS_ASKED = Object.freeze(['workspace_search', 'generate_image']);
 /** Icons an assistant may show (registered in icons.js). */
 export const ASSISTANT_ICONS = Object.freeze(['bot', 'sparkles', 'brain', 'graduation-cap', 'pen-line', 'code', 'languages', 'lightbulb', 'briefcase', 'palette', 'compass', 'book-open']);
 
@@ -55,18 +64,20 @@ export class AssistantError extends Error {
 
 /**
  * The fields of an assistant as kept, from any input; the tools it named that an assistant may not
- * use are reported in `dropped`.
+ * use (or, for an import, may not bring along) are reported in `dropped`.
  * @param {Record<string, unknown>} input
+ * @param {{ imported?: boolean }} [opts]
  * @returns {{ fields: AssistantFields, dropped: string[] }}
  */
-export function assistantFields(input) {
+export function assistantFields(input, opts = {}) {
   const name = oneLine(input.name, ASSISTANT_LIMITS.nameChars);
   const instructions = multiLine(input.instructions, ASSISTANT_LIMITS.instructionChars);
   if (!name || !instructions) throw new AssistantError('fields');
   const iconName = typeof input.icon === 'string' && ASSISTANT_ICONS.includes(input.icon) ? input.icon : 'bot';
   const named = Array.isArray(input.tools) ? input.tools.map((x) => oneLine(x, 60)).filter(Boolean) : [];
-  const tools = ASSISTANT_TOOLS.filter((x) => named.includes(x));
-  const dropped = [...new Set(named.filter((x) => !ASSISTANT_TOOLS.includes(x)))];
+  const allowed = opts.imported ? ASSISTANT_TOOLS.filter((x) => !ASSISTANT_TOOLS_ASKED.includes(x)) : ASSISTANT_TOOLS;
+  const tools = allowed.filter((x) => named.includes(x));
+  const dropped = [...new Set(named.filter((x) => !allowed.includes(x)))];
   /** @type {string[]} */
   const starters = [];
   for (const s of Array.isArray(input.starters) ? input.starters : []) {
@@ -117,7 +128,7 @@ export function parseAssistant(text) {
   if (d.schema !== ASSISTANT_SCHEMA) throw new AssistantError('schema');
   const a = d.assistant;
   if (!a || typeof a !== 'object' || Array.isArray(a)) throw new AssistantError('invalid');
-  return assistantFields(/** @type {Record<string, unknown>} */ (a));
+  return assistantFields(/** @type {Record<string, unknown>} */ (a), { imported: true });
 }
 
 /** A file name for an exported assistant. @param {string} name */

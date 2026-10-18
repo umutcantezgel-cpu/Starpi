@@ -13,7 +13,12 @@
  *   models here) and the question. Each column streams on its own (chat/runner.js runAnswer with
  *   that one model, no fallback to another), so one slow or failing model holds up no other.
  * - Each finished column is labelled as the thread labels a free answer (thread.js presentAnswer on
- *   the fields freeAnswerInput stores: "not checked", a stop before the end, the web pages it cites).
+ *   the fields freeAnswerInput stores: "not checked", a stop before the end, the web pages it cites
+ *   and their web check).
+ * - Tools: the request offers the tools the thread's would, so a column's answer goes through the
+ *   tool runner as the thread's does (hooks.js setToolRunner): the calls it stopped for run in the
+ *   column, with their approval cards there, and the answer goes on after them; a web answer from
+ *   a search pack is checked. Stop in the column stops its tool calls too.
  * - A column whose answer stays on this device (the model here, or a question that stays) is
  *   marked so (data-stays-on-device); the canvas keeps a block taken from it on this device too.
  * - Models: the header picker's choices (models of this device that are not loaded stay out, as a
@@ -29,6 +34,7 @@ import { modelLabel, providerLabel } from '../providers.js';
 import { renderMarkdown } from '../render.js';
 import { html, icon, label } from '../ui/kit.js';
 import { estimateCostUsd } from '../ai/catalog/models.js';
+import { single } from './hooks.js';
 import { capsOf, chatCandidates, deviceModel, runAnswer } from './runner.js';
 
 /** @typedef {import('./runner.js').Target} Target */
@@ -454,12 +460,39 @@ async function runColumn(i) {
           if (!frame) frame = requestAnimationFrame(() => ((frame = 0), paintBody(i, false)));
         },
       });
+      let result = run.result;
+      // The tool runner sees the column's answer as it sees the thread's: tool calls it stopped for
+      // run here (approval cards in the column) and the answer goes on after them.
+      if (single.tools && run.target && !signal.aborted && col.el) {
+        const asked = run.target;
+        const element = col.el;
+        const after = await single
+          .tools({
+            result,
+            request: () => prepared.build(asked),
+            ctx: { ...prepared.ctx, target: asked },
+            signal,
+            view: {
+              element,
+              update: (next) => {
+                col.text = next;
+                if (!frame) frame = requestAnimationFrame(() => ((frame = 0), paintBody(i, false)));
+              },
+            },
+          })
+          .catch((err) => {
+            if (!signal.aborted) console.warn('[starpi] the tools of a compared answer failed', err);
+            return null;
+          });
+        if (after) result = after;
+      }
       if (frame) cancelAnimationFrame(frame);
-      col.result = run.result;
-      col.text = run.result.text;
+      frame = 0;
+      col.result = result;
+      col.text = result.text;
       col.durationMs = Math.round(performance.now() - col.startedAt);
-      if (!run.result.text.trim()) {
-        const code = run.result.error?.code ?? (run.result.stopReason === 'refusal' ? 'refusal' : 'bad_response');
+      if (!result.text.trim()) {
+        const code = result.error?.code ?? (result.stopReason === 'refusal' ? 'refusal' : 'bad_response');
         finish(i, signal.aborted ? 'stopped' : 'failed', signal.aborted ? null : `ai.error.${code}`);
         return;
       }

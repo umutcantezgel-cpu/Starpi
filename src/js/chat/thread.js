@@ -40,7 +40,7 @@
  * prepareQuestion() as a free question would go out, are stored with freeAnswerInput() and
  * adoptAnswer() as the newest branch under their question, and are labelled with presentAnswer().
  */
-import { chatData, currentSessionId, loadSessionThread } from '../chat-store.js';
+import { chatData, currentSessionId, loadSessionThread, startNewSession } from '../chat-store.js';
 import { splitStreamingText } from '../chat-stream.js';
 import { APP_VERSION, LIMITS, TIMEOUTS_MS } from '../config.js';
 import { contextCoverage, receiptAdvisory } from '../core/grounding.js';
@@ -159,8 +159,9 @@ let busy = false;
  * The running turn: the conversation its question and answer belong to (taken when the turn starts)
  * and that conversation's thread. The user may open another chat or start a new one while an answer
  * is written; the answer is still stored beside its question, and shows when its chat is shown again
- * (`left`: the screen changed during the turn; `live`: the bubble the answer streams into).
- * @type {{ conversationId: string, thread: Thread | null, left: boolean, live: HTMLElement | null } | null}
+ * (`left`: the screen changed during the turn; `live`: the bubble the answer streams into;
+ * `foreign`: the conversation was changed elsewhere during the turn, by the sync or another tab).
+ * @type {{ conversationId: string, thread: Thread | null, left: boolean, live: HTMLElement | null, foreign: boolean } | null}
  */
 let turn = null;
 /** @type {AbortController | null} */
@@ -169,6 +170,16 @@ let showSeq = 0;
 /** Base64 and text of stored attachments, by blob id. */
 /** @type {Map<string, string>} */
 const blobData = new Map();
+/**
+ * Attachments this browser does not have, and those it said so for: attachments are not synced, so a
+ * question restored from the sync names files whose blobs stayed on the device they were added on.
+ */
+const missingBlobs = new Set();
+const missingNoted = new Set();
+/** Messages this thread stores itself (their change events are no news to it). */
+const ownNodes = new Set();
+/** What the screen shows of the conversation on screen (see shownSignature), as last rendered. */
+let shown = '';
 /** @type {{ at: number, titles: string[] } | null} */
 let titlesCache = null;
 /**
@@ -493,6 +504,42 @@ export function webGrounding(result) {
 }
 
 /**
+ * A web check a tool runner made itself (the verified web answer of a search pack), in the shape of
+ * rag/web-check.js, or null.
+ * @param {CompletionResult} result
+ * @returns {import('../rag/web-check.js').WebCheck | null}
+ */
+function runnerWebCheck(result) {
+  return readWebCheck(/** @type {{ webCheck?: unknown }} */ (result).webCheck);
+}
+
+/**
+ * What a free answer stores about the web and its provider state, the same for the thread's answers
+ * and those written outside it (compare, council): the pages it cites, where it is grounded (for the
+ * read-aloud gate), the outcome of the web check (the tool runner's check of a search pack when it
+ * made one, else rag/web-check.js on the citations) and the label that follows from it; no provider
+ * state for an answer that stopped with tool calls left open (they must not be replayed).
+ * @param {CompletionResult} result
+ * @param {{ question: string, locale: string }} asked
+ */
+function freeAnswerFields(result, asked) {
+  const grounding = webGrounding(result);
+  // An answer that cites web pages is checked as far as its citations allow (rag/web-check.js).
+  const web = runnerWebCheck(result) ?? (result.citations.length ? checkWebAnswer({ text: result.text, provider: result.provider, citations: result.citations, question: asked.question, locale: asked.locale }) : null);
+  const checked = web !== null && web.kind !== 'none';
+  return {
+    label: /** @type {'web' | 'free'} */ (checked ? 'web' : 'free'),
+    opaque: result.stopReason === 'tool_call' ? [] : result.opaque,
+    grounding,
+    meta: {
+      ...(result.citations.length ? { web_sources: webSources(result) } : {}),
+      ...(grounding ? { web_grounding: grounding } : {}),
+      ...(checked ? { web_check: web } : {}),
+    },
+  };
+}
+
+/**
  * The chips of a message's attachments.
  * @param {NodeRecord} node
  */
@@ -588,6 +635,7 @@ function removeFrom(nodeId) {
  * @param {{ keepNotices?: boolean }} [opts]
  */
 export async function showConversation(id = currentSessionId(), opts = {}) {
+  void followStore();
   const seq = ++showSeq;
   conversationId = id;
   if (turn) turn.left = true;
@@ -604,6 +652,7 @@ export async function showConversation(id = currentSessionId(), opts = {}) {
   const shownSinceBoot = opts.keepNotices && box ? [...box.children].slice(1).filter((el) => !(el instanceof HTMLElement && el.dataset.nodeId)) : [];
   resetMessages();
   for (const node of current?.path ?? []) renderNode(node);
+  shown = shownSignature(current);
   // An answer still being written in this conversation goes on streaming below its question.
   if (turn?.conversationId === id && turn.live) box?.append(turn.live);
   box?.append(...shownSinceBoot);
@@ -614,12 +663,114 @@ export async function showConversation(id = currentSessionId(), opts = {}) {
  * conversation and is stored there.
  */
 export function resetThread() {
+  void followStore();
   conversationId = currentSessionId();
   if (turn) turn.left = true;
   current = null;
+  shown = '';
   ++showSeq;
   resetMessages();
   setAssistantStatus(busy ? 'status.generating' : 'status.ready');
+}
+
+// ---------------------------------------------------------------------------------------------
+// Following changes made elsewhere (the sync, other tabs)
+// ---------------------------------------------------------------------------------------------
+
+/** Pause after a change event before the chat on screen is read again (changes come in bursts). */
+const FOLLOW_MS = 150;
+/** Pause before trying again while a question is being edited in place. */
+const FOLLOW_EDIT_MS = 1_500;
+/** @type {Promise<void> | null} */
+let followed = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let followTimer = null;
+
+/**
+ * What the screen shows of a conversation, to tell whether a change elsewhere touched it: the active
+ * path, each message's branches and what it carries.
+ * @param {Thread | null} thread
+ */
+function shownSignature(thread) {
+  if (!thread) return '';
+  return JSON.stringify(thread.path.map((n) => [n.id, branchInfo(thread.tree, n.id)?.count ?? 1, n.label ?? null, n.receiptId ?? null, n.parts.length, nodeText(n).length, JSON.stringify(n.meta ?? null).length]));
+}
+
+/**
+ * Notes a message this thread stores itself, so its change event is not taken for a change elsewhere.
+ * @param {string} id
+ */
+function ownNode(id) {
+  ownNodes.add(id);
+  if (ownNodes.size > 500) ownNodes.delete(/** @type {string} */ (ownNodes.values().next().value));
+}
+
+/** Starts following the store's change events (once). */
+function followStore() {
+  followed ??= store()
+    .then((db) => {
+      db.onChange(noteStoreChange);
+    })
+    .catch((err) => {
+      followed = null;
+      console.warn('[starpi] the chat cannot follow changes made elsewhere', err);
+    });
+  return followed;
+}
+
+/**
+ * A change of the store (made here, in another tab, or by the sync merging another browser's
+ * changes): the chat on screen is read again when it concerns it. While an answer is written in it,
+ * a change from elsewhere waits for the end of the turn.
+ * @param {import('./store.js').ChatChange} change
+ */
+function noteStoreChange(change) {
+  const id = conversationId;
+  const concerns = change.kind === 'all' || (change.kind === 'conversation' && change.id === id) || (change.kind === 'node' && change.conversationId === id);
+  if (!concerns) return;
+  if (turn && turn.conversationId === id) {
+    if (change.kind === 'all' || (change.kind === 'conversation' && change.op === 'delete') || (change.kind === 'node' && !ownNodes.has(change.id))) turn.foreign = true;
+    return;
+  }
+  scheduleFollow(FOLLOW_MS);
+}
+
+/** @param {number} ms */
+function scheduleFollow(ms) {
+  if (followTimer !== null) clearTimeout(followTimer);
+  followTimer = setTimeout(() => {
+    followTimer = null;
+    void followShown().catch((err) => console.warn('[starpi] the chat could not follow a change', err));
+  }, ms);
+}
+
+/**
+ * Brings the chat on screen in line with the store: a conversation deleted elsewhere (another tab, or
+ * another browser through the sync) returns to a new chat; one changed elsewhere shows what is stored
+ * now. Nothing happens for a chat whose session moved on (deleted here, a new chat) or that is not
+ * stored yet, and a question being edited in place is not taken away.
+ */
+async function followShown() {
+  const id = conversationId;
+  if (!current || current.conversation.id !== id || currentSessionId() !== id) return;
+  if (turn?.conversationId === id) return;
+  const loaded = await (await store()).loadThread(id).catch(() => undefined);
+  if (loaded === undefined || conversationId !== id || currentSessionId() !== id || turn?.conversationId === id) return;
+  if (!loaded) {
+    startNewSession();
+    resetThread();
+    appendNotice({ icon: 'trash-2', tone: 'info', title: 'chat-thread.notice.deleted_elsewhere_title', body: 'chat-thread.notice.deleted_elsewhere_body' });
+    return;
+  }
+  if (shownSignature(loaded) === shown) {
+    current = loaded;
+    return;
+  }
+  if (document.querySelector('#chatMessages .message-editor')) {
+    scheduleFollow(FOLLOW_EDIT_MS);
+    return;
+  }
+  await showConversation(id);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -627,39 +778,50 @@ export function resetThread() {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * A stored blob as base64 (cached for the page).
+ * A stored blob as base64 (cached for the page); null when this browser does not have it.
  * @param {string} blobId
+ * @returns {Promise<string | null>}
  */
 async function blobBase64(blobId) {
   const key = `b64:${blobId}`;
   const cached = blobData.get(key);
   if (cached !== undefined) return cached;
+  if (missingBlobs.has(blobId)) return null;
   const record = await (await store()).getBlob(blobId);
-  const data = record ? await blobToBase64(record.data) : '';
+  if (!record) {
+    missingBlobs.add(blobId);
+    return null;
+  }
+  const data = await blobToBase64(record.data);
   blobData.set(key, data);
   return data;
 }
 
 /**
- * The text of a stored file attachment (plain text read, documents and PDFs extracted), cached.
+ * The text of a stored file attachment (plain text read, documents and PDFs extracted), cached;
+ * null when this browser does not have the file.
  * @param {StoredPart} part
+ * @returns {Promise<string | null>}
  */
 async function blobText(part) {
   const blobId = String(part.blobId ?? '');
   const key = `txt:${blobId}`;
   const cached = blobData.get(key);
   if (cached !== undefined) return cached;
+  if (missingBlobs.has(blobId)) return null;
   const record = await (await store()).getBlob(blobId);
+  if (!record) {
+    missingBlobs.add(blobId);
+    return null;
+  }
   let text = '';
-  if (record) {
-    try {
-      text =
-        part.kind === 'text'
-          ? await record.data.text()
-          : await attachmentText({ id: blobId, name: String(part.name ?? 'file'), kind: part.kind === 'pdf' ? 'pdf' : 'document', mime: record.type, blob: record.data, file: /** @type {File} */ (record.data) });
-    } catch (err) {
-      console.warn('[starpi] an attached file could not be read', err);
-    }
+  try {
+    text =
+      part.kind === 'text'
+        ? await record.data.text()
+        : await attachmentText({ id: blobId, name: String(part.name ?? 'file'), kind: part.kind === 'pdf' ? 'pdf' : 'document', mime: record.type, blob: record.data, file: /** @type {File} */ (record.data) });
+  } catch (err) {
+    console.warn('[starpi] an attached file could not be read', err);
   }
   blobData.set(key, text);
   return text;
@@ -678,14 +840,16 @@ function fitText(text, room) {
 /**
  * A stored question as a message for one model: its context block (free questions), the notes for
  * this request only (the question being answered), its attachments as the model can take them, and
- * its text.
+ * its text. An attachment this browser does not have (restored from the sync, which carries no
+ * attachments) goes as its name only and is added to `missing`.
  * @param {NodeRecord} node
  * @param {Target} target
  * @param {Caps} caps
  * @param {readonly string[]} [requestNotes]
+ * @param {Map<string, string>} [missing]  blob id -> name of the attachments left out
  * @returns {Promise<Message>}
  */
-async function userMessage(node, target, caps, requestNotes = []) {
+async function userMessage(node, target, caps, requestNotes = [], missing = new Map()) {
   const meta = metaOf(node);
   const locale = getLocale();
   /** @type {Part[]} */
@@ -694,18 +858,34 @@ async function userMessage(node, target, caps, requestNotes = []) {
   const notesBlock = requestNotesBlock(locale, requestNotes);
   if (notesBlock) content.push({ type: 'text', text: notesBlock });
   let room = textBudget(caps);
+  /** @param {string} blobId @param {string} name */
+  const leftOut = (blobId, name) => {
+    missing.set(blobId, name);
+    content.push({ type: 'text', text: `[${name}]` });
+  };
   for (const p of node.parts) {
     if (p.type === 'image' && typeof p.blobId === 'string') {
-      if (caps.vision) content.push({ type: 'image', mime: /** @type {import('../ai/contract.js').ImageMime} */ (p.mime ?? 'image/jpeg'), data: await blobBase64(p.blobId), name: String(p.name ?? '') });
-      else content.push({ type: 'text', text: `[${String(p.name ?? 'image')}]` });
+      const name = String(p.name ?? 'image');
+      const data = caps.vision ? await blobBase64(p.blobId) : null;
+      if (data) content.push({ type: 'image', mime: /** @type {import('../ai/contract.js').ImageMime} */ (p.mime ?? 'image/jpeg'), data, name: String(p.name ?? '') });
+      else if (caps.vision) leftOut(p.blobId, name);
+      else content.push({ type: 'text', text: `[${name}]` });
     } else if (p.type === 'file' && typeof p.blobId === 'string') {
+      const name = String(p.name ?? (p.kind === 'pdf' ? 'document' : 'file'));
       const size = typeof p.size === 'number' ? p.size : 0;
       if (p.kind === 'pdf' && caps.pdf && target.route !== 'pool' && size <= MAX_NATIVE_PDF_BYTES) {
-        content.push({ type: 'file', mime: 'application/pdf', data: await blobBase64(p.blobId), name: String(p.name ?? 'document') });
+        const data = await blobBase64(p.blobId);
+        if (data) content.push({ type: 'file', mime: 'application/pdf', data, name });
+        else leftOut(p.blobId, name);
       } else {
-        const text = fitText(await blobText(p), room);
+        const raw = await blobText(p);
+        if (raw === null) {
+          leftOut(p.blobId, name);
+          continue;
+        }
+        const text = fitText(raw, room);
         room -= text.length;
-        content.push({ type: 'text', text: attachmentSection(locale, { name: String(p.name ?? 'file'), text }) });
+        content.push({ type: 'text', text: attachmentSection(locale, { name, text }) });
       }
     }
   }
@@ -726,6 +906,22 @@ function assistantMessage(node) {
   const content = [{ type: 'text', text: nodeText(node) }];
   if (free) for (const o of node.opaque ?? []) if (o && typeof o === 'object' && /** @type {any} */ (o).type === 'opaque') content.push(/** @type {Part} */ (o));
   return { role: 'assistant', content };
+}
+
+/**
+ * Says once per attachment that it was left out of a request: attachments are not synced, so this
+ * browser does not have the files of a question restored from the sync.
+ * @param {Map<string, string>} missing  blob id -> name
+ */
+function noteMissing(missing) {
+  /** @type {string[]} */
+  const names = [];
+  for (const [blobId, name] of missing) {
+    if (missingNoted.has(blobId)) continue;
+    missingNoted.add(blobId);
+    names.push(name);
+  }
+  if (names.length) turnNotice({ icon: 'paperclip', tone: 'info', title: 'chat-thread.notice.attachment_missing_title', body: 'chat-thread.notice.attachment_missing_body', params: { names: names.join(', '), n: names.length } });
 }
 
 /**
@@ -814,12 +1010,15 @@ async function freeRequest(target, path, ctx, requestNotes = []) {
   if (staysOnDevice(asked) && !onThisDevice(target)) throw Object.assign(new Error('The question stays on this device'), { code: 'stays_on_device' });
   /** @type {Message[]} */
   let history = [];
+  /** @type {Map<string, string>} */
+  const missing = new Map();
   for (const node of shareable(path.slice(0, -1), target)) {
-    if (node.role === 'user') history.push(await userMessage(node, target, caps));
+    if (node.role === 'user') history.push(await userMessage(node, target, caps, [], missing));
     else if (node.role === 'assistant') history.push(assistantMessage(node));
   }
   // The question itself always goes along (the history above only leaves out what stays here).
-  const question = await userMessage(asked, target, caps, requestNotes);
+  const question = await userMessage(asked, target, caps, requestNotes, missing);
+  noteMissing(missing);
   const maxOutputTokens = answerTokens(target, caps);
   if (target.provider !== 'anthropic') {
     const budget = caps.contextTokens - (maxOutputTokens ?? Math.floor(caps.contextTokens / 2)) - estimateTokens(system) - estimateTokens(question) - 256;
@@ -1019,6 +1218,7 @@ async function storeQuestion(q) {
   const db = await store();
   await ensureConversation(db, q.route);
   const id = crypto.randomUUID();
+  ownNode(id);
   /** @type {StoredPart[]} */
   const parts = [...(q.reuseParts ?? [])];
   for (const att of q.attachments) {
@@ -1132,12 +1332,12 @@ async function answerFree(question, value, signal, placement = {}) {
   const note = attemptNote(run.attempts, result);
   const badge = answerBadge({ provider: target.provider, model: result.model, meta: { requested: target.model, route: target.route } });
   const trace = describeChatTrace({ engineLabel: t(badge.badge, badge.badgeParams), durationMs, attachment: chipsOf(question).map((c) => c.name).join(', ') || null, note });
-  const grounding = webGrounding(result);
-  // An answer that cites web pages is checked as far as its citations allow (rag/web-check.js).
-  const web = result.citations.length ? checkWebAnswer({ text, provider: result.provider, citations: result.citations, question: ctx.question, locale: ctx.locale }) : null;
+  const fields = freeAnswerFields(result, ctx);
+  const grounding = fields.grounding;
   const db = await store();
   // Generated images become blobs owned by the answer (image-view.js).
   const answerId = crypto.randomUUID();
+  ownNode(answerId);
   const images = result.images.length ? await storeGeneratedImages(result.images, (blob, o) => db.putBlob(blob, o), answerId) : [];
   const node = await db.appendNode(turnConversation(), {
     id: answerId,
@@ -1145,10 +1345,10 @@ async function answerFree(question, value, signal, placement = {}) {
     role: 'assistant',
     parts: [{ type: 'text', text }, ...images],
     // Tool calls without results must not be replayed later: such an answer keeps no provider state.
-    opaque: result.stopReason === 'tool_call' ? [] : result.opaque,
+    opaque: fields.opaque,
     model: result.model,
     provider: result.provider,
-    label: web && web.kind !== 'none' ? 'web' : 'free',
+    label: fields.label,
     usage: usageOf(result),
     localOnly: target.route === 'device' || question.localOnly,
     meta: {
@@ -1161,9 +1361,7 @@ async function answerFree(question, value, signal, placement = {}) {
       thoughts: trace,
       ...(result.reasoning ? { reasoning: result.reasoning.slice(0, REASONING_CHARS) } : {}),
       ...(run.continued ? { continued: run.continued } : {}),
-      ...(result.citations.length ? { web_sources: webSources(result) } : {}),
-      ...(grounding ? { web_grounding: grounding } : {}),
-      ...(web && web.kind !== 'none' ? { web_check: web } : {}),
+      ...fields.meta,
       ...(run.attempts.length > 1 ? { attempts: run.attempts.map((a) => ({ provider: a.provider, model: a.model, outcome: a.outcome, ...(a.code ? { code: a.code } : {}) })) } : {}),
     },
   });
@@ -1181,14 +1379,23 @@ async function answerFree(question, value, signal, placement = {}) {
 // Grounded answers
 // ---------------------------------------------------------------------------------------------
 
-async function knownTitles() {
+/**
+ * The titles of the library's documents: none while it is known to be unreachable (offline), null
+ * when listing them failed otherwise (unknown, not empty: never cached).
+ * @returns {Promise<string[] | null>}
+ */
+async function libraryTitles() {
   if (titlesCache && Date.now() - titlesCache.at < 60_000) return titlesCache.titles;
   if (getConnection().status === 'offline') return [];
   const res = await listDocuments();
-  if (!res.ok) return []; // unknown, not empty: never cached
+  if (!res.ok) return null;
   const titles = res.data.map((d) => d.title);
   titlesCache = { at: Date.now(), titles };
   return titles;
+}
+
+async function knownTitles() {
+  return (await libraryTitles()) ?? [];
 }
 
 /**
@@ -1196,11 +1403,12 @@ async function knownTitles() {
  * their first chunks when nothing in them matches, e.g. "summarize this file") and come first.
  * @param {string} query
  * @param {string[]} focus  ids of the files attached to this question
+ * @param {readonly string[] | null} [docIds]  search only these documents (and the attached files)
  * @returns {Promise<{ hits: KnowledgeHit[], pinned: number }>}
  */
-async function retrieveWorkspace(query, focus) {
+async function retrieveWorkspace(query, focus, docIds = null) {
   try {
-    const found = await scopedWorkspaceSearch(query, focus);
+    const found = await scopedWorkspaceSearch(query, focus, docIds);
     if (!focus.length) return { hits: found.map(workspaceHit), pinned: 0 };
     /** @type {any[]} */
     const pinned = [];
@@ -1219,12 +1427,14 @@ async function retrieveWorkspace(query, focus) {
 /**
  * The workspace search of the running turn: within the documents its conversation is scoped to
  * (setWorkspaceScope, e.g. a project's files) and the files attached to the question, when a scope
- * is set.
+ * is set. Documents the question names itself (`docIds`: an entity found in some files) replace the
+ * conversation's scope.
  * @param {string} query
  * @param {string[]} focus
+ * @param {readonly string[] | null} [docIds]
  */
-async function scopedWorkspaceSearch(query, focus) {
-  const scope = single.scope ? await Promise.resolve(single.scope(turnConversation())).catch(() => null) : null;
+async function scopedWorkspaceSearch(query, focus, docIds = null) {
+  const scope = docIds?.length ? docIds : single.scope ? await Promise.resolve(single.scope(turnConversation())).catch(() => null) : null;
   if (!scope?.length) return searchWorkspace(query, LIMITS.retrievalRows);
   return searchWorkspace(query, LIMITS.retrievalRows, { docIds: [...new Set([...scope, ...focus])] });
 }
@@ -1234,11 +1444,12 @@ async function scopedWorkspaceSearch(query, focus) {
  * question, or for a question that stays on this device ranked here without sending it).
  * @param {string} query
  * @param {string[]} focus
- * @param {{ workspaceOnly: boolean, deviceOnly: boolean }} opts
+ * @param {{ workspaceOnly: boolean, deviceOnly: boolean, docIds?: readonly string[] | null }} opts
+ *   docIds: the workspace documents to search (else the conversation's scope)
  * @returns {Promise<{ hits: KnowledgeHit[], method: string, kbUnavailable: boolean }>}
  */
 async function retrieve(query, focus, opts) {
-  const { hits: local, pinned } = await retrieveWorkspace(query, focus);
+  const { hits: local, pinned } = await retrieveWorkspace(query, focus, opts.docIds ?? null);
   const limit = LIMITS.retrievalRows + Math.min(focus.length * 3, 9);
   const merge = (/** @type {KnowledgeHit[]} */ remote) => mergeHits(local, remote, limit, pinned);
   const result = (/** @type {KnowledgeHit[]} */ hits, /** @type {string} */ remote, /** @type {boolean} */ kbUnavailable) => {
@@ -1483,9 +1694,10 @@ async function gateCounts(answer, sources) {
  * the source check and a receipt draft, for every model. A mixed question (Auto, a weaker match in
  * the workspace) takes fewer excerpts, may add general knowledge, and gets its checked parts marked;
  * with `web`, pages of a web search join the excerpts.
- * @param {{ text: string, attachments: PreparedAttachment[], reuseParts?: StoredPart[], parentId: string | null, value: AssistantValue, workspaceOnly: boolean, question?: NodeRecord, mode?: 'grounded' | 'mixed', web?: boolean, reasons?: string[], held?: boolean }} q
+ * @param {{ text: string, attachments: PreparedAttachment[], reuseParts?: StoredPart[], parentId: string | null, value: AssistantValue, workspaceOnly: boolean, question?: NodeRecord, mode?: 'grounded' | 'mixed', web?: boolean, reasons?: string[], held?: boolean, docIds?: readonly string[] }} q
  *   reuseParts: the stored files an edited question keeps (they are searched first, as attached files are);
- *   held: the question stays on this device (an edited one that replaces such a question)
+ *   held: the question stays on this device (an edited one that replaces such a question);
+ *   docIds: the workspace documents to search (an entity found only in some files)
  * @param {AbortSignal} signal
  * @param {{ before?: Element | null }} [placement]
  */
@@ -1502,7 +1714,7 @@ async function answerGrounded(q, signal, placement = {}) {
     const held = q.held ?? (q.question ? staysOnDevice(q.question) : false);
     const deviceOnly = q.value === 'device' || held;
     const mixed = q.mode === 'mixed';
-    const { hits, method, kbUnavailable } = await retrieve(q.text, focus, { workspaceOnly: q.workspaceOnly, deviceOnly });
+    const { hits, method, kbUnavailable } = await retrieve(q.text, focus, { workspaceOnly: q.workspaceOnly, deviceOnly, docIds: q.docIds ?? null });
     const webFound = q.web && !deviceOnly ? await searchWebHits(q.text, { search: await browserWebSearch(getLocale()), signal }) : [];
     const greeting = !chips.length && isGreeting(q.text);
     const used = greeting ? [] : [...(mixed ? hits.slice(0, ROUTE_TOP_K.mixed) : hits), ...webFound];
@@ -1664,7 +1876,10 @@ async function answerGrounded(q, signal, placement = {}) {
     const result = run?.result;
     const trace = describeTrace({ query: q.text, method, hits: used, engineLabel: target ? t(...badgeArgs(target, result?.model ?? target.model)) : t('engine.label_synthesizer'), durationMs, note: run && result ? attemptNote(run.attempts, result) : failure });
     const db = await store();
+    const answerId = crypto.randomUUID();
+    ownNode(answerId);
     const node = await db.appendNode(turnConversation(), {
+      id: answerId,
       parentId: question.id,
       role: 'assistant',
       parts: [{ type: 'text', text: answerText }],
@@ -1710,7 +1925,7 @@ async function answerGrounded(q, signal, placement = {}) {
  */
 async function withTurn(fn) {
   controller = new AbortController();
-  const own = { conversationId, thread: current, left: false, live: /** @type {HTMLElement | null} */ (null) };
+  const own = { conversationId, thread: current, left: false, live: /** @type {HTMLElement | null} */ (null), foreign: false };
   turn = own;
   setBusy(true);
   try {
@@ -1726,8 +1941,12 @@ async function withTurn(fn) {
     turn = null;
     setBusy(false);
   }
-  // The chat on screen changed during the turn: when it is the turn's chat, it shows what is stored now.
-  if (own.left && own.conversationId === conversationId) await showConversation(conversationId);
+  if (own.conversationId !== conversationId) return;
+  // Changed elsewhere during the turn (the sync, another tab): deleted, it returns to a new chat;
+  // otherwise, as when the chat on screen changed during the turn, it shows what is stored now.
+  if (own.foreign) await followShown();
+  else if (own.left) await showConversation(conversationId);
+  else shown = shownSignature(current);
 }
 
 /**
@@ -1774,7 +1993,9 @@ let webNoticeShown = false;
 /**
  * Auto's decision for a question (ai/hybrid.js): what it carries and names, the workspace probe,
  * a route decider registered with setRouteDecider (it can only tighten the route), whether a model
- * is set up, and the Web toggle with the first model's own search or the search API.
+ * is set up, and the Web toggle with the first model's own search or the search API. Within a
+ * conversation scoped to some workspace documents (setWorkspaceScope: a project's files) only those
+ * are probed and named, as only those are searched.
  * @param {string} question
  * @param {import('../config.js').ChatMode} mode
  * @param {Array<{ name: string, kind: string }>} attachments
@@ -1786,19 +2007,22 @@ async function routeFor(question, mode, attachments, value) {
   const native = Boolean(candidates[0] && searchesWeb(candidates[0]));
   const deviceOnly = value === 'device';
   const webOn = getWebSearch();
-  const titles = mode === 'auto' ? await knownTitles() : [];
-  const files = mode === 'auto' ? listWorkspace() : [];
+  const titles = mode === 'auto' ? await libraryTitles() : [];
+  const scope = mode === 'auto' && single.scope ? await Promise.resolve(single.scope(turnConversation())).catch(() => null) : null;
+  const scoped = scope?.length ? new Set(scope) : null;
+  const files = mode === 'auto' ? listWorkspace().filter((d) => !scoped || scoped.has(d.docId)) : [];
   return decideRoute({
     question,
     mode,
     attachments,
-    workspaceProbe: (q) => workspaceProbe(q),
-    hooks: { classify: single.route ? async (q) => (await single.route?.({ question: q, mode, attachments, workspaceDocs: listWorkspace().length })) ?? null : null },
-    names: [...files.map((d) => d.name), ...titles],
-    titles,
+    workspaceProbe: (q) => workspaceProbe(q, 5, scoped ? { docIds: [...scoped] } : {}),
+    hooks: { classify: single.route ? async (q) => (await single.route?.({ question: q, mode, attachments, workspaceDocs: files.length })) ?? null : null },
+    names: [...files.map((d) => d.name), ...(titles ?? [])],
+    titles: titles ?? [],
     // Without a file here or a library document that can be listed, Auto stays free: there is
-    // nothing the question's words could point at.
-    documents: files.length + titles.length,
+    // nothing the question's words could point at. A library that could not be listed (not
+    // offline) may hold documents: then the rules that look for them apply.
+    documents: titles === null ? undefined : files.length + titles.length,
     modelReady: mode !== 'auto' || value === 'device' || candidates.length > 0,
     deviceOnly,
     web: { on: webOn, native, searchApi: mode === 'auto' && webOn && !native && !deviceOnly ? Boolean(await browserWebSearch(getLocale())) : false },
@@ -1828,12 +2052,13 @@ async function requestNotesFor(question, ctx) {
 
 /**
  * Sends the composer's draft (or a given question).
- * @param {{ text?: string, chatMode?: 'grounded' | 'free', workspaceOnly?: boolean, localOnly?: boolean }} [options]
+ * @param {{ text?: string, chatMode?: 'grounded' | 'free', workspaceOnly?: boolean, localOnly?: boolean, docIds?: readonly string[] }} [options]
  *   text: a question from elsewhere (quick prompts); chatMode: answer it this way (the mode control
  *   switches along, so it shows what this question does); localOnly: the question carries content
  *   that stays on this device (a canvas document from such an answer): it goes the free route, is
  *   stored as staying here and only the model here or the own server answers it (with another
- *   model chosen it is not even stored)
+ *   model chosen it is not even stored); docIds: a grounded question searches only these workspace
+ *   documents (an entity of the knowledge graph found only in some files)
  */
 export async function sendQuestion(options = {}) {
   if (busy) {
@@ -1874,7 +2099,8 @@ export async function sendQuestion(options = {}) {
   await withTurn(async (signal) => {
     if (route !== 'free') {
       const web = decision?.retrieval.sources.includes('web') ?? false;
-      await answerGrounded({ text, attachments: draft.attachments, parentId: leafId(), value, workspaceOnly: options.workspaceOnly === true, mode: route, web, reasons: decision?.reasons }, signal);
+      const docIds = options.docIds?.filter((d) => typeof d === 'string' && d).slice(0, 50);
+      await answerGrounded({ text, attachments: draft.attachments, parentId: leafId(), value, workspaceOnly: options.workspaceOnly === true, mode: route, web, reasons: decision?.reasons, ...(docIds?.length ? { docIds } : {}) }, signal);
       return;
     }
     /** @type {TurnContext} */
@@ -2043,6 +2269,7 @@ export async function exportData() {
  * @property {boolean} stored
  * @property {boolean} staysOnDevice  only the model here or the own server may answer it
  * @property {(target: Target) => Promise<AiRequest>} build  the request for one model, as the thread's free route sends it
+ * @property {TurnContext} ctx  the question as the hooks see it (the tool runner of an answer reads it)
  */
 
 /**
@@ -2051,8 +2278,10 @@ export async function exportData() {
  * models here) and the question with its context block. `questionId` takes a stored question (its
  * own context block goes along); `text` makes a new one after `parentId` (default: the newest
  * message of the conversation) with a fresh context block, kept on its meta, so storing it later
- * keeps what went out. A question that stays on this device builds no request for other models
- * (the error's code is 'stays_on_device').
+ * keeps what went out. The notes for the request (registerRequestNotes: saved notes while memory is
+ * on; none for "Continue") are asked once and go to every model, as the thread sends them with its
+ * own answer. A question that stays on this device builds no request for other models (the error's
+ * code is 'stays_on_device').
  * @param {{ conversationId: string, questionId?: string, text?: string, parentId?: string | null, localOnly?: boolean }} input
  * @returns {Promise<PreparedQuestion>}
  */
@@ -2093,36 +2322,42 @@ export async function prepareQuestion(input) {
     path = [...(parentId ? pathTo(tree, parentId) : []), question];
   }
   const asked = question;
+  /** @type {TurnContext} */
   const turnCtx = { ...ctx, question: nodeText(asked), attachments: chipsOf(asked) };
+  /** @type {Promise<string[]> | null} */
+  let notes = null;
   return {
     question: asked,
     stored: Boolean(input.questionId),
     staysOnDevice: asked.localOnly,
+    ctx: turnCtx,
     build: async (target) => {
       // Grounded questions about the workspace stay on this device as well, whatever route asks them.
       if (asked.localOnly && !onThisDevice(target)) throw Object.assign(new Error('The question stays on this device'), { code: 'stays_on_device' });
-      return freeRequest(target, path, { ...turnCtx, target });
+      notes ??= requestNotesFor(asked, turnCtx);
+      return freeRequest(target, path, { ...turnCtx, target }, await notes);
     },
   };
 }
 
 /**
  * A free answer written outside the thread, as the thread stores its own (the badge, the usage
- * line, the reasoning and the web pages read it). `meta` adds to the stored meta.
+ * line, the reasoning, the web pages, the web check and its label read it; no provider state for
+ * an answer that stopped with tool calls left open). `meta` adds to the stored meta.
  * @param {{ question: NodeRecord, target: Target, result: CompletionResult, durationMs: number, aborted?: boolean, meta?: Record<string, unknown> }} input
  * @returns {Omit<import('./store.js').NodeInput, 'parentId'>}
  */
 export function freeAnswerInput(input) {
   const { question, target, result, durationMs } = input;
-  const grounding = webGrounding(result);
+  const fields = freeAnswerFields(result, { question: metaOf(question).continue ? '' : nodeText(question), locale: getLocale() });
   const badge = answerBadge({ provider: target.provider, model: result.model, meta: { requested: target.model, route: target.route } });
   return {
     role: 'assistant',
     parts: [{ type: 'text', text: result.text }],
-    opaque: result.opaque,
+    opaque: fields.opaque,
     model: result.model,
     provider: result.provider,
-    label: 'free',
+    label: fields.label,
     usage: usageOf(result),
     localOnly: target.route === 'device' || question.localOnly,
     meta: {
@@ -2134,8 +2369,7 @@ export function freeAnswerInput(input) {
       stop_reason: input.aborted ? 'cancelled' : result.stopReason,
       thoughts: describeChatTrace({ engineLabel: t(badge.badge, badge.badgeParams), durationMs, attachment: chipsOf(question).map((c) => c.name).join(', ') || null }),
       ...(result.reasoning ? { reasoning: result.reasoning.slice(0, REASONING_CHARS) } : {}),
-      ...(result.citations.length ? { web_sources: webSources(result) } : {}),
-      ...(grounding ? { web_grounding: grounding } : {}),
+      ...fields.meta,
       ...(input.meta ?? {}),
     },
   };

@@ -3,7 +3,7 @@
 // also opens the conversation store, which runs the one-time start-up migrations (the 2.x chats in
 // localStorage, the plaintext provider keys; each runs once per browser profile). The list and the
 // store load as their own chunks; the chat view is reached through the facade it binds itself to.
-import { chatData, currentSessionId, deleteSession, getChatView, onSessionChange, waitForWrites } from '../chat-store.js';
+import { chatData, chatSyncActive, currentSessionId, deleteSession, getChatView, onSessionChange, waitForWrites } from '../chat-store.js';
 import { APP_VERSION } from '../config.js';
 import { registerFeature } from './registry.js';
 
@@ -25,6 +25,7 @@ const feature = {
       isBusy: () => getChatView()?.isBusy() ?? false,
       answering: () => getChatView()?.answering?.() ?? null,
       afterRemoveCurrent: () => getChatView()?.reset(),
+      synced: chatSyncActive,
       settle: waitForWrites,
       version: APP_VERSION,
     });

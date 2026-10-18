@@ -150,12 +150,14 @@ const NO_PROBE = Object.freeze({ score: 0, coverage: 0, terms: 0, matched: [], h
  * @param {BM25Index} index
  * @param {string} question
  * @param {number} [k]
+ * @param {(docId: string) => boolean} [accept]  only chunks of the documents it accepts (a
+ *   conversation's workspace scope; the statistics stay those of the whole index)
  * @returns {WorkspaceProbe}
  */
-export function probeIndex(index, question, k = 5) {
+export function probeIndex(index, question, k = 5, accept) {
   const terms = [...new Set(tokenize(question))];
   if (terms.length === 0 || index.size === 0) return { ...NO_PROBE, matched: [], terms: terms.length };
-  const hits = index.search(question, k);
+  const hits = index.search(question, k, accept);
   if (hits.length === 0) return { ...NO_PROBE, matched: [], terms: terms.length };
   const ideal = terms.reduce((sum, term) => sum + index.idf(term), 0);
   const [best] = hits;

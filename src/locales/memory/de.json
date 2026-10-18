@@ -125,7 +125,7 @@
     "tools": "Werkzeuge",
     "tool_web": "Im Web suchen (Modelle, die das können)",
     "tool_thinking": "Erweitertes Nachdenken",
-    "tools_hint": "Assistenten führen nie Code aus.",
+    "tools_hint": "Assistenten führen nie Code aus. Ein Chat mit dem Assistenten schaltet die hier angehakten Werkzeuge ein; Werkzeuge von MCP-Servern behalten ihre eigenen Freigaben.",
     "starters": "Gesprächseinstiege",
     "starter_n": "Gesprächseinstieg {n}",
     "starter_placeholder": "Eine Frage zum Einstieg",
@@ -138,7 +138,7 @@
     "delete_confirm": "Den Assistenten {name} löschen? Chats mit ihm bleiben.",
     "deleted": "Assistent {name} gelöscht",
     "imported": "Assistent {name} importiert",
-    "imported_dropped": "Assistent {name} importiert, ohne die Werkzeuge, die er nicht nutzen darf: {tools}",
+    "imported_dropped": "Assistent {name} ohne diese Werkzeuge importiert: {tools}. Werkzeuge, die Ihre Dateien lesen oder Geld kosten, können Sie im Editor anhaken.",
     "error_json": "Diese Datei ist kein Assistent (sie ist kein JSON).",
     "error_schema": "Diese Datei ist kein Starpi-Assistent.",
     "error_invalid": "Diese Assistenten-Datei ist beschädigt und wurde nicht importiert.",
@@ -146,6 +146,12 @@
     "error_too_large": "Diese Datei ist für einen Assistenten zu groß.",
     "error_full": "Es gibt schon so viele Assistenten wie möglich.",
     "error_not_found": "Diesen Assistenten gibt es nicht mehr.",
-    "error_store": "Der Assistent konnte auf diesem Gerät nicht gespeichert werden."
+    "error_store": "Der Assistent konnte auf diesem Gerät nicht gespeichert werden.",
+    "tool_datetime": "Datum und Uhrzeit",
+    "tool_calculator": "Rechner",
+    "tool_workspace_search": "Meine Dateien durchsuchen",
+    "tool_memory_lookup": "Gespeicherte Notizen nachschlagen (bei eingeschaltetem Gedächtnis)",
+    "tool_web_search": "Websuche über den Suchdienst",
+    "tool_generate_image": "Bilder erstellen"
   }
 }

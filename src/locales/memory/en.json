@@ -125,7 +125,7 @@
     "tools": "Tools",
     "tool_web": "Search the web (models that can)",
     "tool_thinking": "Extended thinking",
-    "tools_hint": "Assistants never run code.",
+    "tools_hint": "Assistants never run code. A chat with the assistant switches on the tools ticked here; tools of MCP servers keep their own approvals.",
     "starters": "Conversation starters",
     "starter_n": "Conversation starter {n}",
     "starter_placeholder": "A question to start with",
@@ -138,7 +138,7 @@
     "delete_confirm": "Delete the assistant {name}? Chats with it stay.",
     "deleted": "Assistant {name} deleted",
     "imported": "Assistant {name} imported",
-    "imported_dropped": "Assistant {name} imported without the tools it may not use: {tools}",
+    "imported_dropped": "Assistant {name} imported without these tools: {tools}. Tools that read your files or cost money can be ticked in the editor.",
     "error_json": "This file is not an assistant (it is not JSON).",
     "error_schema": "This file is not a Starpi assistant.",
     "error_invalid": "This assistant file is damaged and was not imported.",
@@ -146,6 +146,12 @@
     "error_too_large": "This file is too large for an assistant.",
     "error_full": "The most assistants there may be exist already.",
     "error_not_found": "This assistant no longer exists.",
-    "error_store": "The assistant could not be saved on this device."
+    "error_store": "The assistant could not be saved on this device.",
+    "tool_datetime": "Date and time",
+    "tool_calculator": "Calculator",
+    "tool_workspace_search": "Search my files",
+    "tool_memory_lookup": "Look up saved notes (while memory is on)",
+    "tool_web_search": "Web search through the search service",
+    "tool_generate_image": "Create images"
   }
 }

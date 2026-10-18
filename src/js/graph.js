@@ -378,7 +378,7 @@ function showEntityDetails(entity) {
         ${outgoing.length === 0 && incoming.length === 0 ? `<p class="text-slate-500 text-xs italic" data-i18n="graph.no_edges">${escapeHtml(t('graph.no_edges'))}</p>` : ''}
       </div>
     </div>
-    <button type="button" data-action="ask-entity" data-arg="${escapeHtml(entity.name)}"${entity.origin === 'auto' ? ' data-scope="files"' : ''} class="btn btn-primary w-full justify-center">
+    <button type="button" data-action="ask-entity" data-arg="${escapeHtml(entity.name)}"${entity.origin === 'auto' ? ` data-scope="files" data-docs="${escapeHtml(JSON.stringify(entity.docs ?? []))}"` : ''} class="btn btn-primary w-full justify-center">
       <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
       <span data-i18n="graph.ask" data-i18n-params="${escapeHtml(JSON.stringify({ name: entity.name }))}">${escapeHtml(t('graph.ask', { name: entity.name }))}</span>
     </button>`,
@@ -597,6 +597,20 @@ async function clearFound() {
   await loadKnowledgeGraph();
 }
 
+/**
+ * The workspace documents an entity was found in, from its ask button (ids only, at most 50).
+ * @param {string | undefined} raw
+ * @returns {string[]}
+ */
+export function entityDocs(raw) {
+  try {
+    const list = JSON.parse(raw ?? '[]');
+    return Array.isArray(list) ? list.filter((d) => typeof d === 'string' && /^[\w:.-]{1,200}$/.test(d)).slice(0, 50) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function initGraph() {
   installFindControls();
   renderFindStatus();
@@ -610,8 +624,8 @@ export function initGraph() {
   onAction('ask-entity', (el) => {
     switchTab('chat');
     // A question about an entity of the knowledge base: always answered from the sources and
-    // checked. One found only in the files on this device is looked up in those files.
-    return submitChat(t('graph.ask_prompt', { name: el.dataset.arg ?? '' }), { chatMode: 'grounded', ...(el.dataset.scope === 'files' ? { workspaceOnly: true } : {}) });
+    // checked. One found only in the files on this device is looked up in the files it was found in.
+    return submitChat(t('graph.ask_prompt', { name: el.dataset.arg ?? '' }), { chatMode: 'grounded', ...(el.dataset.scope === 'files' ? { workspaceOnly: true, docIds: entityDocs(el.dataset.docs) } : {}) });
   });
 
   const canvas = byId('graphCanvas');

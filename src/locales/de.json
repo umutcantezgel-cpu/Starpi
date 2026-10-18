@@ -232,10 +232,10 @@
     "export_meta": "Exportiert am {date} · {n} {n:Nachricht|Nachrichten}",
     "export_you": "Sie",
     "delete": "Diesen Chat löschen",
-    "delete_confirm": "Diesen Chat löschen? Seine Nachrichten werden aus diesem Browser und, falls Chats synchronisiert werden, aus Ihrem synchronisierten Chatverlauf entfernt. Das lässt sich nicht rückgängig machen.",
+    "delete_confirm": "Diesen Chat löschen? Seine Nachrichten werden aus diesem Browser entfernt. Das lässt sich nicht rückgängig machen.",
     "delete_busy": "Es wird noch eine Antwort geschrieben. Warten Sie darauf oder stoppen Sie sie, und löschen Sie dann den Chat.",
     "deleted_title": "Chat gelöscht",
-    "delete_partial_title": "Der Chat wurde in diesem Browser gelöscht, seine synchronisierte Kopie aber gerade nicht. Löschen Sie den Chatverlauf in den Einstellungen, sobald die Wissensdatenbank erreichbar ist."
+    "delete_partial_title": "Der Chat wurde in diesem Browser gelöscht, aber Nachrichten, die eine frühere Version auf dem Server gespeichert hat, ließen sich gerade nicht löschen. Löschen Sie den Chatverlauf in den Einstellungen, wenn Sie online sind."
   },
   "demo": {
     "pitch": "Neu hier? Laden Sie drei Beispieldateien eines erfundenen Projekts und stellen Sie Fragen dazu. Die Dateien werden auf diesem Gerät gelesen; nichts wird hochgeladen.",
@@ -670,9 +670,9 @@
     "test_failed": "Test fehlgeschlagen",
     "test_enter_key": "Geben Sie oben einen Schlüssel ein; er wird wie eingegeben getestet und erst mit „Einstellungen speichern“ gespeichert.",
     "delete_history": "Chatverlauf löschen",
-    "delete_history_confirm": "Alle in diesem Browser gespeicherten Chats und, falls synchronisiert, Ihren synchronisierten Chatverlauf löschen? Das lässt sich nicht rückgängig machen.",
+    "delete_history_confirm": "Alle in diesem Browser gespeicherten Chats und die Nachrichten löschen, die eine frühere Version auf dem Server gespeichert hat? Das lässt sich nicht rückgängig machen.",
     "delete_history_done": "Chatverlauf gelöscht.",
-    "delete_history_partial": "Die Chats in diesem Browser wurden gelöscht, der synchronisierte Verlauf aber gerade nicht. Versuchen Sie es erneut, wenn die Wissensdatenbank erreichbar ist.",
+    "delete_history_partial": "Die Chats in diesem Browser wurden gelöscht, aber Nachrichten, die eine frühere Version auf dem Server gespeichert hat, ließen sich gerade nicht löschen. Versuchen Sie es erneut, wenn Sie online sind.",
     "delete_history_busy": "Eine Antwort wird noch geschrieben. Warten Sie darauf oder stoppen Sie sie, und löschen Sie dann den Chatverlauf."
   },
   "sync": {

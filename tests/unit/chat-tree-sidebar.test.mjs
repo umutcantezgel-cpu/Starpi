@@ -63,8 +63,8 @@ async function setup() {
   root.innerHTML = '';
   /** @type {Set<(id: string) => void>} */
   const sessionListeners = new Set();
-  const calls = { opened: /** @type {string[]} */ ([]), removed: /** @type {string[]} */ ([]), tabs: /** @type {string[]} */ ([]), toasts: /** @type {any[]} */ ([]), downloads: /** @type {Array<{ name: string, text: string, type: string }>} */ ([]), alerts: /** @type {string[]} */ ([]), cleared: 0 };
-  const env = { current: 'starpi_none', busy: false, confirm: true, narrow: false, answering: /** @type {string | null} */ (null) };
+  const calls = { opened: /** @type {string[]} */ ([]), removed: /** @type {string[]} */ ([]), tabs: /** @type {string[]} */ ([]), toasts: /** @type {any[]} */ ([]), downloads: /** @type {Array<{ name: string, text: string, type: string }>} */ ([]), alerts: /** @type {string[]} */ ([]), confirms: /** @type {string[]} */ ([]), cleared: 0 };
+  const env = { current: 'starpi_none', busy: false, confirm: true, narrow: false, answering: /** @type {string | null} */ (null), synced: false, removeOk: true };
   const list = sidebar.mountConversationList(
     root,
     {
@@ -88,14 +88,15 @@ async function setup() {
       remove: async (id) => {
         calls.removed.push(id);
         await store.deleteConversation(id);
-        return true;
+        return env.removeOk;
       },
       isBusy: () => env.busy,
       answering: () => env.answering,
       afterRemoveCurrent: () => void (calls.cleared += 1),
+      synced: () => env.synced,
       version: '3.0.0-test',
       download: (n, text, type) => void calls.downloads.push({ name: n, text, type }),
-      confirm: () => env.confirm,
+      confirm: (m) => (calls.confirms.push(m), env.confirm),
       alert: (m) => void calls.alerts.push(m),
       now: () => NOW,
       isNarrow: () => env.narrow,
@@ -324,6 +325,36 @@ describe('conversation list', () => {
     assert.equal(document.activeElement?.getAttribute('data-focus'), `open:${keep.id}`);
     assert.deepEqual(calls.toasts[0], { message: 'chat.list.deleted', tone: 'ok' });
     assert.equal(await store.getConversation(gone.id), undefined);
+    list.destroy();
+  });
+
+  it('says that a deletion reaches the synced copy and the other browsers while sync is on, and what a partial delete means', async () => {
+    const { root, list, add, calls, env } = await setup();
+    await add('Plain chat', NOW - 2000);
+    await add('Synced chat', NOW - 1000);
+    await list.refresh();
+    // Sync off: the chat leaves this browser; a failed delete names the messages an earlier version kept.
+    env.removeOk = false;
+    click(rowOf(root, 'Plain chat').querySelector('[data-action="conv-menu"]'));
+    await until(() => root.querySelector('[data-action="conv-delete"]'), 'the menu');
+    click(root.querySelector('[data-action="conv-delete"]'));
+    await until(() => calls.toasts.length === 1, 'the toast');
+    assert.match(calls.confirms[0], /^Delete “Plain chat”\? Its messages are removed from this browser/);
+    assert.doesNotMatch(calls.confirms[0], /other browsers/);
+    assert.deepEqual(calls.toasts[0], { message: 'chat.list.delete_partial', tone: 'warn' });
+    assert.match(i18n.t('chat.list.delete_partial'), /earlier version kept on the server/);
+    // Sync on: the confirmation says the synced copy and the other browsers lose it too; a partial
+    // delete says the next sync finishes it (or brings the chat back when another browser added to it).
+    env.synced = true;
+    click(rowOf(root, 'Synced chat').querySelector('[data-action="conv-menu"]'));
+    await until(() => root.querySelector('[data-action="conv-delete"]'), 'the menu');
+    click(root.querySelector('[data-action="conv-delete"]'));
+    await until(() => calls.toasts.length === 2, 'the second toast');
+    assert.match(calls.confirms[1], /Sync is on: the chat is removed from this browser, from the synced copy and from your other browsers/);
+    assert.deepEqual(calls.toasts[1], { message: 'chat.list.delete_partial_synced', tone: 'warn' });
+    assert.match(i18n.t('chat.list.delete_partial_synced'), /follow with the next sync.*comes back/);
+    await i18n.setLocale('de');
+    assert.match(i18n.t('chat.list.delete_confirm_synced', { title: 'X' }), /synchronisierten Kopie und aus Ihren anderen Browsern/);
     list.destroy();
   });
 

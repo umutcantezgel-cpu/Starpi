@@ -304,11 +304,12 @@ export async function searchWorkspace(query, topK = 5, options = {}) {
  * and the share of the question's terms in the best chunk. Zero for an empty workspace.
  * @param {string} question
  * @param {number} [k]
+ * @param {{ docIds?: readonly string[] }} [options]  probe only these documents (a conversation's scope)
  * @returns {Promise<WorkspaceProbe>}
  */
-export async function workspaceProbe(question, k = 5) {
+export async function workspaceProbe(question, k = 5, options = {}) {
   if (!docs.length || !question.trim()) return { score: 0, coverage: 0, terms: 0, matched: [], hits: 0, docId: null };
-  return request('probe', { question, k });
+  return request('probe', { question, k, ...(options.docIds ? { docIds: [...options.docIds] } : {}) });
 }
 
 /**

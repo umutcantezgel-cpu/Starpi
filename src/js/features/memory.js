@@ -6,7 +6,7 @@
 // paint, as its own chunks.
 //
 // Memory is off until the user turns it on; nothing is stored without an explicit act.
-import { registerMessageAction, registerRequestNotes, registerSidebarSection, registerSystemNote, setWorkspaceScope } from '../chat/hooks.js';
+import { registerMessageAction, registerRequestNotes, registerSidebarSection, registerSystemNote, setMemoryLookup, setWorkspaceScope } from '../chat/hooks.js';
 import { registerFeature } from './registry.js';
 
 /** @type {Promise<typeof import('../chat/context.js')> | null} */
@@ -36,6 +36,8 @@ let toast = null;
 // The saved notes go along with the request of the question being answered only, never stored with it.
 registerRequestNotes(async (ctx) => (await context()).requestNotes(ctx));
 registerSystemNote(async (ctx) => (await context()).systemNote(ctx));
+// The memory_lookup tool: offered only while memory is on, with the notes the conversation may use.
+setMemoryLookup({ enabled: () => Boolean(loaded?.memoryEnabled()), lookup: async (query, limit, id) => (await context()).lookupNotes(query, limit, id) });
 setWorkspaceScope(async (id) => (await context()).workspaceScope(id));
 registerMessageAction({
   id: 'remember',

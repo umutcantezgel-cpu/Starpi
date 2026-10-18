@@ -325,7 +325,7 @@ test.describe('projects, memory and assistants', () => {
     const file = { schema: 'starpi.assistant/v1', assistant: { name: 'Coach', instructions: 'Ask one question at a time.', tools: ['code_interpreter', 'thinking'] } };
     await page.setInputFiles('#chat-sidebar [data-as-file]', { name: 'coach.assistant.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) });
     await expect(row).toHaveCount(2);
-    await expect(page.locator('#toastRegion')).toContainText('without the tools it may not use: code_interpreter');
+    await expect(page.locator('#toastRegion')).toContainText('imported without these tools: code_interpreter');
     await page.setInputFiles('#chat-sidebar [data-as-file]', { name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from('{"schema":"something/else"}') });
     await expect(page.locator('#toastRegion')).toContainText('This file is not a Starpi assistant.');
   });
