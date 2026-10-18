@@ -63,9 +63,12 @@ export const GRAPH_EXTRACT = Object.freeze({ id: 'starpi-graph', version: 1 });
 export const GRAPH_PURPOSE = 'extract_graph';
 /** Key prefix of the stored results in the settings store. */
 export const RECORD_PREFIX = 'graph.auto:';
-/** Chunks and characters of one model call. */
-export const BATCH_CHUNKS = 8;
-export const BATCH_CHARS = 6_000;
+/**
+ * Chunks and characters of one model call: small enough that the answer (entities, relations with
+ * quotes and cites) fits the purpose's token limit.
+ */
+export const BATCH_CHUNKS = 6;
+export const BATCH_CHARS = 4_000;
 /** Model calls one run starts at most; the documents left wait for the next run. */
 export const MAX_RUN_BATCHES = 60;
 /** Unanswered batches in a row after which the run stops asking a model. */
