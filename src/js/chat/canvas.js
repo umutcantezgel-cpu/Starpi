@@ -307,6 +307,8 @@ function renderRead() {
     const code = document.createElement('code');
     if (artifact.language) code.className = `language-${artifact.language.replace(/[^\w#+.-]/g, '')}`;
     code.textContent = content;
+    // Long lines scroll sideways; the keyboard needs a stop to scroll them.
+    pre.tabIndex = 0;
     pre.append(code);
     host.replaceChildren(pre);
   }
@@ -664,6 +666,17 @@ async function chooseArtifact(id) {
   render();
 }
 
+/** Shows the newest document of the chat on screen when the canvas has none open (after a reload). */
+async function restore() {
+  if (state.artifact) return;
+  await refreshList();
+  const newest = state.list[0];
+  if (!newest || state.artifact) return;
+  state.artifact = newest;
+  state.index = newest.versions.length - 1;
+  render();
+}
+
 /**
  * Mounts the canvas into its panel. The handlers are registered once.
  * @param {HTMLElement} el
@@ -674,6 +687,7 @@ export function mountCanvas(el, deps = {}) {
   state.deps = deps;
   if (deps.store) state.store = deps.store;
   render();
+  void restore();
   if (wired) return;
   wired = true;
   // The document goes along with the AI edit's question, in the turn's context block.

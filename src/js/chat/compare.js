@@ -63,8 +63,8 @@ export const MAX_COLUMNS = 4;
 
 /**
  * The models a comparison can ask: the header picker's choices without Auto, models of this device
- * that are not loaded (asking one would start a download) and the device entry while no model is
- * loaded there.
+ * that are not loaded (asking one would start a download), the device entry while no model is
+ * loaded there, and the own server's "first model" while its models are listed one by one.
  * @param {HTMLSelectElement | null} picker
  * @param {{ deviceReady?: boolean }} [opts]
  * @returns {ModelChoice[]}
@@ -80,7 +80,7 @@ export function pickerChoices(picker, opts = {}) {
     const at = value.indexOf(':');
     out.push({ value, label: (o.textContent ?? value).trim(), provider: value === 'device' ? 'device' : at > 0 ? value.slice(0, at) : value });
   }
-  return out;
+  return out.some((c) => c.provider === 'local' && c.value !== 'local:*') ? out.filter((c) => c.value !== 'local:*') : out;
 }
 
 /**
