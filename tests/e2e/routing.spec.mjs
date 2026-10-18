@@ -2,7 +2,9 @@
 // server): with a file in the workspace, a question it does not match is answered freely, a
 // question it matches well is answered from it through a context pack (short [S1] labels, expanded
 // to the file's citation before the source check, which passes), and a question it matches weakly
-// gets a mixed answer with its checked parts marked. Every answer carries its label.
+// gets a mixed answer with its checked parts marked. Every answer carries its label. Without a file
+// or a library document, a question that names files stays free; with one, a how-to question about
+// files stays free and a reference to the user's notes goes to the sources.
 import { expect, mockSupabase, sseBody, storedChatNodes, test } from './fixtures.mjs';
 
 const FAKES = Number(process.env.STARPI_FAKES_PORT || 4610);
@@ -51,7 +53,73 @@ async function openTab(page, tab) {
 /** @param {any} message */
 const textOf = (message) => (typeof message?.content === 'string' ? message.content : (message?.content ?? []).map((/** @type {any} */ p) => p.text ?? '').join(''));
 
+/**
+ * The own server in Auto with an empty knowledge base; chat requests are recorded, and a request
+ * with a context pack is answered with a short label.
+ * @param {import('@playwright/test').Page} page
+ */
+async function ownServer(page) {
+  await mockSupabase(page, { hardened: true, anonymousAuth: true });
+  await page.route(/^https:\/\/[a-z0-9]+\.supabase\.co\/rest\/v1\/knowledge_documents/, (route) =>
+    route.request().method() === 'OPTIONS' ? route.fulfill({ status: 204, headers: { ...CORS, 'access-control-allow-methods': '*' } }) : route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' }),
+  );
+  await page.addInitScript(
+    ([url]) => {
+      if (sessionStorage.getItem('e2e_seeded')) return;
+      sessionStorage.setItem('e2e_seeded', '1');
+      localStorage.setItem('starpi_llm_url', url);
+      localStorage.setItem('starpi_assistant_v1', 'local:*');
+      localStorage.setItem('starpi_chat_mode', 'auto');
+    },
+    [SERVER],
+  );
+  /** @type {any[]} */
+  const bodies = [];
+  await page.route(`${SERVER}/chat/completions`, async (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS });
+    const body = JSON.parse(req.postData() ?? '{}');
+    bodies.push(body);
+    if (!textOf(body.messages.at(-1)).includes('<<<SOURCES>>>')) return route.continue();
+    return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'text/event-stream' }, body: sseBody({ content: ['Core hours are from 10:00 to 15:00 [S1].'] }) });
+  });
+  return bodies;
+}
+
 test.describe('Auto routing', () => {
+  test('stays free without files whatever the question names, and with a file keeps how-to questions free', async ({ page, diagnostics: _diagnostics }) => {
+    const bodies = await ownServer(page);
+    await page.goto('/');
+    const packed = () => bodies.filter((b) => textOf(b.messages.at(-1)).includes('<<<SOURCES>>>'));
+
+    // Nothing to answer from: questions that mention files or notes are answered freely.
+    for (const question of ['How do I replace a string in the file using sed?', 'Summarize my notes, please.']) {
+      await ask(page, question);
+      await settled(page);
+      await expect(answers(page).last().locator('[data-answer-label="free"]')).toHaveText('Free chat · not checked');
+    }
+    expect(packed()).toHaveLength(0);
+    expect(bodies.some((b) => textOf(b.messages[0]).includes('Answer only from the context below'))).toBe(false);
+
+    // With a file: a how-to question about files stays free, a reference to the notes is answered from them.
+    await openTab(page, 'ingest');
+    await page.setInputFiles('#workspaceFileInput', { name: 'handbook.md', mimeType: 'text/markdown', buffer: Buffer.from(HANDBOOK) });
+    await expect(page.locator('#workspaceList li')).toHaveCount(1);
+    await openTab(page, 'chat');
+    await ask(page, 'How do I search for a word in the file with grep?');
+    await settled(page);
+    await expect(answers(page).last().locator('[data-answer-label="free"]')).toBeVisible();
+    expect(packed()).toHaveLength(0);
+    await ask(page, 'According to my notes, when do the core hours start?');
+    await settled(page);
+    await expect(answers(page).last().locator('[data-answer-label="grounded"]')).toHaveText('Checked against your sources');
+    expect(packed()).toHaveLength(1);
+
+    const nodes = (await storedChatNodes(page)).filter((/** @type {any} */ n) => n.role === 'assistant');
+    expect(nodes.map((/** @type {any} */ n) => n.label)).toEqual(['free', 'free', 'free', 'grounded']);
+    expect(nodes[3].meta.route_reasons).toEqual(['reference']);
+  });
+
   test('answers freely without a match, from the workspace file through a context pack on a strong match, and mixed on a weak one', async ({ page, diagnostics: _diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     // A knowledge base without documents.
