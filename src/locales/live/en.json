@@ -1,1 +1,65 @@
-{}
+{
+  "spoken": {
+    "free": "Free conversation, answers are not checked.",
+    "withheld": "{count} {count:sentence|sentences} withheld.",
+    "ended": "The live conversation has ended."
+  },
+  "title": "Live conversation",
+  "close": "Close the live conversation",
+  "open": "Live",
+  "open_hint": "Start a live voice conversation",
+  "mode": {
+    "label": "Conversation mode",
+    "free": "Free conversation",
+    "sources": "From your sources",
+    "free_hint": "An open conversation. Answers are not checked against your documents.",
+    "sources_hint": "Each turn searches your documents. Only sentences the check releases are spoken; the count of withheld sentences follows."
+  },
+  "state": {
+    "idle": "Ready to start",
+    "connecting": "Connecting…",
+    "ready": "Press the microphone to talk",
+    "listening": "Listening",
+    "thinking": "Thinking…",
+    "speaking": "Speaking",
+    "ended": "Conversation ended"
+  },
+  "ended": {
+    "limit": "Ended after 15 minutes.",
+    "silence": "Ended after 3 minutes of silence.",
+    "hidden": "Ended because the tab was left.",
+    "error": "The connection ended unexpectedly.",
+    "no_model": "No model is available. Add a key in Settings → Providers.",
+    "microphone": "The microphone could not start."
+  },
+  "hint": {
+    "no_source": "No speech input here can turn a recording into text. Type your message below, or add a key or a local voice server in Settings → Voice.",
+    "not_heard": "Nothing was understood. Press to talk and try again, or type your message below."
+  },
+  "engine": {
+    "live": "Gemini Live",
+    "turns": "Push to talk"
+  },
+  "start": "Start",
+  "talk": "Press to talk",
+  "talk_send": "Press to send",
+  "talk_interrupt": "Press to interrupt",
+  "camera": "Send a camera picture",
+  "stop": "End conversation",
+  "say_label": "Type a message instead",
+  "say_placeholder": "Or type here…",
+  "say": "Send",
+  "limits": "A conversation ends after 15 minutes, after 3 minutes of silence, or when you leave this tab. Nothing is recorded.",
+  "transcript": {
+    "empty": "The conversation will appear here.",
+    "thinking": "Answering…",
+    "nothing": "Nothing of this answer was released."
+  },
+  "label": {
+    "free": "Free · not checked",
+    "withheld": "{count} withheld"
+  },
+  "on_device": "Live needs a model outside this device. Switch off the on-device mode to use it.",
+  "camera_failed": "The camera picture could not be taken.",
+  "camera_sent": "Camera picture sent with the conversation."
+}

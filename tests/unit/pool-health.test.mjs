@@ -36,7 +36,8 @@ describe('health report', () => {
     assert.deepEqual(Object.keys(report.simulated).sort(), [...RELAY_PROVIDERS].sort());
     assert.equal(report.simulated.gemini, true);
     assert.equal(report.simulated.nvidia, false);
-    assert.deepEqual(report.voice, { tts: false, stt: false, live: false });
+    // The site's Gemini keys also serve the speech routes (api/voice/*).
+    assert.deepEqual(report.voice, { tts: true, stt: true, live: true });
     assert.equal(report.research, false);
     assert.equal(report.access, false);
     for (const [where, leaf] of leaves({ ...report, version: undefined })) {

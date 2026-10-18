@@ -1,0 +1,101 @@
+{
+  "$comment": "Piper voices the app may ask a local voice server for (src/js/voice/sources/local.js filters the server's list with it, src/js/voice/catalog.js exports it). A voice is listed only when its model card names a training-data licence that allows commercial use and it was trained from scratch, or from a voice of this list, so no weights from data with a research-only or non-commercial licence ship in it. 'license' is that licence as an SPDX id (LicenseRef-public-domain where the card says public domain), 'card' the model card it was checked against, 'base' the voice it was fine-tuned from (null: trained from scratch). No Turkish voice meets the rule yet. Check a card again before adding a voice; a voice outside this list is neither listed nor spoken.",
+  "voices": [
+    {
+      "id": "en_US-ljspeech-medium",
+      "label": "LJSpeech · medium",
+      "lang": "en-US",
+      "license": "LicenseRef-public-domain",
+      "card": "https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ljspeech/medium/MODEL_CARD",
+      "base": null
+    },
+    {
+      "id": "en_US-ljspeech-high",
+      "label": "LJSpeech · high",
+      "lang": "en-US",
+      "license": "LicenseRef-public-domain",
+      "card": "https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ljspeech/high/MODEL_CARD",
+      "base": null
+    },
+    {
+      "id": "en_US-kristin-medium",
+      "label": "Kristin · medium",
+      "lang": "en-US",
+      "license": "LicenseRef-public-domain",
+      "card": "https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/kristin/medium/MODEL_CARD",
+      "base": null
+    },
+    {
+      "id": "en_US-norman-medium",
+      "label": "Norman · medium",
+      "lang": "en-US",
+      "license": "LicenseRef-public-domain",
+      "card": "https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/norman/medium/MODEL_CARD",
+      "base": null
+    },
+    {
+      "id": "en_US-john-medium",
+      "label": "John · medium",
+      "lang": "en-US",
+      "license": "LicenseRef-public-domain",
+      "card": "https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/john/medium/MODEL_CARD",
+      "base": "en_US-kristin-medium"
+    },
+    {
+      "id": "en_GB-cori-medium",
+      "label": "Cori · medium",
+      "lang": "en-GB",
+      "license": "LicenseRef-public-domain",
+      "card": "https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_GB/cori/medium/MODEL_CARD",
+      "base": null
+    },
+    {
+      "id": "en_GB-cori-high",
+      "label": "Cori · high",
+      "lang": "en-GB",
+      "license": "LicenseRef-public-domain",
+      "card": "https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_GB/cori/high/MODEL_CARD",
+      "base": null
+    },
+    {
+      "id": "de_DE-mls-medium",
+      "label": "MLS Deutsch · medium",
+      "lang": "de-DE",
+      "license": "CC-BY-4.0",
+      "card": "https://huggingface.co/rhasspy/piper-voices/blob/main/de/de_DE/mls/medium/MODEL_CARD",
+      "base": null
+    },
+    {
+      "id": "fr_FR-mls-medium",
+      "label": "MLS Français · medium",
+      "lang": "fr-FR",
+      "license": "CC-BY-4.0",
+      "card": "https://huggingface.co/rhasspy/piper-voices/blob/main/fr/fr_FR/mls/medium/MODEL_CARD",
+      "base": null
+    },
+    {
+      "id": "es_ES-carlfm-x_low",
+      "label": "Carlfm · x-low",
+      "lang": "es-ES",
+      "license": "LicenseRef-public-domain",
+      "card": "https://huggingface.co/rhasspy/piper-voices/blob/main/es/es_ES/carlfm/x_low/MODEL_CARD",
+      "base": null
+    },
+    {
+      "id": "it_IT-serena-medium",
+      "label": "Serena · medium",
+      "lang": "it-IT",
+      "license": "CC-BY-4.0",
+      "card": "https://huggingface.co/rhasspy/piper-voices/blob/main/it/it_IT/serena/medium/MODEL_CARD",
+      "base": null
+    },
+    {
+      "id": "it_IT-serena-high",
+      "label": "Serena · high",
+      "lang": "it-IT",
+      "license": "CC-BY-4.0",
+      "card": "https://huggingface.co/rhasspy/piper-voices/blob/main/it/it_IT/serena/high/MODEL_CARD",
+      "base": null
+    }
+  ]
+}
