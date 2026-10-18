@@ -1,8 +1,9 @@
 // The knowledge graph found in workspace files: without an AI model the graph links the names a
 // file mentions together, draws them as found (not added by hand), keeps them on this device across
 // a reload, joins a found name with the same entity in the shared knowledge base, and removes them
-// again on request, or with their files.
-import { expect, mockSupabase, test } from './fixtures.mjs';
+// again on request, or with their files. With a model set up (the site's pool, mocked) passages
+// leave the device only after the user agreed, and every relation is checked against its passage.
+import { expect, mockNvidia, mockSupabase, test, useNvidia } from './fixtures.mjs';
 
 const GARDEN = [
   '# Riverside garden',
@@ -147,6 +148,92 @@ test.describe('knowledge graph from files', () => {
     await expect(page.locator('#graphLoading')).toBeHidden();
     await expect(status).toContainText('Find the people, organizations and things your files name');
     await expect(page.locator('#graphEntityList button')).toHaveCount(0);
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('asks before passages go to the model, and keeps only the relations the cited passage supports', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const answer = {
+      entities: [
+        { name: 'Mara Jensen', type: 'person' },
+        { name: 'Riverside garden', type: 'project' },
+        { name: 'Nordwind Energy', type: 'organization' },
+      ],
+      relations: [
+        { from: 'Mara Jensen', to: 'Riverside garden', label: 'leads', quote: 'Mara Jensen leads the Riverside garden', cite: { doc: 'd1', chunk: 0 } },
+        { from: 'Riverside garden', to: 'Nordwind Energy', label: 'buys pumps from', quote: 'buys solar pumps from Nordwind Energy', cite: { doc: 'd1', chunk: 0 } },
+        // The passage never names Atlantis Holdings: left out and counted.
+        { from: 'Atlantis Holdings', to: 'Mara Jensen', label: 'funds', quote: 'Atlantis Holdings funds Mara Jensen', cite: { doc: 'd1', chunk: 0 } },
+      ],
+    };
+    const pool = await mockNvidia(page, { reply: { content: [JSON.stringify(answer)] } });
+    await useNvidia(page);
+    await page.goto('/');
+    await openTab(page, 'ingest');
+    await page.setInputFiles('#workspaceFileInput', { name: 'garden.md', mimeType: 'text/markdown', buffer: Buffer.from(GARDEN) });
+    await expect(page.locator('#workspaceList li')).toHaveCount(1);
+    await openTab(page, 'graph');
+    await expect(page.locator('#graphLoading')).toBeHidden();
+    const status = page.locator('#graphFoundStatus');
+    const passagesSent = () => pool.bodies.filter((b) => JSON.stringify(b.messages).includes('[doc=d1 chunk=0]')).length;
+
+    // Declined: nothing leaves the device and nothing is found.
+    /** @type {string[]} */
+    const asked = [];
+    page.once('dialog', (dialog) => {
+      asked.push(dialog.message());
+      void dialog.dismiss();
+    });
+    await page.click('#graphFindBtn');
+    await expect.poll(() => asked.length).toBe(1);
+    expect(asked[0]).toContain('Passages of these files are sent to the model you set up');
+    await expect(page.locator('#graphFindBtn')).toBeEnabled();
+    expect(passagesSent()).toBe(0);
+    await expect(status).toContainText('Find the people, organizations and things your files name');
+
+    // Agreed: one call reads the file; the unsupported relation is left out.
+    page.once('dialog', (dialog) => void dialog.accept());
+    await page.click('#graphFindBtn');
+    await expect(status).toContainText('Found by an AI model and checked against each cited passage');
+    await expect(status).toContainText('1 unsupported relation was left out');
+    expect(passagesSent()).toBe(1);
+    const list = page.locator('#graphEntityList');
+    await expect(list.getByRole('button', { name: /^Atlantis Holdings/ })).toHaveCount(0);
+    await list.getByRole('button', { name: /^Riverside garden/ }).click();
+    const details = page.locator('#entityDetailContent');
+    await expect(details).toContainText('leads');
+    await expect(details).toContainText('buys pumps from');
+    await expect(details.locator('q', { hasText: 'Mara Jensen leads the Riverside garden' })).toHaveCount(1);
+    await expect(details.locator('q', { hasText: 'buys solar pumps from Nordwind Energy' })).toHaveCount(1);
+    await expect(details).toContainText('garden.md, passage 1');
+
+    // Read by the model already: nothing is sent again.
+    await page.click('#graphFindBtn');
+    await expect(status).toContainText('already read');
+    expect(passagesSent()).toBe(1);
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('in on-device mode no passage leaves the device, even with a model set up elsewhere', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const pool = await mockNvidia(page);
+    await page.addInitScript(() => localStorage.setItem('starpi_assistant_v1', 'device'));
+    await page.goto('/');
+    await openTab(page, 'ingest');
+    await page.setInputFiles('#workspaceFileInput', { name: 'garden.md', mimeType: 'text/markdown', buffer: Buffer.from(GARDEN) });
+    await expect(page.locator('#workspaceList li')).toHaveCount(1);
+    await openTab(page, 'graph');
+    await expect(page.locator('#graphLoading')).toBeHidden();
+    /** @type {string[]} */
+    const asked = [];
+    page.on('dialog', (dialog) => {
+      asked.push(dialog.message());
+      void dialog.dismiss();
+    });
+    await page.click('#graphFindBtn');
+    await expect(page.locator('#graphFoundStatus')).toContainText('no AI model was used');
+    expect(asked).toEqual([]);
+    expect(pool.bodies).toEqual([]);
     expect(diagnostics).toEqual([]);
   });
 
