@@ -15,9 +15,21 @@
 //
 // groundingSupports segments count UTF-8 bytes, as the real API does, not UTF-16 code units.
 //
+// Speech: a request with an audio inlineData part (and no AUDIO answer asked for) gets a fixed
+// transcript, in German when the instruction names German. POST /v1alpha/auth_tokens (and v1beta)
+// issues single-use Live tokens for a bidiGenerateContentSetup; the Live socket
+// /ws/google.ai.generativelanguage.<version>.GenerativeService.BidiGenerateContentConstrained takes
+// such a token as ?access_token= (a key in the URL is refused), wants { setup } with the token's
+// model first, answers setupComplete, and after each user turn (activityEnd, audioStreamEnd, text
+// input or clientContent) sends an input transcript, the answer as PCM audio or text parts by the
+// setup's responseModalities, an output transcript and turnComplete. Markers in the setup's system
+// instruction steer it: [[fake:interrupt]] sends interrupted in the middle of each answer,
+// [[fake:goaway]] sends goAway after setupComplete, [[fake:refuse]] closes with 1008 after setup.
+//
 // Usage: node scripts/fakes/gemini.mjs [--port 4613] [--marker starpi-purpose] [--fixtures dir]
 // API root for clients: http://127.0.0.1:<port> (paths /v1beta/...)
 import { chunkText, createAnswerBook, createFakeServer, isMain, pcmSilence, REASONING_TEXT, refusalText, runStandalone, SEARCH_SOURCES, searchSentences, TINY_PNG_BASE64 } from './shared.mjs';
+import { acceptWebSocket, refuseUpgrade } from './ws.mjs';
 
 export const DEFAULT_PORT = 4613;
 
@@ -26,7 +38,14 @@ export const FAKE_MODELS = Object.freeze([
   { id: 'gemini-fake-pro', methods: ['generateContent', 'streamGenerateContent', 'countTokens'], input: 1_048_576, output: 65_536, thinking: true },
   { id: 'gemini-fake-image', methods: ['generateContent', 'streamGenerateContent'], input: 32_768, output: 8_192, thinking: false },
   { id: 'gemini-fake-tts', methods: ['generateContent'], input: 8_192, output: 16_384, thinking: false },
+  { id: 'gemini-fake-live', methods: ['bidiGenerateContent'], input: 32_768, output: 8_192, thinking: false },
 ]);
+
+/** What the fake hears in an audio recording or a Live turn. */
+export const FAKE_TRANSCRIPTS = Object.freeze({ en: 'This is a simulated transcript.', de: 'Dies ist ein simuliertes Transkript.' });
+/** What a Live turn answers. */
+export const FAKE_LIVE_ANSWERS = Object.freeze({ en: 'This is a simulated live answer.', de: 'Dies ist eine simulierte Live-Antwort.' });
+const LIVE_PATH = /^\/ws\/google\.ai\.generativelanguage\.(v1alpha|v1beta)\.GenerativeService\.BidiGenerateContentConstrained$/;
 
 const STATUS_NAMES = /** @type {Record<number, string>} */ ({ 400: 'INVALID_ARGUMENT', 401: 'UNAUTHENTICATED', 403: 'PERMISSION_DENIED', 404: 'NOT_FOUND', 413: 'INVALID_ARGUMENT', 429: 'RESOURCE_EXHAUSTED', 500: 'INTERNAL', 503: 'UNAVAILABLE' });
 
@@ -55,8 +74,10 @@ const tokens = (text) => Math.max(1, Math.ceil(text.length / 4));
 export function createGeminiFake(options = {}) {
   const book = createAnswerBook(options);
   let counter = 0;
+  /** @type {Map<string, { setup: any, uses: number, expires: number }>} */
+  const liveTokens = new Map();
 
-  return createFakeServer(
+  const fake = createFakeServer(
     {
       name: 'gemini',
       texts: ({ json }) => {
@@ -80,6 +101,7 @@ export function createGeminiFake(options = {}) {
           const model = FAKE_MODELS.find((m) => m.id === one[1]);
           return model ? ctx.send(200, describe(model)) : ctx.fail(404, 'not_found');
         }
+        if (method === 'POST' && /^\/v1(?:alpha|beta)\/auth_tokens$/.test(ctx.path)) return issueToken(ctx);
         const call = /^\/v1(?:beta|alpha)?\/models\/([A-Za-z0-9.-]+):(generateContent|streamGenerateContent|countTokens)$/.exec(ctx.path);
         if (method !== 'POST' || !call) return false;
         if (!ctx.json || !Array.isArray(ctx.json.contents) || ctx.json.contents.length === 0) return ctx.send(400, errorBody(400, 'contents is not specified'));
@@ -90,6 +112,110 @@ export function createGeminiFake(options = {}) {
     },
     options,
   );
+
+  /** @type {Set<import('node:stream').Duplex>} */
+  const liveSockets = new Set();
+  fake.server.on('upgrade', (req, socket, head) => {
+    liveSockets.add(socket);
+    socket.on('close', () => liveSockets.delete(socket));
+    liveSocket(req, socket, head);
+  });
+  const closeHttp = fake.close;
+  // Upgraded sockets are not HTTP connections any more: end them first, or close() waits for them.
+  fake.close = () => {
+    for (const socket of liveSockets) socket.destroy();
+    liveSockets.clear();
+    return closeHttp();
+  };
+  return fake;
+
+  /** @param {import('./shared.mjs').FakeContext} ctx */
+  function issueToken(ctx) {
+    const body = ctx.json;
+    const setup = body?.bidiGenerateContentSetup?.setup ?? body?.bidiGenerateContentSetup;
+    if (!setup || typeof setup !== 'object' || typeof setup.model !== 'string') return ctx.send(400, errorBody(400, 'bidiGenerateContentSetup with a model is required'));
+    counter += 1;
+    const name = `auth_tokens/fake${String(counter).padStart(6, '0')}`;
+    const expires = Date.parse(body.expireTime ?? '') || Date.now() + 30 * 60_000;
+    liveTokens.set(name, { setup, uses: Number.isInteger(body.uses) && body.uses > 0 ? body.uses : 1, expires });
+    return ctx.send(200, { name, uses: body.uses ?? 1, expireTime: new Date(expires).toISOString(), newSessionExpireTime: body.newSessionExpireTime ?? null });
+  }
+
+  /**
+   * @param {import('node:http').IncomingMessage} req
+   * @param {import('node:stream').Duplex} socket
+   * @param {Buffer} head
+   */
+  function liveSocket(req, socket, head) {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    if (!LIVE_PATH.test(url.pathname)) return refuseUpgrade(socket, 404, 'Not Found');
+    if (url.searchParams.has('key')) return refuseUpgrade(socket, 400, 'Bad Request');
+    const name = url.searchParams.get('access_token') ?? '';
+    const token = liveTokens.get(name);
+    if (!token || token.uses < 1 || token.expires < Date.now()) return refuseUpgrade(socket, 401, 'Unauthorized');
+    token.uses -= 1;
+    const ws = acceptWebSocket(req, socket, head);
+    if (!ws) return;
+    options.log?.(`gemini live ${url.pathname} open`);
+    const instruction = (token.setup.systemInstruction?.parts ?? []).map((/** @type {any} */ p) => String(p?.text ?? '')).join(' ');
+    const marker = /\[\[fake:([a-z0-9-]+)\]\]/i.exec(instruction)?.[1]?.toLowerCase() ?? null;
+    const german = /\bgerman\b|\bdeutsch\b/i.test(instruction) || /^de/i.test(String(token.setup.generationConfig?.speechConfig?.languageCode ?? ''));
+    const modalities = (token.setup.generationConfig?.responseModalities ?? ['AUDIO']).map((/** @type {unknown} */ m) => String(m).toUpperCase());
+    let ready = false;
+    let audioBytes = 0;
+    let typed = '';
+    /** @param {unknown} message */
+    const send = (message) => ws.send(JSON.stringify(message));
+
+    const answerTurn = () => {
+      const heard = typed || (audioBytes > 0 ? (german ? FAKE_TRANSCRIPTS.de : FAKE_TRANSCRIPTS.en) : '');
+      typed = '';
+      audioBytes = 0;
+      if (heard) send({ serverContent: { inputTranscription: { text: heard } } });
+      const answer = german ? FAKE_LIVE_ANSWERS.de : FAKE_LIVE_ANSWERS.en;
+      const pieces = chunkText(answer);
+      pieces.forEach((piece, i) => {
+        if (marker === 'interrupt' && i === Math.floor(pieces.length / 2)) {
+          send({ serverContent: { interrupted: true } });
+          return;
+        }
+        if (modalities.includes('TEXT')) send({ serverContent: { modelTurn: { parts: [{ text: piece }] } } });
+        else send({ serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: 'audio/pcm;rate=24000', data: pcmSilence(120).toString('base64') } }] } } });
+        if (!modalities.includes('TEXT')) send({ serverContent: { outputTranscription: { text: piece } } });
+      });
+      send({ serverContent: { generationComplete: true } });
+      send({ serverContent: { turnComplete: true } });
+    };
+
+    ws.onMessage((data) => {
+      let message;
+      try {
+        message = JSON.parse(typeof data === 'string' ? data : data.toString('utf8'));
+      } catch {
+        return ws.close(1007, 'messages must be JSON');
+      }
+      if (!ready) {
+        if (!message?.setup || message.setup.model !== token.setup.model) return ws.close(1008, 'the setup does not match the token');
+        ready = true;
+        send({ setupComplete: {} });
+        if (marker === 'refuse') return ws.close(1008, 'simulated refusal');
+        if (marker === 'goaway') send({ goAway: { timeLeft: '5s' } });
+        return;
+      }
+      const input = message.realtimeInput;
+      if (input?.audio?.data) audioBytes += Math.floor((String(input.audio.data).length * 3) / 4);
+      if (typeof input?.text === 'string' && input.text.trim()) {
+        typed = input.text.trim();
+        answerTurn();
+      }
+      if (input?.activityEnd || input?.audioStreamEnd) answerTurn();
+      if (message.clientContent?.turnComplete) {
+        const turns = Array.isArray(message.clientContent.turns) ? message.clientContent.turns : [];
+        typed = turns.flatMap((/** @type {any} */ turn) => (Array.isArray(turn?.parts) ? turn.parts : [])).map((/** @type {any} */ p) => String(p?.text ?? '')).join(' ').trim();
+        answerTurn();
+      }
+    });
+  }
 
   /** @param {(typeof FAKE_MODELS)[number]} m */
   function describe(m) {
@@ -119,7 +245,9 @@ export function createGeminiFake(options = {}) {
     const thoughts = config.thinkingConfig?.includeThoughts === true;
     const thinkingAsked = Boolean(config.thinkingConfig) && config.thinkingConfig.thinkingBudget !== 0;
 
-    let scenario = ctx.control.scenario ?? (modalities.includes('AUDIO') ? 'audio' : modalities.includes('IMAGE') ? 'image' : searchTool ? 'search' : 'text');
+    const lastUser = users[users.length - 1];
+    const audioIn = Array.isArray(lastUser?.parts) && lastUser.parts.some((/** @type {any} */ p) => /^audio\//i.test(String(p?.inlineData?.mimeType ?? '')));
+    let scenario = ctx.control.scenario ?? (modalities.includes('AUDIO') ? 'audio' : audioIn ? 'transcribe' : modalities.includes('IMAGE') ? 'image' : searchTool ? 'search' : 'text');
     if (afterTool || (scenario === 'tool' && declarations.length === 0)) scenario = 'text';
     const thinking = scenario === 'reasoning' || thinkingAsked;
     const signature = `fake-thought-${n}`;
@@ -179,6 +307,11 @@ export function createGeminiFake(options = {}) {
         });
         break;
       }
+      case 'transcribe':
+        answered = /\bgerman\b/i.test(system) ? FAKE_TRANSCRIPTS.de : FAKE_TRANSCRIPTS.en;
+        answerChunks(answered);
+        finish({ finishReason: 'STOP' });
+        break;
       case 'image':
         chunks.push(candidate([{ text: 'Here is a simple test image.' }]));
         chunks.push(candidate([{ inlineData: { mimeType: 'image/png', data: TINY_PNG_BASE64 } }]));

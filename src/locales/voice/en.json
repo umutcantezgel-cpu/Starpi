@@ -1,1 +1,10 @@
-{}
+{
+  "read": {
+    "free_notice": "Free answer, not checked.",
+    "withheld": "{count} {count:sentence|sentences} withheld.",
+    "nothing": "Nothing in this answer could be read aloud as checked."
+  },
+  "preview": {
+    "sample": "This is how your answers will sound when they are read aloud."
+  }
+}

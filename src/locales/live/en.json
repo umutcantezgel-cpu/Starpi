@@ -1,1 +1,7 @@
-{}
+{
+  "spoken": {
+    "free": "Free conversation, answers are not checked.",
+    "withheld": "{count} {count:sentence|sentences} withheld.",
+    "ended": "The live conversation has ended."
+  }
+}

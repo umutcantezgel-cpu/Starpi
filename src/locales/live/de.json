@@ -1,1 +1,7 @@
-{}
+{
+  "spoken": {
+    "free": "Freies Gespräch, die Antworten werden nicht geprüft.",
+    "withheld": "{count} {count:Satz|Sätze} zurückgehalten.",
+    "ended": "Das Live-Gespräch ist beendet."
+  }
+}

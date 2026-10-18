@@ -1,1 +1,10 @@
-{}
+{
+  "read": {
+    "free_notice": "Freie Antwort, nicht geprüft.",
+    "withheld": "{count} {count:Satz|Sätze} zurückgehalten.",
+    "nothing": "Nichts in dieser Antwort ließ sich geprüft vorlesen."
+  },
+  "preview": {
+    "sample": "So klingen Ihre Antworten, wenn sie vorgelesen werden."
+  }
+}
