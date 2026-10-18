@@ -110,24 +110,25 @@ export const REFERENCE_PHRASES = Object.freeze({
   ]),
 });
 
-/** @param {string} text */
-const normalise = (text) => ` ${text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}.\-_]+/gu, ' ').trim()} `;
+/** @param {string} text  lower-cased words between single spaces, with a space at both ends */
+const words = (text) => ` ${text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
 
 /**
  * Whether a question points at the user's files: one of the reference phrases, or the name of a
- * document it can see (with or without its extension; names under four characters do not count).
+ * document it can see (the whole name, or a name of several words without its extension; a name
+ * under four characters does not count, nor does a single common word such as "notes").
  * @param {string} question
  * @param {readonly string[]} [names]  document names in the workspace and the knowledge base
  */
 export function namesSources(question, names = []) {
-  const q = normalise(question);
+  const q = words(question);
   for (const list of Object.values(REFERENCE_PHRASES)) for (const phrase of list) if (q.includes(` ${phrase} `)) return true;
   for (const name of names) {
-    const full = normalise(String(name)).trim();
-    const stem = full.replace(/\.[a-z0-9]{1,5}$/, '').trim();
-    for (const candidate of new Set([full, stem])) {
-      if (candidate.length >= 4 && q.includes(` ${candidate} `)) return true;
-    }
+    const raw = String(name);
+    const full = words(raw).trim();
+    const stem = words(raw.replace(/\.[a-z0-9]{1,5}$/i, '')).trim();
+    if (full.length >= 4 && full !== stem && q.includes(` ${full} `)) return true;
+    if (stem.length >= 4 && stem.includes(' ') && q.includes(` ${stem} `)) return true;
   }
   return false;
 }
