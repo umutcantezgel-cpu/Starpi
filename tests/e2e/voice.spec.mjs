@@ -180,7 +180,8 @@ test.describe('voice', () => {
     expect(tokenCalls[0].body).toEqual({ voice: 'Kore', locale: 'en', camera: false });
     expect(socketUrls).toEqual(['wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained?access_token=auth_tokens%2Fe2e-token-1']);
     expect(received[0]).toEqual({ setup: { model: 'models/gemini-live-test', generationConfig: { responseModalities: ['AUDIO'] } } });
-    expect(received.some((m) => m.realtimeInput?.audio?.mimeType === 'audio/pcm;rate=16000')).toBe(true);
+    // Microphone frames follow once the spoken notice has ended (half duplex).
+    await expect.poll(() => received.some((m) => m.realtimeInput?.audio?.mimeType === 'audio/pcm;rate=16000'), { timeout: 15_000 }).toBe(true);
 
     await sheet.locator('[data-live="stop"]').click();
     await expect(sheet.locator('[data-live="state"]')).toContainText('Conversation ended');
