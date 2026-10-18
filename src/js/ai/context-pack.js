@@ -53,8 +53,8 @@ const TEMPLATE_TOKENS = 160;
 /** A passage cut shorter than this is left out rather than sent as a fragment. */
 const MIN_PASSAGE_CHARS = 80;
 
-const CONTEXT_OPEN = '<<<CONTEXT>>>';
-const CONTEXT_CLOSE = '<<<END CONTEXT>>>';
+const CONTEXT_OPEN = '<<<SOURCES>>>';
+const CONTEXT_CLOSE = '<<<END SOURCES>>>';
 
 /** The fixed instruction, per mode and language. Neutral and short: small models follow few rules. */
 const RULES = Object.freeze({
