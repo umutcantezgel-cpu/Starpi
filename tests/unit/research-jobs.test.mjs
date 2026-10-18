@@ -234,6 +234,32 @@ describe('research jobs: cancel and remove', () => {
     jobs.dispose();
   });
 
+  it('cancels at once even while a step ignores the signal, and drops what it brings later', async () => {
+    /** @type {(() => void) | null} */
+    let late = null;
+    const jobs = createResearchJobs({
+      store: memoryStore(),
+      newId: ids,
+      every: () => () => {},
+      run: (job, { progress }) =>
+        new Promise((resolve) => {
+          late = () => {
+            progress({ step: 'web', round: 1, sources: 1 });
+            resolve(/** @type {any} */ ({ plan: { queries: [] }, provider: null, parts: { sources: { status: 'done' }, web: null }, report: { artifactId: `research-${job.id}`, markdown: '' } }));
+          };
+        }),
+    });
+    const id = await jobs.start({ question: 'slow' });
+    await until(() => late !== null, 'the step to start');
+    await jobs.cancel(id);
+    await until(() => jobs.get(id)?.status === 'cancelled', 'the cancel');
+    /** @type {() => void} */ (late)();
+    await flush();
+    assert.equal(jobs.get(id)?.status, 'cancelled');
+    assert.equal(jobs.get(id)?.progress, null);
+    jobs.dispose();
+  });
+
   it('removes a job with its record and stops it when it runs', async () => {
     const store = memoryStore();
     const { jobs, runner } = engine({ store });

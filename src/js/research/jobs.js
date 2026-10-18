@@ -294,8 +294,12 @@ export function createResearchJobs(deps) {
       if (parts && 'web' in parts) job.parts = { ...job.parts, web: parts.web ?? null };
       void save(job, 'progress');
     };
-    Promise.resolve()
-      .then(() => deps.run(structuredClone(job), { signal: ctrl.signal, progress }))
+    // A cancel ends the job at once, even while a step still waits for an answer: whatever that
+    // step brings later is dropped.
+    const stopped = new Promise((_, reject) => {
+      ctrl.signal.addEventListener('abort', () => reject(ctrl.signal.reason ?? new DOMException('Aborted', 'AbortError')), { once: true });
+    });
+    Promise.race([Promise.resolve().then(() => deps.run(structuredClone(job), { signal: ctrl.signal, progress })), stopped])
       .then((outcome) => {
         if (ctrl.signal.aborted) throw ctrl.signal.reason ?? new DOMException('Aborted', 'AbortError');
         job.status = 'done';
