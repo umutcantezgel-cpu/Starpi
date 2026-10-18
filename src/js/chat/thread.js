@@ -717,15 +717,17 @@ function hasCompaction(path) {
 }
 
 /**
- * The output limit of a free answer for a model.
+ * The output limit of a free answer for a model: at most half its context, so the conversation
+ * keeps room (a small context, as assumed for an own server that does not tell its size, would
+ * otherwise leave none for the earlier turns).
  * @param {Target} target
  * @param {Caps} caps
  */
 function answerTokens(target, caps) {
   if (target.route === 'device') return undefined;
-  if (target.route === 'pool') return Math.min(caps.maxOutput || 4096, 4096);
-  if (target.route === 'local') return Math.min(caps.maxOutput || SERVER_ANSWER_TOKENS, SERVER_ANSWER_TOKENS);
-  return Math.min(caps.maxOutput || CLOUD_ANSWER_TOKENS, CLOUD_ANSWER_TOKENS);
+  const half = caps.contextTokens ? Math.max(256, Math.floor(caps.contextTokens / 2)) : Infinity;
+  const cap = target.route === 'pool' ? 4096 : target.route === 'local' ? SERVER_ANSWER_TOKENS : CLOUD_ANSWER_TOKENS;
+  return Math.min(caps.maxOutput || cap, cap, half);
 }
 
 /**
