@@ -1,7 +1,8 @@
 // The 3.0 chat thread against the local provider fakes (scripts/fakes): streaming from the user's
 // own server, Stop, Continue after the length limit, regenerating with another model, editing a
 // question into a new branch, copying, the chat title, the thread after a reload, images scaled
-// down before they go to a model that sees, and grounded answers with the source check, all
+// down before they go to a model that sees, reading answers aloud (while streaming and with the
+// speaker button), "Research this" on an answer, and grounded answers with the source check, all
 // without a page error and with the thread passing axe.
 import AxeBuilder from '@axe-core/playwright';
 import { expect, mockSupabase, storedChatNodes, test } from './fixtures.mjs';
@@ -266,6 +267,60 @@ test.describe('chat thread', () => {
     expect(replayed.content.some((/** @type {any} */ b) => b.type === 'thinking' && typeof b.signature === 'string')).toBe(true);
     expect(replayed.content.filter((/** @type {any} */ b) => b.type === 'server_tool_use')).toHaveLength(1);
     expect(posts[2].system).toBe(posts[0].system);
+  });
+});
+
+test.describe('answers and the other features', () => {
+  test.skip(({ browserName, isMobile }) => browserName !== 'chromium' || isMobile, 'speech stand-ins run on desktop Chromium');
+
+  test('reads an answer aloud while it streams and with its speaker button, and researches its question', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await page.route('**/api/voice/voices', (route) => route.fulfill({ status: 404, contentType: 'application/json', body: '{"error":"route_missing"}' }));
+    await useServer(page);
+    // A speechSynthesis that records what it is asked to say; answers are read aloud as they stream.
+    await page.addInitScript(() => {
+      localStorage.setItem('starpi_voice_v1', JSON.stringify({ autoRead: true }));
+      Object.assign(window, { __spoken: [] });
+      Object.defineProperty(window, 'speechSynthesis', {
+        configurable: true,
+        value: {
+          speak(/** @type {SpeechSynthesisUtterance} */ u) {
+            /** @type {any} */ (window).__spoken.push(u.text);
+            setTimeout(() => u.onend?.(/** @type {any} */ (new Event('end'))), 10);
+          },
+          cancel() {},
+          getVoices: () => [],
+          addEventListener() {},
+          removeEventListener() {},
+        },
+      });
+    });
+    const spoken = () => page.evaluate(() => /** @type {string[]} */ (/** @type {any} */ (window).__spoken).join(' | '));
+    await page.goto('/');
+    await ask(page, 'Hello, what can you do?');
+    await settled(page);
+    await expect.poll(spoken).toContain('Free answer, not checked.');
+    await expect.poll(spoken).toContain(ANSWER);
+
+    const answer = answers(page).last();
+    const speaker = answer.locator('[data-action="voice-read-aloud"]');
+    await expect(speaker).toHaveAccessibleName('Read aloud');
+    await expect(questions(page).last().locator('[data-action="voice-read-aloud"]')).toHaveCount(0);
+    await page.evaluate(() => {
+      /** @type {any} */ (window).__spoken = [];
+    });
+    await speaker.click();
+    await expect.poll(spoken).toContain(ANSWER);
+
+    // "Research this" starts a job about the question of this answer; the side panel lists it.
+    const research = answer.locator('[data-action="msg-extra"][data-extra="research"]');
+    await expect(research).toHaveAccessibleName('Research this');
+    await research.click();
+    await expect(page.locator('#toastRegion')).toContainText('Research started');
+    await expect(page.locator('#chat-aside-research')).toContainText('Hello, what can you do?');
+
+    const results = await new AxeBuilder({ page }).include('#chatMessages').analyze();
+    expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
   });
 });
 
