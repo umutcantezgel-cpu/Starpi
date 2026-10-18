@@ -154,7 +154,9 @@ those keys with a **key-encryption key** (KEK) that never lies in the data folde
 | `keychain-macos` | a generic password item in the login keychain |
 
 **Crypto-erase** destroys a namespace's key first, then its rows and blobs, and appends a line to
-the deletion list (in the anchor folder). Any copy of its sealed values (WAL pages, old backups) can
+the deletion list (in the anchor folder) that names the key generation erased (for a namespace with
+no key: the last one erased before, or 0), so what is stored in the namespace afterwards is never
+taken for erased content. Any copy of its sealed values (WAL pages, old backups) can
 no longer be opened. A namespace made again gets a new key generation, so old values never open
 with the new key either.
 
@@ -172,7 +174,10 @@ every restore the deletion list is applied again: nothing deleted after the back
 With no `egress.allow` entries the companion reaches nothing but this machine. The guard runs in
 the process and patches `net.Socket#connect` (the path of every TCP and TLS connection, `fetch`
 included), DNS lookups and queries, and datagram sockets: only loopback and `localhost` pass, and
-other host names are refused before any DNS query leaves.
+other host names are refused before any DNS query leaves. `localhost` is resolved through a lookup
+whose every answer must be a loopback address; a `lookup` function passed by the caller (HTTP
+libraries often pass one) still runs, and its answer is checked the same way, for TCP, TLS, HTTP
+and datagram sockets.
 
 A module that needs the internet gets a **capability** for the `host:443` entries the owner listed
 for it under `egress.allow.<module id>` (at most 16; one module per host; public DNS names only).
@@ -180,14 +185,17 @@ The capability resolves exactly that host, connects only to public unicast addre
 with the normal certificate and host-name checks. The kernel's language models use the module id
 `brains`.
 
-**Spawning is forbidden in this release.** A child process or a worker thread would start outside
-the guard, so `child_process`, `cluster.fork`, `worker_threads.Worker` and `module.register` throw
+**Spawning is forbidden in this release.** A child process, a replaced process image or a worker
+thread would start outside the guard, so the `child_process` functions, `ChildProcess#spawn`,
+`process.execve`, `cluster.fork`, `worker_threads.Worker` and `module.register` throw
 `SPAWN_FORBIDDEN` once the guard is installed. The only programs the kernel itself runs are fixed
 absolute paths with argument lists (`systemd-creds`, the macOS `security` tool for the KEK, and
-`systemd-notify` for readiness). Shell tools for models are not part of this release.
+`systemd-notify` for readiness); the guard lets exactly those through while the kernel's runner
+starts them. Shell tools for models are not part of this release.
 
-Limits of an in-process guard: references to the original functions taken before it is installed,
-native add-ons and WebAssembly with host imports. On Linux the user unit therefore adds a boundary
+Limits of an in-process guard: references to the original functions and sockets made before it is
+installed, Node's internal handle objects reached through a live socket, native add-ons and
+WebAssembly with host imports. On Linux the user unit therefore adds a boundary
 outside the process: `IPAddressDeny=any` for the companion, and a second, tiny unit running
 `starpi-companion egress-splice` on a Unix socket only the companion may open. With
 `STARPI_COMPANION_EGRESS_SOCKET` set, capabilities connect through that socket (`CONNECT host:443`);
@@ -216,7 +224,9 @@ There is **no silent switch**: the first allowed model fixes whether a request s
 to the cloud, a failing model is never replaced by one of the other kind, and server-side fallbacks
 to other models are not requested. A model that fails after text went out leaves a template and a
 `reset` signal; a refusal is passed on as a refusal. A model that failed three times in a row rests
-for a minute.
+for a minute; while no model of the request's kind may run (resting, or held by the breaker), the
+answer is a template with the notice `brain_unavailable` or `breaker`, never a model of the other
+kind.
 
 ## Runtime
 
