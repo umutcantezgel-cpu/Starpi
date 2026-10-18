@@ -16,6 +16,7 @@ import {
   capitalisedPhrases,
   checkTriple,
   cooccurrenceGraph,
+  cooccurrenceGraphSliced,
   createGraphStore,
   extractDocs,
   loadMergedGraph,
@@ -26,9 +27,10 @@ import {
   passageOf,
   readDocChunks,
   RECORD_PREFIX,
+  timeSlices,
   verifyAnswer,
 } from '../../src/js/graph-extract.js';
-import { createWorkspace } from '../../src/js/rag/workspace-core.js';
+import { createWorkspace, DERIVED_SETTINGS } from '../../src/js/rag/workspace-core.js';
 import { openAppDb } from '../../src/js/store/schema.js';
 import { fakeClock, lastUserText, scriptedProviders, testDeps } from './router-fakes.mjs';
 
@@ -205,29 +207,63 @@ describe('a run with a model', () => {
     }
   });
 
-  it('stops at the call limit and leaves the rest for the next run; a cancelled run keeps finished documents', async () => {
-    const answers = { calls: 0 };
+  it('continues a document the call limit cut off where the model stopped, short files first', async () => {
+    /** @type {string[][]} the passages of each call, as doc label and chunk */
+    const calls = [];
     /** @type {import('../../src/js/graph-extract.js').RunBatch} */
     const run = async (input) => {
-      answers.calls += 1;
+      calls.push(input.passages.map((p) => `${p.doc}#${p.chunk}`));
+      return { value: { entities: [], relations: input.passages.map((p) => ({ from: 'Mara Jensen', to: 'Tom Berger', label: `meets in part ${p.chunk}`, quote: 'x', cite: { doc: p.doc, chunk: p.chunk } })) } };
+    };
+    const LONG = Array.from({ length: 9 }, (_, i) => ({ doc: 'ws-3', docName: 'diary.md', chunk: i, text: `In part ${i} Mara Jensen meets Tom Berger and Nordwind Energy.` }));
+    const options = { run, maxBatches: 2, batch: { maxChunks: 2 } };
+    const docs = [docOf('ws-3', 'diary.md', LONG), docOf('ws-2', 'library.md', LIBRARY)];
+
+    // Run 1: the short file goes first and is finished; the long one is read in part (chunks 0-2)
+    // and gets the co-occurrence graph for now, keeping what the model found.
+    const first = await extractDocs(docs, options);
+    assert.deepEqual(calls, [['d1#0', 'd2#0'], ['d1#1', 'd1#2']], 'the short file shares the first call');
+    assert.equal(first.partial, 1);
+    assert.deepEqual(first.graphs.map((g) => [g.docId, g.mode]), [['ws-3', 'mixed'], ['ws-2', 'model']], 'in the order given');
+    const [diary] = first.graphs;
+    assert.deepEqual(diary.resume?.read, [0, 1, 2]);
+    assert.equal(diary.resume?.chunks, 9);
+    assert.deepEqual(diary.triples.filter((t) => t.kind === 'model').map((t) => t.cite.chunk), [0, 1, 2]);
+    assert.ok(diary.triples.some((t) => t.kind === 'cooccurrence'), 'the rest has the co-occurrence graph');
+    assert.equal(needsReading(/** @type {any} */ ({ docId: 'ws-3', textSha256: 'sha-ws-3' }), diary, true), true);
+
+    // Run 2 reads on from chunk 3, never the chunks read before.
+    calls.length = 0;
+    const second = await extractDocs([{ ...docs[0], previous: diary }], options);
+    assert.deepEqual(calls, [['d1#3', 'd1#4'], ['d1#5', 'd1#6']]);
+    assert.equal(second.graphs[0].mode, 'mixed');
+    assert.deepEqual(second.graphs[0].resume?.read, [0, 1, 2, 3, 4, 5, 6]);
+
+    // Run 3 finishes it: every chunk read once, only the model's relations remain.
+    calls.length = 0;
+    const third = await extractDocs([{ ...docs[0], previous: second.graphs[0] }], options);
+    assert.deepEqual(calls, [['d1#7', 'd1#8']]);
+    assert.equal(third.partial, 0);
+    const done = third.graphs[0];
+    assert.equal(done.mode, 'model');
+    assert.equal(done.resume, undefined);
+    assert.deepEqual(done.triples.map((t) => [t.kind, t.cite.chunk]), LONG.map((c) => ['model', c.chunk]));
+    assert.deepEqual(done.entities.map((e) => e.name), ['Mara Jensen', 'Tom Berger']);
+
+    // A result for another text, or for other chunks, is no place to continue from.
+    calls.length = 0;
+    await extractDocs([{ ...docs[0], textSha256: 'sha-changed', previous: diary }], { ...options, maxBatches: 1 });
+    assert.deepEqual(calls, [['d1#0', 'd1#1']]);
+  });
+
+  it('a cancelled run keeps the documents it finished', async () => {
+    const controller = new AbortController();
+    /** @type {import('../../src/js/graph-extract.js').RunBatch} */
+    const run = async (input) => {
+      controller.abort();
       return { value: { entities: [], relations: input.passages.map((p) => ({ from: 'Mara Jensen', to: 'Tom Berger', label: 'meets', quote: 'x', cite: { doc: p.doc, chunk: p.chunk } })) } };
     };
-    const docs = [docOf('ws-1', 'garden.md', GARDEN), docOf('ws-2', 'library.md', LIBRARY)];
-    const limited = await extractDocs(docs, { run, maxBatches: 1, batch: { maxChunks: 2 } });
-    assert.equal(answers.calls, 1);
-    assert.deepEqual(limited.graphs.map((g) => g.docId), ['ws-1']);
-    assert.equal(limited.deferred, 1);
-
-    const controller = new AbortController();
-    const cancelled = await extractDocs(docs, {
-      run: async (input) => {
-        const res = await run(input);
-        controller.abort();
-        return res;
-      },
-      signal: controller.signal,
-      batch: { maxChunks: 2 },
-    });
+    const cancelled = await extractDocs([docOf('ws-1', 'garden.md', GARDEN), docOf('ws-2', 'library.md', [...LIBRARY, { ...LIBRARY[0], chunk: 1 }])], { run, signal: controller.signal, batch: { maxChunks: 2 } });
     assert.equal(cancelled.cancelled, true);
     assert.deepEqual(cancelled.graphs.map((g) => [g.docId, g.mode]), [['ws-1', 'model']]);
   });
@@ -294,6 +330,27 @@ describe('without a model', () => {
     assert.deepEqual([...graph.entities.values()].map((e) => e.name).sort(), ['Mara Jensen', 'Nordwind Energie']);
     assert.deepEqual(graph.triples.map((t) => [t.subject, t.object]), [['Mara Jensen', 'Nordwind Energie']]);
   });
+
+  it('hands the thread back between chunks, so the page stays responsive and Stop works', async () => {
+    const docs = Array.from({ length: 5 }, (_, d) => docOf(`ws-${d}`, `f${d}.md`, GARDEN.map((c) => ({ ...c, doc: `ws-${d}`, docName: `f${d}.md` }))));
+    let ticks = 0;
+    const timer = setInterval(() => (ticks += 1), 0);
+    try {
+      const report = await extractDocs(docs, { run: null, sliceMs: 0 });
+      assert.equal(report.graphs.length, 5);
+      assert.ok(ticks > 0, 'timers ran while the graph was built');
+    } finally {
+      clearInterval(timer);
+    }
+    // A Stop that arrives while the fallback runs takes effect at the next pause.
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 0);
+    const stopped = await extractDocs(docs, { run: null, sliceMs: 0, signal: controller.signal });
+    assert.equal(stopped.cancelled, true);
+    assert.deepEqual(stopped.graphs, []);
+    // The same graph, built at once or in slices.
+    assert.deepEqual(await cooccurrenceGraphSliced(GARDEN, timeSlices(undefined, 0)), cooccurrenceGraph(GARDEN));
+  });
 });
 
 describe('reading the workspace and keeping results', () => {
@@ -342,6 +399,66 @@ describe('reading the workspace and keeping results', () => {
     assert.equal(needsReading(doc, graph, true), true);
     assert.equal(needsReading(doc, { ...graph, mode: 'model' }, true), false);
     assert.equal(needsReading({ ...doc, textSha256: 'b' }, { ...graph, mode: 'model' }, true), true);
+  });
+
+  it('keeps every result where its file is: stored, in memory only, or gone', async () => {
+    const name = dbName();
+    const openDb = () => openAppDb({ name });
+    const storedIds = async () => (await (await openDb()).getAll('settings')).filter((r) => String(r.key).startsWith(RECORD_PREFIX)).map((r) => r.value.docId).sort();
+    const report = await extractDocs([docOf('ws-1', 'garden.md', GARDEN), docOf('ws-2', 'library.md', LIBRARY)], { run: null });
+    const store = createGraphStore({ openDb });
+    await store.save(report.graphs, { persist: true });
+
+    // garden.md is now kept in memory only: its result leaves the database and stays on the page.
+    assert.deepEqual(await store.place([{ docId: 'ws-1', textSha256: 'sha-ws-1', stored: false }, { docId: 'ws-2', textSha256: 'sha-ws-2', stored: true }]), { removed: 0, moved: 1 });
+    assert.deepEqual(await storedIds(), ['ws-2']);
+    assert.deepEqual((await store.load()).map((g) => g.docId).sort(), ['ws-1', 'ws-2']);
+    // Stored again: so is its result.
+    assert.deepEqual(await store.place([{ docId: 'ws-1', textSha256: 'sha-ws-1', stored: true }, { docId: 'ws-2', textSha256: 'sha-ws-2', stored: true }]), { removed: 0, moved: 1 });
+    assert.deepEqual(await storedIds(), ['ws-1', 'ws-2']);
+    // The workspace already deleted the stored copy (memory only): the page keeps its own.
+    await (await openDb()).delete('settings', `${RECORD_PREFIX}ws-2`);
+    await store.place([{ docId: 'ws-1', textSha256: 'sha-ws-1', stored: true }, { docId: 'ws-2', textSha256: 'sha-ws-2', stored: false }]);
+    assert.deepEqual((await store.load()).map((g) => g.docId).sort(), ['ws-1', 'ws-2']);
+    assert.deepEqual(await storedIds(), ['ws-1']);
+    // Removed or changed files take their results along, from the database and from memory.
+    assert.deepEqual(await store.place([{ docId: 'ws-1', textSha256: 'sha-other', stored: true }]), { removed: 2, moved: 0 });
+    assert.deepEqual(await store.load(), []);
+    assert.deepEqual(await storedIds(), []);
+  });
+
+  it('the workspace deletes what was found in a file with the file: remove, memory only, Forget all', async () => {
+    assert.ok(DERIVED_SETTINGS.includes(RECORD_PREFIX), 'the workspace knows where the results are kept');
+    const name = dbName();
+    const openDb = () => openAppDb({ name });
+    const storedIds = async () => (await (await openDb()).getAll('settings')).filter((r) => String(r.key).startsWith(RECORD_PREFIX)).map((r) => r.value.docId).sort();
+    const workspace = createWorkspace({ openDb, fileRoot: null });
+    await workspace.init();
+    const store = createGraphStore({ openDb });
+    const find = async () => {
+      const docs = workspace.state().documents;
+      const withChunks = await Promise.all(docs.map(async (d) => ({ docId: d.docId, name: d.name, textSha256: d.textSha256, chunks: await readDocChunks(d, { openDb, text: (id) => workspace.text(id) }) })));
+      await store.save((await extractDocs(withChunks, { run: null })).graphs, { persist: true });
+      return docs.map((d) => d.docId).sort();
+    };
+    const plan = await workspace.ingest(new File([PLAN], 'plan.md', { type: 'text/markdown' }));
+    const notes = await workspace.ingest(new File(['Priya Natarajan runs the seed exchange at the Elm Street Library.'], 'notes.md', { type: 'text/markdown' }));
+    const found = await find();
+    assert.equal(found.length, 2);
+    assert.deepEqual(await storedIds(), found);
+
+    await workspace.remove(plan.docId);
+    assert.deepEqual(await storedIds(), [notes.docId], 'a removed file takes its result along');
+
+    await workspace.setKeep(false);
+    assert.deepEqual(await storedIds(), [], 'memory only: nothing found in the files stays stored');
+
+    await workspace.setKeep(true);
+    await find();
+    assert.deepEqual(await storedIds(), [notes.docId]);
+    await workspace.clear();
+    assert.deepEqual(await storedIds(), [], 'Forget all forgets what was found too');
+    assert.equal((await (await openDb()).get('settings', 'workspace.keep'))?.value, true, 'other settings stay');
   });
 });
 

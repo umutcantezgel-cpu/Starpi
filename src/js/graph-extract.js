@@ -8,12 +8,19 @@
 //
 // Without a model (none set up, offline, or on-device mode without a loaded model) the graph links
 // names written with capitals that appear in the same sentence ("appears with"), checked the same
-// way. Either way every relation keeps the chunk it came from.
+// way. Either way every relation keeps the chunk it came from. That work runs in short slices, so
+// the page stays responsive and Stop takes effect.
+//
+// One run makes a limited number of model calls. A document the model read only in part gets the
+// co-occurrence graph for the rest and keeps what the model found with the chunks it read; the next
+// run reads only the other chunks. Documents with the least left to read go first.
 //
 // Results are kept per document (settings store of the app database, key `graph.auto:<docId>`)
-// with the document's text hash, so a changed or removed file takes its part with it. When the user
-// keeps files in memory only, so are the results. loadMergedGraph() puts them next to the entities
-// added by hand in the shared knowledge base, each marked auto or manual.
+// with the document's text hash, so a changed or removed file takes its part with it. They follow
+// their document: stored with a stored file, in memory only with a file kept in memory only, gone
+// with a removed one (the workspace deletes them with its stored copies, see rag/workspace-core.js
+// DERIVED_SETTINGS). loadMergedGraph() puts them next to the entities added by hand in the shared
+// knowledge base, each marked auto or manual.
 import { contentTokens, fold, guessLanguage, indexSource, tokenMatches } from './core/facts.js';
 import { fromPacks } from './core/lang/index.js';
 import { sentenceSpans } from './core/sentences.js';
@@ -49,6 +56,19 @@ import { range } from './store/idb.js';
  * @property {GraphEntity[]} entities
  * @property {Triple[]} triples
  * @property {DropCount} dropped  unsupported relations and entities left out
+ * @property {Resume} [resume]    mode mixed: where the model stopped, for the next run
+ */
+/**
+ * Where a model stopped in a document it read only in part (the run's call limit, or the model
+ * stopped answering): the chunk count of the document then, the chunks the model read, how many of
+ * the entities are the model's (the first ones; the others, like the relations of kind
+ * 'cooccurrence', come from the co-occurrence graph) and what it left out.
+ * @typedef {{ chunks: number, read: number[], entities: number, dropped: DropCount }} Resume
+ */
+/**
+ * A document to read: its chunks and, when it has one, the result of an earlier run (a mixed
+ * result for the same text continues where the model stopped).
+ * @typedef {{ docId: string, name: string, textSha256: string, chunks: readonly GraphChunk[], previous?: DocGraph | null }} ExtractDoc
  */
 /**
  * Asks a model about one batch of passages: the purpose's validated answer, or null when no model
@@ -69,8 +89,10 @@ export const RECORD_PREFIX = 'graph.auto:';
  */
 export const BATCH_CHUNKS = 6;
 export const BATCH_CHARS = 4_000;
-/** Model calls one run starts at most; the documents left wait for the next run. */
+/** Model calls one run starts at most; what is left is read by the next run. */
 export const MAX_RUN_BATCHES = 60;
+/** Longest stretch of work on the page's thread before the run lets the page handle events. */
+const SLICE_MS = 16;
 /** Unanswered batches in a row after which the run stops asking a model. */
 const MAX_MISSES = 2;
 /** Names and links the co-occurrence fallback keeps per document (the most frequent ones). */
@@ -304,6 +326,18 @@ export function verifyAnswer(answer, batch) {
 
 /** Function words, month and weekday names of every language pack: never a name on their own. */
 const commonWords = fromPacks((packs) => new Set(packs.flatMap((p) => [...p.stopwords, ...Object.keys(p.months), ...Object.keys(p.weekdays)].map((w) => fold(w)))));
+/** Folded single words: a document repeats its words, and folding is most of the scan's cost. */
+const folded = new Map();
+/** @param {string} word */
+function foldWord(word) {
+  let f = folded.get(word);
+  if (f === undefined) {
+    if (folded.size >= 50_000) folded.clear();
+    f = fold(word);
+    folded.set(word, f);
+  }
+  return f;
+}
 /** Lowercase words that may join two capitalised words of one English name ("Bank of England"). */
 const PARTICLES_EN = new Set(['of', 'de', 'da', 'di', 'du', 'del', 'della', 'van', 'von', 'la', 'le']);
 /**
@@ -359,17 +393,17 @@ export function capitalisedPhrases(sentence, options = {}) {
     }
     let s = i;
     let e = j;
-    while (s <= e && common.has(fold(words[s].text))) s += 1;
-    while (e >= s && (common.has(fold(words[e].text)) || particles.has(words[e].text))) e -= 1;
+    while (s <= e && common.has(foldWord(words[s].text))) s += 1;
+    while (e >= s && (common.has(foldWord(words[e].text)) || particles.has(words[e].text))) e -= 1;
     const run = words.slice(s, e + 1);
-    const named = run.filter((w) => !/^\p{N}/u.test(w.text) && !common.has(fold(w.text)));
+    const named = run.filter((w) => !/^\p{N}/u.test(w.text) && !common.has(foldWord(w.text)));
     if (named.length && run.length <= MAX_PHRASE_WORDS && !/^\p{N}/u.test(run[0].text)) {
       /** @type {(from: number, initial: boolean) => PhraseHit} */
       const hit = (from, initial) => {
         const surface = sentence.slice(run[from].start, run[run.length - 1].end);
-        const before = s + from > 0 ? fold(words[s + from - 1].text) : '';
+        const before = s + from > 0 ? foldWord(words[s + from - 1].text) : '';
         const rest = initial && run.length - from > 1 && !/^\p{N}/u.test(run[from + 1].text) ? hit(from + 1, false) : null;
-        return { key: nameKey(surface), surface, initial, single: run.length - from === 1, afterDeterminer: DETERMINERS_DE.has(before), head: fold(run[from].text), rest };
+        return { key: nameKey(surface), surface, initial, single: run.length - from === 1, afterDeterminer: DETERMINERS_DE.has(before), head: foldWord(run[from].text), rest };
       };
       out.push(hit(0, s === 0));
     }
@@ -390,6 +424,35 @@ export function capitalisedPhrases(sentence, options = {}) {
  * @returns {DocPart}
  */
 export function cooccurrenceGraph(chunks) {
+  const steps = cooccurrenceSteps(chunks);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}
+
+/**
+ * cooccurrenceGraph() in slices: between chunks the page gets its thread back (see timeSlices).
+ * Rejects with an AbortError once the run is stopped.
+ * @param {readonly GraphChunk[]} chunks
+ * @param {() => Promise<void>} slice
+ * @returns {Promise<DocPart>}
+ */
+export async function cooccurrenceGraphSliced(chunks, slice) {
+  const steps = cooccurrenceSteps(chunks);
+  let step = steps.next();
+  while (!step.done) {
+    await slice();
+    step = steps.next();
+  }
+  return step.value;
+}
+
+/**
+ * The work of cooccurrenceGraph(), pausing after each chunk it scans.
+ * @param {readonly GraphChunk[]} chunks
+ * @returns {Generator<void, DocPart, void>}
+ */
+function* cooccurrenceSteps(chunks) {
   const result = emptyPart();
   if (!chunks.length) return result;
   const german = guessLanguage(chunks.slice(0, 4).map((c) => c.text).join('\n')) === 'de';
@@ -403,7 +466,7 @@ export function cooccurrenceGraph(chunks) {
   /** Words the document writes in lower case. */
   const lower = new Set();
   for (const chunk of chunks) {
-    for (const m of chunk.text.matchAll(/(?<![\p{L}\p{N}])\p{Ll}[\p{L}\p{M}]*/gu)) lower.add(fold(m[0]));
+    for (const m of chunk.text.matchAll(/(?<![\p{L}\p{N}])\p{Ll}[\p{L}\p{M}]*/gu)) lower.add(foldWord(m[0]));
     for (const span of sentenceSpans(chunk.text)) {
       const hits = capitalisedPhrases(chunk.text.slice(span.start, span.end), { particles });
       for (const h of hits) {
@@ -412,6 +475,7 @@ export function cooccurrenceGraph(chunks) {
       }
       sentences.push({ chunk, hits });
     }
+    yield;
   }
   const counts = /** @type {Map<string, { surface: string, sentences: number, order: number }>} */ (new Map());
   const kept = sentences.map(({ chunk, hits }) => {
@@ -448,11 +512,19 @@ export function cooccurrenceGraph(chunks) {
       }
     }
   }
-  const passages = new Map(chunks.map((c) => [citeKey(c), passageOf(c.text)]));
+  // Only the chunks links cite are prepared for the check.
+  const byKey = new Map(chunks.map((c) => [citeKey(c), c]));
+  /** @type {Map<string, Passage>} */
+  const passages = new Map();
   const surface = (/** @type {string} */ key) => /** @type {{ surface: string }} */ (counts.get(key)).surface;
   for (const p of [...pairs.values()].sort((x, y) => y.count - x.count || x.order - y.order).slice(0, MAX_COOCCURRENCES_PER_DOC)) {
     /** @type {Triple} */
     const triple = { subject: surface(p.a), predicate: '', object: surface(p.b), cite: p.cite, kind: 'cooccurrence' };
+    const cited = byKey.get(citeKey(p.cite));
+    if (cited && !passages.has(citeKey(cited))) {
+      passages.set(citeKey(cited), passageOf(cited.text));
+      yield;
+    }
     if (checkTriple(triple, passages)) {
       result.dropped.relations += 1;
       continue;
@@ -470,9 +542,10 @@ export function cooccurrenceGraph(chunks) {
 
 /**
  * @typedef {object} ExtractReport
- * @property {DocGraph[]} graphs       one per document finished in this run
+ * @property {DocGraph[]} graphs       one per document finished in this run, in the order given
  * @property {number} pending          documents that needed reading
- * @property {number} deferred         documents left for the next run (the run's call limit)
+ * @property {number} partial          documents the run's call limit left partly unread by the model: they
+ *   have the co-occurrence graph for the rest, and the next run with a model continues them
  * @property {boolean} cancelled
  * @property {number} batches          model calls made
  * @property {number} answered         batches a model answered
@@ -481,55 +554,104 @@ export function cooccurrenceGraph(chunks) {
  * @property {boolean} modelUsed       a model answered at least one batch
  */
 
+/** @returns {Error} */
+const abortError = () => new DOMException('The run was stopped', 'AbortError');
+/** @param {unknown} err */
+const isAbort = (err) => err instanceof Error && err.name === 'AbortError';
+/** @type {() => Promise<void>} */
+const pause = () => {
+  const scheduler = /** @type {{ scheduler?: { yield?: () => Promise<void> } }} */ (globalThis).scheduler;
+  return typeof scheduler?.yield === 'function' ? scheduler.yield() : new Promise((resolve) => setTimeout(resolve, 0));
+};
+
+/**
+ * A checkpoint for long work on the page's thread: it lets the page handle events once `sliceMs`
+ * passed since the last pause, and rejects with an AbortError once the signal is aborted.
+ * @param {AbortSignal | undefined} signal
+ * @param {number} sliceMs
+ * @returns {() => Promise<void>}
+ */
+export function timeSlices(signal, sliceMs = SLICE_MS) {
+  let last = performance.now();
+  return async () => {
+    if (performance.now() - last >= sliceMs) {
+      await pause();
+      last = performance.now();
+    }
+    if (signal?.aborted) throw abortError();
+  };
+}
+
+/**
+ * What a model already read of a document in an earlier run: its mixed result for the same text
+ * and the same chunks. Null when there is none.
+ * @param {ExtractDoc} doc
+ * @returns {{ read: Set<number>, part: DocPart } | null}
+ */
+function resumeOf(doc) {
+  const g = doc.previous;
+  const r = g?.resume;
+  if (!g || !r || g.mode !== 'mixed' || g.textSha256 !== doc.textSha256 || r.chunks !== doc.chunks.length || !Array.isArray(r.read)) return null;
+  const part = emptyPart();
+  for (const e of g.entities.slice(0, Math.max(0, Number(r.entities) || 0))) if (typeof e?.name === 'string') addEntity(part.entities, e.name, typeof e.type === 'string' ? e.type : 'other');
+  for (const t of g.triples) if (t?.kind === 'model') part.triples.push(t);
+  part.dropped = { relations: Number(r.dropped?.relations) || 0, entities: Number(r.dropped?.entities) || 0 };
+  return { read: new Set(r.read.filter((n) => Number.isInteger(n))), part };
+}
+
 /**
  * Reads documents into per-document graphs. With `run`, chunks go to the model in batches; a
- * document every chunk of which a model read is 'model'. Without a model, or once it stops
- * answering, the remaining documents get the co-occurrence graph ('mixed' where a model had read
- * some of their chunks). Cancelling keeps the documents already finished.
- * @param {ReadonlyArray<{ docId: string, name: string, textSha256: string, chunks: readonly GraphChunk[] }>} docs
- * @param {{ run?: RunBatch | null, signal?: AbortSignal, onProgress?: (p: { done: number, total: number }) => void, maxBatches?: number, now?: () => number, batch?: { maxChunks?: number, maxChars?: number } }} [options]
+ * document every chunk of which a model read is 'model'. Without a model, once it stops answering,
+ * or once the run's call limit is reached, the documents not wholly read get the co-occurrence
+ * graph ('mixed' where a model read some of their chunks, which a later run continues from).
+ * Documents with the fewest chunks left go first, so one long document does not hold back the
+ * others. Cancelling keeps the documents already finished.
+ * @param {ReadonlyArray<ExtractDoc>} docs
+ * @param {{ run?: RunBatch | null, signal?: AbortSignal, onProgress?: (p: { done: number, total: number }) => void, maxBatches?: number, now?: () => number, batch?: { maxChunks?: number, maxChars?: number }, sliceMs?: number }} [options]
  * @returns {Promise<ExtractReport>}
  */
 export async function extractDocs(docs, options = {}) {
   const now = options.now ?? Date.now;
+  const slice = timeSlices(options.signal, options.sliceMs);
+  const prior = new Map(docs.map((d) => [d.docId, resumeOf(d)]));
+  const unread = (/** @type {ExtractDoc} */ d) => d.chunks.length - (prior.get(d.docId)?.read.size ?? 0);
+  const order = [...docs].sort((a, b) => unread(a) - unread(b));
   const total = docs.reduce((n, d) => n + d.chunks.length, 0);
-  let done = 0;
+  let done = docs.reduce((n, d) => n + d.chunks.length - unread(d), 0);
   const progress = () => options.onProgress?.({ done, total });
   /** @type {ExtractReport} */
-  const report = { graphs: [], pending: docs.length, deferred: 0, cancelled: false, batches: 0, answered: 0, dropped: { relations: 0, entities: 0 }, reasons: {}, modelUsed: false };
-  /** @type {Map<string, DocPart>} */
+  const report = { graphs: [], pending: docs.length, partial: 0, cancelled: false, batches: 0, answered: 0, dropped: { relations: 0, entities: 0 }, reasons: {}, modelUsed: false };
+  /** @type {Map<string, DocPart>} what a model found in this run */
   const modelParts = new Map();
-  /** @type {Map<string, number>} chunks of each document a model read */
-  const read = new Map();
-  let modelAvailable = Boolean(options.run);
-  /** Documents with chunks in batches the call limit left unread. */
-  const cutOff = new Set();
+  /** @type {Map<string, Set<number>>} chunks of each document a model has read, this run included */
+  const read = new Map(docs.map((d) => [d.docId, new Set(prior.get(d.docId)?.read ?? [])]));
+  /** The call limit ended the model's part of the run. */
+  let limited = false;
   progress();
 
   if (options.run) {
     const batches = makeBatches(
-      docs.flatMap((d) => d.chunks),
+      order.flatMap((d) => d.chunks.filter((c) => !read.get(d.docId)?.has(c.chunk))),
       options.batch,
     );
     const limit = Math.max(1, options.maxBatches ?? MAX_RUN_BATCHES);
     let misses = 0;
-    for (let i = 0; i < batches.length; i += 1) {
+    for (const batch of batches) {
       if (options.signal?.aborted) {
         report.cancelled = true;
         break;
       }
       if (report.batches >= limit) {
-        for (const b of batches.slice(i)) for (const c of b.chunks) cutOff.add(c.doc);
+        limited = true;
         break;
       }
-      const batch = batches[i];
       report.batches += 1;
       /** @type {{ value: unknown } | null} */
       let answer = null;
       try {
         answer = await options.run(batchInput(batch), options.signal);
       } catch (err) {
-        if (options.signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
+        if (options.signal?.aborted || isAbort(err)) {
           report.cancelled = true;
           break;
         }
@@ -537,10 +659,7 @@ export async function extractDocs(docs, options = {}) {
       }
       if (!answer) {
         misses += 1;
-        if (misses >= MAX_MISSES) {
-          modelAvailable = false;
-          break;
-        }
+        if (misses >= MAX_MISSES) break;
         continue;
       }
       misses = 0;
@@ -551,36 +670,56 @@ export async function extractDocs(docs, options = {}) {
       report.dropped.entities += checked.dropped.entities;
       for (const [k, n] of Object.entries(checked.reasons)) report.reasons[k] = (report.reasons[k] ?? 0) + n;
       for (const [doc, p] of checked.parts) mergePart(modelParts, doc, p);
-      for (const c of batch.chunks) read.set(c.doc, (read.get(c.doc) ?? 0) + 1);
+      for (const c of batch.chunks) read.get(c.doc)?.add(c.chunk);
       done += batch.chunks.length;
       progress();
     }
   }
 
-  // A document is finished when a model read all of it, or when no model will: then the
-  // co-occurrence graph covers it. Documents the call limit cut off wait for the next run.
-  for (const doc of docs) {
+  // A document is finished when a model read all of it. The others get the co-occurrence graph
+  // next to what a model found in them, unless the run was stopped.
+  /** @type {Map<string, DocGraph>} */
+  const finished = new Map();
+  for (const doc of order) {
     if (options.signal?.aborted) report.cancelled = true;
-    const byModel = read.get(doc.docId) ?? 0;
-    const complete = options.run ? byModel >= doc.chunks.length : doc.chunks.length === 0;
+    const readNow = /** @type {Set<number>} */ (read.get(doc.docId));
+    const complete = options.run ? doc.chunks.every((c) => readNow.has(c.chunk)) : doc.chunks.length === 0;
     if (!complete && report.cancelled) continue;
-    if (!complete && modelAvailable && cutOff.has(doc.docId)) {
-      report.deferred += 1;
-      continue;
-    }
-    const part = modelParts.get(doc.docId) ?? emptyPart();
+    const part = emptyPart();
+    const before = prior.get(doc.docId);
+    if (before) mergeInto(part, before.part);
+    const found = modelParts.get(doc.docId);
+    if (found) mergeInto(part, found);
     /** @type {GraphMode} */
     let mode = options.run ? 'model' : 'cooccurrence';
+    /** @type {Resume | undefined} */
+    let resume;
     if (!complete) {
-      const fallback = cooccurrenceGraph(doc.chunks);
+      /** @type {DocPart} */
+      let fallback;
+      try {
+        fallback = await cooccurrenceGraphSliced(doc.chunks, slice);
+      } catch (err) {
+        if (!isAbort(err)) throw err;
+        report.cancelled = true;
+        continue;
+      }
+      const byModel = doc.chunks.filter((c) => readNow.has(c.chunk)).map((c) => c.chunk);
+      if (byModel.length) {
+        mode = 'mixed';
+        resume = { chunks: doc.chunks.length, read: byModel, entities: Math.min(part.entities.size, MAX_DOC_ENTITIES), dropped: { ...part.dropped } };
+      } else {
+        mode = 'cooccurrence';
+      }
+      if (limited) report.partial += 1;
       mergeInto(part, fallback);
       report.dropped.relations += fallback.dropped.relations;
-      mode = byModel > 0 ? 'mixed' : 'cooccurrence';
-      done += doc.chunks.length - byModel;
+      done += doc.chunks.length - byModel.length;
       progress();
     }
-    report.graphs.push(toDocGraph(doc, part, mode, now()));
+    finished.set(doc.docId, toDocGraph(doc, part, mode, now(), resume));
   }
+  report.graphs = docs.map((d) => finished.get(d.docId)).filter((g) => g !== undefined);
   return report;
 }
 
@@ -608,12 +747,13 @@ function mergeInto(target, add) {
 
 /**
  * @param {{ docId: string, name: string, textSha256: string }} doc
- * @param {DocPart} part
+ * @param {DocPart} part  a model's entities and relations first, then the co-occurrence graph's
  * @param {GraphMode} mode
  * @param {number} at
+ * @param {Resume} [resume]
  * @returns {DocGraph}
  */
-function toDocGraph(doc, part, mode, at) {
+function toDocGraph(doc, part, mode, at, resume) {
   /** @type {Map<string, Triple>} */
   const triples = new Map();
   for (const t of part.triples) {
@@ -630,6 +770,7 @@ function toDocGraph(doc, part, mode, at) {
     entities: [...part.entities.values()].slice(0, MAX_DOC_ENTITIES),
     triples: [...triples.values()].slice(0, MAX_DOC_TRIPLES),
     dropped: { ...part.dropped },
+    ...(resume ? { resume } : {}),
   };
 }
 
@@ -688,12 +829,22 @@ function isDocGraph(value) {
 }
 
 /**
+ * Where a document is: its id and text hash, and whether the workspace keeps it on this device
+ * (stored false: in memory only; missing: unknown, its result stays where it is).
+ * @typedef {{ docId: string, textSha256: string, stored?: boolean }} DocPlace
+ */
+
+/**
  * @typedef {object} GraphStore
  * @property {() => Promise<DocGraph[]>} load
  * @property {(graphs: readonly DocGraph[], options: { persist: boolean }) => Promise<void>} save
- *   persist false: in memory only (the user keeps files in memory only), and any stored copy goes
+ *   persist false: in memory only (its file is kept in memory only), and any stored copy goes
  * @property {(docIds: readonly string[]) => Promise<void>} remove
  * @property {() => Promise<void>} clear
+ * @property {(docs: readonly DocPlace[]) => Promise<{ removed: number, moved: number }>} place
+ *   puts every result where its document is: removed with a removed or changed document, in memory
+ *   only with one kept in memory only (also when the workspace already deleted the stored copy),
+ *   stored with a stored one
  */
 
 /**
@@ -703,8 +854,14 @@ function isDocGraph(value) {
  */
 export function createGraphStore(options = {}) {
   const now = options.now ?? Date.now;
-  /** @type {Map<string, DocGraph>} */
+  /** Results kept in memory only. @type {Map<string, DocGraph>} */
   const memory = new Map();
+  /**
+   * Every result this page loaded or saved, so one whose stored copy the workspace deleted (the
+   * user chose memory only) stays in memory like its document.
+   * @type {Map<string, DocGraph>}
+   */
+  const seen = new Map();
   const db = async () => {
     if (!options.openDb) return null;
     try {
@@ -713,6 +870,14 @@ export function createGraphStore(options = {}) {
     } catch {
       return null;
     }
+  };
+  /** @returns {Promise<DocGraph[]>} */
+  const loadStored = async () => {
+    const d = await db();
+    const rows = d ? /** @type {Array<{ value: unknown }>} */ (await d.getAll('settings', range.startsWith(RECORD_PREFIX)).catch(() => [])) : [];
+    const out = rows.map((r) => r.value).filter(isDocGraph);
+    for (const g of out) seen.set(g.docId, g);
+    return out;
   };
   /** @param {readonly string[]} docIds */
   const unstore = async (docIds) => {
@@ -724,16 +889,15 @@ export function createGraphStore(options = {}) {
   };
   return {
     async load() {
-      const d = await db();
-      const stored = d ? /** @type {Array<{ value: unknown }>} */ (await d.getAll('settings', range.startsWith(RECORD_PREFIX)).catch(() => [])) : [];
       /** @type {Map<string, DocGraph>} */
       const out = new Map();
-      for (const r of stored) if (isDocGraph(r.value)) out.set(r.value.docId, r.value);
+      for (const g of await loadStored()) out.set(g.docId, g);
       for (const [id, g] of memory) out.set(id, g);
       return [...out.values()];
     },
     async save(graphs, { persist }) {
       if (!graphs.length) return;
+      for (const g of graphs) seen.set(g.docId, g);
       const d = persist ? await db() : null;
       if (d) {
         for (const g of graphs) memory.delete(g.docId);
@@ -747,13 +911,40 @@ export function createGraphStore(options = {}) {
       await unstore(graphs.map((g) => g.docId)).catch(() => {});
     },
     async remove(docIds) {
-      for (const id of docIds) memory.delete(id);
+      for (const id of docIds) {
+        memory.delete(id);
+        seen.delete(id);
+      }
       await unstore(docIds);
     },
     async clear() {
-      const ids = (await this.load()).map((g) => g.docId);
+      const ids = new Set([...(await loadStored()).map((g) => g.docId), ...seen.keys(), ...memory.keys()]);
       memory.clear();
-      await unstore(ids);
+      seen.clear();
+      await unstore([...ids]);
+    },
+    async place(docs) {
+      const current = new Map(docs.map((d) => [d.docId, d]));
+      const stored = new Set((await loadStored()).map((g) => g.docId));
+      /** @type {Map<string, DocGraph>} */
+      const all = new Map([...seen, ...memory]);
+      /** @type {string[]} */
+      const gone = [];
+      /** @type {DocGraph[]} */
+      const toMemory = [];
+      /** @type {DocGraph[]} */
+      const toStore = [];
+      const canStore = Boolean(await db());
+      for (const [id, g] of all) {
+        const doc = current.get(id);
+        if (!doc || doc.textSha256 !== g.textSha256) gone.push(id);
+        else if (doc.stored === false && (stored.has(id) || !memory.has(id))) toMemory.push(g);
+        else if (doc.stored === true && canStore && memory.has(id)) toStore.push(g);
+      }
+      if (gone.length) await this.remove(gone);
+      if (toMemory.length) await this.save(toMemory, { persist: false });
+      if (toStore.length) await this.save(toStore, { persist: true });
+      return { removed: gone.length, moved: toMemory.length + toStore.length };
     },
   };
 }
@@ -916,23 +1107,24 @@ export function mergeGraphs(manual, graphs, options = {}) {
 
 /**
  * Loads the graph view's data: the entities and relations added by hand (the shared knowledge
- * base) and the results found in the workspace documents, merged. Results of documents that are
- * gone or changed are removed from the store when `docs` is known.
+ * base) and the results found in the workspace documents, merged. When `docs` is known, results of
+ * documents that are gone or changed are removed first and the others put where their documents
+ * are (GraphStore place).
  * @param {object} deps
  * @param {() => Promise<{ ok: boolean, data?: ManualEntity[] | null, error?: any }>} deps.listEntities
  * @param {() => Promise<{ ok: boolean, data?: ManualRelation[] | null, error?: any }>} deps.listRelations
  * @param {GraphStore} deps.store
- * @param {ReadonlyArray<{ docId: string, textSha256: string }> | null} deps.docs  the workspace documents; null while unknown (nothing is removed)
+ * @param {readonly DocPlace[] | null} deps.docs  the workspace documents; null while unknown (nothing is removed or moved)
  * @returns {Promise<MergedGraph>}
  */
 export async function loadMergedGraph(deps) {
-  const [entRes, relRes, graphs] = await Promise.all([deps.listEntities(), deps.listRelations(), deps.store.load().catch(() => /** @type {DocGraph[]} */ ([]))]);
-  let live = graphs;
-  if (deps.docs) {
-    const split = liveGraphs(graphs, deps.docs);
-    live = split.live;
-    if (split.stale.length) await deps.store.remove(split.stale).catch(() => {});
-  }
+  const docs = deps.docs;
+  const kept = async () => {
+    if (docs) await deps.store.place(docs).catch(() => {});
+    const graphs = await deps.store.load().catch(() => /** @type {DocGraph[]} */ ([]));
+    return docs ? liveGraphs(graphs, docs).live : graphs;
+  };
+  const [entRes, relRes, live] = await Promise.all([deps.listEntities(), deps.listRelations(), kept()]);
   const manual = entRes.ok ? { entities: entRes.data ?? [], relations: relRes.ok ? (relRes.data ?? []) : [] } : { entities: [], relations: [] };
   return { ...mergeGraphs(manual, live), manualError: entRes.ok ? null : (entRes.error ?? null) };
 }

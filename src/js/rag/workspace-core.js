@@ -14,6 +14,7 @@
 // record never points to files that are not there; a document whose files are gone is dropped.
 import { sha256Hex, validateReceipt, verifyReceipt } from '../core/receipt.js';
 import { importPublicKey } from '../core/signature.js';
+import { range } from '../store/idb.js';
 import { createFileStore } from '../store/opfs.js';
 import { BM25Index } from './bm25.js';
 import { CHUNKER, chunkText, DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE } from './chunker.js';
@@ -106,6 +107,11 @@ export class WorkspaceCoreError extends Error {
 export const KEEP_SETTING = 'workspace.keep';
 /** File store directory of the workspace. */
 export const WORKSPACE_FILES_DIR = 'workspace';
+/**
+ * Settings records that hold what was found in one document (key: prefix + document id; the
+ * knowledge graph's results). They are deleted with the document's stored copy.
+ */
+export const DERIVED_SETTINGS = Object.freeze(['graph.auto:']);
 const MAX_VERIFY_FILES = 20;
 
 /**
@@ -270,11 +276,11 @@ export function createWorkspace(options = {}) {
    * @param {string} docId
    */
   async function deleteStored(s, docId) {
-    await s.db.transaction(['docs', 'chunks', 'vectors'], 'readwrite', async (tx) => {
+    await s.db.transaction(['docs', 'chunks', 'vectors', 'settings'], 'readwrite', async (tx) => {
       await tx.delete('docs', docId);
       const chunkKeys = await tx.getAllKeysFromIndex('chunks', 'docId', docId);
       const vectorKeys = await tx.getAllKeysFromIndex('vectors', 'docId', docId);
-      await Promise.all([...chunkKeys.map((k) => tx.delete('chunks', k)), ...vectorKeys.map((k) => tx.delete('vectors', k))]);
+      await Promise.all([...chunkKeys.map((k) => tx.delete('chunks', k)), ...vectorKeys.map((k) => tx.delete('vectors', k)), ...DERIVED_SETTINGS.map((p) => tx.delete('settings', p + docId))]);
     });
     await s.files.delete(docId).catch(() => false);
     await s.files.delete(textIdOf(docId)).catch(() => false);
@@ -282,8 +288,8 @@ export function createWorkspace(options = {}) {
 
   /** @param {{ db: StoreDb, files: FileStore }} s */
   async function deleteAllStored(s) {
-    await s.db.transaction(['docs', 'chunks', 'vectors'], 'readwrite', async (tx) => {
-      await Promise.all([tx.clear('docs'), tx.clear('chunks'), tx.clear('vectors')]);
+    await s.db.transaction(['docs', 'chunks', 'vectors', 'settings'], 'readwrite', async (tx) => {
+      await Promise.all([tx.clear('docs'), tx.clear('chunks'), tx.clear('vectors'), ...DERIVED_SETTINGS.map((p) => tx.delete('settings', range.startsWith(p)))]);
     });
     for (const f of await s.files.list()) await s.files.delete(f.id).catch(() => false);
   }
@@ -549,6 +555,11 @@ export function createWorkspace(options = {}) {
     const doc = documents.get(docId);
     documents.delete(docId);
     if (store && doc?.stored) await deleteStored(store, docId);
+    else if (store) {
+      // Kept in memory only: what was found in it may still be stored.
+      const { db } = store;
+      await Promise.all(DERIVED_SETTINGS.map((p) => db.delete('settings', p + docId))).catch(() => {});
+    }
     return { removed };
   }
 

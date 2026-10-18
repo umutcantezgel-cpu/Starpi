@@ -26,7 +26,7 @@
   "status_preparing": "Preparing your files…",
   "status_up_to_date": "Your files were already read; there is nothing new to find.",
   "status_cancelled": "Stopped. The files read completely are kept.",
-  "status_deferred": "{n} more {n:file is|files are} left; find again to continue.",
+  "status_partial": "The AI model has read {n} {n:file|files} only in part so far; for now the rest shows names that appear together. Find again to continue.",
   "status_failed": "Your files could not be read. Try again.",
   "status_shared_missing": "The shared knowledge base is not available; the graph shows what was found in your files.",
   "type_organization": "Organization",

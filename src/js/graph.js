@@ -10,7 +10,8 @@ import { byId, onAction, setHidden, setHtml } from './dom.js';
 import { appModelRunner, createGraphStore, extractDocs, loadMergedGraph, needsReading, readDocChunks } from './graph-extract.js';
 import { hasKey, onLocaleChange, setText, t } from './i18n/index.js';
 import { describeDataError } from './library.js';
-import { getDocumentText, listWorkspace, restoreWorkspace, workspaceStatus } from './rag/workspace.js';
+import { providerState, refreshProviders } from './providers.js';
+import { getDocumentText, listWorkspace, onWorkspaceChange, restoreWorkspace, workspaceStatus } from './rag/workspace.js';
 import { escapeHtml } from './render.js';
 import { getMode } from './state.js';
 import { appDb } from './store/schema.js';
@@ -485,7 +486,7 @@ function findStatusText() {
   if (lastRun?.kind === 'failed') parts.push(t('graph.status_failed'));
   if (lastRun?.kind === 'up_to_date') parts.push(t('graph.status_up_to_date'));
   if (lastRun?.kind === 'report' && lastRun.report.cancelled) parts.push(t('graph.status_cancelled'));
-  if (lastRun?.kind === 'report' && lastRun.report.deferred) parts.push(t('graph.status_deferred', { n: lastRun.report.deferred }));
+  if (lastRun?.kind === 'report' && lastRun.report.partial) parts.push(t('graph.status_partial', { n: lastRun.report.partial }));
   if (found && found.docs > 0) {
     parts.push(t('graph.status_summary', { docs: found.docs, entities: found.entities, relations: found.relations }));
     const { model, cooccurrence, mixed } = found.modes;
@@ -515,7 +516,8 @@ function renderFindStatus() {
 /**
  * Reads the workspace documents that have no current result. A model reads them when one is set up
  * (after the user agreed, when passages would leave this device); in on-device mode or offline only
- * a model on this device may, and without one names that appear together are linked.
+ * a model on this device may, and without one names that appear together are linked. A document
+ * the model read only in part is continued where it stopped.
  * @param {AbortSignal} signal
  * @returns {Promise<FindOutcome | null>}  null: the user declined
  */
@@ -523,18 +525,20 @@ async function runFind(signal) {
   await restoreWorkspace();
   const docs = listWorkspace().filter((d) => d.chunks > 0);
   if (!docs.length) return { kind: 'no_files' };
+  // The AI layer is set up once the page is idle; a find right after loading waits for it.
+  if (!providerState().ready) await refreshProviders();
   const deviceOnly = getMode() === 'client' || navigator.onLine === false;
   const runner = await appModelRunner({ deviceOnly }).catch(() => null);
   const stored = new Map((await store.load()).map((g) => [g.docId, g]));
   const pending = docs.filter((d) => needsReading(d, stored.get(d.docId), Boolean(runner)));
   if (!pending.length) return { kind: 'up_to_date' };
   if (runner?.leavesDevice && !window.confirm(t('graph.confirm_model', { n: pending.length }))) return null;
-  /** @type {Array<{ docId: string, name: string, textSha256: string, chunks: import('./graph-extract.js').GraphChunk[] }>} */
+  /** @type {import('./graph-extract.js').ExtractDoc[]} */
   const withChunks = [];
   for (const d of pending) {
     if (signal.aborted) break;
     const chunks = await readDocChunks(d, { openDb: appDb, text: getDocumentText });
-    if (chunks.length) withChunks.push({ docId: d.docId, name: d.name, textSha256: d.textSha256, chunks });
+    if (chunks.length) withChunks.push({ docId: d.docId, name: d.name, textSha256: d.textSha256, chunks, previous: stored.get(d.docId) ?? null });
   }
   const report = await extractDocs(withChunks, {
     run: runner?.run ?? null,
@@ -545,10 +549,26 @@ async function runFind(signal) {
     },
   });
   if (signal.aborted) report.cancelled = true;
-  // Kept on this device like the files: in memory only when the user chose that.
-  const ws = workspaceStatus();
-  await store.save(report.graphs, { persist: ws.persistent && ws.keep !== false });
+  // Kept like their files: stored with a stored file, in memory only with one kept in memory only,
+  // and not at all for a file removed (or changed) while the run read it.
+  const now = new Map(listWorkspace().map((d) => [d.docId, d]));
+  const current = report.graphs.filter((g) => now.get(g.docId)?.textSha256 === g.textSha256);
+  const isStored = (/** @type {import('./graph-extract.js').DocGraph} */ g) => now.get(g.docId)?.stored === true;
+  await store.save(current.filter(isStored), { persist: true });
+  await store.save(current.filter((g) => !isStored(g)), { persist: false });
   return { kind: 'report', report };
+}
+
+/**
+ * Keeps the results with their files while the workspace changes: a removed file takes its
+ * result along, one kept in memory only keeps it in memory only. An open graph shows the change.
+ * @param {import('./rag/workspace.js').WorkspaceDocument[]} docs
+ */
+async function followWorkspace(docs) {
+  // Without a running workspace the list says nothing about the files kept on this device.
+  if (!workspaceStatus().ready) return;
+  const { removed, moved } = await store.place(docs);
+  if (removed + moved > 0 && !finding && !byId('tab-graph')?.classList.contains('hidden')) await loadKnowledgeGraph();
 }
 
 async function findInFiles() {
@@ -580,6 +600,7 @@ async function clearFound() {
 export function initGraph() {
   installFindControls();
   renderFindStatus();
+  onWorkspaceChange((docs) => void followWorkspace(docs).catch((err) => console.warn('[starpi] the knowledge graph could not follow the workspace', err)));
   onAction('close-entity-modal', () => closeEntityModal());
   onAction('save-entity', () => saveEntity());
   onAction('select-entity', (el) => selectEntity(el.dataset.arg ?? ''));

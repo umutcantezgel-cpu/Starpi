@@ -26,7 +26,7 @@
   "status_preparing": "Ihre Dateien werden vorbereitet …",
   "status_up_to_date": "Ihre Dateien wurden schon gelesen; es gibt nichts Neues zu finden.",
   "status_cancelled": "Angehalten. Die vollständig gelesenen Dateien bleiben erhalten.",
-  "status_deferred": "{n} weitere {n:Datei ist|Dateien sind} noch offen; suchen Sie erneut, um fortzufahren.",
+  "status_partial": "Das KI-Modell hat {n} {n:Datei|Dateien} erst teilweise gelesen; für den Rest zeigt der Graph vorerst Namen, die gemeinsam vorkommen. Suchen Sie erneut, um fortzufahren.",
   "status_failed": "Ihre Dateien konnten nicht gelesen werden. Versuchen Sie es erneut.",
   "status_shared_missing": "Die gemeinsame Wissensdatenbank ist nicht verfügbar; der Graph zeigt, was in Ihren Dateien gefunden wurde.",
   "type_organization": "Organisation",
