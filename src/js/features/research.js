@@ -10,8 +10,9 @@
 //   - prefillResearch(question, { focus, origin }) opens the Research tab with the question in its
 //     box, for the person to adjust and start;
 //   - a button with data-action="research-this" does either: data-question (required), data-focus
-//     (a document the question is about), data-origin ('chat' | 'library') and data-start="1" to
-//     start at once instead of prefilling. A button inside an open dialog closes it first.
+//     (a document the question is about), data-origin ('chat' | 'library'), data-conversation and
+//     data-node (the chat turn it belongs to) and data-start="1" to start at once instead of
+//     prefilling. A button inside an open dialog closes it first.
 //   - onResearchChange(fn) reports every change of the job list.
 import { APP_VERSION } from '../config.js';
 import { getLocale } from '../i18n/index.js';
@@ -99,7 +100,7 @@ async function researchThis(btn) {
   const dialog = /** @type {HTMLElement | null} */ (btn.closest('[role="dialog"]'));
   if (dialog) shell?.closeDialog(dialog);
   if (btn.dataset.start === '1') {
-    const id = await startResearch({ question, origin, scope: { focus } });
+    const id = await startResearch({ question, origin, scope: { focus, conversationId: btn.dataset.conversation || null, nodeId: btn.dataset.node || null } });
     if (origin === 'chat') shell?.openChatAside('research');
     else {
       shell?.switchTab('research');
