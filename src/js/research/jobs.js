@@ -288,7 +288,7 @@ export function createResearchJobs(deps) {
     job.progress = { step: 'plan', round: 0, sources: 0 };
     void save(job, 'start');
     const progress = (/** @type {ResearchProgress} */ p, /** @type {{ sources?: SourcesPart, web?: WebPart | null } | undefined} */ parts) => {
-      if (ctrl.signal.aborted || jobs.get(job.id) !== job) return;
+      if (disposed || ctrl.signal.aborted || jobs.get(job.id) !== job) return;
       job.progress = p;
       if (parts?.sources) job.parts = { ...job.parts, sources: parts.sources };
       if (parts && 'web' in parts) job.parts = { ...job.parts, web: parts.web ?? null };
@@ -306,6 +306,8 @@ export function createResearchJobs(deps) {
         job.unread = true;
       })
       .catch((err) => {
+        // The page is going away: the record stays 'running', and the next runner finds it stale.
+        if (disposed) return;
         if (ctrl.signal.aborted || isAbort(err)) {
           job.status = 'cancelled';
           stopParts(job);
@@ -317,6 +319,7 @@ export function createResearchJobs(deps) {
       })
       .finally(() => {
         controllers.delete(job.id);
+        if (disposed) return;
         job.progress = null;
         job.heartbeatAt = now();
         // A job removed meanwhile stays removed.
@@ -511,7 +514,10 @@ export function createResearchJobs(deps) {
     },
     /** Waits for every pending write (tests and shutdown). */
     settle: () => writes.catch(() => {}),
-    /** Stops this tab's engine: aborts nothing of the store, releases the lock, stops the heartbeat. */
+    /**
+     * Stops this tab's engine as a closing page does: its running jobs stop without a further
+     * write (the next runner finds them stale), the lock goes to the next tab, the heartbeat ends.
+     */
     dispose() {
       disposed = true;
       runner = false;
