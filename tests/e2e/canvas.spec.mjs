@@ -62,6 +62,17 @@ async function routeAnthropic(page) {
 /** @param {import('@playwright/test').Page} page */
 const answers = (page) => page.locator('#chatMessages .message-row[data-role="assistant"]');
 
+/**
+ * On a phone the side panel covers the chat: it is closed to go back to the conversation.
+ * @param {import('@playwright/test').Page} page
+ * @param {boolean} isMobile
+ */
+async function backToChat(page, isMobile) {
+  if (!isMobile) return;
+  await page.locator('#chat-aside [data-action="close-chat-aside"]').click();
+  await expect(page.locator('#chat-aside')).toBeHidden();
+}
+
 /** @param {import('@playwright/test').Page} page @param {string} text */
 async function ask(page, text) {
   await page.fill('#chatInput', text);
@@ -96,7 +107,7 @@ test.afterEach(({ diagnostics }) => {
 });
 
 test.describe('canvas', () => {
-  test('opens a block, keeps model revisions and an AI edit as versions, previews and survives a reload', async ({ page, diagnostics: _diagnostics }) => {
+  test('opens a block, keeps model revisions and an AI edit as versions, previews and survives a reload', async ({ page, isMobile, diagnostics: _diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     const bodies = await mockOpenRouter(page, (q) => (/in the canvas: say hello/.test(q) ? 'Sure:\n\n```html\nHello there\n```' : /blue/.test(q) ? reply(PAGE_V2) : reply(PAGE_V1)));
     await page.goto('/');
@@ -115,6 +126,7 @@ test.describe('canvas', () => {
     await expect(canvas.locator('[data-canvas-versions] option')).toHaveCount(1);
 
     // A later answer revises the page: it becomes version 2 of the same document.
+    await backToChat(page, isMobile);
     await ask(page, 'Make the body blue');
     await settled(page);
     await answers(page).last().locator('[data-action="canvas-code"]').click();
