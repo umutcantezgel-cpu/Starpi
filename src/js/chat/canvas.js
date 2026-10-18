@@ -568,7 +568,8 @@ async function editWithAi() {
     const replacement = extractReplacement(nodeText(res.node));
     const content = end > start ? replaceRange(base, start, end, replacement) : replacement;
     const model = res.node.model ? String(res.node.model) : '';
-    const current = state.artifact?.id === artifact.id ? state.artifact : artifact;
+    // The newest record of the document (the canvas may show another one by now).
+    const current = state.artifact?.id === artifact.id ? state.artifact : ((await state.store.get(artifact.id)) ?? artifact);
     const next = withVersion(current, { content, at: Date.now(), by: 'ai', nodeId: res.node.id, ...(model ? { model } : {}) });
     state.artifact = await state.store.put(next.artifact);
     state.index = next.index;

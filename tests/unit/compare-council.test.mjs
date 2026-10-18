@@ -175,6 +175,8 @@ describe('compare in the side panel', () => {
     assert.equal(answer.querySelector('[data-extra="compare"]')?.getAttribute('aria-label'), 'Compare models');
     assert.equal(answer.querySelector('[data-extra="council"]')?.getAttribute('aria-label'), 'Ask the council');
     assert.equal(rows('user').at(-1)?.querySelector('[data-extra="compare"]'), null, 'questions have neither');
+    const speaker = answer.querySelector('[data-action="voice-read-aloud"]');
+    assert.ok(speaker?.classList.contains('px-1.5') && !speaker.classList.contains('btn-icon'), 'the speaker button has the size of the bar\'s other buttons');
     const tools = [...document.querySelectorAll('#toolsMenuList [data-action="run-composer-tool"]')].map((b) => b.getAttribute('data-arg'));
     assert.deepEqual(tools, ['compare', 'council']);
   });
