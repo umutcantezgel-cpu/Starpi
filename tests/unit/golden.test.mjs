@@ -95,7 +95,7 @@ describe(`source check pins (${GROUNDING.id} ${GROUNDING.version})`, () => {
         ...(report.relations ?? []).map((r) => `${item.id}|rel|${r.kind}|${r.verdict}|${r.sentences.join(',')}|${r.text}`),
       ];
     });
-    assert.equal(lines.length, 3256);
-    assert.equal(sha(lines.join('\n')), 'b216e21b56baa618b5e41d666f117799486c4bfc2eca1786c627f5d3e533fb9f');
+    assert.equal(lines.length, 3275);
+    assert.equal(sha(lines.join('\n')), 'e8b992111eb7cea703f9fa8ff117e4d57c441b84acb59c0b02de93ee60ffd51d');
   });
 });
