@@ -6,7 +6,12 @@
 import { LIMITS, SUPABASE_ANON_KEY, SUPABASE_URL, TIMEOUTS_MS } from './config.js';
 import { withTimeoutSignal } from './signals.js';
 
-/** @typedef {'timeout' | 'network' | 'missing_schema' | 'missing_function' | 'forbidden' | 'not_found' | 'auth_disabled' | 'not_signed_in' | 'unknown'} ErrorKind */
+/**
+ * conflict: a unique row exists already, or a stale write (the chat sync's revision guard);
+ * invalid_code / email_taken / no_account / email_disabled / invalid_email / rate_limited: answers
+ * of the email sign-in the chat sync uses to reach one account from several browsers.
+ * @typedef {'timeout' | 'network' | 'missing_schema' | 'missing_function' | 'forbidden' | 'not_found' | 'auth_disabled' | 'not_signed_in' | 'conflict' | 'invalid_code' | 'email_taken' | 'no_account' | 'email_disabled' | 'invalid_email' | 'rate_limited' | 'unknown'} ErrorKind
+ */
 /** @typedef {{ kind: ErrorKind, message: string, code?: string }} DataError */
 /**
  * @template T
@@ -36,6 +41,8 @@ import { withTimeoutSignal } from './signals.js';
  */
 
 /**
+ * A chat message as the chat view handles it (also the row shape of the 2.x chat_history table,
+ * which the app no longer writes).
  * @typedef {object} ChatRow
  * @property {'user' | 'assistant'} role
  * @property {string} content
@@ -177,6 +184,14 @@ export function classifyError(err) {
   if (code === 'anonymous_provider_disabled' || /anonymous sign-ins are disabled/i.test(message)) {
     return { kind: 'auth_disabled', message, code };
   }
+  // Email sign-in (auth error codes), before the generic 403 / 429 below.
+  if (code === 'otp_expired' || code === 'invalid_otp' || /token has expired or is invalid/i.test(message)) return { kind: 'invalid_code', message, code };
+  if (code === 'email_exists' || code === 'user_already_exists' || code === 'identity_already_exists') return { kind: 'email_taken', message, code };
+  if (code === 'otp_disabled' || code === 'signup_disabled' || code === 'user_not_found') return { kind: 'no_account', message, code };
+  if (code === 'email_provider_disabled') return { kind: 'email_disabled', message, code };
+  if (code === 'email_address_invalid' || code === 'email_address_not_authorized') return { kind: 'invalid_email', message, code };
+  if (code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit' || e?.status === 429) return { kind: 'rate_limited', message, code };
+  if (code === '23505' || code === '40001' || e?.status === 409) return { kind: 'conflict', message, code };
   if (code === 'PGRST202') return { kind: 'missing_function', message, code };
   if (code === '42P01' || code === 'PGRST205' || code === '42703' || code === 'PGRST204') {
     return { kind: 'missing_schema', message, code };
@@ -583,51 +598,190 @@ export function insertEntity(input) {
 }
 
 // ---------------------------------------------------------------------------
-// Chat history (only used when canSyncChats() is true)
+// End-to-end encrypted chat sync (sync/sync.js)
 // ---------------------------------------------------------------------------
+// The rows hold opaque row ids, revision numbers, IVs and ciphertext (base64), and the key envelope
+// holds a key wrapped with the user's passphrase; the browser encrypts before anything is sent.
+// Row level security limits every call to the signed-in user's rows. The 2.x plaintext chat_history
+// table is never written; only deleteOwnChats() / deleteChatSession() above still remove its rows.
+
+/** @typedef {import('./sync/sync.js').SyncAccount} SyncAccount */
+/** @typedef {import('./sync/sync.js').RowRevision} RowRevision */
+/** @typedef {import('./sync/sync.js').RemoteRow} RemoteRow */
+/** @typedef {import('./sync/crypto.js').KeyEnvelope} KeyEnvelope */
+
+/** Rows per page when listing revisions (below PostgREST's usual 1000-row cap). */
+const SYNC_PAGE_ROWS = 1000;
+const EMAIL_PATTERN = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,63}$/;
+const CODE_PATTERN = /^\d{6,10}$/;
 
 /**
- * @param {string} sessionId
- * @param {ChatRow} message
- * @returns {Promise<Result<null>>}
+ * The user of the stored session: anonymous, or with a confirmed email address.
+ * @returns {Promise<Result<SyncAccount>>}
  */
-export function insertChatMessage(sessionId, message) {
-  return run((sb) =>
-    sb.from('chat_history').insert({
-      session_id: sessionId,
-      role: message.role,
-      content: message.content,
-      sources: message.sources,
-      metadata: message.metadata,
-    }),
-  );
-}
-
-/**
- * The newest messages of a session, oldest first.
- * @param {string} sessionId
- * @returns {Promise<Result<ChatRow[]>>}
- */
-export async function loadChatSession(sessionId) {
-  /** @type {Result<ChatRow[]>} */
-  const res = await run((sb) =>
-    sb
-      .from('chat_history')
-      .select('role, content, sources, metadata, created_at')
-      .eq('session_id', sessionId)
-      .order('created_at', { ascending: false })
-      .limit(LIMITS.localChatMessagesPerSession),
-  );
-  return res.ok ? { ok: true, data: [...(res.data ?? [])].reverse() } : res;
-}
-
-/** @returns {Promise<Result<number>>} */
-export async function countChatMessages() {
+export async function syncAccount() {
   try {
-    const { count, error } = await (await client()).from('chat_history').select('id', { count: 'exact', head: true });
+    const { data, error } = await (await client()).auth.getSession();
     if (error) return { ok: false, error: classifyError(error) };
-    return { ok: true, data: count ?? 0 };
+    const user = data.session?.user;
+    return { ok: true, data: { userId: user?.id ?? null, email: user?.email || null, anonymous: user ? user.is_anonymous === true || !user.email : true } };
   } catch (err) {
     return { ok: false, error: classifyError(err) };
   }
+}
+
+/** @returns {Promise<string | null>} */
+async function sessionUserId() {
+  const { data } = await (await client()).auth.getSession();
+  return data.session?.user?.id ?? null;
+}
+
+/**
+ * The account's wrapped sync key, or null when sync was never set up (or was turned off).
+ * @returns {Promise<Result<KeyEnvelope | null>>}
+ */
+export async function getSyncKeyEnvelope() {
+  const res = await run((sb) => sb.from('chat_sync_keys').select('key_id, kdf, iterations, salt, iv, wrapped_key').limit(1).maybeSingle());
+  if (!res.ok) return res;
+  const row = /** @type {Record<string, unknown> | null} */ (res.data);
+  if (!row) return { ok: true, data: null };
+  return {
+    ok: true,
+    data: { keyId: String(row.key_id), kdf: /** @type {'PBKDF2-SHA256'} */ (row.kdf), iterations: Number(row.iterations), salt: String(row.salt), iv: String(row.iv), wrappedKey: String(row.wrapped_key) },
+  };
+}
+
+/**
+ * Stores the wrapped sync key once; 'exists' when the account has one already.
+ * @param {KeyEnvelope} envelope
+ * @returns {Promise<Result<'created' | 'exists'>>}
+ */
+export async function putSyncKeyEnvelope(envelope) {
+  const res = await run((sb) =>
+    sb.from('chat_sync_keys').insert({ key_id: envelope.keyId, kdf: envelope.kdf, iterations: envelope.iterations, salt: envelope.salt, iv: envelope.iv, wrapped_key: envelope.wrappedKey }),
+  );
+  if (res.ok) return { ok: true, data: 'created' };
+  return res.error.kind === 'conflict' ? { ok: true, data: 'exists' } : res;
+}
+
+/**
+ * Row ids and revisions of every synced conversation (no ciphertext).
+ * @returns {Promise<Result<RowRevision[]>>}
+ */
+export async function listSyncRevisions() {
+  /** @type {RowRevision[]} */
+  const all = [];
+  for (let from = 0; ; from += SYNC_PAGE_ROWS) {
+    const res = await run((sb) => sb.from('chat_sync').select('conv_id, rev').order('conv_id', { ascending: true }).range(from, from + SYNC_PAGE_ROWS - 1));
+    if (!res.ok) return res;
+    const rows = /** @type {Array<{ conv_id: string, rev: number | string }>} */ (res.data ?? []);
+    for (const r of rows) all.push({ rowId: String(r.conv_id), rev: Number(r.rev) });
+    if (rows.length < SYNC_PAGE_ROWS) return { ok: true, data: all };
+  }
+}
+
+/**
+ * The encrypted rows with these ids (those that exist).
+ * @param {string[]} rowIds
+ * @returns {Promise<Result<RemoteRow[]>>}
+ */
+export async function fetchSyncRows(rowIds) {
+  if (rowIds.length === 0) return { ok: true, data: [] };
+  const res = await run((sb) => sb.from('chat_sync').select('conv_id, rev, iv, ciphertext').in('conv_id', rowIds));
+  if (!res.ok) return res;
+  const rows = /** @type {Array<{ conv_id: string, rev: number | string, iv: string, ciphertext: string }>} */ (res.data ?? []);
+  return { ok: true, data: rows.map((r) => ({ rowId: String(r.conv_id), rev: Number(r.rev), iv: String(r.iv), ciphertext: String(r.ciphertext) })) };
+}
+
+/**
+ * Writes an encrypted row as the revision after `baseRev` (0: a new row). 'conflict' when the row
+ * exists already or has moved past `baseRev`.
+ * @param {RemoteRow} row
+ * @param {number} baseRev
+ * @returns {Promise<Result<'written' | 'conflict'>>}
+ */
+export async function writeSyncRow(row, baseRev) {
+  const values = { rev: row.rev, iv: row.iv, ciphertext: row.ciphertext };
+  const res =
+    baseRev === 0
+      ? await run((sb) => sb.from('chat_sync').insert({ conv_id: row.rowId, ...values }))
+      : await run((sb) => sb.from('chat_sync').update(values).eq('conv_id', row.rowId).eq('rev', baseRev).select('conv_id'));
+  if (!res.ok) return res.error.kind === 'conflict' ? { ok: true, data: 'conflict' } : res;
+  if (baseRev === 0) return { ok: true, data: 'written' };
+  return { ok: true, data: Array.isArray(res.data) && res.data.length > 0 ? 'written' : 'conflict' };
+}
+
+/**
+ * Deletes the account's sync key and then all of its encrypted rows. The key goes first, so other
+ * browsers stop syncing before the rows are gone (instead of writing them again).
+ * @returns {Promise<Result<null>>}
+ */
+export async function deleteSyncData() {
+  let uid;
+  try {
+    uid = await sessionUserId();
+  } catch (err) {
+    return { ok: false, error: classifyError(err) };
+  }
+  if (!uid) return { ok: false, error: { kind: 'not_signed_in', message: 'No session' } };
+  const key = await run((sb) => sb.from('chat_sync_keys').delete().eq('user_id', uid));
+  if (!key.ok) return key;
+  return run((sb) => sb.from('chat_sync').delete().eq('user_id', uid));
+}
+
+/**
+ * Sends a one-time code to an email address. 'link' adds the address to the account this browser
+ * is signed in to (its user id and synced data stay); 'sign_in' signs this browser in to the
+ * account that already has the address, without creating one.
+ * @param {string} email
+ * @param {'link' | 'sign_in'} purpose
+ * @returns {Promise<Result<null>>}
+ */
+export async function sendEmailCode(email, purpose) {
+  const address = email.trim();
+  if (!EMAIL_PATTERN.test(address) || address.length > 254) return { ok: false, error: { kind: 'invalid_email', message: 'Not an email address' } };
+  try {
+    const sb = await client();
+    const { error } = purpose === 'link' ? await sb.auth.updateUser({ email: address }) : await sb.auth.signInWithOtp({ email: address, options: { shouldCreateUser: false } });
+    return error ? { ok: false, error: classifyError(error) } : { ok: true, data: null };
+  } catch (err) {
+    return { ok: false, error: classifyError(err) };
+  }
+}
+
+/**
+ * Confirms a code from sendEmailCode(). After 'sign_in' this browser works as that account.
+ * @param {string} email
+ * @param {string} code
+ * @param {'link' | 'sign_in'} purpose
+ * @returns {Promise<Result<SyncAccount>>}
+ */
+export async function verifyEmailCode(email, code, purpose) {
+  const token = code.replace(/\s+/g, '');
+  if (!CODE_PATTERN.test(token)) return { ok: false, error: { kind: 'invalid_code', message: 'Not a code' } };
+  try {
+    const { error } = await (await client()).auth.verifyOtp({ email: email.trim(), token, type: purpose === 'link' ? 'email_change' : 'email' });
+    if (error) return { ok: false, error: classifyError(error) };
+  } catch (err) {
+    return { ok: false, error: classifyError(err) };
+  }
+  updateConnection({ signedIn: true, authError: null });
+  return syncAccount();
+}
+
+/**
+ * Signs this browser out of its account and starts a new anonymous session.
+ * @returns {Promise<Result<null>>}
+ */
+export async function signOutAccount() {
+  try {
+    const { error } = await (await client()).auth.signOut({ scope: 'local' });
+    if (error) return { ok: false, error: classifyError(error) };
+  } catch (err) {
+    return { ok: false, error: classifyError(err) };
+  }
+  updateConnection({ signedIn: false });
+  connectPromise = null;
+  await connect();
+  return { ok: true, data: null };
 }

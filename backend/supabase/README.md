@@ -13,6 +13,7 @@ chat history and the RPCs used by the browser and the library publisher
 | `migrations/20260924000000_lock_published_rows.sql` | Upgrade 2 (needs upgrade 1): published rows read-only for browser roles, `brain_settings` service role only, size limits for browser writes. Idempotent. |
 | `migrations/20260924120000_search_knowledge_shared_terms.sql` | Upgrade 3 (needs upgrades 1 and 2): `search_knowledge` answers questions in natural language; when no row contains every term it returns rows that share at least two. Idempotent. |
 | `migrations/20261101000000_embedding_384.sql` | Upgrade 4, optional (needs upgrades 1 to 3): `knowledge_sections.embedding_384 vector(384)` with an HNSW index, `match_knowledge_vector_384` for ranking the visible sections by vector (anon may call it), and `ingest_document_atomic` storing `embedding_384`. Without it the app searches by keywords only. Idempotent. |
+| `migrations/20261102000000_chat_sync.sql` | Upgrade 5, optional (needs only the Supabase auth schema): `chat_sync` and `chat_sync_keys` for the end-to-end encrypted chat sync, owner-only RLS, a revision guard. Without it conversations stay on each device. Idempotent. |
 | `schema.sql` | Kept for old links: includes `full_schema.sql` when run with psql. |
 | `apply_migration.py` | Applies `full_schema.sql`, given files or all migrations (in file-name order) to `DATABASE_URL`. |
 | `tests/` | Local PostgreSQL tests for RLS, privileges, RPCs, size limits and idempotency (`run_rls_tests.sh`). |
@@ -32,10 +33,15 @@ tests with `pg_dump`).
 2. Recommended for anonymous sign-ins: CAPTCHA protection (*Authentication > Attack Protection*)
    and a sensible rate limit for anonymous sign-ins (*Authentication > Rate Limits*).
    Every sign-in creates a row in `auth.users`.
-3. The `vector` extension must live in schema `public` (it does in the live
+3. Optional, for the chat sync in more than one browser: *Authentication > Sign In / Providers > Email*
+   on, and the *Magic Link* and *Change Email Address* templates showing the one-time code
+   (`{{ .Token }}`). A browser adds an address to its anonymous account with a code, another
+   browser signs in to that account with a code; the app never creates accounts this way
+   (`shouldCreateUser: false`). Sync within one browser needs none of this.
+4. The `vector` extension must live in schema `public` (it does in the live
    project; `full_schema.sql` and `20260923000000` check this and stop with a
    clear error otherwise).
-4. Run the SQL as the owner of the Starpi tables (`postgres`, the default in
+5. Run the SQL as the owner of the Starpi tables (`postgres`, the default in
    the SQL editor and for the database connection string). Check with
    `select tablename, tableowner from pg_tables where tablename like 'knowledge_%' or tablename = 'chat_history';`
 
@@ -49,6 +55,7 @@ Take a backup of the Starpi tables first (see [Rollback](#rollback)).
 2. `migrations/20260924000000_lock_published_rows.sql`
 3. `migrations/20260924120000_search_knowledge_shared_terms.sql`
 4. `migrations/20261101000000_embedding_384.sql` (optional, for vector ranking)
+5. `migrations/20261102000000_chat_sync.sql` (optional, for the encrypted chat sync)
 
 - SQL editor: paste and run each file, in this order.
 - psql:
@@ -160,6 +167,34 @@ changed functions and privileges immediately.
 - Browser roles write `embedding_384` under the same policies as the other
   columns: only on sections of their own private documents.
 
+`20261102000000` (optional):
+
+- `chat_sync (user_id, conv_id, rev, iv, ciphertext, updated_at)`, primary key
+  `(user_id, conv_id)`: one row per synced conversation. The browser encrypts the
+  conversation (AES-GCM-256) before sending it; `conv_id` is not the conversation id but
+  an HMAC of it under the user's sync key (32 base64url characters), `iv` and `ciphertext`
+  are base64. CHECK constraints refuse anything else (a readable id, plain text, an IV of
+  another size, more than 2800000 characters of ciphertext), so a row can only ever hold
+  opaque data.
+- `chat_sync_keys (user_id, key_id, kdf, iterations, salt, iv, wrapped_key, created_at)`:
+  one row per user with the sync key wrapped by a key the browser derives from the user's
+  passphrase (`PBKDF2-SHA256`, 600000 to 10000000 iterations, 16-byte salt). The passphrase
+  never leaves the browser, and nobody with database access can read the conversations
+  without it (a weak passphrase can still be guessed offline, which is why the app asks for
+  at least 12 characters). The row is replaced by delete + insert, never updated.
+- Both tables: owner only (`user_id = auth.uid()`, which defaults to the caller), nothing for
+  `anon`; `on delete cascade` from `auth.users`. An anonymous user that later adds an email
+  address keeps its user id and therefore its rows.
+- `chat_sync_guard` (trigger, `SECURITY INVOKER`, not callable through the API) keeps
+  `user_id` and `conv_id` of a row fixed, lets `rev` only grow (a stale write fails with
+  SQLSTATE `40001`) and sets `updated_at` to the server time. The browser writes a revision
+  with `... where conv_id = $1 and rev = $base`, so a write that builds on an old revision
+  changes nothing, and the browser merges the newer row first.
+- Turning sync off with deletion removes the key row first and then the rows, so other
+  browsers stop syncing instead of writing the conversations back. When the rows cannot be
+  deleted after the key, the browser keeps retrying the row delete with every sync until it
+  succeeds (owner-only `delete` needs no key).
+
 ## Schema
 
 Knowledge base and knowledge graph (columns of the canonical `full_schema.sql`; databases
@@ -270,6 +305,8 @@ publisher (bypasses RLS). "own" means `owner_id = auth.uid()`; "visible" means
 | `knowledge_entities` | SELECT public rows | same as documents | all rows, all DML |
 | `knowledge_relations` | SELECT public rows | same as documents; both endpoint entities must be visible to the writer | all rows, all DML |
 | `chat_history` | nothing | SELECT / INSERT / DELETE own rows; no UPDATE | all rows, all DML |
+| `chat_sync` (optional) | nothing | SELECT / INSERT / UPDATE / DELETE own rows (`user_id = auth.uid()`); revisions only grow | all rows, all DML |
+| `chat_sync_keys` (optional) | nothing | SELECT / INSERT / DELETE own row; no UPDATE | all rows, all DML |
 | `brain_settings` | nothing | nothing | all DML |
 
 | Function | anon | authenticated | service_role | Notes |
@@ -284,7 +321,7 @@ All five functions are `SECURITY INVOKER` with `search_path = ''`, so RLS
 applies to the caller and results only contain visible rows. Only the service
 role may publish (`is_public = true`), and published rows are read-only for
 every browser role. No policy is unconditional. Deleting a user from `auth.users`
-deletes their chat history and leaves their knowledge rows private without an
+deletes their chat history and synced conversations and leaves their knowledge rows private without an
 owner (`on delete set null`), i.e. visible only to the service role.
 
 How a browser request is decided, per table and for the functions and size limits:

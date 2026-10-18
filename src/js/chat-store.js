@@ -4,11 +4,13 @@
 // conversation id, and every stored message continues that conversation's active thread. The store
 // loads on first use, together with the one-time move of the chats 2.x kept in localStorage.
 //
-// Sync is off in this version: CHAT_SYNC_ENABLED stays false until end-to-end encrypted sync
-// replaces the plaintext chat table. The code behind the flag is kept for that work. Deleting still
-// removes the messages an earlier version synced. The data layer (supabase.js) is loaded only for
-// that, so this module and the conversation list do not depend on it.
-import { formatNumber, setText } from './i18n/index.js';
+// Conversations sync end-to-end encrypted (sync/sync.js), never in plaintext: the 2.x plaintext
+// chat table is no longer written or read (CHAT_SYNC_ENABLED stays false). The sync follows the
+// conversation store by itself; it binds a small hook here (bindChatSync) for the sync line in
+// Settings and so that deleting a chat also deletes it from the sync. Deleting still removes the
+// messages an earlier version stored in the plaintext table; the data layer (supabase.js) is loaded
+// only for that, so this module and the conversation list do not depend on it.
+import { setText } from './i18n/index.js';
 import { STORAGE_KEYS } from './config.js';
 import { byId } from './dom.js';
 import { readLocal, writeLocal } from './storage.js';
@@ -16,13 +18,40 @@ import { readLocal, writeLocal } from './storage.js';
 /** @typedef {import('./supabase.js').ChatRow} ChatRow */
 /** @typedef {import('./chat/store.js').ChatStore} ChatStore */
 
-/** Plaintext chat sync. Stays false until end-to-end encrypted sync lands. */
+/** The plaintext chat sync of 2.x. Always false: conversations sync end-to-end encrypted instead. */
 export const CHAT_SYNC_ENABLED = false;
+
+/**
+ * What the end-to-end encrypted sync offers this module (sync/service.js binds it when sync runs).
+ * @typedef {object} ChatSyncHook
+ * @property {() => ({ key: string, params?: Record<string, string> } | null)} statusLine  the sync line in Settings; null while sync is off
+ * @property {(deleted: string[]) => Promise<boolean>} flush  syncs now after deleting these conversations; false when that failed or one of them came back (another browser added messages to it)
+ */
+
+/** @type {ChatSyncHook | null} */
+let syncHook = null;
+
+/**
+ * Binds the encrypted sync (null unbinds it).
+ * @param {ChatSyncHook | null} hook
+ */
+export function bindChatSync(hook) {
+  syncHook = hook;
+  void refreshSyncStatus();
+}
+
+/**
+ * Whether conversations of this browser are synced (end-to-end encrypted) right now, for texts that
+ * say where the conversation is kept.
+ */
+export function chatSyncActive() {
+  return Boolean(syncHook?.statusLine());
+}
 
 /** @type {Promise<typeof import('./supabase.js')> | null} */
 let dataLayer = null;
 
-/** The data layer, for the chat sync and for deleting synced messages; loaded on first use. */
+/** The data layer, for deleting the messages 2.x synced; loaded on first use. */
 function loadDataLayer() {
   dataLayer ??= import('./supabase.js').catch((err) => {
     dataLayer = null;
@@ -187,36 +216,12 @@ async function writeMessage(sid, message, opts) {
     const store = await m.openChatStore();
     if (deletedSessions.has(sid)) return;
     const mode = message.metadata?.chat_mode === 'free' ? 'free' : 'grounded';
+    // The encrypted sync sees the new message through the store's change events; a local-only
+    // message never leaves the device.
     await store.appendToActive(sid, m.rowToNode(message, opts.localOnly), { create: { mode } });
   } catch (err) {
     console.warn('[starpi] a chat message could not be stored on this device', err);
-    return;
   }
-  // Off until end-to-end encrypted sync (CHAT_SYNC_ENABLED). On-device turns never sync.
-  if (!CHAT_SYNC_ENABLED || opts.localOnly) return;
-  const data = await loadDataLayer().catch(() => null);
-  if (!data?.canSyncChats()) return;
-  const res = await data.insertChatMessage(sid, message);
-  if (!res.ok) console.warn('[starpi] chat sync failed, the message stays on this device:', res.error.kind, res.error.message);
-  else void refreshSyncStatus();
-}
-
-/**
- * Copies a synced session into the store (only while sync is enabled).
- * @param {typeof import('./chat/store.js')} m
- * @param {ChatStore} store
- * @param {string} sid
- */
-async function restoreSynced(m, store, sid) {
-  const data = await loadDataLayer();
-  if (!data.canSyncChats()) return null;
-  const res = await data.loadChatSession(sid);
-  if (!res.ok) {
-    console.warn('[starpi] could not load the synced chat:', res.error.kind, res.error.message);
-    return null;
-  }
-  for (const row of res.data ?? []) await store.appendToActive(sid, m.rowToNode(row, false), { create: { mode: 'grounded' } });
-  return store.loadThread(sid);
 }
 
 /**
@@ -228,8 +233,7 @@ export async function loadCurrentSession() {
   try {
     const m = await loadStoreModule();
     const store = await m.openChatStore();
-    let thread = await store.loadThread(sid);
-    if (!thread && CHAT_SYNC_ENABLED) thread = await restoreSynced(m, store, sid);
+    const thread = await store.loadThread(sid);
     if (!thread) return [];
     return thread.path.filter((n) => n.role === 'user' || n.role === 'assistant').map(m.nodeToRow);
   } catch (err) {
@@ -252,23 +256,6 @@ export async function loadSessionThread(sid) {
     console.warn('[starpi] could not read the stored chat', err);
     return null;
   }
-}
-
-/**
- * Synced and on-device messages in the order they were written. Local rows from before timestamps
- * were stored go last, and are dropped when a synced row has the same text. (Kept for the sync.)
- * @param {ChatRow[]} remote
- * @param {ChatRow[]} local
- * @returns {ChatRow[]}
- */
-export function mergeByTime(remote, local) {
-  const at = (/** @type {ChatRow} */ m) => {
-    const ms = m.created_at ? Date.parse(m.created_at) : Number.NaN;
-    return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
-  };
-  const legacyDuplicate = (/** @type {ChatRow} */ m) => !m.created_at && remote.some((r) => r.role === m.role && r.content === m.content);
-  // Array.prototype.sort is stable, so rows with equal or missing times keep their order.
-  return [...remote, ...local.filter((m) => !legacyDuplicate(m))].sort((a, b) => at(a) - at(b));
 }
 
 /**
@@ -302,14 +289,21 @@ export async function deleteChatHistory() {
   // A message still being stored would otherwise be stored after the delete.
   await settleWrites();
   let local = true;
+  /** @type {string[]} */
+  let deleted = [];
   try {
-    await (await chatData()).clearConversations();
+    const store = await chatData();
+    if (syncHook) deleted = (await store.listConversations({ includeArchived: true })).map((c) => c.id);
+    await store.clearConversations();
   } catch (err) {
     console.warn('[starpi] the chats on this device could not be deleted', err);
     local = false;
   }
   startNewSession();
-  return (await deleteSynced((data) => data.deleteOwnChats())) && local;
+  const legacy = await deleteSynced((data) => data.deleteOwnChats());
+  // The encrypted sync writes the deletions now, so other browsers delete the chats too.
+  const synced = syncHook ? await syncHook.flush(deleted) : true;
+  return legacy && synced && local;
 }
 
 /**
@@ -328,27 +322,16 @@ export async function deleteSession(sid) {
     local = false;
   }
   if (sid === sessionId) startNewSession();
-  return (await deleteSynced((data) => data.deleteChatSession(sid))) && local;
+  const legacy = await deleteSynced((data) => data.deleteChatSession(sid));
+  const synced = syncHook ? await syncHook.flush([sid]) : true;
+  return legacy && synced && local;
 }
 
+/** Writes the sync line in Settings: the encrypted sync's state, or "This device only". */
 export async function refreshSyncStatus() {
   const el = byId('chatSyncStatusText');
   if (!el) return;
-  if (!CHAT_SYNC_ENABLED) {
-    setText(el, 'chat.list.device_only');
-    return;
-  }
-  const data = await loadDataLayer().catch(() => null);
-  const c = data?.getConnection();
-  if (!data || c?.status !== 'ready') {
-    setText(el, 'sync.device_offline');
-    return;
-  }
-  if (!data.canSyncChats()) {
-    setText(el, c.hardened ? 'sync.device_no_session' : 'sync.device_migration');
-    return;
-  }
-  const res = await data.countChatMessages();
-  if (res.ok) setText(el, 'sync.synced_count', { n: formatNumber(res.data ?? 0) });
-  else setText(el, 'sync.synced');
+  const label = syncHook?.statusLine() ?? null;
+  if (label) setText(el, label.key, label.params);
+  else setText(el, 'chat.list.device_only');
 }

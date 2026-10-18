@@ -1,0 +1,86 @@
+{
+  "card": {
+    "title": "Chat-Synchronisierung · Ende-zu-Ende-verschlüsselt",
+    "subtitle": "Ihre Gespräche werden in diesem Browser mit einem Schlüssel verschlüsselt, den nur Ihre Passphrase öffnet. Der Server speichert nur Geheimtext. Anbieter-Schlüssel, Signaturschlüssel und Beiträge, die auf diesem Gerät geblieben sind, werden nie synchronisiert."
+  },
+  "state": {
+    "off": "Aus",
+    "on": "An",
+    "busy": "Synchronisiert",
+    "attention": "Braucht Aufmerksamkeit",
+    "unavailable": "Hier nicht verfügbar"
+  },
+  "form": {
+    "new_hint": "Wählen Sie eine Passphrase mit mindestens {n} Zeichen. Sie brauchen sie, um Ihre Gespräche in einem anderen Browser wiederherzustellen. Niemand kann sie für Sie wiederherstellen, und ohne sie ist die synchronisierte Kopie nicht lesbar.",
+    "join_hint": "Dieses Konto synchronisiert bereits aus einem anderen Browser. Geben Sie die dort gewählte Passphrase ein, um seine Gespräche hierher zu holen.",
+    "passphrase": "Sync-Passphrase",
+    "confirm": "Passphrase wiederholen",
+    "enable": "Synchronisierung einschalten",
+    "join": "Entsperren und synchronisieren",
+    "connection": "Die Synchronisierung braucht eine Verbindung zur Wissensbasis mit Sitzung (Einstellungen › Wissensbasis)."
+  },
+  "on": {
+    "summary": "{n} Gespräche synchronisiert",
+    "last": "Zuletzt synchronisiert: {time}",
+    "never": "Noch nicht synchronisiert",
+    "skipped": "{n} Gespräche werden nicht synchronisiert: zu groß oder mit diesem Schlüssel nicht lesbar.",
+    "sync_now": "Jetzt synchronisieren",
+    "off_local": "In diesem Browser ausschalten",
+    "off_delete": "Ausschalten und synchronisierte Daten löschen",
+    "off_local_confirm": "Synchronisierung in diesem Browser ausschalten? Seine Gespräche bleiben hier, die synchronisierte Kopie bleibt für Ihre anderen Browser auf dem Server.",
+    "off_delete_confirm": "Synchronisierung ausschalten und die synchronisierte Kopie Ihrer Gespräche vom Server löschen? Jeder Browser behält seine Gespräche, synchronisiert aber nicht mehr. Das lässt sich nicht rückgängig machen.",
+    "purging": "Das Löschen der synchronisierten Kopie ist noch nicht abgeschlossen. Dieser Browser versucht es bei jeder Synchronisierung erneut; mit „Ausschalten und synchronisierte Daten löschen“ können Sie es sofort versuchen."
+  },
+  "notice": {
+    "remote_off": "Die Synchronisierung wurde in einem anderen Browser ausgeschaltet und die synchronisierte Kopie gelöscht. Die Gespräche in diesem Browser bleiben erhalten. Wählen Sie eine Passphrase, um wieder zu synchronisieren, oder schalten Sie die Synchronisierung hier aus.",
+    "rekeyed": "Die Synchronisierung wurde in einem anderen Browser mit einer neuen Passphrase neu eingerichtet. Geben Sie diese Passphrase ein, um fortzufahren.",
+    "other_account": "Dieser Browser ist bei einem anderen Konto angemeldet als dem, mit dem er synchronisiert hat. Schalten Sie die Synchronisierung hier aus und dann für dieses Konto wieder ein.",
+    "unavailable": "Dieser Browser kann den Sync-Schlüssel für diese Seite nicht speichern (zum Beispiel im privaten Fenster oder bei ausgeschalteten Websitedaten)."
+  },
+  "account": {
+    "title": "Synchronisierung in einem anderen Browser nutzen",
+    "body": "Ein anderer Browser braucht dasselbe Konto. Fügen Sie dem Konto dieses Browsers eine E-Mail-Adresse hinzu, melden Sie sich im anderen Browser mit dieser Adresse an und geben Sie dort Ihre Passphrase ein.",
+    "anonymous": "Dieser Browser: anonymes Konto (nur dieser Browser)",
+    "signed_in": "Angemeldet als {email}",
+    "email": "E-Mail-Adresse",
+    "link": "Diesem Konto hinzufügen",
+    "sign_in": "Bei meinem Konto anmelden",
+    "sign_in_hint": "Die Anmeldung ersetzt das anonyme Konto dieses Browsers; Dokumente, die Sie damit hinzugefügt haben, bleiben bei jenem Konto.",
+    "code": "Code aus der E-Mail",
+    "verify": "Code bestätigen",
+    "sign_out": "Abmelden"
+  },
+  "line": {
+    "on": "Ende-zu-Ende-verschlüsselt · {n} Gespräche",
+    "waiting": "Ende-zu-Ende-verschlüsselt · wartet auf Verbindung",
+    "attention": "Synchronisierung braucht Aufmerksamkeit (siehe Chat-Synchronisierung)"
+  },
+  "result": {
+    "enabled": "Die Synchronisierung ist an. Ihre Gespräche werden verschlüsselt synchronisiert.",
+    "joined": "Entsperrt. Die Gespräche dieses Kontos werden in diesen Browser synchronisiert.",
+    "synced": "Synchronisiert.",
+    "off": "Die Synchronisierung ist in diesem Browser aus.",
+    "deleted": "Die Synchronisierung ist aus und die synchronisierte Kopie wurde gelöscht.",
+    "code_sent": "Wir haben einen Code an {email} geschickt. Geben Sie ihn unten ein.",
+    "linked": "Die E-Mail-Adresse ist diesem Konto hinzugefügt.",
+    "signed_in": "Angemeldet. Geben Sie Ihre Passphrase ein, um zu synchronisieren.",
+    "signed_out": "Abgemeldet. Dieser Browser hat ein neues anonymes Konto."
+  },
+  "error": {
+    "too_short": "Die Passphrase braucht mindestens {n} Zeichen.",
+    "mismatch": "Die beiden Passphrasen unterscheiden sich.",
+    "wrong_passphrase": "Diese Passphrase entsperrt die synchronisierten Gespräche dieses Kontos nicht.",
+    "no_session": "Es gibt keine Sitzung mit der Wissensbasis. Die Synchronisierung braucht eine.",
+    "offline": "Die Wissensbasis ist gerade nicht erreichbar. Versuchen Sie es später noch einmal.",
+    "missing_schema": "Die Datenbank hat noch keine Sync-Tabellen (Migration chat_sync in backend/supabase).",
+    "unavailable": "Dieser Browser kann den Sync-Schlüssel nicht speichern.",
+    "failed": "Das hat nicht geklappt. Bitte versuchen Sie es noch einmal.",
+    "delete_failed": "Die synchronisierte Kopie konnte gerade nicht vollständig gelöscht werden. Dieser Browser versucht es bei jeder Synchronisierung erneut, bis es geklappt hat.",
+    "invalid_email": "Geben Sie eine gültige E-Mail-Adresse ein.",
+    "invalid_code": "Der Code ist falsch oder abgelaufen.",
+    "email_taken": "Diese Adresse gehört zu einem anderen Konto. Nutzen Sie stattdessen „Bei meinem Konto anmelden“.",
+    "no_account": "Kein Konto hat diese Adresse, oder die E-Mail-Anmeldung ist für diese Seite aus.",
+    "email_disabled": "Die E-Mail-Anmeldung ist für diese Seite ausgeschaltet.",
+    "rate_limited": "Zu viele Versuche. Warten Sie eine Minute und versuchen Sie es noch einmal."
+  }
+}
