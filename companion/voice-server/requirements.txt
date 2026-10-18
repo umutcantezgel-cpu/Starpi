@@ -1,0 +1,10 @@
+# Local voice server, Python 3.10 or newer. Install into a virtual environment of its own:
+#   python3 -m venv ~/.local/share/starpi-voice/venv
+#   ~/.local/share/starpi-voice/venv/bin/python -m pip install -r requirements.txt
+#
+# Speech input: faster-whisper (MIT), imported by server.py.
+faster-whisper==1.2.1
+# Speech output: piper-tts (GPL-3.0-or-later). server.py never imports it; it starts Piper's own
+# command line (python -I -m piper) as a separate program for each request. Leave this line out,
+# and start the server with --no-tts, when you want speech input only.
+piper-tts==1.8.0
