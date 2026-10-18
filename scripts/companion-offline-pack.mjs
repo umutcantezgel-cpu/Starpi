@@ -77,10 +77,10 @@ export function bundlePathOf(key, from = COMPANION) {
  * resolves them from packages/companion. Workspace links (another package of this repository) are
  * followed to their folder.
  * @param {Lockfile} lock
- * @param {string} [from]
+ * @param {{ from?: string, root?: string }} [options]  the companion's lockfile key; the checkout
  * @returns {{ deps: BundledDependency[], problems: string[] }}
  */
-export function companionDependencies(lock, from = COMPANION) {
+export function companionDependencies(lock, { from = COMPANION, root = ROOT } = {}) {
   const { packages } = lock;
   const start = packages[from];
   /** @type {string[]} */
@@ -112,7 +112,7 @@ export function companionDependencies(lock, from = COMPANION) {
         problems.push(`${dest} would hold both ${placed.get(dest)} and ${key}`);
         continue;
       }
-      if (need.optional && !existsSync(path.join(ROOT, key, 'package.json')) && !workspace) continue; // an optional part of another platform
+      if (need.optional && !existsSync(path.join(root, key, 'package.json')) && !workspace) continue; // an optional part of another platform
       placed.set(dest, key);
       reached.set(key, { key, name: workspace ? need.name : packageName(key, entry), version: entry.version ?? '', license: null, dest, workspace });
       queue.push({ at: key, entry });
@@ -312,7 +312,7 @@ export function packOffline({ outDir, signKey, tar = true, root = ROOT, now }) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/.test(version)) throw new Error(`unusable version ${version}`);
   const lock = readLockfile(root);
   const policy = JSON.parse(readFileSync(path.join(root, 'scripts', 'license-allowlist.json'), 'utf8'));
-  const { deps, problems } = companionDependencies(lock);
+  const { deps, problems } = companionDependencies(lock, { root });
   problems.push(...checkDependencies(deps, lock, policy, root));
   if (problems.length > 0) throw new Error(`cannot bundle the dependencies:\n - ${problems.join('\n - ')}`);
 

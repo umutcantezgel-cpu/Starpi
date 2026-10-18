@@ -70,7 +70,7 @@ export function checkCompanionLicenses({ root = ROOT } = {}) {
 
   // 1. The npm tree.
   const lock = readLockfile(root);
-  const { deps, problems } = companionDependencies(lock);
+  const { deps, problems } = companionDependencies(lock, { root });
   findings.push(...problems, ...checkDependencies(deps, lock, policy, root));
 
   // 2. The package's own licence and attributions.

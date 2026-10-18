@@ -221,10 +221,14 @@ EOF
 if [ "$MODE" = system ]; then
   mkdir -p "$R/etc/sysusers.d"
   cp "$HERE/system/starpi-companion.sysusers" "$R/etc/sysusers.d/starpi-companion.conf"
-  if command -v systemd-sysusers >/dev/null 2>&1; then
-    if [ -n "$ROOT" ]; then systemd-sysusers --root="$ROOT" starpi-companion.conf; else systemd-sysusers starpi-companion.conf; fi
-  elif [ -z "$ROOT" ]; then
-    die "systemd-sysusers is missing; the system install needs systemd"
+  if [ -n "$ROOT" ]; then
+    # Below --root the accounts are a courtesy for image builds; the target creates them at boot.
+    if command -v systemd-sysusers >/dev/null 2>&1; then
+      systemd-sysusers --root="$ROOT" starpi-companion.conf || echo "note: systemd-sysusers --root failed; the accounts are made when the target boots" >&2
+    fi
+  else
+    command -v systemd-sysusers >/dev/null 2>&1 || die "systemd-sysusers is missing; the system install needs systemd"
+    systemd-sysusers starpi-companion.conf
   fi
   mkdir -p "$R$CONFIG_DIR"
   [ -f "$R$CONFIG_DIR/config.json" ] || write_config "$R$CONFIG_DIR/config.json"
