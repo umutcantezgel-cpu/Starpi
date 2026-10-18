@@ -1,0 +1,64 @@
+# Starpi Core (the local companion) as a systemd user service: it runs as you, from your session's
+# user manager, without root. install.sh writes this file to ~/.config/systemd/user/ with @NODE@ and
+# @APP@ replaced by absolute paths, and does not enable it:
+#   systemctl --user enable --now starpi-companion.service
+#   systemctl --user status starpi-companion.service      (the status line comes from the companion)
+#   journalctl --user -u starpi-companion.service
+# To keep it running after you log out: loginctl enable-linger "$USER"
+# Folders, configuration and the key of the vault are the companion's defaults for your account
+# (~/.config/starpi-companion, ~/.local/share/starpi-companion, ~/.local/state/starpi-companion).
+
+[Unit]
+Description=Starpi Core (local companion)
+Documentation=https://github.com/umutcantezgel-cpu/Starpi/tree/main/packages/companion#readme
+# A refused start (audit rollback, a tampered chain, a missing anchor folder) fails again at once;
+# after five tries in five minutes systemd stops trying until someone has looked.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=notify
+# Readiness (READY=1 once the API listens) and the watchdog pings go through /usr/bin/systemd-notify,
+# a child process of the companion, so systemd must accept messages from every process of the unit.
+NotifyAccess=all
+# The companion pings every third of this while its own health check holds.
+WatchdogSec=30
+TimeoutStartSec=90
+TimeoutStopSec=30
+ExecStart=@NODE@ @APP@/bin/starpi-companion.mjs start
+Restart=on-failure
+RestartSec=3
+# Exit 2 is a usage error in the command line; trying again would not help.
+RestartPreventExitStatus=2
+
+# Resources (the language models run in their own processes, not here).
+MemoryHigh=768M
+MemoryMax=1G
+TasksMax=256
+
+# Hardening a user manager applies without privileges (seccomp and the no-new-privileges flag).
+# Settings that need mount or user namespaces stay out: where unprivileged user namespaces are
+# restricted the unit would not start at all.
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
+# Network: loopback only. systemd enforces IP address rules for system services; a user manager
+# logs "unit configures an IP firewall, but not running as root" and starts the unit without them.
+# They stay here for managers that can apply them. The boundary outside the process that holds
+# for sure is the system install (install.sh --system): IPAddressDeny=any plus the egress splice.
+# In this unit the companion's own egress guard is the boundary (zero egress unless you list hosts).
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target

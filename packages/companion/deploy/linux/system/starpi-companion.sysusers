@@ -1,0 +1,9 @@
+# Accounts of the system install of Starpi Core, in systemd-sysusers format. install.sh --system
+# copies this file to /etc/sysusers.d/starpi-companion.conf and runs systemd-sysusers on it.
+#
+# starpi-egress-client has no members, on purpose: only starpi-companion.service is given the
+# group (SupplementaryGroups=), so it is the one process that can open the egress splice's socket.
+# Do not add anyone to it. starpi-egress, the splice's account, is in no group of the companion.
+g starpi-egress-client -
+u starpi-companion - "Starpi Core (local companion)" /var/lib/starpi-companion /usr/sbin/nologin
+u starpi-egress - "Starpi Core egress splice" / /usr/sbin/nologin

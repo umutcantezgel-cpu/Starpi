@@ -1,0 +1,73 @@
+# The egress splice of the system install: the only way from Starpi Core to the internet. It runs
+# `starpi-companion egress-splice` as its own account, with the egress list read from the
+# companion's configuration, and listens on /run/starpi-companion-egress/splice.sock. The socket
+# and its folder belong to the group starpi-egress-client, which has no members: only
+# starpi-companion.service holds it (SupplementaryGroups=), so no other process can connect.
+# Per connection the splice reads `CONNECT host:443`, refuses hosts that are not listed and hosts
+# with any address that is not public unicast, connects to one of exactly the checked addresses and
+# copies bytes. It sees ciphertext only and logs one JSON line per connection (host, address,
+# result, byte counts; never content): journalctl -u starpi-companion-egress.service
+# After a change of egress.allow: sudo systemctl restart starpi-companion.service (this unit
+# follows it). With an empty egress list it refuses every request.
+
+[Unit]
+Description=Starpi Core egress splice (listed hosts only, ciphertext only)
+Documentation=https://github.com/umutcantezgel-cpu/Starpi/tree/main/packages/companion#readme
+After=network-online.target
+Wants=network-online.target
+Before=starpi-companion.service
+PartOf=starpi-companion.service
+
+[Service]
+Type=simple
+User=starpi-egress
+Group=starpi-egress-client
+# systemd reads the configuration as root and hands this unit a private copy; the folder
+# /etc/starpi-companion itself stays out of reach below.
+LoadCredential=companion-config:/etc/starpi-companion/config.json
+ExecStart=@NODE@ @APP@/bin/starpi-companion.mjs egress-splice --socket /run/starpi-companion-egress/splice.sock --config %d/companion-config
+RuntimeDirectory=starpi-companion-egress
+RuntimeDirectoryMode=0750
+Restart=on-failure
+RestartSec=2
+
+# Resources.
+MemoryHigh=96M
+MemoryMax=128M
+TasksMax=32
+
+# Nothing of the companion's data, anchors, keys or configuration is visible here.
+InaccessiblePaths=-/var/lib/starpi-companion -/var/lib/starpi-companion-anchors -/var/lib/starpi-companion-key -/etc/starpi-companion -/etc/credstore.encrypted
+
+# Hardening.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0007
+
+# Network: this unit is the way out. Which hosts are allowed is decided by the list in the program;
+# address ranges cannot express it, because providers' addresses change. AF_NETLINK only lets the
+# resolver read this machine's own addresses to sort its answers.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+IPAddressAllow=any
+
+Environment=NODE_ENV=production
