@@ -300,3 +300,41 @@ export function webHits(answer, max = MAX_WEB_PASSAGES) {
   return out;
 }
 
+
+/**
+ * The search API of this browser for questions to models that cannot search themselves: a web
+ * search with the person's own key at a provider that can (research/runtime.js picks it), else the
+ * site's search step when it offers one; null when neither is set up. Loaded on first use.
+ * @param {string} locale
+ * @returns {Promise<import('../research/web-part.js').WebSearch | null>}
+ */
+export async function browserWebSearch(locale) {
+  try {
+    const [{ browserRuntime }, { byokWebSearch, poolWebSearch }] = await Promise.all([import('../research/runtime.js'), import('../research/web-part.js')]);
+    const runtime = browserRuntime();
+    const routes = await runtime.routes();
+    const lang = String(locale).slice(0, 2) === 'de' ? 'de' : 'en';
+    if (routes.web) return byokWebSearch({ complete: runtime.complete, provider: routes.web.provider, model: routes.web.model, locale: lang });
+    if (routes.pool) return poolWebSearch({ step: runtime.step, locale: lang });
+  } catch (err) {
+    console.warn('[starpi] no web search could be set up', err);
+  }
+  return null;
+}
+
+/**
+ * Web passages for a question: one search through `search`, its pages as library-shaped hits. Never
+ * throws (an empty list when the search fails or nothing is set up).
+ * @param {string} question
+ * @param {{ search: import('../research/web-part.js').WebSearch | null, signal?: AbortSignal }} o
+ * @returns {Promise<KnowledgeHit[]>}
+ */
+export async function searchWebHits(question, o) {
+  if (!o.search || !question.trim()) return [];
+  try {
+    return webHits(await o.search(question, o.signal));
+  } catch (err) {
+    if (!o.signal?.aborted) console.warn('[starpi] the web search failed', err);
+    return [];
+  }
+}

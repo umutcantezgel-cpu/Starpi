@@ -11,6 +11,7 @@ import { byId, onAction, onChange, setHidden, setHtml } from './dom.js';
 import { refreshIcons } from './icons.js';
 import { formatNumber, onLocaleChange, setText, t } from './i18n/index.js';
 import { describeDataError } from './library.js';
+import { onProvidersChange } from './providers.js';
 import { citationButton, registerCitations } from './rag/citations.js';
 import { initSemanticSearch, onSemanticChange, semanticDecided, semanticModel, semanticState, semanticSuggested, setSemanticSearch } from './rag/embed-client.js';
 import { IMAGE_EXTENSIONS } from './rag/formats/image.js';
@@ -413,11 +414,15 @@ export function initIngest() {
   void restoreWorkspace()
     .then(() => initSemanticSearch())
     .catch((err) => console.warn('[starpi] restoring the workspace failed', err));
-  void ocrAvailable().then((ok) => {
-    ocrReady = ok;
-    const input = /** @type {HTMLInputElement | null} */ (byId('workspaceFileInput'));
-    if (ok && input && !input.accept.includes('.png')) input.accept = `${input.accept},${OCR_ACCEPT}`;
-  });
+  // Images become sources once a model that reads them is set up, also when that happens later.
+  const checkOcr = () =>
+    void ocrAvailable().then((ok) => {
+      ocrReady = ok;
+      const input = /** @type {HTMLInputElement | null} */ (byId('workspaceFileInput'));
+      if (ok && input && !input.accept.includes('.png')) input.accept = `${input.accept},${OCR_ACCEPT}`;
+    });
+  checkOcr();
+  onProvidersChange(checkOcr);
 
   const zone = byId('dropZone');
   const highlight = ['border-amber-500', 'bg-amber-50'];

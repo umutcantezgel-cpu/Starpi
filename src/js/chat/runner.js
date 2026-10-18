@@ -3,7 +3,8 @@
 // the models a question goes to, and streams one answer along them.
 //
 // Installing (installAiLayer, from providers.js refreshProviders): the built-in adapters with
-// Anthropic's server-side fallbacks on (the served model is shown), the transport resolver (keys,
+// Anthropic's server-side fallbacks on (the served model is shown) and the own server's extras for
+// the server its address names (Ollama keep_alive, llama.cpp cache_prompt), the transport resolver (keys,
 // the site's pools, the relay setting), the site's pool list and health, the live model lists of the
 // providers the user has keys for, and configureRouter() with all of it plus the model loaded on
 // this device, so purposes (titles, OCR, council) run on what is set up.
@@ -28,6 +29,7 @@ import { healthClient } from '../ai/health-client.js';
 import { complete as completeCall } from '../ai/index.js';
 import { getKey, ACCESS_SLOT } from '../ai/keys.js';
 import { selectedModel } from '../ai/model-selection.js';
+import { detectServer } from '../ai/quirks/local.js';
 import { configureRouter } from '../ai/router.js';
 import { fetchPools, installTransportResolver, selectTransport } from '../ai/transport-select.js';
 import { modelWheel } from '../ai/wheel.js';
@@ -235,7 +237,7 @@ export async function installAiLayer() {
     installed = true;
     // The site's own BYOK chat: Anthropic may fall back on the server to another model for a
     // declined answer; the served model is shown with every answer.
-    registerBuiltInAdapters({ anthropic: { serverFallbacks: true } });
+    registerBuiltInAdapters({ anthropic: { serverFallbacks: true }, local: { server: () => detectServer(getLlmUrl()) } });
     installTransportResolver({ localUrl: getLlmUrl });
   }
   configureRouter({
