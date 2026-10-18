@@ -118,6 +118,27 @@ export function freeSystemPrompt(who, locale) {
   return `${intro}\n\n${rules}`;
 }
 
+const SPOKEN_RULE = Object.freeze({
+  en: 'This conversation is spoken: answer in two to four short sentences that sound natural read aloud, without lists, tables, code, links or other markup.',
+  de: 'Dieses Gespräch wird gesprochen: Antworte in zwei bis vier kurzen Sätzen, die vorgelesen natürlich klingen, ohne Listen, Tabellen, Code, Links oder andere Auszeichnungen.',
+});
+
+/**
+ * The system prompt of a spoken turn (a Live voice conversation through the chat's model): the
+ * free chat's identity and honesty rules, or the source rules with the excerpts, each with the rule
+ * for short spoken answers instead of Markdown. `context` null: a free turn.
+ * @param {{ locale: Locale, who: PromptTarget, context: string | null }} input
+ */
+export function spokenSystemPrompt(input) {
+  const { locale, who } = input;
+  if (input.context === null) {
+    const rules = [FREE_RULES[locale][0], FREE_RULES[locale][2], SPOKEN_RULE[locale]].map((r, i) => `${i + 1}. ${r}`).join('\n');
+    return `${identity(locale, who)}\n\n${rules}`;
+  }
+  const rules = [...RULES[locale], SPOKEN_RULE[locale]].map((r, i) => `${i + 1}. ${r}`).join('\n');
+  return `${identity(locale, who)}\n\n${rules}\n\n${contextSection(locale, input.context)}`;
+}
+
 const NOW_LABEL = Object.freeze({ en: 'Current date and time', de: 'Aktuelles Datum und Uhrzeit' });
 const NOTES_LABEL = Object.freeze({ en: 'Notes', de: 'Notizen' });
 

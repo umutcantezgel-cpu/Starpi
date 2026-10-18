@@ -1,8 +1,9 @@
 // @ts-check
 // The action bar under a message: Copy and Copy as Markdown (answers), Regenerate with a model menu
 // (answers), Edit (questions; the edited question becomes a new branch), the branch navigator
-// ‹ 2/3 ›, Continue (an answer that stopped at its length limit, as a new turn), and the actions
-// other features register (hooks.js registerMessageAction, e.g. "Research this" or read aloud).
+// ‹ 2/3 ›, Continue (an answer that stopped at its length limit, as a new turn), the speaker button
+// of the voice features (read aloud; voice/hooks.js speakerButton, handled there), and the actions
+// other features register (hooks.js registerMessageAction, e.g. "Research this").
 //
 // The bar is plain buttons with data-action and the message's node id as data-arg; dom.js delegates
 // the clicks, and the thread passes its handlers once (initActions). Labels are i18n keys.
@@ -10,6 +11,7 @@ import { copyAnswer } from '../code-blocks.js';
 import { byId, onAction } from '../dom.js';
 import { refreshIcons } from '../icons.js';
 import { setText, t } from '../i18n/index.js';
+import { speakerButton } from '../features/voice.js';
 import { escapeHtml } from '../render.js';
 import { messageActions } from './hooks.js';
 
@@ -63,6 +65,7 @@ export function renderActions(el, state) {
   parts.push(button({ action: 'msg-copy', nodeId: id, icon: 'copy', labelKey: 'chat-thread.action.copy' }));
   if (answer) {
     parts.push(button({ action: 'msg-copy-md', nodeId: id, icon: 'braces', labelKey: 'chat-thread.action.copy_md' }));
+    parts.push(speakerButton(id, { className: 'msg-action' }).value);
     parts.push(
       `<details class="regen-menu relative inline-block" data-node="${escapeHtml(id)}"><summary class="msg-action btn btn-ghost px-1.5 py-1 text-[11px] list-none cursor-pointer" data-i18n-aria="chat-thread.action.regenerate" aria-label="${escapeHtml(t('chat-thread.action.regenerate'))}" data-i18n-title="chat-thread.action.regenerate" title="${escapeHtml(t('chat-thread.action.regenerate'))}"${busy ? ' aria-disabled="true"' : ''}><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i><i data-lucide="chevron-down" class="w-3 h-3"></i></summary><div class="regen-list absolute left-0 bottom-full z-30 mb-1 w-64 max-h-72 overflow-y-auto card p-1 flex flex-col" role="menu"></div></details>`,
     );

@@ -55,7 +55,9 @@
     "edit_save": "Send edited question",
     "branch_prev": "Previous version",
     "branch_next": "Next version",
-    "continue": "Continue"
+    "continue": "Continue",
+    "research_no_question": "This answer has no question to research.",
+    "research_failed": "The research could not be started."
   },
   "composer": {
     "attach": "Attach files or images",

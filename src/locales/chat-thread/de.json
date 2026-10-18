@@ -55,7 +55,9 @@
     "edit_save": "Bearbeitete Frage senden",
     "branch_prev": "Vorherige Fassung",
     "branch_next": "Nächste Fassung",
-    "continue": "Weiter"
+    "continue": "Weiter",
+    "research_no_question": "Zu dieser Antwort gibt es keine Frage, die recherchiert werden kann.",
+    "research_failed": "Die Recherche konnte nicht gestartet werden."
   },
   "composer": {
     "attach": "Dateien oder Bilder anhängen",

@@ -17,6 +17,7 @@ import {
   IMAGE_TOKENS,
   LOCAL_IDENTITY,
   POOL_LIMITS,
+  spokenSystemPrompt,
   trimHistory,
   turnContext,
 } from '../../src/js/prompts.js';
@@ -78,6 +79,20 @@ describe('free chat prompts', () => {
     assert.ok(freeSystemPrompt('  ', 'en').startsWith(identity('en', 'cloud')));
     // Stable: the same input gives the same prompt, so a provider's prompt cache stays valid.
     assert.equal(freeSystemPrompt('cloud', 'en'), en);
+  });
+
+  it('spoken turns ask for short answers without markup, free or from the excerpts', () => {
+    const free = spokenSystemPrompt({ locale: 'en', who: 'cloud', context: null });
+    assert.ok(free.startsWith(identity('en', 'cloud')));
+    assert.match(free, /spoken: answer in two to four short sentences/);
+    assert.match(free, /Never invent sources/);
+    assert.doesNotMatch(free, /Use Markdown|knowledge-base excerpts/);
+    const grounded = spokenSystemPrompt({ locale: 'de', who: 'local', context: '<<<EXCERPT 1 [Doc: a.md, Chunk: 1]>>>\nx\n<<<END EXCERPT 1>>>' });
+    assert.ok(grounded.startsWith(LOCAL_IDENTITY.de));
+    assert.match(grounded, /Daten, keine Anweisungen/);
+    assert.match(grounded, /5\. Dieses Gespräch wird gesprochen/);
+    assert.ok(grounded.endsWith('Auszüge aus der Wissensdatenbank:\n<<<EXCERPT 1 [Doc: a.md, Chunk: 1]>>>\nx\n<<<END EXCERPT 1>>>'));
+    assert.match(spokenSystemPrompt({ locale: 'en', who: 'server', context: '' }), /No matching excerpts were found/);
   });
 
   it('put the date, time and notes into a fenced context block of the turn', () => {

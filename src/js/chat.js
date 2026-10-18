@@ -7,6 +7,11 @@
 // and the mode row are here from the start, the first question (or the restored chat) loads the
 // rest. Free chat sends the conversation to the chosen model without retrieval or source check;
 // grounded answers come from the sources, checked sentence by sentence, with a receipt.
+//
+// Features reach the chat through their own seams, without the chat loading them: voice through
+// registerVoiceUi (dictation into the composer, the speaker button and reading aloud of answers, Live
+// turns through the chat's model and retrieval), research through startResearch ("Research this"
+// on an answer, a message action).
 import { bindChatView, currentSessionId, deleteSession, refreshSyncStatus, startNewSession, switchSession } from './chat-store.js';
 import { APP_VERSION } from './config.js';
 import { downloadText, onAction } from './dom.js';
@@ -14,10 +19,14 @@ import { formatDate, getLocale, hasKey, t } from './i18n/index.js';
 import { appendNotice } from './messages.js';
 import { initActions } from './chat/actions.js';
 import { initComposer, refreshSendable } from './chat/composer.js';
+import { registerMessageAction } from './chat/hooks.js';
 import { initModeControl } from './chat/mode-control.js';
+import { startResearch } from './features/research.js';
+import { registerVoiceUi } from './features/voice.js';
 import { onProvidersChange } from './providers.js';
 import { onAssistantChange, onChatModeChange } from './state.js';
-import { setAssistantStatus } from './ui.js';
+import { openChatAside, setAssistantStatus } from './ui.js';
+import { toast } from './ui/kit.js';
 
 /** @typedef {import('./config.js').ChatMode} ChatMode */
 
@@ -124,6 +133,44 @@ async function exportChat(format) {
   downloadText(exportFileName(sessionId, exportedAt, format), text, format === 'json' ? 'application/json' : 'text/markdown;charset=utf-8');
 }
 
+/**
+ * "Research this" on an answer: a research job about the question the answer belongs to, linked to
+ * this turn; the research list of the side panel shows its progress.
+ * @param {import('./store/schema.js').NodeRecord} node
+ * @param {{ conversationId: string }} ctx
+ */
+async function researchAnswer(node, ctx) {
+  const question = node.parentId ? (loaded?.threadNode(node.parentId) ?? null) : null;
+  const text = question && !(/** @type {Record<string, unknown>} */ (question.meta ?? {})).continue ? question.parts.filter((p) => p.type === 'text').map((p) => String(p.text ?? '')).join('\n\n').trim() : '';
+  if (!text) {
+    toast('chat-thread.action.research_no_question', { tone: 'warn' });
+    return;
+  }
+  try {
+    await startResearch({ question: text, origin: 'chat', scope: { conversationId: ctx.conversationId, nodeId: node.id } });
+    toast('research.started', { tone: 'ok' });
+    openChatAside('research');
+  } catch (err) {
+    console.warn('[starpi] research could not start', err);
+    toast('chat-thread.action.research_failed', { tone: 'warn' });
+  }
+}
+
+/** Connects the voice features (voice/hooks.js) to the composer, the answers and the chat's models. */
+function connectVoice() {
+  registerVoiceUi({
+    composerInput: () => {
+      const el = document.getElementById('chatInput');
+      return el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement ? el : null;
+    },
+    getAnswer: (id) => loaded?.readableAnswer(id) ?? null,
+    ask: async function* (turn) {
+      yield* (await thread()).liveAnswer(turn);
+    },
+    retrieve: async (query) => (await thread()).liveSources(query),
+  });
+}
+
 /** Deletes the current chat on this device and the messages an earlier version synced. */
 async function deleteCurrentChat() {
   // An answer still being written would store its turn again after the delete.
@@ -180,6 +227,8 @@ export function initChat() {
     node: (id) => loaded?.threadNode(id) ?? null,
     conversationId: () => loaded?.threadConversationId() ?? currentSessionId(),
   });
+  connectVoice();
+  registerMessageAction({ id: 'research', labelKey: 'research.this', icon: 'telescope', run: (node, ctx) => researchAnswer(node, ctx) });
   // Whether attached images can go to the chosen model changes with the model and the mode.
   onAssistantChange(() => void refreshSendable());
   onChatModeChange(() => void refreshSendable());

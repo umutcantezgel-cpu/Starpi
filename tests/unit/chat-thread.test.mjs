@@ -170,11 +170,90 @@ describe('chat thread', () => {
     assert.equal((await storedPath())[0].id, first.id);
   });
 
+  it('gives every answer a speaker button and "Research this", and hands the answer to the voice features', async () => {
+    await ask('Tell me about tides');
+    const answer = /** @type {HTMLElement} */ (rows('assistant').at(-1));
+    const id = /** @type {string} */ (answer.dataset.nodeId);
+    const speaker = answer.querySelector('[data-action="voice-read-aloud"]');
+    assert.equal(speaker?.getAttribute('data-arg'), id);
+    assert.equal(speaker?.getAttribute('aria-label'), 'Read aloud');
+    const research = answer.querySelector('[data-action="msg-extra"][data-extra="research"]');
+    assert.equal(research?.getAttribute('aria-label'), 'Research this');
+    const question = /** @type {HTMLElement} */ (rows('user').at(-1));
+    assert.equal(question.querySelector('[data-action="voice-read-aloud"]'), null, 'questions are not read aloud');
+    assert.equal(question.querySelector('[data-extra="research"]'), null);
+    const { voiceUi, composerInput } = await import('../../src/js/voice/hooks.js');
+    const readable = voiceUi().getAnswer?.(id);
+    assert.equal(readable?.label, 'free');
+    assert.equal(readable?.question, 'Tell me about tides');
+    assert.match(readable?.text ?? '', /simulated answer from the local test provider/);
+    assert.deepEqual(readable?.sources, []);
+    assert.equal(voiceUi().getAnswer?.(/** @type {string} */ (question.dataset.nodeId)), null, 'a question is no answer');
+    assert.equal(composerInput(), document.getElementById('chatInput'));
+  });
+
+  it('answers a Live turn through the chat\'s model and fails a turn without a model with no_model', async () => {
+    const { voiceUi } = await import('../../src/js/voice/hooks.js');
+    const ask = /** @type {NonNullable<ReturnType<typeof voiceUi>['ask']>} */ (voiceUi().ask);
+    let text = '';
+    for await (const delta of ask({ text: 'How long is a day on Mars?', mode: 'free', sources: [], history: [{ role: 'user', text: 'Hi' }, { role: 'assistant', text: 'Hello.' }], image: null, locale: 'en', signal: new AbortController().signal })) text += delta;
+    assert.match(text, /simulated answer from the local test provider/);
+    const seen = fake.requests.filter((r) => /chat\/completions/.test(r.path) && JSON.stringify(r.body).includes('day on Mars')).at(-1)?.body;
+    assert.match(String(seen?.messages?.[0]?.content), /This conversation is spoken/);
+    assert.deepEqual(seen?.messages?.slice(1).map((/** @type {any} */ m) => m.role), ['user', 'assistant', 'user']);
+    const state = await import('../../src/js/state.js');
+    state.setAssistant('device');
+    try {
+      await assert.rejects(async () => {
+        for await (const _ of ask({ text: 'x', mode: 'free', sources: [], history: [], image: null, locale: 'en', signal: new AbortController().signal })) void _;
+      }, (/** @type {any} */ err) => err.code === 'no_model');
+    } finally {
+      state.setAssistant('local:*');
+    }
+  });
+
   it('shows a failing model as a notice from i18n, without the server text', async () => {
     await ask('[[fake-fault:500]] This fails');
     const notices = [...document.querySelectorAll('#chatMessages [role="status"]')].map((n) => n.textContent ?? '');
     assert.ok(notices.some((n) => /The provider has a problem right now/.test(n)), notices.join(' | '));
     const path = await storedPath();
     assert.equal(path.at(-1)?.role, 'user', 'no answer is stored');
+  });
+});
+
+describe('voice and web helpers of the thread', () => {
+  it('builds a spoken request with the excerpts of a source turn and a picture only for a model that sees', () => {
+    const req = thread.liveRequest(
+      { provider: 'local', model: 'fake-local:8b', route: 'local' },
+      { text: 'What does the plan say?', mode: 'grounded', sources: [{ label: '[Doc: plan.md, Chunk: 1]', text: 'The plan has three phases.' }], history: [], image: { mime: 'image/jpeg', data: 'AAAA' }, locale: 'de-AT', signal: new AbortController().signal },
+    );
+    assert.match(String(req.system), /Dieses Gespräch wird gesprochen/);
+    assert.match(String(req.system), /<<<EXCERPT 1 \[Doc: plan\.md, Chunk: 1\]>>>\nThe plan has three phases\./);
+    assert.equal(req.maxOutputTokens, 700);
+    assert.deepEqual(req.messages.at(-1)?.content.map((p) => p.type), ['text']);
+    const device = thread.liveRequest({ provider: 'webgpu', model: 'qwen', route: 'device' }, { text: 'Hi', mode: 'free', sources: [], history: [], image: null, locale: 'en', signal: new AbortController().signal });
+    assert.equal(device.maxOutputTokens, undefined);
+    assert.match(String(device.system), /on-device AI assistant/);
+  });
+
+  it('turns the web citations of an answer into the read-aloud grounding', () => {
+    const base = { text: 'Paris has 2.1 million people. It is old.', reasoning: '', reasoningTokens: 0, toolCalls: [], images: [], opaque: [], stopReason: /** @type {const} */ ('end'), provider: /** @type {const} */ ('gemini'), model: 'm', requestId: null, usage: null };
+    assert.equal(thread.webGrounding({ ...base, citations: [] }), null);
+    const g = thread.webGrounding({
+      ...base,
+      citations: [
+        { url: 'https://example.org/paris', title: 'Paris', start: 0, end: 29 },
+        { url: 'https://example.org/paris', title: 'Paris', start: 30, end: 40 },
+        { url: 'javascript:alert(1)', title: 'x', start: 0, end: 5 },
+        { url: 'https://example.org/other', title: '' },
+      ],
+    });
+    assert.deepEqual(g, {
+      sources: [{ uri: 'https://example.org/paris', title: 'Paris' }, { uri: 'https://example.org/other' }],
+      segments: [
+        { start: 0, end: 29, sources: [0] },
+        { start: 30, end: 40, sources: [0] },
+      ],
+    });
   });
 });

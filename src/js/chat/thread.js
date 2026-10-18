@@ -27,13 +27,26 @@
  */
 import { chatData, currentSessionId, loadSessionThread } from '../chat-store.js';
 import { APP_VERSION, LIMITS, TIMEOUTS_MS } from '../config.js';
-import { contextCoverage } from '../core/grounding.js';
+import { contextCoverage, receiptAdvisory } from '../core/grounding.js';
 import { startLocalEngine } from '../engine-ui.js';
 import { formatNumber, getLocale, setText, t } from '../i18n/index.js';
 import { refreshIcons } from '../icons.js';
 import { appendLoading, appendMessage, appendNotice, createStreamingMessage, markFreeAnswer, resetMessages } from '../messages.js';
 import { modelLabel, providerLabel } from '../providers.js';
-import { attachmentSection, buildInstructions, buildSystemPrompt, contextSection, cutFenced, estimateTokens, fitPoolRequest, freeSystemPrompt, historyWindow, trimHistory, turnContext } from '../prompts.js';
+import {
+  attachmentSection,
+  buildInstructions,
+  buildSystemPrompt,
+  contextSection,
+  cutFenced,
+  estimateTokens,
+  fitPoolRequest,
+  freeSystemPrompt,
+  historyWindow,
+  spokenSystemPrompt,
+  trimHistory,
+  turnContext,
+} from '../prompts.js';
 import { registerCitations } from '../rag/citations.js';
 import { libraryHitsByMeaning } from '../rag/embed-client.js';
 import { applyGrounding } from '../rag/grounding-view.js';
@@ -49,6 +62,7 @@ import { mountGroundingFrame } from '../render.js';
 import { getEngineState, interrupt } from '../webgpu/engine.js';
 import { budgetPrompt } from '../webgpu/models.js';
 import { applyThinking, thinkingFor } from '../ai/thinking.js';
+import { readAloudStream } from '../features/voice.js';
 import { renderActions } from './actions.js';
 import { attachmentText, blobToBase64, MAX_NATIVE_PDF_BYTES, needsVision, textBudget } from './attachments.js';
 import { clearComposer, setComposerBusy, takeDraft } from './composer.js';
@@ -83,6 +97,11 @@ export {
 /** @typedef {import('./hooks.js').TurnContext} TurnContext */
 /** @typedef {import('../supabase.js').KnowledgeHit} KnowledgeHit */
 /** @typedef {import('../config.js').AssistantValue} AssistantValue */
+/** @typedef {import('../core/gate.js').GateSource} GateSource */
+/** @typedef {import('../core/gate.js').GateGrounding} GateGrounding */
+/** @typedef {import('../voice/hooks.js').LiveTurn} LiveTurn */
+/** @typedef {import('../voice/read-aloud.js').ReadableAnswer} ReadableAnswer */
+/** @typedef {'free' | 'grounded' | 'web'} ReadLabel */
 
 /** i18n keys of the engines of 2.x answers (stored with the message as `engine`). */
 const LEGACY_ENGINES = /** @type {Record<string, string>} */ ({
@@ -117,6 +136,12 @@ let showSeq = 0;
 const blobData = new Map();
 /** @type {{ at: number, titles: string[] } | null} */
 let titlesCache = null;
+/**
+ * What reading an answer aloud needs beyond its stored text, for the answers of this page: the
+ * excerpts a grounded answer was given (they are not stored) and the label of its gate.
+ * @type {Map<string, { label: ReadLabel, sources: GateSource[], grounding: GateGrounding | null }>}
+ */
+const readable = new Map();
 
 /** The conversation the thread shows. */
 export function threadConversationId() {
@@ -134,6 +159,41 @@ export function threadNode(id) {
 
 export function invalidateKnownTitles() {
   titlesCache = null;
+}
+
+/**
+ * An answer as reading it aloud needs it (voice/hooks.js getAnswer): its text, the label that
+ * picks the sentence gate, the excerpts a grounded answer was given (known for the answers of this
+ * page; an answer restored from history has none, so the gate withholds its numbers) and the web
+ * grounding of an answer that searched the web. Null for questions and unknown ids.
+ * @param {string} id
+ * @returns {ReadableAnswer | null}
+ */
+export function readableAnswer(id) {
+  const node = threadNode(id);
+  if (!node || node.role !== 'assistant') return null;
+  const meta = metaOf(node);
+  const kept = readable.get(id);
+  const question = node.parentId ? threadNode(node.parentId) : null;
+  const storedGrounding = isGrounding(meta.web_grounding) ? meta.web_grounding : null;
+  const route = meta.chat_mode ?? node.label;
+  return {
+    text: nodeText(node),
+    label: kept?.label ?? (route === 'grounded' ? 'grounded' : storedGrounding ? 'web' : 'free'),
+    sources: kept?.sources ?? [],
+    grounding: kept?.grounding ?? storedGrounding,
+    question: question && !metaOf(question).continue ? nodeText(question) : '',
+    locale: getLocale(),
+  };
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is GateGrounding}
+ */
+function isGrounding(value) {
+  const g = /** @type {any} */ (value);
+  return Boolean(g && Array.isArray(g.segments) && Array.isArray(g.sources));
 }
 
 /** @returns {Promise<ChatStore>} */
@@ -291,6 +351,30 @@ function webSources(result) {
     if (out.length >= 8) break;
   }
   return out;
+}
+
+/**
+ * Where an answer that searched the web is grounded, for the read-aloud gate: the text ranges its
+ * citations cover and the pages they name (null when it cites no page). Bounded, as it is stored
+ * with the answer.
+ * @param {CompletionResult} result
+ * @returns {GateGrounding | null}
+ */
+export function webGrounding(result) {
+  /** @type {GateGrounding['sources']} */
+  const sources = [];
+  /** @type {GateGrounding['segments']} */
+  const segments = [];
+  for (const c of result.citations) {
+    if (!/^https?:\/\//i.test(c.url)) continue;
+    let i = sources.findIndex((s) => s.uri === c.url);
+    if (i < 0) {
+      if (sources.length >= 32) continue;
+      i = sources.push({ uri: c.url.slice(0, 2000), ...(c.title ? { title: String(c.title).slice(0, 200) } : {}) }) - 1;
+    }
+    if (typeof c.start === 'number' && typeof c.end === 'number' && c.end > c.start && segments.length < 200) segments.push({ start: c.start, end: c.end, sources: [i] });
+  }
+  return sources.length ? { segments, sources } : null;
 }
 
 /**
@@ -551,6 +635,15 @@ function answerTokens(target, caps) {
 }
 
 /**
+ * Whether a free question to this model searches the web (the Web toggle, a model that can, and
+ * not on the site's pools).
+ * @param {Target} target
+ */
+function searchesWeb(target) {
+  return getWebSearch() && capsOf(target.provider, target.model).search !== 'none' && target.route !== 'pool';
+}
+
+/**
  * The free request for one model: the stable system prompt, the history (whole for Anthropic,
  * within the model's context for the others, within the pool's limits on the site's pools) and the
  * question.
@@ -581,7 +674,7 @@ async function freeRequest(target, path, ctx) {
   }
   /** @type {AiRequest} */
   let req = { provider: target.provider, model: target.model, system, messages: [...history, question], temperature: 0.7, ...(maxOutputTokens ? { maxOutputTokens } : {}) };
-  if (getWebSearch() && caps.search !== 'none' && target.route !== 'pool') req.search = { enabled: true };
+  if (searchesWeb(target)) req.search = { enabled: true };
   req = applyThinking(req, thinkingFor({ provider: target.provider, model: target.model, caps, show: true }));
   if (target.route === 'pool') {
     const fitted = fitPoolRequest({ system: req.system, messages: req.messages });
@@ -604,16 +697,21 @@ async function freeRequest(target, path, ctx) {
  */
 
 /**
- * Streams one answer into a new bubble.
+ * Streams one answer into a new bubble. With "read answers aloud" switched on (voice settings), the
+ * answer is read while it streams, through the gate its `read` description names (decided once the
+ * answering model is known); a stopped or failed answer ends the reading.
  * @param {Target[]} candidates
  * @param {(target: Target) => Promise<AiRequest>} build
  * @param {AbortSignal} signal
  * @param {{ before?: Element | null }} [placement]
+ * @param {(target: Target) => Omit<ReadableAnswer, 'text'>} [read]
  */
-async function streamAnswer(candidates, build, signal, placement = {}) {
+async function streamAnswer(candidates, build, signal, placement = {}, read) {
   const stream = createStreamingMessage('', undefined, placement);
   let text = '';
   let reasoning = '';
+  /** @type {import('../voice/hooks.js').AnswerReader | null | undefined} undefined: not decided yet */
+  let reader;
   const run = await runAnswer({
     candidates,
     signal,
@@ -626,10 +724,12 @@ async function streamAnswer(candidates, build, signal, placement = {}) {
         badge.classList.remove('hidden');
       }
     },
-    onEvent: (ev) => {
+    onEvent: (ev, target) => {
       if (ev.type === 'text') {
         text += ev.delta;
         stream.update(text);
+        if (reader === undefined) reader = read ? readAloudStream(read(target)) : null;
+        reader?.push(ev.delta);
       } else if (ev.type === 'reasoning' && typeof ev.delta === 'string') {
         reasoning += ev.delta;
         stream.reasoning(reasoning);
@@ -637,6 +737,10 @@ async function streamAnswer(candidates, build, signal, placement = {}) {
     },
     adapterFor: (target, req) => (target.provider === 'anthropic' && (estimateTokens(JSON.stringify(req.messages)) > COMPACTION_TOKENS || hasCompaction(current?.path ?? [])) ? compactingAnthropic() : undefined),
   });
+  if (reader) {
+    if (signal.aborted || !run.target || !run.result.text.trim()) reader.abort();
+    else reader.end({ grounding: webGrounding(run.result) });
+  }
   return { stream, run };
 }
 
@@ -794,7 +898,7 @@ async function answerFree(question, value, signal, placement = {}) {
   const path = current?.path ?? [question];
   /** @type {TurnContext} */
   const ctx = { conversationId, question: nodeText(question), mode: getChatMode(), route: 'free', target: candidates[0], locale: getLocale(), attachments: chipsOf(question) };
-  const { stream, run } = await streamAnswer(candidates, (target) => freeRequest(target, path, ctx), signal, placement);
+  const { stream, run } = await streamAnswer(candidates, (target) => freeRequest(target, path, ctx), signal, placement, (target) => ({ label: searchesWeb(target) ? 'web' : 'free', question: ctx.question, locale: ctx.locale }));
   let { result } = run;
   // Tool calls an answer stopped for go to the registered runner, which returns the answer after them.
   if (result.stopReason === 'tool_call' && single.tools && run.target && !signal.aborted) {
@@ -812,6 +916,7 @@ async function answerFree(question, value, signal, placement = {}) {
   const note = attemptNote(run.attempts, result);
   const badge = answerBadge({ provider: target.provider, model: result.model, meta: { requested: target.model, route: target.route } });
   const trace = describeChatTrace({ engineLabel: t(badge.badge, badge.badgeParams), durationMs, attachment: chipsOf(question).map((c) => c.name).join(', ') || null, note });
+  const grounding = webGrounding(result);
   const db = await store();
   const node = await db.appendNode(conversationId, {
     parentId: question.id,
@@ -834,10 +939,12 @@ async function answerFree(question, value, signal, placement = {}) {
       ...(result.reasoning ? { reasoning: result.reasoning.slice(0, REASONING_CHARS) } : {}),
       ...(run.continued ? { continued: run.continued } : {}),
       ...(result.citations.length ? { web_sources: webSources(result) } : {}),
+      ...(grounding ? { web_grounding: grounding } : {}),
       ...(run.attempts.length > 1 ? { attempts: run.attempts.map((a) => ({ provider: a.provider, model: a.model, outcome: a.outcome, ...(a.code ? { code: a.code } : {}) })) } : {}),
     },
   });
   await reload();
+  readable.set(node.id, { label: grounding ? 'web' : 'free', sources: [], grounding });
   stream.element.dataset.nodeId = node.id;
   stream.finalize(text, { citations: null, trace, durationMs, traceRoles: FREE_TRACE_ROLES, reasoning: result.reasoning, meta: metaLine(node) });
   labelAnswer(stream.element, node);
@@ -1015,15 +1122,26 @@ async function groundedRequest(target, input) {
 }
 
 /**
+ * The excerpts of a grounded answer as the sentence gate takes them: each with the text that
+ * reached the model (`coverage`, index-aligned).
+ * @param {Array<{ label: string, text: string }>} citations
+ * @param {Array<{ text: string }>} coverage
+ * @returns {GateSource[]}
+ */
+function gateSources(citations, coverage) {
+  return citations.map((c, i) => ({ index: i, label: c.label, text: coverage[i]?.text ?? c.text, kind: 'doc' }));
+}
+
+/**
  * The gate's counts for a receipt: how many units of the answer the sentence gate released in
  * sources mode and how many it withheld.
  * @param {string} answer
- * @param {Array<{ label: string, text: string }>} sources
+ * @param {GateSource[]} sources
  */
 async function gateCounts(answer, sources) {
   try {
     const { checkText } = await import('../core/gate.js');
-    const r = checkText(answer, { mode: 'sources', sources: sources.map((s, i) => ({ index: i, label: s.label, text: s.text })) });
+    const r = checkText(answer, { mode: 'sources', sources });
     return { mode: /** @type {const} */ ('sources'), released: r.released.length, withheld: r.withheld?.length ?? 0 };
   } catch (err) {
     console.warn('[starpi] the sentence gate could not judge the answer', err);
@@ -1076,7 +1194,12 @@ async function answerGrounded(q, signal, placement = {}) {
     let failure;
     if (candidates.length) {
       removeLoading();
-      const view = await streamAnswer(candidates, (target) => groundedRequest(target, { question: q.text, context, history, delivered }), signal, placement);
+      const view = await streamAnswer(candidates, (target) => groundedRequest(target, { question: q.text, context, history, delivered }), signal, placement, () => ({
+        label: 'grounded',
+        sources: gateSources(citationList, contextCoverage(citationList, delivered.context)),
+        question: q.text,
+        locale: getLocale(),
+      }));
       run = view.run;
       text = run.result.text.trim() ? run.result.text : '';
       if (text && run.target) {
@@ -1111,18 +1234,23 @@ async function answerGrounded(q, signal, placement = {}) {
     const answerText = text;
     // An answer quoted without a model can list the files in the workspace: their names stay on this device.
     const namesWorkspace = engine === 'synthesizer' && listWorkspace().some((d) => answerText.includes(d.name));
+    const localOnly = deviceOnly || usesWorkspace || namesWorkspace;
+    const coverage = engine === 'synthesizer' ? citationList.map((c) => ({ delivered: /** @type {const} */ ('full'), text: c.text })) : contextCoverage(citationList, delivered.context);
+    const excerpts = gateSources(citationList, coverage);
     /** @type {any} */
     let report = null;
     /** @type {string | undefined} */
     let receiptId;
     if (messageEl && scope) {
-      const coverage = engine === 'synthesizer' ? citationList.map((c) => ({ delivered: /** @type {const} */ ('full'), text: c.text })) : contextCoverage(citationList, delivered.context);
       report = applyGrounding(messageEl, {
         scope,
         sources: citationList.map((c, i) => ({ label: c.label, doc: c.doc, heading: c.heading, text: coverage[i].text, delivered: coverage[i].delivered })),
         // What the user said may be repeated without a source; the model's own earlier answers may not.
         given: [q.text, ...history.slice(-4).filter((h) => h.role === 'user').map((h) => nodeText(h))],
         citedOnly: engine === 'synthesizer',
+        // The AI judge of the second opinion sends statements and excerpts to a provider: only for
+        // answers that may leave this device.
+        localOnly,
       });
       const docs = new Map(listWorkspace().map((d) => [d.docId, d]));
       /** @type {import('../core/receipt.js').ReceiptDraft} */
@@ -1149,8 +1277,15 @@ async function answerGrounded(q, signal, placement = {}) {
           };
         }),
       };
-      const gate = await gateCounts(answerText, citationList.map((c, i) => ({ label: c.label, text: coverage[i].text })));
+      const gate = await gateCounts(answerText, excerpts);
       if (gate) draft.gate = gate;
+      // The relations the source check found across statements (comparisons, order in time, values
+      // carried over). Second opinions are asked for after the answer, with the buttons of the
+      // source check, and land in the report; the receipt reads them from there when it is built.
+      if (report) {
+        const { relations } = receiptAdvisory(report);
+        if (relations.length) draft.relations = relations;
+      }
       for (const hook of receiptHooks) {
         try {
           draft = await hook(draft, { answer: answerText, question: q.text });
@@ -1176,7 +1311,7 @@ async function answerGrounded(q, signal, placement = {}) {
       label: 'grounded',
       usage: target && result ? usageOf(result) : null,
       sources,
-      localOnly: deviceOnly || usesWorkspace || namesWorkspace,
+      localOnly,
       ...(report ? { grounding: { algorithm: report.algorithm, counts: report.counts, crossLanguage: report.crossLanguage, skipped: report.skipped } } : {}),
       meta: {
         engine,
@@ -1188,6 +1323,7 @@ async function answerGrounded(q, signal, placement = {}) {
       },
     });
     await reload();
+    readable.set(node.id, { label: 'grounded', sources: excerpts, grounding: null });
     if (messageEl) {
       messageEl.dataset.nodeId = node.id;
       labelAnswer(messageEl, node);
@@ -1436,4 +1572,121 @@ export async function checkSendable(attachments) {
 export async function exportData() {
   const thread = await loadSessionThread(conversationId);
   return { thread, path: thread ? activePath(indexNodes(thread.nodes), thread.conversation.activeLeafId) : [] };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Live voice turns (voice/hooks.js registerVoiceUi: ask, retrieve)
+// ---------------------------------------------------------------------------------------------
+
+/** Output limit of a spoken answer. */
+const SPOKEN_ANSWER_TOKENS = 700;
+
+/**
+ * The request of a spoken turn for one model: the spoken prompt (free, or the source rules with
+ * the turn's excerpts), the earlier turns of the Live session, and what was said (with a camera
+ * picture for a model that can see).
+ * @param {Target} target
+ * @param {LiveTurn} turn
+ * @returns {AiRequest}
+ */
+export function liveRequest(target, turn) {
+  const locale = /** @type {import('../i18n/index.js').Locale} */ (turn.locale.slice(0, 2) === 'de' ? 'de' : 'en');
+  const caps = capsOf(target.provider, target.model);
+  const who = target.route === 'device' ? 'local' : target.route === 'local' ? 'server' : 'cloud';
+  /** @type {string | null} */
+  let context = null;
+  if (turn.mode === 'grounded') {
+    const excerpts = turn.sources.map((s) => ({ label: s.label, heading: '', text: s.text }));
+    context = buildContext(/** @type {any} */ (excerpts), { maxChars: LIMITS.contextCharsCloud });
+  }
+  /** @type {Message[]} */
+  const messages = turn.history.slice(-12).map((h) => ({ role: h.role, content: [{ type: /** @type {const} */ ('text'), text: h.text }] }));
+  /** @type {Part[]} */
+  const content = [{ type: 'text', text: turn.text }];
+  if (turn.image && caps.vision) content.push({ type: 'image', mime: turn.image.mime, data: turn.image.data });
+  messages.push({ role: 'user', content });
+  /** @type {AiRequest} */
+  let req = { provider: target.provider, model: target.model, system: spokenSystemPrompt({ locale, who, context }), messages, temperature: 0.3, ...(target.route === 'device' ? {} : { maxOutputTokens: Math.min(caps.maxOutput || SPOKEN_ANSWER_TOKENS, SPOKEN_ANSWER_TOKENS) }) };
+  if (target.route === 'pool') {
+    const fitted = fitPoolRequest({ system: req.system, messages: req.messages });
+    req = { ...req, system: fitted.system, messages: fitted.messages };
+  }
+  return req;
+}
+
+/**
+ * A Live turn through the chat's model choice (the picker's value, the same order and fallbacks as
+ * a typed question); yields the answer's text deltas. Without a model it fails with the code
+ * 'no_model', after a failed call with the call's error code.
+ * @param {LiveTurn} turn
+ * @returns {AsyncGenerator<string>}
+ */
+export async function* liveAnswer(turn) {
+  const candidates = await chatCandidates(getAssistant(), { vision: Boolean(turn.image) });
+  if (!candidates.length) throw Object.assign(new Error('no model'), { code: 'no_model' });
+  /** @type {string[]} */
+  const queue = [];
+  /** @type {(() => void) | null} */
+  let wake = null;
+  let done = false;
+  /** @type {string | null} */
+  let failure = null;
+  const nudge = () => {
+    const fn = wake;
+    wake = null;
+    fn?.();
+  };
+  void runAnswer({
+    candidates,
+    signal: turn.signal,
+    build: (target) => liveRequest(target, turn),
+    onEvent: (ev) => {
+      if (ev.type !== 'text') return;
+      queue.push(ev.delta);
+      nudge();
+    },
+  })
+    .then(
+      (run) => {
+        if (run.result.error && !turn.signal.aborted) failure = run.result.error.code;
+      },
+      (err) => {
+        if (!turn.signal.aborted) failure = err && typeof err === 'object' && 'code' in err ? String(err.code) : 'internal';
+      },
+    )
+    .finally(() => {
+      done = true;
+      nudge();
+    });
+  for (;;) {
+    if (queue.length) {
+      yield /** @type {string} */ (queue.shift());
+      continue;
+    }
+    if (done) break;
+    await new Promise((resolve) => {
+      wake = () => resolve(undefined);
+    });
+  }
+  if (failure) throw Object.assign(new Error(failure), { code: failure });
+}
+
+/**
+ * Excerpts for a source Live turn, retrieved as a typed grounded question would be (the workspace,
+ * and the knowledge base unless the picker keeps questions on this device), within the context
+ * budget of a cloud answer.
+ * @param {string} query
+ * @returns {Promise<GateSource[]>}
+ */
+export async function liveSources(query) {
+  const { hits } = await retrieve(query, [], { workspaceOnly: false, deviceOnly: getAssistant() === 'device' });
+  /** @type {GateSource[]} */
+  const out = [];
+  let chars = 0;
+  for (const c of assignCitations(hits, { excerptChars: LIMITS.excerptChars })) {
+    if (chars + c.text.length > LIMITS.contextCharsCloud) break;
+    chars += c.text.length;
+    out.push({ index: out.length, label: c.label, text: c.text, kind: 'doc' });
+  }
+  return out;
 }
