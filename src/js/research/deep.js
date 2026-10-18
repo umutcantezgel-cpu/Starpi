@@ -14,7 +14,7 @@
 // the pipeline needs from the app comes in a ResearchRuntime, so tests run it with fakes.
 import { blocksFromMarkdown, groundAnswer } from '../core/grounding.js';
 import { t } from '../i18n/index.js';
-import { MAX_PLAN_QUERIES, planPrompt, PLAN_SCHEMA, researchLocale, SECTION_IDS } from './prompts.js';
+import { HINT_CHARS, MAX_PLAN_QUERIES, planPrompt, PLAN_SCHEMA, researchLocale, SECTION_IDS } from './prompts.js';
 import { createSourceTools, gateSources, quoteExcerpts, runSignedLoop, runToolLoop, sectionsMarkdown } from './sources-part.js';
 import { byokWebSearch, poolWebSearch, runWebPart } from './web-part.js';
 import { webQuery } from './web-query.js';
@@ -130,7 +130,7 @@ export async function makePlan(o) {
     const value = match ? JSON.parse(match[0]) : null;
     const queries = (Array.isArray(value?.queries) ? value.queries : [])
       .filter((/** @type {unknown} */ q) => typeof q === 'string')
-      .map((/** @type {string} */ q) => q.replace(/\s+/g, ' ').trim().slice(0, 200))
+      .map((/** @type {string} */ q) => q.replace(/\s+/g, ' ').trim().slice(0, HINT_CHARS).trim())
       .filter((/** @type {string} */ q, /** @type {number} */ i, /** @type {string[]} */ all) => q && all.findIndex((x) => x.toLowerCase() === q.toLowerCase()) === i)
       .slice(0, MAX_PLAN_QUERIES);
     return queries.length ? queries : fallback;

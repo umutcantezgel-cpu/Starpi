@@ -91,7 +91,7 @@ between steps.
 | `STARPI_POOL_RPM_PER_IP` | `20` | Pool requests per client IP and minute, over all pools. `NVIDIA_RATE_LIMIT_PER_MINUTE` is the older name. |
 | `STARPI_POOL_DAILY_PER_IP` | `200` | Pool requests per client IP and UTC day that reach a provider; `0` turns the budget off. |
 | `STARPI_RESEARCH_MODEL` | `gemini-2.5-flash` | The model of research steps; only a model of the Gemini pool's allowlist is taken. Research steps need `GEMINI_API_KEYS` and `gemini` among the pools. |
-| `STARPI_RESEARCH_RPM_PER_IP` | `30` | Research steps per client IP and minute (a job takes up to seven). |
+| `STARPI_RESEARCH_RPM_PER_IP` | `60` | Research steps per client IP and minute. A job takes up to ten (six for the documents, four web searches) and three run at once; the browser waits out a 429 of this limit. |
 | `STARPI_RESEARCH_DAILY_PER_IP` | `300` | Research steps per client IP and UTC day that reach Google; `0` turns the budget off. |
 | `STARPI_ACCESS_CODE` | empty | When set, the relay, the pools, the voice routes and research steps require the header `x-starpi-access` with this code. |
 | `STARPI_<PROVIDER>_BASE_URL` | empty | For tests: points a provider at a local fake (`localhost`, `127.0.0.1` or `[::1]` only). `GET /api/health` then reports it as simulated. |

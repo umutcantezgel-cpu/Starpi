@@ -5,12 +5,15 @@
 // and a whole loop against the local Gemini fake.
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import { canonicalJson, checkStepRequest, createTurnSigner, researchModel, RESEARCH_MODEL, stepBody, webGrounding } from '../../api/_lib/gemini/research.js';
+import { checkStepRequest, createTurnSigner, researchModel, RESEARCH_MODEL, STEP_LIMITS, stepBody, webGrounding } from '../../api/_lib/gemini/research.js';
 import { createDailyLimiter } from '../../api/_lib/origins.js';
 import { createRateLimiter } from '../../api/_lib/guards.js';
 import * as route from '../../api/research/step.js';
 import { createGeminiFake } from '../../scripts/fakes/gemini.mjs';
+import { canonicalJson } from '../../src/js/core/hash.js';
+import { runResearch } from '../../src/js/research/deep.js';
 import { MAX_TOOL_ROUNDS, sourcesPrompt, SOURCE_TOOL_NAMES } from '../../src/js/research/prompts.js';
+import { patientStep } from '../../src/js/research/sources-part.js';
 import { errorOf, jsonRequest, siteRequest, testKey } from './relay-helpers.mjs';
 
 const KEY = testKey('gemini');
@@ -252,6 +255,88 @@ describe('research step: route', () => {
     const limited = await route.handleResearchStep(step({ part: 'sources', question: QUESTION, locale: 'en' }), d);
     assert.equal(limited.status, 429);
     assert.equal((await limited.json()).error, 'daily_limit_reached');
+  });
+});
+
+/**
+ * The browser's step function over the route, as research/runtime.js postStep reads answers: a
+ * refusal becomes an error with the server's code and its Retry-After.
+ * @param {import('../../api/research/step.js').ResearchDeps} d
+ * @param {Array<{ status: number, body: any }>} [log]
+ * @returns {import('../../src/js/research/sources-part.js').StepFn}
+ */
+function routeStep(d, log = []) {
+  return async (body) => {
+    const res = await route.handleResearchStep(step(body), d);
+    const data = await res.json();
+    log.push({ status: res.status, body });
+    if (!res.ok) throw Object.assign(new Error(data.error), { code: data.error, retryAfterS: Number(res.headers.get('retry-after')) || null });
+    return data;
+  };
+}
+
+describe('research step: a job on the pool alone', () => {
+  const answer = () => candidate([{ text: '## Summary\nThe plan names two rooms. [Doc: plan.md, Chunk: 1]' }]);
+  /** @param {import('../../src/js/research/sources-part.js').StepFn} stepFn */
+  const runtime = (stepFn) => ({
+    complete: () => {
+      throw new Error('no own key');
+    },
+    step: stepFn,
+    backends: { search: async () => [], documents: async () => [] },
+    routes: async () => ({ sources: null, web: null, pool: true }),
+    saveArtifact: async () => {},
+    now: () => 0,
+  });
+
+  it('runs the tool loop for a long question, long plan queries and a long document name', async () => {
+    const upstream = scriptedFetch([answer(), answer()]);
+    /** @type {Array<{ status: number, body: any }>} */
+    const log = [];
+    const r = runtime(routeStep(deps({ fetch: upstream.fetch }), log));
+    const question = `${'Which rooms does the plan name, and how is each of them used on the floors of the building? '.repeat(7).trim()}`;
+    assert.ok(question.length > 600 && question.length <= 2000);
+    const plain = await runResearch({ id: 'long-1', question, createdAt: 0, locale: 'en', options: { web: false } }, /** @type {any} */ (r));
+    assert.equal(plain.parts.sources.via, 'pool');
+    assert.equal(plain.parts.sources.fallback, null);
+    assert.deepEqual(log[0].body.hints, [], 'without a plan the question is not sent twice');
+
+    const focus = `${'A very long document title '.repeat(16)}.md`;
+    const queries = ['x'.repeat(260), 'rooms of the plan', 'Rooms of the plan', question];
+    const planned = await runResearch({ id: 'long-2', question, createdAt: 0, locale: 'en', scope: { focus }, plan: { queries }, options: { web: false } }, /** @type {any} */ (r));
+    assert.equal(planned.parts.sources.via, 'pool');
+    assert.equal(planned.parts.sources.fallback, null);
+    const sent = log[1].body;
+    assert.deepEqual(sent.hints, ['x'.repeat(STEP_LIMITS.hintChars), 'rooms of the plan']);
+    assert.ok(sent.focus.length <= STEP_LIMITS.focusChars && focus.startsWith(sent.focus));
+    assert.deepEqual(log.map((l) => l.status), [200, 200]);
+    assert.equal(upstream.calls.length, 2);
+  });
+
+  it("waits out the per-minute limit, but not the daily budget", async () => {
+    let clock = 0;
+    const upstream = scriptedFetch([candidate([callPart('search_sources', { query: 'rooms' })]), answer()]);
+    const limited = deps({ fetch: upstream.fetch, limiter: createRateLimiter({ limit: 1, windowMs: 60_000, now: () => clock }) });
+    /** @type {number[]} */
+    const waits = [];
+    const patient = patientStep(routeStep(limited), {
+      wait: async (ms) => {
+        waits.push(ms);
+        clock += ms;
+      },
+    });
+    const out = await runResearch({ id: 'rate-1', question: QUESTION, createdAt: 0, locale: 'en', options: { web: false } }, /** @type {any} */ (runtime(patient)));
+    assert.equal(out.parts.sources.via, 'pool');
+    assert.equal(out.parts.sources.rounds, 1);
+    assert.deepEqual(waits, [60_000]);
+
+    const daily = deps({ fetch: scriptedFetch([candidate([callPart('search_sources', { query: 'rooms' })])]).fetch, daily: createDailyLimiter({ limit: 1, now: () => 0 }) });
+    /** @type {number[]} */
+    const none = [];
+    const spent = await runResearch({ id: 'rate-2', question: QUESTION, createdAt: 0, locale: 'en', options: { web: false } }, /** @type {any} */ (runtime(patientStep(routeStep(daily), { wait: async (ms) => void none.push(ms) }))));
+    assert.equal(spent.parts.sources.via, 'quote');
+    assert.equal(spent.parts.sources.fallback, 'daily_limit_reached');
+    assert.deepEqual(none, []);
   });
 });
 

@@ -19,7 +19,7 @@ import { checkText } from '../core/gate.js';
 import { citationLabel, labelName } from '../core/labels.js';
 import { safeSlice, splitSentences } from '../core/sentences.js';
 import { defuseFences, tokenize } from '../retrieval.js';
-import { MAX_CALLS_PER_ROUND, MAX_SEARCH_RESULTS, MAX_TOOL_ROUNDS, sectionOfHeading, SECTION_HEADINGS, SECTION_IDS, SOURCE_TOOL_SPECS, sourcesPrompt } from './prompts.js';
+import { FOCUS_CHARS, HINT_CHARS, MAX_CALLS_PER_ROUND, MAX_PLAN_QUERIES, MAX_SEARCH_RESULTS, MAX_TOOL_ROUNDS, sectionOfHeading, SECTION_HEADINGS, SECTION_IDS, SOURCE_TOOL_SPECS, sourcesPrompt } from './prompts.js';
 
 /** @typedef {import('../ai/contract.js').Message} Message */
 /** @typedef {import('../ai/contract.js').Part} Part */
@@ -219,6 +219,40 @@ export function createSourceTools(backends, options = {}) {
  * @property {number} [maxRounds]
  */
 
+/**
+ * The plan's queries as hints to the model: tidied, without the question itself (the model reads it
+ * anyway, and without a plan it is the only query), each at most HINT_CHARS long, at most
+ * MAX_PLAN_QUERIES of them. The site's research step takes nothing longer.
+ * @param {readonly string[] | undefined} hints
+ * @param {string} question
+ * @returns {string[]}
+ */
+export function loopHints(hints, question) {
+  const asked = question.replace(/\s+/g, ' ').trim().toLowerCase();
+  /** @type {string[]} */
+  const out = [];
+  for (const hint of hints ?? []) {
+    if (typeof hint !== 'string') continue;
+    const whole = hint.replace(/\s+/g, ' ').trim();
+    const text = safeSlice(whole, HINT_CHARS).trim();
+    const key = text.toLowerCase();
+    if (!text || whole.toLowerCase() === asked || out.some((h) => h.toLowerCase() === key)) continue;
+    out.push(text);
+    if (out.length >= MAX_PLAN_QUERIES) break;
+  }
+  return out;
+}
+
+/**
+ * The name of the document a question is about, as the prompt quotes it (at most FOCUS_CHARS).
+ * @param {string | null | undefined} focus
+ * @returns {string | null}
+ */
+export function loopFocus(focus) {
+  const text = typeof focus === 'string' ? safeSlice(focus.replace(/\s+/g, ' ').trim(), FOCUS_CHARS).trim() : '';
+  return text || null;
+}
+
 /** @param {AbortSignal | undefined} signal */
 function throwIfAborted(signal) {
   if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError');
@@ -234,7 +268,7 @@ export async function runToolLoop(o) {
   const maxRounds = o.maxRounds ?? MAX_TOOL_ROUNDS;
   /** @type {Message[]} */
   const messages = [{ role: 'user', content: [{ type: 'text', text: o.question }] }];
-  const system = sourcesPrompt(o.locale, { rounds: maxRounds, hints: o.hints, focus: o.focus });
+  const system = sourcesPrompt(o.locale, { rounds: maxRounds, hints: loopHints(o.hints, o.question), focus: loopFocus(o.focus) });
   for (let round = 1; ; round += 1) {
     throwIfAborted(o.signal);
     const last = round > maxRounds;
@@ -281,6 +315,60 @@ export async function runToolLoop(o) {
  * @typedef {(body: Record<string, unknown>, signal?: AbortSignal) => Promise<StepAnswer>} StepFn
  */
 
+/** The longest wait for the site's per-minute limit (its window is one minute). */
+export const RATE_WAIT_MAX_S = 60;
+
+/**
+ * Waits `ms`, or rejects as soon as the signal aborts.
+ * @param {number} ms
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<void>}
+ */
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const reason = () => (signal?.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError'));
+    if (signal?.aborted) {
+      reject(reason());
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(reason());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/**
+ * A step function that waits out the site's per-minute limit instead of failing: a refusal with the
+ * code rate_limited and a Retry-After of at most RATE_WAIT_MAX_S seconds (the error's `retryAfterS`)
+ * is tried again after that wait, up to `tries` times. Three jobs that run at once can reach the
+ * limit together; the daily budget and every other refusal still fail at once.
+ * @param {StepFn} step
+ * @param {{ tries?: number, wait?: (ms: number, signal?: AbortSignal) => Promise<void> }} [options]
+ * @returns {StepFn}
+ */
+export function patientStep(step, options = {}) {
+  const tries = options.tries ?? 3;
+  const wait = options.wait ?? sleep;
+  return async (body, signal) => {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await step(body, signal);
+      } catch (err) {
+        const e = /** @type {{ code?: unknown, retryAfterS?: unknown }} */ (err ?? {});
+        const seconds = typeof e.retryAfterS === 'number' && Number.isFinite(e.retryAfterS) ? Math.max(1, Math.ceil(e.retryAfterS)) : 0;
+        if (e.code !== 'rate_limited' || !seconds || seconds > RATE_WAIT_MAX_S || attempt >= tries || signal?.aborted) throw err;
+        await wait(seconds * 1000, signal);
+      }
+    }
+  };
+}
+
 /**
  * The tool loop on the site's Gemini pool: every signed model turn goes back unchanged with the
  * results of its calls. A call of a tool this side does not run is answered as an error, whatever
@@ -291,9 +379,11 @@ export async function runToolLoop(o) {
 export async function runSignedLoop(o) {
   /** @type {unknown[]} */
   const history = [];
+  const hints = loopHints(o.hints, o.question);
+  const focus = loopFocus(o.focus);
   for (;;) {
     throwIfAborted(o.signal);
-    const res = await o.step({ part: 'sources', question: o.question, locale: o.locale, history, hints: [...(o.hints ?? [])].slice(0, 4), focus: o.focus ?? null }, o.signal);
+    const res = await o.step({ part: 'sources', question: o.question, locale: o.locale, history, hints, focus }, o.signal);
     throwIfAborted(o.signal);
     if (res.status === 'final') {
       if (typeof res.text !== 'string' || !res.text.trim()) throw new Error('research: the model gave no answer');

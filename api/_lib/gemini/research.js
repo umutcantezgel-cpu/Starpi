@@ -18,7 +18,8 @@
 // A browser that holds its own key talks to the provider directly and needs none of this.
 //
 // WebCrypto only (HKDF, HMAC), so it runs on any runtime with Web globals.
-import { MAX_CALLS_PER_ROUND, MAX_TOOL_ROUNDS, QUESTION_CHARS, isSourceTool, sourcesPrompt, toolDeclarations, webPrompt } from '../../../src/js/research/prompts.js';
+import { canonicalJson, fromBase64url, sha256Hex, toBase64url } from '../../../src/js/core/hash.js';
+import { FOCUS_CHARS, HINT_CHARS, MAX_CALLS_PER_ROUND, MAX_PLAN_QUERIES, MAX_TOOL_ROUNDS, QUESTION_CHARS, isSourceTool, sourcesPrompt, toolDeclarations, webPrompt } from '../../../src/js/research/prompts.js';
 import { isPoolModel } from '../../../src/js/ai/catalog/pools.js';
 import { scrubSecrets } from '../relay/scrub.js';
 
@@ -58,9 +59,9 @@ export const STEP_LIMITS = Object.freeze({
   turnBytes: 200_000,
   /** The answer text. */
   textChars: 16_000,
-  hints: 4,
-  hintChars: 200,
-  focusChars: 300,
+  hints: MAX_PLAN_QUERIES,
+  hintChars: HINT_CHARS,
+  focusChars: FOCUS_CHARS,
 });
 
 /** The pool model a step uses unless STARPI_RESEARCH_MODEL names another model of the Gemini pool. */
@@ -82,43 +83,9 @@ const isObject = (value) => typeof value === 'object' && value !== null && !Arra
 const jsonBytes = (value) => encoder.encode(JSON.stringify(value) ?? '').byteLength;
 
 /**
- * JSON with the keys of every object sorted, so a turn verifies however the browser orders them.
- * @param {unknown} value
- * @returns {string}
- */
-export function canonicalJson(value) {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  const obj = /** @type {Record<string, unknown>} */ (value);
-  return `{${Object.keys(obj)
-    .sort()
-    .filter((k) => obj[k] !== undefined)
-    .map((k) => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`)
-    .join(',')}}`;
-}
-
-/** @param {ArrayBuffer} buffer */
-function base64url(buffer) {
-  let binary = '';
-  for (const byte of new Uint8Array(buffer)) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-/** @param {string} text */
-function fromBase64url(text) {
-  const binary = atob(text.replace(/-/g, '+').replace(/_/g, '/'));
-  return Uint8Array.from(binary, (c) => c.charCodeAt(0));
-}
-
-/** @param {string} text */
-async function sha256Hex(text) {
-  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(text));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
  * What a signature covers: the part, the round, the question (as its hash), the model that wrote the
- * turn and the turn itself. The canonical JSON never holds a line break, so no field can run into
+ * turn and the turn itself, in canonical JSON (core/hash.js: keys sorted, so a turn verifies however
+ * the browser orders them). The canonical JSON never holds a line break, so no field can run into
  * the next one.
  * @param {{ part: StepPart, round: number, question: string, model: string, turn: unknown }} t
  */
@@ -148,12 +115,13 @@ export function createTurnSigner(secret) {
     );
   return {
     async sign(t) {
-      return base64url(await crypto.subtle.sign('HMAC', await key, encoder.encode(await signedText(t))));
+      return toBase64url(new Uint8Array(await crypto.subtle.sign('HMAC', await key, encoder.encode(await signedText(t)))));
     },
     async verify(t, sig) {
-      if (typeof sig !== 'string' || !SIG.test(sig)) return false;
+      const bytes = typeof sig === 'string' && SIG.test(sig) ? fromBase64url(sig) : null;
+      if (!bytes) return false;
       // crypto.subtle.verify compares in constant time.
-      return crypto.subtle.verify('HMAC', await key, fromBase64url(sig), encoder.encode(await signedText(t)));
+      return crypto.subtle.verify('HMAC', await key, bytes, encoder.encode(await signedText(t)));
     },
   };
 }

@@ -3,7 +3,7 @@
 // (api/_lib/gemini/research.js). The guards run in this order:
 //
 //   1. same-origin check (STARPI_ALLOWED_ORIGINS and its aliases)
-//   2. per-IP limit (STARPI_RESEARCH_RPM_PER_IP, default 30 steps a minute)
+//   2. per-IP limit (STARPI_RESEARCH_RPM_PER_IP, default 60 steps a minute)
 //   3. access code, when the site sets STARPI_ACCESS_CODE
 //   4. Gemini keys of the pool (GEMINI_API_KEYS, with gemini among STARPI_POOL_PROVIDERS), else 503
 //   5. body (JSON object, capped) and its shape
@@ -37,8 +37,11 @@ import { resolveRoot } from '../_lib/relay/upstreams.js';
  */
 
 export const RESEARCH_DEFAULTS = Object.freeze({
-  /** Steps per client IP and minute (STARPI_RESEARCH_RPM_PER_IP); a job takes up to seven. */
-  rateLimitPerMinute: 30,
+  /**
+   * Steps per client IP and minute (STARPI_RESEARCH_RPM_PER_IP). A job takes up to ten (six for the
+   * documents: five tool rounds and the answer; four web searches), and three jobs run at once.
+   */
+  rateLimitPerMinute: 60,
   /** Steps per client IP and UTC day that reach Google (STARPI_RESEARCH_DAILY_PER_IP). */
   dailyPerIp: 300,
 });

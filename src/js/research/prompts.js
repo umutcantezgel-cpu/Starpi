@@ -31,6 +31,10 @@ export const MAX_CALLS_PER_ROUND = 6;
 export const QUESTION_CHARS = 2000;
 /** Search queries a plan may name (one web search round each). */
 export const MAX_PLAN_QUERIES = 4;
+/** Longest search query of a plan, as a hint to the sources part. */
+export const HINT_CHARS = 200;
+/** Longest name of a document a question is about, as the sources prompt quotes it. */
+export const FOCUS_CHARS = 300;
 /** Excerpts one search_sources call returns at most. */
 export const MAX_SEARCH_RESULTS = 8;
 
@@ -186,6 +190,6 @@ export function planPrompt(locale) {
 /** The answer shape of the plan. */
 export const PLAN_SCHEMA = Object.freeze({
   type: 'object',
-  properties: { queries: { type: 'array', minItems: 1, maxItems: MAX_PLAN_QUERIES, items: { type: 'string', minLength: 1, maxLength: 200 } } },
+  properties: { queries: { type: 'array', minItems: 1, maxItems: MAX_PLAN_QUERIES, items: { type: 'string', minLength: 1, maxLength: HINT_CHARS } } },
   required: ['queries'],
 });

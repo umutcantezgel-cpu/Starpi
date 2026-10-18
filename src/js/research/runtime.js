@@ -15,6 +15,7 @@ import { listWorkspace, searchWorkspace } from '../rag/workspace.js';
 import { mergeHits, workspaceHit } from '../retrieval.js';
 import { appDb } from '../store/schema.js';
 import { getConnection, listDocuments, searchKnowledge } from '../supabase.js';
+import { patientStep } from './sources-part.js';
 
 /** @typedef {import('../ai/contract.js').ProviderId} ProviderId */
 /** @typedef {import('./deep.js').ResearchRuntime} ResearchRuntime */
@@ -27,16 +28,18 @@ export const STEP_URL = '/api/research/step';
 /** Cloud providers a web search is tried on, in this order (Gemini's search is the default). */
 const WEB_ORDER = /** @type {readonly ProviderId[]} */ (['gemini', 'anthropic', 'openai', 'xai', 'openrouter']);
 
-/** An error of the research step, with the server's code. */
+/** An error of the research step, with the server's code (and its Retry-After, when it sent one). */
 export class StepError extends Error {
   /**
    * @param {string} code
    * @param {number} status
+   * @param {number | null} [retryAfterS]
    */
-  constructor(code, status) {
+  constructor(code, status, retryAfterS = null) {
     super(`research step: ${code}`);
     this.code = code;
     this.status = status;
+    this.retryAfterS = retryAfterS;
   }
 }
 
@@ -101,7 +104,8 @@ export async function postStep(body, signal) {
       // Not JSON: a host without the site's functions.
     }
     const error = /** @type {{ error?: unknown }} */ (data ?? {}).error;
-    throw new StepError(typeof error === 'string' ? error : `http_${res.status}`, res.status);
+    const retryAfter = Number(res.headers.get('retry-after'));
+    throw new StepError(typeof error === 'string' ? error : `http_${res.status}`, res.status, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null);
   }
   return /** @type {StepAnswer} */ (await res.json());
 }
@@ -173,7 +177,8 @@ export async function loadReport(artifactId) {
 export function browserRuntime() {
   return {
     complete,
-    step: postStep,
+    // Three jobs at once can reach the site's per-minute limit: wait it out rather than fail.
+    step: patientStep(postStep),
     backends: { search: searchSources, documents: documentNames },
     async routes() {
       await Promise.all([keysReady().catch(() => {}), ensureAdapters()]);
