@@ -1,6 +1,6 @@
 // @ts-check
 // What the page shows while voice works: the microphone button's state (listening, recording,
-// transcribing), the chip that names the source the speech goes to, and a level meter. Every state
+// transcribing) and the chip that names the source the speech goes to. Every state
 // has a word and an icon, never colour alone. Small DOM helpers only; the controllers decide.
 import { byId } from '../dom.js';
 import { t } from '../i18n/index.js';
@@ -60,16 +60,4 @@ export function showDictation(state, source, root = { getElementById: byId }) {
       text.textContent = t('voice.dictation.chip', params);
     }
   }
-}
-
-/**
- * A level meter's fill (0 to 1) as a width.
- * @param {HTMLElement | null} bar
- * @param {number} level RMS 0..1
- */
-export function showLevel(bar, level) {
-  if (!bar) return;
-  // Speech sits around 0.02-0.2 RMS; a square root spreads it over the bar.
-  const fill = Math.min(1, Math.sqrt(Math.max(0, level)) * 2.2);
-  bar.style.transform = `scaleX(${fill.toFixed(3)})`;
 }

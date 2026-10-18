@@ -374,6 +374,8 @@ export function createLiveController(deps) {
     capture = null;
     deps.queue.stop();
     deps.playback.flush();
+    // A conversation the limits ended says so (the user may not be looking at the screen).
+    if (why === 'limit' || why === 'silence') deps.queue.enqueue(speechNotice('live.spoken.ended', {}, deps.locale()));
     transcript.close('user');
     transcript.close('assistant');
     if (ticker) clearInterval(ticker);
