@@ -69,6 +69,7 @@ export function voiceUi() {
 /** Where dictation writes: the registered composer input, else the chat's message box. */
 export function composerInput() {
   const el = hooks.composerInput?.() ?? (typeof document === 'undefined' ? null : document.getElementById('chatInput'));
+  if (!el) return null;
   return el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement ? el : null;
 }
 
