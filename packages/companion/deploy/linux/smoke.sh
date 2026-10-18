@@ -38,6 +38,7 @@ prop() {
 }
 
 hello() {
+  # shellcheck disable=SC2016 # JavaScript, not shell: the template literal is meant for node
   "$NODE" -e '
     fetch(`http://127.0.0.1:${process.argv[1]}/v1/hello`).then(async (r) => {
       const body = await r.json();

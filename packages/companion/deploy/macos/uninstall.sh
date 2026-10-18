@@ -72,7 +72,7 @@ if [ -f "$BIN_DIR/starpi-companion" ] && grep -q 'written by install.sh' "$BIN_D
   rm -f "$BIN_DIR/starpi-companion"
 fi
 for item in releases current current.new deploy voice-server MANIFEST.json install.env; do
-  rm -rf "$PREFIX/$item"
+  rm -rf "${PREFIX:?}/$item"
 done
 rmdir "$PREFIX" 2>/dev/null || true
 

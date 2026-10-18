@@ -117,7 +117,7 @@ if [ -f "$R$BIN_DIR/starpi-companion" ] && grep -q 'written by install.sh' "$R$B
 fi
 # Only what install.sh put there; the folder itself goes when nothing else is left in it.
 for item in releases current current.new deploy voice-server MANIFEST.json install.env; do
-  rm -rf "$R$PREFIX/$item"
+  rm -rf "$R${PREFIX:?}/$item"
 done
 rmdir "$R$PREFIX" 2>/dev/null || true
 

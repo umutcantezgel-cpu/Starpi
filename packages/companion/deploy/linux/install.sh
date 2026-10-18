@@ -43,7 +43,7 @@ UNIT_DIR=""
 ROOT=""
 NODE=""
 KEY=""
-KEK=file
+KEK="file"
 ENABLE=0
 SYSTEMCTL=1
 while [ $# -gt 0 ]; do

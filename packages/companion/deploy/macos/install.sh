@@ -37,7 +37,7 @@ BIN_DIR=""
 AGENTS_DIR=""
 NODE=""
 KEY=""
-KEK=file
+KEK="file"
 SANDBOX=0
 ENABLE=0
 LAUNCHCTL=1
@@ -97,7 +97,7 @@ LOG_DIR=$HOME/Library/Logs/starpi-companion
 APP=$PREFIX/current
 for path in "$PREFIX" "$BIN_DIR" "$AGENTS_DIR" "$NODE"; do
   case "$path" in /*) ;; *) die "$path is not an absolute path" ;; esac
-  case "$path" in *"'"*|*'"'*|*'\'*|*'$'*|*'`'*) die "$path holds quotes or shell characters; choose another folder" ;; esac
+  case "$path" in *"'"*|*'"'*|*\\*|*'$'*|*'`'*) die "$path holds quotes or shell characters; choose another folder" ;; esac
 done
 
 # --- Program ----------------------------------------------------------------------------------

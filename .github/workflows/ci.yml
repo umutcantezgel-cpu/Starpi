@@ -141,6 +141,119 @@ jobs:
         working-directory: tools/library-publisher
         run: python -m unittest discover -v
 
+  # The local companion (packages/companion) and its packaging. The root typecheck does not cover
+  # the workspace, so it is checked here on both Node.js lines the companion supports.
+  companion:
+    name: Companion (Node ${{ matrix.node }}; typecheck, tests, dependency and licence checks, offline bundle)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies (lockfile, no install scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck
+        run: npm run typecheck --workspace @starpi/companion
+
+      - name: Tests
+        run: npm test --workspace @starpi/companion
+
+      - name: Dependency rules (declared packages, node prefixes, restricted modules)
+        run: node scripts/companion-deps-check.mjs
+
+      - name: Licences (npm tree of the companion, voice server requirements, voice allowlist)
+        run: node scripts/companion-license-check.mjs
+
+      - name: Offline bundle and an install from its tarball into a temporary folder
+        run: node --test tests/unit/companion-offline-pack.test.mjs
+
+  companion-systemd:
+    name: Companion under a systemd user manager (systemd-run --user smoke)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies (lockfile, no install scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Start a user manager for the runner account
+        run: |
+          set -euo pipefail
+          sudo loginctl enable-linger "$USER"
+          runtime="/run/user/$(id -u)"
+          echo "XDG_RUNTIME_DIR=$runtime" >> "$GITHUB_ENV"
+          for _ in $(seq 1 30); do
+            state=$(XDG_RUNTIME_DIR="$runtime" systemctl --user is-system-running 2>/dev/null || true)
+            case "$state" in running|degraded) echo "user manager: $state"; exit 0 ;; esac
+            sleep 1
+          done
+          echo "::error title=systemd::the user manager of the runner account did not start"
+          exit 1
+
+      - name: Build the offline bundle
+        run: node scripts/companion-offline-pack.mjs --out "$RUNNER_TEMP/bundle"
+
+      - name: Smoke test (transient unit with readiness and watchdog, then the installed user unit)
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/unpacked"
+          tar -xzf "$RUNNER_TEMP"/bundle/starpi-companion-*.tar.gz -C "$RUNNER_TEMP/unpacked"
+          bundle=$(echo "$RUNNER_TEMP"/unpacked/starpi-companion-*)
+          sh "$bundle/deploy/linux/smoke.sh" "$bundle"
+
+  voice-server:
+    name: Local voice server (Python ${{ matrix.python }}, fake engines)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.13']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      # The tests need the standard library only; ruff is the linter of the other Python code.
+      - name: Install ruff
+        run: python -m pip install ruff==0.16.10
+
+      - name: Lint
+        working-directory: companion/voice-server
+        run: |
+          ruff check --no-cache .
+          ruff format --check --no-cache .
+
+      - name: Byte-compile
+        run: python -m compileall -q companion/voice-server
+
+      - name: Unit tests (no models are downloaded)
+        run: python -I -B -m unittest discover -s companion/voice-server -v
+
   database:
     name: Database migration and RLS tests (PostgreSQL 16 + pgvector)
     runs-on: ubuntu-24.04
