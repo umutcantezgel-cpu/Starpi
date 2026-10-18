@@ -28,7 +28,8 @@
     "off_local": "Turn off in this browser",
     "off_delete": "Turn off and delete synced data",
     "off_local_confirm": "Turn sync off in this browser? Its conversations stay here, the synced copy stays on the server for your other browsers.",
-    "off_delete_confirm": "Turn sync off and delete the synced copy of your conversations from the server? Every browser keeps the conversations it has, but stops syncing. This cannot be undone."
+    "off_delete_confirm": "Turn sync off and delete the synced copy of your conversations from the server? Every browser keeps the conversations it has, but stops syncing. This cannot be undone.",
+    "purging": "Deleting the synced copy has not finished. This browser tries again with every sync; use \"Turn off and delete synced data\" to try now."
   },
   "notice": {
     "remote_off": "Sync was turned off in another browser and the synced copy was deleted. The conversations in this browser are kept. Choose a passphrase to sync again, or turn sync off here.",
@@ -74,7 +75,7 @@
     "missing_schema": "The database has no sync tables yet (migration chat_sync in backend/supabase).",
     "unavailable": "This browser cannot keep the sync key.",
     "failed": "That did not work. Please try again.",
-    "delete_failed": "The synced copy could not be deleted right now. Sync stays on; try again later.",
+    "delete_failed": "The synced copy could not be deleted completely right now. This browser tries again with every sync until it is done.",
     "invalid_email": "Enter a valid email address.",
     "invalid_code": "That code is wrong or has expired.",
     "email_taken": "This address belongs to another account. Use \"Sign in to my account\" instead.",

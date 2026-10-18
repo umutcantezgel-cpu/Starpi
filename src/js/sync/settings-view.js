@@ -174,7 +174,11 @@ export function mountSyncView(el, services, deps) {
   /** @param {SyncStatus} s */
   function summaryMarkup(s) {
     const last = s.lastSyncAt !== null ? label({ key: `${NS}.on.last`, params: { time: formatDate(new Date(s.lastSyncAt), { dateStyle: 'medium', timeStyle: 'short' }) } }) : label(`${NS}.on.never`);
-    const error = s.error ? resultLine(s.error === 'network' || s.error === 'timeout' ? `${NS}.error.offline` : s.error === 'missing_schema' ? `${NS}.error.missing_schema` : `${NS}.error.failed`, 'warn') : '';
+    const error = s.purging
+      ? resultLine(`${NS}.on.purging`, 'warn')
+      : s.error
+        ? resultLine(s.error === 'network' || s.error === 'timeout' ? `${NS}.error.offline` : s.error === 'missing_schema' ? `${NS}.error.missing_schema` : `${NS}.error.failed`, 'warn')
+        : '';
     return html`<p class="text-sm font-medium text-slate-800" data-sv="count">${label({ key: `${NS}.on.summary`, params: { n: formatNumber(s.conversations) } })}</p>
       <p class="text-xs text-slate-600">${last}</p>
       ${s.skipped > 0 ? label({ key: `${NS}.on.skipped`, params: { n: formatNumber(s.skipped) } }, { tag: 'p', className: 'text-xs text-amber-800' }) : ''}
@@ -343,7 +347,11 @@ export function mountSyncView(el, services, deps) {
     act(async () => {
       const done = await sync.syncNow({ full: true });
       const s = sync.status();
-      if (done) report(`${NS}.result.synced`, 'ok');
+      // A sync with a deletion still pending finishes that deletion, and sync is off then.
+      if (done && s.phase === 'off') {
+        accountHasSync = false;
+        report(`${NS}.result.deleted`, 'ok');
+      } else if (done) report(`${NS}.result.synced`, 'ok');
       else if (s.phase === 'on') report(s.error === 'network' || s.error === 'timeout' ? `${NS}.error.offline` : `${NS}.error.failed`, 'warn');
     }),
   );

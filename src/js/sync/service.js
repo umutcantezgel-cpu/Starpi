@@ -61,9 +61,16 @@ export function startChatSync() {
     await sync.ready();
     bindChatSync({
       statusLine: () => statusLine(sync.status()),
-      // After a delete: write the deletion now when sync is on (false when that failed; it is
-      // written with a later sync then).
-      flush: async () => (sync.status().phase === 'on' ? (await sync.syncNow()) !== null : true),
+      // After a delete: write the deletion now when sync is on. False when that failed (it is
+      // written with a later sync then), or when a deleted conversation is back because another
+      // browser added messages to it meanwhile (new messages win over a deletion).
+      flush: async (deleted) => {
+        if (sync.status().phase !== 'on') return true;
+        if ((await sync.syncNow()) === null) return false;
+        const store = await chatData();
+        for (const id of deleted) if (await store.getConversation(id)) return false;
+        return true;
+      },
     });
     // The store is followed only while sync is on, so a browser that does not sync loads nothing.
     sync.onStatus((s) => {

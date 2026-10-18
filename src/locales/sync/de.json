@@ -28,7 +28,8 @@
     "off_local": "In diesem Browser ausschalten",
     "off_delete": "Ausschalten und synchronisierte Daten löschen",
     "off_local_confirm": "Synchronisierung in diesem Browser ausschalten? Seine Gespräche bleiben hier, die synchronisierte Kopie bleibt für Ihre anderen Browser auf dem Server.",
-    "off_delete_confirm": "Synchronisierung ausschalten und die synchronisierte Kopie Ihrer Gespräche vom Server löschen? Jeder Browser behält seine Gespräche, synchronisiert aber nicht mehr. Das lässt sich nicht rückgängig machen."
+    "off_delete_confirm": "Synchronisierung ausschalten und die synchronisierte Kopie Ihrer Gespräche vom Server löschen? Jeder Browser behält seine Gespräche, synchronisiert aber nicht mehr. Das lässt sich nicht rückgängig machen.",
+    "purging": "Das Löschen der synchronisierten Kopie ist noch nicht abgeschlossen. Dieser Browser versucht es bei jeder Synchronisierung erneut; mit „Ausschalten und synchronisierte Daten löschen“ können Sie es sofort versuchen."
   },
   "notice": {
     "remote_off": "Die Synchronisierung wurde in einem anderen Browser ausgeschaltet und die synchronisierte Kopie gelöscht. Die Gespräche in diesem Browser bleiben erhalten. Wählen Sie eine Passphrase, um wieder zu synchronisieren, oder schalten Sie die Synchronisierung hier aus.",
@@ -74,7 +75,7 @@
     "missing_schema": "Die Datenbank hat noch keine Sync-Tabellen (Migration chat_sync in backend/supabase).",
     "unavailable": "Dieser Browser kann den Sync-Schlüssel nicht speichern.",
     "failed": "Das hat nicht geklappt. Bitte versuchen Sie es noch einmal.",
-    "delete_failed": "Die synchronisierte Kopie konnte gerade nicht gelöscht werden. Die Synchronisierung bleibt an; versuchen Sie es später noch einmal.",
+    "delete_failed": "Die synchronisierte Kopie konnte gerade nicht vollständig gelöscht werden. Dieser Browser versucht es bei jeder Synchronisierung erneut, bis es geklappt hat.",
     "invalid_email": "Geben Sie eine gültige E-Mail-Adresse ein.",
     "invalid_code": "Der Code ist falsch oder abgelaufen.",
     "email_taken": "Diese Adresse gehört zu einem anderen Konto. Nutzen Sie stattdessen „Bei meinem Konto anmelden“.",

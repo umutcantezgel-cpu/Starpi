@@ -25,7 +25,7 @@ export const CHAT_SYNC_ENABLED = false;
  * What the end-to-end encrypted sync offers this module (sync/service.js binds it when sync runs).
  * @typedef {object} ChatSyncHook
  * @property {() => ({ key: string, params?: Record<string, string> } | null)} statusLine  the sync line in Settings; null while sync is off
- * @property {() => Promise<boolean>} flush  syncs now (after a delete); false when that failed
+ * @property {(deleted: string[]) => Promise<boolean>} flush  syncs now after deleting these conversations; false when that failed or one of them came back (another browser added messages to it)
  */
 
 /** @type {ChatSyncHook | null} */
@@ -289,8 +289,12 @@ export async function deleteChatHistory() {
   // A message still being stored would otherwise be stored after the delete.
   await settleWrites();
   let local = true;
+  /** @type {string[]} */
+  let deleted = [];
   try {
-    await (await chatData()).clearConversations();
+    const store = await chatData();
+    if (syncHook) deleted = (await store.listConversations({ includeArchived: true })).map((c) => c.id);
+    await store.clearConversations();
   } catch (err) {
     console.warn('[starpi] the chats on this device could not be deleted', err);
     local = false;
@@ -298,7 +302,7 @@ export async function deleteChatHistory() {
   startNewSession();
   const legacy = await deleteSynced((data) => data.deleteOwnChats());
   // The encrypted sync writes the deletions now, so other browsers delete the chats too.
-  const synced = syncHook ? await syncHook.flush() : true;
+  const synced = syncHook ? await syncHook.flush(deleted) : true;
   return legacy && synced && local;
 }
 
@@ -319,7 +323,7 @@ export async function deleteSession(sid) {
   }
   if (sid === sessionId) startNewSession();
   const legacy = await deleteSynced((data) => data.deleteChatSession(sid));
-  const synced = syncHook ? await syncHook.flush() : true;
+  const synced = syncHook ? await syncHook.flush([sid]) : true;
   return legacy && synced && local;
 }
 

@@ -12,6 +12,13 @@
 //   the next revision. A write names the revision it builds on and fails when the row has moved on
 //   meanwhile; the newer row is then merged in and written again. Conversations deleted here are
 //   written as deletion markers, so other browsers delete them too.
+// - Deletions against changes: new messages win over a deletion (nothing written is lost), and a
+//   deletion wins over changed conversation fields (a pin, a title, another branch), whichever came
+//   first. "New" is measured against the messages of the revision this device last synced, which
+//   the state keeps per row.
+// - Turning sync off with deletion removes the key envelope first (other browsers stop), then the
+//   rows. When the rows could not be deleted, the state remembers that and every later sync
+//   retries the deletion instead of syncing, until it is done.
 // - Only ciphertext, opaque row ids and revision numbers reach the server. Turns marked localOnly,
 //   provider keys and signing keys never enter a record (payload.js builds records from an
 //   allowlist and reads nothing else).
@@ -64,6 +71,7 @@ import { applyPayload, buildPayload, canonicalJson, deletedPayload, isSyncRecord
  * @property {number} rev  the revision this device last wrote or applied
  * @property {string} hash  of the record at that revision ('unreadable' when it did not open)
  * @property {SyncedMeta | null} base  conversation fields at that revision (null for a deletion)
+ * @property {string[]} [nodes]  ids of the messages at that revision (empty for a deletion)
  * @property {boolean} deleted  a deletion marker (or a row that did not open)
  */
 
@@ -76,6 +84,7 @@ import { applyPayload, buildPayload, canonicalJson, deletedPayload, isSyncRecord
  * @property {CryptoKey} ids
  * @property {Record<string, RowState>} rows  by row id
  * @property {number | null} lastSyncAt
+ * @property {true} [purge]  turning off with deletion has not finished: the rows are still to be deleted
  */
 
 /**
@@ -103,6 +112,7 @@ import { applyPayload, buildPayload, canonicalJson, deletedPayload, isSyncRecord
  * @property {number | null} lastSyncAt
  * @property {number} skipped  conversations left out: too large, or rows that do not open
  * @property {string | null} error  kind of the last failure (a DataError kind)
+ * @property {boolean} purging  turning off with deletion has not finished; syncs retry it
  */
 
 /** @typedef {{ applied: number, written: number, skipped: number }} SyncReport */
@@ -228,7 +238,7 @@ export function createChatSync(options) {
   const timers = options.timers ?? { set: (fn, ms) => setTimeout(fn, ms), clear: (h) => clearTimeout(/** @type {ReturnType<typeof setTimeout>} */ (h)) };
 
   /** @type {SyncStatus} */
-  let status = { phase: 'off', busy: false, conversations: 0, lastSyncAt: null, skipped: 0, error: null };
+  let status = { phase: 'off', busy: false, conversations: 0, lastSyncAt: null, skipped: 0, error: null, purging: false };
   /** @type {Set<(status: SyncStatus) => void>} */
   const listeners = new Set();
   /** @type {Promise<void> | null} */
@@ -263,7 +273,7 @@ export function createChatSync(options) {
         return;
       }
       const st = await options.state.load().catch(() => null);
-      if (st) setStatus({ phase: 'on', conversations: countRows(st), lastSyncAt: st.lastSyncAt, skipped: countUnreadable(st) });
+      if (st) setStatus({ phase: 'on', conversations: countRows(st), lastSyncAt: st.lastSyncAt, skipped: countUnreadable(st), purging: st.purge === true });
     })();
     return loading;
   }
@@ -300,11 +310,37 @@ export function createChatSync(options) {
    * The record of a stored conversation; `exists` is false when there is no such conversation.
    * @param {ChatStore} store
    * @param {string} convId
+   * @param {RowState | undefined} known  what this device last synced of it
    */
-  async function localRecord(store, convId) {
+  async function localRecord(store, convId, known) {
     const thread = await store.loadThread(convId);
     if (!thread) return { exists: false, payload: null };
-    return { exists: true, payload: buildPayload(thread.conversation, thread.nodes) };
+    return { exists: true, payload: buildPayload(thread.conversation, thread.nodes, { syncedTitle: known?.base?.title }) };
+  }
+
+  /**
+   * Whether a record holds messages the revision this device last synced did not have. Without a
+   * known list (a row this device never synced), every message counts as new.
+   * @param {ConversationPayload | null} payload
+   * @param {RowState | undefined} known
+   */
+  const hasNewMessages = (payload, known) => {
+    if (!payload) return false;
+    const before = known && !known.deleted && Array.isArray(known.nodes) ? new Set(known.nodes) : null;
+    return payload.nodes.some((n) => !before?.has(n.id));
+  };
+
+  /**
+   * The state of a row at a revision this device wrote or applied.
+   * @param {string} convId
+   * @param {number} rev
+   * @param {SyncRecord} record
+   * @returns {Promise<RowState>}
+   */
+  async function rowState(convId, rev, record) {
+    const hash = await hashOf(record);
+    if (record.kind === 'deleted') return { convId, rev, hash, base: null, nodes: [], deleted: true };
+    return { convId, rev, hash, base: metaOf(record), nodes: record.nodes.map((n) => n.id), deleted: false };
   }
 
   /**
@@ -330,7 +366,7 @@ export function createChatSync(options) {
     } catch (err) {
       if (!(err instanceof SyncCryptoError)) throw err;
     }
-    ctx.st.rows[row.rowId] = { convId: ctx.st.rows[row.rowId]?.convId ?? '', rev: row.rev, hash: UNREADABLE, base: null, deleted: true };
+    ctx.st.rows[row.rowId] = { convId: ctx.st.rows[row.rowId]?.convId ?? '', rev: row.rev, hash: UNREADABLE, base: null, nodes: [], deleted: true };
     ctx.report.skipped += 1;
     return null;
   }
@@ -357,7 +393,7 @@ export function createChatSync(options) {
       throw err;
     }
     if (must(await remote.writeRow({ rowId, rev, ...sealed }, baseRev)) === 'conflict') return 'conflict';
-    ctx.st.rows[rowId] = { convId: record.id, rev, hash: await hashOf(record), base: record.kind === 'conversation' ? metaOf(record) : null, deleted: record.kind === 'deleted' };
+    ctx.st.rows[rowId] = await rowState(record.id, rev, record);
     ctx.report.written += 1;
     return 'written';
   }
@@ -374,7 +410,7 @@ export function createChatSync(options) {
     const { st, store } = ctx;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
       const known = st.rows[rowId];
-      const local = await localRecord(store, convId);
+      const local = await localRecord(store, convId, known);
       const localHash = local.payload ? await hashOf(local.payload) : null;
       // Changed here since the revision this device last synced (a deletion counts).
       const changed = known ? (local.exists ? local.payload !== null && localHash !== known.hash : !known.deleted) : local.payload !== null;
@@ -383,23 +419,28 @@ export function createChatSync(options) {
       let baseRev = known?.rev ?? 0;
 
       if (incoming && incoming.rev > baseRev) {
-        const remoteHash = await hashOf(incoming.record);
-        if (incoming.record.kind === 'deleted') {
-          if (!changed || !local.payload) {
-            if (local.exists && !changed) await store.deleteConversation(convId);
-            st.rows[rowId] = { convId, rev: incoming.rev, hash: remoteHash, base: null, deleted: true };
+        const record = incoming.record;
+        if (record.kind === 'deleted') {
+          // Deleted elsewhere: new messages written here win and are written again; fields changed
+          // here (and turns that stay on this device) go with the conversation.
+          if (!hasNewMessages(local.payload, known)) {
+            if (local.exists) await store.deleteConversation(convId);
+            st.rows[rowId] = await rowState(convId, incoming.rev, record);
             ctx.report.applied += 1;
             return;
           }
-          // Messages written here win over a deletion made elsewhere.
-          target = local.payload;
+          target = /** @type {ConversationPayload} */ (local.payload);
+        } else if (known && !known.deleted && !local.exists && !hasNewMessages(record, known)) {
+          // Deleted here after the revision this device last synced, while the newer revision only
+          // changed fields: the deletion wins and is written on top of it.
+          target = deletedPayload(convId, now());
         } else {
-          const merged = mergePayloads(local.payload, incoming.record, changed && known?.base ? known.base : null);
+          const merged = mergePayloads(local.payload, record, changed && known?.base ? known.base : null);
           await applyPayload(store, merged, local.payload);
           ctx.report.applied += 1;
-          const after = (await localRecord(store, convId)).payload;
-          st.rows[rowId] = { convId, rev: incoming.rev, hash: remoteHash, base: metaOf(incoming.record), deleted: false };
-          if (!after || (await hashOf(after)) === remoteHash) return;
+          st.rows[rowId] = await rowState(convId, incoming.rev, record);
+          const after = (await localRecord(store, convId, st.rows[rowId])).payload;
+          if (!after || (await hashOf(after)) === st.rows[rowId].hash) return;
           target = after;
         }
         baseRev = incoming.rev;
@@ -435,9 +476,10 @@ export function createChatSync(options) {
   async function cycle(full = false) {
     const st = await options.state.load().catch(() => null);
     if (!st) {
-      if (status.phase !== 'unavailable') setStatus({ phase: 'off' });
+      if (status.phase !== 'unavailable') setStatus({ phase: 'off', purging: false });
       return null;
     }
+    if (st.purge) return (await purge()) ? { applied: 0, written: 0, skipped: 0 } : null;
     const check = full || !unsubscribe ? null : dirty;
     dirty = new Set();
     setStatus({ busy: true });
@@ -569,26 +611,46 @@ export function createChatSync(options) {
     return result ?? { ok: false, reason: 'error' };
   }
 
+  /** Forgets the sync state of this browser: sync is off here. */
+  async function forget() {
+    await options.state.clear();
+    dirty = null;
+    setStatus({ phase: status.phase === 'unavailable' ? 'unavailable' : 'off', conversations: 0, lastSyncAt: null, skipped: 0, error: null, purging: false });
+  }
+
   /**
-   * Turns sync off in this browser; with deleteRemote, first deletes every synced row and the key
-   * envelope of the account (other browsers then stop syncing and keep their conversations).
+   * Deletes the account's key envelope and rows for a turn-off that asked for it (inside
+   * exclusive()); sync is off here once that is done. A failure leaves the state marked, so the
+   * next sync retries: the key may already be gone, and the rows left behind must not wait for a
+   * new setup.
+   * @returns {Promise<boolean>}
+   */
+  async function purge() {
+    const res = await remote.deleteAll();
+    if (!res.ok) {
+      setStatus({ error: res.error.kind, purging: true });
+      return false;
+    }
+    await forget();
+    return true;
+  }
+
+  /**
+   * Turns sync off in this browser; with deleteRemote, first deletes the key envelope and every
+   * synced row of the account (other browsers then stop syncing and keep their conversations).
    * @param {{ deleteRemote: boolean }} opts
-   * @returns {Promise<boolean>} false when the remote data could not be deleted (sync stays on)
+   * @returns {Promise<boolean>} false when the remote data could not be deleted yet (later syncs retry)
    */
   async function disable(opts) {
     await ready();
     const done = await exclusive(async () => {
-      if (opts.deleteRemote) {
-        const res = await remote.deleteAll();
-        if (!res.ok) {
-          setStatus({ error: res.error.kind });
-          return false;
-        }
+      if (!opts.deleteRemote) {
+        await forget();
+        return true;
       }
-      await options.state.clear();
-      dirty = null;
-      setStatus({ phase: status.phase === 'unavailable' ? 'unavailable' : 'off', conversations: 0, lastSyncAt: null, skipped: 0, error: null });
-      return true;
+      const st = await options.state.load().catch(() => null);
+      if (st && !st.purge) await options.state.save({ ...st, purge: true });
+      return purge();
     });
     return done === true;
   }

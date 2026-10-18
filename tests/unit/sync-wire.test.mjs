@@ -314,7 +314,9 @@ describe('chat sync over the wire', () => {
 
   it('writes against the revision it builds on, and merges a stale write', async () => {
     await b.store.appendToActive('starpi_garden', { role: 'user', parts: [{ type: 'text', text: 'And in full sun?' }] });
+    await b.store.appendToActive('starpi_garden', { role: 'assistant', parts: [{ type: 'text', text: 'Lavender and thyme.' }] });
     await a.store.appendToActive('starpi_garden', { role: 'user', parts: [{ type: 'text', text: 'What about basil?' }] });
+    await a.store.appendToActive('starpi_garden', { role: 'assistant', parts: [{ type: 'text', text: 'Basil wants sun.' }] });
     // B writes right after A has read the revisions, so A's write builds on a stale revision.
     project.afterList = async () => {
       assert.equal((await b.sync.syncNow())?.written, 1);
@@ -330,14 +332,14 @@ describe('chat sync over the wire', () => {
     await b.sync.syncNow();
     const texts = async (/** @type {typeof a} */ x) => (await x.store.getNodes('starpi_garden')).map((n) => nodeText(n)).sort();
     assert.deepEqual(await texts(a), await texts(b));
-    assert.equal((await texts(a)).length, 4);
+    assert.equal((await texts(a)).length, 6);
   });
 
   it('never sends a message, title, conversation id or the passphrase, and never touches chat_history', () => {
     for (const r of project.requests) {
       const all = `${r.method} ${r.path}${decodeURIComponent(r.query)} ${JSON.stringify(r.headers)} ${r.body}`;
       for (const secret of SECRETS) assert.equal(all.includes(secret), false, `${secret} in ${r.method} ${r.path}`);
-      for (const later of ['And in full sun?', 'What about basil?']) assert.equal(all.includes(later), false);
+      for (const later of ['And in full sun?', 'Lavender and thyme.', 'What about basil?', 'Basil wants sun.']) assert.equal(all.includes(later), false);
       assert.equal(r.path.includes('chat_history'), false);
     }
     const tables = new Set(project.requests.filter((r) => r.path.startsWith('/rest/v1/')).map((r) => r.path));
