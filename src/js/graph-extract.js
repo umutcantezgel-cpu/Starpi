@@ -318,8 +318,10 @@ const MAX_PHRASE_WORDS = 5;
 const capitalised = (word) => /^\p{Lu}/u.test(word) || /^\p{Ll}+\p{Lu}/u.test(word);
 
 /**
- * One occurrence of a capitalised name in a sentence.
- * @typedef {{ key: string, surface: string, initial: boolean, single: boolean, afterDeterminer: boolean }} PhraseHit
+ * One occurrence of a capitalised name in a sentence. `head` is the first word, folded; `rest` the
+ * name without it, for a name of several words that starts the sentence ("Yesterday Mara": the
+ * capital of "Yesterday" may only be the sentence's).
+ * @typedef {{ key: string, surface: string, initial: boolean, single: boolean, afterDeterminer: boolean, head: string, rest: PhraseHit | null }} PhraseHit
  */
 
 /**
@@ -359,9 +361,14 @@ export function capitalisedPhrases(sentence, options = {}) {
     const run = words.slice(s, e + 1);
     const named = run.filter((w) => !/^\p{N}/u.test(w.text) && !common.has(fold(w.text)));
     if (named.length && run.length <= MAX_PHRASE_WORDS && !/^\p{N}/u.test(run[0].text)) {
-      const surface = sentence.slice(run[0].start, run[run.length - 1].end);
-      const before = s > 0 ? fold(words[s - 1].text) : '';
-      out.push({ key: nameKey(surface), surface, initial: s === 0, single: run.length === 1, afterDeterminer: DETERMINERS_DE.has(before) });
+      /** @type {(from: number, initial: boolean) => PhraseHit} */
+      const hit = (from, initial) => {
+        const surface = sentence.slice(run[from].start, run[run.length - 1].end);
+        const before = s + from > 0 ? fold(words[s + from - 1].text) : '';
+        const rest = initial && run.length - from > 1 && !/^\p{N}/u.test(run[from + 1].text) ? hit(from + 1, false) : null;
+        return { key: nameKey(surface), surface, initial, single: run.length - from === 1, afterDeterminer: DETERMINERS_DE.has(before), head: fold(run[from].text), rest };
+      };
+      out.push(hit(0, s === 0));
     }
     i = j + 1;
   }
@@ -371,9 +378,11 @@ export function capitalisedPhrases(sentence, options = {}) {
 /**
  * The co-occurrence graph of one document: capitalised names (the most frequent ones) linked when
  * they appear in the same sentence. A single word at the start of a sentence counts only where the
- * document also writes it capitalised inside a sentence; in German text, where every noun is
- * capitalised, a single word the document puts after an article anywhere counts not at all. Every
- * link cites the first chunk it was seen in and is checked like a model's relation.
+ * document also writes it capitalised inside a sentence; a longer name there loses its first word
+ * when the document writes that word in lower case elsewhere or uses the rest as a name of its own.
+ * In German text, where every noun is capitalised, a single word the document puts after an
+ * article anywhere counts not at all. Every link cites the first chunk it was seen in and is
+ * checked like a model's relation.
  * @param {readonly GraphChunk[]} chunks  one document's chunks
  * @returns {DocPart}
  */
@@ -388,7 +397,10 @@ export function cooccurrenceGraph(chunks) {
   const inside = new Set();
   /** German: single words the document puts after an article somewhere (nouns). */
   const articled = new Set();
+  /** Words the document writes in lower case. */
+  const lower = new Set();
   for (const chunk of chunks) {
+    for (const m of chunk.text.matchAll(/(?<![\p{L}\p{N}])\p{Ll}[\p{L}\p{M}]*/gu)) lower.add(fold(m[0]));
     for (const span of sentenceSpans(chunk.text)) {
       const hits = capitalisedPhrases(chunk.text.slice(span.start, span.end), { particles });
       for (const h of hits) {
@@ -401,7 +413,8 @@ export function cooccurrenceGraph(chunks) {
   const counts = /** @type {Map<string, { surface: string, sentences: number, order: number }>} */ (new Map());
   const kept = sentences.map(({ chunk, hits }) => {
     const keys = new Set();
-    for (const h of hits) {
+    for (const found of hits) {
+      const h = found.rest && !inside.has(found.key) && (lower.has(found.head) || inside.has(found.rest.key)) ? found.rest : found;
       if (h.single && h.initial && !inside.has(h.key)) continue;
       if (h.single && articled.has(h.key)) continue;
       if (keys.has(h.key)) continue;
