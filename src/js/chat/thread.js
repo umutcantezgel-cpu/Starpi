@@ -71,7 +71,7 @@ import { mountGroundingFrame } from '../render.js';
 import { getEngineState, interrupt } from '../webgpu/engine.js';
 import { budgetPrompt } from '../webgpu/models.js';
 import { applyThinking, thinkingFor } from '../ai/thinking.js';
-import { buildContextPack, contextWindowFor, expandLabels, packMessages, shortLabelSources, usesPack, warmUpLocal } from '../ai/context-pack.js';
+import { buildContextPack, contextWindowFor, expandLabels, forgetContextWindows, packMessages, shortLabelSources, usesPack, warmUpLocal } from '../ai/context-pack.js';
 import { browserWebSearch, decideRoute, ROUTE_TOP_K, searchWebHits } from '../ai/hybrid.js';
 import { getKey } from '../ai/keys.js';
 import { readAloudStream } from '../features/voice.js';
@@ -198,11 +198,15 @@ export function invalidateKnownTitles() {
 }
 
 // The own server loads a model when the picker selects it, before the first question (Ollama and
-// llama.cpp; context-pack.js warmUpLocal).
+// llama.cpp; context-pack.js warmUpLocal), and its context window is read again for the next pack.
 onAssistantChange((value) => {
   if (!String(value).startsWith('local:')) return;
   void chatCandidates(value)
-    .then(([target]) => (target?.route === 'local' ? warmUpLocal({ baseUrl: getLlmUrl(), model: target.model, key: getKey('local') }) : false))
+    .then(([target]) => {
+      if (target?.route !== 'local') return false;
+      forgetContextWindows(getLlmUrl(), target.model);
+      return warmUpLocal({ baseUrl: getLlmUrl(), model: target.model, key: getKey('local') });
+    })
     .catch(() => {});
 });
 

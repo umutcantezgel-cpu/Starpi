@@ -340,36 +340,58 @@ export function packMessages(pack, history, model) {
 // Local servers: context window and warm-up
 // ---------------------------------------------------------------------------------------------
 
-/** Context windows read from own servers, by address and model (a probe runs once per pair). */
-/** @type {Map<string, Promise<number>>} */
+/**
+ * How long a window the own server did not report is used before it is read again: the 4096 a
+ * probe falls back to also stands for a server that was down, slow or still starting.
+ */
+export const UNKNOWN_WINDOW_RETRY_MS = 60_000;
+
+/**
+ * Context windows read from own servers, by address and model. A reported window is kept for the
+ * page; a fallback only until `until`, so a server that was unreachable once is asked again.
+ * @type {Map<string, { window: Promise<number>, until: number }>}
+ */
 const windows = new Map();
 
-/** Forgets the context windows read so far (the server's address or model changed). */
-export function forgetContextWindows() {
-  windows.clear();
+/** @param {string} baseUrl @param {string} model */
+const windowKey = (baseUrl, model) => `${localApiRoot(baseUrl)}\n${model}`;
+
+/**
+ * Forgets the context windows read so far: all of them, or the one of a server and model (it is
+ * read again for the next pack, e.g. when the model is picked again).
+ * @param {string | null} [baseUrl]
+ * @param {string} [model]
+ */
+export function forgetContextWindows(baseUrl = null, model = '') {
+  if (!baseUrl) windows.clear();
+  else if (localApiRoot(baseUrl)) windows.delete(windowKey(baseUrl, model));
 }
 
 /**
  * The context window a pack is sized for: the loaded model's on this device, the window the own
- * server reports (Ollama /api/show, llama.cpp /props; 4096 when it does not say), else the catalog's.
+ * server reports (Ollama /api/show, llama.cpp /props; 4096 when it does not say or cannot be
+ * reached, read again after UNKNOWN_WINDOW_RETRY_MS), else the catalog's.
  * @param {{ route: string, model: string }} target
  * @param {Pick<Caps, 'contextTokens'>} caps
- * @param {{ deviceWindow?: number | null, baseUrl?: string | null, key?: string | null, probe?: typeof probeContextWindow }} [deps]
+ * @param {{ deviceWindow?: number | null, baseUrl?: string | null, key?: string | null, probe?: typeof probeContextWindow, now?: () => number }} [deps]
  * @returns {Promise<number>}
  */
 export function contextWindowFor(target, caps, deps = {}) {
   if (target.route === 'device') return Promise.resolve(deps.deviceWindow || caps.contextTokens);
   if (target.route !== 'local' || !deps.baseUrl || !localApiRoot(deps.baseUrl)) return Promise.resolve(caps.contextTokens);
-  const key = `${localApiRoot(deps.baseUrl)}\n${target.model}`;
-  let known = windows.get(key);
-  if (!known) {
-    known = (deps.probe ?? probeContextWindow)(deps.baseUrl, { model: target.model, key: deps.key || null }).then(
-      (r) => r.contextTokens,
-      () => FALLBACK_CONTEXT_TOKENS,
-    );
-    windows.set(key, known);
-  }
-  return known;
+  const now = deps.now ?? Date.now;
+  const key = windowKey(deps.baseUrl, target.model);
+  const known = windows.get(key);
+  if (known && known.until > now()) return known.window;
+  // Shared while the probe runs; a fallback answer then sets when it is asked again.
+  const entry = { window: Promise.resolve(FALLBACK_CONTEXT_TOKENS), until: Infinity };
+  const retryLater = () => {
+    entry.until = now() + UNKNOWN_WINDOW_RETRY_MS;
+    return FALLBACK_CONTEXT_TOKENS;
+  };
+  entry.window = (deps.probe ?? probeContextWindow)(deps.baseUrl, { model: target.model, key: deps.key || null }).then((r) => (r.source === 'fallback' ? retryLater() : r.contextTokens), retryLater);
+  windows.set(key, entry);
+  return entry.window;
 }
 
 /** How long a warm-up may take; a model that loads longer is still loaded afterwards. */

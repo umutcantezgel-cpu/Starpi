@@ -10,6 +10,7 @@ import {
   contextWindowFor,
   expandLabels,
   forgetContextWindows,
+  UNKNOWN_WINDOW_RETRY_MS,
   PACK_SIZES,
   packMessages,
   packSafe,
@@ -247,6 +248,71 @@ describe('local servers', () => {
       throw new Error('down');
     };
     assert.equal(await contextWindowFor({ route: 'local', model: 'other' }, caps, { baseUrl: 'http://127.0.0.1:8080', probe: failing }), 4096);
+    forgetContextWindows();
+  });
+
+  it('reads a window again after a while when the server did not report one or could not be reached', async () => {
+    forgetContextWindows();
+    let clock = 1_000_000;
+    const now = () => clock;
+    let up = false;
+    let calls = 0;
+    const probe = async () => {
+      calls += 1;
+      if (!up) throw new Error('connection refused');
+      return { contextTokens: 32_768, source: /** @type {const} */ ('llamacpp') };
+    };
+    const target = { route: 'local', model: 'm' };
+    const caps = { contextTokens: 4096 };
+    const deps = { baseUrl: 'http://127.0.0.1:8080', probe, now };
+    assert.equal(await contextWindowFor(target, caps, deps), 4096, 'the small pack while the server is down');
+    up = true;
+    assert.equal(await contextWindowFor(target, caps, deps), 4096, 'not asked again at once');
+    assert.equal(calls, 1);
+    clock += UNKNOWN_WINDOW_RETRY_MS + 1;
+    assert.equal(await contextWindowFor(target, caps, deps), 32_768, 'asked again once the wait is over');
+    clock += 10 * UNKNOWN_WINDOW_RETRY_MS;
+    assert.equal(await contextWindowFor(target, caps, deps), 32_768);
+    assert.equal(calls, 2, 'a reported window is kept');
+
+    // A server that answers but does not say: the fallback, asked again later as well.
+    let silent = 0;
+    const quiet = async () => {
+      silent += 1;
+      return { contextTokens: 4096, source: /** @type {const} */ ('fallback') };
+    };
+    const other = { baseUrl: 'http://127.0.0.1:1234', probe: quiet, now };
+    await contextWindowFor(target, caps, other);
+    await contextWindowFor(target, caps, other);
+    assert.equal(silent, 1);
+    clock += UNKNOWN_WINDOW_RETRY_MS + 1;
+    await contextWindowFor(target, caps, other);
+    assert.equal(silent, 2);
+
+    // Picking the model again forgets its window (and only its window).
+    forgetContextWindows('http://127.0.0.1:8080/v1', 'm');
+    assert.equal(await contextWindowFor(target, caps, deps), 32_768);
+    assert.equal(calls, 3);
+    await contextWindowFor(target, caps, other);
+    assert.equal(silent, 2, 'the other server keeps its entry');
+    forgetContextWindows();
+  });
+
+  it('shares one probe between packs asked for while it runs', async () => {
+    forgetContextWindows();
+    let calls = 0;
+    /** @type {(v: { contextTokens: number, source: 'ollama' }) => void} */
+    let answer = () => {};
+    const probe = () => {
+      calls += 1;
+      return new Promise((resolve) => (answer = resolve));
+    };
+    const deps = { baseUrl: 'http://127.0.0.1:11434', probe };
+    const a = contextWindowFor({ route: 'local', model: 'm' }, { contextTokens: 4096 }, deps);
+    const b = contextWindowFor({ route: 'local', model: 'm' }, { contextTokens: 4096 }, deps);
+    answer({ contextTokens: 16_384, source: 'ollama' });
+    assert.deepEqual(await Promise.all([a, b]), [16_384, 16_384]);
+    assert.equal(calls, 1);
     forgetContextWindows();
   });
 
