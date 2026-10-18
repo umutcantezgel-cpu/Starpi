@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { readLockfile } from './license-gate.mjs';
 import { checkDependencies, companionDependencies, COMPANION, VOICE_SERVER } from './companion-offline-pack.mjs';
 
-export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
  * Python packages the voice server may require, reviewed by hand. `imported`: server.py imports

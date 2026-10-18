@@ -14,12 +14,12 @@ import json
 import logging
 import os
 import sys
-import tempfile
 import threading
 import time
 import unittest
 import wave
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 import server as vs
@@ -122,15 +122,15 @@ class ServerCase(unittest.TestCase):
     origins = frozenset({APP_ORIGIN, SELF_HOST})
 
     def setUp(self) -> None:
-        self.tmp = tempfile.TemporaryDirectory()
-        root = Path(self.tmp.name)
-        self.voices = root / "voices"
+        self.workdir = TemporaryDirectory()
+        base = Path(self.workdir.name)
+        self.voices = base / "voices"
         self.voices.mkdir()
         write_voice(self.voices, ALLOWED_VOICE, {"audio": {"sample_rate": 22050}, "inference": {"length_scale": 1.0}})
         write_voice(self.voices, UNLISTED_VOICE, {"audio": {"sample_rate": 22050}})
         write_voice(self.voices, "de_DE-mls-medium", {"audio": {}})  # no sample rate: not installed
         write_voice(self.voices, "it_IT-serena-medium", "{not json")  # unreadable: not installed
-        self.piper = root / "fake_piper.py"
+        self.piper = base / "fake_piper.py"
         self.piper.write_text(FAKE_PIPER, encoding="utf-8")
         self.recognizer = FakeRecognizer()
         self.speaker = vs.PiperSpeaker(self.voices, [sys.executable, "-I", str(self.piper)], timeout_s=2.0)
@@ -146,7 +146,7 @@ class ServerCase(unittest.TestCase):
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(5)
-        self.tmp.cleanup()
+        self.workdir.cleanup()
 
     def request(
         self, method: str, path: str, body: bytes | None = None, headers: dict[str, str] | None = None
@@ -239,8 +239,8 @@ class RoutesTest(ServerCase):
 
 class TranscriptionTest(ServerCase):
     def transcribe(self, **extra: str) -> tuple[int, dict[str, str], bytes]:
-        content_type, body = audio_form(**extra)
-        return self.request("POST", "/v1/audio/transcriptions", body, {"Content-Type": content_type})
+        form_type, payload = audio_form(**extra)
+        return self.request("POST", "/v1/audio/transcriptions", payload, headers={"Content-Type": form_type})
 
     def test_transcript_as_json(self) -> None:
         status, headers, body = self.transcribe(language="en", response_format="json")

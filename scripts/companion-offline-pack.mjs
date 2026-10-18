@@ -30,7 +30,7 @@ import { gzipSync } from 'node:zlib';
 import { evaluateLicense, packageName, readLockfile, readPackageLicense, resolveDependency } from './license-gate.mjs';
 import { main as verifyMain, listTree, signSums, sumsOf, SIGNATURE, SUMS, verifyBundle } from '../packages/companion/deploy/verify-bundle.mjs';
 
-export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const COMPANION = 'packages/companion';
 export const VOICE_SERVER = 'companion/voice-server';
 /** Files of the voice server that travel (its tests and tooling stay in the repository). */
@@ -39,7 +39,7 @@ const SKIP_NAMES = new Set(['.DS_Store', 'node_modules', '.git']);
 
 /**
  * @typedef {import('./license-gate.mjs').Lockfile} Lockfile
- * @typedef {import('./license-gate.mjs').LockEntry} LockEntry
+ * @typedef {Lockfile['packages'][string]} LockEntry
  * @typedef {{ key: string, name: string, version: string, license: string | null, dest: string, workspace: boolean }} BundledDependency
  */
 
@@ -54,7 +54,8 @@ function runtimeNeeds(entry) {
   const needs = new Map();
   for (const name of Object.keys(entry.dependencies ?? {})) needs.set(name, false);
   for (const name of Object.keys(entry.optionalDependencies ?? {})) needs.set(name, true);
-  for (const name of Object.keys(entry.peerDependencies ?? {})) {
+  const peers = entry.peerDependencies ?? {};
+  for (const name of Object.keys(peers)) {
     if (!needs.has(name) && entry.peerDependenciesMeta?.[name]?.optional !== true) needs.set(name, false);
   }
   return [...needs].map(([name, optional]) => ({ name, optional }));
@@ -377,19 +378,19 @@ export function packOffline({ outDir, signKey, tar = true, root = ROOT, now }) {
  * @param {string} outDir
  */
 export function keygen(outDir) {
-  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
-  mkdirSync(outDir, { recursive: true });
   const priv = path.join(outDir, 'companion-release.key');
   const pub = path.join(outDir, 'companion-release.pub');
   if (existsSync(priv)) throw new Error(`${priv} exists; a signing key is never replaced`);
-  writeFileSync(priv, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
-  writeFileSync(pub, publicKey.export({ type: 'spki', format: 'pem' }));
+  const pair = generateKeyPairSync('ed25519');
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(priv, pair.privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
+  writeFileSync(pub, pair.publicKey.export({ type: 'spki', format: 'pem' }));
   return { priv, pub };
 }
 
 /**
- * @param {string[]} argv
- * @returns {number}
+ * Command line; the exit code comes back.
+ * @param {string[]} argv  arguments after the script
  */
 export function main(argv) {
   const [first, ...rest] = argv;
@@ -420,7 +421,8 @@ export function main(argv) {
   return 0;
 }
 
-if (process.argv[1] && realpathSync(path.resolve(process.argv[1])) === fileURLToPath(import.meta.url)) {
+const invoked = process.argv[1] ? realpathSync(path.resolve(process.argv[1])) : '';
+if (invoked === fileURLToPath(import.meta.url)) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (err) {

@@ -31,6 +31,7 @@ Group=starpi-companion
 # the only process that holds it, so no other program on the machine can use the splice.
 SupplementaryGroups=starpi-egress-client
 ExecStart=@NODE@ @APP@/bin/starpi-companion.mjs start --config /etc/starpi-companion/config.json
+Environment=NODE_ENV=production STARPI_COMPANION_EGRESS_SOCKET=/run/starpi-companion-egress/splice.sock
 Restart=on-failure
 RestartSec=3
 RestartPreventExitStatus=2
@@ -48,39 +49,38 @@ MemoryHigh=768M
 MemoryMax=1G
 TasksMax=256
 
-# Hardening.
+# Hardening, in alphabetical order: no capabilities or new privileges, a read-only system with
+# private /tmp and /dev, kernel, clock, host name and control groups out of reach, no namespaces,
+# realtime or set-id files, a system call filter (refused calls fail with EPERM).
+AmbientCapabilities=
+CapabilityBoundingSet=
+LockPersonality=yes
 NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
 PrivateDevices=yes
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectKernelLogs=yes
-ProtectControlGroups=yes
+PrivateTmp=yes
 ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
 ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
 ProtectProc=invisible
+ProtectSystem=strict
+RemoveIPC=yes
+RestrictSUIDSGID=yes
 RestrictNamespaces=yes
 RestrictRealtime=yes
-RestrictSUIDSGID=yes
-LockPersonality=yes
-RemoveIPC=yes
 SystemCallArchitectures=native
-SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
-CapabilityBoundingSet=
-AmbientCapabilities=
+SystemCallFilter=@system-service
 UMask=0077
 
 # Network: loopback only (the API on 127.0.0.1, local models such as Ollama). Everything else goes
 # through the splice as `CONNECT host:443` on a Unix socket; TLS stays end to end in the companion.
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 IPAddressDeny=any
 IPAddressAllow=localhost
-
-Environment=NODE_ENV=production
-Environment=STARPI_COMPANION_EGRESS_SOCKET=/run/starpi-companion-egress/splice.sock
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 [Install]
 WantedBy=multi-user.target

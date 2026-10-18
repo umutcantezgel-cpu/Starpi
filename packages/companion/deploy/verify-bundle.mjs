@@ -204,6 +204,7 @@ export function main(argv, { out = (l) => process.stdout.write(`${l}\n`), err = 
   return report.ok ? 0 : 1;
 }
 
-if (process.argv[1] && realpathSync(resolve(process.argv[1])) === fileURLToPath(import.meta.url)) {
+const started = process.argv[1] ? realpathSync(resolve(process.argv[1])) : '';
+if (started === fileURLToPath(import.meta.url)) {
   process.exitCode = main(process.argv.slice(2));
 }

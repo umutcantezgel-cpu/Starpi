@@ -18,10 +18,10 @@ import { isBundlePath, parseSums, SIGNATURE, SUMS, verifyBundle } from '../../pa
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const LINUX = process.platform === 'linux';
 const scratch = mkdtempSync(path.join(tmpdir(), 'companion-pack-'));
-const { privateKey, publicKey } = generateKeyPairSync('ed25519');
-const PRIVATE = privateKey.export({ type: 'pkcs8', format: 'pem' });
+const signer = generateKeyPairSync('ed25519');
+const PRIVATE = signer.privateKey.export({ type: 'pkcs8', format: 'pem' });
 const PUBLIC_FILE = path.join(scratch, 'release.pub');
-writeFileSync(PUBLIC_FILE, publicKey.export({ type: 'spki', format: 'pem' }));
+writeFileSync(PUBLIC_FILE, signer.publicKey.export({ type: 'spki', format: 'pem' }));
 const OTHER_PUBLIC = generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' });
 const EPOCH = 1_790_000_000;
 
@@ -201,9 +201,10 @@ describe('the Linux install scripts', { skip: !LINUX && 'Linux only' }, () => {
     const unitDir = path.join(root, 'etc/systemd/system');
     const companion = readFileSync(path.join(unitDir, 'starpi-companion.service'), 'utf8');
     const splice = readFileSync(path.join(unitDir, 'starpi-companion-egress.service'), 'utf8');
-    for (const line of ['Type=notify', 'NotifyAccess=all', 'User=starpi-companion', 'SupplementaryGroups=starpi-egress-client', 'IPAddressDeny=any', 'IPAddressAllow=localhost', 'Environment=STARPI_COMPANION_EGRESS_SOCKET=/run/starpi-companion-egress/splice.sock']) {
+    for (const line of ['Type=notify', 'NotifyAccess=all', 'User=starpi-companion', 'SupplementaryGroups=starpi-egress-client', 'IPAddressDeny=any', 'IPAddressAllow=localhost']) {
       assert.match(companion, new RegExp(`^${line}$`, 'm'), line);
     }
+    assert.match(companion, /^Environment=.*\bSTARPI_COMPANION_EGRESS_SOCKET=\/run\/starpi-companion-egress\/splice\.sock\b/m);
     assert.match(splice, /^ExecStart=\S+ \/opt\/starpi-companion\/current\/bin\/starpi-companion\.mjs egress-splice --socket \/run\/starpi-companion-egress\/splice\.sock --config %d\/companion-config$/m);
     assert.match(splice, /^Group=starpi-egress-client$/m);
     assert.match(readFileSync(path.join(unitDir, 'starpi-companion.service.d/kek.conf'), 'utf8'), /^LoadCredentialEncrypted=starpi-companion-kek:\/etc\/credstore\.encrypted\/starpi-companion-kek$/m);

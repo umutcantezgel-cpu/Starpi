@@ -26,6 +26,7 @@ WatchdogSec=30
 TimeoutStartSec=90
 TimeoutStopSec=30
 ExecStart=@NODE@ @APP@/bin/starpi-companion.mjs start
+Environment=NODE_ENV=production
 Restart=on-failure
 RestartSec=3
 # Exit 2 is a usage error in the command line; trying again would not help.
@@ -39,15 +40,15 @@ TasksMax=256
 # Hardening a user manager applies without privileges (seccomp and the no-new-privileges flag).
 # Settings that need mount or user namespaces stay out: where unprivileged user namespaces are
 # restricted the unit would not start at all.
-NoNewPrivileges=yes
 LockPersonality=yes
-RestrictRealtime=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 RestrictSUIDSGID=yes
 RestrictNamespaces=yes
+RestrictRealtime=yes
 SystemCallArchitectures=native
-SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallFilter=@system-service
 UMask=0077
 
 # Network: loopback only. systemd enforces IP address rules for system services; a user manager
@@ -57,8 +58,6 @@ UMask=0077
 # In this unit the companion's own egress guard is the boundary (zero egress unless you list hosts).
 IPAddressDeny=any
 IPAddressAllow=localhost
-
-Environment=NODE_ENV=production
 
 [Install]
 WantedBy=default.target

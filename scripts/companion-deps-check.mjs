@@ -17,12 +17,13 @@
 //
 // Usage: node scripts/companion-deps-check.mjs [--root <package folder>] [--json]
 // Exit: 0 clean, 1 findings, 2 usage or read error.
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { builtinModules } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const SCRIPTS = path.dirname(fileURLToPath(import.meta.url));
+export const ROOT = path.join(SCRIPTS, '..');
 export const PACKAGE = path.join(ROOT, 'packages', 'companion');
 export const SCANNED = Object.freeze(['bin', 'src', 'deploy']);
 
@@ -181,10 +182,10 @@ function sourceFiles(dir, base) {
   if (!existsSync(dir)) return [];
   /** @type {string[]} */
   const files = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== 'node_modules') files.push(...sourceFiles(full, base));
-    else if (entry.isFile() && /\.(?:js|mjs|cjs)$/.test(entry.name)) files.push(path.relative(base, full).split(path.sep).join('/'));
+  for (const item of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, item.name);
+    if (item.isDirectory() && item.name !== 'node_modules') files.push(...sourceFiles(full, base));
+    else if (item.isFile() && /\.(?:js|mjs|cjs)$/.test(item.name)) files.push(path.relative(base, full).split(path.sep).join('/'));
   }
   return files.sort();
 }
@@ -238,8 +239,9 @@ export function checkDependencies({ root = PACKAGE } = {}) {
   return { files: files.length, findings };
 }
 
-/** @param {string[]} argv */
-export function main(argv) {
+/** @param {string[]} args  the command line after the script */
+export function main(args) {
+  const argv = args;
   const at = argv.indexOf('--root');
   if (at >= 0 && !argv[at + 1]) {
     process.stderr.write('usage: node scripts/companion-deps-check.mjs [--root <package folder>] [--json]\n');

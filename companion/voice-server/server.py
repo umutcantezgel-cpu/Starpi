@@ -45,19 +45,21 @@ import json
 import logging
 import os
 import re
-import signal
-import socket
 import subprocess
 import sys
 import threading
 import time
-import unicodedata
 import wave
 from collections import deque
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from signal import SIGINT, SIGTERM
+from signal import signal as on_signal
+from socket import create_connection
 from typing import Any, Protocol
+from unicodedata import category as char_category
+from unicodedata import normalize as unicode_normalize
 from urllib.parse import urlsplit
 
 VERSION = "1.0.0"
@@ -70,7 +72,7 @@ DEFAULT_ALLOWLIST = HERE / "allowlist.json"
 log = logging.getLogger("starpi-voice")
 
 
-# --- Limits -------------------------------------------------------------------------------------
+# ==== limits ====
 
 
 @dataclass(frozen=True)
@@ -105,7 +107,7 @@ RETRY_AFTER_S = 5
 NO_SPEECH_LIMIT = 0.6
 
 
-# --- Errors -------------------------------------------------------------------------------------
+# ==== errors ====
 
 
 class HttpError(Exception):
@@ -130,10 +132,10 @@ class EngineFailure(Exception):
         self.status = status
 
 
-# --- Text checks --------------------------------------------------------------------------------
+# ==== text checks ====
 
 # C0 controls except tab and line breaks, DEL and the C1 block.
-CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
+CONTROL_CHARS = re.compile("[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]")
 TERM_SEPARATORS = re.compile(r"[\r\n,;]+")
 
 
@@ -160,7 +162,8 @@ def checked_text(value: Any, name: str, limit: int, *, required: bool = False) -
 def has_letter_or_digit(text: str) -> bool:
     """True when the text holds something a voice can say: a letter or a digit once compatibility
     forms are folded (NFKC). Punctuation, spaces and invisible characters alone give no audio."""
-    return any(unicodedata.category(ch)[0] in "LN" for ch in unicodedata.normalize("NFKC", text))
+    folded = unicode_normalize("NFKC", text)
+    return any(char_category(c).startswith(("L", "N")) for c in folded)
 
 
 def split_terms(text: str | None, limit: int) -> list[str]:
@@ -180,7 +183,7 @@ def split_terms(text: str | None, limit: int) -> list[str]:
     return terms
 
 
-# --- Spelling hints -----------------------------------------------------------------------------
+# ==== spelling hints ====
 
 
 @dataclass(frozen=True)
@@ -232,7 +235,7 @@ def plan_prompt(
     return PromptPlan(initial_prompt=", ".join(kept) or None, hotwords=", ".join(hot) or None)
 
 
-# --- Voice allowlist ----------------------------------------------------------------------------
+# ==== voice allowlist ====
 
 VOICE_ID = re.compile(r"[a-z]{2,3}_[A-Z]{2}-[a-z0-9_]+-(?:x_low|low|medium|high)")
 LANG_TAG = re.compile(r"[a-z]{2,3}-[A-Z]{2}")
@@ -278,7 +281,7 @@ def load_allowlist(path: Path) -> dict[str, AllowedVoice]:
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     entries = raw.get("voices") if isinstance(raw, dict) else None
     if not isinstance(entries, list):
-        raise ValueError(f"{path}: expected an object with a 'voices' list")
+        raise ValueError(f"{path}: the file needs a top-level 'voices' array")
     ids = {e["id"] for e in entries if isinstance(e, dict) and isinstance(e.get("id"), str)}
     voices: dict[str, AllowedVoice] = {}
     for entry in entries:
@@ -291,7 +294,7 @@ def load_allowlist(path: Path) -> dict[str, AllowedVoice]:
     return voices
 
 
-# --- Audio --------------------------------------------------------------------------------------
+# ==== audio ====
 
 
 def check_wav(data: bytes) -> None:
@@ -310,16 +313,14 @@ def check_wav(data: bytes) -> None:
 
 def wav_from_pcm(pcm: bytes, rate: int) -> bytes:
     """Raw 16-bit mono samples (what Piper writes with --output-raw) in a WAV container."""
-    out = io.BytesIO()
-    with wave.open(out, "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(rate)
-        wav.writeframes(pcm)
-    return out.getvalue()
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as writer:
+        writer.setparams((1, 2, rate, len(pcm) // 2, "NONE", "not compressed"))
+        writer.writeframes(pcm)
+    return buffer.getvalue()
 
 
-# --- Turns --------------------------------------------------------------------------------------
+# ==== turns ====
 
 
 class Gate:
@@ -365,7 +366,7 @@ class Gate:
                 self._cond.notify_all()
 
 
-# --- Engines ------------------------------------------------------------------------------------
+# ==== engines ====
 
 
 class Recognizer(Protocol):
@@ -417,10 +418,9 @@ class WhisperRecognizer:
     ) -> None:
         self.name = name
         self.model_dir = model_dir
-        self.device = device
-        self.compute_type = compute_type
-        self.threads = threads
         self.allow_download = allow_download
+        # Passed to WhisperModel as they are.
+        self.runtime = {"device": device, "compute_type": compute_type, "cpu_threads": threads}
         self._model: Any = None
 
     @property
@@ -429,10 +429,14 @@ class WhisperRecognizer:
 
     @property
     def counter(self) -> TokenCounter | None:
-        tokenizer = getattr(self._model, "hf_tokenizer", None)
-        if tokenizer is None:
+        hf = getattr(self._model, "hf_tokenizer", None)
+        if hf is None:
             return None
-        return lambda text: len(tokenizer.encode(text, add_special_tokens=False).ids)
+
+        def count(text: str) -> int:
+            return len(hf.encode(text, add_special_tokens=False).ids)
+
+        return count
 
     def load(self) -> None:
         if not self.allow_download:
@@ -442,11 +446,9 @@ class WhisperRecognizer:
 
         self._model = WhisperModel(
             self.name,
-            device=self.device,
-            compute_type=self.compute_type,
-            cpu_threads=self.threads,
             download_root=str(self.model_dir) if self.model_dir else None,
             local_files_only=not self.allow_download,
+            **self.runtime,
         )
 
     def transcribe(self, audio: bytes, language: str | None, plan: PromptPlan) -> str:
@@ -464,6 +466,13 @@ class WhisperRecognizer:
         )
         parts = [s.text.strip() for s in segments if float(getattr(s, "no_speech_prob", 0.0) or 0.0) <= NO_SPEECH_LIMIT]
         return " ".join(p for p in parts if p)
+
+
+def nested_number(data: Any, section: str, key: str) -> float | None:
+    """data[section][key] when it is a number (not a boolean), else None."""
+    part = data.get(section) if isinstance(data, dict) else None
+    value = part.get(key) if isinstance(part, dict) else None
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
 # Variables a Piper process may see; API keys and other secrets of this environment stay here.
@@ -524,17 +533,13 @@ class PiperSpeaker:
         except (OSError, ValueError) as err:
             log.warning("voice %s: config unreadable (%s)", vid, type(err).__name__)
             return None
-        audio = data.get("audio") if isinstance(data, dict) else None
-        rate = audio.get("sample_rate") if isinstance(audio, dict) else None
-        if not isinstance(rate, int) or isinstance(rate, bool) or not 8000 <= rate <= 48000:
+        rate = nested_number(data, "audio", "sample_rate")
+        if rate is None or rate != int(rate) or not 8000 <= rate <= 48000:
             log.warning("voice %s: no usable sample rate", vid)
             return None
-        inference = data.get("inference") if isinstance(data, dict) else None
-        scale = inference.get("length_scale") if isinstance(inference, dict) else None
-        length_scale = 1.0
-        if isinstance(scale, (int, float)) and not isinstance(scale, bool) and 0.1 <= scale <= 10:
-            length_scale = float(scale)
-        return InstalledVoice(vid, model, config, rate, length_scale)
+        scale = nested_number(data, "inference", "length_scale")
+        length_scale = scale if scale is not None and 0.1 <= scale <= 10 else 1.0
+        return InstalledVoice(vid, model, config, int(rate), length_scale)
 
     def speak(self, text: str, voice: InstalledVoice, speed: float) -> bytes:
         argv = [
@@ -610,7 +615,7 @@ class PiperSpeaker:
         return b"".join(chunks)
 
 
-# --- Request parsing ----------------------------------------------------------------------------
+# ==== request parsing ====
 
 TCHARS = r"[!#$%&'*+.^_`|~0-9A-Za-z-]+"
 QUOTED = r'"(?:[^"\\\r\n]|\\[^\r\n])*"'
@@ -718,9 +723,11 @@ def parse_form(boundary: str, body: bytes, max_parts: int, single: frozenset[str
 
 
 class DuplicateField(ValueError):
-    def __init__(self, name: str) -> None:
-        super().__init__(f"{name} given more than once")
-        self.name = name
+    """A field that may occur once in a form occurred again."""
+
+    def __init__(self, field_name: str) -> None:
+        self.field_name = field_name
+        super().__init__(f"the form repeats {field_name}")
 
 
 def parse_json_object(body: bytes) -> dict[str, Any]:
@@ -746,7 +753,7 @@ def parse_json_object(body: bytes) -> dict[str, Any]:
     return value
 
 
-# --- Origins ------------------------------------------------------------------------------------
+# ==== origins ====
 
 LOOPBACK_NAMES = frozenset({"127.0.0.1", "localhost", "[::1]"})
 
@@ -771,7 +778,7 @@ def normalize_origin(value: str) -> str | None:
     return f"{parts.scheme}://{shown}" + (f":{port}" if port not in (None, default) else "")
 
 
-# --- HTTP ---------------------------------------------------------------------------------------
+# ==== http ====
 
 ROUTES: dict[str, tuple[str, ...]] = {
     "/health": ("GET",),
@@ -830,7 +837,7 @@ class VoiceServer(http.server.ThreadingHTTPServer):
         finally:
             self._connections.release()
 
-    def handle_error(self, request: Any, client_address: Any) -> None:
+    def handle_error(self, _request: Any, _peer: Any) -> None:
         # A client that hung up is no server error; nothing of the request is printed.
         log.debug("connection ended: %s", type(sys.exc_info()[1]).__name__)
 
@@ -897,18 +904,20 @@ class VoiceHandler(http.server.BaseHTTPRequestHandler):
         )
 
     def _send(self, status: int, body: bytes, content_type: str, headers: Sequence[tuple[str, str]] = ()) -> None:
-        self.send_response(status)
+        fields = [
+            ("Content-Type", content_type),
+            ("Content-Length", str(len(body))),
+            ("Cache-Control", "no-store"),
+            ("X-Content-Type-Options", "nosniff"),
+            *headers,
+        ]
         if self._cors_origin:
-            self.send_header("Access-Control-Allow-Origin", self._cors_origin)
-            self.send_header("Vary", "Origin")
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        for name, value in headers:
-            self.send_header(name, value)
+            fields += [("Access-Control-Allow-Origin", self._cors_origin), ("Vary", "Origin")]
         if self.close_connection:
-            self.send_header("Connection", "close")
+            fields.append(("Connection", "close"))
+        self.send_response(status)
+        for key, val in fields:
+            self.send_header(key, val)
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -1222,7 +1231,7 @@ class VoiceHandler(http.server.BaseHTTPRequestHandler):
         self._send(200, audio, "audio/wav")
 
 
-# --- Command line -------------------------------------------------------------------------------
+# ==== command line ====
 
 
 def default_home() -> Path:
@@ -1291,7 +1300,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def port_taken(port: int) -> bool:
-    with contextlib.suppress(OSError), socket.create_connection((HOST, port), timeout=0.3):
+    with contextlib.suppress(OSError), create_connection((HOST, port), timeout=0.3):
         return True
     return False
 
@@ -1341,8 +1350,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     def stop(_signum: int, _frame: Any) -> None:
         threading.Thread(target=server.shutdown, daemon=True).start()
 
-    signal.signal(signal.SIGTERM, stop)
-    signal.signal(signal.SIGINT, stop)
+    for signum in (SIGTERM, SIGINT):
+        on_signal(signum, stop)
     log.info(
         "Starpi voice server %s listening on http://%s:%d (origins: %s)",
         VERSION,
