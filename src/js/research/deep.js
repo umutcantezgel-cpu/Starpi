@@ -93,8 +93,6 @@ import { webQuery } from './web-query.js';
  * @property {{ artifactId: string, markdown: string }} report
  */
 
-const EMPTY_SECTIONS = () => /** @type {Record<SectionId, KeptSentence[]>} */ ({ summary: [], details: [], open_questions: [] });
-
 /** @param {AbortSignal | undefined} signal */
 function throwIfAborted(signal) {
   if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new DOMException('Aborted', 'AbortError');
@@ -356,5 +354,3 @@ export async function runResearch(job, runtime, options = {}) {
   const provider = sources.provider ?? (web?.provider && web.status === 'done' ? web.provider : null);
   return { plan: { queries }, provider, parts: { sources, web }, report: { artifactId, markdown } };
 }
-
-export { EMPTY_SECTIONS };
