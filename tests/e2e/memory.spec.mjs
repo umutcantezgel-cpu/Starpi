@@ -201,21 +201,56 @@ test.describe('projects, memory and assistants', () => {
     await page.click('#nav-settings');
     await expect(card.locator('[data-fact]')).toHaveCount(2);
     await expect(card).toContainText('I prefer short answers');
+
+    // The notes go with the question they were picked for only: a later turn does not send them
+    // again with the earlier question, and with memory off no turn carries one.
+    await page.click('#nav-chat');
+    await ask(page, 'Thanks, that helps');
+    await settled(page);
+    const later = chats.at(-1);
+    expect(questionOf(later)).toContain('User notes (may be outdated):');
+    expect(JSON.stringify(later.messages.slice(0, -1))).not.toContain('User notes');
+    await page.click('#nav-settings');
+    await card.locator('#mvEnabled').uncheck();
+    await expect(page.locator('#toastRegion')).toContainText('Memory is off');
+    await page.click('#nav-chat');
+    await ask(page, 'One more question');
+    await settled(page);
+    expect(JSON.stringify(chats.at(-1).messages)).not.toContain('Lisbon');
+    expect(JSON.stringify(chats.at(-1).messages)).not.toContain('User notes');
   });
 
   test('suggests notes after a free answer only with suggestions on, and keeps one only when accepted', async ({ page, diagnostics: _diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     /** @type {string[]} */
     const purposes = [];
+    /** @type {string[]} */
+    const suggestCalls = [];
     page.on('request', (req) => {
       const m = /starpi-purpose:(\w+)/.exec(req.postData() ?? '');
       if (req.url().startsWith('https://api.anthropic.com/') && m) purposes.push(m[1]);
+      if (m?.[1] === 'memory_suggest') suggestCalls.push(req.postData() ?? '');
     });
     await routeAnthropic(page);
     await useAnthropic(page);
     await page.goto('/');
+    // A project that keeps its notes to itself, with a note of its own, and a note for every chat.
+    await page.click('#chat-sidebar [data-pj="new"]');
+    const project = page.locator('#projectDialog');
+    await project.locator('#pjName').fill('Thesis');
+    await project.locator('input[name="memoryScope"][value="project"]').check();
+    await project.locator('button[type="submit"]').click();
+    await expect(project).toHaveCount(0);
     await page.click('#nav-settings');
     const card = page.locator('[data-memory-settings]');
+    await card.locator('#mvAddText').fill('The thesis deadline is in March');
+    await card.locator('#mvAddScope').selectOption({ label: 'Project: Thesis' });
+    await card.locator('[data-mv-add] button[type="submit"]').click();
+    await expect(card.locator('[data-fact]')).toHaveCount(1);
+    await card.locator('#mvAddText').fill('I live in Lisbon');
+    await card.locator('#mvAddScope').selectOption('global');
+    await card.locator('[data-mv-add] button[type="submit"]').click();
+    await expect(card.locator('[data-fact]')).toHaveCount(2);
     await card.locator('#mvEnabled').check();
     await expect(card.locator('#mvSuggest')).toBeEnabled();
     await page.click('#nav-chat');
@@ -233,15 +268,18 @@ test.describe('projects, memory and assistants', () => {
     const strip = page.locator('#chatMessages [data-memory-suggest]');
     await expect(strip).toBeVisible();
     expect(purposes).toContain('memory_suggest');
+    // Outside the project the suggestion call carries the notes for every chat, not the project's.
+    expect(suggestCalls.at(-1)).toContain('I live in Lisbon');
+    expect(suggestCalls.at(-1)).not.toContain('thesis deadline');
     // Shown, not stored.
     await page.click('#nav-settings');
-    await expect(card.locator('[data-fact]')).toHaveCount(0);
+    await expect(card.locator('[data-fact]')).toHaveCount(2);
     await page.click('#nav-chat');
     await strip.locator('[data-ms="keep"]').first().click();
     await expect(page.locator('#toastRegion')).toContainText('Note saved');
     await page.click('#nav-settings');
-    await expect(card.locator('[data-fact]')).toHaveCount(1);
-    await expect(card.locator('[data-fact]')).toContainText('Suggested');
+    await expect(card.locator('[data-fact]')).toHaveCount(3);
+    await expect(card.locator('[data-fact]').filter({ hasText: 'Suggested' })).toHaveCount(1);
   });
 
   test('an assistant brings its instructions and starters, and exports and imports as a file', async ({ page, diagnostics: _diagnostics }) => {
