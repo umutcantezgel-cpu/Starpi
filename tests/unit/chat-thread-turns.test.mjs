@@ -285,6 +285,30 @@ describe('questions that stay on this device', () => {
   });
 });
 
+describe('grounded questions asked on this device', () => {
+  it('are answered again on this device or the own server only, like free ones', async () => {
+    newChat();
+    const db = await chatStore.chatData();
+    const id = chatStore.currentSessionId();
+    await db.createConversation({ id, mode: 'grounded', model: 'device' });
+    const q = await db.appendNode(id, { parentId: null, role: 'user', localOnly: true, parts: [{ type: 'text', text: 'PRIVATE grounded question' }], meta: { chat_mode: 'grounded', device_only: true } });
+    const a = await db.appendNode(id, { parentId: q.id, role: 'assistant', localOnly: true, parts: [{ type: 'text', text: 'grounded device answer' }], provider: 'webgpu', model: 'webgpu:x', label: 'grounded', meta: { chat_mode: 'grounded' } });
+    await thread.showConversation(id);
+    const row = /** @type {HTMLElement} */ (document.querySelector(`.message-row[data-node-id="${a.id}"]`));
+    const menu = /** @type {HTMLDetailsElement} */ (row.querySelector('details.regen-menu'));
+    menu.open = true;
+    menu.dispatchEvent(new Event('toggle'));
+    const values = [...menu.querySelectorAll('[data-action="msg-regenerate"]')].map((b) => /** @type {HTMLElement} */ (b).dataset.value);
+    assert.ok(values.every((v) => v === '' || v?.startsWith('local:')), values.join(', '));
+    menu.open = false;
+    const shown = notices().filter((n) => /This question stays on this device/.test(n)).length;
+    await thread.regenerate(a.id, 'anthropic:claude-haiku-5-5');
+    assert.deepEqual(anthropicBodies, []);
+    assert.equal(notices().filter((n) => /This question stays on this device/.test(n)).length, shown + 1);
+    assert.equal((await db.loadThread(id))?.nodes.length, 2, 'nothing was added');
+  });
+});
+
 describe('failures inside a turn', () => {
   it('leaves no bubble behind when the request cannot be built, and says so in i18n text', async () => {
     newChat();

@@ -1550,6 +1550,7 @@ async function answerGrounded(q, signal, placement = {}) {
             // answers that may leave this device.
             localOnly,
           });
+      renderAnswerLabel(messageEl, answerLabel);
       const docs = new Map(listWorkspace().map((d) => [d.docId, d]));
       /** @type {import('../core/receipt.js').ReceiptDraft} */
       let draft = {
@@ -1716,7 +1717,8 @@ let webNoticeShown = false;
  * @param {AssistantValue} value
  */
 async function routeFor(question, mode, attachments, value) {
-  const candidates = await chatCandidates(value);
+  // An explicit mode needs no candidates: it is kept as it is.
+  const candidates = mode === 'auto' ? await chatCandidates(value) : [];
   const native = Boolean(candidates[0] && searchesWeb(candidates[0]));
   const deviceOnly = value === 'device';
   const webOn = getWebSearch();

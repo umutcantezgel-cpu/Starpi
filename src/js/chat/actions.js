@@ -90,14 +90,15 @@ export function renderActions(el, state) {
 
 /**
  * Whether an answer's question was asked to stay on this device (a free question asked on this
- * device): then only the model here or the own server answers it again.
+ * device, or a grounded one asked with the model of this device): then only the model here or the
+ * own server answers it again.
  * @param {string} nodeId  the answer
  */
 function staysOnDevice(nodeId) {
   const node = handlers?.node(nodeId) ?? null;
   const question = node?.parentId ? (handlers?.node(node.parentId) ?? null) : null;
   const route = /** @type {Record<string, unknown>} */ (node?.meta ?? {}).chat_mode ?? node?.label;
-  return Boolean(question?.localOnly) && route !== 'grounded';
+  return Boolean(question?.localOnly) && (route !== 'grounded' || /** @type {Record<string, unknown>} */ (question?.meta ?? {}).device_only === true);
 }
 
 /**
