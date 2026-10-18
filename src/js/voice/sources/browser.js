@@ -84,8 +84,6 @@ export function listen(options) {
   recognition.interimResults = true;
   if (options.onDevice) recognition.processLocally = true;
   let text = '';
-  /** @type {() => void} */
-  let stop = () => recognition.stop();
   const done = new Promise((resolve, reject) => {
     let failed = false;
     recognition.onstart = () => options.onStart?.();
@@ -111,7 +109,7 @@ export function listen(options) {
       reject(new RecognitionError(err instanceof Error && err.name === 'NotAllowedError' ? 'not-allowed' : 'unsupported'));
     }
   });
-  return { done, stop: () => stop() };
+  return { done, stop: () => recognition.stop() };
 }
 
 /** @type {SttSource} */

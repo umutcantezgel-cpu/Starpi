@@ -85,13 +85,14 @@ export function createPlayback(deps = {}) {
     async play(pcm, rate) {
       const c = ensure();
       if (!c || pcm.length === 0) return false;
-      if (c.state !== 'running') {
+      const running = () => /** @type {string} */ (c.state) === 'running';
+      if (!running()) {
         try {
           await c.resume();
         } catch {
           // reported below
         }
-        if (c.state !== 'running') return false;
+        if (!running()) return false;
       }
       const buffer = c.createBuffer(1, pcm.length, rate);
       buffer.getChannelData(0).set(pcm16ToFloat(pcm));

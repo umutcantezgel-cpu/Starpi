@@ -1,23 +1,45 @@
 // @ts-check
-// /api/voice/voices (Vercel Function): the voices the speech route offers.
-// Until it is built, every method answers 501 with the JSON body { "error": "not_implemented" }, after
-// the access code check when the site sets STARPI_ACCESS_CODE (api/_lib/access.js).
-import { checkAccess, readAccessCode } from '../_lib/access.js';
-import { readEnv } from '../_lib/env.js';
-import { json, refuse } from '../_lib/guards.js';
+// GET /api/voice/voices (Vercel Function): what the site offers with its own keys, as booleans and
+// fixed voice lists only: { gemini: { tts, stt, live, voices }, elevenlabs: { tts, voices } }. The
+// voices are the app's own lists (prebuilt Gemini voices, ElevenLabs premade voices); no key, key
+// count or account detail ever appears. Same-origin GETs carry no Origin header, so only the per-IP
+// rate limit and the access code apply. Every other method gets 405.
+import { ELEVENLABS_VOICES, GEMINI_VOICES } from '../../src/js/voice/catalog.js';
+import { json, methodNotAllowed, refuse } from '../_lib/guards.js';
+import { voiceGuard, voiceRuntimeDeps } from '../_lib/voice-routes.js';
 
-/** @param {Request} request */
-async function notImplemented(request) {
-  const denied = await checkAccess(request, readAccessCode(readEnv()));
-  return denied ? refuse(denied) : json(501, { error: 'not_implemented' });
+/** @typedef {import('../_lib/voice-routes.js').VoiceDeps} VoiceDeps */
+
+/**
+ * The offer of a site.
+ * @param {VoiceDeps} deps
+ */
+export function voiceOffer(deps) {
+  const gemini = deps.gemini !== null;
+  const eleven = deps.elevenlabs !== null;
+  return {
+    gemini: { tts: gemini, stt: gemini, live: gemini, voices: gemini ? [...GEMINI_VOICES] : [] },
+    elevenlabs: { tts: eleven, voices: eleven ? ELEVENLABS_VOICES.map((v) => ({ id: v.id, label: v.label })) : [] },
+  };
 }
 
-export {
-  notImplemented as DELETE,
-  notImplemented as GET,
-  notImplemented as HEAD,
-  notImplemented as OPTIONS,
-  notImplemented as PATCH,
-  notImplemented as POST,
-  notImplemented as PUT,
-};
+/**
+ * @param {Request} request
+ * @param {VoiceDeps} deps
+ */
+export async function handleVoices(request, deps) {
+  const front = await voiceGuard(request, deps, { origin: false });
+  if (front) return refuse(front);
+  return json(200, voiceOffer(deps));
+}
+
+/** @param {Request} request */
+export function GET(request) {
+  return handleVoices(request, voiceRuntimeDeps());
+}
+
+function notAllowed() {
+  return methodNotAllowed('GET');
+}
+
+export { notAllowed as DELETE, notAllowed as HEAD, notAllowed as OPTIONS, notAllowed as PATCH, notAllowed as POST, notAllowed as PUT };

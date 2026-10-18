@@ -1,16 +1,13 @@
 // The shared front guards (api/_lib/origins.js, api/_lib/access.js): the origin allowlist and its
 // aliases, the daily budget, the guard order, the optional access code with its constant-time
-// comparison, and the access check on the voice and research routes that are still stubs.
+// comparison, and the access check on the research route that is still a stub (the voice routes
+// have their own tests in voice-routes.test.mjs).
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { checkAccess, readAccessCode, sameSecret } from '../../api/_lib/access.js';
 import { createRateLimiter } from '../../api/_lib/guards.js';
 import { allowedOrigins, createDailyLimiter, guardRequest } from '../../api/_lib/origins.js';
 import * as research from '../../api/research/step.js';
-import * as liveToken from '../../api/voice/live-token.js';
-import * as speak from '../../api/voice/speak.js';
-import * as transcribe from '../../api/voice/transcribe.js';
-import * as voices from '../../api/voice/voices.js';
 import { errorOf, siteRequest } from './relay-helpers.mjs';
 
 describe('allowed origins', () => {
@@ -73,7 +70,7 @@ describe('access code', () => {
   });
 });
 
-describe('voice and research stubs', () => {
+describe('research stub', () => {
   /** @type {string | undefined} */
   let saved;
   beforeEach(() => {
@@ -84,15 +81,13 @@ describe('voice and research stubs', () => {
     else process.env.STARPI_ACCESS_CODE = saved;
   });
 
-  it('want the access code when the site sets one, and say they serve nothing yet', async () => {
+  it('wants the access code when the site sets one, and says it serves nothing yet', async () => {
     process.env.STARPI_ACCESS_CODE = 'code-for-tests-01';
-    for (const route of [speak, transcribe, liveToken, voices, research]) {
-      assert.deepEqual(await errorOf(await route.POST(siteRequest('/x'))), { status: 401, error: 'access_required' });
-      const passed = await route.POST(siteRequest('/x', { headers: { 'x-starpi-access': 'code-for-tests-01' } }));
-      assert.deepEqual(await errorOf(passed), { status: 501, error: 'not_implemented' });
-    }
+    assert.deepEqual(await errorOf(await research.POST(siteRequest('/x'))), { status: 401, error: 'access_required' });
+    const passed = await research.POST(siteRequest('/x', { headers: { 'x-starpi-access': 'code-for-tests-01' } }));
+    assert.deepEqual(await errorOf(passed), { status: 501, error: 'not_implemented' });
     delete process.env.STARPI_ACCESS_CODE;
-    assert.equal((await speak.POST(siteRequest('/x'))).status, 501);
-    for (const route of [speak, transcribe, liveToken, research]) assert.equal(route.available({}), false);
+    assert.equal((await research.POST(siteRequest('/x'))).status, 501);
+    assert.equal(research.available({}), false);
   });
 });
