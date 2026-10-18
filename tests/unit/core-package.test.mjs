@@ -118,7 +118,7 @@ describe('@starpi/core', () => {
     const lock = JSON.parse(readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
     assert.equal(pkg.publishConfig.access, 'public');
     assert.equal(pkg.publishConfig.registry, 'https://registry.npmjs.org/');
-    assert.deepEqual(root.workspaces, ['packages/core']);
+    assert.deepEqual(root.workspaces, ['packages/core', 'packages/companion']);
     // release.yml attaches starpi-core-<version>.tgz to the release of the same version.
     assert.equal(pkg.version, root.version);
     assert.equal(lock.packages['packages/core'].version, pkg.version);
