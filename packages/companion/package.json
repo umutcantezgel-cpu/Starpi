@@ -30,7 +30,14 @@
   "bin": {
     "starpi-companion": "bin/starpi-companion.mjs"
   },
-  "files": ["bin", "src", "LICENSES", "NOTICE", "README.md", "LICENSE"],
+  "files": [
+    "bin",
+    "src",
+    "LICENSES",
+    "NOTICE",
+    "README.md",
+    "LICENSE"
+  ],
   "sideEffects": false,
   "engines": {
     "node": ">=22.13"
