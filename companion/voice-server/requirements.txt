@@ -1,4 +1,4 @@
-# Local voice server, Python 3.10 or newer. Install into a virtual environment of its own:
+# Local voice server, Python 3.11 or newer. Install into a virtual environment of its own:
 #   python3 -m venv ~/.local/share/starpi-voice/venv
 #   ~/.local/share/starpi-voice/venv/bin/python -m pip install -r requirements.txt
 #

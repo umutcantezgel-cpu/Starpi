@@ -2,7 +2,7 @@
 # `python3 -I server.py`; it is not packaged, so there is no [project] table.
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 120
 
 [tool.ruff.lint]

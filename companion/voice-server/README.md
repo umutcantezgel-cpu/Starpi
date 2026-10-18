@@ -25,7 +25,7 @@ relay already speak:
 
 ## Install
 
-Python 3.10 or newer.
+Python 3.11 or newer.
 
 ```sh
 python3 -m venv ~/.local/share/starpi-voice/venv
