@@ -18,7 +18,7 @@ import { webQuery } from '../../src/js/research/web-query.js';
 /** @typedef {import('../../src/js/ai/index.js').CompletionResult} CompletionResult */
 
 const PLAN_TEXT = 'The community hall has 3 rooms. The large room holds 120 people. The hall opened in 1907 after two years of work. Bookings are made at the front desk on weekdays.';
-const RULES_TEXT = 'Rooms must be booked 14 days ahead. A booking costs 40 euros per evening. Cancellations are free until 7 days before the date.';
+const RULES_TEXT = 'Rooms must be booked 14 days ahead. Each booking covers 4 hours per evening. Cancellations are free until 7 days before the date.';
 
 /** @type {KnowledgeHit[]} */
 const HITS = [
@@ -135,7 +135,7 @@ describe('research: sources part', () => {
       '## Summary',
       `The hall has 3 rooms. ${PLAN_LABEL} The large room holds 150 people. ${PLAN_LABEL}`,
       '## Details',
-      `- A booking costs 40 euros per evening ${RULES_LABEL}`,
+      `- Each booking covers 4 hours per evening ${RULES_LABEL}`,
       '- Rooms are booked 14 days ahead.',
       '- Bookings are made at the front desk.',
       '## Open questions',
@@ -144,7 +144,7 @@ describe('research: sources part', () => {
     const gated = gateSources(answer, tools.excerpts(), { question: 'What does the hall offer?', locale: 'en' });
     assert.deepEqual(gated.sections.summary.map((s) => s.text), ['The hall has 3 rooms.']);
     assert.deepEqual(gated.sections.summary[0].cites, [PLAN_LABEL]);
-    assert.deepEqual(gated.sections.details.map((s) => s.text), ['A booking costs 40 euros per evening', 'Bookings are made at the front desk.']);
+    assert.deepEqual(gated.sections.details.map((s) => s.text), ['Each booking covers 4 hours per evening', 'Bookings are made at the front desk.']);
     assert.deepEqual(gated.sections.open_questions.map((s) => s.text), ['Whether the hall has parking.']);
     assert.equal(gated.withheld, 2, 'the wrong number and the uncited number are withheld');
     assert.deepEqual(gated.cited, [PLAN_LABEL, RULES_LABEL]);
@@ -213,7 +213,7 @@ describe('research: sources part', () => {
 
   it('quotes the best sentences without a model, and the gate keeps them', async () => {
     const tools = createSourceTools(backends());
-    const text = await quoteExcerpts({ question: 'How many rooms does the hall have and what does a booking cost?', tools, locale: 'en' });
+    const text = await quoteExcerpts({ question: 'How many rooms does the hall have and how many hours does a booking cover?', tools, locale: 'en' });
     assert.match(text, /^## Summary\n/);
     assert.ok(text.includes(PLAN_LABEL) && text.includes(RULES_LABEL));
     const gated = gateSources(text, tools.excerpts(), { locale: 'en' });

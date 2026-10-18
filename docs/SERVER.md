@@ -10,6 +10,7 @@ deploys their own copy of Starpi.
 | `POST /api/pool?provider=<id>&path=<path>` | The **site pools**: streams an answer with a key the site holds, so visitors need no key of their own. |
 | `POST /api/chat/nvidia` | The NVIDIA pool under its earlier address, with its earlier rules (text only, 256 KiB body). |
 | `GET /api/models/pool` | Per pool: whether it is configured and the models it allows. |
+| `POST /api/research/step` | One step of a **research job** on the Gemini pool: a tool round over the visitor's own documents, or a web search. |
 | `GET /api/health` | Which features the site offers, as booleans only. |
 
 All of them run with Node.js on Vercel, or locally with `npm run preview`
@@ -57,6 +58,28 @@ stream starts. A key answered with 429 waits for its `Retry-After`, a key reject
 waits 30 minutes, and a key that failed or timed out waits briefly. Each key also has a request
 budget per minute, so the pool spreads the load before a provider starts refusing.
 
+## Research steps
+
+A research job asks a model to search the visitor's documents with three read-only tools
+(`search_sources`, `read_excerpt`, `list_documents`) and, if the visitor wants, the web. With the
+visitor's own key the browser does all of it directly. Without one, it uses the site's Gemini pool
+through `POST /api/research/step`, one step per request:
+
+- **Sources part.** The server sends the question and the tool results so far to Gemini. When the
+  model asks for tools, the server returns its turn with an HMAC-SHA256 signature; the browser runs
+  the tools on its own documents and sends the turn back unchanged with the results. A turn whose
+  signature does not match (a changed turn, question, round or model, or a key change of the site)
+  is refused with 400 `history_not_signed` before anything reaches Google. The signing key is
+  derived with HKDF from the pool's first Gemini key and never leaves the function. After five tool
+  rounds the model may only answer.
+- **Web part.** A single step with Google Search; the answer comes back exactly as grounded, with
+  its segments, sources, queries and search suggestions.
+
+The guards are those of the pools: origin, a per-IP limit, the access code, the Gemini pool's keys
+(503 `research_not_configured` without them), then the shape of the request and the signatures,
+and a per-IP daily budget counted only for steps that reach Google. The function stores nothing
+between steps.
+
 ## Environment variables
 
 | Variable | Default | Purpose |
@@ -67,6 +90,9 @@ budget per minute, so the pool spreads the load before a provider starts refusin
 | `NVIDIA_API_KEYS`, `GROQ_API_KEYS`, `GEMINI_API_KEYS`, `OPENROUTER_API_KEYS` | empty | The keys of each pool, comma separated. Entries of another shape are ignored and only counted in the log. |
 | `STARPI_POOL_RPM_PER_IP` | `20` | Pool requests per client IP and minute, over all pools. `NVIDIA_RATE_LIMIT_PER_MINUTE` is the older name. |
 | `STARPI_POOL_DAILY_PER_IP` | `200` | Pool requests per client IP and UTC day that reach a provider; `0` turns the budget off. |
+| `STARPI_RESEARCH_MODEL` | `gemini-2.5-flash` | The model of research steps; only a model of the Gemini pool's allowlist is taken. Research steps need `GEMINI_API_KEYS` and `gemini` among the pools. |
+| `STARPI_RESEARCH_RPM_PER_IP` | `30` | Research steps per client IP and minute (a job takes up to seven). |
+| `STARPI_RESEARCH_DAILY_PER_IP` | `300` | Research steps per client IP and UTC day that reach Google; `0` turns the budget off. |
 | `STARPI_ACCESS_CODE` | empty | When set, the relay, the pools, the voice routes and research steps require the header `x-starpi-access` with this code. |
 | `STARPI_<PROVIDER>_BASE_URL` | empty | For tests: points a provider at a local fake (`localhost`, `127.0.0.1` or `[::1]` only). `GET /api/health` then reports it as simulated. |
 
@@ -101,7 +127,8 @@ functions only, not the static site.
 ```
 
 `simulated` lists every relay provider. The voice and research flags come from the routes
-themselves (an `available(env)` export), so they turn true only once a route serves requests.
+themselves (an `available(env)` export), so they turn true only once a route serves requests:
+`research` is true when the Gemini pool has keys.
 
 ## Checking a provider by hand
 
