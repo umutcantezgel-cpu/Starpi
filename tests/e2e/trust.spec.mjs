@@ -22,8 +22,8 @@ async function ask(page, text) {
 /** @param {import('@playwright/test').Page} page @param {string} name @param {string} content */
 async function attach(page, name, content) {
   await page.setInputFiles('#chatFileInput', { name, mimeType: 'text/markdown', buffer: Buffer.from(content) });
-  await expect(page.locator('#attachedFileName')).toContainText(name);
-  await expect(page.locator('#attachedFileName')).toContainText('chunk');
+  await expect(page.locator('#attachedInfo')).toContainText(name);
+  await expect(page.locator('#attachedInfo')).toContainText('chunk');
 }
 
 /**

@@ -1063,7 +1063,9 @@ async function answerGrounded(q, signal, placement = {}) {
     const context = buildContext(citationList, { maxChars: LIMITS.contextCharsCloud });
     const delivered = { context };
 
-    const candidates = await chatCandidates(q.value);
+    let candidates = await chatCandidates(q.value);
+    // The model of this device is offered (with its download question) before the sources are quoted.
+    if (!candidates.length && q.value === 'device' && !signal.aborted && (await startLocalEngine({ interactive: true }))) candidates = await chatCandidates(q.value);
     let text = '';
     let engine = 'synthesizer';
     /** @type {import('./runner.js').RunResult | null} */

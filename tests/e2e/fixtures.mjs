@@ -1,7 +1,7 @@
 // Test fixtures: a mocked Supabase backend, a mocked NVIDIA proxy, plus collectors for CSP violations
 // and runtime errors.
 import { test as base, expect } from '@playwright/test';
-import { NVIDIA_DEFAULT_MODEL, publicCatalog } from '../../src/js/models/nvidia-catalog.js';
+import { NVIDIA_DEFAULT_MODEL, NVIDIA_MODELS } from '../../src/js/models/nvidia-catalog.js';
 
 export const MALICIOUS_DOC = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -115,7 +115,7 @@ export async function mockSupabase(page, mode) {
 }
 
 /**
- * A text/event-stream body as Starpi's NVIDIA proxy relays it: OpenAI-compatible chunks with the
+ * A text/event-stream body as the site's NVIDIA pool relays it: OpenAI-compatible chunks with the
  * reasoning and content deltas, a finish chunk and [DONE].
  * @param {{ reasoning?: string[], content?: string[] }} [parts]
  */
@@ -131,35 +131,39 @@ export function sseBody({ reasoning = [], content = [] } = {}) {
  */
 
 /**
- * Mocks Starpi's NVIDIA proxy (GET /api/models/nvidia and POST /api/chat/nvidia). The catalog has the
- * published shape; chat requests get the replies in turn (the last one repeats) or the error. Records
- * each request body and its Authorization header (the browser must send none).
+ * Mocks the site's NVIDIA pool: the pool list (GET /api/models/pool) and the pool's chat endpoint
+ * (POST /api/pool?provider=nvidia&path=...). Chat requests get the replies in turn (the last one
+ * repeats) or the error. Records each request body and its Authorization header (the browser must
+ * send none).
  * @param {import('@playwright/test').Page} page
  * @param {{ configured?: boolean, models?: string[], reply?: NvidiaReply | NvidiaReply[], error?: NvidiaError }} [options]
- *   `models`: the ids the proxy offers (default: the whole bundled catalog)
+ *   `models`: the ids the pool offers (default: the whole bundled catalog)
  */
 export async function mockNvidia(page, { configured = true, models, reply = { content: ['OK.'] }, error } = {}) {
-  /** @type {{ bodies: Array<{ model: string, messages: Array<{ role: string, content: string }>, max_tokens: number, temperature: number }>, auth: Array<string | undefined>, catalogRequests: number }} */
+  /** @type {{ bodies: Array<{ model: string, messages: Array<{ role: string, content: string | Array<{ type: string, text?: string }> }>, max_tokens: number, temperature: number }>, auth: Array<string | undefined>, catalogRequests: number }} */
   const recorded = { bodies: [], auth: [], catalogRequests: 0 };
-  const catalog = publicCatalog(configured);
-  const body = { ...catalog, models: models ? catalog.models.filter((m) => models.includes(m.id)) : catalog.models };
-  await page.route('**/api/models/nvidia', (route) => {
+  const offered = models ?? NVIDIA_MODELS.map((m) => m.id);
+  const list = { version: 1, pools: { nvidia: { configured, defaultModel: NVIDIA_DEFAULT_MODEL, models: configured ? offered : [] } } };
+  await page.route('**/api/models/pool', (route) => {
     recorded.catalogRequests += 1;
-    return route.fulfill({ status: 200, contentType: 'application/json; charset=utf-8', headers: { 'cache-control': 'no-store' }, body: JSON.stringify(body) });
+    return route.fulfill({ status: 200, contentType: 'application/json; charset=utf-8', headers: { 'cache-control': 'no-store' }, body: JSON.stringify(list) });
   });
-  await page.route('**/api/chat/nvidia', (route) => {
-    const req = route.request();
-    recorded.bodies.push(JSON.parse(req.postData() ?? '{}'));
-    recorded.auth.push(req.headers().authorization);
-    if (error) return route.fulfill({ status: error.status, contentType: 'application/json; charset=utf-8', headers: { 'cache-control': 'no-store', ...error.headers }, body: JSON.stringify(error.body) });
-    const replies = Array.isArray(reply) ? reply : [reply];
-    return route.fulfill({
-      status: 200,
-      contentType: 'text/event-stream; charset=utf-8',
-      headers: { 'cache-control': 'no-store, no-transform' },
-      body: sseBody(replies[Math.min(recorded.bodies.length, replies.length) - 1]),
-    });
-  });
+  await page.route(
+    (url) => url.pathname === '/api/pool' && url.searchParams.get('provider') === 'nvidia',
+    (route) => {
+      const req = route.request();
+      recorded.bodies.push(JSON.parse(req.postData() ?? '{}'));
+      recorded.auth.push(req.headers().authorization);
+      if (error) return route.fulfill({ status: error.status, contentType: 'application/json; charset=utf-8', headers: { 'cache-control': 'no-store', ...error.headers }, body: JSON.stringify(error.body) });
+      const replies = Array.isArray(reply) ? reply : [reply];
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream; charset=utf-8',
+        headers: { 'cache-control': 'no-store, no-transform' },
+        body: sseBody(replies[Math.min(recorded.bodies.length, replies.length) - 1]),
+      });
+    },
+  );
   return recorded;
 }
 
@@ -170,8 +174,7 @@ export async function mockNvidia(page, { configured = true, models, reply = { co
  */
 export async function useNvidia(page, model = NVIDIA_DEFAULT_MODEL) {
   await page.addInitScript((id) => {
-    localStorage.setItem('starpi_compute_mode', 'nvidia');
-    localStorage.setItem('starpi_nvidia_model', id);
+    localStorage.setItem('starpi_assistant_v1', `nvidia:${id}`);
   }, model);
 }
 

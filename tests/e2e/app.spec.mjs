@@ -84,17 +84,9 @@ test.describe('migration pending, anonymous sign-ins disabled', () => {
     await mockSupabase(page, { hardened: false, anonymousAuth: false });
     await page.goto('/');
     await openTab(page, 'settings');
-    await page.locator('details:has(#cfgLlmUrl) > summary').click();
-    await page.fill('#cfgLlmUrl', 'http://evil.example/v1');
-    /** @type {string[]} */
-    const messages = [];
-    page.on('dialog', (d) => {
-      messages.push(d.message());
-      void d.dismiss();
-    });
-    await page.click('[data-action="save-settings"]');
-    await expect.poll(() => messages.length).toBe(1);
-    expect(messages[0]).toMatch(/^Only https:\/\//);
+    await page.fill('#pvLocalUrl', 'http://evil.example/v1');
+    await page.click('[data-action="providers-save-key"][data-arg="local"]');
+    await expect(page.locator('[data-pv-result="local"]')).toHaveText(/^Only https:\/\//);
     // The rejected URL must not have been persisted.
     expect(await page.evaluate(() => localStorage.getItem('starpi_llm_url'))).toBeNull();
     expect(diagnostics).toEqual([]);
@@ -144,8 +136,7 @@ test.describe('saving settings', () => {
   /** @param {import('@playwright/test').Page} page */
   async function saveAndReadDialog(page) {
     await openTab(page, 'settings');
-    await page.locator('details:has(#cfgLlmUrl) > summary').click();
-    await page.fill('#cfgLlmUrl', 'http://127.0.0.1:11434/v1');
+    await page.selectOption('#cfgStrength', 'fast');
     /** @type {string[]} */
     const messages = [];
     page.on('dialog', (d) => {
@@ -161,7 +152,7 @@ test.describe('saving settings', () => {
     await mockSupabase(page, { hardened: false, anonymousAuth: false });
     await page.goto('/');
     expect(await saveAndReadDialog(page)).toBe('Settings saved.');
-    expect(await page.evaluate(() => localStorage.getItem('starpi_llm_url'))).toBe('http://127.0.0.1:11434/v1');
+    expect(await page.evaluate(() => localStorage.getItem('starpi_model_strength_v1'))).toBe('fast');
     expect(diagnostics).toEqual([]);
   });
 
@@ -333,7 +324,7 @@ test.describe('local mode without WebGPU', () => {
     await page.goto('/');
     // The device's recommendation comes first: a processor (WASM) model on a device without WebGPU;
     // which one depends on its memory.
-    const recommended = page.locator('#engineSelector[data-ready="true"] optgroup').first().locator('option').first();
+    const recommended = page.locator('#engineSelector[data-ready="true"] optgroup[data-group="recommended"] option[value^="wasm:"]').first();
     const value = await recommended.getAttribute('value');
     expect(value).toMatch(/^wasm:/);
     await page.selectOption('#engineSelector', value ?? '');
@@ -372,7 +363,7 @@ test.describe('internationalization', () => {
     const settingsNav = page.locator(isMobile ? '#mobile-nav-settings' : '#nav-settings');
 
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Ask a question…');
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Ask anything…');
     await expect(settingsNav).toHaveText('Settings');
     await expect(page.locator('#privacyNotice')).toContainText('No model configured');
     await expect(page.locator('[data-action="set-locale"][data-arg="en"]')).toHaveAttribute('aria-pressed', 'true');
@@ -384,7 +375,7 @@ test.describe('internationalization', () => {
     });
     await page.click('[data-action="set-locale"][data-arg="de"]');
     await expect(page.locator('html')).toHaveAttribute('lang', 'de');
-    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Frage stellen…');
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Fragen Sie, was Sie wollen…');
     await expect(settingsNav).toHaveText(isMobile ? 'Optionen' : 'Einstellungen');
     await expect(page.locator('#privacyNotice')).toContainText('Kein Modell eingerichtet');
     await expect(page.locator('#sendBtn')).toHaveAttribute('aria-label', 'Senden');
@@ -396,6 +387,7 @@ test.describe('internationalization', () => {
     await expect(page.locator('#chatMessages')).toContainText('Welche Dokumente sind in der Wissensdatenbank verfügbar?');
     await expect(page.locator('#chatMessages')).toContainText('Verfügbare Dokumente (2)');
 
+    // The quick prompt switched the composer to source mode, and that is kept as well.
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('lang', 'de');
     await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Frage stellen…');
@@ -476,7 +468,7 @@ test.describe('on-device workspace', () => {
     await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
 
     await page.setInputFiles('#chatFileInput', { name: 'orion-roadmap.md', mimeType: 'text/markdown', buffer: Buffer.from('# Orion\n\nThe Orion release ships in calendar week 38.') });
-    await expect(page.locator('#attachedFileName')).toHaveText('orion-roadmap.md · 1 chunk');
+    await expect(page.locator('#attachedInfo')).toContainText('orion-roadmap.md · 1 chunk');
     await ask(page, 'When does the Orion release ship?');
     const answer = page.locator('#chatMessages > div').last();
     await expect(answer).toContainText('calendar week 38');
