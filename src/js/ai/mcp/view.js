@@ -373,7 +373,10 @@ export function mountToolsView(el, services, deps) {
     refreshServers();
   });
 
-  runtime.onChange(() => refresh('switches', () => String(switchesMarkup())));
+  runtime.onChange(() => {
+    refresh('switches', () => String(switchesMarkup()));
+    refreshServers();
+  });
   render();
   return { render, refreshServers };
 }
