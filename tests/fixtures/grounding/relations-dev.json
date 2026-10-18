@@ -218,6 +218,18 @@
       "answer": "Subscription revenue halved to 3.2 million EUR in Q2 2026 [Doc: Brightline Software quarterly report Q2 2026 (sample), Chunk: 1]."
     },
     {
+      "id": "rel-en-19",
+      "set": "relations",
+      "corpus": "rel_en",
+      "answerLanguage": "en",
+      "kind": "perturbed",
+      "category": "temporal",
+      "variant": "passive",
+      "original": "Version 8.0 was released on 21 April 2026, and version 8.1 followed on 9 June 2026",
+      "changed": "version 8.1 was followed by version 8.0",
+      "answer": "Version 8.1 was followed by version 8.0 [Doc: Brightline Software quarterly report Q2 2026 (sample), Chunk: 4]. The beta of version 9.0 is planned for 15 September 2026 [Doc: Brightline Software quarterly report Q2 2026 (sample), Chunk: 4]."
+    },
+    {
       "id": "rel-en-f1",
       "set": "relations",
       "corpus": "rel_en",
@@ -336,6 +348,42 @@
       "original": "",
       "changed": "",
       "answer": "The library counted 151,900 visits in 2024 [Doc: Riverside Public Library annual report 2025 (sample), Chunk: 1]. In 2025 the number rose to 182,400 [Doc: Riverside Public Library annual report 2025 (sample), Chunk: 1]. The operations team closed fewer tickets than the support team [Doc: Brightline Software quarterly report Q2 2026 (sample), Chunk: 3]."
+    },
+    {
+      "id": "rel-en-f11",
+      "set": "relations",
+      "corpus": "rel_en",
+      "answerLanguage": "en",
+      "kind": "faithful",
+      "category": "none",
+      "variant": "temporal",
+      "original": "",
+      "changed": "",
+      "answer": "Version 8.0 was followed by version 8.1 [Doc: Brightline Software quarterly report Q2 2026 (sample), Chunk: 4]. The beta of version 9.0 is planned for 15 September 2026 [Doc: Brightline Software quarterly report Q2 2026 (sample), Chunk: 4]."
+    },
+    {
+      "id": "rel-en-f12",
+      "set": "relations",
+      "corpus": "rel_en",
+      "answerLanguage": "en",
+      "kind": "faithful",
+      "category": "none",
+      "variant": "temporal",
+      "original": "",
+      "changed": "",
+      "answer": "The new east wing opened on 14 March 2025, followed by the completion of the reading hall renovation on 2 June 2025 [Doc: Riverside Public Library annual report 2025 (sample), Chunk: 3]."
+    },
+    {
+      "id": "rel-en-f13",
+      "set": "relations",
+      "corpus": "rel_en",
+      "answerLanguage": "en",
+      "kind": "faithful",
+      "category": "none",
+      "variant": "factor",
+      "original": "",
+      "changed": "",
+      "answer": "Server costs fell by half, from 420,000 EUR to 210,000 EUR [Doc: Brightline Software quarterly report Q2 2026 (sample), Chunk: 5]. Marketing spending rose from 300,000 EUR to 360,000 EUR [Doc: Brightline Software quarterly report Q2 2026 (sample), Chunk: 5]."
     },
     {
       "id": "rel-de-01",
@@ -482,6 +530,18 @@
       "answer": "Die Abo-Umsätze halbierten sich auf 1,8 Millionen Euro [Doc: Quartalsbericht Nordlicht Software Q2 2026 (Beispiel), Chunk: 1]."
     },
     {
+      "id": "rel-de-13",
+      "set": "relations",
+      "corpus": "rel_de",
+      "answerLanguage": "de",
+      "kind": "perturbed",
+      "category": "temporal",
+      "variant": "passive",
+      "original": "Die Sanierung des Magazins wurde am 3. März 2025 abgeschlossen. Der neue Lesegarten wurde am 12. Mai 2025 eröffnet.",
+      "changed": "der Lesegarten wurde eröffnet, gefolgt vom Abschluss der Sanierung des Magazins",
+      "answer": "Der Lesegarten wurde eröffnet, gefolgt vom Abschluss der Sanierung des Magazins [Doc: Jahresbericht Stadtbibliothek Lindenau 2025 (Beispiel), Chunk: 3]."
+    },
+    {
       "id": "rel-de-f1",
       "set": "relations",
       "corpus": "rel_de",
@@ -576,6 +636,30 @@
       "original": "",
       "changed": "",
       "answer": "Ende März gab es 52.000 aktive Nutzer [Doc: Quartalsbericht Nordlicht Software Q2 2026 (Beispiel), Chunk: 2]. Bis Ende Juni stieg ihre Zahl auf 61.000 [Doc: Quartalsbericht Nordlicht Software Q2 2026 (Beispiel), Chunk: 2]. Die Kündigungsquote sank auf 2,1 % [Doc: Quartalsbericht Nordlicht Software Q2 2026 (Beispiel), Chunk: 2]."
+    },
+    {
+      "id": "rel-de-f9",
+      "set": "relations",
+      "corpus": "rel_de",
+      "answerLanguage": "de",
+      "kind": "faithful",
+      "category": "none",
+      "variant": "temporal",
+      "original": "",
+      "changed": "",
+      "answer": "Die Sanierung des Magazins wurde abgeschlossen, gefolgt von der Eröffnung des Lesegartens [Doc: Jahresbericht Stadtbibliothek Lindenau 2025 (Beispiel), Chunk: 3]."
+    },
+    {
+      "id": "rel-de-f10",
+      "set": "relations",
+      "corpus": "rel_de",
+      "answerLanguage": "de",
+      "kind": "faithful",
+      "category": "none",
+      "variant": "factor",
+      "original": "",
+      "changed": "",
+      "answer": "Die Serverkosten sanken um die Hälfte, von 180.000 Euro auf 90.000 Euro [Doc: Quartalsbericht Nordlicht Software Q2 2026 (Beispiel), Chunk: 3]. Das Support-Team schloss 2.300 Tickets [Doc: Quartalsbericht Nordlicht Software Q2 2026 (Beispiel), Chunk: 3]."
     }
   ]
 }

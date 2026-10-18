@@ -33,7 +33,7 @@ const PUBLISHED = {
     v2dev: { faithfulWeak: 0, flagged: { entity: 19, relation: 24, negation: 24 } },
     v2holdout: { faithfulWeak: 8, flagged: { entity: 17, relation: 20, negation: 16 } },
     paraphrases: { faithfulWeak: 27, flagged: {} },
-    relations: { faithfulWeak: 0, flagged: { change: 8, comparative: 8, factor: 5, reference: 4, temporal: 5 } },
+    relations: { faithfulWeak: 0, flagged: { change: 8, comparative: 8, factor: 5, reference: 4, temporal: 7 } },
     relholdout: { faithfulWeak: 0, flagged: { change: 6, comparative: 7, factor: 3, reference: 4, temporal: 3 } },
   },
 };

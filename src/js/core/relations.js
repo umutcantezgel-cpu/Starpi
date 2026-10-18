@@ -7,12 +7,14 @@
 // statement before it) and checks them against the values in the cited excerpts:
 //
 // - changes: "rose / fell / doubled / halved from A to B", "rose to B", "B, up from A" (and the
-//   German "stieg / sank / verdoppelte sich von A auf B");
+//   German "stieg / sank / verdoppelte sich von A auf B"), with factor phrases read by the verb
+//   ("rose by half") and hedged factors as bounds ("more than doubled");
 // - comparisons: "more / fewer / higher / lower … than", "twice as many … as" (and "mehr / weniger
 //   / höher / niedriger … als", "doppelt so viele … wie"), between two values, two things or two
 //   periods, whose values are looked up in the excerpts;
-// - order in time: "before / after / earlier than / later than / followed" (and "bevor / nachdem /
-//   vor / nach / früher als / später als"), between two dated events;
+// - order in time: "before / after / earlier than / later than / followed / preceded" (and "bevor /
+//   nachdem / vor / nach / früher als / später als / gefolgt von"), between two dated events, the
+//   passive the other way round ("X was followed by Y");
 // - carried-over values: "it rose to B", "that number shrank to B", "es waren weniger, nämlich B",
 //   compared with the single value of the statement before;
 // - shares: "X % of …" with both values in the statement.

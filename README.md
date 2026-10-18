@@ -188,7 +188,7 @@ Version 3 (the current rules) adds relations between values or events, within a 
 the statement before it: a change, comparison, order in time or carried-over value that the cited
 excerpts give the other way round ("costs rose from 420,000 to 210,000 EUR") is marked weak with the
 excerpt's passage. On two relation sets written for 3.0 (fictitious reports in English and German,
-[sets and results](docs/eval/v3-relations.md)) it detects 30 of 30 and, on the held-out set, 23 of
+[sets and results](docs/eval/v3-relations.md)) it detects 32 of 32 and, on the held-out set, 23 of
 24 planted relation errors, where version 2 detected 2 and 5, and it marks no statement of a
 faithful answer weak or unsupported. On all earlier sets it gives the results of version 2, with one
 more misplaced value detected in the set for 2.0.
