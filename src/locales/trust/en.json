@@ -78,7 +78,8 @@
     "runtime": {
       "webgpu": "GPU (WebGPU)",
       "wasm": "Processor (WASM)",
-      "embed": "Search model"
+      "embed": "Search model",
+      "nli": "Second-opinion model"
     },
     "checked": "{n} {n:file|files} checked · {date}",
     "mismatched": "Did not match the pinned hash: {files}",

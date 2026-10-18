@@ -1,7 +1,7 @@
 {
   "name": "@starpi/core",
   "version": "2.1.0",
-  "description": "Deterministic source check for RAG answers (a hallucination check without a second model: facts, negations, and names and values in the wrong place), verifiable answer receipts (starpi.receipt/v2: Merkle tree, optional Ed25519 or ES256 signature) and a CLI that writes SARIF for CI, with the text extraction, chunking and BM25 of Starpi. No dependencies.",
+  "description": "Deterministic source check for RAG answers (a hallucination check without a second model: facts, negations, names and values in the wrong place, and relations between values and events), verifiable answer receipts (starpi.receipt/v2: Merkle tree, optional Ed25519 or ES256 signature) and a CLI that writes SARIF for CI, with the text extraction, chunking and BM25 of Starpi. No dependencies.",
   "type": "module",
   "license": "MIT",
   "author": "Umutcan Emre Tezgel (https://github.com/umutcantezgel-cpu)",

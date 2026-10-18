@@ -3,8 +3,17 @@
 // check from core/grounding.js and shows the result under the answer. The flagged statements list
 // is the accessible channel; statements that need review are also highlighted in the text with the
 // CSS Custom Highlight API where the browser supports it (no DOM changes, no inline styles).
+//
+// Version 3 of the check also compares relations (changes, comparisons, orders in time, values
+// carried over from the statement before); a relation the excerpts give the other way round is a
+// reason of its statement, and a note counts the relations compared. Weak statements can get an
+// advisory second opinion (core/entail.js) on request: from the entailment model on this device
+// (wasm/nli.js, downloaded only after that click) or from the AI judge. It is shown next to the
+// statement, recorded in the report (report.secondOpinion, which the receipt takes) and never
+// changes a verdict.
 import { refreshIcons } from '../icons.js';
-import { formatNumber, setText } from '../i18n/index.js';
+import { formatNumber, setText, t } from '../i18n/index.js';
+import { eligible, judgeResult, opinionReason, secondOpinions, shownVerdict } from '../core/entail.js';
 import { groundAnswer, resolveLabel } from '../core/grounding.js';
 import { LOOSE_LABEL_PATTERN } from '../core/labels.js';
 import { citationButton } from './citations.js';
@@ -14,6 +23,8 @@ import { citationButton } from './citations.js';
 /** @typedef {import('../core/grounding.js').GroundingSource} GroundingSource */
 /** @typedef {import('../core/grounding.js').GroundingReport} GroundingReport */
 /** @typedef {import('../core/grounding.js').SentenceResult} SentenceResult */
+/** @typedef {import('../core/grounding.js').SecondOpinion} SecondOpinion */
+/** @typedef {import('../core/entail.js').OpinionEngine} OpinionEngine */
 /** @typedef {{ node: Text, nodeOffset: number, from: number, to: number }} TextPiece */
 
 const BLOCK_SELECTOR = 'p, li, h1, h2, h3, h4, h5, h6, tr, blockquote, dd, dt';
@@ -237,7 +248,10 @@ function flaggedItem(s, sources, scope, id) {
 /**
  * Runs the source check on a rendered answer and shows the result.
  * @param {HTMLElement} messageEl  the message element returned by appendMessage / createStreamingMessage
- * @param {{ scope: string, sources: GroundingSource[], given?: string[], citedOnly?: boolean }} input
+ * @param {{ scope: string, sources: GroundingSource[], given?: string[], citedOnly?: boolean, localOnly?: boolean }} input
+ *   localOnly: whether the answer stays on this device (on-device mode, or it quotes the on-device
+ *   workspace). The AI judge sends statements to the provider, so it is offered only when the caller
+ *   says `localOnly: false`; left out, the answer is treated as staying on this device.
  * @returns {GroundingReport | null}
  */
 export function applyGrounding(messageEl, input) {
@@ -293,12 +307,19 @@ export function applyGrounding(messageEl, input) {
     for (const { s, i } of flagged) list.append(flaggedItem(s, input.sources, input.scope, `${run}-${i}`));
     body.append(list);
   }
+  if (report.relations?.length) {
+    const note = document.createElement('p');
+    note.className = 'grounding-note';
+    setText(note, 'grounding.relations', { n: report.relations.length, flagged: report.relations.filter((r) => r.verdict !== 'supported').length });
+    body.append(note);
+  }
   if (unchecked) {
     const note = document.createElement('p');
     note.className = 'grounding-note';
     setText(note, 'grounding.unchecked', { n: unchecked });
     body.append(note);
   }
+  if (report.sentences.some((s) => eligible(s, input.sources))) body.append(secondOpinionPanel(report, input, run, details));
   const disclaimer = document.createElement('p');
   disclaimer.className = 'grounding-note';
   setText(disclaimer, 'grounding.disclaimer');
@@ -327,4 +348,148 @@ export function applyGrounding(messageEl, input) {
   });
   refreshIcons(details);
   return report;
+}
+
+/**
+ * The AI judge as a second-opinion engine: the purpose `entail_check` on the judge role, or null
+ * when no model for it is set up. The AI layer loads on first use.
+ * @returns {Promise<OpinionEngine | null>}
+ */
+async function judgeEngine() {
+  const [{ planChain, routerDeps, runPurpose }, { getPurpose }] = await Promise.all([import('../ai/router.js'), import('../ai/purposes.js')]);
+  const def = getPurpose('entail_check');
+  if (!def || planChain(def, {}, routerDeps()).length === 0) return null;
+  let model = 'judge';
+  return {
+    id: 'judge',
+    get model() {
+      return model;
+    },
+    classify: async (pairs, onProgress) => {
+      /** @type {Array<import('../core/entail.js').OpinionResult | null>} */
+      const out = [];
+      for (const [k, pair] of pairs.entries()) {
+        const res = await runPurpose('entail_check', { claim: pair.hypothesis, evidence: pair.premise }, { cache: 'off' });
+        out.push(res.ok ? judgeResult(res.value) : null);
+        if (res.ok && res.provider && res.model) model = `${res.provider}:${res.model}`;
+        onProgress?.(k + 1, pairs.length);
+      }
+      return out;
+    },
+  };
+}
+
+/**
+ * Shows one second opinion at its statement: a line in the flagged item (replacing an earlier one
+ * of the same engine), and the item's colour as shownVerdict gives it (never better than before).
+ * @param {HTMLElement} details
+ * @param {GroundingReport} report
+ * @param {GroundingSource[]} sources
+ * @param {string} run
+ * @param {SecondOpinion} opinion
+ */
+function showOpinion(details, report, sources, run, opinion) {
+  const li = details.querySelector(`#${run}-${opinion.sentence}`);
+  if (!li) return;
+  li.querySelector(`[data-opinion="${opinion.engine}"]`)?.remove();
+  const line = document.createElement('p');
+  line.className = 'grounding-reason grounding-opinion';
+  line.dataset.opinion = opinion.engine;
+  line.dataset.result = opinion.result;
+  const engine = t(`grounding.second_engine_${opinion.engine}`);
+  const reason = opinionReason(opinion);
+  if (reason) setText(line, `grounding.reason_${reason.code}`, { engine, label: labelsOf(sources, reason.cites) });
+  else setText(line, `grounding.second_result_${opinion.result}`, { engine });
+  li.append(line);
+  const verdict = shownVerdict(report.sentences[opinion.sentence].verdict, opinion.result);
+  li.className = `grounding-item grounding-item-${verdict}`;
+}
+
+/**
+ * The second-opinion controls under a report with weak statements: what it is, and one button per
+ * engine. Nothing runs, and nothing downloads, before a button is pressed. The AI judge sends each
+ * statement and its passages to the user's AI provider, so it is offered only for an answer the
+ * caller has marked as allowed to leave this device (`localOnly: false`).
+ * @param {GroundingReport} report
+ * @param {{ scope: string, sources: GroundingSource[], localOnly?: boolean }} input
+ * @param {string} run
+ * @param {HTMLElement} details
+ */
+function secondOpinionPanel(report, input, run, details) {
+  const box = document.createElement('div');
+  box.className = 'grounding-second space-y-1.5 border-t border-slate-200 pt-2';
+  const title = document.createElement('p');
+  title.className = 'font-semibold text-slate-800';
+  setText(title, 'grounding.second_title');
+  const intro = document.createElement('p');
+  intro.className = 'grounding-note';
+  // Fail closed: without an explicit `localOnly: false` no statement goes to a provider.
+  const judgeAllowed = input.localOnly === false;
+  setText(intro, judgeAllowed ? 'grounding.second_intro' : input.localOnly ? 'grounding.second_intro_local' : 'grounding.second_intro_device');
+  const row = document.createElement('div');
+  row.className = 'flex flex-wrap gap-1.5';
+  const status = document.createElement('p');
+  status.className = 'grounding-note';
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  /** @type {HTMLButtonElement[]} */
+  const buttons = [];
+  const button = (/** @type {'nli' | 'judge'} */ engine) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btn-ghost px-2 py-1 text-[11px]';
+    b.dataset.secondOpinion = engine;
+    b.addEventListener('click', () => void start(engine));
+    buttons.push(b);
+    row.append(b);
+    return b;
+  };
+
+  /** @param {'nli' | 'judge'} engineId */
+  const start = async (engineId) => {
+    for (const b of buttons) b.disabled = true;
+    const total = report.sentences.filter((s) => eligible(s, input.sources)).length;
+    setText(status, 'grounding.second_running', { done: 0, total });
+    /** @type {(() => void) | null} */
+    let stopWatching = null;
+    try {
+      /** @type {OpinionEngine | null} */
+      let engine;
+      if (engineId === 'nli') {
+        const nli = await import('../wasm/nli.js');
+        stopWatching = nli.onNliChange((st) => {
+          if (st.phase === 'loading') setText(status, 'grounding.second_loading', { percent: formatNumber(Math.round(st.progress * 100)) });
+        });
+        // The click on the button that names the download size is the consent to download.
+        engine = nli.nliEngine({ consent: true });
+      } else engine = await judgeEngine();
+      if (!engine) {
+        setText(status, 'grounding.second_unavailable');
+        return;
+      }
+      const opinions = await secondOpinions(report, input.sources, engine, { onProgress: (done, n) => setText(status, 'grounding.second_running', { done, total: n }) });
+      const kept = (report.secondOpinion ?? []).filter((o) => !opinions.some((n) => n.engine === o.engine && n.sentence === o.sentence));
+      report.secondOpinion = [...kept, ...opinions];
+      for (const o of opinions) showOpinion(details, report, input.sources, run, o);
+      setText(status, 'grounding.second_done', { n: opinions.length, engine: t(`grounding.second_engine_${engine.id}`) });
+    } catch (err) {
+      setText(status, 'grounding.second_failed', { reason: err instanceof Error ? err.message : String(err) });
+    } finally {
+      stopWatching?.();
+      for (const b of buttons) b.disabled = false;
+    }
+  };
+
+  const nliButton = button('nli');
+  nliButton.hidden = true;
+  if (judgeAllowed) setText(button('judge'), 'grounding.second_judge');
+  void import('../wasm/nli.js').then(async (nli) => {
+    if (!nli.nliAvailable()) return;
+    const stored = await nli.nliModelStored();
+    if (stored === 'full') setText(nliButton, 'grounding.second_nli_stored');
+    else setText(nliButton, 'grounding.second_nli', { size: formatNumber(nli.nliModel().approxDownloadMB) });
+    nliButton.hidden = false;
+  });
+  box.append(title, intro, row, status);
+  return box;
 }

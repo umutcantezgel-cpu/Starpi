@@ -23,7 +23,7 @@
 // Pure: WebCrypto (crypto.subtle) only, so it runs in the browser, in workers and in Node 20+.
 import { chunkText, CHUNKER } from '../rag/chunker.js';
 import { guessLanguage, indexSource } from './facts.js';
-import { checkSentence, GROUNDING, GROUNDING_VERSIONS, REASON_CODES, REASON_CODES_V1, THRESHOLDS } from './grounding.js';
+import { applyRelations, checkSentence, GROUNDING, GROUNDING_VERSIONS, REASON_CODES, REASON_CODES_V1, THRESHOLDS } from './grounding.js';
 import { canonicalJson, sha256Hex } from './hash.js';
 import { MERKLE_ALG, merkleLeafHash, merkleTree, verifyMerkleProof } from './merkle.js';
 import { signHead, SIGNATURE_ALGS, verifyHead } from './signature.js';
@@ -230,7 +230,7 @@ export async function verifyCitationProof(citation, index, merkle) {
 }
 
 /** Reasons whose `found` quotes the excerpt: a passage, or the value the excerpt states. */
-const FOUND_FROM_EXCERPT = new Set(['fact_context', 'approximate', 'fact_elsewhere', 'negation_inversion', 'name_context']);
+const FOUND_FROM_EXCERPT = new Set(['fact_context', 'approximate', 'fact_elsewhere', 'negation_inversion', 'name_context', 'relation_inverted', 'relation_unsupported']);
 
 /**
  * A copy of a reason; without excerpts, also without the excerpt text it may quote.
@@ -829,20 +829,39 @@ export async function verifyReceipt(receipt, files, tools, options = {}) {
     const differences = [];
     let recomputed = 0;
     let needsConversation = false;
+    const missing = (/** @type {number} */ c) => sourceTexts[c] === null;
+    /** @type {import('./grounding.js').SentenceResult[]} */
+    const results = [];
+    /** Statements that cannot be recomputed: version 3 still reads them as context of the next one. */
+    /** @type {Set<number>} */
+    const context = new Set();
     for (const [i, s] of receipt.grounding.sentences.entries()) {
       if (s.reasons.some((r) => r.code === 'from_conversation')) needsConversation = true;
       // A verdict can also depend on excerpts the statement does not cite (a value found in another
-      // excerpt): when one of those is not available either, the statement cannot be recomputed.
-      if (s.cites.some((c) => sourceTexts[c] === null) || s.reasons.some((r) => r.other?.some((c) => sourceTexts[c] === null))) continue;
+      // excerpt, a value carried over from the statement before): when one of those is not
+      // available either, the statement cannot be recomputed.
+      if (s.cites.some(missing) || s.reasons.some((r) => r.other?.some(missing) || (r.code.startsWith('relation_') && r.cites?.some(missing)))) {
+        context.add(i);
+        results.push({ block: 0, start: 0, end: s.text.length, text: s.text, cites: s.cites.slice(), citeSource: s.citeSource, verdict: /** @type {import('./grounding.js').Verdict} */ (s.verdict), reasons: [], overlap: null, crossLanguage: false });
+        continue;
+      }
       const bad = s.reasons
         .filter((r) => r.code === 'unknown_citation' || r.code === 'label_mismatch')
         .map((r) => ({ label: r.found ?? '', resolved: r.code === 'label_mismatch' && r.cites?.length ? r.cites[0] : null }));
-      const result = checkSentence(
-        { block: 0, kind: 'p', start: 0, end: s.text.length, text: s.text, own: s.citeSource === 'own' ? s.cites.slice() : [], bad, cites: s.cites.filter((c) => !bad.some((b) => b.resolved === c)), citeSource: s.citeSource },
-        ctx,
+      results.push(
+        checkSentence(
+          { block: 0, kind: 'p', start: 0, end: s.text.length, text: s.text, own: s.citeSource === 'own' ? s.cites.slice() : [], bad, cites: s.cites.filter((c) => !bad.some((b) => b.resolved === c)), citeSource: s.citeSource },
+          ctx,
+        ),
       );
+    }
+    // Version 3 checks relations across neighbouring statements: the recorded statements are the
+    // checked ones in answer order, so the pass sees the same neighbours as when the receipt was made.
+    const final = applyRelations(results, ctx, context).sentences;
+    for (const [i, s] of receipt.grounding.sentences.entries()) {
+      if (context.has(i)) continue;
       recomputed += 1;
-      if (result.verdict !== s.verdict) differences.push({ sentence: i, recorded: s.verdict, now: result.verdict });
+      if (final[i].verdict !== s.verdict) differences.push({ sentence: i, recorded: s.verdict, now: final[i].verdict });
     }
     grounding = { recomputed, differences, needsConversation };
   }

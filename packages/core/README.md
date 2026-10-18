@@ -11,9 +11,12 @@ retrieval-augmented generation (RAG) application:
   English and German formats (480,000 = 480.000 = 480k), dates, times, weekdays, codes, version
   numbers, quotations and wording; and, in English and German, whether a statement reverses a
   negation of its excerpt ("is supported" against "is not supported", "erlaubt" against
-  "verboten") and whether it puts a name or a value next to something else than the excerpt
-  does. It reports `supported`, `weak`, `unsupported` or `unchecked` per statement, with a reason
-  that names the missing value or quotes the passage that says otherwise.
+  "verboten"), whether it puts a name or a value next to something else than the excerpt does,
+  and whether a change, comparison or order in time, within a statement or carried over from the
+  statement before, goes the way the excerpts say ("rose from 212,000 to 198,500", "more visits
+  than the reading hall", "came out before version 8.0"). It reports `supported`, `weak`,
+  `unsupported` or `unchecked` per statement, with a reason that names the missing value or quotes
+  the passage that says otherwise.
 - **Answer receipts** (`starpi.receipt/v3`): a JSON record of the cited excerpts with SHA-256
   fingerprints of the source files and passage offsets, a Merkle tree (RFC 6962) with an
   inclusion proof per citation, optional Ed25519 or ECDSA P-256 signatures with a named signer,
@@ -134,11 +137,29 @@ for (const s of groundAnswer(blocksFromMarkdown(claims, spec), spec).sentences) 
 - `name_missing`: in English statements, a name (a capitalised word inside the sentence, such as
   "Munich" or "Sarah") that none of the cited excerpts contains.
 
-These checks compare a statement with excerpts in its own language. They look at one statement at
-a time, so a receipt can recompute them; a wrong relation spread over two statements is not seen.
-`groundAnswer(blocks, sources, { version: 1 })` runs the rules of `@starpi/core` 1.x: no
+- `relation_inverted`, `relation_unsupported` (version 3): a relation between two values or two
+  events that the excerpts give the other way round, or whose direction they give but not the
+  stated factor or share. Changes ("rose", "fell", "doubled", "halved", "stieg", "sank", "from A
+  to B", "up from A"), comparisons ("more / fewer / higher / lower … than", "twice as many … as",
+  "mehr … als"), orders in time ("before", "after", "earlier than", "bevor", "nachdem") and values
+  carried over from the statement before ("it rose to B", "es waren weniger, nämlich B") are
+  checked when the excerpts bind both values or dates to their sides without ambiguity; negated
+  and conditional clauses are left alone. Always `weak`. `report.relations` lists every relation
+  compared, supported ones included.
+
+These checks compare a statement with excerpts in its own language. Relations look at a statement
+and the one before it, in answer order; a receipt records the checked statements in that order, so
+it recomputes them too. `groundAnswer(blocks, sources, { version: 2 })` runs the rules of
+`@starpi/core` 2.x with the same results (no relations); `{ version: 1 }` those of 1.x: no
 `negation_inversion` or `name_context`, the earlier `fact_context`, and no version numbers as
 facts. `GROUNDING_VERSIONS` lists the versions this release can run.
+
+A **second opinion** for weak statements is available in code (`secondOpinions(report, sources,
+engine)`): you pass an engine that classifies statement and passage pairs as entailed, neutral or
+contradicted (an NLI model, or a judge model). It is advisory: it runs only on weak statements, a
+contradiction keeps a statement weak with `second_opinion_contradiction`, and nothing turns a
+verdict better. Receipts record second opinions in `secondOpinion` and relations in `relations`
+(`receiptAdvisory(report)` gives both in the receipt's form).
 
 Citations are recognised as `[Doc: <name>, Chunk: <n>]` labels (see `citationLabel`). Statements
 inherit citations from their paragraph, from a lead-in line ending in a colon, or from a "Sources:"
@@ -151,7 +172,7 @@ Verdicts and reason codes:
 | Verdict | Reason codes |
 | --- | --- |
 | `unsupported` | `missing_fact`, `uncited_missing`, `quote_missing`, `unknown_citation`, `not_delivered` |
-| `weak` | `approximate`, `fact_elsewhere`, `fact_context`, `name_missing`, `name_context`, `negation_inversion`, `uncited_found`, `from_conversation`, `low_overlap`, `label_mismatch`, a partial quotation |
+| `weak` | `approximate`, `fact_elsewhere`, `fact_context`, `name_missing`, `name_context`, `negation_inversion`, `relation_inverted`, `relation_unsupported`, `uncited_found`, `from_conversation`, `low_overlap`, `label_mismatch`, a partial quotation |
 | `supported` | none: every fact is in a cited excerpt and at least half of the content words appear there |
 | `unchecked` | none: statement and excerpt are in different languages (facts only) and the statement has no facts |
 | `neutral` | not counted: headings, short fragments, statements with neither a citation nor a fact |
@@ -308,6 +329,7 @@ reported as not checked and fails the run.
 | `--output` | write the report to a file instead of standard output |
 | `--fail-on` | `unsupported` (default), `weak`, `never` |
 | `--cite` | `auto` (default), `labels`, `all` |
+| `--grounding` | the source-check rules: `3` (default, with relations), `2` or `1` give the output of the release that introduced them |
 
 Exit code 0 when no statement is at or above the `--fail-on` level, 1 when one is, 2 for a usage
 error or an unreadable file. In SARIF, every unsupported statement is an `error` and every weak one
@@ -405,8 +427,12 @@ single characters, the same way for documents and queries.
 - `languagePack`, `LANGUAGES`, `registerLanguage`: the English and German language packs the
   checks and the gate read; a registered pack is validated, frozen and read from then on.
 - `GROUNDING`, `EXTRACTOR`, `CHUNKER`: the rule versions recorded in receipts; `GROUNDING_VERSIONS`
-  lists the source-check versions `groundAnswer` can run, `REASON_CODES` (and `REASON_CODES_V1`)
-  the reason codes.
+  lists the source-check versions `groundAnswer` can run, `REASON_CODES` (and `REASON_CODES_V1`,
+  `REASON_CODES_V2`, `reasonCodes(version)`) the reason codes.
+- `findRelations`, `changesIn`, `RELATIONS`, `applyRelations`: the relation check of version 3 on
+  its own (statements and excerpts in, relations with verdicts out).
+- `secondOpinions`, `eligible`, `premiseFor`, `nliResult`, `judgeResult`, `shownVerdict`,
+  `ENTAIL`, `SECOND_OPINION_REASON`, `receiptAdvisory`: the rules of the advisory second opinion.
 
 Type declarations are included.
 
