@@ -7,7 +7,7 @@ import { expect, mockSupabase, test } from './fixtures.mjs';
 
 const TABS = ['chat', 'research', 'library', 'ingest', 'graph', 'bench', 'settings'];
 /** Mount points whose feature renders content. */
-const RENDERED = new Set(['chat-sidebar', 'providerSettings', 'trustSettings', 'voiceSettings', 'composerExtras']);
+const RENDERED = new Set(['chat-sidebar', 'providerSettings', 'trustSettings', 'voiceSettings', 'composerExtras', 'tab-research']);
 const DARK_PAGE = 'rgb(11, 17, 32)';
 const LIGHT_PAGE = 'rgb(248, 250, 252)';
 
@@ -53,15 +53,16 @@ test.describe('mount points', () => {
     await expect(page.locator('#providerSettings')).toHaveAttribute('data-mounted', 'providers');
     await expect(page.locator('#trustSettings')).toHaveAttribute('data-mounted', 'trust');
     await expect(page.locator('#chat-sidebar')).toHaveAttribute('data-mounted', 'conversations');
-    // The stubs of later features are mounted (they render nothing yet).
+    // Mounted features carry their id, also those that render nothing yet.
     await expect(page.locator('#tab-research')).toHaveAttribute('data-mounted', 'research');
     await expect(page.locator('#liveSheet')).toHaveAttribute('data-mounted', 'live');
     // Companion stays out of the navigation until its feature shows it.
     await expect(page.locator(isMobile(page) ? '#mobile-nav-companion' : '#nav-companion')).toBeHidden();
-    // An empty mount tab explains itself.
+    // The Research feature renders its tab; its side panel list stays empty until a chat starts a job.
     await openTab(page, 'research');
-    await expect(page.locator('#tab-research')).toContainText('Nothing to show here yet.');
+    await expect(page.locator('#researchQuestion')).toBeVisible();
     await expect(page.locator('#pageTitleText')).toHaveText('Research');
+    expect(await page.locator('#chat-aside-research').innerHTML()).toBe('');
     expect(diagnostics).toEqual([]);
   });
 });

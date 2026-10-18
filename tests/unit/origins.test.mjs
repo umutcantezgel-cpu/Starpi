@@ -1,14 +1,12 @@
 // The shared front guards (api/_lib/origins.js, api/_lib/access.js): the origin allowlist and its
 // aliases, the daily budget, the guard order, the optional access code with its constant-time
-// comparison, and the access check on the research route that is still a stub (the voice routes
-// have their own tests in voice-routes.test.mjs).
+// comparison (the voice and research routes have their own tests: voice-routes, research-step).
 import assert from 'node:assert/strict';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 import { checkAccess, readAccessCode, sameSecret } from '../../api/_lib/access.js';
 import { createRateLimiter } from '../../api/_lib/guards.js';
 import { allowedOrigins, createDailyLimiter, guardRequest } from '../../api/_lib/origins.js';
-import * as research from '../../api/research/step.js';
-import { errorOf, siteRequest } from './relay-helpers.mjs';
+import { siteRequest } from './relay-helpers.mjs';
 
 describe('allowed origins', () => {
   it('merges STARPI_ALLOWED_ORIGINS with the older NVIDIA_ and RELAY_ names', () => {
@@ -67,27 +65,5 @@ describe('access code', () => {
     assert.deepEqual(await guardRequest(siteRequest('/x', { headers: { origin: 'https://evil.example', 'sec-fetch-site': undefined } }), guards), { status: 403, error: 'origin_not_allowed' });
     assert.deepEqual(await guardRequest(siteRequest('/x'), guards), { status: 401, error: 'access_required' });
     assert.equal((await guardRequest(siteRequest('/x', { headers: { 'x-starpi-access': 'code-for-tests-01' } }), guards))?.error, 'rate_limited');
-  });
-});
-
-describe('research stub', () => {
-  /** @type {string | undefined} */
-  let saved;
-  beforeEach(() => {
-    saved = process.env.STARPI_ACCESS_CODE;
-  });
-  afterEach(() => {
-    if (saved === undefined) delete process.env.STARPI_ACCESS_CODE;
-    else process.env.STARPI_ACCESS_CODE = saved;
-  });
-
-  it('wants the access code when the site sets one, and says it serves nothing yet', async () => {
-    process.env.STARPI_ACCESS_CODE = 'code-for-tests-01';
-    assert.deepEqual(await errorOf(await research.POST(siteRequest('/x'))), { status: 401, error: 'access_required' });
-    const passed = await research.POST(siteRequest('/x', { headers: { 'x-starpi-access': 'code-for-tests-01' } }));
-    assert.deepEqual(await errorOf(passed), { status: 501, error: 'not_implemented' });
-    delete process.env.STARPI_ACCESS_CODE;
-    assert.equal((await research.POST(siteRequest('/x'))).status, 501);
-    assert.equal(research.available({}), false);
   });
 });

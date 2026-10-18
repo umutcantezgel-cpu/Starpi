@@ -16,10 +16,9 @@ import { compilePattern, functionPath, functionRoutes, matchRoute } from '../../
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const vercel = JSON.parse(readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
 
-/** Routes that later work packages implement; until then each answers 501. */
-const STUBS = [
-  'api/research/step.js',
-];
+/** Routes that later work packages implement; until then each answers 501 (none left since voice and research). */
+/** @type {string[]} */
+const STUBS = [];
 
 describe('route patterns', () => {
   it('maps a function file to its path', () => {
@@ -102,7 +101,7 @@ describe('scripts/serve.mjs --functions', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'starpi-serve-'));
     writeFileSync(path.join(dir, 'index.html'), '<!DOCTYPE html><title>t</title>');
     writeFileSync(path.join(dir, 'build-manifest.json'), JSON.stringify({ profile }));
-    const env = { ...process.env, NVIDIA_API_KEYS: '', STARPI_ALLOWED_ORIGINS: '', NVIDIA_ALLOWED_ORIGINS: '', RELAY_ALLOWED_ORIGINS: '', STARPI_ACCESS_CODE: '' };
+    const env = { ...process.env, NVIDIA_API_KEYS: '', GEMINI_API_KEYS: '', STARPI_ALLOWED_ORIGINS: '', NVIDIA_ALLOWED_ORIGINS: '', RELAY_ALLOWED_ORIGINS: '', STARPI_ACCESS_CODE: '' };
     server = spawn(process.execPath, [path.join(ROOT, 'scripts/serve.mjs'), '--port', '0', '--dir', dir, '--functions'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'inherit'] });
     let out = '';
     server.stdout?.setEncoding('utf8');
@@ -134,7 +133,7 @@ describe('scripts/serve.mjs --functions', () => {
       ['POST', '/api/voice/transcribe', 415, 'unsupported_media_type'],
       ['GET', '/api/voice/voices', 200],
       ['POST', '/api/voice/live-token', 415, 'unsupported_media_type'],
-      ['POST', '/api/research/step', 501, 'not_implemented'],
+      ['POST', '/api/research/step', 503, 'research_not_configured'],
     ]) {
       const res = await fetch(base + url, { method, headers: { origin: base } });
       assert.equal(res.status, status, `${method} ${url}`);
