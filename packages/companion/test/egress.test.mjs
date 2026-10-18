@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import { join } from 'node:path';
@@ -69,6 +70,113 @@ test('guard: only loopback is reachable, DNS of other names and spawning are ref
   assert.equal((await (await fetch(`http://localhost:${echo.port}/b`)).json()).path, '/b');
   assert.ok(blocked.includes('net.connect'));
   assert.throws(() => installEgressGuard(), /installed already/);
+});
+
+/**
+ * Resolves with the error code a socket-like emitter reports, null once it emits `okEvent`, or
+ * 'no answer' after a few seconds (a guard that let the connection out would wait on a black hole).
+ * @param {import('node:events').EventEmitter} emitter @param {string} [okEvent]
+ */
+const outcome = (emitter, okEvent = 'connect') =>
+  new Promise((resolve) => {
+    const timer = setTimeout(() => resolve('no answer'), 5000);
+    timer.unref();
+    emitter.once('error', (err) => resolve(/** @type {any} */ (err).code ?? err.message));
+    emitter.once(okEvent, () => resolve(null));
+  });
+
+test("guard: a caller's own lookup is run and its answer checked, for net, http and datagram sockets", async (t) => {
+  const echo = await echoServer();
+  /** @type {string[]} */
+  const blocked = [];
+  const guard = installEgressGuard({ onBlocked: (r) => blocked.push(`${r.api} ${r.target}`) });
+  t.after(async () => {
+    guard.uninstall();
+    await echo.close();
+  });
+  const outside = '192.0.2.1';
+  /** A lookup that answers every name with one address, in both answer shapes Node asks for. @param {string} address */
+  const answering = (address) => (/** @type {string} */ _name, /** @type {any} */ options, /** @type {Function} */ callback) => {
+    if (options?.all) callback(null, [{ address: '127.0.0.1', family: 4 }, { address, family: net.isIP(address) }]);
+    else callback(null, address, net.isIP(address));
+  };
+
+  assert.equal(await outcome(net.connect({ host: 'localhost', port: echo.port, lookup: answering(outside) })), 'EGRESS_BLOCKED');
+  assert.equal(await outcome(net.connect({ host: 'localhost', port: echo.port, lookup: answering(outside), autoSelectFamily: false })), 'EGRESS_BLOCKED');
+  assert.equal(await outcome(http.request({ host: 'localhost', port: echo.port, lookup: answering(outside) }).end()), 'EGRESS_BLOCKED');
+  assert.ok(blocked.includes(`net.lookup localhost -> ${outside}`));
+
+  // A lookup that stays on this machine is honoured.
+  let asked = 0;
+  const loopback = net.connect({ host: 'localhost', port: echo.port, lookup: (/** @type {string} */ name, /** @type {any} */ options, /** @type {Function} */ callback) => {
+    asked += 1;
+    answering('127.0.0.1')(name, options, callback);
+  } });
+  assert.equal(await outcome(loopback), null);
+  loopback.destroy();
+  assert.equal(asked, 1);
+
+  // Every option is read once: a getter cannot turn the checked TCP target into a socket path.
+  let reads = 0;
+  const tricky = { host: 'localhost', port: echo.port };
+  Object.defineProperty(tricky, 'path', { enumerable: true, get: () => (reads++ === 0 ? undefined : join('/tmp', 'other.sock')) });
+  const plain = new net.Socket().connect(tricky);
+  assert.equal(await outcome(plain), null);
+  assert.equal(plain.remotePort, echo.port);
+  plain.destroy();
+  assert.equal(reads, 1);
+
+  // Datagram sockets resolve even IP literals through their lookup.
+  const dgram = (await import('node:dgram')).default;
+  const receiver = dgram.createSocket('udp4');
+  await new Promise((resolve) => receiver.bind(0, '127.0.0.1', () => resolve(undefined)));
+  t.after(() => receiver.close());
+  const port = receiver.address().port;
+  /** Answers the wildcard bind address as it is and every other name with the outside address. */
+  const datagramLookup = (/** @type {string} */ name, /** @type {unknown} */ _family, /** @type {Function} */ callback) => callback(null, name === '0.0.0.0' ? name : outside, 4);
+  const viaCreate = dgram.createSocket({ type: 'udp4', lookup: datagramLookup });
+  const created = outcome(viaCreate, 'close');
+  viaCreate.send('x', port, '127.0.0.1');
+  assert.equal(await created, 'EGRESS_BLOCKED');
+  viaCreate.close();
+  const Ctor = /** @type {any} */ (dgram.Socket.prototype.constructor);
+  const viaConstructor = new Ctor({ type: 'udp4', lookup: datagramLookup });
+  assert.ok(viaConstructor instanceof dgram.Socket);
+  const constructed = outcome(viaConstructor, 'close');
+  viaConstructor.send('x', port, 'localhost');
+  assert.equal(await constructed, 'EGRESS_BLOCKED');
+  viaConstructor.close();
+  assert.ok(blocked.includes(`dgram.lookup localhost -> ${outside}`));
+  const fine = dgram.createSocket('udp4');
+  const got = new Promise((resolve) => receiver.once('message', (msg) => resolve(String(msg))));
+  fine.send('hello', port, '127.0.0.1');
+  assert.equal(await got, 'hello');
+  fine.close();
+});
+
+test('guard: every route to a new process is refused, except the runner starting a kernel program', async (t) => {
+  const guard = installEgressGuard();
+  t.after(() => guard.uninstall());
+  const childProcess = (await import('node:child_process')).default;
+  const forbidden = (/** @type {any} */ err) => err.code === 'SPAWN_FORBIDDEN';
+  const child = new childProcess.ChildProcess();
+  assert.throws(() => child.spawn({ file: '/bin/sh', args: ['sh', '-c', 'exit 0'], envPairs: [], stdio: ['pipe', 'pipe', 'pipe'] }), forbidden);
+  if (typeof (/** @type {any} */ (process).execve) === 'function') {
+    assert.throws(() => /** @type {any} */ (process).execve('/bin/sh', ['sh', '-c', 'exit 0'], {}), forbidden);
+  }
+  const workerThreads = (await import('node:worker_threads')).default;
+  const OriginalLooking = /** @type {any} */ (workerThreads.Worker.prototype.constructor);
+  assert.throws(() => new OriginalLooking('process.exit(0)', { eval: true }), forbidden);
+  const { runProgram, KERNEL_PROGRAMS } = await import('../src/vault/kek/runner.js');
+  const present = KERNEL_PROGRAMS.find((file) => file.endsWith('systemd-notify') && existsSync(file));
+  if (present) {
+    const result = await runProgram(present, ['--booted']);
+    assert.equal(typeof result.code, 'number', 'the runner still starts its fixed programs under the guard');
+  }
+  await assert.rejects(runProgram('/bin/sh', ['-c', 'exit 0']), (/** @type {any} */ err) => err.code === 'program_not_allowed');
+  guard.uninstall();
+  assert.equal(workerThreads.Worker.prototype.constructor, workerThreads.Worker, 'uninstall puts the class back');
+  assert.equal(childProcess.execFileSync('/bin/sh', ['-c', 'echo back']).toString().trim(), 'back');
 });
 
 test('capability: reaches its listed hosts over https only, narrows, and dies with the guard', async (t) => {

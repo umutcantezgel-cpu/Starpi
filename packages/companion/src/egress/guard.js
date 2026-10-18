@@ -8,20 +8,30 @@
 //    passes: an IP literal outside loopback, any host name other than `localhost` and any Unix
 //    socket path the kernel did not open itself is refused with EGRESS_BLOCKED. Host names are
 //    refused before resolution, so no name of a caller's choosing leaves as a DNS query either.
+//    Node gets a fresh options object with the values that were checked, and `localhost` is
+//    resolved through a lookup whose every answer must be loopback, a `lookup` function the
+//    caller passed included (HTTP libraries pass their own; it runs, its answer is checked).
 //  - dns.lookup, dns.promises.lookup: only IP literals and `localhost`; dns.resolve*, reverse and the
 //    Resolver classes: always refused (they talk to DNS servers directly).
-//  - dgram sockets: send and connect only to loopback literals or `localhost`.
-//  - Spawning: child_process (spawn, exec, execFile, fork and their sync forms), cluster.fork and
-//    worker_threads.Worker throw. A child process or a worker starts outside these patches, so the
-//    companion forbids them altogether in this release (the kernel's own fixed helpers, see
-//    vault/kek/runner.js, hold a reference taken before the guard).
+//  - dgram sockets: send and connect only to loopback literals or `localhost`; a socket made by
+//    dgram.createSocket or dgram.Socket resolves through the same checked lookup (its own or
+//    Node's), which also lets the wildcard bind addresses through.
+//  - Spawning: child_process (spawn, exec, execFile, fork and their sync forms), ChildProcess#spawn
+//    (the method every asynchronous form ends in), process.execve, cluster.fork and
+//    worker_threads.Worker throw. A child process, a replaced process image or a worker starts
+//    outside these patches, so the companion forbids them altogether in this release. The one
+//    exception is the kernel's runner (vault/kek/runner.js): while it starts one of its fixed
+//    programs, ChildProcess#spawn lets exactly that program through.
 //  - process.binding of the raw socket, resolver and process bindings, and module.register (it
 //    starts a loader thread outside the patches).
-// The patched functions are also synchronised into the ESM named exports of the built-in modules.
+// The patched functions are also synchronised into the ESM named exports of the built-in modules,
+// and the `constructor` of a replaced class's prototype points at the replacement, so the original
+// cannot be picked up from there.
 //
-// Limits: references to the original functions taken before install (the kernel imports nothing
-// that does), native add-ons and WebAssembly with host imports. On Linux the user unit adds a
-// boundary outside the process (IPAddressDeny=any with an egress splice unit, see splice.js).
+// Limits: references to the original functions and sockets made before install (the kernel makes
+// none), Node's internal handle objects reached through a live socket, native add-ons and
+// WebAssembly with host imports. On Linux the user unit adds a boundary outside the process
+// (IPAddressDeny=any with an egress splice unit, see splice.js).
 import childProcess from 'node:child_process';
 import cluster from 'node:cluster';
 import dgram from 'node:dgram';
@@ -32,6 +42,7 @@ import { Readable } from 'node:stream';
 import tls from 'node:tls';
 import workerThreads from 'node:worker_threads';
 import { fail } from '../lib/errors.js';
+import { kernelProgramStarting } from '../vault/kek/runner.js';
 import { canonicalHost, isLoopbackAddress, isPublicAddress, parseEgressEntry } from './hosts.js';
 
 const nodeModule = /** @type {typeof import('node:module')} */ (process.getBuiltinModule('node:module'));
@@ -44,6 +55,8 @@ export const TRANSPORT_SEAM = Symbol('egress transport seam');
 const RESOLVER_METHODS = Object.freeze(['resolve', 'resolve4', 'resolve6', 'resolveAny', 'resolveCaa', 'resolveCname', 'resolveMx', 'resolveNaptr', 'resolveNs', 'resolvePtr', 'resolveSoa', 'resolveSrv', 'resolveTxt', 'resolveTlsa', 'reverse']);
 const SPAWN_METHODS = Object.freeze(['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']);
 const BLOCKED_BINDINGS = Object.freeze(new Set(['tcp_wrap', 'udp_wrap', 'pipe_wrap', 'tls_wrap', 'cares_wrap', 'process_wrap', 'spawn_sync', 'stream_wrap']));
+/** A datagram socket resolves its bind address through its lookup as well. */
+const WILDCARD_ADDRESSES = Object.freeze(new Set(['0.0.0.0', '::']));
 
 /** @typedef {{ api: string, target: string, at: number }} EgressReport */
 
@@ -80,22 +93,23 @@ function localTarget(host) {
 }
 
 /**
- * The destination of a Socket#connect call, read once, as Node reads its arguments.
+ * The destination of a Socket#connect call, as Node reads its arguments, in a fresh options object:
+ * every option of the caller is read exactly once, and Node later sees only this copy, so a getter
+ * cannot answer differently after the check.
  * @param {unknown[]} args
- * @returns {{ options: Record<string, unknown> | null, path: string | null, host: unknown, port: unknown, holder: unknown[] | null }}
+ * @returns {{ options: Record<string, unknown>, path: string | null, host: unknown, port: unknown, holder: unknown[] | null }}
  */
 function destinationOf(args) {
   const first = args[0];
-  if (Array.isArray(first)) {
-    const options = /** @type {Record<string, unknown>} */ (first[0] ?? {});
-    return { options, path: typeof options.path === 'string' ? options.path : null, host: options.host, port: options.port, holder: first };
+  const given = Array.isArray(first) ? (first[0] ?? {}) : first;
+  if (given !== null && typeof given === 'object') {
+    const options = { .../** @type {Record<string, unknown>} */ (given) };
+    return { options, path: typeof options.path === 'string' ? options.path : null, host: options.host, port: options.port, holder: Array.isArray(first) ? first : null };
   }
-  if (first !== null && typeof first === 'object') {
-    const options = /** @type {Record<string, unknown>} */ (first);
-    return { options, path: typeof options.path === 'string' ? options.path : null, host: options.host, port: options.port, holder: null };
-  }
-  if (typeof first === 'string' && !(Number(first) >= 0)) return { options: null, path: first, host: undefined, port: undefined, holder: null };
-  return { options: null, path: null, host: typeof args[1] === 'string' ? args[1] : undefined, port: first, holder: null };
+  if (typeof first === 'string' && !(Number(first) >= 0)) return { options: { path: first }, path: first, host: undefined, port: undefined, holder: null };
+  // connect(port[, host][, callback])
+  const host = typeof args[1] === 'string' ? args[1] : undefined;
+  return { options: host === undefined ? { port: first } : { port: first, host }, path: null, host, port: first, holder: null };
 }
 
 /**
@@ -122,7 +136,11 @@ export function installEgressGuard(options = {}) {
     promisesResolverProto: Object.fromEntries(RESOLVER_METHODS.map((m) => [m, /** @type {any} */ (dns.promises.Resolver.prototype)[m]])),
     dgramSend: dgram.Socket.prototype.send,
     dgramConnect: dgram.Socket.prototype.connect,
+    dgramCreateSocket: dgram.createSocket,
+    dgramSocket: dgram.Socket,
     spawn: Object.fromEntries(SPAWN_METHODS.map((m) => [m, /** @type {any} */ (childProcess)[m]])),
+    childSpawn: /** @type {any} */ (childProcess.ChildProcess.prototype).spawn,
+    execve: /** @type {any} */ (process).execve,
     clusterFork: cluster.fork,
     worker: workerThreads.Worker,
     binding: /** @type {any} */ (process).binding,
@@ -142,20 +160,53 @@ export function installEgressGuard(options = {}) {
     return blocked(api, target);
   }
 
+  /**
+   * Wraps a lookup function, the caller's own or the guarded dns.lookup: every address it answers
+   * must be loopback, otherwise the answer is EGRESS_BLOCKED. Node gets fresh values, read once and
+   * checked, never the objects of the caller's answer.
+   * @param {Function} lookup
+   * @param {string} api
+   * @param {boolean} [wildcard]   also accept 0.0.0.0 and :: (the bind address of a datagram socket)
+   */
+  function loopbackOnly(lookup, api, wildcard = false) {
+    const fits = (/** @type {unknown} */ address) => typeof address === 'string' && net.isIP(address) !== 0 && (isLoopbackAddress(address) || (wildcard && WILDCARD_ADDRESSES.has(address)));
+    return function checkedLookup(/** @type {unknown} */ hostname, /** @type {unknown} */ options, /** @type {unknown} */ callback) {
+      const done = /** @type {Function} */ (typeof options === 'function' ? options : callback);
+      const answer = (/** @type {unknown} */ err, /** @type {unknown} */ address) => {
+        if (err) return done(err);
+        if (Array.isArray(address)) {
+          const list = address.map((entry) => entry?.address);
+          const at = list.findIndex((a) => !fits(a));
+          if (at !== -1) return done(refuse(api, `${String(hostname)} -> ${String(list[at])}`));
+          return done(null, list.map((a) => ({ address: a, family: net.isIP(a) })));
+        }
+        if (!fits(address)) return done(refuse(api, `${String(hostname)} -> ${String(address)}`));
+        return done(null, address, net.isIP(/** @type {string} */ (address)));
+      };
+      return typeof options === 'function' ? Reflect.apply(lookup, undefined, [hostname, answer]) : Reflect.apply(lookup, undefined, [hostname, options, answer]);
+    };
+  }
+
   /** @this {net.Socket} @param {...unknown} args */
   function guardedConnect(...args) {
     if (trusted.has(this)) return originals.connect.apply(this, /** @type {any} */ (args));
     const dest = destinationOf(args);
     if (dest.path !== null) throw refuse('net.connect', `unix:${dest.path}`);
-    const host = dest.host;
-    if (!localTarget(host)) throw refuse('net.connect', `${String(host)}:${String(dest.port)}`);
-    if (dest.options) {
-      // Node gets exactly the value that was checked, never a getter that could answer differently.
-      const fresh = { ...dest.options, host: host === undefined ? 'localhost' : host };
-      if (dest.holder) dest.holder[0] = fresh;
-      else args[0] = fresh;
+    if (!localTarget(dest.host)) throw refuse('net.connect', `${String(dest.host)}:${String(dest.port)}`);
+    const options = dest.options;
+    options.host = typeof dest.host === 'string' && dest.host !== '' ? dest.host : 'localhost';
+    // A name (only `localhost` gets here) is resolved through a lookup whose answer is checked: a
+    // lookup of the caller's could otherwise answer with any address.
+    if (net.isIP(/** @type {string} */ (options.host)) === 0 && (options.lookup === undefined || options.lookup === null || typeof options.lookup === 'function')) {
+      options.lookup = loopbackOnly(typeof options.lookup === 'function' ? options.lookup : dnsLookup, 'net.lookup');
     }
-    return originals.connect.apply(this, /** @type {any} */ (args));
+    if (dest.holder) {
+      dest.holder[0] = options;
+      return originals.connect.apply(this, /** @type {any} */ (args));
+    }
+    const callback = args.at(-1);
+    const connect = /** @type {Function} */ (originals.connect);
+    return typeof callback === 'function' ? connect.call(this, options, callback) : connect.call(this, options);
   }
 
   /** @param {string} api @param {Function} original */
@@ -173,6 +224,8 @@ export function installEgressGuard(options = {}) {
       if (original === originals.promisesLookup) return Promise.reject(err);
       throw err;
     };
+
+  const dnsLookup = guardedLookup('dns.lookup', originals.lookup);
 
   /** @param {string} api */
   const refuseAlways = (api) =>
@@ -196,9 +249,41 @@ export function installEgressGuard(options = {}) {
       return original.apply(this, args);
     };
 
+  /**
+   * The options of a new datagram socket with its lookup (its own, or the guarded dns.lookup Node
+   * would take) checked; datagram sockets resolve even IP literals through their lookup.
+   * @param {unknown} type
+   */
+  function datagramOptions(type) {
+    /** @type {Record<string, unknown>} */
+    const options = type !== null && typeof type === 'object' ? { .../** @type {Record<string, unknown>} */ (type) } : { type };
+    if (options.lookup === undefined || typeof options.lookup === 'function') {
+      options.lookup = loopbackOnly(typeof options.lookup === 'function' ? options.lookup : dnsLookup, 'dgram.lookup', true);
+    }
+    return options;
+  }
+  /** @param {unknown} type @param {unknown} [listener] */
+  const guardedCreateSocket = function createSocket(type, listener) {
+    return originals.dgramCreateSocket.call(dgram, /** @type {any} */ (datagramOptions(type)), /** @type {any} */ (listener));
+  };
+  /** @param {unknown} type @param {unknown} [listener] */
+  const GuardedSocket = function Socket(type, listener) {
+    const target = new.target && new.target !== GuardedSocket ? new.target : originals.dgramSocket;
+    return Reflect.construct(originals.dgramSocket, [datagramOptions(type), listener], target);
+  };
+  GuardedSocket.prototype = originals.dgramSocket.prototype;
+
+  /** @this {unknown} @param {unknown} options */
+  const guardedChildSpawn = function spawn(options) {
+    // Only true while the kernel's runner starts one of its fixed programs; the options are Node's
+    // own then, made from the runner's arguments.
+    if (kernelProgramStarting(/** @type {any} */ (options)?.file)) return originals.childSpawn.call(this, /** @type {any} */ (options));
+    throw spawnRefused('ChildProcess#spawn');
+  };
+
   // Install. Everything above is prepared, nothing is half patched if a step throws.
   net.Socket.prototype.connect = /** @type {any} */ (guardedConnect);
-  /** @type {any} */ (dns).lookup = guardedLookup('dns.lookup', originals.lookup);
+  /** @type {any} */ (dns).lookup = dnsLookup;
   /** @type {any} */ (dns.promises).lookup = guardedLookup('dns.promises.lookup', originals.promisesLookup);
   for (const m of RESOLVER_METHODS) {
     if (originals.resolver[m]) /** @type {any} */ (dns)[m] = refuseAlways(`dns.${m}`);
@@ -208,9 +293,18 @@ export function installEgressGuard(options = {}) {
   }
   dgram.Socket.prototype.send = /** @type {any} */ (guardedDatagram(originals.dgramSend, 'dgram.send'));
   dgram.Socket.prototype.connect = /** @type {any} */ (guardedDatagram(originals.dgramConnect, 'dgram.connect'));
+  /** @type {any} */ (dgram).createSocket = guardedCreateSocket;
+  /** @type {any} */ (dgram).Socket = GuardedSocket;
+  originals.dgramSocket.prototype.constructor = /** @type {any} */ (GuardedSocket);
   for (const m of SPAWN_METHODS) {
     /** @type {any} */ (childProcess)[m] = () => {
       throw spawnRefused(`child_process.${m}`);
+    };
+  }
+  /** @type {any} */ (childProcess.ChildProcess.prototype).spawn = /** @type {any} */ (guardedChildSpawn);
+  if (typeof originals.execve === 'function') {
+    /** @type {any} */ (process).execve = () => {
+      throw spawnRefused('process.execve');
     };
   }
   /** @type {any} */ (cluster).fork = () => {
@@ -220,6 +314,7 @@ export function installEgressGuard(options = {}) {
     throw spawnRefused('worker_threads.Worker');
   };
   GuardedWorker.prototype = originals.worker.prototype;
+  originals.worker.prototype.constructor = /** @type {any} */ (GuardedWorker);
   /** @type {any} */ (workerThreads).Worker = GuardedWorker;
   /** @type {any} */ (process).binding = function binding(/** @type {string} */ name) {
     if (BLOCKED_BINDINGS.has(name)) throw refuse('process.binding', name);
@@ -306,10 +401,16 @@ export function installEgressGuard(options = {}) {
         if (originals.resolverProto[m]) /** @type {any} */ (dns.Resolver.prototype)[m] = originals.resolverProto[m];
         if (originals.promisesResolverProto[m]) /** @type {any} */ (dns.promises.Resolver.prototype)[m] = originals.promisesResolverProto[m];
       }
-      dgram.Socket.prototype.send = originals.dgramSend;
-      dgram.Socket.prototype.connect = originals.dgramConnect;
+      originals.dgramSocket.prototype.send = originals.dgramSend;
+      originals.dgramSocket.prototype.connect = originals.dgramConnect;
+      originals.dgramSocket.prototype.constructor = originals.dgramSocket;
+      /** @type {any} */ (dgram).createSocket = originals.dgramCreateSocket;
+      /** @type {any} */ (dgram).Socket = originals.dgramSocket;
       for (const m of SPAWN_METHODS) /** @type {any} */ (childProcess)[m] = originals.spawn[m];
+      /** @type {any} */ (childProcess.ChildProcess.prototype).spawn = originals.childSpawn;
+      if (typeof originals.execve === 'function') /** @type {any} */ (process).execve = originals.execve;
       /** @type {any} */ (cluster).fork = originals.clusterFork;
+      originals.worker.prototype.constructor = originals.worker;
       /** @type {any} */ (workerThreads).Worker = originals.worker;
       /** @type {any} */ (process).binding = originals.binding;
       /** @type {any} */ (nodeModule).register = originals.register;
