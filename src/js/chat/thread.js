@@ -142,6 +142,22 @@ let titlesCache = null;
  * @type {Map<string, { label: ReadLabel, sources: GateSource[], grounding: GateGrounding | null }>}
  */
 const readable = new Map();
+/** Answers whose excerpts are kept for reading aloud (the newest ones). */
+const READABLE_KEPT = 50;
+
+/**
+ * Keeps what reading an answer aloud needs (see `readable`), for the newest answers only.
+ * @param {string} id
+ * @param {{ label: ReadLabel, sources: GateSource[], grounding: GateGrounding | null }} entry
+ */
+function keepReadable(id, entry) {
+  readable.delete(id);
+  readable.set(id, entry);
+  for (const old of readable.keys()) {
+    if (readable.size <= READABLE_KEPT) break;
+    readable.delete(old);
+  }
+}
 
 /** The conversation the thread shows. */
 export function threadConversationId() {
@@ -944,7 +960,7 @@ async function answerFree(question, value, signal, placement = {}) {
     },
   });
   await reload();
-  readable.set(node.id, { label: grounding ? 'web' : 'free', sources: [], grounding });
+  keepReadable(node.id, { label: grounding ? 'web' : 'free', sources: [], grounding });
   stream.element.dataset.nodeId = node.id;
   stream.finalize(text, { citations: null, trace, durationMs, traceRoles: FREE_TRACE_ROLES, reasoning: result.reasoning, meta: metaLine(node) });
   labelAnswer(stream.element, node);
@@ -1323,7 +1339,7 @@ async function answerGrounded(q, signal, placement = {}) {
       },
     });
     await reload();
-    readable.set(node.id, { label: 'grounded', sources: excerpts, grounding: null });
+    keepReadable(node.id, { label: 'grounded', sources: excerpts, grounding: null });
     if (messageEl) {
       messageEl.dataset.nodeId = node.id;
       labelAnswer(messageEl, node);
