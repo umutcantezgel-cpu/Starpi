@@ -59,8 +59,7 @@ export function parseLoopbackUrl(value, label, { schemes = ['http'] } = {}) {
  */
 export function isLoopbackUrl(value, options) {
   try {
-    parseLoopbackUrl(value, 'address', options);
-    return true;
+    return parseLoopbackUrl(value, 'address', options).port > 0;
   } catch {
     return false;
   }

@@ -165,10 +165,8 @@ export function createMcpClient(url, { label = 'connector' } = {}) {
      */
     async listTools(options = {}) {
       await ensure(options);
-      /** @type {unknown[]} */
-      const tools = [];
-      /** @type {string | undefined} */
-      let cursor;
+      const tools = /** @type {unknown[]} */ ([]);
+      let cursor = /** @type {string | undefined} */ (undefined);
       for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
         const result = await call('tools/list', cursor ? { cursor } : {}, options);
         if (Array.isArray(result?.tools)) tools.push(...result.tools);

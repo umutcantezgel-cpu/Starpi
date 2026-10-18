@@ -19,9 +19,9 @@ import { fail } from '../lib/errors.js';
 
 /**
  * @typedef {object} ServerTool
- * @property {string} name
- * @property {string} title
- * @property {string} description
+ * @property {string} name          the name a client calls
+ * @property {string} title         for people
+ * @property {string} description   for the client's model
  * @property {{ type: 'object', properties: Record<string, any>, required?: string[], additionalProperties: false }} inputSchema
  * @property {(args: Record<string, any>, ctx: ToolContext) => Promise<{ text: string, data: Record<string, unknown>, items: number }>} run
  */

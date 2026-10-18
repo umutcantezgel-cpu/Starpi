@@ -89,10 +89,10 @@ async function brokerSim() {
     dropClients() {
       for (const s of sockets) s.destroy();
     },
-    close: () => new Promise((resolve) => {
-      for (const s of sockets) s.destroy();
-      server.close(() => resolve(undefined));
-    }),
+    async close() {
+      sockets.forEach((s) => s.destroy());
+      await new Promise((resolve) => server.close(resolve));
+    },
   };
 }
 

@@ -16,7 +16,7 @@ import { codeOf, fail } from '../lib/errors.js';
 import { VERSION } from '../version.js';
 import { actorOf, bodyOf, checkBody, intIn, moduleConfig, notFound } from '../setup/kit.js';
 import { CLIENTS_NAMESPACE, createClientStore, MAX_CLIENTS } from './clients.js';
-import { argumentProblems, errorOf, INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND, negotiate, PROTOCOL_VERSIONS, readMessage, resultOf } from './jsonrpc.js';
+import { argumentProblems, errorOf, negotiate, PROTOCOL_VERSIONS, readMessage, resultOf, RPC } from './jsonrpc.js';
 import { describeTool, SERVER_TOOL_NAMES, SERVER_TOOLS } from './tools.js';
 
 export const MCP_MODULE = 'mcp';
@@ -68,10 +68,10 @@ export function createMcpModule({ hub }) {
   async function callTool(client, id, params, signal) {
     const name = typeof params.name === 'string' ? params.name : '';
     const tool = SERVER_TOOLS.find((t) => t.name === name);
-    if (!tool || !client.tools.includes(tool.name)) return rpc(errorOf(id, INVALID_PARAMS, `unknown tool ${name.slice(0, 64)}`));
+    if (!tool || !client.tools.includes(tool.name)) return rpc(errorOf(id, RPC.badParams, `unknown tool ${name.slice(0, 64)}`));
     const args = /** @type {Record<string, unknown>} */ (params.arguments ?? {});
     const problems = argumentProblems(args, tool.inputSchema);
-    if (problems.length > 0) return rpc(errorOf(id, INVALID_PARAMS, problems.join('; ')));
+    if (problems.length > 0) return rpc(errorOf(id, RPC.badParams, problems.join('; ')));
     /** @param {string} outcome @param {number} items */
     const record = (outcome, items) => ctx.audit.append({ kind: 'mcp.call', subject: client.id, actor: `mcp:${client.id.slice(5, 13)}`, details: { tool: tool.name, outcome, items } });
     if (overLimit(client.id)) {
@@ -124,11 +124,11 @@ export function createMcpModule({ hub }) {
               case 'tools/call':
                 return await callTool(client, msg.id, msg.params, req.signal);
               default:
-                return rpc(errorOf(msg.id, METHOD_NOT_FOUND, `method ${msg.method.slice(0, 64)} is not offered`));
+                return rpc(errorOf(msg.id, RPC.unknownMethod, `method ${msg.method.slice(0, 64)} is not offered`));
             }
           } catch (err) {
             ctx.log('warn', 'mcp_failed', { code: codeOf(err) });
-            return rpc(errorOf(msg.id, INTERNAL_ERROR, 'internal error'));
+            return rpc(errorOf(msg.id, RPC.internal, 'internal error'));
           }
         },
       },

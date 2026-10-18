@@ -8,11 +8,8 @@ import { isRecord } from '../contracts/check.js';
 export const PROTOCOL_VERSIONS = Object.freeze(['2025-06-18', '2025-03-26', '2024-11-05']);
 export const LATEST_PROTOCOL = PROTOCOL_VERSIONS[0];
 
-export const PARSE_ERROR = -32700;
-export const INVALID_REQUEST = -32600;
-export const METHOD_NOT_FOUND = -32601;
-export const INVALID_PARAMS = -32602;
-export const INTERNAL_ERROR = -32603;
+/** The error codes JSON-RPC 2.0 reserves, by what they mean. */
+export const RPC = Object.freeze({ parseError: -32700, invalidRequest: -32600, unknownMethod: -32601, badParams: -32602, internal: -32603 });
 
 /**
  * @typedef {{ kind: 'request', id: string | number, method: string, params: Record<string, unknown> }
@@ -27,15 +24,15 @@ export const INTERNAL_ERROR = -32603;
  * @returns {Message}
  */
 export function readMessage(value) {
-  if (Array.isArray(value)) return { kind: 'invalid', id: null, code: INVALID_REQUEST, message: 'batches are not supported' };
-  if (!isRecord(value) || value.jsonrpc !== '2.0') return { kind: 'invalid', id: null, code: INVALID_REQUEST, message: 'not a JSON-RPC 2.0 message' };
+  if (Array.isArray(value)) return { kind: 'invalid', id: null, code: RPC.invalidRequest, message: 'batches are not supported' };
+  if (!isRecord(value) || value.jsonrpc !== '2.0') return { kind: 'invalid', id: null, code: RPC.invalidRequest, message: 'not a JSON-RPC 2.0 message' };
   const id = typeof value.id === 'string' || (typeof value.id === 'number' && Number.isInteger(value.id)) ? value.id : null;
-  if (value.id !== undefined && id === null) return { kind: 'invalid', id: null, code: INVALID_REQUEST, message: 'an id is a string or an integer' };
+  if (value.id !== undefined && id === null) return { kind: 'invalid', id: null, code: RPC.invalidRequest, message: 'an id is a string or an integer' };
   if (typeof value.method !== 'string') {
     if (id !== null && ('result' in value || 'error' in value)) return { kind: 'response' };
-    return { kind: 'invalid', id, code: INVALID_REQUEST, message: 'a method is required' };
+    return { kind: 'invalid', id, code: RPC.invalidRequest, message: 'a method is required' };
   }
-  if (value.params !== undefined && !isRecord(value.params)) return { kind: 'invalid', id, code: INVALID_PARAMS, message: 'params must be an object' };
+  if (value.params !== undefined && !isRecord(value.params)) return { kind: 'invalid', id, code: RPC.badParams, message: 'params must be an object' };
   const params = /** @type {Record<string, unknown>} */ (value.params ?? {});
   return id === null ? { kind: 'notification', method: value.method, params } : { kind: 'request', id, method: value.method, params };
 }

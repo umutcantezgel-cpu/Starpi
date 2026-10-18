@@ -15,9 +15,9 @@ export const TOOL_NAME = /^[A-Za-z0-9_.-]{1,64}$/;
 
 /**
  * @typedef {object} ToolDescription
- * @property {string} name
- * @property {string} title
- * @property {string} description
+ * @property {string} name             as the server names it
+ * @property {string} title            '' when the server gives none
+ * @property {string} description      cut to 4000 characters
  * @property {Record<string, unknown>} inputSchema
  * @property {Record<string, unknown> | null} outputSchema
  * @property {Record<string, unknown> | null} annotations

@@ -21,11 +21,7 @@ async function mcpServer() {
     let raw = '';
     req.on('data', (c) => (raw += c));
     req.on('end', () => {
-      if (req.method === 'DELETE') {
-        res.writeHead(200);
-        res.end();
-        return;
-      }
+      if (req.method === 'DELETE') return void res.writeHead(200).end();
       const msg = JSON.parse(raw);
       state.methods.push(msg.method);
       if (msg.id === undefined) {

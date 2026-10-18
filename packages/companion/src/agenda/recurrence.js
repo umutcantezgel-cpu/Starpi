@@ -38,8 +38,7 @@ function format(zone) {
 export function isTimeZone(zone) {
   if (typeof zone !== 'string' || zone.length === 0 || zone.length > 64) return false;
   try {
-    format(zone);
-    return true;
+    return format(zone).resolvedOptions().timeZone !== '';
   } catch {
     return false;
   }

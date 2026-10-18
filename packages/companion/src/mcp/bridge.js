@@ -50,25 +50,28 @@ export function parseArgs(argv, env) {
  * @param {string} file
  */
 export function readToken(file) {
-  let fd;
-  try {
-    fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
-  } catch {
-    throw new Error('the token file cannot be opened (it must exist and must not be a link)');
-  }
-  const buffer = Buffer.alloc(1024);
+  // O_NOFOLLOW: a link in place of the file is refused instead of followed.
+  const flags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);
+  const fd = (() => {
+    try {
+      return openSync(file, flags);
+    } catch {
+      throw new Error('the token file cannot be opened (it must exist and must not be a link)');
+    }
+  })();
+  const scratch = Buffer.alloc(1024);
   try {
     const st = fstatSync(fd);
     if (!st.isFile()) throw new Error('the token file must be a regular file');
     if ((st.mode & 0o077) !== 0) throw new Error('others may read the token file; run chmod 600 on it');
     if (typeof process.getuid === 'function' && st.uid !== process.getuid()) throw new Error('the token file must belong to the user running the bridge');
-    const n = readSync(fd, buffer, 0, buffer.length, 0);
-    const token = buffer.subarray(0, n).toString('utf8').trim();
+    const n = readSync(fd, scratch, 0, scratch.length, 0);
+    const token = scratch.subarray(0, n).toString('utf8').trim();
     if (!TOKEN.test(token)) throw new Error('the token file holds no token');
     return token;
   } finally {
-    buffer.fill(0);
     closeSync(fd);
+    scratch.fill(0);
   }
 }
 
@@ -107,10 +110,10 @@ export function runBridge({ port, token, input, output, log }) {
       const req = request({ host: HOST, port, family: 4, method: 'POST', path: '/v1/mcp', headers, agent, timeout: TIMEOUT_MS }, (res) => {
         /** @type {Buffer[]} */
         const parts = [];
-        let size = 0;
+        let received = 0;
         res.on('data', (chunk) => {
-          size += chunk.length;
-          if (size > MAX_ANSWER) {
+          received += chunk.byteLength;
+          if (received > MAX_ANSWER) {
             resolve({ failure: 'oversized' });
             res.destroy();
             return;
