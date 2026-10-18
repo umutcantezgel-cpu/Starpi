@@ -243,9 +243,11 @@ describe('guards shared by the speech routes', () => {
   });
 
   it('never write a request body, a transcript or a key to the console', async () => {
+    /** @type {string[]} */
     const lines = [];
     const saved = { log: console.log, warn: console.warn, error: console.error };
-    for (const level of /** @type {const} */ (['log', 'warn', 'error'])) console[level] = (...args) => lines.push(args.map(String).join(' '));
+    const record = (/** @type {unknown[]} */ ...args) => void lines.push(args.map(String).join(' '));
+    Object.assign(console, { log: record, warn: record, error: record });
     try {
       const d = deps({ ELEVENLABS_API_KEYS: `${ELEVEN_KEYS},bad key` });
       await speak.handleSpeak(jsonRequest('/x', { text: 'A private sentence.', source: 'gemini', voice: 'Kore' }), d);
