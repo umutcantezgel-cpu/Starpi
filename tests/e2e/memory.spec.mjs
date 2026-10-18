@@ -119,6 +119,39 @@ test.describe('projects, memory and assistants', () => {
     expect(serious.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
   });
 
+  test("a project's files are the only workspace files its grounded questions search", async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const chats = await routeAnthropic(page);
+    await useAnthropic(page);
+    await page.goto('/');
+    await page.locator('#chatMessages [data-action="load-samples"]').click();
+    await expect(page.getByText('Sample files ready')).toBeVisible({ timeout: 20_000 });
+
+    // Outside a project every workspace file is searched: the plan answers the launch question.
+    const question = 'When is the public launch of Project Nebula and who leads development?';
+    await page.click('[data-action="set-chat-mode"][data-arg="grounded"]');
+    await ask(page, question);
+    await settled(page);
+    expect(systemOf(chats.at(-1))).toContain('[Doc: nebula-plan.md');
+
+    await page.click('#chat-sidebar [data-pj="new"]');
+    const dialog = page.locator('#projectDialog');
+    await dialog.locator('#pjName').fill('Risks only');
+    await expect(dialog.locator('input[name="doc"]')).toHaveCount(3);
+    await dialog.locator('label:has-text("nebula-risks.csv") input[name="doc"]').check();
+    await dialog.locator('button[type="submit"]').click();
+    await expect(dialog).toHaveCount(0);
+    const project = page.locator('#chat-sidebar [data-project-id]');
+    await project.locator('[data-pj="toggle"]').click();
+    await project.locator('[data-pj="new-chat"]').click();
+    await ask(page, question);
+    await settled(page);
+    expect(systemOf(chats.at(-1))).not.toContain('nebula-plan.md');
+    await ask(page, 'Which risks are rated high?');
+    await settled(page);
+    expect(systemOf(chats.at(-1))).toContain('[Doc: nebula-risks.csv');
+  });
+
   test('memory stays off until switched on; then saved notes go along in the turn', async ({ page, diagnostics: _diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     const chats = await routeAnthropic(page);
