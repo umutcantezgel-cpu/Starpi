@@ -204,7 +204,8 @@ describe('action bar', () => {
     const off = hooks.registerMessageAction({ id: 'research', labelKey: 'chat-thread.action.copy', icon: 'search', run: (node) => calls.push(['research', node.id]) });
     actions.renderActions(row(), { node: /** @type {any} */ ({ id: 'n1', role: 'assistant', parts: [] }), branch: { position: 2, count: 3 }, canContinue: true, busy: false });
     const names = [...row().querySelectorAll('.message-actions [data-action]')].map((b) => b.getAttribute('data-action'));
-    assert.deepEqual(names, ['msg-copy', 'msg-copy-md', 'msg-branch-prev', 'msg-branch-next', 'msg-continue', 'msg-extra']);
+    assert.deepEqual(names, ['msg-copy', 'msg-copy-md', 'voice-read-aloud', 'msg-branch-prev', 'msg-branch-next', 'msg-continue', 'msg-extra']);
+    assert.equal(row().querySelector('[data-action="voice-read-aloud"]')?.getAttribute('data-arg'), 'n1', 'the speaker button names the answer');
     assert.ok(row().querySelector('.regen-menu'));
     assert.equal(row().querySelector('.branch-pos')?.textContent, '2/3');
     for (const b of row().querySelectorAll('.message-actions button')) assert.ok(b.getAttribute('aria-label'), 'every button has a name');
