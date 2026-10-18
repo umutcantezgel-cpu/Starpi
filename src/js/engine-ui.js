@@ -6,6 +6,7 @@
 import { byId, onAction, setHidden } from './dom.js';
 import { formatNumber, onLocaleChange, setText, t } from './i18n/index.js';
 import { appendNotice } from './messages.js';
+import { benchHistory } from './model-picker.js';
 import { WASM_RUNTIME_MB } from './models/wasm-catalog.js';
 import { getMode, getModelPreference } from './state.js';
 import { setEngineDot } from './ui.js';
@@ -89,6 +90,8 @@ export async function startLocalEngine(opts) {
   try {
     const ok = await engine.loadModel({
       preference: getModelPreference(),
+      // 'auto' loads the model the benchmark history recommends on this device (read with a short timeout).
+      history: await benchHistory(),
       onlyIfCached: !opts.interactive,
       confirmDownload: opts.interactive ? confirmDownload : undefined,
     });

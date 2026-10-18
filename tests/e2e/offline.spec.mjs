@@ -59,7 +59,7 @@ test('serves the shell offline after the first visit, isolated, under the curren
   // Still usable: the views switch, and the precached ingest worker indexes a file that answers.
   for (const tab of ['library', 'ingest', 'settings', 'chat']) await openTab(page, tab);
   await page.setInputFiles('#chatFileInput', { name: 'offline-notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Offline notes\n\nThe offline drill takes place on 4 June.') });
-  await expect(page.locator('#attachedFileName')).toHaveText('offline-notes.md · 1 chunk');
+  await expect(page.locator('#attachedInfo')).toContainText('offline-notes.md · 1 chunk');
   await page.fill('#chatInput', 'When does the offline drill take place?');
   await page.press('#chatInput', 'Enter');
   const answer = page.locator('#chatMessages > div').last();

@@ -1,0 +1,102 @@
+{
+  "mode": {
+    "auto": "Auto",
+    "free": "Free",
+    "grounded": "Grounded",
+    "auto_hint": "Answers from your files when you have some, otherwise a free conversation.",
+    "placeholder_auto": "Ask anything…"
+  },
+  "toggle": {
+    "thinking": "Thinking",
+    "web": "Web",
+    "web_hint": "Models that can search the web may use it for this answer."
+  },
+  "tools": {
+    "label": "Tools",
+    "empty": "No tools are set up yet."
+  },
+  "picker": {
+    "auto": "Auto · best available",
+    "auto_long": "Auto · the best model that is set up: your keys, the site's free models, your server, this device",
+    "group_recommended": "Recommended for this device",
+    "group_device": "On this device",
+    "group_pools": "Free (via Starpi)",
+    "group_server": "Your server",
+    "runtime_pool": "free via Starpi",
+    "server_first": "First model of your server",
+    "measured_fast": "measured fast here",
+    "unverified": "unverified",
+    "warn_no_vision": "cannot see images",
+    "pools_label": "Free models of this site:",
+    "strength_hint": "Which model Auto takes at a provider when you picked none of its models.",
+    "served": "Answered by {model}"
+  },
+  "badge": {
+    "waiting": "Connecting to the model…",
+    "provider": "{provider} · {model}",
+    "pool": "{provider} via Starpi · {model}",
+    "served": "{provider} · {model} (instead of {requested})",
+    "device": "On this device · {model}",
+    "server": "Your server · {model}"
+  },
+  "meta": {
+    "tokens": "{input} in · {output} out",
+    "cached": "{n} from cache",
+    "cost": "about ${usd}"
+  },
+  "action": {
+    "copy": "Copy",
+    "copy_md": "Copy as Markdown",
+    "regenerate": "Regenerate",
+    "regenerate_same": "Same model again",
+    "edit": "Edit question",
+    "edit_label": "Edited question",
+    "edit_cancel": "Cancel",
+    "edit_save": "Send edited question",
+    "branch_prev": "Previous version",
+    "branch_next": "Next version",
+    "continue": "Continue",
+    "research_no_question": "This answer has no question to research.",
+    "research_failed": "The research could not be started."
+  },
+  "composer": {
+    "attach": "Attach files or images",
+    "image_size": "{name} · {width}×{height}",
+    "too_many": "At most {n} files per message.",
+    "pasted_image": "Pasted image",
+    "error_unsupported_type": "{name} cannot be attached: this type of file is not supported.",
+    "error_too_large": "{name} is too large to attach.",
+    "error_unreadable": "{name} could not be read.",
+    "no_vision": "{model} cannot see images. Remove the image or pick a model that can, for example Auto.",
+    "no_vision_auto": "None of the models set up can see images. Add a key of a provider whose models read images, or remove the image."
+  },
+  "privacy": {
+    "key": "{provider}, your key: your question goes to the knowledge-base search, and with matching excerpts to {provider}.",
+    "free_key": "Free chat with {provider}, your key: your question, attached files and earlier messages of this chat go to {provider}. No sources are searched.",
+    "pool": "{provider} via Starpi: your question goes to the knowledge-base search; the question, the matching excerpts and earlier messages go through Starpi's server to {provider}.",
+    "free_pool": "Free chat with {provider} via Starpi: your question, attached files and earlier messages of this chat go through Starpi's server to {provider}. No sources are searched."
+  },
+  "status": {
+    "not_set_up": "This model is not set up: add its key in Settings or pick another one"
+  },
+  "notice": {
+    "grounded_failed_title": "The model could not answer from the sources",
+    "error_retry": "{reason} Try again in {seconds} s.",
+    "no_model_body": "Add a key in Settings › Model providers and keys, load a model on this device or connect your own server. Grounded mode also answers without a model, by quoting your sources.",
+    "no_vision_model": "None of the models set up can see images. Add a key of a provider whose models read images, or ask without the image.",
+    "image_not_source": "{name} was not added to your sources: reading text in images needs a model that can see, and your consent.",
+    "rate_limited_wait": "Too many requests at the provider right now: please wait {seconds} s and try again.",
+    "stays_on_device_title": "This question stays on this device",
+    "stays_on_device_body": "It was asked on this device, so only the model here or your own server answers it. Pick one of them, or ask the question again as a new message.",
+    "failed_body": "Something went wrong while answering. Please try again.",
+    "store_failed": "The chat could not be stored in this browser (private window, blocked or full storage)."
+  },
+  "continued": "Continued after the length limit",
+  "continue_prompt": "Continue exactly where you stopped.",
+  "describe_images": "Describe {n:the attached image|the attached images}.",
+  "summarize_files": "Summarize the {n} attached files.",
+  "web": {
+    "sources": "From the web:",
+    "suggestions": "Search suggestions"
+  }
+}

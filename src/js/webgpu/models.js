@@ -235,14 +235,16 @@ function wasmChoice(src, ref, reason, deviceClass) {
 
 /**
  * Picks a model for the device. Manual preferences win, a WebGPU preset on a device without WebGPU
- * too (the engine reports it as unsupported); 'auto' follows recommendModels().
+ * too (the engine reports it as unsupported); 'auto' follows recommendModels(), stepped down when
+ * the benchmark history measured its pick slow on this device.
  * @param {HardwareProfile} hw
  * @param {unknown} preference
+ * @param {{ history?: readonly import('../models/device.js').MeasuredRun[] }} [options]
  * @returns {ModelChoice}
  */
-export function chooseModel(hw, preference) {
+export function chooseModel(hw, preference, options = {}) {
   const pref = normalizePreference(preference);
-  const ref = pref === 'auto' ? recommendModels(hw).local : pref;
+  const ref = pref === 'auto' ? recommendModels(hw, { history: options.history ?? [] }).local : pref;
   const reason = pref === 'auto' ? 'auto' : 'manual';
   const deviceClass = classifyDevice(hw);
   if (ref.startsWith('wasm:')) return wasmChoice(WASM_CATALOG[/** @type {WasmModelKey} */ (ref.slice('wasm:'.length))], ref, reason, deviceClass);
