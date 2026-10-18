@@ -6,8 +6,9 @@
 import { createHash, createHmac } from 'node:crypto';
 
 /**
- * @param {unknown} value
- * @returns {string}
+ * The canonical text of a JSON value.
+ * @param {unknown} value  a JSON value; undefined members of objects are left out
+ * @returns {string} the same text for equal data, whatever the order of keys
  */
 export function canonicalJson(value) {
   if (value === null || typeof value !== 'object') {

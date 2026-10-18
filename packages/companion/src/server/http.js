@@ -66,12 +66,9 @@ const LOOPBACK_BINDS = Object.freeze(new Set(['127.0.0.1', '::1', 'localhost']))
 export function parseCookies(header) {
   /** @type {Record<string, string>} */
   const out = {};
-  for (const part of (header ?? '').split(';')) {
-    const at = part.indexOf('=');
-    if (at <= 0) continue;
-    const name = part.slice(0, at).trim();
-    if (!/^[A-Za-z0-9_-]{1,64}$/.test(name) || Object.hasOwn(out, name)) continue;
-    out[name] = part.slice(at + 1).trim();
+  for (const pair of (header ?? '').split(';')) {
+    const m = /^\s*([A-Za-z0-9_-]{1,64})=(.*)$/.exec(pair);
+    if (m && !Object.hasOwn(out, m[1])) out[m[1]] = m[2].trim();
   }
   return out;
 }
@@ -232,20 +229,20 @@ export function createHttpServer({ host = '127.0.0.1', port, routes, origins, se
         return;
       }
       /** @type {Buffer[]} */
-      const chunks = [];
-      let size = 0;
+      const parts = [];
+      let received = 0;
       req.on('data', (chunk) => {
-        size += chunk.length;
-        if (size > limit) {
+        received += chunk.length;
+        if (received > limit) {
           reject(new CompanionError('body_too_large', `bodies are at most ${limit} bytes`, { status: 413 }));
           req.destroy();
           return;
         }
-        chunks.push(chunk);
+        parts.push(chunk);
       });
       req.on('end', () => {
         try {
-          resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+          resolve(JSON.parse(Buffer.concat(parts).toString('utf8')));
         } catch {
           reject(new CompanionError('body_invalid', 'the body is not JSON', { status: 400 }));
         }

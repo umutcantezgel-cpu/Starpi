@@ -50,11 +50,10 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
 /** @param {string} text */
 const sha256 = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
 
-/** @param {string} a @param {string} b */
+/** Constant-time comparison of two hex digests of equal length. @param {string} a @param {string} b */
 function sameHex(a, b) {
-  const x = Buffer.from(a, 'hex');
-  const y = Buffer.from(b, 'hex');
-  return x.length === y.length && x.length > 0 && timingSafeEqual(x, y);
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length === 0 || a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
 }
 
 /** A fresh pairing code. */

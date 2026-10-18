@@ -234,7 +234,26 @@ export async function startCompanion({ config, modules = [], guard = false, acce
     await notifier.ready(`listening on 127.0.0.1:${port}`);
     log('info', 'companion_started', { port, version: VERSION, profile: config.profile, guarded: egress !== null });
 
-    let stopped = false;
+    /** Stops in the reverse order of the start and writes a last anchor. */
+    const shutdown = async () => {
+      await notifier.stopping();
+      scheduler.stop();
+      await http?.close();
+      for (const mod of [...modules].reverse()) {
+        try {
+          await mod.stop?.();
+        } catch (err) {
+          log('warn', 'module_stop_failed', { module: mod.id, error: err });
+        }
+      }
+      inst.chain.append({ kind: 'companion.stopped', subject: VERSION, details: { uptimeS: Math.round((clock.now() - startedAt) / 1000) } });
+      anchors.stop();
+      inst.close();
+      egress?.uninstall();
+      log('info', 'companion_stopped', {});
+    };
+    /** @type {Promise<void> | null} */
+    let stopping = null;
     return {
       port,
       url: `http://127.0.0.1:${port}`,
@@ -247,24 +266,10 @@ export async function startCompanion({ config, modules = [], guard = false, acce
       egress,
       status,
       anchors,
-      async stop() {
-        if (stopped) return;
-        stopped = true;
-        await notifier.stopping();
-        scheduler.stop();
-        await http?.close();
-        for (const mod of [...modules].reverse()) {
-          try {
-            await mod.stop?.();
-          } catch (err) {
-            log('warn', 'module_stop_failed', { module: mod.id, error: err });
-          }
-        }
-        inst.chain.append({ kind: 'companion.stopped', subject: VERSION, details: { uptimeS: Math.round((clock.now() - startedAt) / 1000) } });
-        anchors.stop();
-        inst.close();
-        egress?.uninstall();
-        log('info', 'companion_stopped', {});
+      /** Stops once; later calls get the same promise. */
+      stop() {
+        stopping ??= shutdown();
+        return stopping;
       },
     };
   } catch (err) {

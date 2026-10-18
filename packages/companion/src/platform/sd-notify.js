@@ -20,9 +20,7 @@ const CANDIDATES = Object.freeze(['/usr/bin/systemd-notify', '/bin/systemd-notif
 export function createNotifier({ env = process.env, run = runProgram, exists, healthy = () => true, clock } = {}) {
   const socket = env.NOTIFY_SOCKET ?? null;
   const watchdogUsec = Number(env.WATCHDOG_USEC ?? '0');
-  delete env.NOTIFY_SOCKET;
-  delete env.WATCHDOG_USEC;
-  delete env.WATCHDOG_PID;
+  for (const name of ['NOTIFY_SOCKET', 'WATCHDOG_USEC', 'WATCHDOG_PID']) delete env[name];
   /** @type {unknown} */
   let timer = null;
   const program = socket ? (CANDIDATES.find((p) => (exists ? exists(p) : true)) ?? null) : null;

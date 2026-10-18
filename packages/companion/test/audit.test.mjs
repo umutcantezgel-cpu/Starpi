@@ -89,8 +89,8 @@ test('a forged event log behind a valid audit chain is caught by the anchored ev
   checkBeforeStart(inst);
   inst.store.append([{ type: 'feed.sample', source: 'demo-sensor', key: 'k', at: '2026-01-01T00:00:00Z', class: 'public', body: { source_id: 'demo-sensor', series: 'room.temperature', value: 20, unit: '°C', ts_source: '2026-01-01T00:00:00Z', quality: 'good' } }]);
   createAnchorWriter({ store: inst.store, chain: inst.chain, anchorDir: config.anchorDir, identity: inst.identity }).write('checkpoint');
-  inst.store.db.exec('DROP TRIGGER events_append_only_u');
-  inst.store.db.exec(`UPDATE events SET link = '${'1'.repeat(64)}' WHERE seq = 1`);
+  inst.store.db.exec('DROP TRIGGER event_log_no_update');
+  inst.store.db.exec(`UPDATE event_log SET link = '${'1'.repeat(64)}' WHERE seq = 1`);
   const found = checkAnchors({ db: inst.store.db, anchorDir: config.anchorDir, keyId: inst.identity.keyId }).findings;
   assert.deepEqual(found.map((f) => f.reason), ['events_mismatch']);
   inst.close();

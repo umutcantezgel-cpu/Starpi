@@ -24,14 +24,14 @@ export const KEK_PROVIDERS = Object.freeze(['file', 'systemd-creds', 'keychain-m
  */
 
 /**
- * @param {unknown} raw  the `vault.kek` section
- * @returns {string[]}
+ * Problems of the `vault.kek` section, empty when it is fine or absent.
+ * @param {unknown} section
  */
-export function checkKekConfig(raw) {
-  if (raw === undefined) return [];
-  if (!isRecord(raw)) return ['vault.kek: an object'];
+export function checkKekConfig(section) {
+  if (section === undefined) return [];
+  if (!isRecord(section)) return ['vault.kek: an object'];
   const str = (/** @type {unknown} */ v) => (typeof v === 'string' && v.length > 0 ? null : 'a string');
-  return checkRecord(raw, 'vault.kek', { provider: oneOf(KEK_PROVIDERS), path: str, name: str, credential: str, user: (v) => (typeof v === 'boolean' ? null : 'true or false'), service: str, account: str }, { required: ['provider'] });
+  return checkRecord(section, 'vault.kek', { provider: oneOf(KEK_PROVIDERS), path: str, name: str, credential: str, user: (v) => (typeof v === 'boolean' ? null : 'true or false'), service: str, account: str }, { required: ['provider'] });
 }
 
 /**

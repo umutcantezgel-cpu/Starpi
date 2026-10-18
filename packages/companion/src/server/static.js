@@ -16,22 +16,23 @@ import { readRegularFile } from '../lib/fsx.js';
 export const HEADERS_FILE = 'headers.json';
 const NOFOLLOW = process.platform === 'win32' ? 0 : constants.O_NOFOLLOW;
 
+const UTF8 = '; charset=utf-8';
 const TYPES = Object.freeze(/** @type {Record<string, string>} */ ({
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.webmanifest': 'application/manifest+json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
+  '.css': `text/css${UTF8}`,
+  '.html': `text/html${UTF8}`,
   '.ico': 'image/x-icon',
+  '.js': `text/javascript${UTF8}`,
+  '.json': `application/json${UTF8}`,
+  '.map': `application/json${UTF8}`,
+  '.mjs': `text/javascript${UTF8}`,
+  '.onnx': 'application/octet-stream',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.txt': `text/plain${UTF8}`,
+  '.wasm': 'application/wasm',
+  '.webmanifest': `application/manifest+json${UTF8}`,
   '.webp': 'image/webp',
   '.woff2': 'font/woff2',
-  '.wasm': 'application/wasm',
-  '.txt': 'text/plain; charset=utf-8',
-  '.map': 'application/json; charset=utf-8',
-  '.onnx': 'application/octet-stream',
 }));
 /** Headers a build may never set for the companion (it sets these itself, per request). */
 const RESERVED = /^(?:access-control-.*|set-cookie|content-length|transfer-encoding|connection|keep-alive|upgrade|content-type)$/i;
@@ -69,6 +70,17 @@ export function loadHeaderRules(dir) {
   });
 }
 
+/** Percent-decoding that answers null instead of throwing on a broken escape. @param {string} raw */
+function decodePath(raw) {
+  return /%(?![0-9a-f]{2})/i.test(raw) ? null : (() => {
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return null;
+    }
+  })();
+}
+
 /**
  * The folder-relative file a request path names, or null when the path breaks a rule.
  * @param {string} rawPath  the path as received (still percent-encoded)
@@ -76,12 +88,8 @@ export function loadHeaderRules(dir) {
  */
 export function safeSegments(rawPath) {
   if (/%2f|%5c|%00/i.test(rawPath) || rawPath.includes('\\') || rawPath.includes('\0')) return null;
-  let decoded;
-  try {
-    decoded = decodeURIComponent(rawPath);
-  } catch {
-    return null;
-  }
+  const decoded = decodePath(rawPath);
+  if (decoded === null) return null;
   const segments = decoded.split('/').filter((s) => s !== '');
   if (segments.some((s) => s === '.' || s === '..' || s.startsWith('.') || s.includes('\0'))) return null;
   return segments;
@@ -94,15 +102,19 @@ export function createStaticSite({ dir }) {
   const root = realpathSync(dir);
   const rules = loadHeaderRules(root);
 
-  /** @param {string} pathname */
+  /**
+   * The headers of a path: every matching rule in file order, a later one replacing a header of an
+   * earlier one (compared without case).
+   * @param {string} pathname
+   * @returns {Record<string, string>}
+   */
   function headersFor(pathname) {
-    /** @type {Map<string, { key: string, value: string }>} */
-    const out = new Map();
-    for (const rule of rules) {
-      if (!rule.pattern.test(pathname)) continue;
-      for (const h of rule.headers) out.set(h.key.toLowerCase(), h);
-    }
-    return Object.fromEntries([...out.values()].map((h) => [h.key, h.value]));
+    /** @type {Record<string, { key: string, value: string }>} */
+    const byName = {};
+    rules.filter((rule) => rule.pattern.test(pathname)).forEach((rule) => rule.headers.forEach((h) => {
+      byName[h.key.toLowerCase()] = h;
+    }));
+    return Object.fromEntries(Object.values(byName).map((h) => [h.key, h.value]));
   }
 
   /** @param {string[]} segments @returns {{ fd: number, size: number, file: string } | null} */

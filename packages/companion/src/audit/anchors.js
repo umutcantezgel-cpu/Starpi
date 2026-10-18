@@ -22,7 +22,7 @@ import { canonicalJson, HEX64, sha256Hex, ZERO_HASH } from '../lib/canonical.js'
 import { isoAt, systemClock } from '../lib/clock.js';
 import { fail } from '../lib/errors.js';
 import { ensurePrivateDir, isDir, readRegularFile, writeFileOnce } from '../lib/fsx.js';
-import { eventsHead } from '../store/sqlite.js';
+import { eventsHead, linkAt } from '../store/sqlite.js';
 import { chainHead, recordAt } from './chain.js';
 import { keyIdOf, publicKeyFromRaw, verifySignature } from './identity.js';
 
@@ -35,10 +35,11 @@ export const DEFAULT_ANCHOR_EVERY = 256;
 export const DEFAULT_ANCHOR_INTERVAL_MS = 10 * 60_000;
 
 /**
+ * One anchor file.
  * @typedef {object} Anchor
+ * @property {number} n                              its number, from 1
  * @property {1} v
  * @property {'checkpoint' | 'restore'} type
- * @property {number} n
  * @property {string} at
  * @property {{ seq: number, hash: string }} audit
  * @property {{ seq: number, link: string }} events
@@ -121,10 +122,9 @@ function anchorShape(a) {
  */
 export function readAnchors(anchorDir, key) {
   const publicKey = publicKeyFromRaw(key.publicKey);
-  /** @type {Anchor[]} */
-  const anchors = [];
-  /** @type {AnchorFinding[]} */
-  const findings = [];
+  /** @type {{ anchors: Anchor[], findings: AnchorFinding[] }} */
+  const out = { anchors: [], findings: [] };
+  const { anchors, findings } = out;
   let prev = ZERO_HASH;
   let expected = 1;
   for (const n of anchorNumbers(anchorDir)) {
@@ -175,8 +175,7 @@ export function rollbackFindings(db, anchor) {
   const events = eventsHead(db);
   if (events.seq < anchor.events.seq) findings.push({ kind: 'audit_rollback', n: anchor.n, reason: 'events_older', detail: `log ends at ${events.seq}, anchor names ${anchor.events.seq}` });
   else if (anchor.events.seq > 0) {
-    const row = /** @type {{ link: string } | undefined} */ (db.prepare('SELECT link FROM events WHERE seq = ?').get(anchor.events.seq));
-    if (row?.link !== anchor.events.link) findings.push({ kind: 'audit_rollback', n: anchor.n, reason: 'events_mismatch', detail: `event ${anchor.events.seq} differs` });
+    if (linkAt(db, anchor.events.seq) !== anchor.events.link) findings.push({ kind: 'audit_rollback', n: anchor.n, reason: 'events_mismatch', detail: `event ${anchor.events.seq} differs` });
   }
   return findings;
 }
@@ -271,6 +270,12 @@ export function createAnchorWriter({ store, chain, anchorDir, identity, clock = 
     throw fail('anchor_busy', 'another process kept writing anchors');
   }
 
+  function disarm() {
+    const pending = timer;
+    timer = null;
+    if (pending !== null) clock.clearTimeout(pending);
+  }
+
   function arm() {
     if (stopped) return;
     timer = clock.setTimeout(() => {
@@ -292,8 +297,7 @@ export function createAnchorWriter({ store, chain, anchorDir, identity, clock = 
     },
     stop() {
       stopped = true;
-      if (timer !== null) clock.clearTimeout(timer);
-      timer = null;
+      disarm();
       write('checkpoint');
     },
   };

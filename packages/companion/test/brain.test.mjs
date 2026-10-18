@@ -116,8 +116,11 @@ test('router: data classes decide where content may go', async () => {
 });
 
 test('router: no silent switch between local and cloud, withdrawn text after a mid-answer failure, refusals passed on', async () => {
-  const failingLocal = scripted('local', 'local', async function* () {
+  const explode = () => {
     throw Object.assign(new Error('down'), { code: 'brain_unreachable' });
+  };
+  const failingLocal = scripted('local', 'local', async function* () {
+    yield* explode();
   });
   const cloud = scripted('cloud', 'cloud', async function* () {
     yield { type: 'text', text: 'cloud' };

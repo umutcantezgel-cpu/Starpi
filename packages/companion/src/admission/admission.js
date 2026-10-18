@@ -37,12 +37,12 @@ export function createAdmission({ budgetMb, reserveMb = 0, timeoutMs = 30_000, c
   function lease(model) {
     const entry = /** @type {{ sizeMb: number, holders: number }} */ (active.get(model));
     entry.holders += 1;
-    let released = false;
+    let held = true;
     return {
       model,
       release() {
-        if (released) return;
-        released = true;
+        if (!held) return;
+        held = false;
         entry.holders -= 1;
         if (entry.holders === 0) active.delete(model);
         pump();

@@ -31,7 +31,7 @@ test('events are appended once per source and key, read in order, with linked ro
   assert.deepEqual(store.verifyLinks(), []);
   assert.throws(() => store.append([sample({ key: 'c' }), sample({ key: 'd', type: 'feed.unknown' })]), /event refused/);
   assert.equal(store.head().seq, 2, 'an invalid event refuses the whole batch');
-  assert.throws(() => store.db.exec("UPDATE events SET key = 'x' WHERE seq = 1"), /append-only/);
+  assert.throws(() => store.db.exec("UPDATE event_log SET dedupe = 'x' WHERE seq = 1"), /append-only/);
   store.close();
 });
 
@@ -40,8 +40,8 @@ test('a row changed behind the store breaks the links from there on', (t) => {
   t.after(cleanup);
   const store = openStore({ path: join(dir, 'c.db'), types: types() });
   store.append([sample({ key: 'a' }), sample({ key: 'b' }), sample({ key: 'c' })]);
-  store.db.exec('DROP TRIGGER events_append_only_u');
-  store.db.exec(`UPDATE events SET body = replace(body, '21', '99') WHERE seq = 2`);
+  store.db.exec('DROP TRIGGER event_log_no_update');
+  store.db.exec(`UPDATE event_log SET body = replace(body, '21', '99') WHERE seq = 2`);
   assert.deepEqual(store.verifyLinks(), [{ kind: 'events_link_mismatch', seq: 2 }]);
   store.close();
 });
