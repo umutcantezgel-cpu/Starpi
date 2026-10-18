@@ -4,8 +4,8 @@
 //
 // - the system note of a free question: the assistant's instructions, the project's instructions
 //   and the custom instructions (ai/memory.js systemNoteFor);
-// - the turn note: the saved notes that go along with the question, from the scopes its project
-//   allows (only while memory is on);
+// - the request note: the saved notes that go along with the question being answered, from the
+//   scopes its project allows (only while memory is on; never stored with the question);
 // - the workspace scope of a grounded question: the project's files;
 // - chats started in a project or with an assistant: the session starts at once, the conversation
 //   is stored with its first message and gets its project and assistant then (until that moment
@@ -21,7 +21,7 @@ import { refreshIcons } from '../icons.js';
 import { modelLabel, providerLabel } from '../providers.js';
 import { getAssistant, setAssistant, setWebSearch } from '../state.js';
 import { html, icon, label } from '../ui/kit.js';
-import { cleanFactText, defaultScopeFor, MEMORY_LIMITS, MemoryError, memoryStore, scopesFor, suggestFacts, systemNoteFor } from '../ai/memory.js';
+import { cleanFactText, defaultScopeFor, MEMORY_LIMITS, MemoryError, memoryStore, scopesFor, suggestFacts, suggestionNotes, systemNoteFor } from '../ai/memory.js';
 import { setThinking } from '../ai/thinking.js';
 import { APP_VERSION } from '../config.js';
 import { assistantFileName, AssistantError, assistantStore, exportAssistant, mountAssistantsSection, openAssistantEditor } from './assistants.js';
@@ -71,12 +71,13 @@ export async function contextOf(conversationId) {
 }
 
 /**
- * The turn note of a free question (registerTurnNotes).
+ * The saved notes that go along with a free question (registerRequestNotes: in the request that
+ * answers it only, never stored with it, so a later turn does not send them again and a note
+ * deleted, switched off or locked away is not sent from an earlier turn).
  * @param {TurnContext} ctx
  * @returns {Promise<string[]>}
  */
-export async function turnNotes(ctx) {
-  // "Continue" asks for the rest of an answer: no question to find notes for.
+export async function requestNotes(ctx) {
   if (!ctx.question.trim()) return [];
   const { project } = await contextOf(ctx.conversationId);
   const { note } = await memoryStore().recall(ctx.question, scopesFor(project), ctx.locale);
@@ -277,11 +278,17 @@ async function suggestFor(chats, nodeId, conversationId, toast) {
   const question = await chats.getNode(answer.parentId);
   if (!question || question.role !== 'user' || /** @type {Record<string, unknown>} */ (question.meta ?? {}).continue) return;
   const { project } = await contextOf(conversationId);
-  if (!scopesFor(project).length) return;
+  const scopes = scopesFor(project);
   const store = memoryStore();
+  // No suggestions in a project with its notes off, nor while the vault is locked (none could be kept).
+  if (!scopes.length || !store.canStore()) return;
   const [{ facts }, { titleProviders }, { runPurpose }] = await Promise.all([store.list(), import('./thread.js'), import('../ai/router.js')]);
+  const turn = { question: nodeText(question), answer: nodeText(answer), now: Date.now() };
+  // The model that answered sees, besides the turn, only notes this chat may use, and of those only
+  // as many as go along with a question, so it does not suggest them again. Every other note is
+  // compared here and does not leave the device for this call.
   const ideas = await suggestFacts(
-    { question: nodeText(question), answer: nodeText(answer), existing: facts.map((f) => f.text) },
+    { question: turn.question, answer: turn.answer, ...suggestionNotes(facts, scopes, turn) },
     { run: (purpose, input, opts) => runPurpose(purpose, input, /** @type {import('../ai/router.js').RunOptions} */ (opts)), providers: titleProviders(answer), locale: getLocale() === 'de' ? 'de' : 'en', signal: AbortSignal.timeout(20_000) },
   );
   if (!ideas.length || currentSessionId() !== conversationId) return;

@@ -8,10 +8,15 @@
 // - Scopes: 'global' or a project id. A project's memory setting decides which scopes its chats use
 //   (scopesFor): the global notes and its own, only its own, or none.
 // - Per question at most MEMORY_LIMITS.injectedFacts notes with MEMORY_LIMITS.injectedChars
-//   characters go into the turn's context block (never into the stable system prompt), headed "User
-//   notes (may be outdated)". They are ranked by relevance to the question (BM25, as a share of the
-//   best match) × recency (halving every HALF_LIFE_DAYS since the note was last used, or saved) ×
-//   use weight (a note used often ranks a little higher).
+//   characters go into a context block of that question's request only (never into the stable
+//   system prompt, and never stored with the question, so later turns do not send them again),
+//   headed "User notes (may be outdated)". They are ranked by relevance to the question (BM25, as a
+//   share of the best match) × recency (halving every HALF_LIFE_DAYS since the note last matched a
+//   question, or was saved) × use weight (a note that matched often ranks a little higher). Notes
+//   that share a word with the question come before the ones that do not, and only those count as
+//   used, so notes sent along to fill the slots do not push the matching ones out over time.
+// - The same note is kept once wherever two copies could go along with one question: in one
+//   scope, or in the global notes and a project's.
 // - With a vault passphrase set (ai/keys.js), the text of every note is sealed with the vault key.
 //   While the vault is locked the notes are neither shown nor sent, and new ones are refused.
 //
@@ -192,10 +197,11 @@ export function useWeightOf(weight) {
  */
 
 /**
- * Orders notes for a question: (BASE_RELEVANCE + relevance) × recency × use. Relevance is the
- * note's BM25 score as a share of the best one (0 when the question shares no word with it);
- * recency keeps RECENCY_FLOOR however old a note is, so a lasting preference never drops out.
- * Equal scores: the newer note first, then by id.
+ * Orders notes for a question: first the notes that share a word with it, then the others, each
+ * group by (BASE_RELEVANCE + relevance) × recency × use. Relevance is the note's BM25 score as a
+ * share of the best one (0 when the question shares no word with it); recency keeps RECENCY_FLOOR
+ * however old a note is, so a lasting preference never drops out. Equal scores: the newer note
+ * first, then by id.
  * @param {readonly Fact[]} facts
  * @param {string} question
  * @param {{ now: number, halfLifeDays?: number }} opts
@@ -214,31 +220,52 @@ export function rankFacts(facts, question, opts) {
       const use = useWeightOf(fact.weight);
       return { fact, score: (BASE_RELEVANCE + rel) * recency * use, parts: { relevance: rel, recency, use } };
     })
-    .sort((a, b) => b.score - a.score || b.fact.createdAt - a.fact.createdAt || (a.fact.id < b.fact.id ? -1 : a.fact.id > b.fact.id ? 1 : 0));
+    .sort(
+      (a, b) =>
+        Number(b.parts.relevance > 0) - Number(a.parts.relevance > 0) ||
+        b.score - a.score ||
+        b.fact.createdAt - a.fact.createdAt ||
+        (a.fact.id < b.fact.id ? -1 : a.fact.id > b.fact.id ? 1 : 0),
+    );
 }
 
 /**
- * The notes that go along with a question: the best ranked ones, at most `maxFacts` with at most
- * `maxChars` characters of text together (a note that does not fit is passed over for a shorter one).
+ * The ranked notes that go along with a question: the best ones, at most `maxFacts` with at most
+ * `maxChars` characters of text together (a note that does not fit is passed over for a shorter
+ * one), each text once.
+ * @param {readonly Fact[]} facts
+ * @param {string} question
+ * @param {{ now: number, maxFacts?: number, maxChars?: number, halfLifeDays?: number }} opts
+ * @returns {RankedFact[]}
+ */
+export function pickRanked(facts, question, opts) {
+  const maxFacts = Math.min(opts.maxFacts ?? MEMORY_LIMITS.injectedFacts, MEMORY_LIMITS.injectedFacts);
+  const maxChars = Math.min(opts.maxChars ?? MEMORY_LIMITS.injectedChars, MEMORY_LIMITS.injectedChars);
+  /** @type {RankedFact[]} */
+  const picked = [];
+  const seen = new Set();
+  let chars = 0;
+  for (const ranked of rankFacts(facts, question, opts)) {
+    if (picked.length >= maxFacts) break;
+    const key = squash(ranked.fact.text);
+    const length = Array.from(ranked.fact.text).length;
+    if (seen.has(key) || chars + length > maxChars) continue;
+    seen.add(key);
+    picked.push(ranked);
+    chars += length;
+  }
+  return picked;
+}
+
+/**
+ * The notes that go along with a question (pickRanked without the ranking details).
  * @param {readonly Fact[]} facts
  * @param {string} question
  * @param {{ now: number, maxFacts?: number, maxChars?: number, halfLifeDays?: number }} opts
  * @returns {Fact[]}
  */
 export function pickFacts(facts, question, opts) {
-  const maxFacts = Math.min(opts.maxFacts ?? MEMORY_LIMITS.injectedFacts, MEMORY_LIMITS.injectedFacts);
-  const maxChars = Math.min(opts.maxChars ?? MEMORY_LIMITS.injectedChars, MEMORY_LIMITS.injectedChars);
-  /** @type {Fact[]} */
-  const picked = [];
-  let chars = 0;
-  for (const { fact } of rankFacts(facts, question, opts)) {
-    if (picked.length >= maxFacts) break;
-    const length = Array.from(fact.text).length;
-    if (chars + length > maxChars) continue;
-    picked.push(fact);
-    chars += length;
-  }
-  return picked;
+  return pickRanked(facts, question, opts).map((r) => r.fact);
 }
 
 const NOTES_HEADER = Object.freeze({ en: 'User notes (may be outdated):', de: 'Notizen des Nutzers (können veraltet sein):' });
@@ -313,8 +340,10 @@ export function systemNoteFor(input, locale) {
 
 /**
  * Notes a model suggests after a turn, without the ones already kept. Nothing is stored here: the
- * caller shows them and stores only what the user accepts.
- * @param {{ question: string, answer: string, existing: readonly string[] }} input
+ * caller shows them and stores only what the user accepts. `existing` goes to the model with the
+ * turn (at most MEMORY_LIMITS.injectedFacts notes, so it does not suggest them again); `known` is
+ * only compared here.
+ * @param {{ question: string, answer: string, existing: readonly string[], known?: readonly string[] }} input
  * @param {SuggestOptions} opts
  * @returns {Promise<Array<{ text: string, kind: string }>>}
  */
@@ -322,14 +351,14 @@ export async function suggestFacts(input, opts) {
   const question = String(input.question ?? '').trim();
   const answer = String(input.answer ?? '').trim();
   if (!question || !answer) return [];
-  const existing = input.existing.slice(0, 200);
+  const existing = input.existing.slice(0, MEMORY_LIMITS.injectedFacts);
   const res = await opts.run(
     'memory_suggest',
     { messages: [{ role: 'user', text: question.slice(0, 1500) }, { role: 'assistant', text: answer.slice(0, 1500) }], existing },
     { cache: 'off', providers: [...opts.providers], maxCalls: 2, ...(opts.locale ? { locale: opts.locale } : {}), ...(opts.signal ? { signal: opts.signal } : {}) },
   );
   if (!res.ok || res.tier === 'template' || !res.value || typeof res.value !== 'object') return [];
-  const kept = new Set(existing.map(squash));
+  const kept = new Set([...input.existing, ...(input.known ?? [])].map(squash));
   /** @type {Array<{ text: string, kind: string }>} */
   const out = [];
   for (const m of /** @type {{ memories?: unknown }} */ (res.value).memories instanceof Array ? /** @type {any[]} */ (/** @type {any} */ (res.value).memories) : []) {
@@ -341,6 +370,25 @@ export async function suggestFacts(input, opts) {
     if (out.length >= 3) break;
   }
   return out;
+}
+
+/**
+ * What a suggestion call may know of the saved notes. `existing` goes with the turn to the model
+ * that answered: only notes of the conversation's scopes, and of those only as many as go along
+ * with a question (the ones closest to the turn). `known`, every readable note, is only compared on
+ * this device.
+ * @param {readonly Fact[]} facts
+ * @param {readonly string[]} scopes
+ * @param {{ question: string, answer: string, now: number }} turn
+ * @returns {{ existing: string[], known: string[] }}
+ */
+export function suggestionNotes(facts, scopes, turn) {
+  const close = pickFacts(
+    facts.filter((f) => scopes.includes(f.scope)),
+    `${turn.question}\n${turn.answer}`,
+    { now: turn.now },
+  );
+  return { existing: close.map((f) => f.text), known: facts.map((f) => f.text) };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -355,6 +403,14 @@ function isStoredFact(value) {
   const r = /** @type {Record<string, any>} */ (value);
   return typeof r.id === 'string' && typeof r.text === 'string' && typeof r.scope === 'string' && Number.isFinite(r.createdAt);
 }
+
+/**
+ * Whether notes of two scopes can go along with the same question: the same scope, or the global
+ * notes and any project's (a conversation belongs to one project at most).
+ * @param {string} a
+ * @param {string} b
+ */
+const scopesMeet = (a, b) => a === b || a === 'global' || b === 'global';
 
 /**
  * @param {StoredFact} record
@@ -472,6 +528,22 @@ export function createMemoryStore(options = {}) {
   const all = async (db) => (await db.getAll('memory')).filter(isStoredFact);
 
   /**
+   * Refuses a note whose text is kept already where both could go along with one question.
+   * @param {readonly StoredFact[]} records
+   * @param {string} text
+   * @param {string} scope
+   * @param {string | null} self  the note being changed
+   */
+  async function refuseDuplicate(records, text, scope, self) {
+    const key = squash(text);
+    for (const record of records) {
+      if (record.id === self || !scopesMeet(record.scope, scope)) continue;
+      const known = await readText(record);
+      if (known !== null && squash(known) === key) throw new MemoryError('duplicate');
+    }
+  }
+
+  /**
    * @param {StoreDb} db
    * @param {string} id
    * @returns {Promise<StoredFact>}
@@ -523,12 +595,7 @@ export function createMemoryStore(options = {}) {
       return serial(async (db) => {
         const records = await all(db);
         if (records.length >= MEMORY_LIMITS.facts) throw new MemoryError('full');
-        const key = squash(text);
-        for (const record of records) {
-          if (record.scope !== scope) continue;
-          const known = await readText(record);
-          if (known !== null && squash(known) === key) throw new MemoryError('duplicate');
-        }
+        await refuseDuplicate(records, text, scope, null);
         /** @type {StoredFact} */
         const record = { id: uuid(), ...(await writable(text)), scope, source: input.source, createdAt: now(), usedAt: null, weight: 1 };
         await db.add('memory', record);
@@ -561,6 +628,7 @@ export function createMemoryStore(options = {}) {
         }
         if (text === null) throw new MemoryError('locked');
         if (patch.scope !== undefined) record.scope = cleanScope(patch.scope);
+        if (patch.text !== undefined || patch.scope !== undefined) await refuseDuplicate(await all(db), text, record.scope, id);
         await db.put('memory', record);
         emit();
         return toFact(record, text);
@@ -677,8 +745,8 @@ export function createMemoryStore(options = {}) {
 
     /**
      * The note that goes along with a question: while memory is on, the best ranked readable notes of
-     * the given scopes (pickFacts), which count as used. Nothing while memory is off or no scope is
-     * given (a project with memory off).
+     * the given scopes (pickRanked); the ones that share a word with the question count as used.
+     * Nothing while memory is off or no scope is given (a project with memory off).
      * @param {string} question
      * @param {readonly string[]} scopes
      * @param {string} locale
@@ -687,13 +755,20 @@ export function createMemoryStore(options = {}) {
     async recall(question, scopes, locale) {
       if (!scopes.length || !(await store.prefs()).enabled) return { note: '', facts: [] };
       const { facts } = await store.list();
-      const picked = pickFacts(
+      const picked = pickRanked(
         facts.filter((f) => scopes.includes(f.scope)),
         question,
         { now: now() },
       );
-      if (picked.length) await store.markUsed(picked.map((f) => f.id));
-      return { note: memoryNote(picked, locale), facts: picked };
+      const matched = picked.filter((r) => r.parts.relevance > 0).map((r) => r.fact.id);
+      if (matched.length) await store.markUsed(matched);
+      const chosen = picked.map((r) => r.fact);
+      return { note: memoryNote(chosen, locale), facts: chosen };
+    },
+
+    /** Whether a note can be saved now (not while the vault is locked). */
+    canStore() {
+      return vaultState() !== 'locked';
     },
 
     /**
