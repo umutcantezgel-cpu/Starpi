@@ -145,7 +145,8 @@ describe('tool loop', () => {
     const denied = await runToolLoop({ request: baseRequest, registry, gate: createApprovalGate({ ask: async () => 'deny' }), signal: new AbortController().signal, complete: model.complete });
     assert.equal(ran.length, 0);
     assert.equal(denied.calls[0].status, 'denied');
-    assert.match(/** @type {any} */ (model.requests[1].messages.at(-1)?.content[0]).content, /did not allow/);
+    const declined = /** @type {any} */ (model.requests[1].messages.at(-1));
+    assert.match(declined.content[0].content, /did not allow/);
     const model2 = scripted((_req, n) => (n === 1 ? result({ stopReason: 'tool_call', toolCalls: [call('writer', { q: 'x' })] }) : result({ text: 'Okay.' })));
     const none = await runToolLoop({ request: baseRequest, registry, gate: createApprovalGate(), signal: new AbortController().signal, complete: model2.complete });
     assert.equal(none.calls[0].status, 'denied');
