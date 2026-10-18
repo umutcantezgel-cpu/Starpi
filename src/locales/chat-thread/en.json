@@ -3,7 +3,7 @@
     "auto": "Auto",
     "free": "Free",
     "grounded": "Grounded",
-    "auto_hint": "Answers from your files when you have some, otherwise a free conversation.",
+    "auto_hint": "Answers from your files when the question is about them, otherwise a free conversation.",
     "placeholder_auto": "Ask anything…"
   },
   "toggle": {

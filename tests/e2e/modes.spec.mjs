@@ -65,7 +65,7 @@ test.describe('chat mode toggle', () => {
     await expect(modeButton(page, 'grounded')).toHaveAttribute('aria-pressed', 'false');
     await expect(modeButton(page, 'free')).toHaveAttribute('aria-pressed', 'false');
     await expect(input).toHaveAttribute('placeholder', 'Ask anything…');
-    await expect(page.locator('#chatModeHint')).toHaveText('Answers from your files when you have some, otherwise a free conversation.');
+    await expect(page.locator('#chatModeHint')).toHaveText('Answers from your files when the question is about them, otherwise a free conversation.');
     await expect(page.locator('#privacyNotice')).toContainText('No model configured');
 
     await modeButton(page, 'free').click();
