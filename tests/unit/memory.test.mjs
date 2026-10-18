@@ -24,6 +24,7 @@ import {
   SEAL_PURPOSE,
   scopesFor,
   suggestFacts,
+  suggestionNotes,
   systemNoteFor,
   useWeightOf,
 } from '../../src/js/ai/memory.js';
@@ -88,6 +89,18 @@ describe('ranking', () => {
     const facts = [fact({ id: 'once', text: 'I write in British English' }), fact({ id: 'often', text: 'I write in British English too', weight: 40 })];
     assert.equal(rankFacts(facts, 'write an email', { now: NOW })[0].fact.id, 'often');
   });
+
+  it('puts every note that shares a word with the question before the ones that do not', () => {
+    const facts = [
+      fact({ id: 'old-match', text: 'My grandmother keeps bees in Ghent', createdAt: NOW - 500 * DAY }),
+      ...Array.from({ length: 9 }, (_, i) => fact({ id: `busy${i}`, text: `Weekly routine number ${i}`, usedAt: NOW, weight: 50 })),
+    ];
+    const ranked = rankFacts(facts, 'How do bees survive the winter?', { now: NOW });
+    assert.equal(ranked[0].fact.id, 'old-match');
+    // On score alone a recent, much-used note that matches nothing would rank higher.
+    assert.ok(ranked[1].score > ranked[0].score);
+    assert.equal(pickFacts(facts, 'How do bees survive the winter?', { now: NOW })[0].id, 'old-match');
+  });
 });
 
 describe('injection limits', () => {
@@ -101,9 +114,9 @@ describe('injection limits', () => {
   it('keeps the notes within 800 characters, passing over one that does not fit for a shorter one', () => {
     const long = 'x'.repeat(290);
     const facts = [
-      fact({ id: 'l1', text: `garden ${long}` }),
-      fact({ id: 'l2', text: `garden ${long}` }),
-      fact({ id: 'l3', text: `garden ${long}` }),
+      fact({ id: 'l1', text: `garden 1 ${long}` }),
+      fact({ id: 'l2', text: `garden 2 ${long}` }),
+      fact({ id: 'l3', text: `garden 3 ${long}` }),
       fact({ id: 'short', text: 'garden gnome' }),
     ];
     const picked = pickFacts(facts, 'garden', { now: NOW });
@@ -119,6 +132,12 @@ describe('injection limits', () => {
     assert.equal(note, 'User notes (may be outdated):\n- I live in Lisbon\n- I like tea');
     assert.match(memoryNote([{ text: 'Ich wohne in Lissabon' }], 'de'), /^Notizen des Nutzers \(können veraltet sein\):/);
     assert.equal(memoryNote([], 'en'), '');
+  });
+
+  it('passes each text once, even when it is kept in two scopes', () => {
+    const picked = pickFacts([fact({ id: 'g', text: 'I like tea' }), fact({ id: 'p', text: 'I  LIKE tea', scope: 'p1' }), fact({ id: 'o', text: 'I like coffee too' })], 'tea or coffee', { now: NOW });
+    assert.equal(picked.length, 2);
+    assert.equal(memoryNote(picked, 'en').match(/like tea/gi)?.length, 1);
   });
 
   it('keeps one line of at most 300 characters per note', () => {
@@ -152,10 +171,35 @@ describe('explicit-only storage', () => {
     const { note, facts } = await store.recall('where do I live?', ['global'], 'en');
     assert.match(note, /^User notes \(may be outdated\):\n- I live in Lisbon$/);
     assert.equal(facts.length, 1);
-    // Going along with a question counts as a use.
+    // Going along with a question it matches counts as a use.
     const [after] = (await store.list()).facts;
     assert.equal(after.weight, 2);
     assert.equal(after.usedAt, NOW);
+  });
+
+  it('counts only the notes that match the question as used, so filler notes do not crowd out a match later', async () => {
+    let clock = NOW;
+    const { store } = await setup({ now: () => clock });
+    await store.setPrefs({ enabled: true });
+    await store.add({ text: 'My grandmother keeps bees in Ghent', source: 'explicit' });
+    clock += DAY;
+    for (const text of ['I play the oboe', 'I am learning Danish', 'I commute by tram', 'I bake sourdough bread', 'I collect old maps', 'I work night shifts', 'My nephew is called Joris', 'I live near a lake', 'I follow a gluten-free diet']) {
+      await store.add({ text, source: 'explicit' });
+    }
+    // A year of questions that match no note: all notes go along to fill the slots, none counts as used.
+    for (let day = 0; day < 365; day += 1) {
+      clock += DAY;
+      const { facts } = await store.recall('Will it snow on Thursday?', ['global'], 'en');
+      assert.equal(facts.length, MEMORY_LIMITS.injectedFacts);
+    }
+    assert.ok((await store.list()).facts.every((f) => f.weight === 1 && f.usedAt === null));
+    const { facts } = await store.recall('Do bees sleep in winter?', ['global'], 'en');
+    assert.equal(facts[0].text, 'My grandmother keeps bees in Ghent');
+    const after = (await store.list()).facts;
+    assert.deepEqual(
+      after.filter((f) => f.usedAt !== null).map((f) => [f.text, f.weight]),
+      [['My grandmother keeps bees in Ghent', 2]],
+    );
   });
 
   it('only shows suggestions: suggestFacts stores nothing and leaves out what is kept already', async () => {
@@ -173,6 +217,10 @@ describe('explicit-only storage', () => {
     assert.deepEqual(calls[0].opts.providers, ['anthropic']);
     assert.equal(calls[0].opts.cache, 'off');
     assert.deepEqual((await store.list()).facts.map((f) => f.text), ['I like tea']);
+    // Notes compared on the device only (known) are left out too, without being sent.
+    const again = await suggestFacts({ question: 'q', answer: 'a', existing: [], known: ['I teach biology', 'i like tea'] }, { run, providers: ['anthropic'] });
+    assert.deepEqual(again, []);
+    assert.deepEqual(calls[1].input.existing, []);
     // The template (no model) suggests nothing.
     assert.deepEqual(await suggestFacts({ question: 'q', answer: 'a', existing: [] }, { run: async () => ({ ok: false, tier: 'template', value: { memories: [{ text: 'made up', kind: 'fact' }] } }), providers: [] }), []);
   });
@@ -182,12 +230,33 @@ describe('explicit-only storage', () => {
     await assert.rejects(store.add({ text: ' a ', source: 'explicit' }), (e) => e instanceof MemoryError && e.code === 'empty');
     await store.add({ text: 'I like tea', source: 'explicit' });
     await assert.rejects(store.add({ text: 'i like  TEA', source: 'explicit' }), (e) => e instanceof MemoryError && e.code === 'duplicate');
-    // The same note may be kept for a project as well.
-    await store.add({ text: 'I like tea', scope: 'project_p1', source: 'explicit' });
     await db.transaction('memory', 'readwrite', async (tx) => {
       for (let i = 0; i < MEMORY_LIMITS.facts; i += 1) await tx.put('memory', { id: `bulk${i}`, text: `bulk ${i}`, scope: 'global', source: 'explicit', createdAt: NOW, usedAt: null, weight: 1 });
     });
     await assert.rejects(store.add({ text: 'one more', source: 'explicit' }), (e) => e instanceof MemoryError && e.code === 'full');
+  });
+
+  it('keeps a note once wherever two copies could go along with one question', async () => {
+    const { store } = await setup();
+    const isDuplicate = (/** @type {unknown} */ e) => e instanceof MemoryError && e.code === 'duplicate';
+    await store.add({ text: 'I like tea', source: 'explicit' });
+    // A global note and a project's meet in that project's chats.
+    await assert.rejects(store.add({ text: 'I like tea', scope: 'project_p1', source: 'explicit' }), isDuplicate);
+    const deadline = await store.add({ text: 'Deadline is Friday', scope: 'project_p1', source: 'explicit' });
+    await assert.rejects(store.add({ text: 'deadline is  friday', source: 'suggested' }), isDuplicate);
+    // Two projects never meet: each may keep the same note.
+    await store.add({ text: 'Deadline is Friday', scope: 'project_p2', source: 'explicit' });
+    // Neither an edit nor a move may make a copy.
+    const other = await store.add({ text: 'Deadline is Monday', scope: 'project_p1', source: 'explicit' });
+    await assert.rejects(store.update(other.id, { text: 'Deadline is Friday' }), isDuplicate);
+    await assert.rejects(store.update(deadline.id, { scope: 'global' }), isDuplicate);
+    await store.update(other.id, { text: 'Deadline is Monday morning' });
+    assert.deepEqual((await store.list()).facts.map((f) => `${f.scope}: ${f.text}`).sort(), [
+      'global: I like tea',
+      'project_p1: Deadline is Friday',
+      'project_p1: Deadline is Monday morning',
+      'project_p2: Deadline is Friday',
+    ]);
   });
 
   it('edits, deletes, clears and exports notes as starpi.memory/v1', async () => {
@@ -246,6 +315,27 @@ describe('project scoping', () => {
     assert.equal(await store.removeScope('p2'), 1);
     assert.deepEqual((await store.list()).facts.map((f) => f.scope).sort(), ['global', 'p1']);
   });
+
+  it('lets a suggestion call send only notes of the chat\'s scopes, at most 8, and compares the rest on the device', () => {
+    const facts = [
+      fact({ id: 'g', text: 'I live in Lisbon' }),
+      fact({ id: 'b', text: 'Project B budget is secret', scope: 'pB' }),
+      ...Array.from({ length: 12 }, (_, i) => fact({ id: `a${i}`, text: `Project A note ${i} about tiles`, scope: 'pA' })),
+    ];
+    const turn = { question: 'Which tiles fit a kitchen?', answer: 'Glazed tiles.', now: NOW };
+    const outside = suggestionNotes(facts, scopesFor(null), turn);
+    assert.deepEqual(outside.existing, ['I live in Lisbon']);
+    assert.equal(outside.known.length, facts.length);
+    const inA = suggestionNotes(facts, scopesFor({ id: 'pA', memoryScope: 'project' }), turn);
+    assert.equal(inA.existing.length, MEMORY_LIMITS.injectedFacts);
+    assert.ok(inA.existing.every((text) => text.startsWith('Project A note')));
+    assert.deepEqual(suggestionNotes(facts, scopesFor({ id: 'pA', memoryScope: 'off' }), turn).existing, []);
+    // Whatever the caller passes, suggestFacts sends at most 8 notes.
+    /** @type {any[]} */
+    const sent = [];
+    void suggestFacts({ question: 'q', answer: 'a', existing: facts.map((f) => f.text) }, { run: async (_p, input) => (sent.push(input), { ok: false }), providers: [] });
+    assert.equal(sent[0].existing.length, MEMORY_LIMITS.injectedFacts);
+  });
 });
 
 describe('system note', () => {
@@ -300,7 +390,9 @@ describe('vault', () => {
     await store.setPrefs({ enabled: true });
     assert.deepEqual(await store.recall('locker', ['global'], 'en'), { note: '', facts: [] });
     await assert.rejects(store.add({ text: 'New while locked', source: 'explicit' }), (e) => e instanceof MemoryError && e.code === 'locked');
+    assert.equal(store.canStore(), false);
     assert.equal(await keys.unlock('correct horse battery'), 'unlocked');
+    assert.equal(store.canStore(), true);
     assert.equal((await store.recall('locker', ['global'], 'en')).facts[0]?.text, 'My locker code is not this');
   });
 
