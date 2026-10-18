@@ -23,7 +23,7 @@ import { readLocalJson, writeLocalJson } from '../../storage.js';
 import { MCP_SLOTS } from '../keys.js';
 import { readSse, readText } from '../sse.js';
 import { effectFromHints, isRecord } from '../tools/registry.js';
-import { approvePin, comparePins, readPins, revokePin } from './pin.js';
+import { approvePin, comparePins, readPins, restatePins, revokePin } from './pin.js';
 
 /** @typedef {import('../transport.js').FetchLike} FetchLike */
 /** @typedef {import('../transport.js').BuiltRequest} BuiltRequest */
@@ -564,6 +564,11 @@ export function registryName(server, tool, taken) {
  * Keeps the registry in step with the servers: connects to each enabled browser-mode server, pins
  * its tools and registers the approved ones (calls ask first, approval.js). sync() runs again after
  * a change; the result lists every server's tools with their pin status for the settings view.
+ *
+ * Syncs may overlap (a check, then a withdrawal while the check still waits for a server). Only the
+ * newest one changes the registry and the last result, whichever finishes first. Between a change
+ * and its sync, approved() and last() read the pins as stored now, so a withdrawn tool is neither
+ * offered nor shown as approved.
  * @param {{ store: ServerStore, registry: ToolRegistry, connect?: (opts: McpClientOptions) => McpClient }} deps
  */
 export function createMcpBridge(deps) {
@@ -574,6 +579,8 @@ export function createMcpBridge(deps) {
   let registered = [];
   /** @type {ServerSync[]} */
   let last = [];
+  /** Counts the syncs started; a sync that a later one overtook applies nothing. */
+  let generation = 0;
 
   /** @param {McpServer} server */
   const clientFor = (server) => {
@@ -592,6 +599,7 @@ export function createMcpBridge(deps) {
      * @returns {Promise<ServerSync[]>}
      */
     async sync(signal) {
+      const mine = (generation += 1);
       const servers = deps.store.list();
       /** @type {ServerSync[]} */
       const results = [];
@@ -626,6 +634,8 @@ export function createMcpBridge(deps) {
           results.push({ server, status: 'error', error: err instanceof McpError ? err.code : 'protocol', tools: [], info: null });
         }
       }
+      // A later sync started meanwhile: its view of the store is newer than this one's.
+      if (mine !== generation) return results;
       for (const off of registered) off();
       registered = [];
       for (const def of defs) {
@@ -638,8 +648,24 @@ export function createMcpBridge(deps) {
       last = results;
       return results;
     },
-    /** The result of the last sync. */
-    last: () => last,
+    /** The result of the last sync, with each tool's pin status as the store holds it now. */
+    last: () =>
+      last.map((entry) => {
+        const server = deps.store.get(entry.server.id);
+        return server && entry.status === 'ok' ? { ...entry, server, tools: restatePins(server.pins, entry.tools) } : entry;
+      }),
+    /**
+     * Whether a registered MCP tool is still approved now: its server is stored, on and in browser
+     * mode, and holds the pin the tool was registered with.
+     * @param {ToolDef} def
+     */
+    approved(def) {
+      if (!def.server) return false;
+      const server = deps.store.get(def.server.id);
+      if (!server || !server.enabled || server.mode !== 'browser') return false;
+      const pin = Object.hasOwn(server.pins, def.server.tool) ? server.pins[def.server.tool] : null;
+      return pin !== null && pin.hash === def.server.hash;
+    },
     /** Closes every session. */
     async close() {
       for (const off of registered) off();

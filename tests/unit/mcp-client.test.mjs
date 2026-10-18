@@ -1,7 +1,7 @@
 // The MCP client against the MCP fake (Streamable HTTP, protocol 2025-06-18): sessions, tools/list
 // and tools/call in JSON and event-stream answers, bearer tokens, a forgotten session; pinned tool
 // definitions, and a changed definition that needs a new approval before the tool is offered again;
-// the server list with tokens in the key store; provider-side servers.
+// overlapping syncs; the server list with tokens in the key store; provider-side servers.
 import './setup.mjs';
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
@@ -21,7 +21,7 @@ import {
   toolOutput,
   withProviderMcp,
 } from '../../src/js/ai/mcp/client.js';
-import { approvePin, comparePins, readPins, revokePin, toolPin } from '../../src/js/ai/mcp/pin.js';
+import { approvePin, comparePins, readPins, restatePins, revokePin, toolPin } from '../../src/js/ai/mcp/pin.js';
 import { createApprovalGate, memoryApprovalStore } from '../../src/js/ai/tools/approval.js';
 import { runToolLoop } from '../../src/js/ai/tools/loop.js';
 import { createToolRegistry } from '../../src/js/ai/tools/registry.js';
@@ -158,6 +158,17 @@ describe('pinned tool definitions', () => {
     );
     const changed = await comparePins(pins, [{ ...tool, description: 'Changed.' }]);
     assert.equal(changed[0].status, 'changed');
+    // The same checks against pins changed later: approvals and withdrawals show without a new list.
+    assert.deepEqual(
+      restatePins(revokePin(approvePin(pins, 'other', /** @type {string} */ (checks[1].hash)), 'define_word'), checks).map((c) => [c.name, c.status]),
+      [
+        ['define_word', 'new'],
+        ['other', 'approved'],
+        ['dup', 'invalid'],
+        ['', 'invalid'],
+        ['gone_tool', 'removed'],
+      ],
+    );
     assert.deepEqual(Object.keys(revokePin(pins, 'gone_tool')), ['define_word']);
     assert.deepEqual(readPins({ ok: { hash: pin, approvedAt: 'x' }, bad: { hash: 'md5:1' }, worse: 3 }), { ok: { hash: pin, approvedAt: 'x' } });
     assert.throws(() => approvePin({}, 'x', 'nope'), /sha256/);
@@ -217,6 +228,54 @@ describe('pinned tool definitions', () => {
     assert.equal(asks, 2);
     fakeOptions.variant = undefined;
     await bridge.close();
+  });
+
+  it('let the newest of overlapping syncs decide, and show a withdrawal before any sync', async () => {
+    const tool = { name: 'delete_file', description: 'Deletes a file', inputSchema: { type: 'object', properties: { path: { type: 'string' } } }, annotations: { destructiveHint: true } };
+    const { store } = memoryServers();
+    const server = await store.add({ name: 'Files', url: 'https://mcp.example.com/mcp' });
+    store.approve(server.id, 'delete_file', await toolPin(tool));
+    // The first sync waits long for the server, the second one not.
+    const delays = [120, 5];
+    let connects = 0;
+    /** @type {(o: import('../../src/js/ai/mcp/client.js').McpClientOptions) => import('../../src/js/ai/mcp/client.js').McpClient} */
+    const connect = () => /** @type {any} */ ({
+      connect: async () => {
+        const delay = delays[Math.min(connects++, 1)];
+        await new Promise((r) => setTimeout(r, delay));
+        return { name: 'f', title: '', version: '', protocolVersion: '2025-06-18', instructions: '' };
+      },
+      listTools: async () => [tool],
+      callTool: async () => ({ content: 'ok' }),
+      close: async () => {},
+    });
+    const registry = createToolRegistry();
+    const bridge = createMcpBridge({ store, registry, connect });
+    const a = bridge.sync(); // "Check tools"
+    await new Promise((r) => setTimeout(r, 20));
+    store.revoke(server.id, 'delete_file'); // "Withdraw approval" while the check still waits
+    // Before the next sync: the view no longer shows the tool as approved.
+    assert.deepEqual(bridge.last(), []);
+    const b = bridge.sync();
+    await Promise.all([a, b]);
+    assert.deepEqual(store.get(server.id)?.pins, {});
+    assert.deepEqual(registry.list().map((d) => d.name), []);
+    assert.deepEqual(bridge.last()[0].tools.map((t) => `${t.name}=${t.status}`), ['delete_file=new']);
+
+    // Approve again: offered after the sync; withdrawn, it stops counting at once.
+    store.approve(server.id, 'delete_file', await toolPin(tool));
+    assert.deepEqual(bridge.last()[0].tools.map((t) => `${t.name}=${t.status}`), ['delete_file=approved']);
+    await bridge.sync();
+    const def = /** @type {import('../../src/js/ai/tools/registry.js').ToolDef} */ (registry.get('mcp_Files_delete_file'));
+    assert.equal(bridge.approved(def), true);
+    store.revoke(server.id, 'delete_file');
+    assert.equal(bridge.approved(def), false);
+    assert.deepEqual(bridge.last()[0].tools.map((t) => `${t.name}=${t.status}`), ['delete_file=new']);
+    store.approve(server.id, 'delete_file', `sha256:${'d'.repeat(64)}`);
+    assert.equal(bridge.approved(def), false, 'another pin is not the approval the tool was registered with');
+    assert.deepEqual(bridge.last()[0].tools.map((t) => `${t.name}=${t.status}`), ['delete_file=changed']);
+    store.setEnabled(server.id, false);
+    assert.equal(bridge.approved(def), false);
   });
 
   it('report a server that cannot be reached without offering anything', async () => {

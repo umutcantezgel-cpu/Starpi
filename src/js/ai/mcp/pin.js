@@ -104,6 +104,26 @@ export async function comparePins(pins, listed) {
 }
 
 /**
+ * The checks of an earlier tools/list against the pins as they are now: an approval or withdrawal
+ * made after the list was read shows at once, without asking the server again.
+ * @param {ServerPins} pins
+ * @param {readonly PinCheck[]} checks  a comparePins result
+ * @returns {PinCheck[]}
+ */
+export function restatePins(pins, checks) {
+  const listed = checks.filter((c) => c.status !== 'removed');
+  /** @type {PinCheck[]} */
+  const out = listed.map((c) => {
+    if (c.status === 'invalid' || !c.hash) return c;
+    const pin = Object.hasOwn(pins, c.name) ? pins[c.name] : null;
+    return { ...c, status: !pin ? 'new' : pin.hash === c.hash ? 'approved' : 'changed' };
+  });
+  const names = new Set(listed.map((c) => c.name));
+  for (const name of Object.keys(pins)) if (!names.has(name)) out.push({ name, hash: null, status: 'removed', tool: null });
+  return out;
+}
+
+/**
  * The pins with one tool approved at `hash`.
  * @param {ServerPins} pins
  * @param {string} name

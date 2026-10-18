@@ -6,7 +6,8 @@
  * - The registry holds the built-in tools, the image tool and the approved tools of MCP servers
  *   (ai/mcp/client.js bridge). Settings and the composer's tools menu switch the built-in groups.
  * - A request hook offers them to models that can call tools (never to models on this device and
- *   never on the site's pools), with the rule that tool output is untrusted data.
+ *   never on the site's pools), with the rule that tool output is untrusted data. The loop runs
+ *   only what a request offered, so a switch that is off holds when the tool would run, too.
  * - The tool runner runs the loop (ai/tools/loop.js) for an answer that stopped for tool calls;
  *   approval cards and one line per call appear in the answer's bubble.
  * - Verified web answer: with Web on, a model without a search of its own and a search service set
@@ -130,9 +131,12 @@ function createRuntime(opts = {}) {
    * @param {boolean} webTurn
    */
   const offered = (def, webTurn) => {
-    if (def.origin === 'mcp') return true;
+    // An MCP tool only while its approval stands (a withdrawal counts before the next sync).
+    if (def.origin === 'mcp') return bridge.approved(def);
     if (def.name === 'web_search') return switches.web_search && !webTurn && searchReady(readSearchSettings(), getKey);
     if (def.name === 'generate_image') return switches.generate_image && imageProvider() !== null;
+    // Memory is offered once the memory feature answers it.
+    if (def.name === 'memory_lookup') return switches.memory_lookup && memoryLookup !== null;
     return Boolean(/** @type {Record<string, boolean>} */ (switches)[def.name]);
   };
 
@@ -151,6 +155,9 @@ function createRuntime(opts = {}) {
   // The tools a request offers.
   registerRequestHook((req, ctx) => {
     if (!toolsFit(req.provider, req.model)) return req;
+    // Gemini takes its own Google Search and declared functions in one request only in the Live
+    // API: a web turn there keeps the search and offers no functions.
+    if (req.provider === 'gemini' && req.search?.enabled) return req;
     const webTurn = packs.has(packKey(ctx));
     const specs = registry.specs((d) => offered(d, webTurn)).filter((s) => !(req.tools ?? []).some((own) => own.name === s.name));
     if (!specs.length) return req;
