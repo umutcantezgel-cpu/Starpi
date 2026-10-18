@@ -1089,7 +1089,8 @@ async function answerFree(question, value, signal, placement = {}) {
     parentId: question.id,
     role: 'assistant',
     parts: [{ type: 'text', text }, ...images],
-    opaque: result.opaque,
+    // Tool calls without results must not be replayed later: such an answer keeps no provider state.
+    opaque: result.stopReason === 'tool_call' ? [] : result.opaque,
     model: result.model,
     provider: result.provider,
     label: 'free',

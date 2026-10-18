@@ -1,9 +1,11 @@
-// The tool loop: at most eight rounds of tool calls, then an answer without tools; approvals by
-// side-effect class (ask, remember, always ask, refuse); argument checks, failures and time limits;
-// tool output quoted as untrusted data; and a real round trip against the OpenAI fake.
+// The tool loop: at most eight rounds of tool calls, then an answer without tools; only offered
+// tools run; approvals by side-effect class (ask, remember, always ask, refuse); argument checks,
+// failures and time limits; tool output quoted as untrusted data; a turn stopped with open calls
+// keeps no provider state; and a real round trip against the OpenAI fake.
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { createOpenAiFake } from '../../scripts/fakes/openai.mjs';
+import { anthropicWireAdapter } from '../../src/js/ai/adapters/anthropic.js';
 import { createOpenAiResponsesAdapter } from '../../src/js/ai/adapters/openai-responses.js';
 import { complete as completeCall } from '../../src/js/ai/index.js';
 import { directTransport } from '../../src/js/ai/transport.js';
@@ -44,6 +46,13 @@ const call = (name, args, id = `c_${Math.random().toString(36).slice(2, 8)}`) =>
 
 const baseRequest = /** @type {AiRequest} */ ({ provider: 'openai', model: 'm', system: 'S', messages: [{ role: 'user', content: [{ type: 'text', text: 'Question' }] }], tools: [] });
 
+/**
+ * The base request offering every tool of `registry` (the loop runs offered tools only).
+ * @param {import('../../src/js/ai/tools/registry.js').ToolRegistry} registry
+ * @returns {AiRequest}
+ */
+const offering = (registry) => ({ ...baseRequest, tools: registry.specs() });
+
 /** A registry with one tool of each class. */
 function registryWith() {
   const registry = createToolRegistry();
@@ -67,7 +76,7 @@ describe('tool loop', () => {
     const model = scripted((req) => (req.toolChoice === 'none' ? result({ text: 'Final answer.' }) : result({ text: '', stopReason: 'tool_call', toolCalls: [call('reader', { q: 'again' })] })));
     /** @type {number[]} */
     const limits = [];
-    const out = await runToolLoop({ request: baseRequest, registry, gate: createApprovalGate(), signal: new AbortController().signal, complete: model.complete, observer: { onLimit: (n) => limits.push(n) } });
+    const out = await runToolLoop({ request: offering(registry), registry, gate: createApprovalGate(), signal: new AbortController().signal, complete: model.complete, observer: { onLimit: (n) => limits.push(n) } });
     assert.equal(MAX_TOOL_ROUNDS, 8);
     assert.equal(out.rounds, 8);
     assert.equal(out.limited, true);
@@ -88,7 +97,7 @@ describe('tool loop', () => {
     /** @type {string[]} */
     const seen = [];
     const out = await runToolLoop({
-      request: baseRequest,
+      request: offering(registry),
       first: result({ text: 'Let me check.', stopReason: 'tool_call', toolCalls: [call('reader', { q: 'a' }, 'c1')], opaque: [{ type: 'opaque', provider: 'openai', model: 'm', block: { first: true } }] }),
       registry,
       gate: createApprovalGate(),
@@ -123,7 +132,7 @@ describe('tool loop', () => {
       [call('writer', { q: 'w2' }), call('deleter', { q: 'd2' })],
     ];
     const model = scripted((_req, n) => (n <= rounds.length ? result({ stopReason: 'tool_call', toolCalls: rounds[n - 1] }) : result({ text: 'Done.' })));
-    const out = await runToolLoop({ request: baseRequest, registry, gate, signal: new AbortController().signal, complete: model.complete });
+    const out = await runToolLoop({ request: offering(registry), registry, gate, signal: new AbortController().signal, complete: model.complete });
     // writer asked once (then remembered), deleter asked both times, reader and nope never.
     assert.deepEqual(asked, [
       { tool: 'writer', allowAlways: true },
@@ -142,13 +151,13 @@ describe('tool loop', () => {
   it('tells the model when the user declines, and runs nothing without an approver', async () => {
     const { registry, ran } = registryWith();
     const model = scripted((_req, n) => (n === 1 ? result({ stopReason: 'tool_call', toolCalls: [call('writer', { q: 'x' })] }) : result({ text: 'Okay.' })));
-    const denied = await runToolLoop({ request: baseRequest, registry, gate: createApprovalGate({ ask: async () => 'deny' }), signal: new AbortController().signal, complete: model.complete });
+    const denied = await runToolLoop({ request: offering(registry), registry, gate: createApprovalGate({ ask: async () => 'deny' }), signal: new AbortController().signal, complete: model.complete });
     assert.equal(ran.length, 0);
     assert.equal(denied.calls[0].status, 'denied');
     const declined = /** @type {any} */ (model.requests[1].messages.at(-1));
     assert.match(declined.content[0].content, /did not allow/);
     const model2 = scripted((_req, n) => (n === 1 ? result({ stopReason: 'tool_call', toolCalls: [call('writer', { q: 'x' })] }) : result({ text: 'Okay.' })));
-    const none = await runToolLoop({ request: baseRequest, registry, gate: createApprovalGate(), signal: new AbortController().signal, complete: model2.complete });
+    const none = await runToolLoop({ request: offering(registry), registry, gate: createApprovalGate(), signal: new AbortController().signal, complete: model2.complete });
     assert.equal(none.calls[0].status, 'denied');
     assert.equal(ran.length, 0);
   });
@@ -165,7 +174,7 @@ describe('tool loop', () => {
       call('slow', {}),
     ];
     const model = scripted((_req, n) => (n === 1 ? result({ stopReason: 'tool_call', toolCalls: calls }) : result({ text: 'Done.' })));
-    const out = await runToolLoop({ request: baseRequest, registry, gate: createApprovalGate(), signal: new AbortController().signal, complete: model.complete, toolTimeoutMs: 30 });
+    const out = await runToolLoop({ request: offering(registry), registry, gate: createApprovalGate(), signal: new AbortController().signal, complete: model.complete, toolTimeoutMs: 30 });
     assert.deepEqual(out.calls.map((c) => c.status), ['unknown', 'invalid', 'invalid', 'failed', 'failed']);
     const results = /** @type {any[]} */ (model.requests[1].messages.at(-1)?.content);
     assert.ok(results.every((r) => r.isError === true));
@@ -179,7 +188,7 @@ describe('tool loop', () => {
     registry.register({ name: 'web_search', description: 'w', schema: { type: 'object' }, effect: 'read', run: async () => ({ content: '[]', sources: [{ url: 'https://example.org/a', title: 'A', snippet: 'Alpha.' }, { url: 'https://example.net/b', title: 'B' }] }) });
     registry.register({ name: 'make_image', description: 'i', schema: { type: 'object' }, effect: 'read', run: async () => ({ content: 'made', images: [{ mime: 'image/png', data: 'iVBORw0KGgo=' }] }) });
     const model = scripted((_req, n) => (n === 1 ? result({ stopReason: 'tool_call', toolCalls: [call('web_search', {}), call('make_image', {})] }) : result({ text: 'See example.net for more.' })));
-    const out = await runToolLoop({ request: baseRequest, registry, gate: createApprovalGate(), signal: new AbortController().signal, complete: model.complete });
+    const out = await runToolLoop({ request: offering(registry), registry, gate: createApprovalGate(), signal: new AbortController().signal, complete: model.complete });
     // The page the answer names comes first.
     assert.deepEqual(out.result.citations.map((c) => c.url), ['https://example.net/b', 'https://example.org/a']);
     assert.equal(out.result.citations[1].citedText, 'Alpha.');
@@ -193,9 +202,64 @@ describe('tool loop', () => {
       controller.abort();
       return result({ stopReason: 'tool_call', toolCalls: [call('reader', { q: 'x' })] });
     });
-    const out = await runToolLoop({ request: baseRequest, registry, gate: createApprovalGate(), signal: controller.signal, complete: model.complete });
+    const out = await runToolLoop({ request: offering(registry), registry, gate: createApprovalGate(), signal: controller.signal, complete: model.complete });
     assert.equal(out.rounds, 0);
     assert.equal(model.requests.length, 1);
+  });
+
+  it('runs only the tools the request offered, whatever else is registered', async () => {
+    const { registry, ran } = registryWith();
+    let asks = 0;
+    // The request offers "writer" only; "reader" is registered but switched off for this turn.
+    const request = { ...baseRequest, tools: registry.specs((d) => d.name === 'writer') };
+    const model = scripted((_req, n) => (n === 1 ? result({ stopReason: 'tool_call', toolCalls: [call('reader', { q: 'private' }), call('missing', { q: 'x' })] }) : result({ text: 'Okay.' })));
+    const out = await runToolLoop({ request, registry, gate: createApprovalGate({ ask: async () => (asks += 1, 'once') }), signal: new AbortController().signal, complete: model.complete });
+    assert.equal(ran.length, 0);
+    assert.equal(asks, 0);
+    assert.deepEqual(out.calls.map((c) => c.status), ['unknown', 'unknown']);
+    const results = /** @type {any[]} */ (model.requests[1].messages.at(-1)?.content);
+    assert.match(results[0].content, /not offered here/);
+    assert.doesNotMatch(results[0].content, /private/);
+    assert.match(results[1].content, /no tool of this name/);
+  });
+
+  it('keeps no provider state when Stop ends the turn at an approval card, so the next turn replays no open call', async () => {
+    const registry = createToolRegistry();
+    registry.register({ name: 'mcp_Dict_define_word', origin: 'mcp', effect: 'read', description: 'd', schema: { type: 'object', properties: { word: { type: 'string' } } }, server: { id: 's1', name: 'Dict', tool: 'define_word', hash: `sha256:${'0'.repeat(64)}` }, run: async () => ({ content: 'x' }) });
+    const controller = new AbortController();
+    const content = [{ type: 'text', text: 'Let me look that up.' }, { type: 'tool_use', id: 'toolu_1', name: 'mcp_Dict_define_word', input: { word: 'latency' } }];
+    const first = result({ provider: 'anthropic', model: 'claude-x', text: 'Let me look that up.', stopReason: 'tool_call', toolCalls: [call('mcp_Dict_define_word', { word: 'latency' }, 'toolu_1')], opaque: [{ type: 'opaque', provider: 'anthropic', model: 'claude-x', block: { kind: 'anthropic-content', model: 'claude-x', content } }] });
+    const question = /** @type {import('../../src/js/ai/contract.js').Message} */ ({ role: 'user', content: [{ type: 'text', text: 'What is latency?' }] });
+    const out = await runToolLoop({
+      request: { provider: 'anthropic', model: 'claude-x', messages: [question], tools: registry.specs() },
+      first,
+      registry,
+      signal: controller.signal,
+      // The user presses Stop while the card waits.
+      gate: createApprovalGate({ ask: async () => (controller.abort(), 'deny') }),
+      complete: () => assert.fail('no further call after Stop'),
+    });
+    assert.equal(out.result.text, 'Let me look that up.');
+    assert.equal(out.result.stopReason, 'cancelled');
+    assert.deepEqual(out.result.opaque, []);
+    // The saved answer replayed in the next question: text only, no tool_use without its result.
+    const built = anthropicWireAdapter.buildRequest({
+      provider: 'anthropic',
+      model: 'claude-x',
+      messages: [question, { role: 'assistant', content: [{ type: 'text', text: out.result.text }, ...out.result.opaque] }, { role: 'user', content: [{ type: 'text', text: 'And a protocol?' }] }],
+    });
+    const blocks = /** @type {any} */ (built.body).messages.flatMap((/** @type {any} */ m) => (Array.isArray(m.content) ? m.content : []).map((/** @type {any} */ b) => b.type));
+    assert.ok(!blocks.includes('tool_use'), blocks.join(','));
+  });
+
+  it('keeps no provider state when the model still calls tools after the last round', async () => {
+    const { registry } = registryWith();
+    const state = [{ type: /** @type {const} */ ('opaque'), provider: /** @type {const} */ ('openai'), model: 'm', block: { calls: true } }];
+    const model = scripted(() => result({ text: 'Still looking.', stopReason: 'tool_call', toolCalls: [call('reader', { q: 'again' })], opaque: state }));
+    const out = await runToolLoop({ request: offering(registry), registry, gate: createApprovalGate(), signal: new AbortController().signal, complete: model.complete, maxRounds: 1 });
+    assert.equal(out.limited, true);
+    assert.equal(out.result.stopReason, 'tool_call');
+    assert.deepEqual(out.result.opaque, []);
   });
 });
 

@@ -5,9 +5,16 @@
 // model is asked again with the tools still offered. After MAX_TOOL_ROUNDS rounds of tool calls the
 // model is asked once more with toolChoice 'none' and must answer with what it has.
 //
+// Only the tools the request offered can run: a name the model takes from elsewhere (an earlier
+// answer, text inside a tool result, a loose parser) gets an error result, so a tool the user
+// switched off never runs, whatever is registered.
+//
 // The answer the user sees joins the text of every round. Pages a web tool returned become the
 // answer's citations, images a tool made become its images. The provider state kept for replay is
 // the last round's only: earlier rounds hold tool calls whose results are not stored with the answer.
+// A turn that ends with calls still unanswered (stopped at an approval card or during a tool, or a
+// model that keeps calling after the last round) keeps no provider state at all: replayed later,
+// those calls would stand without results, and providers refuse such a conversation.
 import { complete as completeCall } from '../index.js';
 import { quoteToolResult, validateArgs } from './registry.js';
 
@@ -170,6 +177,8 @@ export async function runToolLoop(o) {
   const records = [];
   /** @type {CompletionResult['usage']} */
   let usage = null;
+  /** The names the request offered: no other tool runs. */
+  const offered = new Set((o.request.tools ?? []).map((t) => t.name));
   let rounds = 0;
   let pauses = 0;
   let limited = false;
@@ -212,13 +221,15 @@ export async function runToolLoop(o) {
    * @returns {Promise<Part>}
    */
   const runCall = async (c, round) => {
-    const def = o.registry.get(c.name);
+    const known = o.registry.get(c.name);
+    // A forbidden tool is never offered; its call is refused as forbidden, any other unoffered one as unknown.
+    const def = known && (offered.has(c.name) || known.effect === 'forbidden') ? known : null;
     /** @param {CallStatus} status @param {string} content @param {boolean} isError */
     const done = (status, content, isError) => {
       records.push({ id: c.id, name: c.name, args: c.args, status, effect: def?.effect ?? null, round });
       return /** @type {Part} */ ({ type: 'tool_result', id: c.id, content, ...(isError ? { isError: true } : {}) });
     };
-    if (!def) return done('unknown', errorResult(c.name, 'there is no tool of this name'), true);
+    if (!def) return done('unknown', errorResult(c.name, known ? 'this tool is not offered here; use only the tools of this request' : 'there is no tool of this name'), true);
     if (c.args === null) return done('invalid', errorResult(c.name, 'the arguments were not valid JSON'), true);
     const problems = validateArgs(def.schema, c.args);
     if (problems.length) return done('invalid', errorResult(c.name, 'the arguments do not fit the tool', { problems: problems.slice(0, 8) }), true);
@@ -297,9 +308,13 @@ export async function runToolLoop(o) {
     if (citations.some((c) => c.url === s.url)) continue;
     citations.push({ url: s.url, title: s.title, ...(s.snippet ? { citedText: s.snippet } : {}) });
   }
+  // Calls left without results: the turn keeps none of its provider state (see the file comment).
+  const unfinished = res.stopReason === 'tool_call' || res.stopReason === 'pause';
   /** @type {CompletionResult} */
   const result = {
     ...res,
+    stopReason: unfinished && o.signal.aborted ? 'cancelled' : res.stopReason,
+    opaque: unfinished ? [] : res.opaque,
     text,
     reasoning: reasonings.join('\n\n'),
     toolCalls: records.map((r) => ({ id: r.id, name: r.name, args: r.args, argsText: r.args ? JSON.stringify(r.args) : '' })),
