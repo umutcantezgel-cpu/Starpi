@@ -11,6 +11,9 @@ deploys their own copy of Starpi.
 | `POST /api/chat/nvidia` | The NVIDIA pool under its earlier address, with its earlier rules (text only, 256 KiB body). |
 | `GET /api/models/pool` | Per pool: whether it is configured and the models it allows. |
 | `GET /api/health` | Which features the site offers, as booleans only. |
+| `POST /api/voice/speak`, `POST /api/voice/transcribe` | **Speech** with the site's keys: read-aloud (Gemini voices, ElevenLabs premade voices) and dictation (Gemini). |
+| `GET /api/voice/voices` | What the site offers for speech, as booleans and the fixed voice lists. |
+| `POST /api/voice/live-token` | A single-use ephemeral token for one Gemini Live conversation, from the site's key or the user's key. |
 
 All of them run with Node.js on Vercel, or locally with `npm run preview`
 (`node scripts/serve.mjs --functions`), which applies the same route table and rewrites.
@@ -57,6 +60,27 @@ stream starts. A key answered with 429 waits for its `Retry-After`, a key reject
 waits 30 minutes, and a key that failed or timed out waits briefly. Each key also has a request
 budget per minute, so the pool spreads the load before a provider starts refusing.
 
+## Speech routes
+
+The speech routes run the same front checks as the relay (origin, a per-IP limit of their own,
+the access code; `GET /api/voice/voices` skips the origin check like any same-origin `GET`). They
+use the site's Gemini keys (`GEMINI_API_KEYS`, while the Gemini pool is enabled) and its
+ElevenLabs keys (`ELEVENLABS_API_KEYS`), with the same rotation, failover and parking as a pool.
+Neither text nor audio is stored or logged.
+
+- `speak` takes `{ text, source, voice, locale }` (one piece of at most 600 characters; the app
+  sends only sentences its sentence check released) and answers a WAV file. Only the prebuilt
+  Gemini voices and ElevenLabs premade voices on the app's list can be named.
+- `transcribe` takes `{ audio, locale, glossary? }`: a base64 WAV of at most 60 seconds and the
+  user's own list of names and terms. It answers `{ text }`.
+- `live-token` takes `{ voice, locale, camera? }` and asks Gemini for a token that opens one
+  session within a minute and carries the whole session setup (model, voice, instruction), so the
+  browser cannot change it. With the header `x-goog-api-key` the user's own key mints the token
+  for this one call and the site's budgets do not apply. A key in the query string is refused.
+
+Besides the per-IP limits, the site's keys have daily ceilings per function instance: characters
+spoken, seconds transcribed and Live sessions started.
+
 ## Environment variables
 
 | Variable | Default | Purpose |
@@ -67,6 +91,12 @@ budget per minute, so the pool spreads the load before a provider starts refusin
 | `NVIDIA_API_KEYS`, `GROQ_API_KEYS`, `GEMINI_API_KEYS`, `OPENROUTER_API_KEYS` | empty | The keys of each pool, comma separated. Entries of another shape are ignored and only counted in the log. |
 | `STARPI_POOL_RPM_PER_IP` | `20` | Pool requests per client IP and minute, over all pools. `NVIDIA_RATE_LIMIT_PER_MINUTE` is the older name. |
 | `STARPI_POOL_DAILY_PER_IP` | `200` | Pool requests per client IP and UTC day that reach a provider; `0` turns the budget off. |
+| `ELEVENLABS_API_KEYS` | empty | The site's ElevenLabs keys for read-aloud, comma separated. |
+| `STARPI_VOICE_POOL` | on | `off` keeps the site's keys out of the speech routes (users can still bring their own). |
+| `STARPI_VOICE_RPM_PER_IP` | `20` | Speech requests per client IP and minute. |
+| `STARPI_VOICE_DAILY_PER_IP` | `150` | Speech requests per client IP and UTC day that use the site's keys; `0` turns it off. |
+| `STARPI_VOICE_DAILY_TTS_CHARS`, `STARPI_VOICE_DAILY_STT_SECONDS`, `STARPI_VOICE_DAILY_LIVE` | `300000`, `7200`, `200` | Daily ceilings of the site's keys: characters spoken, seconds transcribed, Live sessions. |
+| `STARPI_GEMINI_TTS_MODEL`, `STARPI_GEMINI_STT_MODEL`, `STARPI_GEMINI_LIVE_MODEL`, `STARPI_ELEVENLABS_MODEL` | built in | The speech models the routes use. |
 | `STARPI_ACCESS_CODE` | empty | When set, the relay, the pools, the voice routes and research steps require the header `x-starpi-access` with this code. |
 | `STARPI_<PROVIDER>_BASE_URL` | empty | For tests: points a provider at a local fake (`localhost`, `127.0.0.1` or `[::1]` only). `GET /api/health` then reports it as simulated. |
 
@@ -101,7 +131,8 @@ functions only, not the static site.
 ```
 
 `simulated` lists every relay provider. The voice and research flags come from the routes
-themselves (an `available(env)` export), so they turn true only once a route serves requests.
+themselves (an `available(env)` export), so they turn true only once a route serves requests; the
+voice flags are true when the site's own keys can speak, transcribe or start Live conversations.
 
 ## Checking a provider by hand
 

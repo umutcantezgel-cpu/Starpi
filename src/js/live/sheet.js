@@ -53,7 +53,7 @@ function liveController() {
   const playback = getPlayback();
   const queueActivity = { isPlaying: () => queue.speaking(), onStateChange: (/** @type {(on: boolean) => void} */ fn) => queue.onState(fn) };
   controller = createLiveController({
-    liveToken: (input) => apiLiveToken({ ...input, locale: getLocale() }, { userKey: getKey('gemini').trim() || null }),
+    liveToken: (input) => apiLiveToken({ ...input, locale: getLocale(), camera: getVoiceSettings().camera }, { userKey: getKey('gemini').trim() || null }),
     canUseLive: () => !pageContext.onDevice() && (getKey('gemini').trim() !== '' || pageContext.site()?.live === true),
     capture: () => createCapture({ context: () => playback.context(), activity: [playback, queueActivity] }),
     playback,

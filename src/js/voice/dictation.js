@@ -13,7 +13,7 @@ import { composerInput } from './hooks.js';
 import { showDictation } from './indicators.js';
 import { getPlayback } from './playback.js';
 import { FALLBACK_ERRORS, RECOGNITION_MESSAGES, recognizeOnce } from './recognition.js';
-import { pageContext, STT } from './sources/index.js';
+import { loadSiteOffer, pageContext, STT } from './sources/index.js';
 import { speechQueue } from './speech.js';
 import { sttChain, transcribeWithFallback } from './stt.js';
 
@@ -33,6 +33,7 @@ import { sttChain, transcribeWithFallback } from './stt.js';
  * @property {() => string} locale
  * @property {(state: DictationState, source: string | null) => void} show
  * @property {(label: import('../ui/kit.js').Label, tone: 'info' | 'warn') => void} notify
+ * @property {() => Promise<unknown>} [ready]  resolves once the sources know what the site offers
  */
 
 /**
@@ -136,6 +137,7 @@ export function createDictation(deps) {
   };
 
   const start = async () => {
+    await deps.ready?.();
     const chain = sttChain(deps.sources, deps.ctx);
     if (chain.length === 0) {
       deps.notify(deps.ctx.onDevice() ? 'chat.voice_off_local' : 'voice.dictation.no_source', 'warn');
@@ -207,6 +209,7 @@ export function pageDictationControl() {
     locale: getIntlLocale,
     show: (state, source) => showDictation(state, source),
     notify: (label, tone) => toast(label, { tone }),
+    ready: () => Promise.race([loadSiteOffer(), new Promise((resolve) => setTimeout(resolve, 1500))]),
   });
   return pageDictation;
 }
