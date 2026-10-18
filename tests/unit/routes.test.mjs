@@ -22,7 +22,6 @@ const STUBS = [
   'api/voice/transcribe.js',
   'api/voice/voices.js',
   'api/voice/live-token.js',
-  'api/research/step.js',
 ];
 
 describe('route patterns', () => {
@@ -106,7 +105,7 @@ describe('scripts/serve.mjs --functions', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'starpi-serve-'));
     writeFileSync(path.join(dir, 'index.html'), '<!DOCTYPE html><title>t</title>');
     writeFileSync(path.join(dir, 'build-manifest.json'), JSON.stringify({ profile }));
-    const env = { ...process.env, NVIDIA_API_KEYS: '', STARPI_ALLOWED_ORIGINS: '', NVIDIA_ALLOWED_ORIGINS: '', RELAY_ALLOWED_ORIGINS: '', STARPI_ACCESS_CODE: '' };
+    const env = { ...process.env, NVIDIA_API_KEYS: '', GEMINI_API_KEYS: '', STARPI_ALLOWED_ORIGINS: '', NVIDIA_ALLOWED_ORIGINS: '', RELAY_ALLOWED_ORIGINS: '', STARPI_ACCESS_CODE: '' };
     server = spawn(process.execPath, [path.join(ROOT, 'scripts/serve.mjs'), '--port', '0', '--dir', dir, '--functions'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'inherit'] });
     let out = '';
     server.stdout?.setEncoding('utf8');
@@ -138,7 +137,7 @@ describe('scripts/serve.mjs --functions', () => {
       ['POST', '/api/voice/transcribe', 501, 'not_implemented'],
       ['GET', '/api/voice/voices', 501, 'not_implemented'],
       ['POST', '/api/voice/live-token', 501, 'not_implemented'],
-      ['POST', '/api/research/step', 501, 'not_implemented'],
+      ['POST', '/api/research/step', 503, 'research_not_configured'],
     ]) {
       const res = await fetch(base + url, { method, headers: { origin: base } });
       assert.equal(res.status, status, `${method} ${url}`);
