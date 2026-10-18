@@ -78,8 +78,19 @@ const slotListeners = new Set();
 /** @type {Set<() => void>} */
 const toolListeners = new Set();
 
-/** @type {{ route: RouteDecider | null, tools: ((input: { result: CompletionResult, request: AiRequest, ctx: TurnContext, signal: AbortSignal }) => Promise<CompletionResult | null>) | null, label: ((node: NodeRecord) => { kind: import('../ui/kit.js').Provenance, labelKey?: string } | null) | null }} */
-export const single = { route: null, tools: null, label: null };
+/**
+ * What the tool runner gets for a free answer: the answer, the request it was asked with (built on
+ * demand), the turn, Stop, and the answer's bubble (for approval cards and the text after tool calls).
+ * @typedef {{ result: CompletionResult, request: () => Promise<AiRequest>, ctx: TurnContext, signal: AbortSignal, view?: { element: HTMLElement, update: (text: string) => void } }} ToolRunInput
+ */
+
+/**
+ * Another adapter for one call of a free answer (provider-side tools); undefined keeps the default.
+ * @typedef {(target: { provider: string, model: string, route: string }, req: AiRequest) => import('../ai/stream.js').Adapter | undefined} AdapterChooser
+ */
+
+/** @type {{ route: RouteDecider | null, tools: ((input: ToolRunInput) => Promise<CompletionResult | null>) | null, label: ((node: NodeRecord) => { kind: import('../ui/kit.js').Provenance, labelKey?: string } | null) | null, adapter: AdapterChooser | null }} */
+export const single = { route: null, tools: null, label: null, adapter: null };
 
 /**
  * Notes for the current user turn of a free-chat question (memory facts, context packs). They go
@@ -128,13 +139,25 @@ export function setRouteDecider(fn) {
 }
 
 /**
- * Runs the tool calls an answer stopped for and returns the answer after them (null: leave it).
+ * Sees every free answer once it is in: runs the tool calls an answer stopped for (and may complete
+ * it otherwise, such as linking its web results) and returns the answer after that (null: leave it).
  * @param {typeof single.tools} fn
  */
 export function setToolRunner(fn) {
   single.tools = fn;
   return () => {
     if (single.tools === fn) single.tools = null;
+  };
+}
+
+/**
+ * Picks another adapter for a call of a free answer (one chooser; a later one replaces it).
+ * @param {AdapterChooser | null} fn
+ */
+export function setAdapterChooser(fn) {
+  single.adapter = fn;
+  return () => {
+    if (single.adapter === fn) single.adapter = null;
   };
 }
 

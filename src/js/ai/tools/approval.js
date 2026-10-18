@@ -120,7 +120,7 @@ export function createApprovalGate(opts = {}) {
      * @param {ToolDef} def
      * @param {Record<string, unknown>} args
      * @param {AbortSignal} signal
-     * @param {{ ask?: ((req: ApprovalRequest, signal: AbortSignal) => Promise<ApprovalAnswer>) | null }} [call]  replaces the gate's ask for this call
+     * @param {{ ask?: ((req: ApprovalRequest, signal: AbortSignal) => Promise<ApprovalAnswer>) | null, title?: string }} [call]  replaces the gate's ask for this call; the name to show
      * @returns {Promise<ApprovalDecision>}
      */
     async decide(def, args, signal, call = {}) {
@@ -133,7 +133,7 @@ export function createApprovalGate(opts = {}) {
       const ask = call.ask ?? opts.ask;
       if (!ask) return { ok: false, reason: 'no_approver' };
       if (signal.aborted) return { ok: false, reason: 'cancelled' };
-      const answer = await ask({ tool: def.name, title: def.server?.tool ?? def.name, effect: def.effect, args, server: def.server ? { id: def.server.id, name: def.server.name } : null, allowAlways }, signal);
+      const answer = await ask({ tool: def.name, title: call.title ?? def.server?.tool ?? def.name, effect: def.effect, args, server: def.server ? { id: def.server.id, name: def.server.name } : null, allowAlways }, signal);
       if (signal.aborted) return { ok: false, reason: 'cancelled' };
       if (answer === 'always' && allowAlways) store.set(key, def.server ? { hash: def.server.hash } : {});
       return answer === 'once' || answer === 'always' ? { ok: true, remembered: false } : { ok: false, reason: 'denied' };
@@ -202,6 +202,7 @@ export function renderApprovalCard(host, req, signal) {
   card.dataset.effect = req.effect;
   const effectKey = `tools.effect.${req.effect}`;
   const originKey = req.server ? 'tools.approval.from_server' : 'tools.approval.builtin';
+  /** @type {Record<string, string>} */
   const originParams = req.server ? { server: req.server.name } : {};
   card.innerHTML = `
     <p class="flex flex-wrap items-center gap-1.5 font-medium"><i data-lucide="shield-alert" class="w-4 h-4"></i><span class="approval-title"></span><span class="chip ${EFFECT_TONES[req.effect]}"><i data-lucide="${req.effect === 'read' ? 'info' : 'triangle-alert'}"></i><span data-i18n="${escapeHtml(effectKey)}">${escapeHtml(t(effectKey))}</span></span></p>

@@ -24,6 +24,7 @@ import memoryEn from './memory/en.json' with { type: 'json' };
 import providersEn from './providers/en.json' with { type: 'json' };
 import researchEn from './research/en.json' with { type: 'json' };
 import shellEn from './shell/en.json' with { type: 'json' };
+import toolsEn from './tools/en.json' with { type: 'json' };
 import trustEn from './trust/en.json' with { type: 'json' };
 import voiceEn from './voice/en.json' with { type: 'json' };
 import workspaceEn from './workspace/en.json' with { type: 'json' };
@@ -32,7 +33,7 @@ import workspaceEn from './workspace/en.json' with { type: 'json' };
 /** @typedef {{ root: Dictionary, namespaces: Record<string, Dictionary> }} LocaleFiles */
 
 /** Namespaces, in merge order. */
-export const NAMESPACES = Object.freeze(['shell', 'chat', 'chat-thread', 'ai', 'ai-orchestration', 'providers', 'research', 'voice', 'live', 'trust', 'memory', 'companion', 'workspace']);
+export const NAMESPACES = Object.freeze(['shell', 'chat', 'chat-thread', 'ai', 'ai-orchestration', 'providers', 'research', 'voice', 'live', 'trust', 'memory', 'companion', 'workspace', 'tools']);
 
 /** Languages with a root dictionary; the language switch offers exactly these. */
 export const SHIPPED_LOCALES = Object.freeze(['en', 'de']);
@@ -54,6 +55,7 @@ export const ENGLISH = Object.freeze({
     memory: memoryEn,
     companion: companionEn,
     workspace: workspaceEn,
+    tools: toolsEn,
   },
 });
 

@@ -10,6 +10,7 @@ import './memory.js';
 import './providers.js';
 import './research.js';
 import './sources.js';
+import './tools.js';
 import './trust.js';
 import './voice.js';
 import './workspace.js';

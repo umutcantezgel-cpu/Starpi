@@ -1,0 +1,139 @@
+{
+  "builtin": {
+    "datetime": "Date and time",
+    "calculator": "Calculator",
+    "workspace_search": "Search my files",
+    "memory_lookup": "Memory",
+    "web_search": "Web search",
+    "generate_image": "Create image"
+  },
+  "effect": {
+    "read": "Reads only",
+    "low": "Small effect",
+    "high": "Lasting effect",
+    "forbidden": "Not allowed"
+  },
+  "approval": {
+    "title": "Allow “{tool}”?",
+    "from_server": "A tool of the MCP server {server}. It runs only if you allow it.",
+    "builtin": "A built-in tool. It runs only if you allow it.",
+    "args": "Arguments",
+    "once": "Allow once",
+    "always": "Always allow",
+    "deny": "Deny",
+    "allowed": "Allowed",
+    "allowed_always": "Allowed – this tool will not ask again",
+    "denied": "Not allowed"
+  },
+  "activity": {
+    "running": "Using {tool}…",
+    "done": "{tool} answered",
+    "failed": "{tool} failed",
+    "denied": "{tool} was not allowed",
+    "forbidden": "{tool} may not be used",
+    "round_limit": "The answer reached the limit of {n} tool rounds and uses what was found so far."
+  },
+  "image": {
+    "alt": "Generated image",
+    "download": "Download image"
+  },
+  "menu": {
+    "basics_on": "Date and calculator: on",
+    "basics_off": "Date and calculator: off",
+    "files_on": "Search my files: on",
+    "files_off": "Search my files: off",
+    "web_on": "Web search tool: on",
+    "web_off": "Web search tool: off",
+    "images_on": "Create images: on",
+    "images_off": "Create images: off",
+    "settings": "Tools and MCP servers…"
+  },
+  "settings": {
+    "title": "Tools and connections",
+    "subtitle": "What models may use while they answer: built-in tools, a web search service and MCP servers. A call that changes something always asks first.",
+    "tools_title": "Tools for the model",
+    "tools_hint": "Offered to models that can call tools; never to models on this device or the site's free models.",
+    "switch": {
+      "datetime": "Date and time",
+      "calculator": "Calculator",
+      "workspace_search": "Search my files (the model may read passages of your files)",
+      "memory_lookup": "Memory (facts you asked the assistant to remember)",
+      "web_search": "Web search tool (the model searches on its own with the service below)",
+      "generate_image": "Create images (asks before each image; uses your OpenAI, Google or xAI key)"
+    },
+    "search_title": "Web search service",
+    "search_hint": "For models without a search of their own: with Web switched on, Starpi searches the question, the model answers from the results, and the answer is checked against them.",
+    "search": {
+      "provider": "Service",
+      "off": "Off",
+      "brave": "Brave Search",
+      "tavily": "Tavily",
+      "searxng": "SearXNG (self-hosted)",
+      "key": "API key",
+      "key_set": "A key is saved",
+      "key_none": "No key yet",
+      "url": "SearXNG address",
+      "url_hint": "The address of your instance; its JSON output must be switched on.",
+      "save": "Save",
+      "test": "Test search",
+      "remove_key": "Remove key",
+      "relay_note": "Brave Search does not answer browser calls; it is reached through this site's relay, which forwards the request and keeps nothing.",
+      "saved": "Saved.",
+      "working": "Searching…",
+      "ok": "The search found {n} results.",
+      "failed": "The search failed: {reason}",
+      "bad_url": "This is not a usable address."
+    },
+    "mcp_title": "MCP servers",
+    "mcp_hint": "Servers that offer tools over MCP (Streamable HTTP). The browser can reach a server only when it allows calls from this page. You approve each tool once, and it still asks before every call; a tool whose description changes must be approved again.",
+    "mcp": {
+      "empty": "No servers yet.",
+      "name": "Name",
+      "url": "Address (https, or http on this computer)",
+      "token": "Bearer token (optional)",
+      "remember": "Keep the token in the key vault",
+      "mode": "Connection",
+      "mode_browser": "From this browser",
+      "mode_provider": "Through the provider (Anthropic, OpenAI)",
+      "add": "Add server",
+      "added": "Server added.",
+      "too_many": "At most {n} servers.",
+      "bad_url": "This address cannot be used.",
+      "bad_url_provider": "A provider can only reach a public https address.",
+      "check": "Check tools",
+      "remove": "Remove",
+      "enabled": "Use this server",
+      "approve": "Approve",
+      "revoke": "Withdraw approval",
+      "provider_flag": "Allow provider-side servers",
+      "provider_flag_hint": "For servers that block browser calls: Anthropic or OpenAI connects to the server instead and calls the tools you list without asking each time. Only for public https servers you trust.",
+      "allowed": "Tools the provider may call (comma-separated)",
+      "save_allowed": "Save tools",
+      "provider_note": "Called by the provider; the listed tools run without asking.",
+      "status": {
+        "ok": "Connected",
+        "off": "Off",
+        "error": "Not reachable: {reason}",
+        "unknown": "Not checked yet"
+      },
+      "error": {
+        "cors": "the server does not allow calls from this page",
+        "auth": "the token was refused",
+        "session": "the session ended",
+        "http": "the server answered with an error",
+        "protocol": "the answer was not MCP",
+        "rpc": "the server reported an error",
+        "timeout": "no answer in time",
+        "aborted": "stopped",
+        "bad_url": "the address is not usable"
+      },
+      "tool": {
+        "approved": "Approved",
+        "new": "Not approved",
+        "changed": "Changed – approve again",
+        "removed": "No longer offered",
+        "invalid": "Invalid definition"
+      }
+    }
+  }
+}

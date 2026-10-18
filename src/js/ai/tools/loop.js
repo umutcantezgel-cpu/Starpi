@@ -70,6 +70,7 @@ const MAX_TOOL_CITATIONS = 8;
  * @property {typeof completeCall} [complete]
  * @property {(req: AiRequest) => Adapter | undefined} [adapterFor]
  * @property {string} [locale]
+ * @property {(key: string) => string} [label]  the text of a built-in tool's label key (approval cards, activity)
  * @property {number} [maxRounds]
  * @property {number} [toolTimeoutMs]
  */
@@ -219,8 +220,8 @@ export async function runToolLoop(o) {
     if (c.args === null) return done('invalid', errorResult(c.name, 'the arguments were not valid JSON'), true);
     const problems = validateArgs(def.schema, c.args);
     if (problems.length) return done('invalid', errorResult(c.name, 'the arguments do not fit the tool', { problems: problems.slice(0, 8) }), true);
-    const title = def.server?.tool ?? def.name;
-    const decision = await o.gate.decide(def, c.args, o.signal, { ask: o.ask });
+    const title = def.server?.tool ?? (def.labelKey && o.label ? o.label(def.labelKey) : def.name);
+    const decision = await o.gate.decide(def, c.args, o.signal, { ask: o.ask, title });
     if (!decision.ok) {
       const status = decision.reason === 'forbidden' ? 'forbidden' : 'denied';
       observer.onToolEnd?.(c, title, status);

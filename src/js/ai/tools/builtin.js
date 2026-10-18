@@ -363,3 +363,35 @@ export function builtinTools(deps = {}) {
   }
   return tools;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Which tools the chat offers
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The tool switches of the chat. Date and calculator are on (nothing leaves the device); searching
+ * the files lets a model read them, web search sends its queries to the search service and images
+ * cost money, so those are off until the user turns them on.
+ * @typedef {{ datetime: boolean, calculator: boolean, workspace_search: boolean, memory_lookup: boolean, web_search: boolean, generate_image: boolean }} ToolSwitches
+ */
+
+export const TOOL_SETTINGS_KEY = 'starpi_tools_v1';
+
+/** @type {Readonly<ToolSwitches>} */
+export const DEFAULT_TOOL_SWITCHES = Object.freeze({ datetime: true, calculator: true, workspace_search: false, memory_lookup: true, web_search: false, generate_image: false });
+
+/**
+ * The stored switches over the defaults.
+ * @param {unknown} raw
+ * @returns {ToolSwitches}
+ */
+export function readToolSwitches(raw) {
+  const out = { ...DEFAULT_TOOL_SWITCHES };
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    for (const key of /** @type {(keyof ToolSwitches)[]} */ (Object.keys(DEFAULT_TOOL_SWITCHES))) {
+      const value = /** @type {Record<string, unknown>} */ (raw)[key];
+      if (typeof value === 'boolean') out[key] = value;
+    }
+  }
+  return out;
+}
