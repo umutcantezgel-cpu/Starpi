@@ -81,6 +81,13 @@ export function checkEvent(event, types) {
   const e = /** @type {EventInput} */ (event);
   const entry = types.get(e.type);
   if (!entry) return [`event.type: ${e.type} is not registered`];
-  if (Buffer.byteLength(canonicalJson(e.body), 'utf8') > MAX_BODY_BYTES) return [`event.body: larger than ${MAX_BODY_BYTES} bytes`];
-  return entry.check(e.body).map((p) => `event.body${p.startsWith('.') ? '' : ': '}${p}`);
+  const bodyProblems = entry.check(e.body).map((p) => `event.body${p.startsWith('.') ? '' : ': '}${p}`);
+  if (bodyProblems.length > 0) return bodyProblems;
+  let size;
+  try {
+    size = Buffer.byteLength(canonicalJson(e.body), 'utf8');
+  } catch {
+    return ['event.body: only JSON values (finite numbers, strings, booleans, null, lists, objects)'];
+  }
+  return size > MAX_BODY_BYTES ? [`event.body: larger than ${MAX_BODY_BYTES} bytes`] : [];
 }

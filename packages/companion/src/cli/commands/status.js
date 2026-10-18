@@ -20,18 +20,20 @@ async function probe(port) {
 export const statusCommand = {
   name: 'status',
   summary: 'show the installation and whether the companion runs',
-  usage: 'status [--json]',
+  usage: 'status [--port <n>] [--json]',
+  strings: ['port'],
   async run(ctx) {
     const config = ctx.config();
+    const port = typeof ctx.flags.port === 'string' ? Number(ctx.flags.port) : config.port;
     const inst = await openInstallation({ config, env: ctx.env });
     try {
       const anchors = checkAnchors({ db: inst.store.db, anchorDir: config.anchorDir, keyId: inst.identity.keyId });
-      const live = await probe(config.port);
+      const live = await probe(port);
       const report = {
         version: VERSION,
         running: live.running,
         runningVersion: live.version,
-        url: `http://127.0.0.1:${config.port}`,
+        url: `http://127.0.0.1:${port}`,
         profile: config.profile,
         dataDir: config.dataDir,
         anchorDir: config.anchorDir,
