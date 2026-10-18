@@ -113,7 +113,7 @@ function renderEntityList() {
       btn.textContent = entity.name;
       if (entity.origin === 'auto') {
         // Found in files: dashed like its node, and said in words for screen readers.
-        btn.classList.add('border-dashed');
+        btn.classList.add('border-dashed', 'border-slate-400');
         const marker = document.createElement('span');
         marker.className = 'sr-only';
         marker.textContent = ` (${t('graph.found_marker')})`;
@@ -363,7 +363,7 @@ function showEntityDetails(entity) {
         <span class="entity-swatch w-3 h-3 rounded-full"></span>
         <h4 class="text-sm font-bold text-slate-900">${escapeHtml(entity.name)}</h4>
       </div>
-      <p class="text-xs text-slate-600 leading-relaxed">${entity.description ? escapeHtml(entity.description) : `<span data-i18n="graph.no_description">${escapeHtml(t('graph.no_description'))}</span>`}</p>
+      ${entity.origin === 'auto' ? '' : `<p class="text-xs text-slate-600 leading-relaxed">${entity.description ? escapeHtml(entity.description) : `<span data-i18n="graph.no_description">${escapeHtml(t('graph.no_description'))}</span>`}</p>`}
       ${originLine(entity)}
     </div>
     <div class="space-y-2">

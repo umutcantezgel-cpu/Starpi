@@ -10,7 +10,7 @@
   "origin_auto": "Found in your files",
   "origin_both": "Added by hand and found in your files",
   "found_marker": "found in your files",
-  "found_in": "Found in {docs}.",
+  "found_in": "Files: {docs}",
   "cooccurs": "appears with",
   "cite": "{doc}, passage {chunk}",
   "confirm_model": "Look for entities and relations in {n} {n:file|files} with your AI model? Passages of these files are sent to the model you set up. Every relation it names is checked against the passage it cites.",

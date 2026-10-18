@@ -10,7 +10,7 @@
   "origin_auto": "In Ihren Dateien gefunden",
   "origin_both": "Von Hand angelegt und in Ihren Dateien gefunden",
   "found_marker": "in Ihren Dateien gefunden",
-  "found_in": "Gefunden in {docs}.",
+  "found_in": "Dateien: {docs}",
   "cooccurs": "erscheint mit",
   "cite": "{doc}, Abschnitt {chunk}",
   "confirm_model": "Entitäten und Beziehungen in {n} {n:Datei|Dateien} mit Ihrem KI-Modell suchen? Abschnitte dieser Dateien werden an das eingerichtete Modell gesendet. Jede Beziehung, die es nennt, wird an dem Abschnitt geprüft, den es zitiert.",
