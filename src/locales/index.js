@@ -15,6 +15,7 @@
 //   SHIPPED_LOCALES. Untranslated keys show the English text.
 import aiEn from './ai/en.json' with { type: 'json' };
 import aiOrchestrationEn from './ai-orchestration/en.json' with { type: 'json' };
+import answersEn from './answers/en.json' with { type: 'json' };
 import chatEn from './chat/en.json' with { type: 'json' };
 import chatThreadEn from './chat-thread/en.json' with { type: 'json' };
 import companionEn from './companion/en.json' with { type: 'json' };
@@ -32,7 +33,7 @@ import workspaceEn from './workspace/en.json' with { type: 'json' };
 /** @typedef {{ root: Dictionary, namespaces: Record<string, Dictionary> }} LocaleFiles */
 
 /** Namespaces, in merge order. */
-export const NAMESPACES = Object.freeze(['shell', 'chat', 'chat-thread', 'ai', 'ai-orchestration', 'providers', 'research', 'voice', 'live', 'trust', 'memory', 'companion', 'workspace']);
+export const NAMESPACES = Object.freeze(['shell', 'chat', 'chat-thread', 'ai', 'ai-orchestration', 'providers', 'research', 'voice', 'live', 'trust', 'memory', 'companion', 'workspace', 'answers']);
 
 /** Languages with a root dictionary; the language switch offers exactly these. */
 export const SHIPPED_LOCALES = Object.freeze(['en', 'de']);
@@ -54,6 +55,7 @@ export const ENGLISH = Object.freeze({
     memory: memoryEn,
     companion: companionEn,
     workspace: workspaceEn,
+    answers: answersEn,
   },
 });
 

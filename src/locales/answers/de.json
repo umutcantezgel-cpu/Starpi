@@ -1,0 +1,33 @@
+{
+  "label": {
+    "free": "Freier Chat · nicht geprüft",
+    "grounded": "Mit Ihren Quellen abgeglichen",
+    "mixed": "Teilweise aus Quellen (geprüfte Teile markiert)",
+    "web": "Aus dem Web · zitiert, nicht verifiziert",
+    "checking": "wird geprüft …",
+    "hint_free": "Aus dem eigenen Wissen des Modells beantwortet; nichts wurde mit Quellen abgeglichen.",
+    "hint_grounded": "Jede Aussage wurde mit den Auszügen Ihrer Quellen abgeglichen.",
+    "hint_mixed": "Aussagen aus Ihren Quellen sind geprüft und markiert; der Rest ist Allgemeinwissen.",
+    "hint_web": "Die Antwort zitiert Seiten aus einer Websuche; ihr Inhalt wurde nicht verifiziert."
+  },
+  "mixed": {
+    "title": "Geprüfte Teile",
+    "summary": "{ok} von {total} Aussagen in Ihren Quellen gefunden",
+    "none": "Keine Aussage ließ sich mit Ihren Quellen abgleichen.",
+    "from_sources": "Aus Ihren Quellen",
+    "not_in_sources": "Nicht in Ihren Quellen",
+    "cited_not_found": "Zitiert, aber nicht in der Quelle gefunden",
+    "note": "Aussagen ohne Quelle sind Allgemeinwissen des Modells und wurden nicht geprüft."
+  },
+  "web": {
+    "checked": "Mit dem zitierten Text abgeglichen: {ok} von {total} Aussagen gefunden",
+    "checked_none": "Mit dem zitierten Text abgeglichen: keine Aussage zum Vergleichen",
+    "segments_ok": "Zahlen geprüft: alle stehen in zitierten Passagen",
+    "segments_flagged": "Zahlen geprüft: {n} Satz/Sätze mit Zahlen außerhalb der zitierten Passagen",
+    "cited": "Zitiert, nicht geprüft"
+  },
+  "notice": {
+    "web_unavailable_title": "Dieses Modell kann nicht im Web suchen",
+    "web_unavailable_body": "Für dieses Modell ist keine Websuche eingerichtet, daher kommt die Antwort ohne Webseiten. Wählen Sie ein Modell, das suchen kann, oder hinterlegen Sie einen Schlüssel dafür."
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "description": "A small neutral workspace for the Auto routing cases: each entry is one chunk of a document.",
+  "chunks": [
+    { "docId": "budget", "docName": "budget.md", "text": "Project Nebula budget. The steering board approved a budget of 480,000 EUR for Project Nebula in March. Hardware takes 120,000 EUR, staff costs take 300,000 EUR and the remaining 60,000 EUR are a reserve." },
+    { "docId": "budget", "docName": "budget.md", "text": "Budget reviews take place every quarter. The finance team reports spending against the approved budget to the steering board and proposes changes when a line is exceeded by more than ten percent." },
+    { "docId": "remote", "docName": "remote-work-policy.md", "text": "Remote work policy. Staff may work remotely on up to two days per week after approval by their team lead. Core hours are from 10:00 to 15:00 on every working day." },
+    { "docId": "remote", "docName": "remote-work-policy.md", "text": "Equipment for remote work: the company provides a laptop and a headset. A second monitor can be requested through the service desk; furniture is not reimbursed." },
+    { "docId": "travel", "docName": "travel-expenses.md", "text": "Travel expenses. Train journeys over four hours may be booked in first class. Hotel costs are reimbursed up to 140 EUR per night; receipts must be submitted within thirty days." },
+    { "docId": "canteen", "docName": "canteen.md", "text": "The canteen opens at 08:00 and serves lunch from 11:30 to 14:00. A vegetarian dish is offered every day; on Fridays there is a fish menu." },
+    { "docId": "onboarding", "docName": "onboarding-checklist.md", "text": "Onboarding checklist for new colleagues: collect the badge at reception, set up the laptop with the service desk, complete the security training in the first week and meet the mentor." },
+    { "docId": "release", "docName": "release-notes.md", "text": "Release notes version 2.3: the export dialog now supports CSV and JSON, search results load faster, and a bug that duplicated calendar entries was fixed." },
+    { "docId": "urlaub", "docName": "urlaubsregelung.md", "text": "Urlaubsregelung. Alle Beschäftigten haben Anspruch auf 30 Urlaubstage im Jahr. Resturlaub muss bis zum 31. März des Folgejahres genommen werden." },
+    { "docId": "urlaub", "docName": "urlaubsregelung.md", "text": "Urlaubsanträge werden im Personalportal gestellt und von der Teamleitung innerhalb von fünf Arbeitstagen genehmigt oder abgelehnt." }
+  ]
+}
