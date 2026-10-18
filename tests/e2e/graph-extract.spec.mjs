@@ -1,7 +1,7 @@
 // The knowledge graph found in workspace files: without an AI model the graph links the names a
 // file mentions together, draws them as found (not added by hand), keeps them on this device across
 // a reload, joins a found name with the same entity in the shared knowledge base, and removes them
-// again on request.
+// again on request, or with their files.
 import { expect, mockSupabase, test } from './fixtures.mjs';
 
 const GARDEN = [
@@ -11,6 +11,32 @@ const GARDEN = [
   '',
   'Tom Berger keeps the budget together with Mara Jensen.',
 ].join('\n');
+
+const LIBRARY = 'Priya Natarajan runs the seed exchange at the Elm Street Library. The Elm Street Library lends seed packets to Mara Jensen.';
+
+/**
+ * The document ids whose results are stored in the app database.
+ * @param {import('@playwright/test').Page} page
+ * @returns {Promise<string[]>}
+ */
+function storedResults(page) {
+  return page.evaluate(
+    () =>
+      new Promise((resolve, reject) => {
+        const open = indexedDB.open('starpi');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const keys = db.transaction('settings', 'readonly').objectStore('settings').getAllKeys(IDBKeyRange.bound('graph.auto:', 'graph.auto:\uffff'));
+          keys.onsuccess = () => {
+            db.close();
+            resolve(keys.result.map((k) => String(k).slice('graph.auto:'.length)));
+          };
+          keys.onerror = () => reject(keys.error);
+        };
+      }),
+  );
+}
 
 /** @param {import('@playwright/test').Page} page @param {string} tab */
 async function openTab(page, tab) {
@@ -83,6 +109,44 @@ test.describe('knowledge graph from files', () => {
     await expect(list.locator('button')).toHaveCount(1);
     await expect(list.getByRole('button', { name: 'Mara Jensen', exact: true })).toBeVisible();
     await expect(page.locator('#graphFoundClear')).toBeHidden();
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('what was found in a file goes with the file: removing it, and Forget all', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await page.goto('/');
+    await openTab(page, 'ingest');
+    await page.setInputFiles('#workspaceFileInput', { name: 'garden.md', mimeType: 'text/markdown', buffer: Buffer.from(GARDEN) });
+    await expect(page.locator('#workspaceList li')).toHaveCount(1);
+    await page.setInputFiles('#workspaceFileInput', { name: 'library.md', mimeType: 'text/markdown', buffer: Buffer.from(LIBRARY) });
+    await expect(page.locator('#workspaceList li')).toHaveCount(2);
+
+    await openTab(page, 'graph');
+    await expect(page.locator('#graphLoading')).toBeHidden();
+    await page.click('#graphFindBtn');
+    const status = page.locator('#graphFoundStatus');
+    await expect(status).toContainText('From 2 files');
+    await expect.poll(() => storedResults(page).then((ids) => ids.length)).toBe(2);
+
+    // Removing a file removes its result, on this device and in the open graph.
+    await openTab(page, 'ingest');
+    await page.locator('#workspaceList li', { hasText: 'library.md' }).locator('[data-action="workspace-remove"]').click();
+    await expect(page.locator('#workspaceList li')).toHaveCount(1);
+    await expect.poll(() => storedResults(page).then((ids) => ids.length)).toBe(1);
+    await openTab(page, 'graph');
+    await expect(status).toContainText('From 1 file');
+    await expect(page.getByRole('button', { name: /^Priya Natarajan/ })).toHaveCount(0);
+
+    // Forget all: nothing found in the files stays either.
+    await openTab(page, 'ingest');
+    page.once('dialog', (dialog) => void dialog.accept());
+    await page.click('[data-action="workspace-clear"]');
+    await expect(page.locator('#workspaceList li')).toHaveCount(0);
+    await expect.poll(() => storedResults(page)).toEqual([]);
+    await openTab(page, 'graph');
+    await expect(page.locator('#graphLoading')).toBeHidden();
+    await expect(status).toContainText('Find the people, organizations and things your files name');
+    await expect(page.locator('#graphEntityList button')).toHaveCount(0);
     expect(diagnostics).toEqual([]);
   });
 
