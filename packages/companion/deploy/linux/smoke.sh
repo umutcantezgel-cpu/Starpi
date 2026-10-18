@@ -74,14 +74,14 @@ systemctl --user stop "$UNIT.service"
 if systemctl --user is-failed --quiet "$UNIT.service"; then fail "the transient unit failed on stop"; fi
 
 echo "== 2. installed user unit"
-sh "$BUNDLE/deploy/linux/install.sh" --prefix "$WORK/opt" --bin-dir "$WORK/bin" --enable
+sh "$BUNDLE/deploy/linux/install.sh" --prefix "$WORK/opt" --bin-dir "$WORK/bin" --enable || fail "install.sh --enable failed"
 [ "$(prop starpi-companion.service ActiveState)" = active ] || fail "starpi-companion.service is not active"
 echo "status: $(prop starpi-companion.service StatusText)"
 hello 47821 || fail "/v1/hello of the installed unit did not answer"
 "$WORK/bin/starpi-companion" status || fail "the launcher's status failed"
 systemctl --user stop starpi-companion.service
 if systemctl --user is-failed --quiet starpi-companion.service; then fail "starpi-companion.service failed on stop"; fi
-sh "$WORK/opt/deploy/uninstall.sh" --purge --yes
+sh "$WORK/opt/deploy/uninstall.sh" --purge --yes || fail "uninstall.sh failed"
 [ ! -e "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/starpi-companion.service" ] || fail "the unit file is still there"
 [ ! -e "$WORK/opt/current" ] || fail "the program is still there"
 echo "smoke: ok"
