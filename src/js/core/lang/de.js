@@ -77,6 +77,7 @@ export const de = {
     'prof', 'abs', 'tel',
   ],
   letters: 'äöüß',
+  capitalisesNouns: true,
 
   polarity: {
     negators: ['nicht', 'kein', 'keine', 'keinen', 'keinem', 'keiner', 'keines', 'nie', 'niemals', 'nichts', 'niemand', 'weder', 'ohne'],

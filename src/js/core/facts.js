@@ -8,7 +8,7 @@
 // therefore always matches, while a changed value does not. The names, number words and units of
 // each language come from the language packs (lang/), read together. Pure: no DOM, runs in Node too.
 import { tokenize } from '../rag/bm25.js';
-import { anyOf, fromPacks, union } from './lang/index.js';
+import { anyOf, fromPacks, lowerCase, union } from './lang/index.js';
 import { LOOSE_LABEL_PATTERN } from './labels.js';
 
 /** @typedef {'number' | 'date' | 'time' | 'weekday' | 'month' | 'code' | 'quote'} FactKind */
@@ -120,15 +120,16 @@ const tables = fromPacks((packs) => {
     spelledPartBefore: new RegExp(`(?<![\\p{L}])(?:${numberWord})(?:\\s+${joiners})?[\\s-]+$|\\d[\\s-]*$`, 'iu'),
     /** words that describe the sources rather than stating something */
     boilerplate: new Set([...all((p) => p.boilerplate), ...LABEL_WORDS]),
-    /** per language, the function words no other pack has, and its own letters */
-    cues: packs.map((p) => ({ code: p.code, words: ownWords(p), letters: letterClass(p.letters) })),
+    /** per language, the function words no other pack has, its own letters and whether it lowercases its own way */
+    cues: packs.map((p) => ({ code: p.code, words: ownWords(p), letters: letterClass(p.letters), ownCase: Object.keys(p.caseFold ?? {}).length > 0 })),
   };
 });
 
 /**
  * Case, Unicode and typography folding shared by claims and sources: NFKC, lowercase, German
- * umlauts and ß spelled out, soft hyphens and PDF line-break hyphenation removed, quotes and dashes
- * unified.
+ * umlauts and ß spelled out, the Turkish dotted and dotless i read as "i" (so "İSTANBUL", "İstanbul"
+ * and "ılık", "ILIK" fold alike), soft hyphens and PDF line-break hyphenation removed, quotes and
+ * dashes unified.
  * @param {string} text
  */
 export function fold(text) {
@@ -136,7 +137,9 @@ export function fold(text) {
     .normalize('NFKC')
     .replace(/­/g, '')
     .replace(/(\p{L})-\n(\p{L})/gu, '$1$2')
+    .replace(/İ/g, 'i')
     .toLowerCase()
+    .replace(/ı/g, 'i')
     .replace(/ä/g, 'ae')
     .replace(/ö/g, 'oe')
     .replace(/ü/g, 'ue')
@@ -608,18 +611,26 @@ export function contentTokens(text) {
 
 /**
  * Guesses the language of a text from function words that only one language pack has, and from
- * letters that only one pack uses (German ä, ö, ü, ß).
+ * letters that a pack uses (German ä, ö, ü, ß; Turkish ğ, ı, ş). A pack that lowercases its own way
+ * (Turkish "I" → "ı") reads the words of the text in its own lowercase.
  * @param {string} text
  * @returns {import('./lang/index.js').LanguageCode | null}
  */
 export function guessLanguage(text) {
   const { cues } = tables();
   const score = cues.map(() => 0);
-  const lower = text.normalize('NFKC').toLowerCase();
+  const normal = text.normalize('NFKC');
+  const lower = normal.toLowerCase();
+  const plain = cues.map((c, i) => (c.ownCase ? -1 : i)).filter((i) => i >= 0);
   for (const w of lower.match(/\p{L}+/gu) ?? []) {
-    const i = cues.findIndex((c) => c.words.has(w));
-    if (i >= 0) score[i] += 1;
+    const i = plain.find((k) => cues[k].words.has(w));
+    if (i !== undefined) score[i] += 1;
   }
+  // Its own lowercase for its words only: a capital "I" read as "ı" is no Turkish letter.
+  cues.forEach((c, i) => {
+    if (!c.ownCase) return;
+    for (const w of lowerCase(normal, c.code).match(/\p{L}+/gu) ?? []) if (c.words.has(w)) score[i] += 1;
+  });
   cues.forEach((c, i) => {
     if (c.letters?.test(lower)) score[i] += 1;
   });

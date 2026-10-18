@@ -55,7 +55,7 @@ const CAPITAL = /(?<![\p{L}\p{N}'’-])\p{Lu}[\p{L}'’]*(?:-\p{L}[\p{L}'’]*)*
  * after the first word of its sentence in an English text, or any word of a run of two or more
  * capitalised words that does not start with a stopword.
  * @param {string} text
- * @param {'en' | 'de' | null} lang
+ * @param {import('./lang/index.js').LanguageCode | null} lang
  */
 function capitalised(text, lang) {
   /** @type {Array<{ token: string, start: number, end: number, initial: boolean, brand: boolean }>} */
@@ -94,7 +94,7 @@ function capitalised(text, lang) {
  * Splits a text into units: sentences, cut at semicolons and at conjunctions that start another
  * statement.
  * @param {string} text
- * @param {'en' | 'de' | null} lang
+ * @param {import('./lang/index.js').LanguageCode | null} lang
  * @returns {Unit[]}
  */
 export function unitsOf(text, lang) {
@@ -260,7 +260,7 @@ function nameRun(text, token) {
  * statement's ("Marcus Hale owns the specification" against "Priya Raman, the OT lead, owns this
  * specification"). Units are checked whole, then cut at commas.
  * @param {string} statement
- * @param {'en' | 'de' | null} lang
+ * @param {import('./lang/index.js').LanguageCode | null} lang
  * @param {Array<{ index: number, units: Unit[] }>} cited
  * @param {Set<string>} lexicon  name-like words of all delivered excerpts
  * @param {(name: string) => boolean} [known]  names the question or the conversation already gave, not checked

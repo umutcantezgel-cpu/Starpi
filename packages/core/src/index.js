@@ -32,8 +32,9 @@ export { changesIn, findRelations, RELATIONS } from '../../../src/js/core/relati
 export { ENTAIL, eligible, judgeResult, nliResult, opinionCites, opinionReason, premiseFor, SECOND_OPINION_REASON, secondOpinions, shownVerdict } from '../../../src/js/core/entail.js';
 
 // Language packs: the words and conventions the checks read a language with; English and German
-// are built in, registerLanguage() adds one.
-export { languagePack, LANGUAGES, registerLanguage } from '../../../src/js/core/lang/index.js';
+// are built in, loadShippedLanguages() adds French, Spanish, Italian and Turkish, registerLanguage()
+// adds one of your own.
+export { languagePack, LANGUAGES, loadShippedLanguages, lowerCase, registerLanguage, SHIPPED_LANGUAGES } from '../../../src/js/core/lang/index.js';
 
 // Sentence gate: releases a streamed answer unit by unit, only what its sources support (the
 // starpi-gate command), with the canonical and spoken forms it judges and the streaming releaser.

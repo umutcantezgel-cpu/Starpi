@@ -426,6 +426,9 @@ single characters, the same way for documents and queries.
 - `sentenceSpans`, `splitSentences`: deterministic sentence splitting with offsets.
 - `languagePack`, `LANGUAGES`, `registerLanguage`: the English and German language packs the
   checks and the gate read; a registered pack is validated, frozen and read from then on.
+  `await loadShippedLanguages()` registers the French, Spanish, Italian and Turkish packs as well
+  (`SHIPPED_LANGUAGES` lists all six); they leave English and German verdicts unchanged.
+  `lowerCase(text, code)` lowercases as the language does (Turkish "I" → "ı", "İ" → "i").
 - `GROUNDING`, `EXTRACTOR`, `CHUNKER`: the rule versions recorded in receipts; `GROUNDING_VERSIONS`
   lists the source-check versions `groundAnswer` can run, `REASON_CODES` (and `REASON_CODES_V1`,
   `REASON_CODES_V2`, `reasonCodes(version)`) the reason codes.
