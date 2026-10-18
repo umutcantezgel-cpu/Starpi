@@ -217,12 +217,13 @@ describe('requests', () => {
     const pack = buildContextPack({ question: 'q', passages: citations(), model: { contextTokens: 4096, maxOutputTokens: 512 }, locale: 'en' });
     const history = Array.from({ length: 20 }, (_, i) => ({ role: /** @type {'user' | 'assistant'} */ (i % 2 ? 'assistant' : 'user'), content: `turn ${i} ${'x'.repeat(900)}` }));
     const messages = packMessages(pack, history, { contextTokens: 4096, maxOutputTokens: 512 });
+    const text = (/** @type {number} */ i) => /** @type {any} */ (messages[i < 0 ? messages.length + i : i].content[0]).text;
     assert.equal(messages.at(-1)?.role, 'user');
-    assert.equal(/** @type {any} */ (messages.at(-1)?.content[0]).text, pack.user);
+    assert.equal(text(-1), pack.user);
     assert.ok(messages.length > 1 && messages.length < 21);
     assert.equal(messages[0].role, 'user');
     assert.ok(messages.slice(0, -1).every((m) => /** @type {any} */ (m.content[0]).text.length <= 600), 'small windows cut each turn to 600 characters');
-    assert.match(/** @type {any} */ (messages.at(-2)?.content[0]).text, /^turn 19/);
+    assert.match(text(-2), /^turn 19/);
   });
 });
 

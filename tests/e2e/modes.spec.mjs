@@ -112,7 +112,7 @@ test.describe('free chat', () => {
 
     const answer = lastMessage(page);
     await expect(answer.locator('.message-content pre')).toContainText("print('hi')");
-    await expect(answer.locator('.free-note')).toContainText('Free chat · not checked against sources');
+    await expect(answer.locator('[data-answer-label="free"]')).toContainText('Free chat · not checked');
     await expect(answer.locator('.engine-badge-label')).toHaveText(/^OpenRouter · .+/);
     await expect(answer.locator('.grounding-bar')).toHaveCount(0);
     await expect(answer.locator('[data-action="open-receipt"]')).toHaveCount(0);
@@ -158,7 +158,7 @@ test.describe('free chat', () => {
 
     const answer = lastMessage(page);
     await expect(answer).toContainText('The contract sets the salary of Jane Roe.');
-    await expect(answer.locator('.free-note')).toBeVisible();
+    await expect(answer.locator('[data-answer-label="free"]')).toBeVisible();
     await expect(answer.locator('.grounding-bar')).toHaveCount(0);
     await expect(page.locator('#chatMessages')).toContainText('salary.md');
     // The file travels in the question it was attached to, never in the stable system prompt.
@@ -186,7 +186,7 @@ test.describe('chat menu', () => {
     await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
     await modeButton(page, 'free').click();
     await ask(page, 'Write hello world in Python.');
-    await expect(lastMessage(page).locator('.free-note')).toBeVisible();
+    await expect(lastMessage(page).locator('[data-answer-label="free"]')).toBeVisible();
 
     const menu = page.locator('details.chat-menu');
     /** @param {'md' | 'json'} format */
@@ -263,7 +263,7 @@ test.describe('free NVIDIA models of the site', () => {
     await expect(answer.locator('.message-content pre')).toContainText("print('hi')");
     await expect(answer.locator('.engine-badge-label')).toHaveText(`NVIDIA via Starpi · ${MODEL.label}`);
     await expect(answer.locator('.message-content')).not.toContainText('Plan the answer');
-    await expect(answer.locator('.free-note')).toContainText('Free chat · not checked against sources');
+    await expect(answer.locator('[data-answer-label="free"]')).toContainText('Free chat · not checked');
     await expect(answer.locator('.grounding-bar')).toHaveCount(0);
     await expect(answer.locator('[data-action="open-receipt"]')).toHaveCount(0);
     // The model's reasoning is kept in the details, labelled as such.
