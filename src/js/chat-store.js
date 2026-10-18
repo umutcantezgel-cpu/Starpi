@@ -40,6 +40,14 @@ export function bindChatSync(hook) {
   void refreshSyncStatus();
 }
 
+/**
+ * Whether conversations of this browser are synced (end-to-end encrypted) right now, for texts that
+ * say where the conversation is kept.
+ */
+export function chatSyncActive() {
+  return Boolean(syncHook?.statusLine());
+}
+
 /** @type {Promise<typeof import('./supabase.js')> | null} */
 let dataLayer = null;
 

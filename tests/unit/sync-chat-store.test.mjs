@@ -22,6 +22,7 @@ describe('chat-store.js with the encrypted sync', () => {
     let flushes = 0;
     let flushResult = true;
     facade.bindChatSync({ statusLine: () => ({ key: 'sync.line.on', params: { n: '1' } }), flush: async () => ((flushes += 1), flushResult) });
+    assert.equal(facade.chatSyncActive(), true);
     const sid = facade.currentSessionId();
     await facade.persistMessage(sid, row('user', 'Hello'), { localOnly: false });
     await facade.persistMessage(sid, row('assistant', 'Hi'), { localOnly: false });
@@ -38,6 +39,7 @@ describe('chat-store.js with the encrypted sync', () => {
     assert.equal(flushes, 2);
 
     facade.bindChatSync(null);
+    assert.equal(facade.chatSyncActive(), false);
     await facade.persistMessage(facade.currentSessionId(), row('user', 'No sync'), { localOnly: false });
     assert.equal(await facade.deleteChatHistory(), true);
     assert.equal(flushes, 2);

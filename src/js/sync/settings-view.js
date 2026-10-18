@@ -282,8 +282,10 @@ export function mountSyncView(el, services, deps) {
       fill('[data-sv="account"]', accountMarkup());
       if (open || codeFor) part('[data-sv="account"] details')?.setAttribute('open', '');
     }
-    for (const button of el.querySelectorAll('button[data-action^="sync-"]')) if (working) button.setAttribute('aria-busy', 'true');
-    else button.removeAttribute('aria-busy');
+    for (const button of el.querySelectorAll('button[data-action^="sync-"]')) {
+      if (working) button.setAttribute('aria-busy', 'true');
+      else button.removeAttribute('aria-busy');
+    }
   }
 
   /** Reads the account and whether it syncs already (when the connection allows). */
