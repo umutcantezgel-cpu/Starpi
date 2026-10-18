@@ -7,7 +7,7 @@ import { expect, mockSupabase, test } from './fixtures.mjs';
 
 const TABS = ['chat', 'research', 'library', 'ingest', 'graph', 'bench', 'settings'];
 /** Mount points whose feature renders content. */
-const RENDERED = new Set(['chat-sidebar', 'providerSettings', 'trustSettings', 'voiceSettings', 'syncSettings', 'composerExtras', 'tab-research']);
+const RENDERED = new Set(['chat-sidebar', 'providerSettings', 'toolSettings', 'trustSettings', 'voiceSettings', 'syncSettings', 'composerExtras', 'tab-research']);
 const DARK_PAGE = 'rgb(11, 17, 32)';
 const LIGHT_PAGE = 'rgb(248, 250, 252)';
 

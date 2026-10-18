@@ -20,7 +20,9 @@
  * - registerTurnNotes(fn): notes for the context block of a free question (memory, packs).
  * - registerSystemNote(fn): text appended to the free system prompt (stable per conversation).
  * - registerRequestHook(fn): changes a request before it goes out (tools).
- * - setToolRunner(fn): runs the tool calls an answer stopped for.
+ * - setToolRunner(fn): sees every free answer: runs the tool calls it stopped for (approval cards in
+ *   its bubble), links its web results.
+ * - setAdapterChooser(fn): another adapter for a call of a free answer (provider-side tools).
  * - registerReceiptHook(fn): completes a grounded answer's receipt draft (relations, second opinions).
  * - registerMessageAction(action): an action in every message's bar ("Research this", read aloud).
  * - setAnswerLabeler(fn): the provenance label of an answer.
@@ -79,6 +81,7 @@ import { renderActions } from './actions.js';
 import { answerLabelOf, applyMixedMarks, nextPaint, renderAnswerLabel, renderWebCheck } from './answer-labels.js';
 import { attachmentText, blobToBase64, MAX_NATIVE_PDF_BYTES, needsVision, textBudget } from './attachments.js';
 import { clearComposer, setComposerBusy, takeDraft } from './composer.js';
+import { showGeneratedImages, storeGeneratedImages } from './image-view.js';
 import { receiptHooks, requestHooks, single, systemNoteHooks, turnNoteHooks } from './hooks.js';
 import { capsOf, chatCandidates, compactingAnthropic, runAnswer } from './runner.js';
 import { activePath, branchInfo, indexNodes, nodeText, switchBranch } from './tree.js';
@@ -90,6 +93,7 @@ export {
   registerSystemNote,
   registerTurnNotes,
   setAnswerLabeler,
+  setAdapterChooser,
   setRouteDecider,
   setToolRunner,
 } from './hooks.js';
@@ -388,6 +392,7 @@ const STOP_NOTES = new Set(['max_tokens', 'refusal', 'cancelled', 'timeout']);
 function decorateAnswer(el, node) {
   const slot = el.querySelector('.message-provenance');
   if (!slot) return;
+  void showGeneratedImages(el, node, async (id) => (await store()).getBlob(id));
   const meta = metaOf(node);
   if (STOP_NOTES.has(meta.stop_reason)) {
     const note = document.createElement('p');
@@ -879,7 +884,7 @@ async function streamAnswer(candidates, build, signal, placement = {}, read) {
           stream.reasoning(reasoning);
         }
       },
-      adapterFor: (target, req) => (target.provider === 'anthropic' && (estimateTokens(JSON.stringify(req.messages)) > COMPACTION_TOKENS || hasCompaction(turnThread()?.path ?? [])) ? compactingAnthropic() : undefined),
+      adapterFor: (target, req) => single.adapter?.(target, req) ?? (target.provider === 'anthropic' && (estimateTokens(JSON.stringify(req.messages)) > COMPACTION_TOKENS || hasCompaction(turnThread()?.path ?? [])) ? compactingAnthropic() : undefined),
     });
   } catch (err) {
     // A request that could not be built or sent leaves no bubble behind.
@@ -1080,14 +1085,16 @@ async function answerFree(question, value, signal, placement = {}) {
   const ctx = { conversationId: turnConversation(), question: nodeText(question), mode: getChatMode(), route: 'free', target: candidates[0], locale: getLocale(), attachments: chipsOf(question) };
   const { stream, run } = await streamAnswer(candidates, (target) => freeRequest(target, path, ctx), signal, placement, (target) => ({ label: searchesWeb(target) ? 'web' : 'free', question: ctx.question, locale: ctx.locale }));
   let { result } = run;
-  // Tool calls an answer stopped for go to the registered runner, which returns the answer after them.
-  if (result.stopReason === 'tool_call' && single.tools && run.target && !signal.aborted) {
-    const after = await single.tools({ result, request: await freeRequest(run.target, path, ctx), ctx, signal }).catch(() => null);
+  // The registered runner sees the answer: tool calls it stopped for run there (approval cards in the
+  // bubble), and it returns the answer after them.
+  if (single.tools && run.target && !signal.aborted) {
+    const asked = run.target;
+    const after = await single.tools({ result, request: () => freeRequest(asked, path, ctx), ctx, signal, view: { element: stream.element, update: (next) => stream.update(next) } }).catch(() => null);
     if (after) result = after;
   }
   const text = result.text;
   const durationMs = Math.round(performance.now() - started);
-  if (!text.trim() || !run.target) {
+  if ((!text.trim() && !result.images.length) || !run.target) {
     stream.remove();
     if (!signal.aborted && onScreen()) noticeFor(result, true);
     return null;
@@ -1100,11 +1107,16 @@ async function answerFree(question, value, signal, placement = {}) {
   // An answer that cites web pages is checked as far as its citations allow (rag/web-check.js).
   const web = result.citations.length ? checkWebAnswer({ text, provider: result.provider, citations: result.citations, question: ctx.question, locale: ctx.locale }) : null;
   const db = await store();
+  // Generated images become blobs owned by the answer (image-view.js).
+  const answerId = crypto.randomUUID();
+  const images = result.images.length ? await storeGeneratedImages(result.images, (blob, o) => db.putBlob(blob, o), answerId) : [];
   const node = await db.appendNode(turnConversation(), {
+    id: answerId,
     parentId: question.id,
     role: 'assistant',
-    parts: [{ type: 'text', text }],
-    opaque: result.opaque,
+    parts: [{ type: 'text', text }, ...images],
+    // Tool calls without results must not be replayed later: such an answer keeps no provider state.
+    opaque: result.stopReason === 'tool_call' ? [] : result.opaque,
     model: result.model,
     provider: result.provider,
     label: web && web.kind !== 'none' ? 'web' : 'free',

@@ -15,7 +15,8 @@
  * - tabs: the Research and Companion views (the Companion nav entry stays hidden until its feature
  *   calls ctx.setNavVisible('companion', true));
  * - settings: one section per feature (workspaceSettings: files and semantic search on this device;
- *   syncSettings: the end-to-end encrypted chat sync);
+ *   syncSettings: the end-to-end encrypted chat sync;
+ *   toolSettings: tools, the web search service and MCP servers of the chat);
  * - overlays: the full-screen live sheet.
  */
 export const MOUNT_POINTS = Object.freeze([
@@ -29,6 +30,7 @@ export const MOUNT_POINTS = Object.freeze([
   'tab-research',
   'tab-companion',
   'providerSettings',
+  'toolSettings',
   'voiceSettings',
   'trustSettings',
   'memorySettings',

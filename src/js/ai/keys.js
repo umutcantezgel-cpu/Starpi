@@ -90,9 +90,11 @@ export class KeyStoreError extends Error {
 export const SERVICE_SLOTS = Object.freeze(['elevenlabs', 'brave', 'tavily']);
 /** The access code a site may ask for (sent as a header to the site's own endpoints). */
 export const ACCESS_SLOT = 'access';
+/** Bearer tokens of MCP servers the user added (ai/mcp/client.js), kept like provider keys. */
+export const MCP_SLOTS = Object.freeze(['mcp1', 'mcp2', 'mcp3', 'mcp4', 'mcp5', 'mcp6', 'mcp7', 'mcp8']);
 
-/** Every slot: providers that take a key (a local server's key is optional), services, the access code. */
-export const KEY_SLOTS = Object.freeze([...PROVIDER_ORDER.filter((id) => PROVIDERS[id].auth !== 'none'), ...SERVICE_SLOTS, ACCESS_SLOT]);
+/** Every slot: providers that take a key (a local server's key is optional), services, MCP servers, the access code. */
+export const KEY_SLOTS = Object.freeze([...PROVIDER_ORDER.filter((id) => PROVIDERS[id].auth !== 'none'), ...SERVICE_SLOTS, ...MCP_SLOTS, ACCESS_SLOT]);
 
 export const VAULT_RECORD_ID = 'vault';
 export const VAULT_ITERATIONS = 600_000;
