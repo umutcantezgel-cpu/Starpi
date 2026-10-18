@@ -17,9 +17,10 @@
 // Passages are numbered [S1], [S2] … and facts [F1] …; the model cites those. expandLabels()
 // rewrites them to the canonical labels ([Doc: name, Chunk: n]) before the source check, the
 // receipt and the stored answer, so everything after the model works with the labels it always did.
-// Passage text is untrusted: runs of angle brackets are defused, line breaks folded, and anything
-// that looks like a pack label inside a passage is turned into plain text, so a document can neither
-// close the context block nor forge a citation.
+// The context block is fenced as <<<SOURCES>>> … <<<END SOURCES>>> (the free chat's turn notes use
+// <<<CONTEXT>>>, which means something else). Passage text is untrusted: runs of angle brackets are
+// defused, line breaks folded, and anything that looks like a pack label inside a passage is turned
+// into plain text, so a document can neither close the block nor forge a citation.
 import { labelName } from '../core/labels.js';
 import { safeSlice } from '../core/sentences.js';
 import { tokenize } from '../rag/bm25.js';
