@@ -1,6 +1,7 @@
 // The research pipeline with fake models, a fake research step and fake document search (no
 // network): the web query (as typed, optional removal of personal details), the read-only source
-// tools, the tool loop with a person's key and the signed loop on the site's pool, the sentence gate
+// tools, the tool loop with a person's key and the signed loop on the site's pool (short hints,
+// waiting out the site's per-minute limit), the sentence gate
 // in sources mode with [Doc: …, Chunk: n] cites, the quote without a model, web answers in one shape
 // judged as a whole (an ungrounded web part is withheld and keeps no text), the report stored as an
 // artifact and the v3 receipt of the documents part.
@@ -10,7 +11,7 @@ import { buildReceipt, RECEIPT_SCHEMA, validateReceipt } from '../../src/js/core
 import { receiptDraft, reportMarkdown, runResearch } from '../../src/js/research/deep.js';
 import { MAX_TOOL_ROUNDS, promptMarker, sectionOfHeading, SOURCE_TOOL_NAMES, sourcesPrompt } from '../../src/js/research/prompts.js';
 import { purposeMarker } from '../../src/js/ai/purposes.js';
-import { createSourceTools, gateSources, quoteExcerpts, recheckSources, runSignedLoop, runToolLoop } from '../../src/js/research/sources-part.js';
+import { createSourceTools, gateSources, loopFocus, loopHints, patientStep, quoteExcerpts, RATE_WAIT_MAX_S, recheckSources, runSignedLoop, runToolLoop } from '../../src/js/research/sources-part.js';
 import { judgeWeb, mergeWebAnswers, recheckWeb, runWebPart, webAnswerFromResult, webAnswerFromStep } from '../../src/js/research/web-part.js';
 import { webQuery } from '../../src/js/research/web-query.js';
 
@@ -86,6 +87,12 @@ describe('research: web query', () => {
     for (const gone of ['anna.berg', '1234567', '7946', 'DE89', '4111', '192.168']) assert.ok(!q.text.includes(gone), gone);
     for (const kept of ['1907', '120 m', '03.03.2026', 'ISO 9001']) assert.ok(q.text.includes(kept), kept);
     assert.deepEqual(webQuery('A card-like run 1234 5678 9012 3456 that fails the check.', { stripPii: true }).removed, []);
+  });
+
+  it('leaves a list of decimals alone, while phone numbers written with dots still go', () => {
+    assert.deepEqual(webQuery('compare 0.5 0.25 0.125 mg doses', { stripPii: true }), { text: 'compare 0.5 0.25 0.125 mg doses', removed: [] });
+    assert.deepEqual(webQuery('Vergleich 0,5 0,25 0,125 mg', { stripPii: true }).removed, []);
+    assert.deepEqual(webQuery('ring 030.1234.5678 today', { stripPii: true }), { text: 'ring today', removed: ['phone'] });
   });
 });
 
@@ -209,6 +216,61 @@ describe('research: sources part', () => {
     assert.equal(results[0].name, 'search_sources');
     assert.match(results[0].content, /hall-plan\.md/);
     assert.match(results[1].content, /unknown tool/, 'a tool this side does not run is answered as an error');
+  });
+
+  it('sends the plan as short hints without the question, and a long document name cut', () => {
+    const question = 'How many rooms does the hall have?';
+    assert.deepEqual(loopHints([question], question), []);
+    assert.deepEqual(loopHints([` ${question.toUpperCase()} `, 'hall  rooms', 'Hall rooms', '', 'y'.repeat(250), 'a', 'b', 'c'], question), ['hall rooms', 'y'.repeat(200), 'a', 'b']);
+    assert.equal(loopHints([`${'z'.repeat(199)}\u{1F600}`], question)[0], 'z'.repeat(199), 'no half of a character pair is sent');
+    assert.equal(loopFocus('  '), null);
+    assert.equal(loopFocus(null), null);
+    assert.equal(loopFocus(`${'d'.repeat(320)}.md`), 'd'.repeat(300));
+  });
+
+  it("waits out the site's per-minute limit a few times; other refusals and a cancel end at once", async () => {
+    const refusal = (/** @type {string} */ code, /** @type {number | null} */ retryAfterS) => Object.assign(new Error(code), { code, retryAfterS });
+    const final = /** @type {const} */ ({ status: 'final', round: 1, model: 'm', text: 'ok' });
+    /** @param {unknown[]} script */
+    const scripted = (script) => {
+      let n = 0;
+      return {
+        calls: () => n,
+        /** @type {import('../../src/js/research/sources-part.js').StepFn} */
+        step: async () => {
+          const next = script[n++];
+          if (next instanceof Error) throw next;
+          return /** @type {any} */ (next);
+        },
+      };
+    };
+    /** @type {number[]} */
+    const waits = [];
+    const wait = async (/** @type {number} */ ms) => void waits.push(ms);
+
+    const busy = scripted([refusal('rate_limited', 12), refusal('rate_limited', 2.2), final]);
+    assert.deepEqual(await patientStep(busy.step, { wait })({}), final);
+    assert.deepEqual(waits, [12_000, 3_000]);
+
+    for (const [err, calls] of /** @type {Array<[Error, number]>} */ ([
+      [refusal('daily_limit_reached', 3600), 1],
+      [refusal('rate_limited', RATE_WAIT_MAX_S + 1), 1],
+      [refusal('rate_limited', null), 1],
+      [refusal('upstream_busy', 5), 1],
+    ])) {
+      const s = scripted([err, final]);
+      await assert.rejects(patientStep(s.step, { wait })({}), (e) => e === err);
+      assert.equal(s.calls(), calls);
+    }
+    const always = scripted([refusal('rate_limited', 1), refusal('rate_limited', 1), refusal('rate_limited', 1), final]);
+    await assert.rejects(patientStep(always.step, { wait, tries: 3 })({}), /rate_limited/);
+    assert.equal(always.calls(), 3);
+
+    // The real wait ends with the job's signal.
+    const ctrl = new AbortController();
+    const pending = patientStep(scripted([refusal('rate_limited', 30), final]).step)({}, ctrl.signal);
+    setTimeout(() => ctrl.abort(new DOMException('Cancelled', 'AbortError')), 5);
+    await assert.rejects(pending, (e) => e instanceof DOMException && e.name === 'AbortError');
   });
 
   it('quotes the best sentences without a model, and the gate keeps them', async () => {

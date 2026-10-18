@@ -37,13 +37,16 @@ function luhn(digits) {
 }
 
 /**
- * Whether a candidate looks like a phone number rather than a year, an amount or a date: it starts
- * like one (+, 00 or a leading 0, or a bracketed area code) and has 7 to 15 digits.
+ * Whether a candidate looks like a phone number rather than a year, an amount, a date or a list of
+ * decimals: it starts like one (+, 00 or a leading 0, or a bracketed area code), has 7 to 15
+ * digits, and none of its groups is a decimal fraction such as 0.25 (no group of a phone number
+ * starts with "0." or "0,").
  * @param {string} match
  */
 function isPhone(match) {
   const digits = match.replace(/\D/g, '');
   if (digits.length < 7 || digits.length > 15 || DATE.test(match.trim())) return false;
+  if (match.trim().split(/\s+/).some((group) => /^0[.,]\d/.test(group))) return false;
   return /^(?:\+|00|0|\(0?\d)/.test(match);
 }
 

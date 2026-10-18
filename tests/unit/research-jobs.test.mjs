@@ -3,7 +3,8 @@
 // that delivers like BroadcastChannel (to every other member, never to the sender). Covered: three
 // jobs at most run at once, the queue moves on, cancel (running, queued, from another tab), one
 // runner across tabs, jobs left running by a closed page come back stale and retry runs only what
-// is missing, the heartbeat, and stale detection by heartbeat without Web Locks.
+// is missing, the heartbeat, stale detection by heartbeat without Web Locks, and a job removed in
+// one tab stays removed although a write of the runner lands after the removal.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createResearchJobs, MAX_RUNNING, RUNNER_LOCK, STALE_MS } from '../../src/js/research/jobs.js';
@@ -367,5 +368,52 @@ describe('research jobs: across tabs', () => {
     assert.equal(solo.jobs.get('fresh')?.status, 'running');
     assert.equal(solo.jobs.get('silent')?.status, 'stale');
     solo.jobs.dispose();
+  });
+
+  it('keeps a job removed in another tab removed, though a heartbeat of the runner lands after the removal', async () => {
+    const base = memoryStore();
+    /** @type {Promise<void> | null} */
+    let gate = null;
+    let open = () => {};
+    // A store whose writes can be held back, as a slow IndexedDB transaction would be.
+    const store = {
+      data: base.data,
+      all: base.all,
+      remove: base.remove,
+      /** @param {ResearchJob} job */
+      async put(job) {
+        if (gate) await gate;
+        await base.put(job);
+      },
+    };
+    const locks = fakeLocks();
+    const bus = fakeBus();
+    let beat = () => {};
+    const tabA = engine({ store, locks, channel: bus(), tabId: 'runner', every: (fn) => ((beat = fn), () => {}) });
+    await until(() => tabA.jobs.isRunner(), 'tab A to hold the lock');
+    const tabB = engine({ store, locks, channel: bus(), tabId: 'remover' });
+    const tabC = engine({ store, locks, channel: bus(), tabId: 'onlooker' });
+    await Promise.all([tabB.jobs.ready, tabC.jobs.ready]);
+    const id = await tabA.jobs.start({ question: 'Removed while it runs' });
+    await until(() => tabB.jobs.get(id)?.status === 'running' && tabC.jobs.get(id)?.status === 'running', 'every tab to see it running');
+    await tabA.jobs.settle();
+
+    gate = new Promise((resolve) => {
+      open = () => resolve();
+    });
+    beat(); // the runner's heartbeat write waits in the store
+    await tabB.jobs.remove(id);
+    assert.equal(base.data.has(id), false);
+    gate = null;
+    open(); // and lands after the removal
+    await flush(10);
+    await Promise.all([tabA.jobs.settle(), tabB.jobs.settle(), tabC.jobs.settle()]);
+    await flush(10);
+
+    assert.equal(base.data.has(id), false, 'the record does not come back');
+    for (const tab of [tabA, tabB, tabC]) assert.equal(tab.jobs.get(id), null);
+    assert.equal(tabB.jobs.running(), 0);
+    assert.equal(tabA.runner.running.get(id)?.signal.aborted, true);
+    for (const tab of [tabA, tabB, tabC]) tab.jobs.dispose();
   });
 });

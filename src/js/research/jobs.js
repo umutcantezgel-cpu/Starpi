@@ -18,6 +18,10 @@
 //     Web Locks (old browsers), every tab is its own runner, and a running job of another tab counts
 //     as stale once its heartbeat is older than STALE_MS.
 //   - A cancel aborts the job where it runs; parts that finished before stay with the record.
+//   - A removed job stays removed. A tab that removes a job, or hears that another tab did, keeps
+//     its id; a write of that job still on its way from another tab (a heartbeat of the runner, say)
+//     can land after the removal, so a tab that held the job removes it once more after its own
+//     pending writes, and no tab takes the job back from the store.
 // The world (store, lock manager, channel, clock, timers, the pipeline itself) comes in through
 // JobDeps, so tests run several engines side by side as stand-ins for tabs.
 
@@ -109,6 +113,8 @@ export const RUNNER_LOCK = 'starpi-research-runner';
 export const CHANNEL_NAME = 'starpi-research';
 /** Jobs kept; beyond that the oldest finished ones go first. */
 export const MAX_JOBS = 50;
+/** Ids of removed jobs a tab remembers (job ids are never reused). */
+const MAX_REMOVED = 500;
 export const QUESTION_LIMIT = 2000;
 
 const ORIGINS = new Set(['chat', 'library', 'header']);
@@ -176,6 +182,25 @@ export function createResearchJobs(deps) {
   let stopBeat = null;
   /** Writes in order, one at a time. @type {Promise<unknown>} */
   let writes = Promise.resolve();
+  /** Jobs removed while this tab is open. @type {Set<string>} */
+  const removed = new Set();
+
+  /** @param {string} id */
+  function forget(id) {
+    removed.add(id);
+    if (removed.size > MAX_REMOVED) removed.delete(/** @type {string} */ (removed.values().next().value));
+  }
+
+  /**
+   * Removes a job from the store after every write this tab queued before.
+   * @param {string} id
+   */
+  function removeStored(id) {
+    return (writes = writes.then(
+      () => deps.store.remove(id),
+      () => deps.store.remove(id),
+    ));
+  }
 
   /** @param {JobChange} change */
   function emit(change) {
@@ -203,6 +228,7 @@ export function createResearchJobs(deps) {
    * @param {JobChange['type']} type
    */
   function save(job, type) {
+    if (removed.has(job.id)) return writes;
     job.updatedAt = Math.max(now(), job.updatedAt);
     jobs.set(job.id, job);
     const copy = structuredClone(job);
@@ -223,7 +249,7 @@ export function createResearchJobs(deps) {
     await writes.catch(() => {});
     const all = await deps.store.all();
     jobs.clear();
-    for (const job of all) if (job && typeof job.id === 'string') jobs.set(job.id, job);
+    for (const job of all) if (job && typeof job.id === 'string' && !removed.has(job.id)) jobs.set(job.id, job);
   }
 
   /**
@@ -424,11 +450,8 @@ export function createResearchJobs(deps) {
   async function remove(id) {
     controllers.get(id)?.abort(new DOMException('Removed', 'AbortError'));
     if (!jobs.delete(id)) return;
-    const done = (writes = writes.then(
-      () => deps.store.remove(id),
-      () => deps.store.remove(id),
-    ));
-    await done.catch((err) => console.warn('[starpi] research job not removed', err));
+    forget(id);
+    await removeStored(id).catch((err) => console.warn('[starpi] research job not removed', err));
     tell({ type: 'removed', id });
     emit({ type: 'remove', id });
   }
@@ -450,14 +473,21 @@ export function createResearchJobs(deps) {
     if (disposed || m.from === tabId || typeof m.id !== 'string') return;
     const id = m.id;
     if (m.type === 'removed') {
-      controllers.get(id)?.abort(new DOMException('Removed', 'AbortError'));
-      if (jobs.delete(id)) emit({ type: 'remove', id });
+      forget(id);
+      const ctrl = controllers.get(id);
+      ctrl?.abort(new DOMException('Removed', 'AbortError'));
+      const held = jobs.delete(id);
+      // A write of this tab may have landed after the other tab's removal: remove it once more.
+      if (held || ctrl) void removeStored(id).catch((err) => console.warn('[starpi] research job not removed', err));
+      if (held) emit({ type: 'remove', id });
       return;
     }
     if (m.type !== 'changed' && m.type !== 'cancel') return;
+    if (removed.has(id)) return;
     await writes.catch(() => {});
     const fresh = (await deps.store.all()).find((j) => j?.id === id);
-    if (!fresh) return;
+    // Removed while the store was read: a late write does not bring it back.
+    if (!fresh || removed.has(id)) return;
     const running = controllers.get(id);
     if (running) {
       // This tab runs the job: only a cancel from elsewhere counts, its own state stays.
