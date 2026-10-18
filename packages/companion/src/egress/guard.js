@@ -170,6 +170,7 @@ export function installEgressGuard(options = {}) {
         process.nextTick(() => callback(err));
         return undefined;
       }
+      if (original === originals.promisesLookup) return Promise.reject(err);
       throw err;
     };
 
