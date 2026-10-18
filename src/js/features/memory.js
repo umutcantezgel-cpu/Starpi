@@ -6,7 +6,7 @@
 // paint, as its own chunks.
 //
 // Memory is off until the user turns it on; nothing is stored without an explicit act.
-import { registerMessageAction, registerSidebarSection, registerSystemNote, registerTurnNotes, setWorkspaceScope } from '../chat/hooks.js';
+import { registerMessageAction, registerRequestNotes, registerSidebarSection, registerSystemNote, setWorkspaceScope } from '../chat/hooks.js';
 import { registerFeature } from './registry.js';
 
 /** @type {Promise<typeof import('../chat/context.js')> | null} */
@@ -33,7 +33,8 @@ function context() {
 /** @type {typeof import('../ui/kit.js').toast | null} */
 let toast = null;
 
-registerTurnNotes(async (ctx) => (await context()).turnNotes(ctx));
+// The saved notes go along with the request of the question being answered only, never stored with it.
+registerRequestNotes(async (ctx) => (await context()).requestNotes(ctx));
 registerSystemNote(async (ctx) => (await context()).systemNote(ctx));
 setWorkspaceScope(async (id) => (await context()).workspaceScope(id));
 registerMessageAction({

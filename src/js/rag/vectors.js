@@ -141,9 +141,10 @@ export class VectorIndex {
    * The k chunks most similar to the query, best first.
    * @param {ArrayLike<number>} query
    * @param {number} k
+   * @param {(docId: string) => boolean} [accept]  only chunks of the documents it accepts
    * @returns {VectorHit[]}
    */
-  search(query, k) {
+  search(query, k, accept) {
     if (query.length !== this.dim || k <= 0 || this.entries.size === 0) return [];
     const qn = norm(query);
     if (!(qn > 0)) return [];
@@ -151,6 +152,7 @@ export class VectorIndex {
     const scored = [];
     let order = 0;
     for (const entry of this.entries.values()) {
+      if (accept && !accept(entry.docId)) continue;
       const { data } = entry;
       let dot = 0;
       for (let i = 0; i < data.length; i += 1) dot += query[i] * data[i];

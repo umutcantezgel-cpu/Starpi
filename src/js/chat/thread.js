@@ -17,7 +17,8 @@
  *
  * Hook points for other features (registered in hooks.js, re-exported here):
  * - setRouteDecider(fn): Auto's route decision ({ route: 'free' | 'grounded' } or null).
- * - registerTurnNotes(fn): notes for the context block of a free question (memory, packs).
+ * - registerTurnNotes(fn): notes for the context block of a free question (packs).
+ * - registerRequestNotes(fn): notes for the request of the question being answered only (memory).
  * - registerSystemNote(fn): text appended to the free system prompt (stable per conversation).
  * - setWorkspaceScope(fn): the workspace documents a conversation's grounded questions search.
  * - registerRequestHook(fn): changes a request before it goes out (tools).
@@ -45,6 +46,7 @@ import {
   fitPoolRequest,
   freeSystemPrompt,
   historyWindow,
+  requestNotesBlock,
   spokenSystemPrompt,
   trimHistory,
   turnContext,
@@ -68,7 +70,7 @@ import { readAloudStream } from '../features/voice.js';
 import { renderActions } from './actions.js';
 import { attachmentText, blobToBase64, MAX_NATIVE_PDF_BYTES, needsVision, textBudget } from './attachments.js';
 import { clearComposer, setComposerBusy, takeDraft } from './composer.js';
-import { receiptHooks, requestHooks, single, systemNoteHooks, turnNoteHooks } from './hooks.js';
+import { receiptHooks, requestHooks, requestNoteHooks, single, systemNoteHooks, turnNoteHooks } from './hooks.js';
 import { decideRoute } from './mode-control.js';
 import { capsOf, chatCandidates, compactingAnthropic, runAnswer } from './runner.js';
 import { activePath, branchInfo, indexNodes, nodeText, switchBranch } from './tree.js';
@@ -77,6 +79,7 @@ export {
   registerMessageAction,
   registerReceiptHook,
   registerRequestHook,
+  registerRequestNotes,
   registerSystemNote,
   registerTurnNotes,
   setAnswerLabeler,
@@ -635,19 +638,23 @@ function fitText(text, room) {
 }
 
 /**
- * A stored question as a message for one model: its context block (free questions), its
- * attachments as the model can take them, and its text.
+ * A stored question as a message for one model: its context block (free questions), the notes for
+ * this request only (the question being answered), its attachments as the model can take them, and
+ * its text.
  * @param {NodeRecord} node
  * @param {Target} target
  * @param {Caps} caps
+ * @param {readonly string[]} [requestNotes]
  * @returns {Promise<Message>}
  */
-async function userMessage(node, target, caps) {
+async function userMessage(node, target, caps, requestNotes = []) {
   const meta = metaOf(node);
   const locale = getLocale();
   /** @type {Part[]} */
   const content = [];
   if (typeof meta.context === 'string' && meta.context) content.push({ type: 'text', text: meta.context });
+  const notesBlock = requestNotesBlock(locale, requestNotes);
+  if (notesBlock) content.push({ type: 'text', text: notesBlock });
   let room = textBudget(caps);
   for (const p of node.parts) {
     if (p.type === 'image' && typeof p.blobId === 'string') {
@@ -749,13 +756,14 @@ function searchesWeb(target) {
 /**
  * The free request for one model: the stable system prompt, the history (whole for Anthropic,
  * within the model's context for the others, within the pool's limits on the site's pools) and the
- * question.
+ * question with the notes for this request.
  * @param {Target} target
  * @param {NodeRecord[]} path  the active path ending with the question
  * @param {TurnContext} ctx
+ * @param {readonly string[]} [requestNotes]  registerRequestNotes, for the question only
  * @returns {Promise<AiRequest>}
  */
-async function freeRequest(target, path, ctx) {
+async function freeRequest(target, path, ctx, requestNotes = []) {
   const caps = capsOf(target.provider, target.model);
   const locale = getLocale();
   const who = target.route === 'device' ? 'local' : target.route === 'local' ? 'server' : 'cloud';
@@ -771,7 +779,7 @@ async function freeRequest(target, path, ctx) {
     else if (node.role === 'assistant') history.push(assistantMessage(node));
   }
   // The question itself always goes along (the history above only leaves out what stays here).
-  const question = await userMessage(asked, target, caps);
+  const question = await userMessage(asked, target, caps, requestNotes);
   const maxOutputTokens = answerTokens(target, caps);
   if (target.provider !== 'anthropic') {
     const budget = caps.contextTokens - (maxOutputTokens ?? Math.floor(caps.contextTokens / 2)) - estimateTokens(system) - estimateTokens(question) - 256;
@@ -1061,11 +1069,12 @@ async function answerFree(question, value, signal, placement = {}) {
   const path = turnThread()?.path ?? [question];
   /** @type {TurnContext} */
   const ctx = { conversationId: turnConversation(), question: nodeText(question), mode: getChatMode(), route: 'free', target: candidates[0], locale: getLocale(), attachments: chipsOf(question) };
-  const { stream, run } = await streamAnswer(candidates, (target) => freeRequest(target, path, ctx), signal, placement, (target) => ({ label: searchesWeb(target) ? 'web' : 'free', question: ctx.question, locale: ctx.locale }));
+  const notes = await requestNotesFor(question, ctx);
+  const { stream, run } = await streamAnswer(candidates, (target) => freeRequest(target, path, ctx, notes), signal, placement, (target) => ({ label: searchesWeb(target) ? 'web' : 'free', question: ctx.question, locale: ctx.locale }));
   let { result } = run;
   // Tool calls an answer stopped for go to the registered runner, which returns the answer after them.
   if (result.stopReason === 'tool_call' && single.tools && run.target && !signal.aborted) {
-    const after = await single.tools({ result, request: await freeRequest(run.target, path, ctx), ctx, signal }).catch(() => null);
+    const after = await single.tools({ result, request: await freeRequest(run.target, path, ctx, notes), ctx, signal }).catch(() => null);
     if (after) result = after;
   }
   const text = result.text;
@@ -1165,8 +1174,7 @@ async function retrieveWorkspace(query, focus) {
 async function scopedWorkspaceSearch(query, focus) {
   const scope = single.scope ? await Promise.resolve(single.scope(turnConversation())).catch(() => null) : null;
   if (!scope?.length) return searchWorkspace(query, LIMITS.retrievalRows);
-  const allowed = new Set([...scope, ...focus]);
-  return (await searchWorkspace(query, LIMITS.retrievalRows * 4)).filter((h) => allowed.has(h.docId)).slice(0, LIMITS.retrievalRows);
+  return searchWorkspace(query, LIMITS.retrievalRows, { docIds: [...new Set([...scope, ...focus])] });
 }
 
 /**
@@ -1621,6 +1629,27 @@ async function contextFor(ctx) {
     timeZone = undefined;
   }
   return turnContext({ locale: getLocale(), now: new Date(), timeZone, notes: notes.slice(0, 8) });
+}
+
+/**
+ * The notes for the request of a free question being answered (registerRequestNotes), asked once
+ * per answer and never stored: none for "Continue", which asks for the rest of an answer.
+ * @param {NodeRecord} question
+ * @param {TurnContext} ctx
+ * @returns {Promise<string[]>}
+ */
+async function requestNotesFor(question, ctx) {
+  if (metaOf(question).continue) return [];
+  /** @type {string[]} */
+  const notes = [];
+  for (const hook of requestNoteHooks) {
+    try {
+      notes.push(...(await hook(ctx)));
+    } catch (err) {
+      console.warn('[starpi] a request note hook failed', err);
+    }
+  }
+  return notes.slice(0, 8);
 }
 
 /**

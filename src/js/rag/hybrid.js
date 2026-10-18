@@ -84,14 +84,15 @@ export function fuseRrf(lists, options = {}) {
  * @param {string} text  the question
  * @param {ArrayLike<number>} vec  the question's embedding (same model as `vectors`)
  * @param {number} k  results to return
- * @param {{ depth?: number, rrfK?: number, lookup?: (key: string) => Entry | undefined }} [options]
- *   lookup: the index entry of a chunk key (chunkKey), when the caller keeps such a map
+ * @param {{ depth?: number, rrfK?: number, lookup?: (key: string) => Entry | undefined, accept?: (docId: string) => boolean }} [options]
+ *   lookup: the index entry of a chunk key (chunkKey), when the caller keeps such a map; accept:
+ *   only chunks of the documents it accepts, in both rankings
  * @returns {HybridHit[]}
  */
 export function hybridSearch(index, vectors, text, vec, k, options = {}) {
   const depth = options.depth ?? HYBRID_DEPTH;
-  const keyword = index.search(text, depth);
-  const semantic = vectors.search(vec, depth);
+  const keyword = index.search(text, depth, options.accept);
+  const semantic = vectors.search(vec, depth, options.accept);
   /** @type {(key: string) => Entry | undefined} */
   let lookup = options.lookup ?? (() => undefined);
   if (!options.lookup && semantic.length) {

@@ -76,6 +76,8 @@ function add(set, value) {
 
 /** @type {Set<(ctx: TurnContext) => readonly string[] | Promise<readonly string[]>>} */
 export const turnNoteHooks = new Set();
+/** @type {Set<(ctx: TurnContext) => readonly string[] | Promise<readonly string[]>>} */
+export const requestNoteHooks = new Set();
 /** @type {Set<(ctx: TurnContext) => string | Promise<string>>} */
 export const systemNoteHooks = new Set();
 /** @type {Set<(req: AiRequest, ctx: TurnContext) => AiRequest>} */
@@ -107,6 +109,17 @@ export const single = { scope: null, route: null, tools: null, label: null };
  */
 export function registerTurnNotes(fn) {
   return add(turnNoteHooks, fn);
+}
+
+/**
+ * Notes for the request of the free question being answered only (saved notes about the user). They
+ * go into a context block of that request and are never stored with the question, so later turns
+ * do not send them again: what the feature holds back later (switched off, deleted, encrypted)
+ * stays held back. Asked again for a regenerated answer; not asked for "Continue".
+ * @param {(ctx: TurnContext) => readonly string[] | Promise<readonly string[]>} fn
+ */
+export function registerRequestNotes(fn) {
+  return add(requestNoteHooks, fn);
 }
 
 /**
