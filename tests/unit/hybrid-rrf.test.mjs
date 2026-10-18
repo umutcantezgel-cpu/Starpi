@@ -158,4 +158,16 @@ describe('probeIndex', () => {
     assert.deepEqual(probeIndex(index, 'xylophone'), { score: 0, coverage: 0, terms: 1, matched: [], hits: 0, docId: null });
     assert.deepEqual(probeIndex(new BM25Index(), 'budget'), { score: 0, coverage: 0, terms: 1, matched: [], hits: 0, docId: null });
   });
+
+  it("probes only the documents a conversation's scope accepts", () => {
+    const { index } = workspace();
+    index.add([{ docId: 'other', docName: 'other.md', chunkIndex: 0, start: 0, end: 60, text: 'The garden shed holds the lawn mower and the rakes.' }]);
+    const open = probeIndex(index, 'garden shed lawn mower');
+    assert.equal(open.docId, 'other');
+    assert.ok(open.coverage === 1);
+    // A project that holds only "doc": the shed is not there to match.
+    const scoped = probeIndex(index, 'garden shed lawn mower', 5, (docId) => docId === 'doc');
+    assert.deepEqual(scoped, { score: 0, coverage: 0, terms: 4, matched: [], hits: 0, docId: null });
+    assert.equal(probeIndex(index, 'quarterly budget board', 5, (docId) => docId === 'doc').docId, 'doc');
+  });
 });

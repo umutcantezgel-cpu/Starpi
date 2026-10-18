@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { decideRoute, namesSources, namesTitle, PROBE_THRESHOLDS, probeRoute, searchWebHits, stricter, webHits } from '../../src/js/ai/hybrid.js';
+import { decideRoute, namesSources, namesTitle, PROBE_THRESHOLDS, probeRoute, searchServiceWebSearch, searchWebHits, stricter, webHits } from '../../src/js/ai/hybrid.js';
 import { BM25Index } from '../../src/js/rag/bm25.js';
 import { probeIndex } from '../../src/js/rag/hybrid.js';
 
@@ -244,5 +244,33 @@ describe('web passages', () => {
       console.warn = warn;
     }
     assert.equal((await searchWebHits('q', { search: async () => answer })).length, 2);
+  });
+
+  it("takes the results of the search service as one passage per page, each the page's snippet", async () => {
+    /** @type {Array<[string, number]>} */
+    const asked = [];
+    const search = searchServiceWebSearch(async (query, count) => {
+      asked.push([query, count]);
+      return [
+        { title: 'Tides explained', url: 'https://example.org/tides', snippet: 'Tides follow the Moon.' },
+        { title: 'No snippet', url: 'https://example.net/empty', snippet: '' },
+        { title: 'Not a page', url: 'ftp://example.com/file', snippet: 'Old files.' },
+        { title: 'Ocean', url: 'https://example.com/ocean', snippet: 'The ocean covers most of the Earth.' },
+      ];
+    });
+    const result = await search('What moves the tides?');
+    assert.deepEqual(asked, [['What moves the tides?', 6]]);
+    assert.deepEqual(result.sources, [
+      { uri: 'https://example.org/tides', title: 'Tides explained' },
+      { uri: 'https://example.com/ocean', title: 'Ocean' },
+    ]);
+    const hits = webHits(result);
+    assert.deepEqual(
+      hits.map((h) => [h.web?.url, h.content]),
+      [
+        ['https://example.org/tides', 'Tides follow the Moon.'],
+        ['https://example.com/ocean', 'The ocean covers most of the Earth.'],
+      ],
+    );
   });
 });
