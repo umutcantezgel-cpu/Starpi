@@ -17,9 +17,10 @@
 //
 // The switches and the custom instructions ("About me", "How to answer") are kept here as well, in
 // the settings store of the app database. createMemoryStore() takes the database, clock, ids and
-// vault as options (tests); the page builds one with the defaults.
+// vault as options (tests); memoryStore() is the page's store on the app database and its vault.
 import { BM25Index } from '../rag/bm25.js';
-import { appDb } from '../store/schema.js';
+import { appDb, storeProfileName } from '../store/schema.js';
+import { keysReady, keyStore, openWithVault, sealWithVault } from './keys.js';
 
 /** @typedef {import('../store/idb.js').StoreDb} StoreDb */
 /** @typedef {import('../store/schema.js').MemoryRecord} MemoryRecord */
@@ -675,6 +676,27 @@ export function createMemoryStore(options = {}) {
     },
 
     /**
+     * The note that goes along with a question: while memory is on, the best ranked readable notes of
+     * the given scopes (pickFacts), which count as used. Nothing while memory is off or no scope is
+     * given (a project with memory off).
+     * @param {string} question
+     * @param {readonly string[]} scopes
+     * @param {string} locale
+     * @returns {Promise<{ note: string, facts: Fact[] }>}
+     */
+    async recall(question, scopes, locale) {
+      if (!scopes.length || !(await store.prefs()).enabled) return { note: '', facts: [] };
+      const { facts } = await store.list();
+      const picked = pickFacts(
+        facts.filter((f) => scopes.includes(f.scope)),
+        question,
+        { now: now() },
+      );
+      if (picked.length) await store.markUsed(picked.map((f) => f.id));
+      return { note: memoryNote(picked, locale), facts: picked };
+    },
+
+    /**
      * The readable notes as a `starpi.memory/v1` document.
      * @param {{ exportedAt: string, version: string, projectName?: (id: string) => string | null }} meta
      */
@@ -760,3 +782,33 @@ export function createMemoryStore(options = {}) {
 }
 
 /** @typedef {ReturnType<typeof createMemoryStore>} MemoryStore */
+
+/**
+ * The page's vault (ai/keys.js) as the memory sees it.
+ * @type {MemoryVault}
+ */
+export const pageVault = Object.freeze({
+  state: () => keyStore.vaultState(),
+  seal: (/** @type {string} */ text) => sealWithVault(SEAL_PURPOSE, text),
+  open: (/** @type {SealedText} */ sealed) => openWithVault(SEAL_PURPOSE, sealed),
+});
+
+/** @type {MemoryStore | null} */
+let shared = null;
+
+/**
+ * The page's memory store: the app database, the vault (its state is read before the first call)
+ * and a change channel between the tabs.
+ * @returns {MemoryStore}
+ */
+export function memoryStore() {
+  shared ??= createMemoryStore({
+    open: async () => {
+      await keysReady().catch(() => {});
+      return appDb();
+    },
+    vault: pageVault,
+    channel: `${storeProfileName()}-memory`,
+  });
+  return shared;
+}

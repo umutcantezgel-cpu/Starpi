@@ -19,6 +19,7 @@
  * - setRouteDecider(fn): Auto's route decision ({ route: 'free' | 'grounded' } or null).
  * - registerTurnNotes(fn): notes for the context block of a free question (memory, packs).
  * - registerSystemNote(fn): text appended to the free system prompt (stable per conversation).
+ * - setWorkspaceScope(fn): the workspace documents a conversation's grounded questions search.
  * - registerRequestHook(fn): changes a request before it goes out (tools).
  * - setToolRunner(fn): runs the tool calls an answer stopped for.
  * - registerReceiptHook(fn): completes a grounded answer's receipt draft (relations, second opinions).
@@ -81,6 +82,7 @@ export {
   setAnswerLabeler,
   setRouteDecider,
   setToolRunner,
+  setWorkspaceScope,
 } from './hooks.js';
 
 /** @typedef {import('../store/schema.js').NodeRecord} NodeRecord */
@@ -175,6 +177,11 @@ export function threadConversationId() {
 
 export function isThreadBusy() {
   return busy;
+}
+
+/** The conversation an answer is being written in (null when none is): it may not be the one shown. */
+export function answeringConversation() {
+  return turn ? turn.conversationId : null;
 }
 
 /** @param {string} id */
@@ -752,7 +759,7 @@ async function freeRequest(target, path, ctx) {
   const caps = capsOf(target.provider, target.model);
   const locale = getLocale();
   const who = target.route === 'device' ? 'local' : target.route === 'local' ? 'server' : 'cloud';
-  const notes = [...systemNoteHooks].map((fn) => fn(ctx)).filter(Boolean);
+  const notes = (await Promise.all([...systemNoteHooks].map((fn) => Promise.resolve(fn(ctx)).catch((err) => (console.warn('[starpi] a system note hook failed', err), ''))))).filter(Boolean);
   const system = [freeSystemPrompt(who, locale), ...notes].join('\n\n');
   const asked = /** @type {NodeRecord} */ (path.at(-1));
   // Never reached: answerFree offers such a question to the model here and the own server only.
@@ -1132,7 +1139,7 @@ async function knownTitles() {
  */
 async function retrieveWorkspace(query, focus) {
   try {
-    const found = await searchWorkspace(query, LIMITS.retrievalRows);
+    const found = await scopedWorkspaceSearch(query, focus);
     if (!focus.length) return { hits: found.map(workspaceHit), pinned: 0 };
     /** @type {any[]} */
     const pinned = [];
@@ -1146,6 +1153,20 @@ async function retrieveWorkspace(query, focus) {
     console.warn('[starpi] workspace search failed', err);
     return { hits: [], pinned: 0 };
   }
+}
+
+/**
+ * The workspace search of the running turn: within the documents its conversation is scoped to
+ * (setWorkspaceScope, e.g. a project's files) and the files attached to the question, when a scope
+ * is set.
+ * @param {string} query
+ * @param {string[]} focus
+ */
+async function scopedWorkspaceSearch(query, focus) {
+  const scope = single.scope ? await Promise.resolve(single.scope(turnConversation())).catch(() => null) : null;
+  if (!scope?.length) return searchWorkspace(query, LIMITS.retrievalRows);
+  const allowed = new Set([...scope, ...focus]);
+  return (await searchWorkspace(query, LIMITS.retrievalRows * 4)).filter((h) => allowed.has(h.docId)).slice(0, LIMITS.retrievalRows);
 }
 
 /**

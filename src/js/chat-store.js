@@ -96,6 +96,7 @@ export function onSessionChange(listener) {
  * @property {(id: string) => Promise<void>} open  shows a stored conversation
  * @property {() => boolean} isBusy  an answer is being written
  * @property {() => void} reset  clears the chat on screen
+ * @property {() => string | null} [answering]  the conversation an answer is being written in
  */
 
 /** @type {ChatView | null} */

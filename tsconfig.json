@@ -120,6 +120,7 @@
     "src/js/ai/thinking.js",
     "src/js/ai/wheel.js",
     "src/js/ai/keys.js",
+    "src/js/ai/memory.js",
     "src/js/ai/transport-select.js",
     "src/js/chat.js",
     "src/js/code-blocks.js",

@@ -193,7 +193,7 @@ describe('conversation list', () => {
     trigger.focus();
     press(trigger, 'ArrowDown');
     await until(() => root.querySelector('[role="menu"]'), 'the menu');
-    assert.deepEqual(menuLabels(root), ['Rename', 'Pin', 'Export as Markdown', 'Export as JSON', 'Delete']);
+    assert.deepEqual(menuLabels(root), ['Rename', 'Pin', 'Archive', 'Export as Markdown', 'Export as JSON', 'Delete']);
     const menuTrigger = /** @type {HTMLElement} */ (root.querySelector('[data-action="conv-menu"]'));
     assert.equal(menuTrigger.getAttribute('aria-expanded'), 'true');
     assert.equal(menuTrigger.getAttribute('aria-controls'), 'chatListMenu');
@@ -404,7 +404,7 @@ describe('conversation list', () => {
     assert.equal(root.querySelector('[data-action="conv-menu"]')?.getAttribute('aria-label'), 'Weitere Aktionen für Asked in the chat');
     click(root.querySelector('[data-action="conv-menu"]'));
     await until(() => root.querySelector('[role="menu"]'), 'the menu');
-    assert.deepEqual(menuLabels(root), ['Umbenennen', 'Anheften', 'Als Markdown exportieren', 'Als JSON exportieren', 'Löschen']);
+    assert.deepEqual(menuLabels(root), ['Umbenennen', 'Anheften', 'Archivieren', 'Als Markdown exportieren', 'Als JSON exportieren', 'Löschen']);
     list.destroy();
   });
 });

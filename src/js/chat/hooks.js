@@ -40,6 +40,21 @@
  */
 
 /**
+ * The workspace documents a conversation's grounded questions search (null: all of them; files
+ * attached to the question are searched as well).
+ * @typedef {(conversationId: string) => readonly string[] | null | Promise<readonly string[] | null>} WorkspaceScope
+ */
+
+/**
+ * What a sidebar section gets from the conversation list.
+ * @typedef {object} SidebarSectionContext
+ * @property {typeof import('../dom.js').onAction} onAction
+ * @property {typeof import('../dom.js').onChange} onChange
+ * @property {(tab: string) => void} switchTab
+ * @property {typeof import('../ui/kit.js').toast} toast
+ */
+
+/**
  * An entry of the composer's tools menu.
  * @typedef {object} ComposerTool
  * @property {string} id
@@ -61,7 +76,7 @@ function add(set, value) {
 
 /** @type {Set<(ctx: TurnContext) => readonly string[] | Promise<readonly string[]>>} */
 export const turnNoteHooks = new Set();
-/** @type {Set<(ctx: TurnContext) => string>} */
+/** @type {Set<(ctx: TurnContext) => string | Promise<string>>} */
 export const systemNoteHooks = new Set();
 /** @type {Set<(req: AiRequest, ctx: TurnContext) => AiRequest>} */
 export const requestHooks = new Set();
@@ -73,13 +88,17 @@ export const messageActions = new Map();
 export const composerTools = new Map();
 /** @type {Map<string, (slot: HTMLElement) => void | (() => void)>} */
 export const composerSlots = new Map();
+/** @type {Map<string, (host: HTMLElement, ctx: SidebarSectionContext) => void | (() => void)>} */
+export const sidebarSections = new Map();
+/** @type {Set<() => void>} */
+const sidebarListeners = new Set();
 /** @type {Set<() => void>} */
 const slotListeners = new Set();
 /** @type {Set<() => void>} */
 const toolListeners = new Set();
 
-/** @type {{ route: RouteDecider | null, tools: ((input: { result: CompletionResult, request: AiRequest, ctx: TurnContext, signal: AbortSignal }) => Promise<CompletionResult | null>) | null, label: ((node: NodeRecord) => { kind: import('../ui/kit.js').Provenance, labelKey?: string } | null) | null }} */
-export const single = { route: null, tools: null, label: null };
+/** @type {{ scope: WorkspaceScope | null, route: RouteDecider | null, tools: ((input: { result: CompletionResult, request: AiRequest, ctx: TurnContext, signal: AbortSignal }) => Promise<CompletionResult | null>) | null, label: ((node: NodeRecord) => { kind: import('../ui/kit.js').Provenance, labelKey?: string } | null) | null }} */
+export const single = { scope: null, route: null, tools: null, label: null };
 
 /**
  * Notes for the current user turn of a free-chat question (memory facts, context packs). They go
@@ -93,7 +112,7 @@ export function registerTurnNotes(fn) {
 /**
  * Text appended to the free chat's system prompt (custom instructions). It must stay the same from
  * turn to turn of a conversation, or the provider's prompt cache is lost.
- * @param {(ctx: TurnContext) => string} fn
+ * @param {(ctx: TurnContext) => string | Promise<string>} fn
  */
 export function registerSystemNote(fn) {
   return add(systemNoteHooks, fn);
@@ -113,6 +132,18 @@ export function registerRequestHook(fn) {
  */
 export function registerReceiptHook(fn) {
   return add(receiptHooks, fn);
+}
+
+/**
+ * Limits the workspace search of a conversation's grounded questions (one scope; a later one
+ * replaces it).
+ * @param {WorkspaceScope | null} fn
+ */
+export function setWorkspaceScope(fn) {
+  single.scope = fn;
+  return () => {
+    if (single.scope === fn) single.scope = null;
+  };
 }
 
 /**
@@ -192,6 +223,29 @@ export function registerComposerTool(tool) {
       for (const fn of toolListeners) fn();
     }
   };
+}
+
+/**
+ * Adds a section to the sidebar, between the search box and the conversation list (projects,
+ * assistants). The render function gets its own host element and may return a cleanup function;
+ * sections show in registration order, and a later registration of the same id replaces it.
+ * @param {string} id
+ * @param {(host: HTMLElement, ctx: SidebarSectionContext) => void | (() => void)} render
+ */
+export function registerSidebarSection(id, render) {
+  sidebarSections.set(id, render);
+  for (const fn of sidebarListeners) fn();
+  return () => {
+    if (sidebarSections.get(id) === render) {
+      sidebarSections.delete(id);
+      for (const fn of sidebarListeners) fn();
+    }
+  };
+}
+
+/** @param {() => void} fn  the conversation list renders its sections again */
+export function onSidebarSections(fn) {
+  return add(sidebarListeners, fn);
 }
 
 /** @param {() => void} fn  the composer re-renders its slots */
