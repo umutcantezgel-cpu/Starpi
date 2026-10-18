@@ -39,6 +39,8 @@ const IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_IMAGES = 4;
 const MAX_RESPONSE_BYTES = 48 * 1024 * 1024;
+/** The file name of a download whose part has none. */
+const FALLBACK_NAME = 'image.png';
 
 /**
  * The image model of a provider: the first model of its catalog that makes images, else the default.
@@ -207,7 +209,7 @@ export async function showGeneratedImages(el, node, getBlob) {
       const href = URL.createObjectURL(record.data);
       const a = el.ownerDocument.createElement('a');
       a.href = href;
-      a.download = String(part.name ?? 'image.png');
+      a.download = String(part.name ?? FALLBACK_NAME);
       a.click();
       setTimeout(() => URL.revokeObjectURL(href), 10_000);
     });
