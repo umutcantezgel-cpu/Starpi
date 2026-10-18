@@ -29,9 +29,12 @@
     "silence": "Ended after 3 minutes of silence.",
     "hidden": "Ended because the tab was left.",
     "error": "The connection ended unexpectedly.",
-    "no_source": "No speech source is available for a live conversation.",
     "no_model": "No model is available. Add a key in Settings → Providers.",
     "microphone": "The microphone could not start."
+  },
+  "hint": {
+    "no_source": "No speech input here can turn a recording into text. Type your message below, or add a key or a local voice server in Settings → Voice.",
+    "not_heard": "Nothing was understood. Press to talk and try again, or type your message below."
   },
   "engine": {
     "live": "Gemini Live",

@@ -9,7 +9,9 @@
 // The screen keeps showing the whole answer with its flags; this module only decides what is heard.
 //
 // readAloud() takes a complete answer. createReadAloudStream() reads an answer while it streams:
-// each unit is spoken as soon as the gate can judge it, the count at the end.
+// each unit is spoken as soon as the gate can judge it, the count at the end. A stop() of the queue
+// (the stop button, another reading, the voice preview) ends a streaming reading for good: what the
+// answer still streams is not spoken, and no count follows.
 import { createSentenceGate } from '../core/gate.js';
 import { speechNotice } from './tts.js';
 
@@ -35,6 +37,7 @@ import { speechNotice } from './tts.js';
  * @property {GateMode} mode
  * @property {number} spoken      units handed to the queue
  * @property {number} withheld
+ * @property {boolean} stopped    the queue was stopped while the answer streamed
  */
 
 /**
@@ -67,6 +70,16 @@ export function createReadAloudStream(meta, { queue, locale }) {
   const gate = createSentenceGate({ mode, locale: lang, sources: meta.sources ?? [], question: meta.question ?? '', grounding: meta.grounding, identifiers: 'verbatim' });
   let spoken = 0;
   let noticed = false;
+  const epoch = queue.epoch();
+  let stopped = false;
+  /** Whether the queue was stopped since this reading began (the gate is then dropped once). */
+  const over = () => {
+    if (!stopped && queue.epoch() !== epoch) {
+      stopped = true;
+      gate.abort();
+    }
+    return stopped;
+  };
   /** @param {Released[]} units */
   const speak = (units) => {
     let n = 0;
@@ -82,8 +95,9 @@ export function createReadAloudStream(meta, { queue, locale }) {
     return n;
   };
   return {
-    push: (delta) => speak(gate.push(String(delta ?? ''))),
+    push: (delta) => (over() ? 0 : speak(gate.push(String(delta ?? '')))),
     end(final) {
+      if (over()) return { mode, spoken, withheld: 0, stopped: true };
       const result = gate.end(final);
       speak(result.released);
       const withheld = result.counts.withheld;
@@ -94,10 +108,11 @@ export function createReadAloudStream(meta, { queue, locale }) {
       }
       if (withheld > 0) queue.enqueue(speechNotice('voice.read.withheld', { count: withheld }, lang));
       else if (mode !== 'free' && spoken === 0) queue.enqueue(speechNotice('voice.read.nothing', {}, lang));
-      return { mode, spoken, withheld };
+      return { mode, spoken, withheld, stopped: false };
     },
     abort() {
-      gate.abort();
+      if (!stopped) gate.abort();
+      stopped = true;
     },
   };
 }

@@ -83,31 +83,59 @@ export function turnMessages(turn) {
   return { system, messages };
 }
 
-/**
- * Asks the model for a turn; yields the answer's text deltas.
- * @param {LiveTurn} turn
- * @returns {AsyncIterable<string>}
- */
-export async function* defaultAsk(turn) {
-  const target = pickTurnModel();
-  if (!target) throw Object.assign(new Error('no model'), { code: 'no_model' });
-  const adapter = createAdapter(target.provider);
-  const transport = await createTransportResolver()(target.provider, adapter);
-  const { system, messages } = turnMessages(turn);
-  const call = complete({ provider: target.provider, model: target.model, system, messages, maxOutputTokens: 700, temperature: 0.3 }, { adapter, transport, signal: turn.signal });
-  for await (const ev of call.events) {
-    if (ev.type === 'text') yield ev.delta;
-    if (ev.type === 'end' && ev.error && !turn.signal.aborted) throw Object.assign(new Error(ev.error.code), { code: ev.error.code });
-  }
-}
+/** @typedef {import('../ai/transport.js').Transport} Transport */
+/** @typedef {import('../ai/stream.js').Adapter} Adapter */
 
 /**
- * Excerpts from the workspace on this device for a source turn.
- * @param {string} query
- * @returns {Promise<GateSource[]>}
+ * @typedef {object} TurnAskDeps
+ * @property {() => { provider: ProviderId, model: string } | null} [pick]   default pickTurnModel
+ * @property {(provider: ProviderId, adapter: Adapter) => Transport | Promise<Transport>} [transport]  default: the page's transport choice
  */
-export async function defaultRetrieve(query) {
-  const hits = await searchWorkspace(query, EXCERPTS);
+
+/**
+ * A Live ask: the model a turn goes to, asked with the turn's prompt; yields the answer's text
+ * deltas. Without a reachable model it fails with the code 'no_model' (the controller ends the
+ * conversation with that reason); a failed call fails with the call's error code.
+ * @param {TurnAskDeps} [deps]
+ * @returns {(turn: LiveTurn) => AsyncIterable<string>}
+ */
+export function createTurnAsk(deps = {}) {
+  return async function* ask(turn) {
+    const target = (deps.pick ?? pickTurnModel)();
+    if (!target) throw Object.assign(new Error('no model'), { code: 'no_model' });
+    const adapter = createAdapter(target.provider);
+    const transport = await (deps.transport ?? createTransportResolver())(target.provider, adapter);
+    const { system, messages } = turnMessages(turn);
+    const call = complete({ provider: target.provider, model: target.model, system, messages, maxOutputTokens: 700, temperature: 0.3 }, { adapter, transport, signal: turn.signal });
+    for await (const ev of call.events) {
+      if (ev.type === 'text') yield ev.delta;
+      if (ev.type === 'end' && ev.error && !turn.signal.aborted) throw Object.assign(new Error(ev.error.code), { code: ev.error.code });
+    }
+  };
+}
+
+/** Asks the first reachable model for a turn (the default until the chat registers its own). */
+export const defaultAsk = createTurnAsk();
+
+/**
+ * A Live retrieve: excerpts for a source turn, labelled like chat citations and within the
+ * excerpt budget of a turn.
+ * @param {{ search?: (query: string, topK: number) => Promise<import('../rag/workspace.js').WorkspaceHit[]> }} [deps]  default: the workspace on this device
+ * @returns {(query: string) => Promise<GateSource[]>}
+ */
+export function createTurnRetrieve(deps = {}) {
+  return async (query) => turnSources(await (deps.search ?? searchWorkspace)(query, EXCERPTS));
+}
+
+/** Excerpts from the workspace on this device (the default until the chat registers its own). */
+export const defaultRetrieve = createTurnRetrieve();
+
+/**
+ * Workspace hits as gate sources, best first, until the excerpt budget is used.
+ * @param {import('../rag/workspace.js').WorkspaceHit[]} hits
+ * @returns {GateSource[]}
+ */
+export function turnSources(hits) {
   const citations = assignCitations(hits.map(workspaceHit), { excerptChars: 2400 });
   /** @type {GateSource[]} */
   const sources = [];

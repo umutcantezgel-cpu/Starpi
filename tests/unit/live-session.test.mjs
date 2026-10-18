@@ -2,19 +2,22 @@
 // from the live-token route, setup first, audio and transcripts back, a refused setup falling back
 // to push-to-talk turns), the controller in free mode (native audio, transcript labelled free, the
 // spoken free notice) and in source mode (retrieval per turn, the gate decides what is spoken, the
-// withheld count follows), its session limits (15 minutes, 3 minutes of silence, a hidden tab), and
-// the default turn prompt.
+// withheld count follows; also with the default ask against the chat fake and the default retrieval
+// shape), its session limits (15 minutes, 3 minutes of silence, a hidden tab), a stop that comes while
+// a recording is being closed, the hints when nothing can be transcribed, and the default turn prompt.
 import './setup.mjs';
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { buildVoiceDeps } from '../../api/_lib/voice-routes.js';
 import { handleLiveToken } from '../../api/voice/live-token.js';
 import { createGeminiFake, FAKE_LIVE_ANSWERS } from '../../scripts/fakes/gemini.mjs';
-import { pickTurnModel, TURN_INSTRUCTIONS, turnMessages } from '../../src/js/live/ask.js';
+import { createOpenAiFake } from '../../scripts/fakes/openai.mjs';
+import { directTransport } from '../../src/js/ai/transport.js';
+import { createTurnAsk, createTurnRetrieve, pickTurnModel, TURN_INSTRUCTIONS, turnMessages } from '../../src/js/live/ask.js';
 import { createLiveController, LIVE_LIMITS } from '../../src/js/live/controller.js';
 import { createLiveSession, liveEventsOf, socketUrl } from '../../src/js/live/session.js';
 import { createTranscript, renderTranscript } from '../../src/js/live/transcript.js';
-import { liveEndpoint } from '../../src/js/voice/catalog.js';
+import { LIMITS, liveEndpoint } from '../../src/js/voice/catalog.js';
 import { createSpeechQueue } from '../../src/js/voice/tts.js';
 import { encodeWav } from '../../src/js/voice/wav.js';
 import { jsonRequest, testKey } from './relay-helpers.mjs';
@@ -271,6 +274,117 @@ describe('Live controller, free mode', () => {
   });
 });
 
+describe('Live controller, ending and hints', () => {
+  it('a stop while the recording is being closed ends the turn there', async () => {
+    let asked = 0;
+    let transcribed = 0;
+    const slow = fakeCapture();
+    slow.stopWav = async () => {
+      await sleep(30);
+      return encodeWav(new Int16Array(8000), 16_000);
+    };
+    const { controller, spoken } = controllerWith({
+      canUseLive: () => false,
+      capture: () => slow,
+      transcribe: async () => {
+        transcribed += 1;
+        return { text: 'What is the budget?', source: 'gemini', attempts: [] };
+      },
+      ask: async function* () {
+        asked += 1;
+        yield 'An answer.';
+      },
+    });
+    await controller.start('free');
+    await controller.talk();
+    const sending = controller.talk();
+    controller.stop('stopped');
+    await sending;
+    await sleep(20);
+    assert.equal(controller.state(), 'ended');
+    assert.equal(transcribed, 0);
+    assert.equal(asked, 0);
+    assert.ok(!spoken.includes('An answer.'));
+  });
+
+  it('a stop while the microphone starts closes it again', async () => {
+    let release = () => {};
+    const mic = fakeCapture();
+    let cancelled = 0;
+    const start = mic.start;
+    mic.start = async () => {
+      await new Promise((resolve) => (release = () => resolve(undefined)));
+      await start();
+    };
+    mic.cancel = () => void (cancelled += 1);
+    const { controller } = controllerWith({ canUseLive: () => false, capture: () => mic });
+    await controller.start('sources');
+    const opening = controller.talk();
+    controller.stop('hidden');
+    release();
+    await opening;
+    assert.equal(controller.state(), 'ended');
+    assert.equal(controller.reason(), 'hidden');
+    assert.ok(cancelled >= 1, 'the microphone was closed');
+  });
+
+  it('says when no speech input can transcribe a recording; typed turns go on', async () => {
+    const { controller, capture, spoken } = controllerWith({
+      canUseLive: () => false,
+      canTranscribe: () => false,
+      ask: async function* () {
+        yield 'The review is in May. [Doc: plan.md, Chunk: 2]';
+      },
+    });
+    /** @type {Array<string | null>} */
+    const hints = [];
+    controller.onState(() => hints.push(controller.hint()));
+    await controller.start('sources');
+    assert.equal(controller.hint(), 'no_source');
+    await controller.talk();
+    assert.equal(controller.state(), 'ready');
+    assert.equal(capture.started, 0, 'nothing is recorded that nobody can transcribe');
+    await controller.say('When is the review?');
+    assert.equal(controller.hint(), null);
+    assert.deepEqual(spoken, ['The review is in May.']);
+    assert.ok(hints.includes('no_source'));
+    controller.stop();
+    assert.equal(controller.hint(), null);
+  });
+
+  it('says when a recording was understood as nothing, or when no source took it', async () => {
+    /** @type {import('../../src/js/voice/stt.js').TranscribeResult} */
+    let result = { text: '', source: null, attempts: [{ source: 'gemini', outcome: 'network' }] };
+    const { controller } = controllerWith({ canUseLive: () => false, transcribe: async () => result });
+    await controller.start('free');
+    await controller.talk();
+    await controller.talk();
+    assert.equal(controller.state(), 'ready');
+    assert.equal(controller.hint(), 'not_heard');
+    result = { text: '', source: null, attempts: [] };
+    await controller.talk();
+    assert.equal(controller.hint(), null, 'a new press clears the hint');
+    await controller.talk();
+    assert.equal(controller.hint(), 'no_source');
+    controller.stop();
+  });
+
+  it('shows a free turn as it streamed, words split across deltas included', async () => {
+    const { controller } = controllerWith({
+      canUseLive: () => false,
+      ask: async function* () {
+        yield* ['The bud', 'get is 4', '80 EUR', '. Trans', 'cription works.'];
+      },
+    });
+    await controller.start('free');
+    await controller.say('Tell me the budget.');
+    const answer = controller.transcript.entries().find((e) => e.role === 'assistant');
+    assert.equal(answer?.text, 'The budget is 480 EUR. Transcription works.');
+    assert.equal(answer?.label, 'free');
+    controller.stop();
+  });
+});
+
 describe('Live controller, source mode', () => {
   it('retrieves per turn and speaks only the sentences the gate releases, then the withheld count', async () => {
     /** @type {any[]} */
@@ -319,6 +433,78 @@ describe('Live controller, source mode', () => {
     await pending;
     assert.equal(controller.state(), 'ready');
     controller.stop();
+  });
+});
+
+describe('Live source mode with the default ask and retrieval', () => {
+  /** Workspace hits as the workspace search returns them. */
+  const HITS = [
+    { docId: 'd1', docName: 'plan.md', chunkIndex: 1, start: 0, end: 55, text: 'The yearly budget is 480 EUR and the review is in May.', score: 4.2, matchedTerms: ['budget'] },
+    { docId: 'd2', docName: 'team.md', chunkIndex: 0, start: 0, end: 30, text: 'The team meets every Tuesday.', score: 1.1, matchedTerms: [] },
+  ];
+
+  it('retrieves workspace excerpts as labelled sources within the excerpt budget', async () => {
+    /** @type {Array<[string, number]>} */
+    const searched = [];
+    const retrieve = createTurnRetrieve({
+      search: async (query, topK) => {
+        searched.push([query, topK]);
+        return HITS;
+      },
+    });
+    const sources = await retrieve('What is the budget?');
+    assert.deepEqual(searched, [['What is the budget?', 8]]);
+    assert.equal(sources.length, 2);
+    assert.match(sources[0].label, /^\[Doc: plan\.md, Chunk: \d+\]$/);
+    assert.equal(sources[0].text, HITS[0].text);
+    assert.equal(sources[0].kind, 'doc');
+    const many = Array.from({ length: 8 }, (_, i) => ({ ...HITS[0], docId: `d${i}`, docName: `notes-${i}.md`, text: `Line ${i}. ${'word '.repeat(1000)}` }));
+    const capped = await createTurnRetrieve({ search: async () => many })('q');
+    assert.ok(capped.length > 0 && capped.length < many.length, 'excerpts stop at the budget of a turn');
+    assert.ok(capped.reduce((n, s) => n + s.text.length, 0) <= LIMITS.liveExcerptChars);
+  });
+
+  it('asks the chat fake with the excerpts as data and speaks only what the gate releases', async () => {
+    const retrieve = createTurnRetrieve({ search: async () => HITS });
+    const [first] = await retrieve('What is the budget?');
+    const fake = createOpenAiFake({ gapMs: 0, fixtures: { live_turn: [{ text: `The yearly budget is 480 EUR. ${first.label} The team has 12 members.` }] } });
+    const chat = (await fake.listen(0)).url;
+    try {
+      const ask = createTurnAsk({
+        pick: () => ({ provider: 'groq', model: 'fake-groq-small' }),
+        transport: (provider) => directTransport(`${chat}/flavor/groq`, 'test-key', undefined, { provider }),
+      });
+      const { controller, spoken } = controllerWith({
+        transcribe: async () => ({ text: 'What is the budget? [[starpi-purpose:live_turn]]', source: 'gemini', attempts: [] }),
+        ask,
+        retrieve,
+      });
+      await controller.start('sources');
+      await controller.talk();
+      await controller.talk();
+      await until(() => controller.state() === 'ready' && spoken.length >= 2);
+      assert.match(spoken[0], /^The yearly budget is 480 EUR\.?$/);
+      assert.equal(spoken[1], '1 sentence withheld.');
+      assert.equal(spoken.length, 2);
+      const sent = fake.requests.find((r) => r.path.endsWith('/chat/completions'));
+      const system = sent?.body.messages.find((/** @type {any} */ m) => m.role === 'system')?.content;
+      assert.ok(String(system).startsWith(TURN_INSTRUCTIONS.en.grounded), 'the grounded instructions');
+      assert.match(String(system), /The yearly budget is 480 EUR and the review is in May\./, 'the excerpt went along as data');
+      const answer = controller.transcript.entries().find((e) => e.role === 'assistant');
+      assert.equal(answer?.label, 'checked');
+      assert.equal(answer?.withheld, 1);
+      controller.stop();
+    } finally {
+      await fake.close();
+    }
+  });
+
+  it('ends the conversation when no model can be reached', async () => {
+    const { controller } = controllerWith({ canUseLive: () => false, ask: createTurnAsk({ pick: () => null }) });
+    await controller.start('free');
+    await controller.say('Hello?');
+    assert.equal(controller.state(), 'ended');
+    assert.equal(controller.reason(), 'no_model');
   });
 });
 
@@ -380,11 +566,11 @@ describe('Live turns and transcript', () => {
 
   it('append fragments to the open entry and keep a bounded history', () => {
     const t = createTranscript({ limit: 3 });
-    t.append('user', 'Hello');
-    t.append('user', 'there');
+    t.append('user', 'Hello', null, 'words');
+    t.append('user', 'there', null, 'words');
     t.close('user');
-    t.append('assistant', 'Hi', 'free');
-    t.append('assistant', '!', 'free');
+    t.append('assistant', 'Hi', 'free', 'words');
+    t.append('assistant', '!', 'free', 'words');
     t.close('assistant', { withheld: 0 });
     assert.deepEqual(t.history(), [
       { role: 'user', text: 'Hello there' },
@@ -395,5 +581,12 @@ describe('Live turns and transcript', () => {
     t.ensure('assistant', 'checked');
     assert.equal(t.entries().length, 3);
     assert.match(renderTranscript(t.entries()).value, /data-i18n="live\.transcript\.thinking"/);
+  });
+
+  it('join streamed deltas exactly as they come, even inside words and numbers', () => {
+    const t = createTranscript();
+    for (const delta of ['The bud', 'get is 4', '80 EUR', '. Trans', 'cription works.']) t.append('assistant', delta, 'free');
+    t.close('assistant');
+    assert.equal(t.entries()[0].text, 'The budget is 480 EUR. Transcription works.');
   });
 });

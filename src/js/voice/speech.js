@@ -76,11 +76,12 @@ async function siteReady() {
 export async function readAnswerAloud(answer, options = {}) {
   const q = speechQueue();
   const id = options.id ?? null;
-  if (q.speaking()) {
-    q.stop();
-    if (id !== null && id === readingId) return null;
-    await q.idle();
-  }
+  const again = q.speaking() && id !== null && id === readingId;
+  // Always a stop: it also ends an answer that is read while it streams (auto-read), even when
+  // that reading is waiting for its next sentence and nothing plays right now.
+  q.stop();
+  if (again) return null;
+  await q.idle();
   await getPlayback().unlock();
   await siteReady();
   const result = readAloud(answer, { queue: q, locale: answer.locale ?? getIntlLocale() });
@@ -107,7 +108,7 @@ export async function previewVoice() {
   q.enqueue(speechNotice('voice.preview.sample', {}, getIntlLocale()));
 }
 
-/** Stops whatever is being spoken. */
+/** Stops whatever is being spoken, an answer read while it streams included. */
 export function stopSpeaking() {
   queue?.stop();
   getPlayback().flush();

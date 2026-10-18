@@ -10,8 +10,11 @@
 //     sentences, then how many were withheld. Native audio cannot be gated, so this mode always runs
 //     as turns.
 // A session ends after LIMITS.liveSessionMin minutes, after LIMITS.liveSilenceMin minutes without
-// speech on either side, when the tab is hidden, or on stop(). Free sessions start with the spoken
-// notice that answers are not checked. Nothing of the conversation is stored.
+// speech on either side, when the tab is hidden, or on stop(); nothing that was still under way
+// (a recording being closed, a transcription, an answer) carries on after that. Free sessions start
+// with the spoken notice that answers are not checked. When no speech input can transcribe a
+// recording, or nothing was understood, the controller says so through hint() and typed turns go on.
+// Nothing of the conversation is stored.
 import { createSentenceGate } from '../core/gate.js';
 import { LIMITS } from '../voice/catalog.js';
 import { speechNotice } from '../voice/tts.js';
@@ -36,7 +39,12 @@ import { createTranscript } from './transcript.js';
  * speaking: the answer is being spoken; ended: over (see `reason`).
  * @typedef {'idle' | 'connecting' | 'ready' | 'listening' | 'thinking' | 'speaking' | 'ended'} LiveState
  */
-/** @typedef {'stopped' | 'limit' | 'silence' | 'hidden' | 'error' | 'no_source' | 'no_model' | 'microphone'} EndReason */
+/** @typedef {'stopped' | 'limit' | 'silence' | 'hidden' | 'error' | 'no_model' | 'microphone'} EndReason */
+/**
+ * Why push-to-talk did not lead to a turn. no_source: no speech input can transcribe a recording;
+ * not_heard: the recording was transcribed as nothing, or every source failed.
+ * @typedef {'no_source' | 'not_heard'} LiveHint
+ */
 
 /**
  * @typedef {object} LiveDeps
@@ -47,6 +55,7 @@ import { createTranscript } from './transcript.js';
  * @property {Playback} playback
  * @property {SpeechQueue} queue
  * @property {(wav: Uint8Array, signal: AbortSignal) => Promise<TranscribeResult>} transcribe
+ * @property {() => boolean} [canTranscribe]     a speech input source can transcribe a recording (default: yes)
  * @property {LiveAsk} ask
  * @property {LiveRetrieve} retrieve
  * @property {() => Promise<{ mime: 'image/jpeg', data: string }>} [camera]
@@ -69,6 +78,7 @@ import { createTranscript } from './transcript.js';
  * @property {() => LiveMode} mode
  * @property {() => LiveEngine | null} engine
  * @property {() => EndReason | null} reason
+ * @property {() => LiveHint | null} hint       why the last press to talk led to no turn (cleared by the next one)
  * @property {import('./transcript.js').Transcript} transcript
  * @property {(fn: (state: LiveState) => void) => () => void} onState
  */
@@ -92,6 +102,8 @@ export function createLiveController(deps) {
   let engine = null;
   /** @type {EndReason | null} */
   let reason = null;
+  /** @type {LiveHint | null} */
+  let hint = null;
   /** @type {ReturnType<typeof createLiveSession> | null} */
   let session = null;
   /** @type {Capture | null} */
@@ -111,11 +123,27 @@ export function createLiveController(deps) {
   /** @type {Set<(state: LiveState) => void>} */
   const listeners = new Set();
 
+  const notify = () => {
+    for (const fn of listeners) fn(state);
+  };
   /** @param {LiveState} next */
   const set = (next) => {
-    if (state === next) return;
+    // An ended conversation only comes back through start() (connecting).
+    if (state === next || (state === 'ended' && next !== 'connecting')) return;
     state = next;
-    for (const fn of listeners) fn(state);
+    notify();
+  };
+  /** @param {LiveHint | null} next */
+  const setHint = (next) => {
+    if (hint === next) return;
+    hint = next;
+    notify();
+  };
+  /** Turns need a source that transcribes a recording; without one the user is told at once. */
+  const checkSource = () => {
+    const ok = deps.canTranscribe?.() ?? true;
+    setHint(ok ? null : 'no_source');
+    return ok;
   };
   const active = () => state !== 'idle' && state !== 'ended';
   const touch = () => {
@@ -158,19 +186,26 @@ export function createLiveController(deps) {
     s.onEvent((event) => onLiveEvent(event, settled));
     if (!s.connect()) return false;
     if (!(await ready)) return false;
+    if (!active()) return true;
     engine = 'live';
-    capture = deps.capture();
-    capture.onFrame((pcm, level) => {
+    const mic = deps.capture();
+    capture = mic;
+    mic.onFrame((pcm, level) => {
       if (level > silenceLevel) touch();
       s.sendAudio(pcm);
     });
-    capture.onEvent((event) => {
+    mic.onEvent((event) => {
       if (event === 'hidden') stop('hidden');
     });
     try {
-      await capture.start();
+      await mic.start();
     } catch {
       stop('microphone');
+      return true;
+    }
+    // Ended while the microphone was starting: it closes again.
+    if (!active() || capture !== mic) {
+      mic.cancel();
       return true;
     }
     set('listening');
@@ -197,13 +232,13 @@ export function createLiveController(deps) {
         touch();
         // A typed turn is already in the transcript; an echo of it is not added twice.
         if (typed && event.text.trim() === typed) typed = '';
-        else transcript.append('user', event.text);
+        else transcript.append('user', event.text, null, 'words');
         break;
       case 'output_transcript':
       case 'text':
         touch();
         transcript.close('user');
-        transcript.append('assistant', event.text, 'free');
+        transcript.append('assistant', event.text, 'free', 'words');
         break;
       case 'interrupted':
         deps.playback.flush();
@@ -240,6 +275,7 @@ export function createLiveController(deps) {
     capture = null;
     session = null;
     engine = 'turns';
+    checkSource();
     set('ready');
   }
 
@@ -322,6 +358,8 @@ export function createLiveController(deps) {
       capture = null;
       const length = current.durationMs();
       const wav = await current.stopWav();
+      // Ended while the last frames were collected (the sheet closed, the tab hidden): no turn.
+      if (!active()) return;
       if (length < LIMITS.minUtteranceMs) {
         set('ready');
         return;
@@ -329,35 +367,47 @@ export function createLiveController(deps) {
       set('thinking');
       const controller = new AbortController();
       turn = controller;
-      const heard = await deps.transcribe(wav, controller.signal).then(
-        (r) => r.text,
-        () => '',
+      /** @type {TranscribeResult | null} */
+      const result = await deps.transcribe(wav, controller.signal).then(
+        (r) => r,
+        () => null,
       );
-      turn = null;
-      if (!active()) return;
+      if (turn === controller) turn = null;
+      if (!active() || controller.signal.aborted) return;
+      const heard = result?.text.trim() ?? '';
       if (!heard) {
+        setHint(result && result.source === null && result.attempts.length === 0 ? 'no_source' : 'not_heard');
         set('ready');
         return;
       }
       await answer(heard);
       return;
     }
-    capture = deps.capture();
-    capture.onLevel((level) => {
+    if (state !== 'ready' || capture) return;
+    if (!checkSource()) return;
+    const mic = deps.capture();
+    capture = mic;
+    mic.onLevel((level) => {
       if (level > silenceLevel) touch();
     });
-    capture.onEvent((event) => {
+    mic.onEvent((event) => {
       if (event === 'limit') void talk();
       if (event === 'hidden') stop('hidden');
     });
     try {
-      await capture.start();
-      set('listening');
-      touch();
+      await mic.start();
     } catch {
-      capture = null;
+      if (capture === mic) capture = null;
       set('ready');
+      return;
     }
+    // Ended (or interrupted) while the microphone was starting: it closes again.
+    if (!active() || capture !== mic) {
+      mic.cancel();
+      return;
+    }
+    set('listening');
+    touch();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -382,6 +432,7 @@ export function createLiveController(deps) {
     ticker = null;
     for (const fn of cleanups) fn();
     cleanups = [];
+    hint = null;
     set('ended');
   }
 
@@ -390,6 +441,7 @@ export function createLiveController(deps) {
       if (active()) return;
       mode = nextMode;
       reason = null;
+      hint = null;
       engine = null;
       pendingImage = null;
       transcript.clear();
@@ -403,6 +455,7 @@ export function createLiveController(deps) {
       if (mode === 'free' && deps.canUseLive() && (await startLive())) return;
       if (!active()) return;
       engine = 'turns';
+      checkSource();
       set('ready');
     },
     stop,
@@ -417,7 +470,10 @@ export function createLiveController(deps) {
         session.sendText(typed);
         return;
       }
-      if (state === 'ready') await answer(text);
+      if (state === 'ready') {
+        setHint(null);
+        await answer(text);
+      }
     },
     async snapshot() {
       if (!active() || !deps.camera) return false;
@@ -435,6 +491,7 @@ export function createLiveController(deps) {
     mode: () => mode,
     engine: () => engine,
     reason: () => reason,
+    hint: () => hint,
     transcript,
     onState(fn) {
       listeners.add(fn);

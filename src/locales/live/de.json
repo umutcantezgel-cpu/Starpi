@@ -29,9 +29,12 @@
     "silence": "Nach 3 Minuten Stille beendet.",
     "hidden": "Beendet, weil der Tab verlassen wurde.",
     "error": "Die Verbindung wurde unerwartet beendet.",
-    "no_source": "Für ein Live-Gespräch ist keine Sprachquelle verfügbar.",
     "no_model": "Kein Modell verfügbar. Fügen Sie unter Einstellungen → Anbieter einen Schlüssel hinzu.",
     "microphone": "Das Mikrofon konnte nicht starten."
+  },
+  "hint": {
+    "no_source": "Hier kann keine Spracheingabe eine Aufnahme in Text umwandeln. Tippen Sie Ihre Nachricht unten ein, oder fügen Sie unter Einstellungen → Sprache einen Schlüssel oder einen lokalen Sprachserver hinzu.",
+    "not_heard": "Es wurde nichts verstanden. Drücken Sie zum Sprechen und versuchen Sie es erneut, oder tippen Sie Ihre Nachricht unten ein."
   },
   "engine": {
     "live": "Gemini Live",

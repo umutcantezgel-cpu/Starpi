@@ -10,7 +10,9 @@
 // (splitForSpeech). Engines (sources/*.js) turn a piece into something playable; the next piece is
 // prepared while the current one plays. When an engine fails, the queue moves to the next engine of
 // its list for the rest of the reading (the browser's own voices come last) and reports the step;
-// when none is left the reading ends and the text stays on the screen. stop() ends a reading at once.
+// when none is left the reading ends and the text stays on the screen. stop() ends a reading at once
+// and starts a new epoch: a reading that streams in (read-aloud.js) and began before the stop adds
+// nothing more, and items queued right after the stop are a new reading of their own.
 import { isReleased } from '../core/gate.js';
 import { t } from '../i18n/index.js';
 import { LIMITS } from './catalog.js';
@@ -71,10 +73,20 @@ const NOTICE_PARAMS = new Set(['count']);
 const NOTICES = new WeakSet();
 
 /**
+ * The dictionary language of a locale: 'de' for 'de', 'de-DE' or 'de_AT' (the dictionaries are
+ * keyed by language, speech and Intl use full tags). Undefined: the interface language.
+ * @param {string | undefined} locale
+ */
+export function dictionaryLocale(locale) {
+  const lang = String(locale ?? '').trim().split(/[-_]/)[0].toLowerCase();
+  return /^[a-z]{2,3}$/.test(lang) ? lang : undefined;
+}
+
+/**
  * One of the app's own spoken sentences, from an allowlisted dictionary key.
  * @param {string} key one of NOTICE_KEYS
  * @param {Record<string, number>} [params] numbers only
- * @param {string} [locale]
+ * @param {string} [locale] a language ('de') or a BCP 47 tag ('de-DE'); the interface language when left out
  * @returns {SpeechNotice}
  */
 export function speechNotice(key, params = {}, locale) {
@@ -82,7 +94,7 @@ export function speechNotice(key, params = {}, locale) {
   for (const [name, value] of Object.entries(params)) {
     if (!NOTICE_PARAMS.has(name) || typeof value !== 'number' || !Number.isFinite(value)) throw new TypeError('speechNotice: parameters must be known numbers');
   }
-  const text = t(key, params, /** @type {any} */ (locale));
+  const text = t(key, params, dictionaryLocale(locale));
   const notice = /** @type {SpeechNotice} */ (Object.freeze({ text, spoken: text, key, notice: true }));
   NOTICES.add(notice);
   return notice;
@@ -181,6 +193,7 @@ export function pickBrowserVoice(voices, locale, options = {}) {
  * @property {() => Promise<void>} idle             resolves when nothing is queued or playing
  * @property {(fn: (speaking: boolean) => void) => () => void} onState
  * @property {() => string | null} engine           the engine of the current reading
+ * @property {() => number} epoch                    counts stop() calls; a stream that began in an earlier epoch is over
  */
 
 /**
@@ -191,9 +204,12 @@ export function createSpeechQueue(deps) {
   const speakable = deps.speakable ?? isSpeakable;
   const maxChars = deps.maxChars ?? LIMITS.speakChars;
   /** @typedef {{ playable: Playable, index: number }} Ready */
-  /** @type {Array<{ text: string, prepared: Promise<Ready | null> | null }>} */
+  /** @typedef {Array<{ text: string, prepared: Promise<Ready | null> | null }>} Pieces */
+  /** What is queued; stop() replaces the list, so a reading that is still ending keeps its own. */
+  /** @type {Pieces} */
   let pieces = [];
   let running = false;
+  let epoch = 0;
   /** @type {AbortController | null} */
   let controller = null;
   /** @type {SpeechEngine[]} */
@@ -253,16 +269,18 @@ export function createSpeechQueue(deps) {
     running = true;
     controller = new AbortController();
     const { signal } = controller;
+    // This reading's pieces: items queued after a stop() go to a new list and wait for the next run.
+    const list = pieces;
     engines = deps.engines();
     engineIndex = 0;
     notify(true);
     try {
-      while (pieces.length && !signal.aborted) {
-        const piece = pieces[0];
+      while (list.length && !signal.aborted) {
+        const piece = list[0];
         let ready = await (piece.prepared ??= prepare(piece.text, signal));
         while (ready && !signal.aborted) {
           // The next piece is prepared while this one plays.
-          const following = pieces[1];
+          const following = list[1];
           if (following && !following.prepared) following.prepared = prepare(following.text, signal);
           try {
             await ready.playable.play(signal);
@@ -273,9 +291,9 @@ export function createSpeechQueue(deps) {
             ready = await prepare(piece.text, signal);
           }
         }
-        pieces.shift();
+        list.shift();
         // No engine is left: the rest of the reading stays on the screen only.
-        if (!ready) pieces = [];
+        if (!ready) list.length = 0;
       }
     } finally {
       running = false;
@@ -303,6 +321,7 @@ export function createSpeechQueue(deps) {
       return true;
     },
     stop() {
+      epoch += 1;
       pieces = [];
       controller?.abort();
     },
@@ -315,5 +334,6 @@ export function createSpeechQueue(deps) {
       };
     },
     engine: () => (running ? (engines[engineIndex]?.id ?? null) : null),
+    epoch: () => epoch,
   };
 }

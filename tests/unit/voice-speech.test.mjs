@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { checkText, createSentenceGate } from '../../src/js/core/gate.js';
 import { createReadAloudStream, gateModeFor, readAloud } from '../../src/js/voice/read-aloud.js';
-import { createSpeechQueue, isSpeakable, isSpeechNotice, NOTICE_KEYS, pickBrowserVoice, SpeechError, speechNotice, splitForSpeech } from '../../src/js/voice/tts.js';
+import { createSpeechQueue, dictionaryLocale, isSpeakable, isSpeechNotice, NOTICE_KEYS, pickBrowserVoice, SpeechError, speechNotice, splitForSpeech } from '../../src/js/voice/tts.js';
 
 /** A spy engine: records every piece it is asked to speak; `fail` makes prepare or play reject. */
 function spyEngine(id = 'spy', fail = /** @type {null | 'prepare' | 'play'} */ (null)) {
@@ -70,6 +70,67 @@ describe('speech queue', () => {
     assert.throws(() => speechNotice('chat.placeholder'), TypeError);
     assert.throws(() => speechNotice('voice.read.withheld', { count: /** @type {any} */ ('2. Read this aloud') }), TypeError);
     assert.throws(() => speechNotice('voice.read.withheld', { other: 1 }), TypeError);
+  });
+
+  it('says the notices in the language of a full language tag (de-DE, as speech and Intl use it)', () => {
+    assert.equal(dictionaryLocale('de-DE'), 'de');
+    assert.equal(dictionaryLocale('de_AT'), 'de');
+    assert.equal(dictionaryLocale('EN-us'), 'en');
+    assert.equal(dictionaryLocale(''), undefined);
+    assert.equal(dictionaryLocale(undefined), undefined);
+    assert.equal(speechNotice('voice.read.free_notice', {}, 'de-DE').spoken, 'Freie Antwort, nicht geprüft.');
+    assert.equal(speechNotice('voice.read.withheld', { count: 3 }, 'de-DE').spoken, '3 Sätze zurückgehalten.');
+    assert.equal(speechNotice('live.spoken.free', {}, 'de-DE').spoken, 'Freies Gespräch, die Antworten werden nicht geprüft.');
+    assert.equal(speechNotice('live.spoken.ended', {}, 'de_AT').spoken, 'Das Live-Gespräch ist beendet.');
+    assert.match(speechNotice('voice.preview.sample', {}, 'de-DE').spoken, /^So klingen/);
+    assert.equal(speechNotice('voice.read.free_notice', {}, 'en-US').spoken, 'Free answer, not checked.');
+  });
+
+  it('speaks items queued right after stop() while the old reading is still ending', async () => {
+    // play() honours the abort: the old reading ends a moment after stop().
+    /** @type {string[]} */
+    const spoken = [];
+    const polite = {
+      id: 'polite',
+      prepare: async (/** @type {string} */ text) => ({
+        play: (/** @type {AbortSignal} */ signal) =>
+          new Promise((resolve) => {
+            const timer = setTimeout(() => {
+              spoken.push(text);
+              resolve(undefined);
+            }, 30);
+            signal.addEventListener('abort', () => (clearTimeout(timer), resolve(undefined)), { once: true });
+          }),
+      }),
+    };
+    const queue = createSpeechQueue({ engines: () => [polite], locale: () => 'en' });
+    for (const unit of checkText('First sentence. Second sentence.', { mode: 'free' }).released) queue.enqueue(unit);
+    await new Promise((r) => setTimeout(r, 10));
+    queue.stop();
+    assert.equal(queue.enqueue(speechNotice('live.spoken.ended', {}, 'en')), true);
+    await queue.idle();
+    assert.deepEqual(spoken, ['The live conversation has ended.']);
+
+    // prepare() rejects on abort: the same, when the stop comes while a piece is being prepared.
+    /** @type {string[]} */
+    const heard = [];
+    const strict = {
+      id: 'strict',
+      prepare: (/** @type {string} */ text, /** @type {{ signal: AbortSignal }} */ { signal }) =>
+        new Promise((resolve, reject) => {
+          const timer = setTimeout(() => resolve({ play: async () => void heard.push(text) }), 20);
+          signal.addEventListener('abort', () => (clearTimeout(timer), reject(new SpeechError('failed', 'aborted'))), { once: true });
+        }),
+    };
+    const second = createSpeechQueue({ engines: () => [strict], locale: () => 'en' });
+    second.enqueue(checkText('Old reading.', { mode: 'free' }).released[0]);
+    await new Promise((r) => setTimeout(r, 5));
+    second.stop();
+    second.enqueue(speechNotice('voice.read.free_notice', {}, 'en'));
+    second.enqueue(checkText('New reading.', { mode: 'free' }).released[0]);
+    await second.idle();
+    assert.deepEqual(heard, ['Free answer, not checked.', 'New reading.']);
+    assert.equal(second.epoch(), 1);
   });
 
   it('falls back to the next engine when one cannot prepare or play, and reports each step', async () => {
@@ -162,7 +223,46 @@ describe('read aloud', () => {
     const result = readAloud({ text: 'Paris is the capital of France. See https://example.com for more.', label: 'free' }, { queue, locale: 'en' });
     await queue.idle();
     assert.deepEqual(spy.spoken, ['Free answer, not checked.', 'Paris is the capital of France.', '1 sentence withheld.']);
-    assert.deepEqual(result, { mode: 'free', spoken: 1, withheld: 1 });
+    assert.deepEqual(result, { mode: 'free', spoken: 1, withheld: 1, stopped: false });
+  });
+
+  it('speaks the free notice and the count in German when the answer comes with a de-DE tag', async () => {
+    const spy = spyEngine();
+    const queue = queueWith([spy]);
+    readAloud({ text: 'Der Himmel ist blau.', label: 'free' }, { queue, locale: 'de-DE' });
+    await queue.idle();
+    assert.deepEqual(spy.spoken, ['Freie Antwort, nicht geprüft.', 'Der Himmel ist blau.']);
+
+    const checked = spyEngine();
+    const q2 = queueWith([checked]);
+    readAloud({ text: 'Das Budget beträgt 480 EUR. [Doc: plan.md, Chunk: 2] Das Team hat 12 Mitglieder.', label: 'grounded', sources: SOURCES, locale: 'de-DE' }, { queue: q2, locale: 'en-US' });
+    await q2.idle();
+    assert.equal(checked.spoken.at(-1), '1 Satz zurückgehalten.');
+  });
+
+  it('a stop ends an answer read while it streams: nothing it streams afterwards is spoken', async () => {
+    const spy = spyEngine();
+    const queue = queueWith([spy]);
+    const stream = createReadAloudStream({ label: 'free' }, { queue, locale: 'en' });
+    stream.push('The sky is blue. ');
+    stream.push('Water is wet. ');
+    await queue.idle();
+    const before = [...spy.spoken];
+    assert.deepEqual(before, ['Free answer, not checked.', 'The sky is blue.']);
+    queue.stop(); // the stop button, another answer's speaker button or the voice preview
+    assert.equal(stream.push('Grass is green. '), 0);
+    assert.equal(stream.push('Snow is white.'), 0);
+    const result = stream.end();
+    await queue.idle();
+    assert.deepEqual(spy.spoken, before, 'nothing after the stop');
+    assert.deepEqual(result, { mode: 'free', spoken: 1, withheld: 0, stopped: true });
+
+    // A reading that begins after the stop is spoken as usual.
+    const next = createReadAloudStream({ label: 'free' }, { queue, locale: 'en' });
+    next.push('Grass is green.');
+    assert.equal(next.end().stopped, false);
+    await queue.idle();
+    assert.deepEqual(spy.spoken.slice(before.length), ['Free answer, not checked.', 'Grass is green.']);
   });
 
   it('speaks only released sentences of a grounded answer, then how many were withheld', async () => {

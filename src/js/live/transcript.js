@@ -2,12 +2,15 @@
 // The transcript of a Live conversation: what the user said and what the assistant answered, turn
 // by turn, each answer with its label. A free answer is "Free · not checked"; an answer of a source
 // conversation is "Checked against your sources" with the number of sentences that were held back
-// (not spoken). Text arrives in pieces (transcription fragments, streamed deltas) and is appended to
-// the open entry of its role. Only the last LIMIT entries are kept; nothing is stored.
+// (not spoken). Text arrives in pieces and is appended to the open entry of its role: streamed
+// deltas exactly as they come (they split inside words and numbers), transcription fragments of the
+// Live service as words (a space between two fragments unless one already has it). Only the last
+// LIMIT entries are kept; nothing is stored.
 import { html, label, provenanceBadge } from '../ui/kit.js';
 
 /** @typedef {'user' | 'assistant'} Speaker */
 /** @typedef {'free' | 'checked'} EntryLabel */
+/** @typedef {'raw' | 'words'} JoinMode  raw: the piece continues the text as it is; words: a fragment of its own */
 
 /**
  * @typedef {object} TranscriptEntry
@@ -57,12 +60,14 @@ export function createTranscript(options = {}) {
      * @param {Speaker} role
      * @param {string} text
      * @param {EntryLabel | null} [entryLabel]
+     * @param {JoinMode} [join]
      */
-    append(role, text, entryLabel = null) {
+    append(role, text, entryLabel = null, join = 'raw') {
       const piece = String(text ?? '');
       if (!piece) return null;
       const entry = openEntry(role, entryLabel);
-      entry.text = entry.text && !/\s$/.test(entry.text) && !/^[\s.,;:!?)]/.test(piece) ? `${entry.text} ${piece.trimStart()}` : entry.text + piece;
+      const spaced = join === 'words' && entry.text && !/\s$/.test(entry.text) && !/^[\s.,;:!?)]/.test(piece);
+      entry.text = spaced ? `${entry.text} ${piece}` : entry.text + piece;
       notify();
       return entry;
     },

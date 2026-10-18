@@ -40,6 +40,9 @@ const STATE_KEYS = Object.freeze(
   }),
 );
 
+/** Speech input sources that can transcribe a recording (browser recognition cannot, it listens itself). */
+const transcribers = () => sttChain(STT, pageContext).filter((s) => s.transcribe);
+
 /** @type {ReturnType<typeof createLiveController> | null} */
 let controller = null;
 let wired = false;
@@ -58,7 +61,8 @@ function liveController() {
     capture: () => createCapture({ context: () => playback.context(), activity: [playback, queueActivity] }),
     playback,
     queue,
-    transcribe: (wav, signal) => transcribeWithFallback(wav, { chain: sttChain(STT, pageContext).filter((s) => s.transcribe), ctx: pageContext, locale: getIntlLocale(), signal }),
+    transcribe: (wav, signal) => transcribeWithFallback(wav, { chain: transcribers(), ctx: pageContext, locale: getIntlLocale(), signal }),
+    canTranscribe: () => transcribers().length > 0,
     ask: (turn) => (voiceUi().ask ?? defaultAsk)(turn),
     retrieve: (query, options) => (voiceUi().retrieve ?? defaultRetrieve)(query, options),
     camera: () => captureStill(),
@@ -110,13 +114,16 @@ function showState(el) {
   const part = (/** @type {string} */ name) => /** @type {HTMLElement | null} */ (el.querySelector(`[data-live="${name}"]`));
   const running = state !== 'idle' && state !== 'ended';
   const ended = state === 'ended' && c.reason() && c.reason() !== 'stopped';
+  // Why the last press to talk led to no turn, while the conversation waits for the next one.
+  const hint = running && state === 'ready' ? c.hint() : null;
   const status = part('state');
   if (status) {
-    const iconName = { idle: 'circle-dashed', connecting: 'loader-2', ready: 'mic', listening: 'mic', thinking: 'loader-2', speaking: 'volume-2', ended: 'circle-dashed' }[state];
+    const iconName = hint ? 'info' : { idle: 'circle-dashed', connecting: 'loader-2', ready: 'mic', listening: 'mic', thinking: 'loader-2', speaking: 'volume-2', ended: 'circle-dashed' }[state];
     const engine = c.engine();
+    const words = ended ? `live.ended.${c.reason()}` : hint ? `live.hint.${hint}` : STATE_KEYS[state];
     setHtml(
       status,
-      html`${icon(iconName, 'w-4 h-4')}${label(ended ? `live.ended.${c.reason()}` : STATE_KEYS[state])}${running && engine ? html`<span class="chip chip-neutral text-[11px]">${label(engine === 'live' ? 'live.engine.live' : 'live.engine.turns')}</span>` : ''}`.value,
+      html`${icon(iconName, 'w-4 h-4 shrink-0')}${label(words)}${running && engine ? html`<span class="chip chip-neutral text-[11px]">${label(engine === 'live' ? 'live.engine.live' : 'live.engine.turns')}</span>` : ''}`.value,
     );
   }
   part('start')?.classList.toggle('hidden', running);
