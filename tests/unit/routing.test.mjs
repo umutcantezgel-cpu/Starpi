@@ -1,7 +1,8 @@
 // Auto routing (src/js/ai/hybrid.js): explicit modes win, a classifier can only tighten a route,
 // attachments and references route to the sources, the workspace probe picks grounded, mixed or
-// free on the routing cases (tests/fixtures/routing), and the Web toggle with a model that cannot
-// search goes through a search API into a grounded answer, never for a question kept on this device.
+// free on the routing cases (tests/fixtures/routing), nothing but an attachment routes to the
+// sources while there are none, and the Web toggle with a model that cannot search goes through a
+// search API into a grounded answer, never for a question kept on this device.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
@@ -50,7 +51,7 @@ describe('decideRoute', () => {
     let hits = 0;
     for (const c of cases) {
       const attachments = (c.files ?? []).map((/** @type {string} */ kind) => ({ kind, name: `file.${kind === 'image' ? 'png' : 'pdf'}` }));
-      const d = await decideRoute({ question: c.q, mode: 'auto', attachments, workspaceProbe: probe, names });
+      const d = await decideRoute({ question: c.q, mode: 'auto', attachments, workspaceProbe: probe, names, documents: names.length });
       if (d.route === c.route) hits += 1;
       else misses.push(`${c.q} -> ${d.route} (expected ${c.route}; ${d.reasons.join(', ')})`);
       // The costly errors: a question about the files answered freely, or a general one from the files.
@@ -58,6 +59,32 @@ describe('decideRoute', () => {
       if (c.reference) assert.ok(d.reasons.includes('reference'), `${c.q} names the files`);
     }
     assert.ok(hits / cases.length >= 0.95, `accuracy ${hits}/${cases.length}:\n${misses.join('\n')}`);
+  });
+
+  it('stays free without a file in the workspace or a document in the library, whatever the question names', async () => {
+    const empty = { mode: /** @type {const} */ ('auto'), names: [], titles: [], documents: 0, workspaceProbe: () => ({ score: 0, coverage: 0, terms: 0, matched: [], hits: 0, docId: null }) };
+    const questions = [
+      'How do I search for a word in the file with grep?',
+      'How do I replace a string in the file using sed?',
+      'How can I insert a page break in the document in Word?',
+      'How do I back up my documents to the cloud?',
+      'How do I handle the uploaded file in an Express server?',
+      'Wie speichere ich hochgeladene Dateien in PHP?',
+      'Wie füge ich im Dokument ein Inhaltsverzeichnis ein?',
+      'Please improve this document: Dear Sir, I am writing to ask about the delivery.',
+      ...fixture('cases.json')
+        .cases.filter((/** @type {{ reference?: boolean }} */ c) => c.reference)
+        .map((/** @type {{ q: string }} */ c) => c.q),
+      'When is the launch of Project Beta?',
+    ];
+    for (const question of questions) {
+      const d = await decideRoute({ ...empty, question });
+      assert.deepEqual([d.route, d.reasons], ['free', ['no_sources']], question);
+    }
+    const attached = await decideRoute({ ...empty, question: 'Please translate this file.', attachments: [{ kind: 'document', name: 'a.docx' }] });
+    assert.equal(attached.route, 'grounded', 'an attached document is a source of its own');
+    const unset = await decideRoute({ ...empty, question: 'hello', modelReady: false });
+    assert.deepEqual([unset.route, unset.reasons], ['grounded', ['no_sources', 'no_model']], 'without a model the sources are quoted, as before');
   });
 
   it('keeps the probe thresholds in order', () => {
@@ -128,9 +155,12 @@ describe('decideRoute', () => {
 
 describe('references', () => {
   it('knows the generic phrases in English and German and the names of documents', () => {
-    assert.ok(namesSources('What does it say in the document about holidays?'));
+    assert.ok(namesSources('What does the document say about holidays?'));
+    assert.ok(namesSources('According to my notes, when is the review?'));
     assert.ok(namesSources('Was steht laut Quelle über den Termin?'));
     assert.ok(namesSources('Fasse meine Dokumente zusammen'));
+    assert.ok(namesSources('Which dates are in my notes?'));
+    assert.ok(namesSources('Welche Termine stehen in meinen Notizen?'));
     assert.ok(namesSources('Summarise remote-work-policy.md for me', ['remote-work-policy.md']));
     assert.ok(namesSources('What is in the remote-work-policy?', ['remote-work-policy.md']));
     assert.ok(!namesSources('How do I document my code?'));
@@ -138,6 +168,24 @@ describe('references', () => {
     assert.ok(!namesSources('Tell me about cats', ['a.md', 'cat']), 'names under four characters do not count');
     assert.ok(!namesSources('Take notes for me', ['notes.md']), 'a single common word without its extension does not count');
     assert.ok(namesSources('Was sagt notes.md dazu?', ['notes.md']));
+  });
+
+  it('leaves how-to questions and pasted text alone', () => {
+    for (const q of [
+      'How do I search for a word in the file with grep?',
+      'How can I insert a page break in the document in Word?',
+      'How do I back up my documents to the cloud?',
+      'How do I search in my files on my laptop?',
+      'How to find text in my notes app?',
+      'How do I handle the uploaded file in an Express server?',
+      'Wie speichere ich hochgeladene Dateien in PHP?',
+      'Wie füge ich im Dokument ein Inhaltsverzeichnis ein?',
+      'Wie suche ich in meinen Notizen auf dem Handy?',
+      'Please improve this document: Dear Sir, …',
+      'Cite the sources in APA style.',
+    ])
+      assert.ok(!namesSources(q), q);
+    assert.ok(namesSources('How do I qualify for the bonus according to my notes?'), 'a reference phrase counts in a how-to question too');
   });
 });
 

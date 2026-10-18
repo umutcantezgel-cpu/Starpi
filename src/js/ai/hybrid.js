@@ -9,16 +9,19 @@
 //      a. hooks.classify(question) runs first (empty here; an embedding app plugs in its own
 //         classifier). It can only make a route stricter, never looser: its answer is combined with
 //         the rules below and the stricter route wins.
-//      b. Attached documents, and phrases that point at the user's files ("in the document",
-//         "laut Quelle", a file name of the workspace), route to grounded, and so does a question
-//         that names the subject of a document in the knowledge base (two words of its title in a
-//         row: the library is not probed, its titles are known). Questions that carry only images
-//         stay free (an image is read by a model that sees, not searched).
-//      c. Otherwise the workspace probe decides: a strong match (normalised score >= strong, query
+//      b. Attached documents route to grounded. Questions that carry only images stay free (an
+//         image is read by a model that sees, not searched). Without a file in the workspace or a
+//         document in the knowledge base there is nothing a question's words could point at: it
+//         stays free, whatever it names ("How do I search in my files?").
+//      c. With sources: phrases that point at them ("according to my notes", "laut Quelle", a
+//         file name of the workspace) route to grounded, and so does a question that names the
+//         subject of a document in the knowledge base (two words of its title in a row: the library
+//         is not probed, its titles are known).
+//      d. Otherwise the workspace probe decides: a strong match (normalised score >= strong, query
 //         term coverage >= 0.5, at least two matched terms) routes to grounded, a weaker match of at
 //         least two terms (score >= weak) to mixed, anything else to free.
-//      d. Without a model that could answer, the sources are quoted: grounded.
-//      e. With the Web toggle on and a model without its own web search, a search API (when one
+//      e. Without a model that could answer, the sources are quoted: grounded.
+//      f. With the Web toggle on and a model without its own web search, a search API (when one
 //         is set up and the question may leave this device) finds pages, they become the passages
 //         of a context pack, and the answer is grounded on them.
 //
@@ -47,86 +50,125 @@ export const PROBE_THRESHOLDS = Object.freeze({ strong: 0.45, weak: 0.3, coverag
 export const ROUTE_TOP_K = Object.freeze({ grounded: 6, mixed: 3 });
 
 /**
- * Phrases that point at the user's own files, matched as whole words in the lower-cased question.
- * Short and generic on purpose: they must not catch everyday questions.
+ * Phrases that point at the user's own sources, matched as whole words in the lower-cased question.
+ * Short and generic on purpose, and narrow: they name a source the answer must come from
+ * ("according to my notes", "laut Quelle") or ask what one says ("was steht im Dokument"). A bare
+ * place such as "in the file" or "im Dokument" is not on the list: it opens how-to questions about
+ * software just as often ("How do I replace a string in the file with sed?") and refers to text
+ * pasted into the question as well.
  */
 export const REFERENCE_PHRASES = Object.freeze({
   en: Object.freeze([
-    'in the document',
-    'in the documents',
-    'in the file',
-    'in the files',
-    'in the attachment',
-    'in the attached',
-    'in the pdf',
-    'in my documents',
-    'in my files',
-    'in my notes',
-    'in my sources',
-    'from my documents',
-    'from my files',
-    'from my notes',
-    'from the document',
-    'from the sources',
     'according to the document',
+    'according to the documents',
     'according to the file',
+    'according to the files',
     'according to the source',
     'according to the sources',
+    'according to my documents',
+    'according to my files',
     'according to my notes',
-    'my documents',
-    'my sources',
-    'the uploaded',
-    'this document',
-    'these documents',
-    'cite the source',
+    'according to my sources',
+    'based on my documents',
+    'based on my files',
+    'based on my notes',
+    'based on my sources',
+    'based on the sources',
+    'in my sources',
+    'from my sources',
+    'my uploaded documents',
+    'my uploaded files',
+    'what does the document say',
+    'what do the documents say',
+    'what does the file say',
+    'what do my documents say',
+    'what do my files say',
+    'what do my notes say',
+    'summarize my documents',
+    'summarise my documents',
+    'summarize my files',
+    'summarise my files',
+    'summarize my notes',
+    'summarise my notes',
   ]),
   de: Object.freeze([
-    'im dokument',
-    'in dem dokument',
-    'in den dokumenten',
-    'in der datei',
-    'in den dateien',
-    'im anhang',
-    'im pdf',
-    'in meinen dokumenten',
-    'in meinen dateien',
-    'in meinen notizen',
-    'in meinen unterlagen',
-    'in meinen quellen',
-    'aus meinen dokumenten',
-    'aus meinen dateien',
-    'aus meinen unterlagen',
-    'aus dem dokument',
-    'aus den quellen',
     'laut dokument',
+    'laut dem dokument',
+    'laut den dokumenten',
     'laut datei',
+    'laut der datei',
     'laut quelle',
+    'laut der quelle',
     'laut quellen',
-    'laut den unterlagen',
+    'laut den quellen',
+    'laut meinen dokumenten',
+    'laut meinen dateien',
     'laut meinen notizen',
+    'laut meinen quellen',
+    'laut meinen unterlagen',
+    'laut den unterlagen',
     'gemäß dokument',
+    'gemäß dem dokument',
     'gemäß quelle',
-    'meine dokumente',
-    'meine quellen',
-    'dieses dokument',
-    'diese dokumente',
-    'hochgeladene',
+    'gemäß der quelle',
+    'gemäß den unterlagen',
+    'anhand meiner dokumente',
+    'anhand meiner notizen',
+    'anhand meiner quellen',
+    'anhand meiner unterlagen',
+    'anhand der unterlagen',
+    'in meinen quellen',
+    'aus meinen quellen',
+    'in meinen unterlagen',
+    'aus meinen unterlagen',
+    'meine hochgeladenen dokumente',
+    'meine hochgeladenen dateien',
+    'was steht im dokument',
+    'was steht in dem dokument',
+    'was steht in den dokumenten',
+    'was steht in der datei',
+    'was steht in meinen dokumenten',
+    'was steht in meinen dateien',
+    'was steht in meinen notizen',
+    'was sagt das dokument',
+    'was sagen meine dokumente',
+    'was sagen meine notizen',
+    'fasse meine dokumente',
+    'fasse meine dateien',
+    'fasse meine notizen',
+    'fasse meine unterlagen',
   ]),
 });
+
+/**
+ * Phrases that place a question in the user's own files ("in my notes"). They also open how-to
+ * questions ("How do I search in my files?"), so they count only in a question that does not start
+ * like one (HOW_TO).
+ */
+export const PLACE_PHRASES = Object.freeze({
+  en: Object.freeze(['in my documents', 'in my files', 'in my notes', 'from my documents', 'from my files', 'from my notes', 'in the sources', 'from the sources']),
+  de: Object.freeze(['in meinen dokumenten', 'in meinen dateien', 'in meinen notizen', 'aus meinen dokumenten', 'aus meinen dateien', 'aus meinen notizen', 'in den quellen', 'aus den quellen']),
+});
+
+/** The start of a how-to question, on the output of `words` ("how do i …", "wie speichere ich …"). */
+const HOW_TO = /^ (?:how (?:do|can|could|should|would|to) |is there a way |wie (?:\p{L}+ )?(?:ich|man) |gibt es eine möglichkeit )/u;
 
 /** @param {string} text  lower-cased words between single spaces, with a space at both ends */
 const words = (text) => ` ${text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
 
 /**
- * Whether a question points at the user's files: one of the reference phrases, or the name of a
- * document it can see (the whole name, or a name of several words without its extension; a name
- * under four characters does not count, nor does a single common word such as "notes").
+ * Whether a question points at the user's files: one of the reference phrases, a place phrase in a
+ * question that is not a how-to question, or the name of a document it can see (the whole name, or
+ * a name of several words without its extension; a name under four characters does not count, nor
+ * does a single common word such as "notes").
  * @param {string} question
  * @param {readonly string[]} [names]  document names in the workspace and the knowledge base
  */
 export function namesSources(question, names = []) {
   const q = words(question);
-  for (const list of Object.values(REFERENCE_PHRASES)) for (const phrase of list) if (q.includes(` ${phrase} `)) return true;
+  const has = (/** @type {Readonly<Record<string, readonly string[]>>} */ lists) => Object.values(lists).some((list) => list.some((phrase) => q.includes(` ${phrase} `)));
+  if (has(REFERENCE_PHRASES)) return true;
+  if (!HOW_TO.test(q) && has(PLACE_PHRASES)) return true;
   for (const name of names) {
     const raw = String(name);
     const full = words(raw).trim();
@@ -189,6 +231,8 @@ export function stricter(a, b) {
  * @property {{ classify?: ((question: string) => Promise<{ route: string, reasons?: string[] } | null> | { route: string, reasons?: string[] } | null) | null }} [hooks]
  * @property {readonly string[]} [names]      document names the question may refer to
  * @property {readonly string[]} [titles]     titles of the knowledge base's documents (their subject counts as a reference)
+ * @property {number} [documents]             files in the workspace plus documents in the knowledge base; with 0, no
+ *   reference, title or probe rule applies (left out: unknown, the rules apply)
  * @property {boolean} [modelReady]           a model can answer (default true)
  * @property {boolean} [deviceOnly]           the question stays on this device (no web search, no question to the library)
  * @property {{ on: boolean, native: boolean, searchApi: boolean }} [web]  the Web toggle, the model's own search, a search API
@@ -232,7 +276,7 @@ export async function decideRoute(input) {
       route = classified.route;
       reasons.push('classifier', ...(classified.reasons ?? []).map(String).slice(0, 4));
     }
-    // b. What the question carries and what it names.
+    // b. What the question carries.
     const kinds = (input.attachments ?? []).map((a) => a.kind);
     const documents = kinds.some((k) => k !== 'image');
     if (documents) {
@@ -240,14 +284,18 @@ export async function decideRoute(input) {
       reasons.push('attachment');
     } else if (kinds.length) {
       reasons.push('images_only');
+    } else if (input.documents === 0) {
+      // Nothing to answer from: what the question names cannot be in a source.
+      reasons.push('no_sources');
     } else if (namesSources(input.question, input.names)) {
+      // c. What it names.
       route = stricter(route, 'grounded');
       reasons.push('reference');
     } else if (namesTitle(input.question, input.titles)) {
       route = stricter(route, 'grounded');
       reasons.push('title');
     } else if (input.workspaceProbe && input.question.trim()) {
-      // c. The workspace probe.
+      // d. The workspace probe.
       try {
         probe = await input.workspaceProbe(input.question);
       } catch (err) {
@@ -257,12 +305,12 @@ export async function decideRoute(input) {
       route = stricter(route, byProbe);
       reasons.push(byProbe === 'grounded' ? 'probe_strong' : byProbe === 'mixed' ? 'probe_weak' : 'probe_none');
     }
-    // d. Nothing could answer: the sources are quoted (not for images, which have no text yet).
+    // e. Nothing could answer: the sources are quoted (not for images, which have no text yet).
     if (input.modelReady === false && !(kinds.length && !documents)) {
       route = stricter(route, 'grounded');
       reasons.push('no_model');
     }
-    // e. The Web toggle with a model that cannot search: a search API, then a pack.
+    // f. The Web toggle with a model that cannot search: a search API, then a pack.
     if (input.web?.on && !input.web.native) {
       if (input.deviceOnly) reasons.push('web_device_only');
       else if (input.web.searchApi) {

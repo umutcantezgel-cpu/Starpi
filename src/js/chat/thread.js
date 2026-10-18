@@ -1723,14 +1723,18 @@ async function routeFor(question, mode, attachments, value) {
   const deviceOnly = value === 'device';
   const webOn = getWebSearch();
   const titles = mode === 'auto' ? await knownTitles() : [];
+  const files = mode === 'auto' ? listWorkspace() : [];
   return decideRoute({
     question,
     mode,
     attachments,
     workspaceProbe: (q) => workspaceProbe(q),
     hooks: { classify: single.route ? async (q) => (await single.route?.({ question: q, mode, attachments, workspaceDocs: listWorkspace().length })) ?? null : null },
-    names: mode === 'auto' ? [...listWorkspace().map((d) => d.name), ...titles] : [],
+    names: [...files.map((d) => d.name), ...titles],
     titles,
+    // Without a file here or a library document that can be listed, Auto stays free: there is
+    // nothing the question's words could point at.
+    documents: files.length + titles.length,
     modelReady: mode !== 'auto' || value === 'device' || candidates.length > 0,
     deviceOnly,
     web: { on: webOn, native, searchApi: mode === 'auto' && webOn && !native && !deviceOnly ? Boolean(await browserWebSearch(getLocale())) : false },

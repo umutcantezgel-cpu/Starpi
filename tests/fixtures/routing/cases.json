@@ -1,5 +1,5 @@
 {
-  "description": "Auto routing cases over workspace.json: neutral questions with the route Auto should take. 'reference' marks a question that names the user's files; 'files' attaches files of the given kinds. Questions that share one word with the workspace by chance stay free; mixed needs at least two matched terms.",
+  "description": "Auto routing cases over workspace.json: neutral questions with the route Auto should take. 'reference' marks a question that names the user's files; 'files' attaches files of the given kinds. Questions that share one word with the workspace by chance stay free; mixed needs at least two matched terms. How-to questions about software that mention a file or a document stay free, and so does text pasted into the question.",
   "cases": [
     {
       "q": "What budget did the steering board approve for Project Nebula?",
@@ -173,6 +173,52 @@
     },
     {
       "q": "Which laptop should I buy for programming?",
+      "route": "free"
+    },
+    {
+      "q": "Summarize my notes, please.",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "q": "Laut meinen Unterlagen: wer genehmigt das?",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "q": "How do I search for a word in the file with grep?",
+      "route": "free"
+    },
+    {
+      "q": "How do I replace a string in the file using sed?",
+      "route": "free"
+    },
+    {
+      "q": "How can I insert a page break in the document in Word?",
+      "route": "free"
+    },
+    {
+      "q": "How do I back up my documents to the cloud?",
+      "route": "free"
+    },
+    {
+      "q": "How do I handle the uploaded file in an Express server?",
+      "route": "free"
+    },
+    {
+      "q": "How do I search in my files on my laptop?",
+      "route": "free"
+    },
+    {
+      "q": "Wie speichere ich hochgeladene Dateien in PHP?",
+      "route": "free"
+    },
+    {
+      "q": "Wie füge ich im Dokument ein Inhaltsverzeichnis ein?",
+      "route": "free"
+    },
+    {
+      "q": "Please improve this document: Dear Sir, I am writing to ask about the delivery.",
       "route": "free"
     }
   ]
