@@ -37,7 +37,8 @@ describe('health report', () => {
     assert.equal(report.simulated.gemini, true);
     assert.equal(report.simulated.nvidia, false);
     assert.deepEqual(report.voice, { tts: false, stt: false, live: false });
-    assert.equal(report.research, false);
+    // Research steps run on the Gemini pool's keys.
+    assert.equal(report.research, true);
     assert.equal(report.access, false);
     for (const [where, leaf] of leaves({ ...report, version: undefined })) {
       if (where !== '.version') assert.equal(typeof leaf, 'boolean', where);
