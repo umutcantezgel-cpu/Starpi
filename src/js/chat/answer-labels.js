@@ -136,15 +136,18 @@ export function renderWebCheck(messageEl, check) {
 }
 
 /**
- * What a statement of a mixed answer is: found in the sources, citing a source that does not hold
- * it, or general knowledge (no source); null for statements that are not compared.
+ * What a statement of a mixed answer is: found in the sources, partly found in the source it cites,
+ * citing a source that does not hold it, or general knowledge (no source of its own: a citation it
+ * would inherit from its paragraph does not make general knowledge a claim about the sources); null
+ * for statements that are not compared.
  * @param {SentenceResult} s
- * @returns {'from_sources' | 'cited_not_found' | 'not_in_sources' | null}
+ * @returns {'from_sources' | 'partly' | 'cited_not_found' | 'not_in_sources' | null}
  */
 export function mixedMark(s) {
   if (s.verdict === 'neutral' || s.verdict === 'unchecked') return null;
   if (s.verdict === 'supported') return 'from_sources';
-  return s.cites.length ? 'cited_not_found' : 'not_in_sources';
+  if (s.citeSource !== 'own' || !s.cites.length) return 'not_in_sources';
+  return s.verdict === 'weak' ? 'partly' : 'cited_not_found';
 }
 
 /**

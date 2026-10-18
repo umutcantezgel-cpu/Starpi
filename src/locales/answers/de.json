@@ -15,6 +15,7 @@
     "summary": "{ok} von {total} Aussagen in Ihren Quellen gefunden",
     "none": "Keine Aussage ließ sich mit Ihren Quellen abgleichen.",
     "from_sources": "Aus Ihren Quellen",
+    "partly": "Teilweise in der Quelle gefunden",
     "not_in_sources": "Nicht in Ihren Quellen",
     "cited_not_found": "Zitiert, aber nicht in der Quelle gefunden",
     "note": "Aussagen ohne Quelle sind Allgemeinwissen des Modells und wurden nicht geprüft."

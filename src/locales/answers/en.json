@@ -15,6 +15,7 @@
     "summary": "{ok} of {total} statements found in your sources",
     "none": "No statement could be compared with your sources.",
     "from_sources": "From your sources",
+    "partly": "Partly found in the source",
     "not_in_sources": "Not in your sources",
     "cited_not_found": "Cited, but not found in the source",
     "note": "Statements without a source are general knowledge of the model and were not checked."
