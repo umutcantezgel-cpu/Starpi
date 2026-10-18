@@ -125,6 +125,20 @@ const catalogs = new Map();
 const liveIds = new Map();
 
 /**
+ * The model ids a provider listed: the live list read here, for the own server also the list read
+ * when it was picked (providers.js probeLocalServer); null while unknown.
+ * @param {ProviderId} provider
+ * @returns {string[] | null}
+ */
+function listedIds(provider) {
+  const ids = liveIds.get(provider);
+  if (ids) return ids;
+  if (provider !== 'local') return null;
+  const probed = providerState().serverModels;
+  return probed.length ? probed : null;
+}
+
+/**
  * The capabilities of a model: the merged list of its provider, else the shipped catalog's entry or
  * guesses (marked unverified).
  * @param {ProviderId} provider
@@ -227,7 +241,7 @@ export async function installAiLayer() {
   configureRouter({
     configured: configuredProviders,
     // A pool serves its allowlist only; the own server what it lists.
-    liveModels: (provider) => (routeOf(provider) === 'pool' ? (poolOf(provider)?.models ?? null) : (liveIds.get(provider) ?? null)),
+    liveModels: (provider) => (routeOf(provider) === 'pool' ? (poolOf(provider)?.models ?? null) : listedIds(provider)),
     caps: (provider, model) => capsOf(provider, model),
     device: deviceModel,
     selection: (provider, live) => {
@@ -259,7 +273,7 @@ export async function installAiLayer() {
 export function defaultModel(provider) {
   if (provider === 'local') return '*';
   const route = routeOf(provider);
-  const live = liveIds.get(provider) ?? null;
+  const live = listedIds(provider);
   const pool = Object.values(POOLS).find((p) => p.provider === provider);
   if (route === 'pool' && pool) {
     const status = providerState().pools?.[pool.id];
@@ -280,7 +294,7 @@ export function defaultModel(provider) {
  */
 async function resolveServerModel(target) {
   if (target.provider !== 'local' || target.model !== '*') return target;
-  let ids = liveIds.get('local') ?? providerState().serverModels;
+  let ids = listedIds('local') ?? [];
   if (!ids.length) {
     const transport = listTransport('local');
     if (transport) {
