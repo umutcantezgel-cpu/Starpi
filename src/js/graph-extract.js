@@ -327,6 +327,7 @@ export function verifyAnswer(answer, batch) {
 /** Function words, month and weekday names of every language pack: never a name on their own. */
 const commonWords = fromPacks((packs) => new Set(packs.flatMap((p) => [...p.stopwords, ...Object.keys(p.months), ...Object.keys(p.weekdays)].map((w) => fold(w)))));
 /** Folded single words: a document repeats its words, and folding is most of the scan's cost. */
+/** @type {Map<string, string>} */
 const folded = new Map();
 /** @param {string} word */
 function foldWord(word) {

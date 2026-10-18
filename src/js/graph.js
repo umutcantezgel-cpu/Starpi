@@ -551,9 +551,9 @@ async function runFind(signal) {
   if (signal.aborted) report.cancelled = true;
   // Kept like their files: stored with a stored file, in memory only with one kept in memory only,
   // and not at all for a file removed (or changed) while the run read it.
-  const now = new Map(listWorkspace().map((d) => [d.docId, d]));
-  const current = report.graphs.filter((g) => now.get(g.docId)?.textSha256 === g.textSha256);
-  const isStored = (/** @type {import('./graph-extract.js').DocGraph} */ g) => now.get(g.docId)?.stored === true;
+  const live = new Map(listWorkspace().map((d) => [d.docId, d]));
+  const current = report.graphs.filter((g) => live.get(g.docId)?.textSha256 === g.textSha256);
+  const isStored = (/** @type {import('./graph-extract.js').DocGraph} */ g) => live.get(g.docId)?.stored === true;
   await store.save(current.filter(isStored), { persist: true });
   await store.save(current.filter((g) => !isStored(g)), { persist: false });
   return { kind: 'report', report };
