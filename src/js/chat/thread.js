@@ -38,7 +38,7 @@ import { registerCitations } from '../rag/citations.js';
 import { libraryHitsByMeaning } from '../rag/embed-client.js';
 import { applyGrounding } from '../rag/grounding-view.js';
 import { receiptButton, storeReceiptDraft } from '../rag/receipts.js';
-import { addToWorkspace, firstChunks, listWorkspace, searchWorkspace } from '../rag/workspace.js';
+import { addToWorkspace, firstChunks, getDocumentText, listWorkspace, searchWorkspace } from '../rag/workspace.js';
 import { assignCitations, buildContext, distinctSources, mergeHits, rankHitsLocally, workspaceHit } from '../retrieval.js';
 import { getAssistant, getChatMode, getWebSearch, setChatMode } from '../state.js';
 import { getConnection, listDocuments, recentKnowledge, searchKnowledge } from '../supabase.js';
@@ -667,6 +667,14 @@ async function storeQuestion(q) {
     if (att.kind === 'image') parts.push({ type: 'image', mime: att.mime, blobId, name: att.name, ...(att.width ? { width: att.width, height: att.height } : {}) });
     else parts.push({ type: 'file', mime: att.mime, blobId, name: att.name, kind: att.kind, size: att.blob.size });
     if (typeof att.text === 'string') blobData.set(`txt:${blobId}`, att.text);
+    else if (att.docId) {
+      // The workspace already read the file: its text is taken from there, not parsed again.
+      try {
+        blobData.set(`txt:${blobId}`, (await getDocumentText(att.docId)).text);
+      } catch {
+        // read from the blob when a model needs it
+      }
+    }
   }
   parts.push({ type: 'text', text: q.text });
   /** @type {Record<string, unknown>} */
@@ -855,6 +863,10 @@ async function addToSources(attachments) {
   /** @type {string[]} */
   const ids = [];
   for (const att of attachments) {
+    if (att.docId) {
+      ids.push(att.docId);
+      continue;
+    }
     try {
       /** @type {import('../rag/workspace.js').OcrHook | undefined} */
       let ocr;

@@ -1,0 +1,288 @@
+// The 3.0 chat thread against the local provider fakes (scripts/fakes): streaming from the user's
+// own server, Stop, Continue after the length limit, regenerating with another model, editing a
+// question into a new branch, copying, the chat title, the thread after a reload, images scaled
+// down before they go to a model that sees, and grounded answers with the source check, all
+// without a page error and with the thread passing axe.
+import AxeBuilder from '@axe-core/playwright';
+import { expect, mockSupabase, storedChatNodes, test } from './fixtures.mjs';
+
+const FAKES = Number(process.env.STARPI_FAKES_PORT || 4610);
+/** The OpenAI-compatible fake as an Ollama server (no key, reasoning in <think> tags). */
+const SERVER = `http://127.0.0.1:${FAKES + 1}/flavor/ollama/v1`;
+const ANTHROPIC_FAKE = `http://127.0.0.1:${FAKES + 2}`;
+const ANSWER = 'This is a simulated answer from the local test provider.';
+
+/**
+ * Starts the page with the user's own server set up and picked, in the given chat mode.
+ * @param {import('@playwright/test').Page} page
+ * @param {{ mode?: 'free' | 'grounded' | 'auto', assistant?: string }} [opts]
+ */
+async function useServer(page, opts = {}) {
+  await page.addInitScript(
+    ([url, mode, assistant]) => {
+      if (sessionStorage.getItem('e2e_seeded')) return;
+      sessionStorage.setItem('e2e_seeded', '1');
+      localStorage.setItem('starpi_llm_url', url);
+      localStorage.setItem('starpi_assistant_v1', assistant);
+      localStorage.setItem('starpi_chat_mode', mode);
+    },
+    [SERVER, opts.mode ?? 'free', opts.assistant ?? 'local:*'],
+  );
+}
+
+/** @param {import('@playwright/test').Page} page @param {string} text */
+async function ask(page, text) {
+  await page.fill('#chatInput', text);
+  await page.press('#chatInput', 'Enter');
+}
+
+/** @param {import('@playwright/test').Page} page */
+const answers = (page) => page.locator('#chatMessages .message-row[data-role="assistant"]');
+/** @param {import('@playwright/test').Page} page */
+const questions = (page) => page.locator('#chatMessages .message-row[data-role="user"]');
+
+/**
+ * Waits until the newest answer is stored and finished (its bar is there and Stop is gone).
+ * @param {import('@playwright/test').Page} page
+ */
+async function settled(page) {
+  await expect(page.locator('#stopBtn')).toBeHidden();
+  await expect(answers(page).last()).toHaveAttribute('data-node-id', /.+/);
+  await expect(answers(page).last().locator('[data-action="msg-copy"]')).toBeVisible();
+}
+
+/**
+ * The width and height of a JPEG (its first SOF marker).
+ * @param {Buffer} buf
+ */
+function jpegSize(buf) {
+  let i = 2;
+  while (i < buf.length) {
+    if (buf[i] !== 0xff) return null;
+    const marker = buf[i + 1];
+    const len = buf.readUInt16BE(i + 2);
+    if (marker >= 0xc0 && marker <= 0xc3) return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7) };
+    i += 2 + len;
+  }
+  return null;
+}
+
+/**
+ * Sends Anthropic calls of the page to the Anthropic fake and records the request bodies.
+ * @param {import('@playwright/test').Page} page
+ */
+async function routeAnthropic(page) {
+  /** @type {any[]} */
+  const bodies = [];
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-expose-headers': 'request-id' };
+  await page.route('https://api.anthropic.com/**', async (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    const url = new URL(req.url());
+    if (req.method() === 'POST') bodies.push(JSON.parse(req.postData() ?? '{}'));
+    const res = await route.fetch({ url: `${ANTHROPIC_FAKE}${url.pathname}${url.search}` });
+    return route.fulfill({ response: res, headers: { ...res.headers(), ...cors } });
+  });
+  return bodies;
+}
+
+test.describe('chat thread', () => {
+  test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
+
+  test('streams a free answer from the own server, copies it, names the chat and keeps the thread after a reload', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await useServer(page);
+    await page.goto('/');
+    await ask(page, 'Hello there, how are you today?');
+    const answer = answers(page).last();
+    await expect(answer.locator('.message-content')).toContainText(ANSWER);
+    await settled(page);
+    await expect(answer.locator('.engine-badge-label')).toHaveText('Your server · fake-local:8b');
+    await expect(answer.locator('.free-note')).toContainText('Free chat · not checked against sources');
+    await expect(answer.locator('.grounding-bar')).toHaveCount(0);
+    await expect(answer.locator('.message-meta')).toContainText(/in · \d+ out/);
+
+    // Copy and Copy as Markdown copy the answer's text and its source.
+    await answer.locator('[data-action="msg-copy-md"]').click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(ANSWER);
+
+    // The title comes from the title purpose, not from the first words of the question.
+    const row = page.locator('#chat-sidebar [data-conv-id]').first();
+    await expect(row).not.toContainText('Hello there, how are you today?');
+
+    const nodes = await storedChatNodes(page);
+    expect(nodes.map((n) => n.role)).toEqual(['user', 'assistant']);
+    // The date and time travel in the turn's context block, kept with the question, never as text.
+    expect(nodes[0].parts.map((p) => p.type)).toEqual(['text']);
+
+    await page.reload();
+    await expect(answers(page)).toHaveCount(1);
+    await expect(answers(page).last().locator('.message-content')).toContainText(ANSWER);
+    await expect(questions(page).first()).toContainText('Hello there, how are you today?');
+    await expect(answers(page).last().locator('.free-note')).toBeVisible();
+  });
+
+  test('stops a stalled answer and keeps what arrived', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await useServer(page);
+    await page.goto('/');
+    await ask(page, '[[fake-fault:stall-mid-stream]] Tell me a long story');
+    const answer = answers(page).last();
+    await expect(answer.locator('.message-content')).toContainText('simulated');
+    await expect(page.locator('#stopBtn')).toBeVisible();
+    await page.click('#stopBtn');
+    await expect(page.locator('#stopBtn')).toBeHidden();
+    await expect(page.locator('#sendBtn')).toBeEnabled();
+    await expect(answer).toHaveAttribute('data-node-id', /.+/);
+    const nodes = await storedChatNodes(page);
+    expect(nodes.at(-1)?.role).toBe('assistant');
+  });
+
+  test('continues an answer cut at its length limit as a new turn', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await useServer(page);
+    await page.goto('/');
+    await ask(page, '[[fake:length]] Explain the tides');
+    await settled(page);
+    const cont = answers(page).last().locator('[data-action="msg-continue"]');
+    await expect(cont).toBeVisible();
+    await cont.click();
+    await expect(page.locator('#chatMessages .continue-marker')).toContainText('Continued after the length limit');
+    await expect(answers(page)).toHaveCount(2);
+    await settled(page);
+    await expect(answers(page).first().locator('[data-action="msg-continue"]')).toHaveCount(0);
+    const nodes = await storedChatNodes(page);
+    expect(nodes.map((n) => n.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+  });
+
+  test('regenerates with another model and edits a question into a new branch', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await useServer(page);
+    await page.goto('/');
+    await ask(page, 'Name a colour');
+    await settled(page);
+    // The picker lists the server's models once it has answered.
+    await expect(page.locator('#engineSelector option[value="local:fake-local-reasoner:4b"]')).toHaveCount(1);
+
+    const first = answers(page).last();
+    await first.locator('.regen-menu > summary').click();
+    await first.locator('[data-action="msg-regenerate"][data-value="local:fake-local-reasoner:4b"]').click();
+    await settled(page);
+    const second = answers(page).last();
+    await expect(second.locator('.engine-badge-label')).toHaveText('Your server · fake-local-reasoner:4b');
+    await expect(second.locator('.branch-pos')).toHaveText('2/2');
+    // The reasoning model's thoughts stay in the details block.
+    await expect(second.locator('.message-content')).not.toContainText('I recall the key facts first');
+    await second.locator('[data-action="msg-branch-prev"]').click();
+    await expect(answers(page).last().locator('.branch-pos')).toHaveText('1/2');
+    await expect(answers(page).last().locator('.engine-badge-label')).toHaveText('Your server · fake-local:8b');
+
+    await questions(page).last().locator('[data-action="msg-edit"]').click();
+    await page.fill('.message-editor textarea', 'Name a fruit');
+    await page.click('.message-editor button[type="submit"]');
+    await settled(page);
+    await expect(questions(page).last()).toContainText('Name a fruit');
+    await expect(questions(page).last().locator('.branch-pos')).toHaveText('2/2');
+    await expect(answers(page).last().locator('.message-content')).toContainText(ANSWER);
+    await questions(page).last().locator('[data-action="msg-branch-prev"]').click();
+    await expect(questions(page).last()).toContainText('Name a colour');
+
+    const results = await new AxeBuilder({ page }).include('#chatMessages').analyze();
+    expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
+  });
+
+  test('scales an image down before it goes to a model that sees, and holds Send for one that does not', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const bodies = await routeAnthropic(page);
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem('e2e_seeded')) return;
+      sessionStorage.setItem('e2e_seeded', '1');
+      sessionStorage.setItem('starpi_key_anthropic', 'sk-ant-e2e0123456789abcdefghijklmnop');
+      localStorage.setItem('starpi_chat_mode', 'free');
+      localStorage.setItem('starpi_assistant_v1', 'anthropic:claude-haiku-5-5');
+    });
+    await page.goto('/');
+    const png = await page.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 3000;
+      canvas.height = 2000;
+      const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
+      ctx.fillStyle = '#3366cc';
+      ctx.fillRect(0, 0, 3000, 2000);
+      return canvas.toDataURL('image/png').split(',')[1];
+    });
+    await page.setInputFiles('#chatFileInput', { name: 'big.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+    await expect(page.locator('#attachedInfo')).toContainText('big.png · 1568×1045');
+    await ask(page, 'What colour is this?');
+    await settled(page);
+    await expect(answers(page).last().locator('.engine-badge-label')).toContainText('Anthropic · ');
+    await expect(questions(page).last().locator('.attachment-chip')).toContainText('big.png');
+    const sent = bodies.find((b) => Array.isArray(b.messages));
+    const image = sent.messages.at(-1).content.find((/** @type {any} */ b) => b.type === 'image');
+    expect(image.source.media_type).toBe('image/jpeg');
+    expect(jpegSize(Buffer.from(image.source.data, 'base64'))).toEqual({ width: 1568, height: 1045 });
+    // The stable system prompt carries no date; the turn's context block does, before the question.
+    expect(sent.system).not.toMatch(/\d{4}/);
+    expect(sent.messages.at(-1).content.find((/** @type {any} */ b) => b.type === 'text').text).toContain('<<<CONTEXT>>>');
+    expect(sent.cache_control).toEqual({ type: 'ephemeral' });
+
+    // A model that cannot see images: Send waits and says why.
+    await page.selectOption('#engineSelector', 'wasm:smollm2-135m');
+    await page.setInputFiles('#chatFileInput', { name: 'small.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+    await expect(page.locator('#composerNotice')).toContainText('cannot see images');
+    await expect(page.locator('#sendBtn')).toBeDisabled();
+    await page.click('#attachedInfo [data-action="remove-attachment"]');
+    await expect(page.locator('#sendBtn')).toBeEnabled();
+  });
+
+  test('keeps the Anthropic conversation append-only, with the answer content replayed unchanged', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const bodies = await routeAnthropic(page);
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem('e2e_seeded')) return;
+      sessionStorage.setItem('e2e_seeded', '1');
+      sessionStorage.setItem('starpi_key_anthropic', 'sk-ant-e2e0123456789abcdefghijklmnop');
+      localStorage.setItem('starpi_chat_mode', 'free');
+      localStorage.setItem('starpi_assistant_v1', 'anthropic:claude-opus-5-5');
+      localStorage.setItem('starpi_thinking_v1', 'on');
+    });
+    await page.goto('/');
+    await ask(page, '[[fake:pause]] Look up the weather');
+    await settled(page);
+    const answer = answers(page).last();
+    // The paused turn was sent back once and continued; the reasoning stays in the details.
+    await expect(answer.locator('.message-content')).toContainText('example');
+    await answer.locator('[data-action="toggle-thought"]').click();
+    await expect(answer.locator('.thought-body')).toContainText('I recall the key facts first');
+    await ask(page, 'And tomorrow?');
+    await settled(page);
+    // Chat calls only (the title of the conversation is a purpose call of its own).
+    const posts = bodies.filter((b) => Array.isArray(b.messages) && !JSON.stringify(b.system ?? '').includes('starpi-purpose'));
+    expect(posts.length).toBe(3);
+    expect(posts[0].fallbacks).toBe('default');
+    // The resumed call ends with the paused content; the next question replays all of it unchanged.
+    const paused = posts[1].messages.at(-1);
+    expect(paused.role).toBe('assistant');
+    expect(paused.content.at(-1).type).toBe('server_tool_use');
+    const replayed = posts[2].messages.find((/** @type {any} */ m) => m.role === 'assistant');
+    expect(replayed.content.some((/** @type {any} */ b) => b.type === 'thinking' && typeof b.signature === 'string')).toBe(true);
+    expect(replayed.content.filter((/** @type {any} */ b) => b.type === 'server_tool_use')).toHaveLength(1);
+    expect(posts[2].system).toBe(posts[0].system);
+  });
+});
+
+test.describe('grounded thread', () => {
+  test('answers from an attached file with the source check and a receipt, and stays free without files in Auto', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await useServer(page, { mode: 'auto' });
+    await page.goto('/');
+    await page.setInputFiles('#chatFileInput', { name: 'budget.md', mimeType: 'text/markdown', buffer: Buffer.from('# Budget\n\nThe approved budget for Project Nebula is 480,000 EUR.') });
+    await expect(page.locator('#attachedInfo')).toContainText('budget.md · 1 chunk');
+    await ask(page, 'What is the approved budget?');
+    const answer = answers(page).last();
+    await expect(answer.locator('.grounding-bar')).toBeVisible();
+    await expect(answer.locator('[data-action="open-receipt"]')).toBeVisible();
+    await expect(answer.locator('[data-provenance="checked"]')).toBeVisible();
+    await settled(page);
+  });
+});

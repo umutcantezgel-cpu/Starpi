@@ -19,7 +19,8 @@
 import { LIMITS } from '../config.js';
 import { byId, onAction, onChange, setHidden } from '../dom.js';
 import { refreshIcons } from '../icons.js';
-import { setText, t } from '../i18n/index.js';
+import { hasKey, setText, t } from '../i18n/index.js';
+import { addToWorkspace } from '../rag/workspace.js';
 import { escapeHtml } from '../render.js';
 import { ATTACH_ACCEPT, prepareAttachment } from './attachments.js';
 import { composerSlots, composerTools, onComposerSlots, onComposerTools } from './hooks.js';
@@ -44,6 +45,9 @@ export { registerComposerSlot, registerComposerTool } from './hooks.js';
  * @property {() => void} stop
  * @property {(attachments: readonly PreparedAttachment[]) => Promise<{ ok: true } | { ok: false, key: string, params?: Record<string, string> }>} [checkSendable]
  */
+
+/** Files the on-device workspace reads (rag/parser.js SUPPORTED_EXTENSIONS). */
+const WORKSPACE_FILE = /\.(?:pdf|docx|xlsx|pptx|html?|txt|md|markdown|csv|json|log)$/i;
 
 /** @type {DraftAttachment[]} */
 let draft = [];
@@ -75,7 +79,15 @@ function renderChips() {
   setHidden(box, draft.length === 0);
   box.innerHTML = draft
     .map((a) => {
-      const label = a.status === 'reading' ? t('chat.attaching', { name: a.name }) : a.prepared?.width ? t('chat-thread.composer.image_size', { name: a.name, width: String(a.prepared.width), height: String(a.prepared.height) }) : a.name;
+      const p = a.prepared;
+      const label =
+        a.status === 'reading'
+          ? t('chat.attaching', { name: a.name })
+          : p?.width
+            ? t('chat-thread.composer.image_size', { name: a.name, width: String(p.width), height: String(p.height) })
+            : p?.chunks
+              ? t('chat.attached', { name: a.name, chunks: p.chunks })
+              : a.name;
       return `<span class="attachment-chip inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 text-amber-950 px-2 py-0.5 text-xs max-w-full" data-attachment="${escapeHtml(a.id)}" data-status="${a.status}"><i data-lucide="${a.status === 'reading' ? 'loader-2' : 'paperclip'}" class="w-3.5 h-3.5 flex-shrink-0${a.status === 'reading' ? ' animate-spin' : ''}"></i><span class="truncate">${escapeHtml(label)}</span><button type="button" class="btn btn-ghost p-0.5" data-action="remove-attachment" data-arg="${escapeHtml(a.id)}" data-i18n-aria="chat.remove_attachment" aria-label="${escapeHtml(t('chat.remove_attachment'))}"><i data-lucide="x" class="w-3 h-3"></i></button></span>`;
     })
     .join('');
@@ -136,7 +148,19 @@ export function addFiles(files) {
       name: file.name || t('chat-thread.composer.pasted_image'),
       status: 'reading',
       ready: prepareAttachment(file).then(
-        (prepared) => {
+        async (prepared) => {
+          // Documents also go into the on-device workspace, as in 2.x: source mode answers from
+          // them, and they stay on this device.
+          if (prepared.kind !== 'image' && WORKSPACE_FILE.test(file.name)) {
+            try {
+              const doc = await addToWorkspace(file);
+              prepared.docId = doc.docId;
+              prepared.chunks = doc.chunks;
+            } catch (err) {
+              const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : 'internal';
+              attachNotice(`workspace.error_${hasKey(`workspace.error_${code}`) ? code : 'internal'}`, { name: file.name });
+            }
+          }
           entry.prepared = prepared;
           entry.status = 'ready';
           renderChips();

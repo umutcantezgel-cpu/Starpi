@@ -74,7 +74,7 @@ export function renderActions(el, state) {
   }
   if (branch && branch.count > 1) {
     parts.push(
-      `<span class="branch-nav inline-flex items-center gap-0.5 text-[11px] text-slate-600">${button('msg-branch-prev', id, 'arrow-left', 'chat-thread.action.branch_prev', { disabled: busy || branch.position <= 1 })}<span class="branch-pos font-mono" aria-live="polite">${branch.position}/${branch.count}</span>${button('msg-branch-next', id, 'arrow-right', 'chat-thread.action.branch_next', { disabled: busy || branch.position >= branch.count })}</span>`,
+      `<span class="branch-nav inline-flex items-center gap-0.5 text-[11px] ${answer ? 'text-slate-600' : 'text-slate-200'}">${button('msg-branch-prev', id, 'arrow-left', 'chat-thread.action.branch_prev', { disabled: busy || branch.position <= 1 })}<span class="branch-pos font-mono" aria-live="polite">${branch.position}/${branch.count}</span>${button('msg-branch-next', id, 'arrow-right', 'chat-thread.action.branch_next', { disabled: busy || branch.position >= branch.count })}</span>`,
     );
   }
   if (answer && state.canContinue) parts.push(button('msg-continue', id, 'arrow-right', 'chat-thread.action.continue', { disabled: busy, text: true }));
@@ -82,7 +82,8 @@ export function renderActions(el, state) {
     const fits = action.when ? action.when(node) : answer;
     if (fits) parts.push(button('msg-extra', id, action.icon, action.labelKey, { extra: ` data-extra="${escapeHtml(action.id)}"` }));
   }
-  bar.className = 'message-actions mt-2 flex flex-wrap items-center gap-0.5 text-slate-500';
+  // On the dark bubble of a question the bar keeps a light ink.
+  bar.className = `message-actions mt-2 flex flex-wrap items-center gap-0.5 ${answer ? 'text-slate-500' : 'text-slate-200 on-dark'}`;
   bar.innerHTML = parts.join('');
   refreshIcons(bar);
 }

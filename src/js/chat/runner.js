@@ -93,6 +93,14 @@ import { getEngineState } from '../webgpu/engine.js';
 /** Errors after which the next candidate is asked (nothing was answered yet). */
 const NEXT_CANDIDATE = new Set(['auth', 'quota', 'rate_limited', 'not_found', 'bad_request', 'context_length', 'server', 'timeout', 'network', 'bad_response', 'cors', 'stream_cut']);
 
+/**
+ * The site's pool of a provider.
+ * @param {ProviderId} provider
+ */
+function poolOf(provider) {
+  return Object.values(POOLS).find((p) => p.provider === provider) ?? null;
+}
+
 /** @type {Readonly<Record<string, AttemptOutcome>>} */
 const OUTCOMES = Object.freeze({
   auth: 'unavailable',
@@ -187,9 +195,18 @@ export async function installAiLayer() {
   }
   configureRouter({
     configured: configuredProviders,
-    liveModels: (provider) => liveIds.get(provider) ?? null,
+    // A pool serves its allowlist only; the own server what it lists.
+    liveModels: (provider) => (routeOf(provider) === 'pool' ? (poolOf(provider)?.models ?? null) : (liveIds.get(provider) ?? null)),
     caps: (provider, model) => capsOf(provider, model),
     device: deviceModel,
+    selection: (provider, live) => {
+      if (provider === 'local') return live?.[0] ? { provider, model: live[0] } : null;
+      if (routeOf(provider) === 'pool') {
+        const model = defaultModel(provider);
+        return model ? { provider, model } : null;
+      }
+      return selectedModel(provider, { live });
+    },
   });
   updateProviderState({ ready: true });
   void healthClient.load().catch(() => {});

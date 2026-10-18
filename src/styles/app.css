@@ -331,6 +331,10 @@ body {
   .composer-toggle[aria-pressed='true'] {
     @apply bg-amber-100 text-amber-950 ring-1 ring-amber-300;
   }
+  /* The action bar on the dark bubble of a question. */
+  .message-actions.on-dark .btn-ghost {
+    @apply text-slate-200 hover:text-white hover:bg-white/10;
+  }
   /* The composer while files are dragged over it. */
   .drop-target {
     @apply ring-2 ring-amber-400 border-amber-400;

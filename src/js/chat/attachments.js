@@ -30,6 +30,8 @@ import { LIMITS } from '../config.js';
  * @property {number} [width]     of the scaled image
  * @property {number} [height]
  * @property {string} [text]      the text of a text file (documents and PDFs: extracted on demand)
+ * @property {string} [docId]     the file in the on-device workspace (documents are added when attached)
+ * @property {number} [chunks]    its passages there
  */
 
 export const IMAGE_TYPES = Object.freeze(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
