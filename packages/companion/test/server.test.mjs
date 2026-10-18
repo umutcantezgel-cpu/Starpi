@@ -148,6 +148,8 @@ test('Mode A static app: headers from headers.json, index for navigations, no es
   assert.equal(index.headers['content-security-policy'], "default-src 'self'");
   assert.equal((await call(`${base}/assets/a.js`)).headers['cache-control'], 'immutable');
   assert.equal((await call(`${base}/settings/companion`, { headers: { accept: 'text/html' } })).text, '<!doctype html><title>app</title>');
+  assert.equal((await call(`${base}/`, { headers: { 'sec-fetch-site': 'cross-site' } })).status, 200, 'a link from another site opens the app');
+  assert.equal((await call(`${base}/assets/a.js`, { origin: 'https://evil.example' })).status, 403);
   for (const path of ['/.hidden', '/link.txt', '/hard.txt', '/headers.json', '/%2e%2e/outside.txt', '/assets%2fa.js']) assert.equal((await call(`${base}${path}`)).status, 404, path);
   const redirect = await call(`${base}/`, { host: `localhost:${companion.port}` });
   assert.equal(redirect.status, 308);

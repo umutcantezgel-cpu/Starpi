@@ -322,7 +322,8 @@ export function createHttpServer({ host = '127.0.0.1', port, routes, origins, se
       return;
     }
     if (!isApi) {
-      if (site && (req.method === 'GET' || req.method === 'HEAD') && sameOrigin) {
+      // App files need no sign-in; a page of a foreign origin was refused above already.
+      if (site && (req.method === 'GET' || req.method === 'HEAD')) {
         if (hostHeader !== `127.0.0.1:${boundPort}`) {
           res.writeHead(308, { Location: `http://127.0.0.1:${boundPort}${url.pathname}${url.search}`, 'Cache-Control': 'no-store' });
           res.end();
