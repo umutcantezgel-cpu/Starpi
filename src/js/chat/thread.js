@@ -45,6 +45,7 @@ import { getConnection, listDocuments, recentKnowledge, searchKnowledge } from '
 import { describeChatTrace, describeTrace, isGreeting, synthesizeAnswer } from '../synthesizer.js';
 import { setAssistantStatus } from '../ui.js';
 import { html, provenanceBadge } from '../ui/kit.js';
+import { mountGroundingFrame } from '../render.js';
 import { getEngineState, interrupt } from '../webgpu/engine.js';
 import { budgetPrompt } from '../webgpu/models.js';
 import { applyThinking, thinkingFor } from '../ai/thinking.js';
@@ -228,6 +229,70 @@ function labelAnswer(el, node) {
   }
 }
 
+/** Stop reasons that leave a note under the answer (the others end normally or show a notice). */
+const STOP_NOTES = new Set(['max_tokens', 'refusal', 'cancelled', 'timeout']);
+
+/**
+ * What else an answer shows: why it stopped early, the web pages it cites (from the provider's
+ * search, as links), and a provider's search suggestions in the isolated grounding frame.
+ * @param {HTMLElement} el
+ * @param {NodeRecord} node
+ */
+function decorateAnswer(el, node) {
+  const slot = el.querySelector('.message-provenance');
+  if (!slot) return;
+  const meta = metaOf(node);
+  if (STOP_NOTES.has(meta.stop_reason)) {
+    const note = document.createElement('p');
+    note.className = 'stop-note mt-2 text-[11px] text-slate-600';
+    setText(note, `ai.stop.${meta.stop_reason}`);
+    slot.append(note);
+  }
+  const sources = Array.isArray(meta.web_sources) ? meta.web_sources.filter((w) => w && typeof w.url === 'string' && /^https?:\/\//i.test(w.url)) : [];
+  if (sources.length) {
+    const row = document.createElement('div');
+    row.className = 'web-sources mt-2 flex flex-wrap items-center gap-1.5 text-[11px]';
+    const label = document.createElement('span');
+    label.className = 'text-slate-500 font-medium';
+    setText(label, 'chat-thread.web.sources');
+    row.append(label);
+    for (const w of sources) {
+      const a = document.createElement('a');
+      a.href = w.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.className = 'badge badge-muted max-w-[16rem] truncate underline';
+      a.textContent = typeof w.title === 'string' && w.title.trim() ? w.title.trim() : new URL(w.url).host;
+      row.append(a);
+    }
+    slot.append(row);
+  }
+  for (const o of node.opaque ?? []) {
+    const block = /** @type {any} */ (o)?.block;
+    if (block?.kind === 'gemini-grounding' && typeof block.searchEntryPoint === 'string' && block.searchEntryPoint) {
+      const host = document.createElement('div');
+      host.className = 'search-suggestions mt-2';
+      slot.append(host);
+      mountGroundingFrame(host, block.searchEntryPoint, { title: t('chat-thread.web.suggestions') });
+    }
+  }
+}
+
+/**
+ * The web pages an answer cites, once each (at most eight).
+ * @param {CompletionResult} result
+ */
+function webSources(result) {
+  /** @type {Array<{ url: string, title: string }>} */
+  const out = [];
+  for (const c of result.citations) {
+    if (!/^https?:\/\//i.test(c.url) || out.some((w) => w.url === c.url)) continue;
+    out.push({ url: c.url.slice(0, 2000), title: String(c.title ?? '').slice(0, 200) });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
 /**
  * The chips of a message's attachments.
  * @param {NodeRecord} node
@@ -295,6 +360,7 @@ function renderNode(node) {
     meta: metaLine(node),
   });
   labelAnswer(el, node);
+  decorateAnswer(el, node);
   renderActions(el, barState(node));
   return el;
 }
@@ -598,7 +664,7 @@ function noticeFor(result, free) {
     icon: code === 'refusal' ? 'info' : 'triangle-alert',
     tone: code === 'refusal' ? 'info' : 'warn',
     title: free ? 'chat.provider_failed_title' : 'chat-thread.notice.grounded_failed_title',
-    body: seconds ? 'chat-thread.notice.error_retry' : `ai.error.${code}`,
+    body: seconds ? (code === 'rate_limited' ? 'chat-thread.notice.rate_limited_wait' : 'chat-thread.notice.error_retry') : `ai.error.${code}`,
     params: { reason: t(`ai.error.${code}`), seconds },
   });
 }
@@ -767,6 +833,7 @@ async function answerFree(question, value, signal, placement = {}) {
       thoughts: trace,
       ...(result.reasoning ? { reasoning: result.reasoning.slice(0, REASONING_CHARS) } : {}),
       ...(run.continued ? { continued: run.continued } : {}),
+      ...(result.citations.length ? { web_sources: webSources(result) } : {}),
       ...(run.attempts.length > 1 ? { attempts: run.attempts.map((a) => ({ provider: a.provider, model: a.model, outcome: a.outcome, ...(a.code ? { code: a.code } : {}) })) } : {}),
     },
   });
@@ -774,6 +841,7 @@ async function answerFree(question, value, signal, placement = {}) {
   stream.element.dataset.nodeId = node.id;
   stream.finalize(text, { citations: null, trace, durationMs, traceRoles: FREE_TRACE_ROLES, reasoning: result.reasoning, meta: metaLine(node) });
   labelAnswer(stream.element, node);
+  decorateAnswer(stream.element, node);
   if (result.error && !signal.aborted) noticeFor(result, true);
   return node;
 }
@@ -1010,7 +1078,8 @@ async function answerGrounded(q, signal, placement = {}) {
       run = view.run;
       text = run.result.text.trim() ? run.result.text : '';
       if (text && run.target) {
-        engine = engineOf(run.target);
+        // The receipt names who answered: this device, the own server, or the provider.
+        engine = engineOf(run.target) === 'cloud' || engineOf(run.target) === 'pool' ? run.target.provider : engineOf(run.target);
         messageEl = view.stream.element;
         const badge = answerBadge({ provider: run.target.provider, model: run.result.model, meta: { requested: run.target.model, route: run.target.route } });
         const trace = describeTrace({ query: q.text, method, hits: used, engineLabel: t(badge.badge, badge.badgeParams), durationMs: Math.round(performance.now() - started), note: attemptNote(run.attempts, run.result) });
@@ -1120,6 +1189,7 @@ async function answerGrounded(q, signal, placement = {}) {
     if (messageEl) {
       messageEl.dataset.nodeId = node.id;
       labelAnswer(messageEl, node);
+      decorateAnswer(messageEl, node);
     }
     return node;
   } finally {
@@ -1205,12 +1275,21 @@ export async function sendQuestion(options = {}) {
   if (options.chatMode === 'grounded' && getChatMode() !== 'grounded') setChatMode('grounded');
   const mode = options.chatMode ?? getChatMode();
   const kinds = draft.attachments.map((a) => ({ name: a.name, kind: a.kind }));
-  const route = options.chatMode ?? (await decideRoute({ question: draft.text, mode, attachments: kinds, workspaceDocs: listWorkspace().length }));
+  const value = getAssistant();
+  const route =
+    options.chatMode ??
+    (await decideRoute({
+      question: draft.text,
+      mode,
+      attachments: kinds,
+      workspaceDocs: listWorkspace().length,
+      knowledgeDocs: mode === 'auto' ? (await knownTitles()).length : 0,
+      modelReady: mode !== 'auto' || value === 'device' || (await chatCandidates(value)).length > 0,
+    }));
   const onlyImages = draft.attachments.length > 0 && draft.attachments.every((a) => a.kind === 'image');
   const text =
     draft.text ||
     (onlyImages ? t('chat-thread.describe_images', { n: draft.attachments.length }) : draft.attachments.length === 1 ? t('chat.summarize_file', { name: draft.attachments[0].name }) : t('chat-thread.summarize_files', { n: draft.attachments.length }));
-  const value = getAssistant();
   await withTurn(async (signal) => {
     if (route === 'grounded') {
       await answerGrounded({ text, attachments: draft.attachments, parentId: leafId(), value, workspaceOnly: options.workspaceOnly === true }, signal);

@@ -30,7 +30,7 @@ import { WASM_CATALOG } from './wasm-catalog.js';
  *
  * @typedef {'recommended' | 'device' | 'pools' | 'anthropic' | 'openai' | 'gemini' | 'xai' | 'groq' | 'mistral' | 'deepseek' | 'openrouter' | 'nvidia' | 'server'} GroupId
  *
- * @typedef {'needs-webgpu' | 'heavy' | 'no-vision'} PickerWarning
+ * @typedef {'needs-webgpu' | 'heavy' | 'no-vision' | 'not-configured'} PickerWarning
  *
  * @typedef {object} PickerItem
  * @property {string} value
@@ -100,6 +100,7 @@ const WARNING_KEYS = Object.freeze({
   'needs-webgpu': 'models.warn_needs_webgpu',
   heavy: 'models.warn_heavy',
   'no-vision': 'chat-thread.picker.warn_no_vision',
+  'not-configured': 'models.warn_not_configured',
 });
 
 /** @type {Readonly<Record<NonNullable<PickerItem['recommended']>, string>>} */
@@ -285,7 +286,8 @@ export function assistantGroups(state) {
 
 /**
  * Adds the stored value to its group when no group offers it (a model that left a live list, a
- * pool that is not answering yet), so the picker still shows what is selected.
+ * pool that is not answering yet), so the picker still shows what is selected. A pool model the
+ * site's answered pool list does not offer is shown disabled, marked as not set up.
  * @param {PickerGroup[]} groups
  * @param {PickerState} state
  */
@@ -306,7 +308,7 @@ function keepCurrent(groups, state) {
   const pool = Object.values(POOLS).find((p) => p.provider === provider);
   const label = pool?.entries.find((e) => e.id === model)?.label ?? model;
   /** @type {PickerItem} */
-  const item = { value, runtime: keyed ? 'key' : 'pool', provider, label, ...(keyed ? {} : { free: true }) };
+  const item = { value, runtime: keyed ? 'key' : 'pool', provider, label, ...(keyed ? {} : { free: true }), ...(!keyed && state.pools !== null ? { disabled: true, warning: /** @type {const} */ ('not-configured') } : {}) };
   const groupId = /** @type {GroupId} */ (keyed ? provider : 'pools');
   const group = groups.find((g) => g.id === groupId);
   if (group) group.items.push(item);

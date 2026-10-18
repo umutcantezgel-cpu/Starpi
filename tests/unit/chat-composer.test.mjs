@@ -183,6 +183,11 @@ describe('mode row', () => {
     assert.equal(mode.builtInRoute({ mode: 'auto', attachments: [image, doc], workspaceDocs: 0 }), 'grounded');
     assert.equal(mode.builtInRoute({ mode: 'free', attachments: [doc], workspaceDocs: 3 }), 'free');
     assert.equal(mode.builtInRoute({ mode: 'grounded', attachments: [], workspaceDocs: 0 }), 'grounded');
+    // Documents in the knowledge base count like files in the workspace; without a model the
+    // sources are quoted.
+    assert.equal(mode.builtInRoute({ mode: 'auto', attachments: [], workspaceDocs: 0, knowledgeDocs: 4 }), 'grounded');
+    assert.equal(mode.builtInRoute({ mode: 'auto', attachments: [], workspaceDocs: 0, knowledgeDocs: 0, modelReady: false }), 'grounded');
+    assert.equal(mode.builtInRoute({ mode: 'auto', attachments: [image], workspaceDocs: 0, modelReady: false }), 'free');
     // A registered decider decides Auto, never an explicit mode; null keeps the built-in rule.
     const off = hooks.setRouteDecider((input) => (input.question.includes('web') ? { route: 'grounded' } : null));
     assert.equal(await mode.decideRoute({ question: 'search the web', mode: 'auto', attachments: [], workspaceDocs: 0 }), 'grounded');

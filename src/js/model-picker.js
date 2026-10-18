@@ -16,7 +16,7 @@ import { byId, reportUnexpected, setHidden } from './dom.js';
 import { formatNumber, onLocaleChange, setText, t } from './i18n/index.js';
 import { assistantGroups, choiceValue, groupLabel, optionParts } from './models/choices.js';
 import { hardwareBadges } from './models/device.js';
-import { onProvidersChange, providerState } from './providers.js';
+import { onProvidersChange, providerState, refreshModelLists } from './providers.js';
 import { getAssistant, getModelPreference, onAssistantChange } from './state.js';
 import { getDeviceProbe } from './webgpu/engine.js';
 import { POOL_IDS, POOLS } from './ai/catalog/pools.js';
@@ -155,6 +155,12 @@ export function renderModelPickers() {
   for (const { id, labels } of PICKERS) {
     const sel = byId(id);
     if (!(sel instanceof HTMLSelectElement)) continue;
+    // A picker in use is rebuilt when it loses focus: rebuilding would close its open list.
+    if (sel === document.activeElement && sel.dataset.ready === 'true') {
+      sel.dataset.stale = 'true';
+      continue;
+    }
+    delete sel.dataset.stale;
     sel.replaceChildren(...groups.map((group) => buildGroup(group, labels)));
     sel.value = value;
     sel.dataset.ready = 'true';
@@ -196,6 +202,16 @@ export function initModelPicker() {
   onLocaleChange(() => renderModelPickers());
   onAssistantChange(() => syncPickerValue());
   onProvidersChange(() => renderModelPickers());
+  for (const { id } of PICKERS) {
+    const sel = byId(id);
+    if (!sel) continue;
+    // The providers' live model lists are read when a picker is opened, not at every visit.
+    sel.addEventListener('pointerdown', () => void refreshModelLists());
+    sel.addEventListener('focus', () => void refreshModelLists());
+    sel.addEventListener('blur', () => {
+      if (sel.dataset.stale === 'true') renderModelPickers();
+    });
+  }
   const run = () => {
     Promise.all([getDeviceProbe(), benchHistory()])
       .then(([probe, runs]) => {

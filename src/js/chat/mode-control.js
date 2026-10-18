@@ -3,9 +3,11 @@
 // toggles, and the hint and placeholder that say what the chosen mode does.
 //
 // Auto picks per question until the routing package brings its own decision (hooks.js
-// setRouteDecider): Grounded when the question carries a document or the on-device workspace holds
-// files and the question carries no images only, Free otherwise. Free never searches sources;
-// Grounded always does, and every answer gets the source check and a receipt.
+// setRouteDecider), as source mode did before whenever there are files to answer from: Grounded
+// when the question carries a document, or carries no images and the on-device workspace or the
+// knowledge base holds documents, or no model is set up at all (then the sources are quoted);
+// Free otherwise. Free never searches sources; Grounded always does, and every answer gets the
+// source check and a receipt.
 import { byId, onAction } from '../dom.js';
 import { setText, t } from '../i18n/index.js';
 import { getChatMode, getWebSearch, onChatModeChange, onWebSearchChange, setChatMode, setWebSearch } from '../state.js';
@@ -21,9 +23,20 @@ const MODE_TEXT = Object.freeze({
 });
 
 /**
+ * What Auto decides with.
+ * @typedef {object} RouteInput
+ * @property {ChatMode} mode
+ * @property {readonly { kind: string }[]} attachments
+ * @property {number} workspaceDocs   files in the on-device workspace
+ * @property {number} [knowledgeDocs] documents of the knowledge base (0 while unknown or offline)
+ * @property {boolean} [modelReady]   a model is set up for the question (default true)
+ */
+
+/**
  * The built-in route of a question: an explicit mode is kept; Auto answers from the sources when the
- * question brings a document, or brings no images and the workspace holds files.
- * @param {{ mode: ChatMode, attachments: readonly { kind: string }[], workspaceDocs: number }} input
+ * question brings a document, when it brings no images and there are documents to answer from, and
+ * when no model is set up (the sources are then quoted).
+ * @param {RouteInput} input
  * @returns {'free' | 'grounded'}
  */
 export function builtInRoute(input) {
@@ -31,12 +44,13 @@ export function builtInRoute(input) {
   const kinds = input.attachments.map((a) => a.kind);
   if (kinds.some((k) => k !== 'image')) return 'grounded';
   if (kinds.length > 0) return 'free';
-  return input.workspaceDocs > 0 ? 'grounded' : 'free';
+  if (input.modelReady === false) return 'grounded';
+  return input.workspaceDocs > 0 || (input.knowledgeDocs ?? 0) > 0 ? 'grounded' : 'free';
 }
 
 /**
  * The route of a question: the registered decider's when it decides, else the built-in rule.
- * @param {{ question: string, mode: ChatMode, attachments: readonly { name: string, kind: string }[], workspaceDocs: number }} input
+ * @param {RouteInput & { question: string, attachments: readonly { name: string, kind: string }[] }} input
  * @returns {Promise<'free' | 'grounded'>}
  */
 export async function decideRoute(input) {

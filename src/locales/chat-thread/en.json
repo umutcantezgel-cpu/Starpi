@@ -82,10 +82,15 @@
     "error_retry": "{reason} Try again in {seconds} s.",
     "no_model_body": "Add a key in Settings › Model providers and keys, load a model on this device or connect your own server. Grounded mode also answers without a model, by quoting your sources.",
     "no_vision_model": "None of the models set up can see images. Add a key of a provider whose models read images, or ask without the image.",
-    "image_not_source": "{name} was not added to your sources: reading text in images needs a model that can see, and your consent."
+    "image_not_source": "{name} was not added to your sources: reading text in images needs a model that can see, and your consent.",
+    "rate_limited_wait": "Too many requests at the provider right now: please wait {seconds} s and try again."
   },
   "continued": "Continued after the length limit",
   "continue_prompt": "Continue exactly where you stopped.",
   "describe_images": "Describe {n:the attached image|the attached images}.",
-  "summarize_files": "Summarize the {n} attached files."
+  "summarize_files": "Summarize the {n} attached files.",
+  "web": {
+    "sources": "From the web:",
+    "suggestions": "Search suggestions"
+  }
 }

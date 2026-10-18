@@ -3,8 +3,8 @@
     "auto": "Auto",
     "free": "Frei",
     "grounded": "Quellen",
-    "auto_hint": "Antworten aus deinen Dateien, wenn es welche gibt, sonst ein freies Gespräch.",
-    "placeholder_auto": "Frag, was du willst…"
+    "auto_hint": "Antworten aus Ihren Dateien, wenn es welche gibt, sonst ein freies Gespräch.",
+    "placeholder_auto": "Fragen Sie, was Sie wollen…"
   },
   "toggle": {
     "thinking": "Nachdenken",
@@ -17,18 +17,18 @@
   },
   "picker": {
     "auto": "Auto · bestes verfügbares",
-    "auto_long": "Auto · das beste eingerichtete Modell: deine Schlüssel, die kostenlosen Modelle der Seite, dein Server, dieses Gerät",
+    "auto_long": "Auto · das beste eingerichtete Modell: Ihre Schlüssel, die kostenlosen Modelle der Seite, Ihr Server, dieses Gerät",
     "group_recommended": "Empfohlen für dieses Gerät",
     "group_device": "Auf diesem Gerät",
     "group_pools": "Kostenlos (über Starpi)",
-    "group_server": "Dein Server",
+    "group_server": "Ihr Server",
     "runtime_pool": "kostenlos über Starpi",
-    "server_first": "Erstes Modell deines Servers",
+    "server_first": "Erstes Modell Ihres Servers",
     "measured_fast": "hier schnell gemessen",
     "unverified": "ungeprüft",
     "warn_no_vision": "sieht keine Bilder",
     "pools_label": "Kostenlose Modelle dieser Seite:",
-    "strength_hint": "Welches Modell Auto bei einem Anbieter nimmt, wenn du keines seiner Modelle gewählt hast.",
+    "strength_hint": "Welches Modell Auto bei einem Anbieter nimmt, wenn Sie keines seiner Modelle gewählt haben.",
     "served": "Beantwortet von {model}"
   },
   "badge": {
@@ -37,7 +37,7 @@
     "pool": "{provider} über Starpi · {model}",
     "served": "{provider} · {model} (statt {requested})",
     "device": "Auf diesem Gerät · {model}",
-    "server": "Dein Server · {model}"
+    "server": "Ihr Server · {model}"
   },
   "meta": {
     "tokens": "{input} rein · {output} raus",
@@ -65,27 +65,32 @@
     "error_unsupported_type": "{name} kann nicht angehängt werden: Dieser Dateityp wird nicht unterstützt.",
     "error_too_large": "{name} ist zu groß zum Anhängen.",
     "error_unreadable": "{name} konnte nicht gelesen werden.",
-    "no_vision": "{model} sieht keine Bilder. Entferne das Bild oder wähle ein Modell, das Bilder sieht, zum Beispiel Auto.",
-    "no_vision_auto": "Keines der eingerichteten Modelle sieht Bilder. Füge den Schlüssel eines Anbieters hinzu, dessen Modelle Bilder lesen, oder entferne das Bild."
+    "no_vision": "{model} sieht keine Bilder. Entfernen Sie das Bild oder wählen Sie ein Modell, das Bilder sieht, zum Beispiel Auto.",
+    "no_vision_auto": "Keines der eingerichteten Modelle sieht Bilder. Fügen Sie den Schlüssel eines Anbieters hinzu, dessen Modelle Bilder lesen, oder entfernen Sie das Bild."
   },
   "privacy": {
-    "key": "{provider}, dein Schlüssel: Deine Frage geht an die Suche in der Wissensdatenbank und mit passenden Auszügen an {provider}.",
-    "free_key": "Freier Chat mit {provider}, dein Schlüssel: Deine Frage, angehängte Dateien und frühere Nachrichten dieses Chats gehen an {provider}. Es werden keine Quellen durchsucht.",
-    "pool": "{provider} über Starpi: Deine Frage geht an die Suche in der Wissensdatenbank; Frage, passende Auszüge und frühere Nachrichten gehen über Starpis Server an {provider}.",
-    "free_pool": "Freier Chat mit {provider} über Starpi: Deine Frage, angehängte Dateien und frühere Nachrichten dieses Chats gehen über Starpis Server an {provider}. Es werden keine Quellen durchsucht."
+    "key": "{provider}, Ihr Schlüssel: Ihre Frage geht an die Suche in der Wissensdatenbank und mit passenden Auszügen an {provider}.",
+    "free_key": "Freier Chat mit {provider}, Ihr Schlüssel: Ihre Frage, angehängte Dateien und frühere Nachrichten dieses Chats gehen an {provider}. Es werden keine Quellen durchsucht.",
+    "pool": "{provider} über Starpi: Ihre Frage geht an die Suche in der Wissensdatenbank; Frage, passende Auszüge und frühere Nachrichten gehen über Starpis Server an {provider}.",
+    "free_pool": "Freier Chat mit {provider} über Starpi: Ihre Frage, angehängte Dateien und frühere Nachrichten dieses Chats gehen über Starpis Server an {provider}. Es werden keine Quellen durchsucht."
   },
   "status": {
-    "not_set_up": "Dieses Modell ist nicht eingerichtet: Füge seinen Schlüssel in den Einstellungen hinzu oder wähle ein anderes"
+    "not_set_up": "Dieses Modell ist nicht eingerichtet: Fügen Sie seinen Schlüssel in den Einstellungen hinzu oder wählen Sie ein anderes"
   },
   "notice": {
     "grounded_failed_title": "Das Modell konnte nicht aus den Quellen antworten",
-    "error_retry": "{reason} Versuche es in {seconds} s erneut.",
-    "no_model_body": "Füge in Einstellungen › Modellanbieter und Schlüssel einen Schlüssel hinzu, lade ein Modell auf diesem Gerät oder verbinde deinen eigenen Server. Der Quellen-Modus antwortet auch ohne Modell, indem er deine Quellen zitiert.",
-    "no_vision_model": "Keines der eingerichteten Modelle sieht Bilder. Füge den Schlüssel eines Anbieters hinzu, dessen Modelle Bilder lesen, oder frag ohne das Bild.",
-    "image_not_source": "{name} wurde nicht zu deinen Quellen hinzugefügt: Text in Bildern zu lesen braucht ein Modell, das Bilder sieht, und deine Zustimmung."
+    "error_retry": "{reason} Versuchen Sie es in {seconds} s erneut.",
+    "no_model_body": "Fügen Sie in Einstellungen › Modellanbieter und Schlüssel einen Schlüssel hinzu, laden Sie ein Modell auf diesem Gerät oder verbinden Sie Ihren eigenen Server. Der Quellen-Modus antwortet auch ohne Modell, indem er Ihre Quellen zitiert.",
+    "no_vision_model": "Keines der eingerichteten Modelle sieht Bilder. Fügen Sie den Schlüssel eines Anbieters hinzu, dessen Modelle Bilder lesen, oder fragen Sie ohne das Bild.",
+    "image_not_source": "{name} wurde nicht zu Ihren Quellen hinzugefügt: Text in Bildern zu lesen braucht ein Modell, das Bilder sieht, und Ihre Zustimmung.",
+    "rate_limited_wait": "Der Anbieter erhält gerade zu viele Anfragen: Bitte warten Sie {seconds} s und versuchen Sie es dann erneut."
   },
   "continued": "Fortgesetzt nach der Längengrenze",
   "continue_prompt": "Mach genau dort weiter, wo du aufgehört hast.",
   "describe_images": "Beschreibe {n:das angehängte Bild|die angehängten Bilder}.",
-  "summarize_files": "Fasse die {n} angehängten Dateien zusammen."
+  "summarize_files": "Fasse die {n} angehängten Dateien zusammen.",
+  "web": {
+    "sources": "Aus dem Web:",
+    "suggestions": "Suchvorschläge"
+  }
 }

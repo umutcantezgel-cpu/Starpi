@@ -159,19 +159,15 @@ function listTransport(provider) {
   }
 }
 
-/** Reads the live model lists of the keyed providers and of the own server, in the background. */
-async function refreshModelLists() {
-  const { keyed, server } = providerState();
-  const providers = [...keyed, ...(server ? /** @type {ProviderId[]} */ (['local']) : [])];
-  await Promise.all(
-    providers.map(async (provider) => {
-      const transport = listTransport(provider);
-      if (!transport) return;
-      const { models, error } = await fetchModels(provider, transport, { signal: AbortSignal.timeout(10_000) });
-      if (provider !== 'local') catalogs.set(provider, models);
-      if (!error) liveIds.set(provider, models.filter((m) => m.listed !== false).map((m) => m.id));
-    }),
-  );
+/** When the live lists were read last, and for which providers. */
+let listsRead = { at: 0, providers: '' };
+/** @type {Promise<void> | null} */
+let listsRun = null;
+/** Live model lists are read again after this long. */
+const LISTS_MAX_AGE_MS = 30 * 60_000;
+
+/** Publishes the model lists of the keyed providers: the live ones read so far, else the snapshot. */
+function publishModelLists() {
   /** @type {Partial<Record<ProviderId, import('../models/choices.js').ModelOption[]>>} */
   const models = {};
   for (const provider of providerState().keyed) {
@@ -179,6 +175,41 @@ async function refreshModelLists() {
     models[provider] = entries.filter((m) => m.listed !== false && !m.caps.imageOut).map((m) => ({ id: m.id, label: m.label || m.id, ...(m.caps.verified ? {} : { unverified: true }) }));
   }
   updateProviderState({ models, serverModels: liveIds.get('local') ?? providerState().serverModels });
+}
+
+/**
+ * Reads the live model lists of the keyed providers and of the own server. Only when a picker is
+ * opened (no provider is contacted before the user uses it), at most every half hour unless the
+ * providers changed; a call during a read joins it.
+ * @returns {Promise<void>}
+ */
+export function ensureModelLists() {
+  const { keyed, server } = providerState();
+  const providers = [...keyed, ...(server ? /** @type {ProviderId[]} */ (['local']) : [])];
+  const id = providers.join(',');
+  if (listsRun) return listsRun;
+  if (!providers.length || (listsRead.providers === id && Date.now() - listsRead.at < LISTS_MAX_AGE_MS)) return Promise.resolve();
+  listsRun = (async () => {
+    try {
+      await Promise.all(
+        providers.map(async (provider) => {
+          const transport = listTransport(provider);
+          if (!transport) return;
+          const { models, error } = await fetchModels(provider, transport, { signal: AbortSignal.timeout(10_000) });
+          // An empty or unreadable list says nothing about what the provider serves: keep the snapshot.
+          const listed = models.filter((m) => m.listed !== false).map((m) => m.id);
+          if (error || !listed.length) return;
+          if (provider !== 'local') catalogs.set(provider, models);
+          liveIds.set(provider, listed);
+        }),
+      );
+      listsRead = { at: Date.now(), providers: id };
+      publishModelLists();
+    } finally {
+      listsRun = null;
+    }
+  })();
+  return listsRun;
 }
 
 /**
@@ -210,9 +241,9 @@ export async function installAiLayer() {
   });
   updateProviderState({ ready: true });
   void healthClient.load().catch(() => {});
+  publishModelLists();
   const { reachable, pools } = await fetchPools();
   updateProviderState({ pools: reachable ? pools : {} });
-  await refreshModelLists();
 }
 
 // ---------------------------------------------------------------------------------------------

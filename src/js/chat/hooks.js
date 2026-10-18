@@ -26,7 +26,7 @@
 
 /**
  * The route decision of Auto (and of explicit modes, which a decider must keep).
- * @typedef {(input: { question: string, mode: ChatMode, attachments: readonly { name: string, kind: string }[], workspaceDocs: number }) => Promise<{ route: 'free' | 'grounded' } | null> | { route: 'free' | 'grounded' } | null} RouteDecider
+ * @typedef {(input: { question: string, mode: ChatMode, attachments: readonly { name: string, kind: string }[], workspaceDocs: number, knowledgeDocs?: number, modelReady?: boolean }) => Promise<{ route: 'free' | 'grounded' } | null> | { route: 'free' | 'grounded' } | null} RouteDecider
  */
 
 /**

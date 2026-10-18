@@ -12,10 +12,8 @@ import { renderEngineState, startLocalEngine } from './engine-ui.js';
 import { refreshIcons } from './icons.js';
 import { setText, t } from './i18n/index.js';
 import { currentPickerValue, syncPickerValue } from './model-picker.js';
-import { builtInRoute } from './chat/mode-control.js';
 import { parsePickerValue } from './models/choices.js';
 import { configuredProviders, onProvidersChange, probeLocalServer, providerLabel, routeOf } from './providers.js';
-import { listWorkspace } from './rag/workspace.js';
 import { assistantTarget, getAssistant, getChatMode, getLlmUrl, getModelPreference, getNvidiaModel, onAssistantChange, onChatModeChange, setAssistant } from './state.js';
 import { setAssistantStatus, setEngineDot } from './ui.js';
 import * as engine from './webgpu/engine.js';
@@ -43,8 +41,9 @@ export function renderPrivacyNotice() {
   const el = byId('privacyNotice');
   if (!el) return;
   const mode = getChatMode();
-  // The free chat searches no sources: its notices say what goes where instead.
-  const free = (mode === 'auto' ? builtInRoute({ mode, attachments: [], workspaceDocs: listWorkspace().length }) : mode) === 'free';
+  // The free chat searches no sources: its notices say what goes where instead. Auto may search
+  // them, so it says what source mode sends.
+  const free = mode === 'free';
   const dest = destinationOf(getAssistant());
   let icon = free ? 'info' : 'library';
   let key = free ? 'privacy.free_no_model' : 'privacy.extractive';
@@ -90,12 +89,16 @@ export function renderPrivacyNotice() {
 
 /** The engine dot and status line for the chosen assistant (not by colour alone). */
 function renderReach() {
-  const dest = destinationOf(getAssistant());
+  const assistant = getAssistant();
+  const dest = destinationOf(assistant);
   if (dest.kind === 'device') {
     setEngineDot(engine.isReady() ? 'ok' : 'off');
     return;
   }
   setEngineDot(dest.kind === 'none' ? 'off' : 'ok');
+  // The own server's line comes from its probe; an answer being written keeps its line.
+  if (dest.kind === 'local' || isChatBusy()) return;
+  setAssistantStatus(dest.kind === 'none' && assistant !== 'auto' ? 'chat-thread.status.not_set_up' : 'status.ready');
 }
 
 /**
@@ -149,8 +152,6 @@ export async function changeEngine(value, opts) {
     setAssistantStatus(reachable ? 'status.ready' : 'status.server_unreachable');
   } else {
     renderReach();
-    const dest = destinationOf(assistant);
-    if (dest.kind === 'none' && assistant !== 'auto') setAssistantStatus('chat-thread.status.not_set_up');
   }
   return stored;
 }
@@ -166,13 +167,20 @@ async function initStrength() {
   });
 }
 
+/** The strength picked last could not be stored (it holds for this page). */
+let strengthUnsaved = false;
+
 async function saveSettings() {
   const modeInput = /** @type {HTMLSelectElement | null} */ (byId('cfgComputeMode'));
   const strengthInput = /** @type {HTMLSelectElement | null} */ (byId('cfgStrength'));
   let stored = true;
   if (strengthInput) {
     const m = await import('./ai/model-selection.js');
-    if (m.isModelStrength(strengthInput.value) && strengthInput.value !== m.getModelStrength()) stored = m.setModelStrength(strengthInput.value) && stored;
+    // A strength the browser refused when it was picked holds for this page only: try again.
+    if (m.isModelStrength(strengthInput.value) && (strengthUnsaved || strengthInput.value !== m.getModelStrength())) {
+      strengthUnsaved = !m.setModelStrength(strengthInput.value);
+      stored = !strengthUnsaved && stored;
+    }
   }
   // A pick is applied when it is made. Only a picker showing something else than the stored choice
   // (e.g. a switch that waited for the keyboard to settle) is applied here: re-applying the shown
@@ -269,7 +277,7 @@ export function initSettings() {
   onChange('change-strength', async (el) => {
     const m = await import('./ai/model-selection.js');
     const value = /** @type {HTMLSelectElement} */ (el).value;
-    if (m.isModelStrength(value)) m.setModelStrength(value);
+    if (m.isModelStrength(value)) strengthUnsaved = !m.setModelStrength(value);
   });
   document.addEventListener('keydown', notePickerKey, true);
   onAction('save-settings', () => saveSettings());

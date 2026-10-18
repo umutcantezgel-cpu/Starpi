@@ -130,6 +130,12 @@ describe('assistantGroups', () => {
     // A model that left a list, and a free model while the site has not answered.
     assert.ok(item(assistantGroups(state({ keyed: ['openai'], models: { openai: [] }, current: 'openai:gpt-old' })), 'openai:gpt-old'));
     assert.ok(item(assistantGroups(state({ pools: null, current: `nvidia:${NVIDIA_IDS[4]}` })), `nvidia:${NVIDIA_IDS[4]}`));
+    // While the site has not answered the pool model is kept as it is; once it answered without
+    // it, the model is shown disabled and marked.
+    assert.equal(item(assistantGroups(state({ pools: null, current: `nvidia:${NVIDIA_IDS[4]}` })), `nvidia:${NVIDIA_IDS[4]}`)?.disabled, undefined);
+    const gone = item(assistantGroups(state({ pools: {}, current: `nvidia:${NVIDIA_IDS[4]}` })), `nvidia:${NVIDIA_IDS[4]}`);
+    assert.equal(gone?.disabled, true);
+    assert.deepEqual(gone && optionParts(gone).at(-1), { key: 'models.warn_not_configured' });
     assert.ok(item(assistantGroups(state({ current: 'local:qwen3:8b' })), 'local:qwen3:8b'));
   });
 

@@ -245,6 +245,17 @@ export function loadRunner() {
   return runner;
 }
 
+/**
+ * Reads the live model lists of the providers that are set up (for the pickers; no provider is
+ * asked before the user opens one). Never rejects.
+ * @returns {Promise<void>}
+ */
+export function refreshModelLists() {
+  return loadRunner()
+    .then((m) => m.ensureModelLists())
+    .catch(() => {});
+}
+
 /** @type {Promise<void> | null} */
 let refreshing = null;
 let again = false;
