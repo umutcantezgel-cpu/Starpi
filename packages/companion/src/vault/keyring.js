@@ -7,6 +7,7 @@
 // A namespace created again after an erase gets a higher generation; the generation is part of
 // what each sealed value is bound to, so a value of the erased generation never opens with the new
 // key either.
+import { statSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { isoAt, systemClock } from '../lib/clock.js';
 import { fromBase64url, toBase64url } from '../lib/canonical.js';
@@ -18,6 +19,16 @@ export const KEYRING_FORMAT = 'starpi-companion.keyring/1';
 
 /** @typedef {{ gen: number, created: string, wrapped: string }} KeyEntry */
 /** @typedef {{ format: string, kek: { provider: string, id: string }, keys: Record<string, KeyEntry>, erased: Record<string, { gen: number, at: string }> }} KeyringFile */
+
+/** Size, change time and inode of a file, as one comparable text. @param {string} file */
+function fileStamp(file) {
+  try {
+    const st = statSync(file, { bigint: true });
+    return `${st.size}:${st.mtimeNs}:${st.ctimeNs}:${st.ino}`;
+  } catch {
+    return 'missing';
+  }
+}
 
 /** @param {string} ns @param {number} gen */
 const wrapAad = (ns, gen) => `starpi-companion/dek/1\n${ns}\n${gen}`;
@@ -51,19 +62,37 @@ export function readKeyringFile(file) {
  */
 export function openKeyring({ file, kek, provider, clock = systemClock }) {
   const id = kekId(kek);
-  let state = readKeyringFile(file);
-  if (state === null) {
-    state = { format: KEYRING_FORMAT, kek: { provider, id }, keys: {}, erased: {} };
+  let current = readKeyringFile(file);
+  if (current === null) {
+    current = { format: KEYRING_FORMAT, kek: { provider, id }, keys: {}, erased: {} };
     ensurePrivateDir(dirname(file));
-    writeFileAtomic(file, `${JSON.stringify(state, null, 2)}\n`);
-  } else if (state.kek.id !== id) {
-    throw fail('kek_mismatch', `the key-encryption key does not belong to this vault (expected ${state.kek.id}, got ${id})`);
+    writeFileAtomic(file, `${JSON.stringify(current, null, 2)}\n`);
+  } else if (current.kek.id !== id) {
+    throw fail('kek_mismatch', `the key-encryption key does not belong to this vault (expected ${current.kek.id}, got ${id})`);
   }
   /** @type {Map<string, Buffer>} */
   const cache = new Map();
-  const current = /** @type {KeyringFile} */ (state);
+  let stamp = fileStamp(file);
 
-  const save = () => writeFileAtomic(file, `${JSON.stringify(current, null, 2)}\n`);
+  /**
+   * Reads the file again when another process (a command-line tool next to the running service)
+   * changed it, so an erase there is never undone here. Keys that vanished leave the cache.
+   */
+  function refresh() {
+    const now = fileStamp(file);
+    if (now === stamp) return;
+    const next = readKeyringFile(file);
+    if (next === null) throw fail('keyring_missing', 'the keyring file disappeared');
+    if (next.kek.id !== id) throw fail('kek_mismatch', 'the keyring was re-wrapped by another process');
+    current = next;
+    stamp = now;
+    for (const ns of [...cache.keys()]) if (!current.keys[ns]) cache.delete(ns);
+  }
+
+  const save = () => {
+    writeFileAtomic(file, `${JSON.stringify(current, null, 2)}\n`);
+    stamp = fileStamp(file);
+  };
 
   /**
    * The data key and generation of a namespace; created on first use.
@@ -71,7 +100,9 @@ export function openKeyring({ file, kek, provider, clock = systemClock }) {
    * @returns {{ key: Buffer, gen: number }}
    */
   function dataKey(ns) {
-    const entry = current.keys[ns];
+    refresh();
+    const state = /** @type {KeyringFile} */ (current);
+    const entry = state.keys[ns];
     if (entry) {
       let key = cache.get(ns);
       if (!key) {
@@ -82,9 +113,9 @@ export function openKeyring({ file, kek, provider, clock = systemClock }) {
       }
       return { key, gen: entry.gen };
     }
-    const gen = (current.erased[ns]?.gen ?? 0) + 1;
+    const gen = (state.erased[ns]?.gen ?? 0) + 1;
     const key = newKey();
-    current.keys[ns] = { gen, created: isoAt(clock.now()), wrapped: toBase64url(sealBytes(kek, key, wrapAad(ns, gen))) };
+    state.keys[ns] = { gen, created: isoAt(clock.now()), wrapped: toBase64url(sealBytes(kek, key, wrapAad(ns, gen))) };
     save();
     cache.set(ns, key);
     return { key, gen };
@@ -96,25 +127,37 @@ export function openKeyring({ file, kek, provider, clock = systemClock }) {
     dataKey,
     /** The key of a namespace and generation if it still exists, else null. @param {string} ns @param {number} gen */
     keyFor(ns, gen) {
-      const entry = current.keys[ns];
+      refresh();
+      const entry = /** @type {KeyringFile} */ (current).keys[ns];
       if (!entry || entry.gen !== gen) return null;
       return dataKey(ns).key;
     },
     /** @param {string} ns */
-    has: (ns) => current.keys[ns] !== undefined,
+    has: (ns) => {
+      refresh();
+      return /** @type {KeyringFile} */ (current).keys[ns] !== undefined;
+    },
     /** The generation of a namespace's live key, or null. @param {string} ns */
-    generation: (ns) => current.keys[ns]?.gen ?? null,
-    namespaces: () => Object.keys(current.keys).sort(),
+    generation: (ns) => {
+      refresh();
+      return /** @type {KeyringFile} */ (current).keys[ns]?.gen ?? null;
+    },
+    namespaces: () => {
+      refresh();
+      return Object.keys(/** @type {KeyringFile} */ (current).keys).sort();
+    },
     /**
      * Destroys the key of a namespace (the crypto-erase). Durable when it returns.
      * @param {string} ns
      * @returns {number | null} the generation erased, null when the namespace had no key
      */
     erase(ns) {
-      const entry = current.keys[ns];
+      refresh();
+      const state = /** @type {KeyringFile} */ (current);
+      const entry = state.keys[ns];
       if (!entry) return null;
-      delete current.keys[ns];
-      current.erased[ns] = { gen: entry.gen, at: isoAt(clock.now()) };
+      delete state.keys[ns];
+      state.erased[ns] = { gen: entry.gen, at: isoAt(clock.now()) };
       cache.delete(ns);
       save();
       return entry.gen;
@@ -127,8 +170,10 @@ export function openKeyring({ file, kek, provider, clock = systemClock }) {
      * @param {string} at
      */
     noteErased(ns, gen, at) {
-      if ((current.erased[ns]?.gen ?? 0) >= gen) return;
-      current.erased[ns] = { gen, at };
+      refresh();
+      const state = /** @type {KeyringFile} */ (current);
+      if ((state.erased[ns]?.gen ?? 0) >= gen) return;
+      state.erased[ns] = { gen, at };
       save();
     },
     /**
@@ -137,11 +182,13 @@ export function openKeyring({ file, kek, provider, clock = systemClock }) {
      * @param {string} nextProvider
      */
     rewrap(nextKek, nextProvider) {
-      for (const [ns, entry] of Object.entries(current.keys)) {
+      refresh();
+      const state = /** @type {KeyringFile} */ (current);
+      for (const [ns, entry] of Object.entries(state.keys)) {
         const key = dataKey(ns).key;
         entry.wrapped = toBase64url(sealBytes(nextKek, key, wrapAad(ns, entry.gen)));
       }
-      current.kek = { provider: nextProvider, id: kekId(nextKek) };
+      state.kek = { provider: nextProvider, id: kekId(nextKek) };
       save();
     },
   };

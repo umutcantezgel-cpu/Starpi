@@ -15,7 +15,7 @@ import { fail } from '../lib/errors.js';
  * @param {string} options.baseUrl              e.g. http://127.0.0.1:11434/v1
  * @param {string} options.model
  * @param {'local' | 'cloud'} options.locality
- * @param {typeof fetch} options.fetch           the plain fetch for local servers, an egress capability's for cloud ones
+ * @param {typeof globalThis.fetch} options.fetch           the plain fetch for local servers, an egress capability's for cloud ones
  * @param {() => string | null} [options.apiKey]
  * @param {readonly string[]} [options.hosts]
  * @param {number} [options.memoryMb]

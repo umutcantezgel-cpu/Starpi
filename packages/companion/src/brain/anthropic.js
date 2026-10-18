@@ -19,7 +19,7 @@ export const EFFORTS = Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']);
 /**
  * @param {object} options
  * @param {string} options.id
- * @param {typeof fetch} options.fetch
+ * @param {typeof globalThis.fetch} options.fetch
  * @param {() => string | null} options.apiKey
  * @param {string} [options.model]
  * @param {string} [options.effort]

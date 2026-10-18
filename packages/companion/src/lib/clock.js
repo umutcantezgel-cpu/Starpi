@@ -47,6 +47,7 @@ export function manualClock(start = Date.UTC(2026, 0, 1)) {
     advance(ms) {
       const until = current + ms;
       for (;;) {
+        /** @type {[number, { at: number, fn: () => void }] | null} */
         let due = null;
         for (const [id, t] of timers) if (t.at <= until && (due === null || t.at < due[1].at)) due = [id, t];
         if (due === null) break;

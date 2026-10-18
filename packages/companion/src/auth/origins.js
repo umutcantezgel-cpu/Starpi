@@ -31,10 +31,13 @@ export function normalizeOrigin(value) {
 }
 
 /**
- * @param {{ allowed?: readonly string[], port: number }} options
+ * @param {{ allowed?: readonly string[], port: number | (() => number) }} options
+ *   port: the companion's port, or a function that returns it once the server listens
  */
 export function createOriginPolicy({ allowed = DEFAULT_ALLOWED_ORIGINS, port }) {
-  const self = new Set([`http://127.0.0.1:${port}`, `http://localhost:${port}`, `http://[::1]:${port}`]);
+  const portOf = typeof port === 'function' ? port : () => port;
+  const selfOrigins = () => new Set([`http://127.0.0.1:${portOf()}`, `http://localhost:${portOf()}`, `http://[::1]:${portOf()}`]);
+  const self = { has: (/** @type {string} */ o) => selfOrigins().has(o) };
   const cross = new Set();
   for (const entry of allowed) {
     const origin = normalizeOrigin(entry);
@@ -43,7 +46,7 @@ export function createOriginPolicy({ allowed = DEFAULT_ALLOWED_ORIGINS, port }) 
   }
   return {
     /** The origin the self-served app runs on. */
-    canonical: `http://127.0.0.1:${port}`,
+    canonical: () => `http://127.0.0.1:${portOf()}`,
     /** @param {string | null} origin */
     isSelf: (origin) => origin !== null && self.has(origin),
     /** @param {string | null} origin */

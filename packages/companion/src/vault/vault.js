@@ -37,6 +37,12 @@ CREATE TABLE IF NOT EXISTS vault_items (
   updated TEXT NOT NULL,
   PRIMARY KEY (ns, id)
 );
+CREATE TABLE IF NOT EXISTS vault_blobs (
+  ns TEXT NOT NULL,
+  id TEXT NOT NULL,
+  updated TEXT NOT NULL,
+  PRIMARY KEY (ns, id)
+);
 `;
 
 /** @param {string} ns */
@@ -70,6 +76,9 @@ export function createVault({ store, keyring, deletions, blobDir, clock = system
   const deleteNs = db.prepare('DELETE FROM vault_items WHERE ns = ?');
   const listRows = db.prepare('SELECT id, updated, length(sealed) AS bytes FROM vault_items WHERE ns = ? ORDER BY id');
   const countRows = db.prepare('SELECT ns, COUNT(*) AS n FROM vault_items GROUP BY ns');
+  const putBlobRow = db.prepare('INSERT INTO vault_blobs (ns, id, updated) VALUES (?, ?, ?) ON CONFLICT (ns, id) DO UPDATE SET updated = excluded.updated');
+  const deleteBlobRow = db.prepare('DELETE FROM vault_blobs WHERE ns = ? AND id = ?');
+  const listBlobRows = db.prepare('SELECT id, updated FROM vault_blobs WHERE ns = ? ORDER BY id');
 
   /** @param {string} ns @param {string} id */
   const blobFile = (ns, id) => join(blobDir, ns, `${createHash('sha256').update(id).digest('hex')}.sealed`);
@@ -132,6 +141,7 @@ export function createVault({ store, keyring, deletions, blobDir, clock = system
       delete(id) {
         assertId(id);
         const removedRow = Number(deleteRow.run(ns, id).changes) > 0;
+        deleteBlobRow.run(ns, id);
         const removedBlob = removeFile(blobFile(ns, id));
         if (removedRow || removedBlob) deletions.append(ns, id, isoAt(clock.now()));
         return removedRow || removedBlob;
@@ -151,7 +161,10 @@ export function createVault({ store, keyring, deletions, blobDir, clock = system
         header.writeUInt32BE(gen);
         ensurePrivateDir(join(blobDir, ns));
         writeFileAtomic(blobFile(ns, id), Buffer.concat([header, sealBytes(key, data, blobAad(id, gen))]));
+        putBlobRow.run(ns, id, isoAt(clock.now()));
       },
+      /** Blob ids with their times (no content). */
+      listBlobs: () => /** @type {Array<{ id: string, updated: string }>} */ (listBlobRows.all(ns)).map((r) => ({ id: r.id, updated: r.updated })),
       /** @param {string} id @returns {Buffer | null} */
       getBlob(id) {
         assertId(id);
@@ -166,30 +179,8 @@ export function createVault({ store, keyring, deletions, blobDir, clock = system
     };
   }
 
-  /**
-   * A codec for the store: seals event bodies of protected classes with a namespace key. The text
-   * form is `s1.<generation>.<base64url>`.
-   * @param {string} ns
-   * @returns {import('../store/sqlite.js').BodyCodec}
-   */
-  function codec(ns) {
-    assertNamespace(ns);
-    return {
-      seal(plain, aad) {
-        const { key, gen } = keyring.dataKey(ns);
-        return `s1.${gen}.${toBase64url(sealBytes(key, Buffer.from(plain, 'utf8'), `${ns}:${aad}:${gen}`))}`;
-      },
-      open(sealed, aad) {
-        const m = /^s1\.(\d{1,9})\.([A-Za-z0-9_-]+)$/.exec(sealed);
-        const bytes = m ? fromBase64url(m[2]) : null;
-        if (!m || !bytes) throw fail('vault_unreadable', 'not a sealed text');
-        const gen = Number(m[1]);
-        const key = keyring.keyFor(ns, gen);
-        if (!key) throw fail('vault_erased', `a sealed text of ${ns} belongs to an erased key`);
-        return openBytes(key, bytes, `${ns}:${aad}:${gen}`).toString('utf8');
-      },
-    };
-  }
+  /** @param {string} ns */
+  const codec = (ns) => namespaceCodec(keyring, ns);
 
   /** True when a blob file exists and was last written at or before `at`. @param {string} file @param {string} at */
   function blobWrittenBy(file, at) {
@@ -203,6 +194,7 @@ export function createVault({ store, keyring, deletions, blobDir, clock = system
   /** @param {string} ns */
   function dropContent(ns) {
     const items = Number(deleteNs.run(ns).changes);
+    db.prepare('DELETE FROM vault_blobs WHERE ns = ?').run(ns);
     rmSync(join(blobDir, ns), { recursive: true, force: true });
     return items;
   }
@@ -245,6 +237,7 @@ export function createVault({ store, keyring, deletions, blobDir, clock = system
       const removed = Number(db.prepare('DELETE FROM vault_items WHERE ns = ? AND id = ? AND updated <= ?').run(entry.ns, entry.id, entry.at).changes);
       const file = blobFile(entry.ns, entry.id);
       const blob = blobWrittenBy(file, entry.at) && removeFile(file);
+      if (blob) deleteBlobRow.run(entry.ns, entry.id);
       items += removed > 0 || blob ? 1 : 0;
     }
     return { namespaces, items, invalid };
@@ -283,3 +276,30 @@ export function createVault({ store, keyring, deletions, blobDir, clock = system
 }
 
 /** @typedef {ReturnType<typeof createVault>} Vault */
+
+/**
+ * A codec for the store: seals texts (event bodies of protected classes) with a namespace key. The
+ * text form is `s1.<generation>.<base64url>`. It needs only the keyring, so the store can use it
+ * before the vault exists.
+ * @param {import('./keyring.js').Keyring} keyring
+ * @param {string} ns
+ * @returns {import('../store/sqlite.js').BodyCodec}
+ */
+export function namespaceCodec(keyring, ns) {
+  assertNamespace(ns);
+  return {
+    seal(plain, aad) {
+      const { key, gen } = keyring.dataKey(ns);
+      return `s1.${gen}.${toBase64url(sealBytes(key, Buffer.from(plain, 'utf8'), `${ns}:${aad}:${gen}`))}`;
+    },
+    open(sealed, aad) {
+      const m = /^s1\.(\d{1,9})\.([A-Za-z0-9_-]+)$/.exec(sealed);
+      const bytes = m ? fromBase64url(m[2]) : null;
+      if (!m || !bytes) throw fail('vault_unreadable', 'not a sealed text');
+      const gen = Number(m[1]);
+      const key = keyring.keyFor(ns, gen);
+      if (!key) throw fail('vault_erased', `a sealed text of ${ns} belongs to an erased key`);
+      return openBytes(key, bytes, `${ns}:${aad}:${gen}`).toString('utf8');
+    },
+  };
+}

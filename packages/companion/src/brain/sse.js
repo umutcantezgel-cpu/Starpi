@@ -2,6 +2,7 @@
 // Server-sent events from a fetch body: one {event, data} per blank-line-terminated block, with
 // multi-line data joined by newlines, comments skipped, and CRLF or LF line ends. A block cut off
 // by the end of the stream is still delivered.
+import { transportError } from './contract.js';
 
 /**
  * @param {ReadableStream<Uint8Array> | null} body

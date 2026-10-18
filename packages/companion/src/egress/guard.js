@@ -54,6 +54,7 @@ const BLOCKED_BINDINGS = Object.freeze(new Set(['tcp_wrap', 'udp_wrap', 'pipe_wr
  * @property {boolean} [plain]   tests only: no TLS on top
  */
 
+/** @type {object | null} */
 let active = null;
 
 /** @param {string} api @param {string} target */
@@ -124,7 +125,7 @@ export function installEgressGuard(options = {}) {
     spawn: Object.fromEntries(SPAWN_METHODS.map((m) => [m, /** @type {any} */ (childProcess)[m]])),
     clusterFork: cluster.fork,
     worker: workerThreads.Worker,
-    binding: process.binding,
+    binding: /** @type {any} */ (process).binding,
     register: nodeModule.register,
   };
 
@@ -186,6 +187,7 @@ export function installEgressGuard(options = {}) {
 
   /** @param {Function} original @param {string} api */
   const guardedDatagram = (original, api) =>
+    /** @this {any} */
     function datagram(/** @type {unknown[]} */ ...args) {
       // send(msg, [offset, length,] port, address, cb) / connect(port, address, cb)
       const address = args.find((a, i) => i > 0 && typeof a === 'string');
@@ -235,7 +237,7 @@ export function installEgressGuard(options = {}) {
   const direct = {
     async connect(host) {
       const addresses = await new Promise((resolve, reject) => {
-        originals.lookup.call(dns, host, { all: true, verbatim: true }, (/** @type {any} */ err, /** @type {any} */ list) => (err ? reject(err) : resolve(list)));
+        /** @type {any} */ (originals.lookup).call(dns, host, { all: true, verbatim: true }, (/** @type {any} */ err, /** @type {any} */ list) => (err ? reject(err) : resolve(list)));
       });
       const list = /** @type {Array<{ address: string }>} */ (addresses);
       if (list.length === 0 || list.some((a) => !isPublicAddress(a.address))) throw refuse('capability.resolve', `${host} (not public)`);
@@ -272,8 +274,9 @@ export function installEgressGuard(options = {}) {
         socket.setTimeout(0);
         resolve(socket);
       };
-      if (port === null) originals.connect.call(socket, { path: hostOrPath }, done);
-      else originals.connect.call(socket, { host: hostOrPath, port }, done);
+      const connect = /** @type {any} */ (originals.connect);
+      if (port === null) connect.call(socket, { path: hostOrPath }, done);
+      else connect.call(socket, { host: hostOrPath, port }, done);
     });
   }
 
@@ -444,4 +447,40 @@ async function bodyBytes(body) {
     return Buffer.concat(chunks);
   }
   throw fail('egress_body', 'unsupported request body type');
+}
+
+/**
+ * A capability without the guard, for embedding and tests: the same host list and URL rules, with
+ * the requests made by the given fetch. The companion's command line never uses it.
+ * @param {readonly string[]} entries
+ * @param {typeof fetch} fetchImpl
+ */
+export function openCapability(entries, fetchImpl) {
+  const hosts = new Set();
+  for (const entry of entries) {
+    const parsed = parseEgressEntry(entry);
+    if (!parsed) throw fail('egress_entry', `${JSON.stringify(entry)} is not a public host:443 entry`);
+    hosts.add(parsed.host);
+  }
+  const targets = Object.freeze([...hosts].sort().map((h) => `${h}:443`));
+  /** @param {unknown} host */
+  const allows = (host) => typeof host === 'string' && hosts.has(host.toLowerCase().replace(/\.$/, ''));
+  return Object.freeze({
+    targets,
+    allows,
+    /** @param {string | URL | Request} input @param {RequestInit} [init] */
+    fetch(input, init) {
+      const url = new URL(typeof Request !== 'undefined' && input instanceof Request ? input.url : String(input));
+      if (url.protocol !== 'https:' || (url.port !== '' && url.port !== '443') || !allows(url.hostname)) return Promise.reject(blocked('capability.fetch', url.host));
+      return fetchImpl(input, init);
+    },
+    /** @param {readonly string[]} subset */
+    narrow(subset) {
+      for (const entry of subset) {
+        const parsed = parseEgressEntry(entry);
+        if (!parsed || !hosts.has(parsed.host)) throw fail('egress_entry', `${entry} is not held by this capability`);
+      }
+      return openCapability(subset, fetchImpl);
+    },
+  });
 }

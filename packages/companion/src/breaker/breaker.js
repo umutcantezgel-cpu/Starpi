@@ -40,6 +40,7 @@ export function createBreaker({ windowMs = 60_000, minEvents = 20, thresholds = 
   /** @type {Level} */
   let level = 'steady';
   let lastRss = 0;
+  /** @type {Record<string, Threshold | undefined>} */
   const limits = { ...DEFAULT_THRESHOLDS, ...thresholds };
 
   const trim = () => {
