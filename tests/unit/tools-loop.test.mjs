@@ -9,7 +9,7 @@ import { anthropicWireAdapter } from '../../src/js/ai/adapters/anthropic.js';
 import { createOpenAiResponsesAdapter } from '../../src/js/ai/adapters/openai-responses.js';
 import { complete as completeCall } from '../../src/js/ai/index.js';
 import { directTransport } from '../../src/js/ai/transport.js';
-import { approvalKey, createApprovalGate, memoryApprovalStore, needsApproval } from '../../src/js/ai/tools/approval.js';
+import { approvalKey, createApprovalGate, mayAllowAlways, memoryApprovalStore, needsApproval, parseApprovalKey } from '../../src/js/ai/tools/approval.js';
 import { MAX_TOOL_ROUNDS, runToolLoop } from '../../src/js/ai/tools/loop.js';
 import { createToolRegistry } from '../../src/js/ai/tools/registry.js';
 
@@ -285,6 +285,30 @@ describe('approval gate', () => {
     await gate.decide(destructive, {}, signal);
     await gate.decide(destructive, {}, signal);
     assert.equal(asks, 4);
+  });
+
+  it('lists remembered choices, forgets one or all, and says when they change', async () => {
+    let changes = 0;
+    const gate = createApprovalGate({ ask: async () => 'always', onChange: () => (changes += 1) });
+    const signal = new AbortController().signal;
+    const writer = { name: 'writer', description: 'w', schema: {}, effect: /** @type {const} */ ('low'), origin: /** @type {const} */ ('builtin'), run: async () => ({ content: '' }) };
+    const mcp = { ...writer, name: 'mcp_srv_note', origin: /** @type {const} */ ('mcp'), server: { id: 's1', name: 'Srv', tool: 'note', hash: `sha256:${'a'.repeat(64)}` } };
+    await gate.decide(writer, {}, signal);
+    await gate.decide(mcp, {}, signal);
+    assert.equal(changes, 2);
+    assert.deepEqual(gate.remembered().map((e) => e.key).sort(), ['mcp:s1:note', 'tool:writer']);
+    assert.deepEqual(parseApprovalKey('mcp:s1:note'), { kind: 'mcp', serverId: 's1', tool: 'note' });
+    assert.deepEqual(parseApprovalKey('tool:writer'), { kind: 'tool', name: 'writer' });
+    assert.equal(parseApprovalKey('other'), null);
+    gate.forgetKey('tool:writer');
+    assert.deepEqual(gate.remembered().map((e) => e.key), ['mcp:s1:note']);
+    gate.forget();
+    assert.deepEqual(gate.remembered(), []);
+    assert.equal(changes, 4);
+    // A tool that asks each time is never remembered.
+    assert.equal(mayAllowAlways({ ...writer, askEachTime: true }), false);
+    await gate.decide({ ...writer, askEachTime: true }, {}, signal);
+    assert.deepEqual(gate.remembered(), []);
   });
 
   it('does not ask for built-in read tools and refuses after Stop', async () => {

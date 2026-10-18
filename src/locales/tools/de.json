@@ -22,7 +22,7 @@
     "always": "Immer erlauben",
     "deny": "Ablehnen",
     "allowed": "Erlaubt",
-    "allowed_always": "Erlaubt – dieses Werkzeug fragt nicht mehr",
+    "allowed_always": "Erlaubt – dieses Werkzeug fragt nicht mehr (zurücknehmen unter Einstellungen → Werkzeuge und Verbindungen)",
     "denied": "Nicht erlaubt"
   },
   "activity": {
@@ -50,7 +50,7 @@
   },
   "settings": {
     "title": "Werkzeuge und Verbindungen",
-    "subtitle": "Was Modelle beim Antworten nutzen dürfen: eingebaute Werkzeuge, ein Websuchdienst und MCP-Server. Ein Aufruf, der etwas verändert, fragt immer zuerst.",
+    "subtitle": "Was Modelle beim Antworten nutzen dürfen: eingebaute Werkzeuge, ein Websuchdienst und MCP-Server. Ein Aufruf, der etwas verändert, fragt zuerst; „Immer erlauben“ gibt es nur bei kleiner Wirkung, und es lässt sich am Ende dieser Karte zurücknehmen.",
     "tools_title": "Werkzeuge für das Modell",
     "tools_hint": "Werden Modellen angeboten, die Werkzeuge aufrufen können; nie den Modellen auf diesem Gerät oder den freien Modellen der Website.",
     "switch": {
@@ -85,7 +85,13 @@
       "bad_url": "Das ist keine verwendbare Adresse."
     },
     "mcp_title": "MCP-Server",
-    "mcp_hint": "Server, die Werkzeuge über MCP (Streamable HTTP) anbieten. Der Browser erreicht einen Server nur, wenn dieser Aufrufe von dieser Seite erlaubt. Sie geben jedes Werkzeug einmal frei, und es fragt trotzdem vor jedem Aufruf; ein Werkzeug, dessen Beschreibung sich ändert, muss neu freigegeben werden.",
+    "mcp_hint": "Server, die Werkzeuge über MCP (Streamable HTTP) anbieten. Der Browser erreicht einen Server nur, wenn dieser Aufrufe von dieser Seite erlaubt. Sie geben jedes Werkzeug einmal frei; danach fragt jeder Aufruf, außer Sie haben für ein Werkzeug, das nur liest oder wenig bewirkt, „Immer erlauben“ gewählt. Ein Werkzeug, dessen Definition sich ändert, muss neu freigegeben werden und fragt wieder.",
+    "remembered_title": "Immer erlaubt",
+    "remembered_hint": "Werkzeuge, für die Sie „Immer erlauben“ gewählt haben, laufen ohne Rückfrage. Vergessen Sie die Wahl hier, fragt das Werkzeug wieder.",
+    "remembered_empty": "Kein Werkzeug ist immer erlaubt.",
+    "remembered_mcp": "{tool} (MCP-Server {server})",
+    "remembered_forget": "Vergessen",
+    "remembered_forget_all": "Alle vergessen",
     "mcp": {
       "empty": "Noch keine Server.",
       "name": "Name",
@@ -105,6 +111,7 @@
       "enabled": "Diesen Server nutzen",
       "approve": "Freigeben",
       "revoke": "Freigabe zurücknehmen",
+      "schema": "Argumente, wie das Modell sie sieht",
       "provider_flag": "Server über den Anbieter erlauben",
       "provider_flag_hint": "Für Server, die Aufrufe aus dem Browser sperren: Anthropic oder OpenAI verbindet sich stattdessen mit dem Server und ruft die genannten Werkzeuge auf, ohne jedes Mal zu fragen. Nur für öffentliche https-Server, denen Sie vertrauen.",
       "allowed": "Werkzeuge, die der Anbieter aufrufen darf (durch Kommas getrennt)",

@@ -22,7 +22,7 @@
     "always": "Always allow",
     "deny": "Deny",
     "allowed": "Allowed",
-    "allowed_always": "Allowed – this tool will not ask again",
+    "allowed_always": "Allowed – this tool will not ask again (undo under Settings → Tools and connections)",
     "denied": "Not allowed"
   },
   "activity": {
@@ -50,7 +50,7 @@
   },
   "settings": {
     "title": "Tools and connections",
-    "subtitle": "What models may use while they answer: built-in tools, a web search service and MCP servers. A call that changes something always asks first.",
+    "subtitle": "What models may use while they answer: built-in tools, a web search service and MCP servers. A call that changes something asks first; “Always allow” is offered only for small effects and can be undone at the end of this card.",
     "tools_title": "Tools for the model",
     "tools_hint": "Offered to models that can call tools; never to models on this device or the site's free models.",
     "switch": {
@@ -85,7 +85,13 @@
       "bad_url": "This is not a usable address."
     },
     "mcp_title": "MCP servers",
-    "mcp_hint": "Servers that offer tools over MCP (Streamable HTTP). The browser can reach a server only when it allows calls from this page. You approve each tool once, and it still asks before every call; a tool whose description changes must be approved again.",
+    "mcp_hint": "Servers that offer tools over MCP (Streamable HTTP). The browser can reach a server only when it allows calls from this page. You approve each tool once; after that every call asks, unless you chose “Always allow” for a tool that only reads or has a small effect. A tool whose definition changes must be approved again and asks again.",
+    "remembered_title": "Always allowed",
+    "remembered_hint": "Tools you chose “Always allow” for run without asking. Forget a choice here and the tool asks again.",
+    "remembered_empty": "No tool is always allowed.",
+    "remembered_mcp": "{tool} (MCP server {server})",
+    "remembered_forget": "Forget",
+    "remembered_forget_all": "Forget all",
     "mcp": {
       "empty": "No servers yet.",
       "name": "Name",
@@ -105,6 +111,7 @@
       "enabled": "Use this server",
       "approve": "Approve",
       "revoke": "Withdraw approval",
+      "schema": "Arguments as the model sees them",
       "provider_flag": "Allow provider-side servers",
       "provider_flag_hint": "For servers that block browser calls: Anthropic or OpenAI connects to the server instead and calls the tools you list without asking each time. Only for public https servers you trust.",
       "allowed": "Tools the provider may call (comma-separated)",

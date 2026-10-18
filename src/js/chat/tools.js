@@ -90,7 +90,8 @@ const packKey = (ctx) => `${ctx.conversationId}\n${ctx.question}`;
  */
 function createRuntime(opts = {}) {
   const registry = createToolRegistry();
-  const gate = createApprovalGate({ store: localApprovalStore() });
+  // The settings list the remembered approvals: an "Always allow" on a card refreshes them.
+  const gate = createApprovalGate({ store: localApprovalStore(), onChange: () => changed() });
   const servers = createServerStore({ keys: keyStore });
   const bridge = createMcpBridge({ store: servers, registry });
   let switches = readToolSwitches(readLocalJson(TOOL_SETTINGS_KEY, null));

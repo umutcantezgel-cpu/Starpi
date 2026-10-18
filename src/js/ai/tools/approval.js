@@ -4,14 +4,17 @@
 //   low                asks; "Always allow" may be remembered for that tool
 //   high               asks every time ("Always allow" is never offered)
 //   forbidden          refused without asking
-// Every call of an MCP tool asks, whatever its class. "Always allow" of an MCP tool is remembered
-// together with the pinned hash of the tool's definition (mcp/pin.js), so a server that changes a
-// tool's description or schema loses the approval and asks again. A destructive tool is "high" and
-// is therefore never run without the user's click.
+// A tool marked askEachTime (one whose every call costs money) asks every time, whatever its class.
+// An MCP tool asks too, whatever its class, until the user chooses "Always allow" for it (offered
+// for read and low only). That choice is remembered together with the pinned hash of the tool's
+// definition (mcp/pin.js), so a server that changes a tool's description or schema loses the
+// approval and asks again. A destructive tool is "high" and is therefore never run without the
+// user's click.
 //
 // The question goes to the `ask` function the host supplies: the chat shows an approval card in the
 // answer (renderApprovalCard), tests answer directly. Remembered approvals live in localStorage
-// (names and hashes only, never arguments).
+// (names and hashes only, never arguments); remembered() lists them and forgetKey()/forget() undo
+// them (the settings show the list).
 import { escapeHtml } from '../../ui/kit.js';
 import { setText, t } from '../../i18n/index.js';
 import { refreshIcons } from '../../icons.js';
@@ -40,7 +43,9 @@ import { readLocalJson, writeLocalJson } from '../../storage.js';
  * @typedef {object} ApprovalStore
  * @property {(key: string) => { hash?: string } | null} get
  * @property {(key: string, value: { hash?: string }) => void} set
+ * @property {(key: string) => void} remove
  * @property {(prefix: string) => void} removePrefix
+ * @property {() => Array<{ key: string, at: string }>} list
  */
 
 export const APPROVALS_KEY = 'starpi_tool_approvals_v1';
@@ -69,10 +74,19 @@ export function localApprovalStore() {
       for (const old of keys.slice(0, Math.max(0, keys.length - MAX_REMEMBERED))) delete next[old];
       writeLocalJson(APPROVALS_KEY, next);
     },
+    remove(key) {
+      const next = all();
+      if (!Object.hasOwn(next, key)) return;
+      delete next[key];
+      writeLocalJson(APPROVALS_KEY, next);
+    },
     removePrefix(prefix) {
       const next = all();
       for (const k of Object.keys(next)) if (k.startsWith(prefix)) delete next[k];
       writeLocalJson(APPROVALS_KEY, next);
+    },
+    list() {
+      return Object.entries(all()).map(([key, v]) => ({ key, at: v && typeof v.at === 'string' ? v.at.slice(0, 40) : '' }));
     },
   };
 }
@@ -82,15 +96,29 @@ export function localApprovalStore() {
  * @returns {ApprovalStore}
  */
 export function memoryApprovalStore() {
-  /** @type {Map<string, { hash?: string }>} */
+  /** @type {Map<string, { hash?: string, at: string }>} */
   const map = new Map();
   return {
-    get: (key) => map.get(key) ?? null,
-    set: (key, value) => void map.set(key, { ...value }),
+    get: (key) => {
+      const entry = map.get(key);
+      return entry ? { ...(entry.hash ? { hash: entry.hash } : {}) } : null;
+    },
+    set: (key, value) => void map.set(key, { ...value, at: new Date().toISOString() }),
+    remove: (key) => void map.delete(key),
     removePrefix: (prefix) => {
       for (const k of [...map.keys()]) if (k.startsWith(prefix)) map.delete(k);
     },
+    list: () => [...map.entries()].map(([key, v]) => ({ key, at: v.at })),
   };
+}
+
+/**
+ * The key a remembered approval of an MCP server's tool is stored under.
+ * @param {string} serverId
+ * @param {string} tool  the tool's own name on the server
+ */
+export function mcpApprovalKey(serverId, tool) {
+  return `mcp:${serverId}:${tool}`;
 }
 
 /**
@@ -98,7 +126,26 @@ export function memoryApprovalStore() {
  * @param {ToolDef} def
  */
 export function approvalKey(def) {
-  return def.server ? `mcp:${def.server.id}:${def.server.tool}` : `tool:${def.name}`;
+  return def.server ? mcpApprovalKey(def.server.id, def.server.tool) : `tool:${def.name}`;
+}
+
+/**
+ * Whether "Always allow" may be offered (and remembered) for a tool.
+ * @param {ToolDef} def
+ */
+export function mayAllowAlways(def) {
+  return def.effect !== 'high' && def.effect !== 'forbidden' && def.askEachTime !== true;
+}
+
+/**
+ * What a remembered approval's key names: a built-in tool, or a tool of an MCP server.
+ * @param {string} key
+ * @returns {{ kind: 'tool', name: string } | { kind: 'mcp', serverId: string, tool: string } | null}
+ */
+export function parseApprovalKey(key) {
+  if (key.startsWith('tool:') && key.length > 5) return { kind: 'tool', name: key.slice(5) };
+  const m = /^mcp:([^:]+):(.+)$/.exec(key);
+  return m ? { kind: 'mcp', serverId: m[1], tool: m[2] } : null;
 }
 
 /**
@@ -110,11 +157,18 @@ export function needsApproval(def) {
 }
 
 /**
- * The gate every tool call passes.
- * @param {{ ask?: ((req: ApprovalRequest, signal: AbortSignal) => Promise<ApprovalAnswer>) | null, store?: ApprovalStore }} [opts]
+ * The gate every tool call passes. `onChange` hears when the remembered approvals change.
+ * @param {{ ask?: ((req: ApprovalRequest, signal: AbortSignal) => Promise<ApprovalAnswer>) | null, store?: ApprovalStore, onChange?: () => void }} [opts]
  */
 export function createApprovalGate(opts = {}) {
   const store = opts.store ?? memoryApprovalStore();
+  const changed = () => {
+    try {
+      opts.onChange?.();
+    } catch {
+      // a listener's failure must not stop a call
+    }
+  };
   return {
     /**
      * @param {ToolDef} def
@@ -127,7 +181,7 @@ export function createApprovalGate(opts = {}) {
       if (def.effect === 'forbidden') return { ok: false, reason: 'forbidden' };
       if (!needsApproval(def)) return { ok: true, remembered: false };
       const key = approvalKey(def);
-      const allowAlways = def.effect !== 'high';
+      const allowAlways = mayAllowAlways(def);
       const remembered = allowAlways ? store.get(key) : null;
       if (remembered && (!def.server || remembered.hash === def.server.hash)) return { ok: true, remembered: true };
       const ask = call.ask ?? opts.ask;
@@ -135,7 +189,10 @@ export function createApprovalGate(opts = {}) {
       if (signal.aborted) return { ok: false, reason: 'cancelled' };
       const answer = await ask({ tool: def.name, title: call.title ?? def.server?.tool ?? def.name, effect: def.effect, args, server: def.server ? { id: def.server.id, name: def.server.name } : null, allowAlways }, signal);
       if (signal.aborted) return { ok: false, reason: 'cancelled' };
-      if (answer === 'always' && allowAlways) store.set(key, def.server ? { hash: def.server.hash } : {});
+      if (answer === 'always' && allowAlways) {
+        store.set(key, def.server ? { hash: def.server.hash } : {});
+        changed();
+      }
       return answer === 'once' || answer === 'always' ? { ok: true, remembered: false } : { ok: false, reason: 'denied' };
     },
     /**
@@ -144,6 +201,22 @@ export function createApprovalGate(opts = {}) {
      */
     forget(serverId) {
       store.removePrefix(serverId ? `mcp:${serverId}:` : '');
+      changed();
+    },
+    /**
+     * Forgets one remembered approval (approvalKey / mcpApprovalKey).
+     * @param {string} key
+     */
+    forgetKey(key) {
+      store.remove(key);
+      changed();
+    },
+    /** The remembered approvals, newest first. */
+    remembered() {
+      return store
+        .list()
+        .filter((e) => parseApprovalKey(e.key) !== null)
+        .sort((a, b) => b.at.localeCompare(a.at));
     },
     store,
   };

@@ -6,13 +6,18 @@
 //   an error code, never the service's own text;
 // - MCP servers: the provider-side flag, every server with its connection state and its tools with
 //   their pin status (approve, approve again after a change, withdraw), and the form to add one.
+//   Each tool shows what the user approves: its whole description (as far as the model gets it),
+//   the class its hints give it and its input schema with the descriptions of the arguments;
+// - Always allowed: the tools the user chose "Always allow" for, each to forget again.
 // Every text is an i18n key; server names, addresses and tool names are shown as given, escaped.
 import { setHtml } from '../../dom.js';
 import { t } from '../../i18n/index.js';
 import { html, icon, label, raw } from '../../ui/kit.js';
 import { AiError } from '../errors.js';
 import { readSearchSettings, SEARCH_PROVIDERS, searxngRoot, writeSearchSettings } from '../search.js';
+import { mcpApprovalKey, parseApprovalKey } from '../tools/approval.js';
 import { DEFAULT_TOOL_SWITCHES } from '../tools/builtin.js';
+import { effectFromHints, sanitizeSchema, TOOL_LIMITS } from '../tools/registry.js';
 import { MAX_SERVERS, McpError, publicEndpoint } from './client.js';
 
 /** @typedef {import('../../ui/kit.js').Label} Label */
@@ -38,6 +43,7 @@ import { MAX_SERVERS, McpError, publicEndpoint } from './client.js';
 
 const NS = 'tools.settings';
 const STATUS_TONES = /** @type {const} */ ({ approved: 'ok', new: 'neutral', changed: 'warn', removed: 'neutral', invalid: 'danger' });
+const EFFECT_TONES = /** @type {const} */ ({ read: 'info', low: 'warn', high: 'danger', forbidden: 'danger' });
 
 /**
  * @param {Label} text
@@ -155,7 +161,11 @@ export function mountToolsView(el, services, deps) {
     return html`<ul class="space-y-1.5">${tools
       .filter((tool) => tool.name)
       .map((tool) => {
-        const desc = typeof tool.tool?.description === 'string' ? tool.tool.description : '';
+        const listed = tool.tool;
+        // As much of the description as the model can get, and the schema as it is sent.
+        const desc = typeof listed?.description === 'string' ? listed.description.slice(0, TOOL_LIMITS.descriptionChars) : '';
+        const effect = listed ? effectFromHints(listed.annotations) : null;
+        const schema = listed ? JSON.stringify(sanitizeSchema(listed.inputSchema), null, 2) : '';
         const action =
           tool.status === 'new' || tool.status === 'changed'
             ? html`<button type="button" class="btn btn-secondary py-1" data-action="mcp-approve" data-arg="${server.id}" data-tool="${tool.name}" data-hash="${tool.hash ?? ''}">${icon('shield-check', 'w-3.5 h-3.5')}${label(`${NS}.mcp.approve`)}</button>`
@@ -163,8 +173,14 @@ export function mountToolsView(el, services, deps) {
               ? html`<button type="button" class="btn btn-ghost py-1" data-action="mcp-revoke" data-arg="${server.id}" data-tool="${tool.name}">${label(`${NS}.mcp.revoke`)}</button>`
               : '';
         return html`<li class="flex flex-wrap items-start justify-between gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200" data-mcp-tool="${tool.name}" data-pin="${tool.status}">
-          <div class="min-w-0 flex-1"><p class="font-mono text-xs text-slate-900 break-all">${tool.name}</p>${desc ? html`<p class="text-[11px] text-slate-600 break-words">${desc.slice(0, 300)}</p>` : ''}</div>
-          <div class="flex flex-wrap items-center gap-1.5">${chip(`${NS}.mcp.tool.${tool.status}`, STATUS_TONES[tool.status], tool.status === 'approved' ? 'shield-check' : tool.status === 'changed' ? 'shield-alert' : 'circle-dashed')}${action}</div>
+          <div class="min-w-0 flex-1 space-y-1">
+            <p class="font-mono text-xs text-slate-900 break-all">${tool.name}</p>
+            ${desc ? html`<p class="text-[11px] text-slate-600 whitespace-pre-wrap break-words" data-mcp-desc>${desc}</p>` : ''}
+            ${schema
+              ? html`<details class="text-[11px]"><summary class="cursor-pointer select-none text-slate-600">${label(`${NS}.mcp.schema`)}</summary><pre class="mt-1 max-h-48 overflow-auto rounded-lg bg-white border border-slate-200 p-2 font-mono text-[11px] whitespace-pre-wrap break-words" tabindex="0" data-mcp-schema>${schema}</pre></details>`
+              : ''}
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5">${effect ? chip(`tools.effect.${effect}`, EFFECT_TONES[effect], effect === 'read' ? 'info' : 'triangle-alert', ` data-mcp-effect="${effect}"`) : ''}${chip(`${NS}.mcp.tool.${tool.status}`, STATUS_TONES[tool.status], tool.status === 'approved' ? 'shield-check' : tool.status === 'changed' ? 'shield-alert' : 'circle-dashed')}${action}</div>
         </li>`;
       })}</ul>`;
   }
@@ -188,6 +204,24 @@ export function mountToolsView(el, services, deps) {
         ${toolsMarkup(server, sync)}
       </li>`;
     })}</ul>`;
+  }
+
+  function rememberedMarkup() {
+    const entries = runtime.gate.remembered();
+    if (!entries.length) return label(`${NS}.remembered_empty`, { tag: 'p', className: 'text-xs text-slate-500' });
+    const servers = runtime.servers.list();
+    return html`<ul class="space-y-1.5">${entries.map((entry) => {
+        const what = parseApprovalKey(entry.key);
+        /** @type {Label} */
+        let name = { text: entry.key };
+        if (what?.kind === 'tool') name = Object.hasOwn(DEFAULT_TOOL_SWITCHES, what.name) ? `tools.builtin.${what.name}` : { text: what.name };
+        else if (what?.kind === 'mcp') name = { key: `${NS}.remembered_mcp`, params: { tool: what.tool, server: servers.find((s) => s.id === what.serverId)?.name ?? what.serverId } };
+        return html`<li class="flex flex-wrap items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200" data-remembered="${entry.key}">
+          ${label(name, { className: 'text-xs text-slate-800 break-all' })}
+          <button type="button" class="btn btn-ghost py-1" data-action="tools-forget-approval" data-arg="${entry.key}">${icon('x', 'w-3.5 h-3.5')}${label(`${NS}.remembered_forget`)}</button>
+        </li>`;
+      })}</ul>
+      <button type="button" class="btn btn-ghost text-rose-700" data-action="tools-forget-approvals">${icon('trash-2', 'w-3.5 h-3.5')}${label(`${NS}.remembered_forget_all`)}</button>`;
   }
 
   function addMarkup() {
@@ -236,6 +270,11 @@ export function mountToolsView(el, services, deps) {
           <div data-ts="servers">${serversMarkup()}</div>
           <div data-ts="add">${addMarkup()}</div>
         </section>
+        <section class="space-y-2 pt-3 border-t border-slate-100">
+          ${label(`${NS}.remembered_title`, { tag: 'h4', className: 'text-sm font-semibold text-slate-800' })}
+          ${label(`${NS}.remembered_hint`, { tag: 'p', className: 'text-xs text-slate-500 leading-relaxed' })}
+          <div class="space-y-2" data-ts="remembered">${rememberedMarkup()}</div>
+        </section>
       </div>`),
     );
   }
@@ -246,6 +285,7 @@ export function mountToolsView(el, services, deps) {
     if (target) setHtml(target, String(markup()));
   };
   const refreshServers = () => refresh('servers', () => String(serversMarkup()));
+  const refreshRemembered = () => refresh('remembered', () => String(rememberedMarkup()));
 
   // ---------------------------------------------------------------------------------------------
   // Actions
@@ -348,7 +388,7 @@ export function mountToolsView(el, services, deps) {
     const hash = btn.dataset.hash ?? '';
     if (!name || !hash) return;
     // A new pin: earlier "always allow" answers for this tool no longer hold.
-    runtime.gate.store.removePrefix(`mcp:${id}:${name}`);
+    runtime.gate.forgetKey(mcpApprovalKey(id, name));
     runtime.servers.approve(id, name, hash);
     await runtime.syncServers(AbortSignal.timeout(30_000)).catch(() => {});
     refreshServers();
@@ -358,7 +398,7 @@ export function mountToolsView(el, services, deps) {
     const id = btn.dataset.arg ?? '';
     const name = btn.dataset.tool ?? '';
     runtime.servers.revoke(id, name);
-    runtime.gate.store.removePrefix(`mcp:${id}:${name}`);
+    runtime.gate.forgetKey(mcpApprovalKey(id, name));
     await runtime.syncServers(AbortSignal.timeout(30_000)).catch(() => {});
     refreshServers();
   });
@@ -373,9 +413,21 @@ export function mountToolsView(el, services, deps) {
     refreshServers();
   });
 
+  services.onAction('tools-forget-approval', (btn) => {
+    const key = btn.dataset.arg ?? '';
+    if (key) runtime.gate.forgetKey(key);
+    refreshRemembered();
+  });
+
+  services.onAction('tools-forget-approvals', () => {
+    runtime.gate.forget();
+    refreshRemembered();
+  });
+
   runtime.onChange(() => {
     refresh('switches', () => String(switchesMarkup()));
     refreshServers();
+    refreshRemembered();
   });
   render();
   return { render, refreshServers };

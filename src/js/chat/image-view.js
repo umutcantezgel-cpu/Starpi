@@ -5,9 +5,9 @@
  * - Making: OpenAI and xAI through their Images API (POST /v1/images/generations), Gemini through
  *   an image model whose answer carries inline images (the Gemini adapter turns them into `image`
  *   events). Only with the user's own key: the site's pools never make images.
- * - The chat offers it as the `generate_image` tool (side-effect class "low": every image costs
- *   money, so the call asks first, approval.js), and an answer that carries `image` events keeps
- *   them too.
+ * - The chat offers it as the `generate_image` tool (side-effect class "low", and every image costs
+ *   money, so each call asks first and "Always allow" is not offered, approval.js), and an answer
+ *   that carries `image` events keeps them too.
  * - Keeping: each image becomes a blob of the chat store, owned by its answer, and an image part
  *   of that answer ({ type: 'image', mime, blobId, name, generated: true }).
  * - Showing: the parts are shown below the answer as blob: images (the CSP allows img-src blob:),
@@ -231,6 +231,7 @@ export function imageTool(deps) {
     origin: 'builtin',
     labelKey: 'tools.builtin.generate_image',
     effect: 'low',
+    askEachTime: true,
     description: 'Creates an image from a detailed description and shows it to the user. Use it only when the user asks for an image.',
     schema: {
       type: 'object',

@@ -47,6 +47,7 @@ import { TOOL_NAME_PATTERN } from '../contract.js';
  * @property {SideEffect} effect
  * @property {'builtin' | 'mcp'} [origin]
  * @property {string} [labelKey]   i18n key of the name shown on approval cards
+ * @property {boolean} [askEachTime]  asks before every call: "Always allow" is never offered (a call that costs money)
  * @property {{ id: string, name: string, tool: string, hash: string }} [server]
  * @property {(args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolOutput>} run
  */

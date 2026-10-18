@@ -9,6 +9,7 @@ import { createOpenAiFake } from '../../scripts/fakes/openai.mjs';
 import { TINY_PNG_BASE64 } from '../../scripts/fakes/shared.mjs';
 import { createAdapter } from '../../src/js/ai/adapters/index.js';
 import { complete as completeCall } from '../../src/js/ai/index.js';
+import { createApprovalGate } from '../../src/js/ai/tools/approval.js';
 import { directTransport } from '../../src/js/ai/transport.js';
 import { base64Blob, generateImage, imageModelFor, imageProvider, imageTool, keepImages, showGeneratedImages, sniffImage, storeGeneratedImages } from '../../src/js/chat/image-view.js';
 
@@ -110,9 +111,16 @@ describe('keeping images', () => {
 });
 
 describe('image tool', () => {
-  it('asks first (class low), makes the image and hands it on without sending it to the model', async () => {
+  it('asks before every image (class low, no "Always allow"), makes it and hands it on without sending it to the model', async () => {
     const tool = imageTool({ provider: () => 'openai', generate: async (o) => (assert.equal(o.prompt, 'A fox'), [{ mime: 'image/png', data: TINY_PNG_BASE64 }]) });
     assert.equal(tool.effect, 'low');
+    /** @type {boolean[]} */
+    const offeredAlways = [];
+    const gate = createApprovalGate({ ask: async (req) => (offeredAlways.push(req.allowAlways), 'always') });
+    await gate.decide(tool, { prompt: 'A fox' }, new AbortController().signal);
+    await gate.decide(tool, { prompt: 'A fox' }, new AbortController().signal);
+    assert.deepEqual(offeredAlways, [false, false]);
+    assert.deepEqual(gate.remembered(), []);
     const out = await tool.run({ prompt: 'A fox' }, { signal: new AbortController().signal, locale: 'en' });
     assert.deepEqual(out.images, [{ mime: 'image/png', data: TINY_PNG_BASE64 }]);
     assert.doesNotMatch(out.content, /iVBOR/);
