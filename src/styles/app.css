@@ -513,12 +513,6 @@ body {
   }
 }
 
-/* Elements on the brand yellow (avatars, the streaming cursor) keep the dark ink in the dark theme,
-   whatever text colour their template sets. */
-:root.dark .bg-\[\#FFCA00\] {
-  color: rgb(var(--sp-ink));
-}
-
 /* The graph is drawn on a canvas with light colours; the dark theme inverts the drawing (and keeps
    the hues) instead of letting dark labels disappear on a dark background. The canvas is transparent
    (the drawing clears it), so its frame moves to the parent, outside the filter. */
