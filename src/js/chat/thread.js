@@ -24,6 +24,11 @@
  * - registerReceiptHook(fn): completes a grounded answer's receipt draft (relations, second opinions).
  * - registerMessageAction(action): an action in every message's bar ("Research this", read aloud).
  * - setAnswerLabeler(fn): the provenance label of an answer.
+ * - registerAnswerDecorator(fn): adds to how an answer shows (a note under it).
+ *
+ * Answers written outside the thread (the side-by-side compare, the council) ask through
+ * prepareQuestion() as a free question would go out, are stored with freeAnswerInput() and
+ * adoptAnswer() as the newest branch under their question, and are labelled with presentAnswer().
  */
 import { chatData, currentSessionId, loadSessionThread } from '../chat-store.js';
 import { splitStreamingText } from '../chat-stream.js';
@@ -67,12 +72,13 @@ import { readAloudStream } from '../features/voice.js';
 import { renderActions } from './actions.js';
 import { attachmentText, blobToBase64, MAX_NATIVE_PDF_BYTES, needsVision, textBudget } from './attachments.js';
 import { clearComposer, setComposerBusy, takeDraft } from './composer.js';
-import { receiptHooks, requestHooks, single, systemNoteHooks, turnNoteHooks } from './hooks.js';
+import { answerDecorators, receiptHooks, requestHooks, single, systemNoteHooks, turnNoteHooks } from './hooks.js';
 import { decideRoute } from './mode-control.js';
 import { capsOf, chatCandidates, compactingAnthropic, runAnswer } from './runner.js';
-import { activePath, branchInfo, indexNodes, nodeText, switchBranch } from './tree.js';
+import { activePath, branchInfo, indexNodes, nodeText, pathTo, switchBranch } from './tree.js';
 
 export {
+  registerAnswerDecorator,
   registerMessageAction,
   registerReceiptHook,
   registerRequestHook,
@@ -401,6 +407,13 @@ function decorateAnswer(el, node) {
       host.className = 'search-suggestions mt-2';
       slot.append(host);
       mountGroundingFrame(host, block.searchEntryPoint, { title: t('chat-thread.web.suggestions') });
+    }
+  }
+  for (const fn of answerDecorators) {
+    try {
+      fn(el, node);
+    } catch (err) {
+      console.warn('[starpi] an answer decorator failed', err);
     }
   }
 }
@@ -1797,6 +1810,147 @@ export async function checkSendable(attachments) {
 export async function exportData() {
   const thread = await loadSessionThread(conversationId);
   return { thread, path: thread ? activePath(indexNodes(thread.nodes), thread.conversation.activeLeafId) : [] };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Answers written outside the thread (the side-by-side compare, the council)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A question to ask several models outside the thread.
+ * @typedef {object} PreparedQuestion
+ * @property {NodeRecord} question  the stored question, or a new one that is not stored yet
+ * @property {boolean} stored
+ * @property {boolean} staysOnDevice  only the model here or the own server may answer it
+ * @property {(target: Target) => Promise<AiRequest>} build  the request for one model, as the thread's free route sends it
+ */
+
+/**
+ * Prepares a question for several models, as a free question of the thread goes out: the stable
+ * system prompt, the conversation up to the question (turns that stay on this device only for the
+ * models here) and the question with its context block. `questionId` takes a stored question (its
+ * own context block goes along); `text` makes a new one after `parentId` (default: the newest
+ * message of the conversation) with a fresh context block, kept on its meta, so storing it later
+ * keeps what went out. A question that stays on this device builds no request for other models
+ * (the error's code is 'stays_on_device').
+ * @param {{ conversationId: string, questionId?: string, text?: string, parentId?: string | null, localOnly?: boolean }} input
+ * @returns {Promise<PreparedQuestion>}
+ */
+export async function prepareQuestion(input) {
+  const loaded = await (await store()).loadThread(input.conversationId);
+  const tree = loaded?.tree ?? indexNodes([]);
+  /** @type {NodeRecord} */
+  let question;
+  /** @type {NodeRecord[]} */
+  let path;
+  /** @type {TurnContext} */
+  const ctx = { conversationId: input.conversationId, question: '', mode: getChatMode(), route: 'free', target: null, locale: getLocale(), attachments: [] };
+  if (input.questionId) {
+    const found = tree.byId.get(input.questionId);
+    if (!found || found.role !== 'user') throw Object.assign(new Error('No such question'), { code: 'not_found' });
+    question = found;
+    path = pathTo(tree, found.id);
+  } else {
+    const text = String(input.text ?? '').trim().slice(0, LIMITS.chatInputChars);
+    if (!text) throw Object.assign(new Error('An empty question'), { code: 'empty' });
+    const parentId = input.parentId !== undefined ? input.parentId : (loaded?.path.at(-1)?.id ?? null);
+    const context = await contextFor({ ...ctx, question: text });
+    question = {
+      id: `draft-${crypto.randomUUID()}`,
+      conversationId: input.conversationId,
+      parentId,
+      role: 'user',
+      parts: [{ type: 'text', text }],
+      opaque: [],
+      model: null,
+      provider: null,
+      label: null,
+      usage: null,
+      localOnly: input.localOnly === true,
+      createdAt: Date.now(),
+      meta: { chat_mode: 'free', context },
+    };
+    path = [...(parentId ? pathTo(tree, parentId) : []), question];
+  }
+  const asked = question;
+  const turnCtx = { ...ctx, question: nodeText(asked), attachments: chipsOf(asked) };
+  return {
+    question: asked,
+    stored: Boolean(input.questionId),
+    staysOnDevice: asked.localOnly,
+    build: async (target) => {
+      // Grounded questions about the workspace stay on this device as well, whatever route asks them.
+      if (asked.localOnly && !onThisDevice(target)) throw Object.assign(new Error('The question stays on this device'), { code: 'stays_on_device' });
+      return freeRequest(target, path, { ...turnCtx, target });
+    },
+  };
+}
+
+/**
+ * A free answer written outside the thread, as the thread stores its own (the badge, the usage
+ * line, the reasoning and the web pages read it). `meta` adds to the stored meta.
+ * @param {{ question: NodeRecord, target: Target, result: CompletionResult, durationMs: number, aborted?: boolean, meta?: Record<string, unknown> }} input
+ * @returns {Omit<import('./store.js').NodeInput, 'parentId'>}
+ */
+export function freeAnswerInput(input) {
+  const { question, target, result, durationMs } = input;
+  const grounding = webGrounding(result);
+  const badge = answerBadge({ provider: target.provider, model: result.model, meta: { requested: target.model, route: target.route } });
+  return {
+    role: 'assistant',
+    parts: [{ type: 'text', text: result.text }],
+    opaque: result.opaque,
+    model: result.model,
+    provider: result.provider,
+    label: 'free',
+    usage: usageOf(result),
+    localOnly: target.route === 'device' || question.localOnly,
+    meta: {
+      engine: engineOf(target),
+      chat_mode: 'free',
+      requested: target.model,
+      route: target.route,
+      duration_ms: durationMs,
+      stop_reason: input.aborted ? 'cancelled' : result.stopReason,
+      thoughts: describeChatTrace({ engineLabel: t(badge.badge, badge.badgeParams), durationMs, attachment: chipsOf(question).map((c) => c.name).join(', ') || null }),
+      ...(result.reasoning ? { reasoning: result.reasoning.slice(0, REASONING_CHARS) } : {}),
+      ...(result.citations.length ? { web_sources: webSources(result) } : {}),
+      ...(grounding ? { web_grounding: grounding } : {}),
+      ...(input.meta ?? {}),
+    },
+  };
+}
+
+/**
+ * Stores an answer written outside the thread as the newest branch under its question (a question
+ * that is not stored yet is stored first, in a conversation created when it is new) and shows it
+ * when its chat is on screen. Refused (null) while the thread writes an answer.
+ * @param {{ conversationId: string, question: NodeRecord, stored: boolean, answer: Omit<import('./store.js').NodeInput, 'parentId'> }} input
+ * @returns {Promise<NodeRecord | null>}
+ */
+export async function adoptAnswer(input) {
+  if (busy) return null;
+  const db = await store();
+  let questionId = input.question.id;
+  if (!input.stored) {
+    if (!(await db.getConversation(input.conversationId))) await db.createConversation({ id: input.conversationId, mode: getChatMode(), model: getAssistant() });
+    const q = input.question;
+    questionId = (await db.appendNode(input.conversationId, { parentId: q.parentId, role: 'user', parts: q.parts, localOnly: q.localOnly, ...(q.meta ? { meta: q.meta } : {}) })).id;
+  }
+  const node = await db.appendNode(input.conversationId, { ...input.answer, parentId: questionId });
+  if (input.conversationId === conversationId) await showConversation(conversationId);
+  return node;
+}
+
+/**
+ * Labels an answer shown outside the thread (a compare column) as the thread labels its own: the
+ * provenance label, a stop before the end, the web pages it cites, the registered decorations.
+ * @param {HTMLElement} el  needs a .message-provenance slot
+ * @param {NodeRecord} node  the stored answer, or one as it would be stored
+ */
+export function presentAnswer(el, node) {
+  labelAnswer(el, node);
+  decorateAnswer(el, node);
 }
 
 // ---------------------------------------------------------------------------------------------

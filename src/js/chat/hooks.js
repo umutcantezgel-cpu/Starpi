@@ -73,6 +73,8 @@ export const messageActions = new Map();
 export const composerTools = new Map();
 /** @type {Map<string, (slot: HTMLElement) => void | (() => void)>} */
 export const composerSlots = new Map();
+/** @type {Set<(el: HTMLElement, node: NodeRecord) => void>} */
+export const answerDecorators = new Set();
 /** @type {Set<() => void>} */
 const slotListeners = new Set();
 /** @type {Set<() => void>} */
@@ -160,6 +162,15 @@ export function registerMessageAction(action) {
   return () => {
     if (messageActions.get(action.id) === action) messageActions.delete(action.id);
   };
+}
+
+/**
+ * Adds to how an answer shows (a note under it, such as how it was chosen): fn gets the answer's
+ * element and its stored message every time the thread shows that answer.
+ * @param {(el: HTMLElement, node: NodeRecord) => void} fn
+ */
+export function registerAnswerDecorator(fn) {
+  return add(answerDecorators, fn);
 }
 
 /**
