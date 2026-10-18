@@ -163,6 +163,14 @@ export function openKeyring({ file, kek, provider, clock = systemClock }) {
       return entry.gen;
     },
     /**
+     * The highest generation of a namespace that was erased here or noted, 0 when none was.
+     * @param {string} ns
+     */
+    erasedGeneration: (ns) => {
+      refresh();
+      return /** @type {KeyringFile} */ (current).erased[ns]?.gen ?? 0;
+    },
+    /**
      * Records an erase that happened elsewhere (a restore of an older copy): the next key of the
      * namespace gets a higher generation.
      * @param {string} ns

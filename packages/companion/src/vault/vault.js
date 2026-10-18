@@ -201,21 +201,24 @@ export function createVault({ store, keyring, deletions, blobDir, clock = system
 
   /**
    * Crypto-erases a namespace: its key first, then its rows and blobs, then a line in the deletion
-   * list. A protected kernel namespace is refused.
+   * list. The line always names a real generation: the one just erased or, when the namespace had
+   * no key, the highest one erased before (0 when there never was one), so a key made after this
+   * erase is never taken for an erased one. A protected kernel namespace is refused.
    * @param {string} ns
    */
   function erase(ns) {
     assertNamespace(ns);
     if (PROTECTED.has(ns)) throw fail('vault_protected', `${ns} belongs to the kernel and is erased only with the whole vault`, { status: 400 });
-    const gen = keyring.erase(ns);
+    const erased = keyring.erase(ns);
     const items = dropContent(ns);
-    deletions.append(ns, null, isoAt(clock.now()), gen);
-    return { namespace: ns, hadKey: gen !== null, items };
+    deletions.append(ns, null, isoAt(clock.now()), erased ?? keyring.erasedGeneration(ns));
+    return { namespace: ns, hadKey: erased !== null, items };
   }
 
   /**
-   * Applies the deletion list: erases a namespace whose live key generation is one the list erased,
-   * removes items not written again since their delete line. Run at start and after a restore.
+   * Applies the deletion list: erases a namespace whose live key generation is at or below the one a
+   * line erased, removes items not written again since their delete line. Run at start and after a
+   * restore.
    */
   function reconcile() {
     const { entries, invalid } = deletions.read();
@@ -224,13 +227,14 @@ export function createVault({ store, keyring, deletions, blobDir, clock = system
     for (const entry of entries) {
       if (PROTECTED.has(entry.ns)) continue;
       if (entry.id === null) {
-        const gen = keyring.generation(entry.ns);
-        const erasedGen = entry.gen ?? gen;
-        if (gen !== null && erasedGen !== null && gen <= erasedGen) {
+        // The list only holds namespace lines with their generation (others are invalid there).
+        const erasedGen = /** @type {number} */ (entry.gen);
+        const live = keyring.generation(entry.ns);
+        if (live !== null && live <= erasedGen) {
           keyring.erase(entry.ns);
           namespaces += 1;
         }
-        if (erasedGen !== null) keyring.noteErased(entry.ns, erasedGen, entry.at);
+        keyring.noteErased(entry.ns, erasedGen, entry.at);
         if (!keyring.has(entry.ns)) items += dropContent(entry.ns);
         continue;
       }

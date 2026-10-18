@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { openStore } from '../src/store/sqlite.js';
@@ -139,6 +139,50 @@ test('reconcile applies the deletion list to an older copy', (t) => {
   assert.equal(c.keyring.has('chats'), false);
   c.vault.namespace('chats').put('c2', 'later');
   assert.equal(c.vault.reconcile().namespaces, 0, 'a namespace made after the erase stays');
+});
+
+test('erasing a namespace without a key never takes data stored later with it', (t) => {
+  const { dir, cleanup } = tempDir();
+  t.after(cleanup);
+  const kek = newKey();
+  const clock = manualClock(Date.UTC(2026, 4, 1));
+  const a = open(dir, kek, clock);
+  // Erased before it was ever used, then used.
+  assert.deepEqual(a.vault.erase('chats'), { namespace: 'chats', hadKey: false, items: 0 });
+  a.vault.namespace('chats').put('c1', 'a chat kept after the erase');
+  // Used, erased, erased once more (nothing left to erase), then used again.
+  a.vault.namespace('notes').put('n1', 'old note');
+  clock.advance(1000);
+  assert.equal(a.vault.erase('notes').hadKey, true);
+  assert.equal(a.vault.erase('notes').hadKey, false);
+  a.vault.namespace('notes').put('n2', 'a note kept after both erases');
+  const lines = readFileSync(join(dir, 'anchors', 'deletions.log'), 'utf8').trim().split('\n');
+  assert.deepEqual(lines.map((l) => l.replace(/ \S+Z /, ' <at> ')), ['chats/* <at> 0', 'notes/* <at> 1', 'notes/* <at> 1'], 'every namespace line names a real generation');
+  a.store.close();
+  // The next starts reconcile; nothing stored after the erases goes.
+  for (let start = 0; start < 2; start += 1) {
+    const b = open(dir, kek, clock);
+    assert.deepEqual(b.vault.reconcile(), { namespaces: 0, items: 0, invalid: 0 });
+    assert.equal(b.vault.namespace('chats').getText('c1'), 'a chat kept after the erase');
+    assert.equal(b.vault.namespace('notes').getText('n2'), 'a note kept after both erases');
+    assert.equal(b.keyring.generation('notes'), 2);
+    b.store.close();
+  }
+});
+
+test('the deletion list: namespace lines carry their generation, lines without one are invalid', (t) => {
+  const { dir, cleanup } = tempDir();
+  t.after(cleanup);
+  const kek = newKey();
+  const a = open(dir, kek);
+  assert.throws(() => a.deletions.append('notes', null, '2026-05-01T00:00:00.000Z'), (err) => /** @type {any} */ (err).code === 'deletions_invalid');
+  a.vault.namespace('notes').put('n1', 'v');
+  // A hand-written line without its generation is not read as "the current one".
+  mkdirSync(join(dir, 'anchors'), { recursive: true });
+  writeFileSync(join(dir, 'anchors', 'deletions.log'), 'notes/* 2026-05-01T00:00:00.000Z\nnotes/n9 2026-05-01T00:00:00.000Z\n');
+  assert.deepEqual(a.deletions.read(), { entries: [{ ns: 'notes', id: 'n9', at: '2026-05-01T00:00:00.000Z', gen: null }], invalid: 1 });
+  assert.deepEqual(a.vault.reconcile(), { namespaces: 0, items: 0, invalid: 1 });
+  assert.equal(a.vault.namespace('notes').getText('n1'), 'v');
 });
 
 test('bundles: export with a passphrase, import elsewhere, skip what was deleted since', (t) => {
