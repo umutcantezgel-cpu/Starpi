@@ -314,9 +314,16 @@ export const QUERY_REWRITE = definePurpose({
 // ---------------------------------------------------------------------------------------------
 // extract_graph: entities and the relations a text states between them
 // ---------------------------------------------------------------------------------------------
+// The input is one text ({ text }) or a batch of document passages ({ passages: [{ doc, chunk,
+// text }] }). For a text, a relation whose quote is not in it is dropped here. For passages, every
+// relation names in `cite` the passage it comes from, and the caller checks each one against that
+// passage (graph-extract.js), so validation keeps them all for the caller to check and count.
 
 export const GRAPH_TYPES = Object.freeze(['project', 'person', 'metric', 'tech', 'regulation', 'organization', 'place', 'other']);
 const GRAPH_INPUT_CHARS = 16_000;
+/** Passages one call reads at most. */
+export const GRAPH_MAX_PASSAGES = 24;
+const PASSAGE_DOC = /^[\w.:-]{1,40}$/;
 
 /** @param {readonly string[]} types @returns {JsonSchema} */
 const graphSchema = (types) => ({
@@ -332,7 +339,13 @@ const graphSchema = (types) => ({
       maxItems: 60,
       items: {
         type: 'object',
-        properties: { from: { type: 'string', minLength: 1 }, to: { type: 'string', minLength: 1 }, label: { type: 'string', minLength: 1, maxLength: 80 }, quote: { type: 'string', minLength: 1, maxLength: 400 } },
+        properties: {
+          from: { type: 'string', minLength: 1 },
+          to: { type: 'string', minLength: 1 },
+          label: { type: 'string', minLength: 1, maxLength: 80 },
+          quote: { type: 'string', minLength: 1, maxLength: 400 },
+          cite: { type: 'object', properties: { doc: { type: 'string', minLength: 1, maxLength: 40 }, chunk: { type: 'integer', minimum: 0 } }, required: ['doc', 'chunk'] },
+        },
         required: ['from', 'to', 'label', 'quote'],
       },
     },
@@ -347,6 +360,33 @@ const graphTypes = (input) => {
   return list.length ? [...new Set([...list, 'other'])] : [...GRAPH_TYPES];
 };
 
+/**
+ * The passages of a batch input as the model reads them: well-formed ones in order, while they fit
+ * the input size (the first one is cut to it); [] for a text input.
+ * @param {unknown} input
+ * @returns {Array<{ doc: string, chunk: number, text: string }>}
+ */
+export function graphPassages(input) {
+  const list = record(input).passages;
+  if (!Array.isArray(list)) return [];
+  /** @type {Array<{ doc: string, chunk: number, text: string }>} */
+  const out = [];
+  let room = GRAPH_INPUT_CHARS;
+  for (const item of list.slice(0, GRAPH_MAX_PASSAGES)) {
+    const p = record(item);
+    const body = typeof p.text === 'string' ? p.text.trim() : '';
+    if (typeof p.doc !== 'string' || !PASSAGE_DOC.test(p.doc) || !Number.isInteger(p.chunk) || p.chunk < 0 || !body) continue;
+    if (out.length && body.length > room) break;
+    out.push({ doc: p.doc, chunk: p.chunk, text: body.slice(0, room) });
+    room -= Math.min(body.length, room);
+    if (room <= 0) break;
+  }
+  return out;
+}
+
+/** @param {Array<{ doc: string, chunk: number, text: string }>} passages */
+const passageText = (passages) => passages.map((p) => `[doc=${p.doc} chunk=${p.chunk}]\n${p.text}`).join('\n\n');
+
 export const EXTRACT_GRAPH = definePurpose({
   name: 'extract_graph',
   role: 'reasoning',
@@ -354,23 +394,44 @@ export const EXTRACT_GRAPH = definePurpose({
   maxTokens: 1500,
   temperature: 0,
   timeoutMs: 45_000,
-  checkInput: (input) => (text(record(input).text, 1).trim() ? [] : ['input:empty']),
+  checkInput: (input) => (text(record(input).text, 1).trim() || graphPassages(input).length ? [] : ['input:empty']),
   buildMessages(input, { locale }) {
     const types = graphTypes(input).join(', ');
+    const passages = graphPassages(input);
+    const cited = passages.length > 0;
+    const shape = cited ? '{"from", "to", "label", "quote", "cite"}' : '{"from", "to", "label", "quote"}';
+    const cite = {
+      de: cited ? ' Der Text besteht aus Abschnitten mit der Kopfzeile [doc=… chunk=…]. Jede Beziehung stammt aus genau einem Abschnitt, ihr Zitat steht darin, und "cite": {"doc", "chunk"} nennt diesen Abschnitt.' : '',
+      en: cited ? ' The text consists of passages headed [doc=… chunk=…]. Every relation comes from a single passage that holds its quote, and "cite": {"doc", "chunk"} names that passage.' : '',
+    };
     const system =
       locale === 'de'
-        ? `Du liest einen Text und hältst fest, welche Dinge er nennt und welche Beziehungen er zwischen ihnen ausdrücklich angibt. Erfinde nichts: Jede Beziehung braucht ein wörtliches Zitat aus dem Text, das sie belegt. Typen der Dinge: ${types}. Antworte nur mit JSON: {"entities": [{"name", "type"}], "relations": [{"from", "to", "label", "quote"}]}; "from" und "to" sind Namen aus "entities", "label" ist ein kurzes Verb wie „leitet“ oder „nutzt“. ${DATA_RULE.de}`
-        : `You read a text and record the things it names and the relations it states between them explicitly. Invent nothing: every relation needs a verbatim quote from the text that supports it. Types of things: ${types}. Reply with JSON only: {"entities": [{"name", "type"}], "relations": [{"from", "to", "label", "quote"}]}; "from" and "to" are names from "entities", "label" is a short verb such as "leads" or "uses". ${DATA_RULE.en}`;
-    return messages('extract_graph', system, block(locale === 'de' ? 'Text' : 'Text', text(record(input).text, GRAPH_INPUT_CHARS)));
+        ? `Du liest einen Text und hältst fest, welche Dinge er nennt und welche Beziehungen er zwischen ihnen ausdrücklich angibt. Erfinde nichts: Jede Beziehung braucht ein wörtliches Zitat aus dem Text, das sie belegt. Typen der Dinge: ${types}. Antworte nur mit JSON: {"entities": [{"name", "type"}], "relations": [${shape}]}; "from" und "to" sind Namen aus "entities", "label" ist ein kurzes Verb wie „leitet“ oder „nutzt“.${cite.de} ${DATA_RULE.de}`
+        : `You read a text and record the things it names and the relations it states between them explicitly. Invent nothing: every relation needs a verbatim quote from the text that supports it. Types of things: ${types}. Reply with JSON only: {"entities": [{"name", "type"}], "relations": [${shape}]}; "from" and "to" are names from "entities", "label" is a short verb such as "leads" or "uses".${cite.en} ${DATA_RULE.en}`;
+    const body = cited ? passageText(passages) : text(record(input).text, GRAPH_INPUT_CHARS);
+    return messages('extract_graph', system, block(locale === 'de' ? 'Text' : 'Text', body));
   },
   validate(raw, input) {
     const read = readJsonAnswer(raw, graphSchema(graphTypes(input)));
     if (!read.ok) return { ok: false, errors: read.errors };
-    const v = /** @type {{ entities: Array<{ name: string, type: string }>, relations: Array<{ from: string, to: string, label: string, quote: string }> }} */ (read.value);
-    const source = text(record(input).text, GRAPH_INPUT_CHARS);
+    const v = /** @type {{ entities: Array<{ name: string, type: string }>, relations: Array<{ from: string, to: string, label: string, quote: string, cite?: { doc: string, chunk: number } }> }} */ (read.value);
     /** @type {Map<string, { name: string, type: string }>} */
     const entities = new Map();
     for (const e of v.entities) if (!entities.has(squash(e.name))) entities.set(squash(e.name), { name: e.name.trim(), type: e.type });
+    if (graphPassages(input).length) {
+      // Passages: the caller checks every relation against the passage it cites and counts the
+      // ones that fail, so none is dropped here; names are spelled as the entity list spells them.
+      const named = (/** @type {string} */ name) => entities.get(squash(name))?.name ?? name.trim();
+      const relations = v.relations.map((r) => ({
+        from: named(r.from),
+        to: named(r.to),
+        label: r.label.trim(),
+        quote: r.quote.trim(),
+        ...(r.cite ? { cite: { doc: r.cite.doc.trim(), chunk: r.cite.chunk } } : {}),
+      }));
+      return { ok: true, value: { entities: [...entities.values()], relations } };
+    }
+    const source = text(record(input).text, GRAPH_INPUT_CHARS);
     // A relation the text does not support, or between things the answer did not list, is dropped.
     const relations = v.relations
       .filter((r) => entities.has(squash(r.from)) && entities.has(squash(r.to)) && quotedIn(r.quote, source))

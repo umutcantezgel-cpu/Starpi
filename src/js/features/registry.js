@@ -14,7 +14,8 @@
  *   and the four panels of the chat side panel (#chat-aside);
  * - tabs: the Research and Companion views (the Companion nav entry stays hidden until its feature
  *   calls ctx.setNavVisible('companion', true));
- * - settings: one section per feature (workspaceSettings: files and semantic search on this device);
+ * - settings: one section per feature (workspaceSettings: files and semantic search on this device;
+ *   syncSettings: the end-to-end encrypted chat sync);
  * - overlays: the full-screen live sheet.
  */
 export const MOUNT_POINTS = Object.freeze([
@@ -33,6 +34,7 @@ export const MOUNT_POINTS = Object.freeze([
   'memorySettings',
   'companionSettings',
   'workspaceSettings',
+  'syncSettings',
   'liveSheet',
 ]);
 
