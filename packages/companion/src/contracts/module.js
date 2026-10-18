@@ -17,6 +17,9 @@ export const NAMESPACE = /^[a-z][a-z0-9_]{1,31}$/;
 export const EGRESS_ENTRY = /^(?=.{4,260}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+:443$/;
 const METHODS = Object.freeze(['GET', 'POST', 'PUT', 'DELETE']);
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const LANES = Object.freeze(['status', 'interactive', 'events', 'background']);
+const MEDIA_TYPE = /^[a-z]+\/[a-z0-9.+-]+$/;
+const MAX_ROUTE_BODY = 64 * 1024 * 1024;
 
 /**
  * @typedef {object} ModuleRoute
@@ -25,6 +28,9 @@ const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
  * @property {import('./roles.js').Access} access
  * @property {(req: any) => Promise<any> | any} handler
  * @property {boolean} [stream] answers with server-sent events
+ * @property {number} [maxBody]  largest request body in bytes (default 256 KiB, at most 64 MiB)
+ * @property {'status' | 'interactive' | 'events' | 'background'} [lane]  the breaker lane (default interactive)
+ * @property {readonly string[]} [raw]  media types taken as a raw body (a Buffer) instead of JSON
  */
 
 /**
@@ -89,6 +95,9 @@ export function checkModule(mod) {
     if (typeof route.path !== 'string' || !/^\/[a-z0-9:/_-]*$/.test(route.path) || route.path.includes('//')) problems.push(`${where}.path: a path like /items/:id`);
     if (!ACCESS_LEVELS.includes(/** @type {any} */ (route.access))) problems.push(`${where}.access: one of ${ACCESS_LEVELS.join(', ')}`);
     if (typeof route.handler !== 'function') problems.push(`${where}.handler: a function`);
+    if (route.maxBody !== undefined && !(Number.isInteger(route.maxBody) && /** @type {number} */ (route.maxBody) > 0 && /** @type {number} */ (route.maxBody) <= MAX_ROUTE_BODY)) problems.push(`${where}.maxBody: 1 to ${MAX_ROUTE_BODY} bytes`);
+    if (route.lane !== undefined && !LANES.includes(/** @type {string} */ (route.lane))) problems.push(`${where}.lane: one of ${LANES.join(', ')}`);
+    if (route.raw !== undefined && !(Array.isArray(route.raw) && route.raw.length > 0 && route.raw.every((t) => typeof t === 'string' && MEDIA_TYPE.test(t)))) problems.push(`${where}.raw: a list of media types`);
   }
   return problems;
 }
