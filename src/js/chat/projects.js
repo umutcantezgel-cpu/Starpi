@@ -16,7 +16,6 @@ import { formatNumber, onLocaleChange, t } from '../i18n/index.js';
 import { refreshIcons } from '../icons.js';
 import { appDb, storeProfileName } from '../store/schema.js';
 import { html, icon, label, raw } from '../ui/kit.js';
-import { openFormDialog, showFormError } from './form-dialog.js';
 
 /** @typedef {import('../store/idb.js').StoreDb} StoreDb */
 /** @typedef {import('../store/schema.js').ProjectRecord} ProjectRecord */
@@ -492,7 +491,7 @@ export function modelOptions(stored, current, name) {
  * @param {ProjectEditorDeps} deps
  */
 export async function openProjectEditor(project, deps) {
-  const docs = await deps.documents().catch(() => []);
+  const [{ openFormDialog, showFormError }, docs] = await Promise.all([import('./form-dialog.js'), deps.documents().catch(() => [])]);
   const chosen = new Set(project?.docIds ?? []);
   // Files of the project that are no longer in the workspace stay listed, so saving keeps them.
   const known = new Set(docs.map((d) => d.docId));

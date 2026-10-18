@@ -15,7 +15,6 @@ import { onLocaleChange, t } from '../i18n/index.js';
 import { refreshIcons } from '../icons.js';
 import { storeProfileName } from '../store/schema.js';
 import { html, icon, label, raw } from '../ui/kit.js';
-import { openFormDialog, showFormError } from './form-dialog.js';
 import { cleanModel, modelOptions, multiLine, oneLine, recordStoreBase } from './projects.js';
 
 /** @typedef {import('../store/idb.js').StoreDb} StoreDb */
@@ -375,7 +374,8 @@ export function mountAssistantsSection(host, deps) {
  * @param {AssistantRecord | null} assistant
  * @param {AssistantEditorDeps} deps
  */
-export function openAssistantEditor(assistant, deps) {
+export async function openAssistantEditor(assistant, deps) {
+  const { openFormDialog, showFormError } = await import('./form-dialog.js');
   const confirmBox = deps.confirm ?? ((message) => window.confirm(message));
   const chosenIcon = assistant?.icon ?? 'bot';
   const starters = [...(assistant?.starters ?? [])];
