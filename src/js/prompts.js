@@ -158,8 +158,23 @@ export function turnContext(input) {
   const zone = input.timeZone ? ` (${input.timeZone.replace(/[<>\r\n]/g, '').slice(0, 64)})` : '';
   const lines = [`${NOW_LABEL[input.locale]}: ${when}${zone}`];
   const notes = (input.notes ?? []).map((n) => String(n).trim()).filter(Boolean);
-  if (notes.length) lines.push(`${NOTES_LABEL[input.locale]}:`, ...notes.map((n) => n.replace(/<<<\s*END\s+CONTEXT/gi, '<<<END_CONTEXT')));
+  if (notes.length) lines.push(`${NOTES_LABEL[input.locale]}:`, ...notes.map(defuseContext));
   return `<<<CONTEXT>>>\n${lines.join('\n')}\n<<<END CONTEXT>>>`;
+}
+
+/** @param {string} note  a closing fence inside a note is defused, so it cannot end its block early */
+const defuseContext = (note) => note.replace(/<<<\s*END\s+CONTEXT/gi, '<<<END_CONTEXT');
+
+/**
+ * A context block with notes only ('' for none): the notes that go along with one request and are
+ * not stored with its question (the stored block with the date and time comes before it).
+ * @param {Locale} locale
+ * @param {readonly string[]} notes
+ */
+export function requestNotesBlock(locale, notes) {
+  const lines = notes.map((n) => String(n).trim()).filter(Boolean);
+  if (!lines.length) return '';
+  return `<<<CONTEXT>>>\n${NOTES_LABEL[locale]}:\n${lines.map(defuseContext).join('\n')}\n<<<END CONTEXT>>>`;
 }
 
 /**

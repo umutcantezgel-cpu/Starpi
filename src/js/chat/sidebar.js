@@ -1,9 +1,12 @@
 // @ts-check
-// The conversation list in the sidebar (#chat-sidebar): New chat, import, a search box and the
-// conversations grouped Pinned / Today / Previous 7 days / Older, the current one marked. Each row
-// has an actions menu (the "…" button, shown on hover or focus; a long press or right click opens
-// it too): Rename, Pin, Move to project (only once projects exist), Export as Markdown or JSON,
-// Delete. The menu follows the menu-button pattern: arrow keys, Home/End, Escape back to its button.
+// The conversation list in the sidebar (#chat-sidebar): New chat, import, a search box, the sections
+// other features add (chat/hooks.js registerSidebarSection: projects, assistants) and the
+// conversations grouped Pinned / Today / Previous 7 days / Older, the current one marked; archived
+// chats show in their own group behind "Archived chats". Each row has an actions menu (the "…"
+// button, shown on hover or focus; a long press or right click opens it too): Rename, Pin, Move to
+// project (only once projects exist), Archive or Unarchive, Export as Markdown or JSON, Delete. The
+// menu follows the menu-button pattern: arrow keys, Home/End, Escape back to its button. A chat an
+// answer is still being written in (it may not be the one shown) cannot be deleted until it ends.
 //
 // The search and the export formats load on first use. The list follows the store's change events
 // and the current chat session, so it is up to date whichever part of the app changed a chat.
@@ -11,6 +14,7 @@ import { downloadText } from '../dom.js';
 import { formatDate, getLocale, onLocaleChange, t } from '../i18n/index.js';
 import { refreshIcons } from '../icons.js';
 import { html, icon, label, raw } from '../ui/kit.js';
+import { onSidebarSections, sidebarSections } from './hooks.js';
 
 /** @typedef {import('./store.js').ChatStore} ChatStore */
 /** @typedef {import('../store/schema.js').ConversationRecord} ConversationRecord */
@@ -27,6 +31,7 @@ import { html, icon, label, raw } from '../ui/kit.js';
  * @property {(id: string) => void | Promise<void>} open  shows a conversation in the chat
  * @property {(id: string) => Promise<boolean>} remove  deletes a conversation (false: not everywhere)
  * @property {() => boolean} isBusy  an answer is being written
+ * @property {() => string | null} [answering]  the conversation an answer is being written in
  * @property {() => void} [afterRemoveCurrent]  clears the chat after its conversation was deleted
  * @property {(id: string) => Promise<void>} [settle]  waits for messages of a conversation still being stored
  * @property {string} version  app version for exports
@@ -121,8 +126,8 @@ export function mountConversationList(root, ctx, deps) {
   const alertBox = deps.alert ?? ((message) => window.alert(message));
   const isNarrow = deps.isNarrow ?? (() => !globalThis.matchMedia?.('(min-width: 768px)').matches);
 
-  /** @type {{ conversations: ConversationRecord[], loaded: boolean, failed: boolean, query: string, hits: string[] | null, menu: { id: string, view: 'main' | 'projects', projects: Array<{ id: string, name: string }> } | null, renaming: string | null }} */
-  const state = { conversations: [], loaded: false, failed: false, query: '', hits: null, menu: null, renaming: null };
+  /** @type {{ conversations: ConversationRecord[], loaded: boolean, failed: boolean, query: string, hits: string[] | null, menu: { id: string, view: 'main' | 'projects', projects: Array<{ id: string, name: string }> } | null, renaming: string | null, showArchived: boolean }} */
+  const state = { conversations: [], loaded: false, failed: false, query: '', hits: null, menu: null, renaming: null, showArchived: false };
   /** @type {Array<() => void>} */
   const cleanups = [];
   /** @type {ChatStore | null} */
@@ -141,6 +146,7 @@ export function mountConversationList(root, ctx, deps) {
       ${icon('search', 'pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500')}
       <input id="chatListSearch" type="search" data-focus="search" class="field py-1.5 pl-8" autocomplete="off" spellcheck="false" placeholder="${t('chat.list.search_placeholder')}" data-i18n-placeholder="chat.list.search_placeholder">
     </div>
+    <div data-sidebar-sections class="space-y-1 empty:hidden"></div>
     <p id="chatListStatus" class="sr-only" role="status" aria-live="polite"></p>
     <div id="chatList" data-chat-list></div>
   </div>`.value;
@@ -149,6 +155,7 @@ export function mountConversationList(root, ctx, deps) {
   const search = /** @type {HTMLInputElement} */ (root.querySelector('#chatListSearch'));
   const status = /** @type {HTMLElement} */ (root.querySelector('#chatListStatus'));
   const fileInput = /** @type {HTMLInputElement} */ (root.querySelector('[data-conv-import]'));
+  const sectionsHost = /** @type {HTMLElement} */ (root.querySelector('[data-sidebar-sections]'));
 
   /** @param {string} id */
   const find = (id) => state.conversations.find((c) => c.id === id);
@@ -202,6 +209,7 @@ export function mountConversationList(root, ctx, deps) {
             item({ action: 'conv-rename', icon: 'square-pen', text: 'chat.list.rename' }),
             item({ action: 'conv-pin', icon: 'pin', text: c.pinned ? 'chat.list.unpin' : 'chat.list.pin' }),
             m.projects.length ? item({ action: 'conv-move', icon: 'folder-open', text: 'chat.list.move' }) : '',
+            item({ action: 'conv-archive', icon: c.archived ? 'archive-restore' : 'archive', text: c.archived ? 'chat.list.unarchive' : 'chat.list.archive' }),
             item({ action: 'conv-export', icon: 'file-text', text: 'chat.list.export_md', arg: 'md' }),
             item({ action: 'conv-export', icon: 'braces', text: 'chat.list.export_json', arg: 'json' }),
             item({ action: 'conv-delete', icon: 'trash-2', text: 'chat.list.delete', danger: true }),
@@ -211,7 +219,7 @@ export function mountConversationList(root, ctx, deps) {
   }
 
   /**
-   * @param {GroupId | 'results'} id
+   * @param {GroupId | 'results' | 'archived'} id
    * @param {string} key
    * @param {ConversationRecord[]} items
    * @param {string} current
@@ -234,8 +242,14 @@ export function mountConversationList(root, ctx, deps) {
       return group('results', 'chat.list.search_results', hits, current);
     }
     if (!state.loaded) return html``;
-    if (state.conversations.length === 0) return html`<p class="px-2 py-3 text-xs text-slate-600" data-i18n="chat.list.empty">${t('chat.list.empty')}</p>`;
-    return html`${groupConversations(state.conversations, now()).map((g) => group(g.id, `chat.list.group_${g.id}`, g.items, current))}`;
+    const active = state.conversations.filter((c) => !c.archived);
+    const archived = state.conversations.filter((c) => c.archived);
+    const groups = active.length
+      ? html`${groupConversations(active, now()).map((g) => group(g.id, `chat.list.group_${g.id}`, g.items, current))}`
+      : html`<p class="px-2 py-3 text-xs text-slate-600" data-i18n="chat.list.empty">${t('chat.list.empty')}</p>`;
+    if (!archived.length) return groups;
+    const toggle = html`<button type="button" data-action="conv-show-archived" data-focus="archived" aria-expanded="${String(state.showArchived)}" class="mt-3 w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900">${icon('archive', 'w-3.5 h-3.5')}${label({ key: 'chat.list.archived_toggle', params: { n: archived.length } })}${icon('chevron-down', `ml-auto w-3.5 h-3.5 transition-transform${state.showArchived ? ' rotate-180' : ''}`)}</button>`;
+    return html`${groups}${toggle}${state.showArchived ? group('archived', 'chat.list.group_archived', archived, current) : ''}`;
   }
 
   /**
@@ -276,7 +290,7 @@ export function mountConversationList(root, ctx, deps) {
   async function reload() {
     try {
       store ??= await deps.store();
-      state.conversations = await store.listConversations();
+      state.conversations = await store.listConversations({ includeArchived: true });
       state.failed = false;
     } catch (err) {
       console.warn('[starpi] the conversation list could not be loaded', err);
@@ -436,6 +450,21 @@ export function mountConversationList(root, ctx, deps) {
     }
   }
 
+  /** @param {string} id */
+  async function toggleArchive(id) {
+    const conversation = find(id);
+    closeMenu();
+    if (!conversation) return;
+    const archived = !conversation.archived;
+    try {
+      await (store ?? (await deps.store())).updateConversation(id, { archived });
+      ctx.toast(archived ? 'chat.list.archived' : 'chat.list.unarchived', { tone: 'ok' });
+    } catch (err) {
+      console.warn('[starpi] the chat could not be archived', err);
+      ctx.toast('chat.list.action_failed', { tone: 'warn' });
+    }
+  }
+
   /**
    * @param {string} id
    * @param {string} projectId  '' takes the chat out of its project
@@ -476,9 +505,10 @@ export function mountConversationList(root, ctx, deps) {
     const current = id === deps.currentId();
     state.menu = null;
     render();
-    // An answer still being written would store its turn again after the delete.
-    if (current && deps.isBusy()) {
-      alertBox(t('chat.delete_busy'));
+    // An answer still being written would store its turn again after the delete, also in a chat the
+    // user has left meanwhile.
+    if ((current && deps.isBusy()) || deps.answering?.() === id) {
+      alertBox(t(current ? 'chat.delete_busy' : 'chat.list.delete_answering'));
       render(`menu:${id}`);
       return;
     }
@@ -545,6 +575,11 @@ export function mountConversationList(root, ctx, deps) {
     focusMenuItem(menuItems().findIndex((el) => el.dataset.action === 'conv-move'));
   });
   ctx.onAction('conv-move-to', (el) => moveTo(menuId(), el.dataset.arg ?? ''));
+  ctx.onAction('conv-archive', () => toggleArchive(menuId()));
+  ctx.onAction('conv-show-archived', () => {
+    state.showArchived = !state.showArchived;
+    render('archived');
+  });
   ctx.onAction('conv-export', (el) => exportOne(menuId(), el.dataset.arg === 'json' ? 'json' : 'md'));
   ctx.onAction('conv-delete', () => removeOne(menuId()));
   ctx.onAction('conv-import', () => fileInput.click());
@@ -699,6 +734,39 @@ export function mountConversationList(root, ctx, deps) {
     },
     search,
   );
+
+  // Sections of other features: each gets its own host, in registration order.
+  /** @type {Map<string, { host: HTMLElement, render: Function, cleanup: (() => void) | void }>} */
+  const sections = new Map();
+  function renderSections() {
+    for (const [id, entry] of [...sections]) {
+      if (sidebarSections.get(id) === entry.render) continue;
+      if (typeof entry.cleanup === 'function') entry.cleanup();
+      entry.host.remove();
+      sections.delete(id);
+    }
+    for (const [id, render] of sidebarSections) {
+      let entry = sections.get(id);
+      if (!entry) {
+        const host = document.createElement('div');
+        host.dataset.sidebarSection = id;
+        entry = { host, render, cleanup: undefined };
+        sections.set(id, entry);
+        try {
+          entry.cleanup = render(host, { onAction: ctx.onAction, onChange: ctx.onChange, switchTab: ctx.switchTab, toast: ctx.toast });
+        } catch (err) {
+          console.error(`[starpi] the sidebar section "${id}" failed`, err);
+        }
+      }
+      sectionsHost.append(entry.host);
+    }
+  }
+  renderSections();
+  cleanups.push(onSidebarSections(renderSections));
+  cleanups.push(() => {
+    for (const entry of sections.values()) if (typeof entry.cleanup === 'function') entry.cleanup();
+    sections.clear();
+  });
 
   const offSession = deps.onSessionChange(() => {
     if (!state.renaming) render();

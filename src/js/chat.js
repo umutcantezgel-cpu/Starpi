@@ -215,7 +215,7 @@ function initChatMenu() {
 
 export function initChat() {
   // The conversation list opens chats through the facade (chat-store.js).
-  bindChatView({ open: openConversation, isBusy: isChatBusy, reset: resetConversation });
+  bindChatView({ open: openConversation, isBusy: isChatBusy, reset: resetConversation, answering: () => loaded?.answeringConversation() ?? null });
   initModeControl();
   initComposer({
     submit: () => submitChat(),

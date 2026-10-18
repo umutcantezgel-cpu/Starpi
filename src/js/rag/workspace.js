@@ -284,14 +284,18 @@ export function setQueryEmbedder(fn) {
  * empty (no worker is started for that).
  * @param {string} query
  * @param {number} [topK]
+ * @param {{ docIds?: readonly string[] }} [options]  docIds: search only these documents
  * @returns {Promise<WorkspaceHit[]>}
  */
-export async function searchWorkspace(query, topK = 5) {
+export async function searchWorkspace(query, topK = 5, options = {}) {
   if (!docs.length || !query.trim()) return [];
+  const docIds = options.docIds ? [...options.docIds] : null;
+  if (docIds && !docIds.length) return [];
+  const only = docIds ? { docIds } : {};
   return searchWithQueryVector(query, topK, {
     hasVectors: () => status.vectors > 0,
     embed: queryEmbedder,
-    search: (q, k, vector) => (vector ? request('searchHybrid', { query: q, vector, topK: k }) : request('search', { query: q, topK: k })),
+    search: (q, k, vector) => (vector ? request('searchHybrid', { query: q, vector, topK: k, ...only }) : request('search', { query: q, topK: k, ...only })),
   });
 }
 

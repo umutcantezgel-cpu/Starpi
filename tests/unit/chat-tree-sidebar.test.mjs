@@ -64,7 +64,7 @@ async function setup() {
   /** @type {Set<(id: string) => void>} */
   const sessionListeners = new Set();
   const calls = { opened: /** @type {string[]} */ ([]), removed: /** @type {string[]} */ ([]), tabs: /** @type {string[]} */ ([]), toasts: /** @type {any[]} */ ([]), downloads: /** @type {Array<{ name: string, text: string, type: string }>} */ ([]), alerts: /** @type {string[]} */ ([]), cleared: 0 };
-  const env = { current: 'starpi_none', busy: false, confirm: true, narrow: false };
+  const env = { current: 'starpi_none', busy: false, confirm: true, narrow: false, answering: /** @type {string | null} */ (null) };
   const list = sidebar.mountConversationList(
     root,
     {
@@ -91,6 +91,7 @@ async function setup() {
         return true;
       },
       isBusy: () => env.busy,
+      answering: () => env.answering,
       afterRemoveCurrent: () => void (calls.cleared += 1),
       version: '3.0.0-test',
       download: (n, text, type) => void calls.downloads.push({ name: n, text, type }),
@@ -193,7 +194,7 @@ describe('conversation list', () => {
     trigger.focus();
     press(trigger, 'ArrowDown');
     await until(() => root.querySelector('[role="menu"]'), 'the menu');
-    assert.deepEqual(menuLabels(root), ['Rename', 'Pin', 'Export as Markdown', 'Export as JSON', 'Delete']);
+    assert.deepEqual(menuLabels(root), ['Rename', 'Pin', 'Archive', 'Export as Markdown', 'Export as JSON', 'Delete']);
     const menuTrigger = /** @type {HTMLElement} */ (root.querySelector('[data-action="conv-menu"]'));
     assert.equal(menuTrigger.getAttribute('aria-expanded'), 'true');
     assert.equal(menuTrigger.getAttribute('aria-controls'), 'chatListMenu');
@@ -326,6 +327,77 @@ describe('conversation list', () => {
     list.destroy();
   });
 
+  it('refuses to delete a chat an answer is still being written in, also when it is not on screen', async () => {
+    const { root, list, add, calls, env } = await setup();
+    const left = await add('Left while answering', NOW - 1000);
+    await add('On screen', NOW - 500);
+    env.current = 'starpi_other';
+    env.busy = true;
+    env.answering = left.id;
+    await list.refresh();
+    click(rowOf(root, 'Left while answering').querySelector('[data-action="conv-menu"]'));
+    await until(() => root.querySelector('[data-action="conv-delete"]'), 'the menu');
+    click(root.querySelector('[data-action="conv-delete"]'));
+    await until(() => calls.alerts.length === 1, 'the notice');
+    assert.match(calls.alerts[0], /still being written in this chat/);
+    assert.deepEqual(calls.removed, []);
+    // Another chat may be deleted meanwhile.
+    click(rowOf(root, 'On screen').querySelector('[data-action="conv-menu"]'));
+    await until(() => root.querySelector('[data-action="conv-delete"]'), 'the menu');
+    click(root.querySelector('[data-action="conv-delete"]'));
+    await until(() => calls.removed.length === 1, 'the delete');
+    assert.equal(calls.alerts.length, 1);
+    list.destroy();
+  });
+
+  it('archives a chat into its own group and brings it back', async () => {
+    const { root, list, add, store, calls } = await setup();
+    const c = await add('Old project notes', NOW - 1000);
+    await add('Active chat', NOW - 500);
+    await list.refresh();
+    click(rowOf(root, 'Old project notes').querySelector('[data-action="conv-menu"]'));
+    await until(() => root.querySelector('[data-action="conv-archive"]'), 'the menu');
+    assert.equal(root.querySelector('[data-action="conv-archive"]')?.textContent?.trim(), 'Archive');
+    click(root.querySelector('[data-action="conv-archive"]'));
+    await until(() => !titles(root).includes('Old project notes'), 'the chat to leave the list');
+    assert.equal((await store.getConversation(c.id))?.archived, 1);
+    assert.deepEqual(calls.toasts.at(-1), { message: 'chat.list.archived', tone: 'ok' });
+    const toggle = /** @type {HTMLElement} */ (root.querySelector('[data-action="conv-show-archived"]'));
+    assert.equal(toggle.textContent?.trim(), 'Archived chats (1)');
+    assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+    click(toggle);
+    assert.deepEqual(headings(root), ['Today', 'Archived']);
+    assert.equal(root.querySelector('[data-action="conv-show-archived"]')?.getAttribute('aria-expanded'), 'true');
+    assert.equal(document.activeElement, root.querySelector('[data-action="conv-show-archived"]'));
+    click(rowOf(root, 'Old project notes').querySelector('[data-action="conv-menu"]'));
+    await until(() => root.querySelector('[data-action="conv-archive"]'), 'the menu');
+    assert.equal(root.querySelector('[data-action="conv-archive"]')?.textContent?.trim(), 'Unarchive');
+    click(root.querySelector('[data-action="conv-archive"]'));
+    await until(() => !root.querySelector('[data-action="conv-show-archived"]'), 'the archive to empty');
+    assert.equal((await store.getConversation(c.id))?.archived, 0);
+    assert.deepEqual(titles(root).sort(), ['Active chat', 'Old project notes']);
+    list.destroy();
+  });
+
+  it('renders the sections other features register, between the search box and the list', async () => {
+    const hooks = await import('../../src/js/chat/hooks.js');
+    let cleaned = 0;
+    const off = hooks.registerSidebarSection('test-section', (host, ctx) => {
+      host.innerHTML = '<h2>Test section</h2>';
+      assert.equal(typeof ctx.onAction, 'function');
+      return () => void (cleaned += 1);
+    });
+    const { root, list } = await setup();
+    const host = root.querySelector('[data-sidebar-section="test-section"]');
+    assert.equal(host?.textContent, 'Test section');
+    const order = [...root.querySelectorAll('#chatListSearch, [data-sidebar-section], [data-chat-list]')].map((el) => el.id || el.getAttribute('data-sidebar-section'));
+    assert.deepEqual(order, ['chatListSearch', 'test-section', 'chatList']);
+    off();
+    assert.equal(root.querySelector('[data-sidebar-section="test-section"]'), null);
+    assert.equal(cleaned, 1);
+    list.destroy();
+  });
+
   it('searches titles and first questions, announces the result and clears with Escape', async () => {
     const { root, list, add } = await setup();
     await add('Moon facts', NOW - 1000, { question: 'Why does the moon change shape?' });
@@ -404,7 +476,7 @@ describe('conversation list', () => {
     assert.equal(root.querySelector('[data-action="conv-menu"]')?.getAttribute('aria-label'), 'Weitere Aktionen für Asked in the chat');
     click(root.querySelector('[data-action="conv-menu"]'));
     await until(() => root.querySelector('[role="menu"]'), 'the menu');
-    assert.deepEqual(menuLabels(root), ['Umbenennen', 'Anheften', 'Als Markdown exportieren', 'Als JSON exportieren', 'Löschen']);
+    assert.deepEqual(menuLabels(root), ['Umbenennen', 'Anheften', 'Archivieren', 'Als Markdown exportieren', 'Als JSON exportieren', 'Löschen']);
     list.destroy();
   });
 });

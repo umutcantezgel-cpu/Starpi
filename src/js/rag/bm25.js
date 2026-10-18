@@ -133,9 +133,11 @@ export class BM25Index {
   /**
    * @param {string} query
    * @param {number} [topK]
+   * @param {(docId: string) => boolean} [accept]  only chunks of the documents it accepts (the
+   *   statistics stay those of the whole index)
    * @returns {SearchHit[]}
    */
-  search(query, topK = 5) {
+  search(query, topK = 5, accept) {
     const terms = [...new Set(tokenize(query))];
     if (terms.length === 0 || this.entries.length === 0 || topK <= 0) return [];
     const avgdl = this.avgdl || 1;
@@ -144,6 +146,7 @@ export class BM25Index {
     /** @type {Array<SearchHit & { order: number }>} */
     const scored = [];
     this.entries.forEach((entry, order) => {
+      if (accept && !accept(entry.docId)) return;
       let score = 0;
       /** @type {string[]} */
       const matched = [];

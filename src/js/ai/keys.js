@@ -8,6 +8,10 @@
 //   lives in memory only. Unlocking derives it again; locking (by hand, or after 30 minutes without
 //   user activity) drops it and the decrypted keys.
 //
+// While the vault is unlocked, other features can seal their own text with its key (seal/open, bound
+// to the feature's purpose); the saved notes of the memory do, so they are encrypted whenever a
+// passphrase is set.
+//
 // Keys are never written in plaintext outside session storage, never exported or synced and never
 // put into receipts or logs. 2.x kept "remembered" keys in plaintext in localStorage; they move to
 // session storage once (migrateLegacyKeys), and the view then suggests setting a vault passphrase.
@@ -115,6 +119,11 @@ const ACCESS_PATTERN = /^[\x21-\x7e](?:[\x20-\x7e]{0,254}[\x21-\x7e])?$/;
 const ENCODER = new TextEncoder();
 /** Binds the ciphertext to its purpose and format version. */
 const AAD = ENCODER.encode('starpi-keyvault/v1');
+/**
+ * Additional data of a feature's text sealed with the vault key (seal/open).
+ * @param {string} purpose
+ */
+const dataAad = (purpose) => ENCODER.encode(`starpi-vault-data/v1:${purpose}`);
 /** Highest PBKDF2 iteration count accepted from a stored record. */
 const MAX_ITERATIONS = 10_000_000;
 
@@ -595,6 +604,39 @@ export function createKeyStore(options = {}) {
       });
     },
 
+    /**
+     * Encrypts a feature's text (not a key) with the unlocked vault's AES key under a fresh IV,
+     * bound to `purpose`, so other features' data and the key record cannot be swapped in for it.
+     * @param {string} purpose  e.g. 'memory'
+     * @param {string} text
+     * @returns {Promise<{ iv: Uint8Array, ct: Uint8Array }>}
+     */
+    async seal(purpose, text) {
+      const key = aesKey;
+      if (state !== 'unlocked' || !key) throw new KeyStoreError('locked');
+      const iv = cryptoImpl.getRandomValues(new Uint8Array(VAULT_IV_BYTES));
+      const ct = await /** @type {SubtleCrypto} */ (subtle()).encrypt({ name: 'AES-GCM', iv, additionalData: dataAad(purpose) }, key, ENCODER.encode(String(text)));
+      return { iv, ct: new Uint8Array(ct) };
+    },
+
+    /**
+     * Decrypts what seal() made for `purpose`.
+     * @param {string} purpose
+     * @param {{ iv: Uint8Array, ct: Uint8Array }} sealed
+     * @returns {Promise<string | null>} null while the vault is locked, or for data sealed under
+     *   another passphrase or purpose
+     */
+    async open(purpose, sealed) {
+      const key = aesKey;
+      if (state !== 'unlocked' || !key || !(sealed?.iv instanceof Uint8Array) || !(sealed?.ct instanceof Uint8Array)) return null;
+      try {
+        const plain = await /** @type {SubtleCrypto} */ (subtle()).decrypt({ name: 'AES-GCM', iv: /** @type {BufferSource} */ (sealed.iv), additionalData: dataAad(purpose) }, key, /** @type {BufferSource} */ (sealed.ct));
+        return new TextDecoder().decode(plain);
+      } catch {
+        return null;
+      }
+    },
+
     /** Locks the vault now ("Lock now"): its keys leave memory until the next unlock. */
     lock() {
       if (state === 'unlocked') drop('locked', 'manual');
@@ -678,3 +720,7 @@ export const keysReady = () => keyStore.ready();
 export const noteActivity = () => keyStore.noteActivity();
 /** @param {(change: KeysChange) => void} fn */
 export const onKeysChange = (fn) => keyStore.onKeysChange(fn);
+/** @param {string} purpose @param {string} text */
+export const sealWithVault = (purpose, text) => keyStore.seal(purpose, text);
+/** @param {string} purpose @param {{ iv: Uint8Array, ct: Uint8Array }} sealed */
+export const openWithVault = (purpose, sealed) => keyStore.open(purpose, sealed);
