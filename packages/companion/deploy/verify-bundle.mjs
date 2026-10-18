@@ -180,7 +180,7 @@ export function main(argv, { out = (l) => process.stdout.write(`${l}\n`), err = 
   const json = args.includes('--json');
   const keyAt = args.indexOf('--key');
   const keyFile = keyAt >= 0 ? args[keyAt + 1] : undefined;
-  const rest = args.filter((a, i) => a !== '--json' && i !== keyAt && i !== keyAt + 1);
+  const rest = args.filter((a, i) => a !== '--json' && (keyAt < 0 || (i !== keyAt && i !== keyAt + 1)));
   if (rest.length !== 1 || (keyAt >= 0 && !keyFile)) {
     err('usage: node verify-bundle.mjs <bundle folder> [--key <public key PEM>] [--json]');
     return 2;

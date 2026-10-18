@@ -101,7 +101,6 @@ printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' 
 
 # --- Places -----------------------------------------------------------------------------------
 if [ "$MODE" = user ]; then
-  [ "$(id -u)" -ne 0 ] || die "a per-user install runs as that user, not as root (use --system for a system install)"
   : "${HOME:?HOME is not set}"
   CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
   PREFIX=${PREFIX:-$HOME/.local/opt/starpi-companion}

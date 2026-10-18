@@ -63,7 +63,7 @@ if [ "$LAUNCHCTL" -eq 1 ]; then
 else
   [ "$ENABLE" -eq 0 ] || die "--enable needs launchctl"
 fi
-[ "$(id -u)" -ne 0 ] || die "install as yourself, not as root: the agent runs in your account"
+[ "$LAUNCHCTL" -eq 0 ] || [ "$(id -u)" -ne 0 ] || die "install as yourself, not as root: the agent runs in your account"
 : "${HOME:?HOME is not set}"
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -167,6 +167,10 @@ arg() {
 }
 ARGS=$(mktemp)
 trap 'rm -f "$ARGS"' EXIT
+if [ "$SANDBOX" -eq 1 ]; then
+  # The sandbox matches the program a process runs by its real path, so links are resolved first.
+  NODE=$("$NODE" -p 'require("node:fs").realpathSync(process.execPath)')
+fi
 {
   if [ "$SANDBOX" -eq 1 ]; then
     arg /usr/bin/sandbox-exec
