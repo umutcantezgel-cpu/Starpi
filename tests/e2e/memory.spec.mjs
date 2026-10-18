@@ -3,7 +3,10 @@
 // memory stays off until switched on in Settings, and only then do saved notes go along with a
 // question (in the turn, never in the stable system prompt), with "Remember this" on messages; an
 // assistant brings its instructions and conversation starters, and exports and imports as
-// starpi.assistant/v1 without tools it may not use. No page error, the sidebar passes axe.
+// starpi.assistant/v1 without tools it may not use. The memory tool is offered only with memory on
+// and answers from the saved notes; compared answers get the same notes as the thread's; a chat
+// started in a project keeps it across a reload before the first question; an assistant switches
+// on the chat tools it names. No page error, the sidebar passes axe.
 import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, mockSupabase, test } from './fixtures.mjs';
@@ -34,6 +37,23 @@ async function routeAnthropic(page) {
     return route.fulfill({ response: res, headers: { ...res.headers(), ...cors } });
   });
   return chats;
+}
+
+/**
+ * An Anthropic event stream of one answer that calls a tool.
+ * @param {string} name
+ * @param {Record<string, unknown>} input
+ */
+function toolUseStream(name, input) {
+  const events = [
+    ['message_start', { type: 'message_start', message: { id: 'msg_e2e_tool', type: 'message', role: 'assistant', model: 'claude-haiku-5-5', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 12, output_tokens: 1 } } }],
+    ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_e2e_1', name, input: {} } }],
+    ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(input) } }],
+    ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+    ['message_delta', { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 9 } }],
+    ['message_stop', { type: 'message_stop' }],
+  ];
+  return events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('');
 }
 
 /** A returning visitor with an Anthropic key, free chat and a fast model picked. @param {import('@playwright/test').Page} page */
@@ -328,5 +348,123 @@ test.describe('projects, memory and assistants', () => {
     await expect(page.locator('#toastRegion')).toContainText('imported without these tools: code_interpreter');
     await page.setInputFiles('#chat-sidebar [data-as-file]', { name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from('{"schema":"something/else"}') });
     await expect(page.locator('#toastRegion')).toContainText('This file is not a Starpi assistant.');
+  });
+
+  test('the memory tool is offered only with memory on and answers from the notes; compared answers carry the notes too', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-expose-headers': 'request-id' };
+    /** @type {any[]} */
+    const chats = [];
+    await page.route('https://api.anthropic.com/**', async (route) => {
+      const req = route.request();
+      if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+      const url = new URL(req.url());
+      const body = req.method() === 'POST' ? JSON.parse(req.postData() ?? '{}') : null;
+      const chat = body && Array.isArray(body.messages) && !JSON.stringify(body.system ?? '').includes('starpi-purpose');
+      if (chat) chats.push(body);
+      const offers = chat && (body.tools ?? []).some((/** @type {any} */ t) => t.name === 'memory_lookup');
+      const answered = chat && body.messages.some((/** @type {any} */ m) => Array.isArray(m.content) && m.content.some((/** @type {any} */ b) => b.type === 'tool_result'));
+      if (offers && !answered && questionOf(body).includes('Look it up')) return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'text/event-stream', 'request-id': 'req_e2e_tool' }, body: toolUseStream('memory_lookup', { query: 'live Lisbon' }) });
+      const res = await route.fetch({ url: `${ANTHROPIC_FAKE}${url.pathname}${url.search}` });
+      return route.fulfill({ response: res, headers: { ...res.headers(), ...cors } });
+    });
+    await useAnthropic(page);
+    await page.goto('/');
+    const toolNames = (/** @type {any} */ body) => (body.tools ?? []).map((/** @type {any} */ t) => t.name);
+
+    // Memory is off: the memory tool is not offered, even with a note saved.
+    await ask(page, 'Where do I live? Look it up.');
+    await settled(page);
+    expect(toolNames(chats.at(-1))).toContain('datetime');
+    expect(toolNames(chats.at(-1))).not.toContain('memory_lookup');
+    await page.click('#nav-settings');
+    const card = page.locator('[data-memory-settings]');
+    await card.locator('#mvAddText').fill('I live in Lisbon');
+    await card.locator('[data-mv-add] button[type="submit"]').click();
+    await expect(card.locator('[data-fact]')).toHaveCount(1);
+    await page.click('#nav-chat');
+    await ask(page, 'Where do I live, then? Look it up.');
+    await settled(page);
+    expect(toolNames(chats.at(-1))).not.toContain('memory_lookup');
+
+    // Memory on: offered, and its call answers with the matching note.
+    await page.click('#nav-settings');
+    await card.locator('#mvEnabled').check();
+    await expect(page.locator('#toastRegion')).toContainText('Memory is on');
+    await page.click('#nav-chat');
+    await ask(page, 'Where do I live now? Look it up.');
+    await settled(page);
+    await expect(answers(page).last().locator('.tool-call')).toHaveAttribute('data-status', 'done');
+    const round = chats.findLast((/** @type {any} */ b) => b.messages.some((/** @type {any} */ m) => Array.isArray(m.content) && m.content.some((/** @type {any} */ c) => c.type === 'tool_result')));
+    expect(toolNames(round)).toContain('memory_lookup');
+    const results = round.messages.flatMap((/** @type {any} */ m) => (Array.isArray(m.content) ? m.content : [])).filter((/** @type {any} */ c) => c.type === 'tool_result');
+    expect(JSON.stringify(results)).toContain('I live in Lisbon');
+
+    // Compare: every column's request carries the saved notes, as the thread's does.
+    const before = chats.length;
+    await page.fill('#chatInput', 'Which language do people speak where I live?');
+    await page.locator('details.tools-menu summary').click();
+    await page.locator('#toolsMenuList [data-arg="compare"]').click();
+    const panel = page.locator('#chat-aside-compare');
+    await expect(panel.locator('[data-compare-question]')).toHaveValue('Which language do people speak where I live?');
+    const remove = panel.locator('[data-action="compare-remove"]');
+    while ((await panel.locator('[data-compare-model]').count()) > 2) await remove.last().click();
+    await panel.locator('[data-compare-run]').click();
+    await expect(panel.locator('[data-column][data-status="done"]')).toHaveCount(2);
+    const compared = chats.slice(before).filter((/** @type {any} */ b) => questionOf(b).includes('Which language do people speak'));
+    expect(compared.length).toBe(2);
+    for (const body of compared) {
+      expect(questionOf(body)).toContain('User notes (may be outdated):');
+      expect(questionOf(body)).toContain('- I live in Lisbon');
+    }
+
+    // Memory off again: the tool goes, and compared answers carry no notes.
+    await page.click('#nav-settings');
+    await card.locator('#mvEnabled').uncheck();
+    await expect(page.locator('#toastRegion')).toContainText('Memory is off');
+    await page.click('#nav-chat');
+    await ask(page, 'Anything else? Look it up.');
+    await settled(page);
+    expect(toolNames(chats.at(-1))).not.toContain('memory_lookup');
+  });
+
+  test('a chat started in a project keeps it across a reload before the first question; an assistant switches on its chat tools', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const chats = await routeAnthropic(page);
+    await useAnthropic(page);
+    await page.goto('/');
+
+    await page.click('#chat-sidebar [data-pj="new"]');
+    const dialog = page.locator('#projectDialog');
+    await dialog.locator('#pjName').fill('Garden');
+    await dialog.locator('#pjInstructions').fill('Answer like a patient gardener.');
+    await dialog.locator('button[type="submit"]').click();
+    await expect(dialog).toHaveCount(0);
+    const project = page.locator('#chat-sidebar [data-project-id]');
+    await project.locator('[data-pj="toggle"]').click();
+    await project.locator('[data-pj="new-chat"]').click();
+    await expect(page.locator('#chatToolbarExtras [data-context-chip="project"]')).toContainText('Garden');
+    // A reload before the first question: the draft keeps its project.
+    await page.reload();
+    await expect(page.locator('#chatToolbarExtras [data-context-chip="project"]')).toContainText('Garden');
+    await ask(page, 'When do I plant tulips?');
+    await settled(page);
+    expect(systemOf(chats.at(-1))).toContain('Answer like a patient gardener.');
+    // Stored in the project.
+    await expect(project.locator('[data-pj="toggle"]')).toHaveAccessibleName(/Garden 1 chat/);
+
+    // An assistant that names the web search tool switches it on when its chat starts.
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('starpi_tools_v1') ?? '{}').web_search ?? false)).toBe(false);
+    await page.click('#chat-sidebar [data-as="new"]');
+    const editor = page.locator('#assistantDialog');
+    await editor.locator('#asName').fill('Researcher');
+    await editor.locator('#asInstructions').fill('Look things up before you answer.');
+    await expect(editor.locator('input[name="tool"][value="workspace_search"]')).toBeVisible();
+    await editor.locator('input[name="tool"][value="web_search"]').check();
+    await editor.locator('button[type="submit"]').click();
+    await expect(editor).toHaveCount(0);
+    await page.locator('#chat-sidebar [data-assistant-id]').filter({ hasText: 'Researcher' }).locator('[data-as="start"]').click();
+    await expect(page.locator('#chatToolbarExtras [data-context-chip="assistant"]')).toContainText('Researcher');
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('starpi_tools_v1') ?? '{}').web_search ?? false)).toBe(true);
   });
 });
