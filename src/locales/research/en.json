@@ -1,1 +1,122 @@
-{}
+{
+  "title": "Research",
+  "intro": "Ask a question that takes several searches. Starpi searches your documents and, if you like, the web, checks every sentence and keeps the report on this device. Jobs keep running while you work elsewhere.",
+  "question_label": "Question",
+  "question_placeholder": "What do you want to find out?",
+  "include_web": "Also search the web",
+  "strip_pii": "Remove e-mail addresses, phone numbers and similar details from the web search",
+  "focus": "About the document “{doc}”",
+  "focus_clear": "Research all documents",
+  "start": "Start research",
+  "question_required": "Enter a question first.",
+  "started": "Research started. It keeps running in the background.",
+  "start_failed": "The research could not be started.",
+  "jobs_title": "Research jobs",
+  "empty": "No research yet. Your jobs and their reports appear here.",
+  "status": {
+    "queued": "Waiting",
+    "running": "Running",
+    "done": "Done",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "stale": "Interrupted"
+  },
+  "step": {
+    "plan": "Planning the searches",
+    "sources": "Searching your documents",
+    "web": "Searching the web",
+    "check": "Checking the sources",
+    "report": "Writing the report"
+  },
+  "progress": "{step} · round {round} · {n} {n:source|sources}",
+  "progress_short": "{step}",
+  "queued_hint": "Waits until fewer than three jobs run.",
+  "elsewhere": "Runs in another tab of Starpi.",
+  "stale_hint": "The page was closed or reloaded while this job ran. Retry runs the parts that are missing.",
+  "failed_hint": "The job failed ({code}). Retry runs the parts that are missing.",
+  "unread": "New",
+  "meta": "{date} · {origin}",
+  "origin": {
+    "chat": "From a chat",
+    "library": "From the library",
+    "header": "Research tab"
+  },
+  "actions": {
+    "open": "Open report",
+    "close": "Close report",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "remove": "Remove",
+    "export_md": "Download Markdown",
+    "show": "Show in the Research tab"
+  },
+  "badge": "{n} research {n:job|jobs} running",
+  "section": {
+    "summary": "Summary",
+    "details": "Details",
+    "sources": "Sources",
+    "open_questions": "Open questions"
+  },
+  "part": {
+    "sources": "From your documents",
+    "web": "From the web"
+  },
+  "via": {
+    "byok": "Written by {model} with your key",
+    "pool": "Written by {model} through this site",
+    "quote": "Quoted from your documents: no model was available"
+  },
+  "fallback": "The model failed ({code}), so the best matching sentences are quoted instead.",
+  "gate_counts": "{released} {released:sentence|sentences} kept · {withheld} withheld by the sentence check",
+  "check_counts": "Source check: {supported} supported · {weak} weak · {unsupported} unsupported",
+  "no_answer": "Your documents gave no answer to this question.",
+  "web_query": "Searched the web for: {query}",
+  "web_removed": "Taken out before the search: {kinds}",
+  "pii": {
+    "email": "e-mail addresses",
+    "phone": "phone numbers",
+    "iban": "account numbers",
+    "card": "card numbers",
+    "ip": "IP addresses"
+  },
+  "web_released": "Checked as a whole: every number lies in a passage the search results support.",
+  "web_withheld": "The web answer is withheld because it did not pass the check as a whole: {reason}. Only the pages it consulted are listed.",
+  "web_off": "No web search: none of your providers searches the web, and this site offers none.",
+  "web_failed": "The web search failed ({code}).",
+  "web_running": "The web search runs…",
+  "web_sources": "Pages consulted (listed, not verified)",
+  "doc_sources": "Documents",
+  "suggestions": "Search suggestions",
+  "web_reason": {
+    "empty": "it was empty",
+    "no_sources": "it named no web pages",
+    "web_ungrounded": "a number lies outside every passage the results support",
+    "unsupported_number": "a number has no support",
+    "chars": "it contains characters that cannot be checked",
+    "link": "it contains a link",
+    "joined": "it contains digits that could be misread",
+    "number_word": "a number word has no support",
+    "identifier": "an identifier has no support",
+    "spoken_mismatch": "reading it aloud would change a number",
+    "other": "it did not pass"
+  },
+  "report": {
+    "title": "Research report",
+    "made_with": "Written by {model}",
+    "quoted": "Quoted from the documents without a model",
+    "no_document_answer": "The documents gave no answer to this question.",
+    "from_web": "From the web",
+    "web_query": "Searched for: {query}",
+    "web_withheld": "The web part was withheld: {reason}.",
+    "web_off": "No web search was available.",
+    "web_failed": "The web search failed.",
+    "documents": "Documents",
+    "web_sources": "Web pages (listed, not verified against the pages)",
+    "no_sources": "No sources were cited.",
+    "check": "Source check: {supported} supported, {weak} weak, {unsupported} unsupported.",
+    "withheld": "The sentence check withheld {n} {n:sentence|sentences}.",
+    "receipt_note": "The answer receipt covers the part from the documents; web pages are listed but not verified."
+  },
+  "this": "Research this",
+  "prefilled": "The question is in the Research tab. Adjust it and start the research."
+}

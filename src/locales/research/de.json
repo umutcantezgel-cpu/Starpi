@@ -1,1 +1,122 @@
-{}
+{
+  "title": "Recherche",
+  "intro": "Stelle eine Frage, für die mehrere Suchen nötig sind. Starpi durchsucht deine Dokumente und auf Wunsch das Web, prüft jeden Satz und behält den Bericht auf diesem Gerät. Aufträge laufen weiter, während du anderswo arbeitest.",
+  "question_label": "Frage",
+  "question_placeholder": "Was möchtest du herausfinden?",
+  "include_web": "Auch im Web suchen",
+  "strip_pii": "E-Mail-Adressen, Telefonnummern und ähnliche Angaben aus der Websuche entfernen",
+  "focus": "Zum Dokument „{doc}“",
+  "focus_clear": "Alle Dokumente durchsuchen",
+  "start": "Recherche starten",
+  "question_required": "Gib zuerst eine Frage ein.",
+  "started": "Recherche gestartet. Sie läuft im Hintergrund weiter.",
+  "start_failed": "Die Recherche konnte nicht gestartet werden.",
+  "jobs_title": "Rechercheaufträge",
+  "empty": "Noch keine Recherche. Deine Aufträge und ihre Berichte erscheinen hier.",
+  "status": {
+    "queued": "Wartet",
+    "running": "Läuft",
+    "done": "Fertig",
+    "failed": "Fehlgeschlagen",
+    "cancelled": "Abgebrochen",
+    "stale": "Unterbrochen"
+  },
+  "step": {
+    "plan": "Suchen werden geplant",
+    "sources": "Deine Dokumente werden durchsucht",
+    "web": "Das Web wird durchsucht",
+    "check": "Quellen werden geprüft",
+    "report": "Bericht wird geschrieben"
+  },
+  "progress": "{step} · Runde {round} · {n} {n:Quelle|Quellen}",
+  "progress_short": "{step}",
+  "queued_hint": "Wartet, bis weniger als drei Aufträge laufen.",
+  "elsewhere": "Läuft in einem anderen Tab von Starpi.",
+  "stale_hint": "Die Seite wurde geschlossen oder neu geladen, während dieser Auftrag lief. Erneut versuchen führt die fehlenden Teile aus.",
+  "failed_hint": "Der Auftrag ist fehlgeschlagen ({code}). Erneut versuchen führt die fehlenden Teile aus.",
+  "unread": "Neu",
+  "meta": "{date} · {origin}",
+  "origin": {
+    "chat": "Aus einem Chat",
+    "library": "Aus der Bibliothek",
+    "header": "Tab Recherche"
+  },
+  "actions": {
+    "open": "Bericht öffnen",
+    "close": "Bericht schließen",
+    "cancel": "Abbrechen",
+    "retry": "Erneut versuchen",
+    "remove": "Entfernen",
+    "export_md": "Markdown herunterladen",
+    "show": "Im Tab Recherche zeigen"
+  },
+  "badge": "{n} {n:Rechercheauftrag läuft|Rechercheaufträge laufen}",
+  "section": {
+    "summary": "Zusammenfassung",
+    "details": "Einzelheiten",
+    "sources": "Quellen",
+    "open_questions": "Offene Fragen"
+  },
+  "part": {
+    "sources": "Aus deinen Dokumenten",
+    "web": "Aus dem Web"
+  },
+  "via": {
+    "byok": "Geschrieben von {model} mit deinem Schlüssel",
+    "pool": "Geschrieben von {model} über diese Website",
+    "quote": "Aus deinen Dokumenten zitiert: Es war kein Modell verfügbar"
+  },
+  "fallback": "Das Modell ist ausgefallen ({code}), deshalb werden die am besten passenden Sätze zitiert.",
+  "gate_counts": "{released} {released:Satz|Sätze} behalten · {withheld} von der Satzprüfung zurückgehalten",
+  "check_counts": "Quellenprüfung: {supported} gestützt · {weak} schwach · {unsupported} nicht gestützt",
+  "no_answer": "Deine Dokumente beantworten diese Frage nicht.",
+  "web_query": "Im Web gesucht nach: {query}",
+  "web_removed": "Vor der Suche entfernt: {kinds}",
+  "pii": {
+    "email": "E-Mail-Adressen",
+    "phone": "Telefonnummern",
+    "iban": "Kontonummern",
+    "card": "Kartennummern",
+    "ip": "IP-Adressen"
+  },
+  "web_released": "Als Ganzes geprüft: Jede Zahl steht in einer Passage, die die Suchergebnisse stützen.",
+  "web_withheld": "Die Webantwort wird zurückgehalten, weil sie die Prüfung als Ganzes nicht bestanden hat: {reason}. Nur die Seiten, die sie herangezogen hat, sind aufgeführt.",
+  "web_off": "Keine Websuche: Keiner deiner Anbieter sucht im Web, und diese Website bietet keine an.",
+  "web_failed": "Die Websuche ist fehlgeschlagen ({code}).",
+  "web_running": "Die Websuche läuft …",
+  "web_sources": "Herangezogene Seiten (aufgeführt, nicht geprüft)",
+  "doc_sources": "Dokumente",
+  "suggestions": "Suchvorschläge",
+  "web_reason": {
+    "empty": "sie war leer",
+    "no_sources": "sie nannte keine Webseiten",
+    "web_ungrounded": "eine Zahl steht außerhalb jeder Passage, die die Ergebnisse stützen",
+    "unsupported_number": "eine Zahl ist nicht gestützt",
+    "chars": "sie enthält Zeichen, die sich nicht prüfen lassen",
+    "link": "sie enthält einen Link",
+    "joined": "sie enthält Ziffern, die man falsch lesen könnte",
+    "number_word": "ein Zahlwort ist nicht gestützt",
+    "identifier": "eine Kennung ist nicht gestützt",
+    "spoken_mismatch": "beim Vorlesen würde sich eine Zahl ändern",
+    "other": "sie hat nicht bestanden"
+  },
+  "report": {
+    "title": "Recherchebericht",
+    "made_with": "Geschrieben von {model}",
+    "quoted": "Ohne Modell aus den Dokumenten zitiert",
+    "no_document_answer": "Die Dokumente beantworten diese Frage nicht.",
+    "from_web": "Aus dem Web",
+    "web_query": "Gesucht nach: {query}",
+    "web_withheld": "Der Webteil wurde zurückgehalten: {reason}.",
+    "web_off": "Es war keine Websuche verfügbar.",
+    "web_failed": "Die Websuche ist fehlgeschlagen.",
+    "documents": "Dokumente",
+    "web_sources": "Webseiten (aufgeführt, nicht an den Seiten geprüft)",
+    "no_sources": "Es wurden keine Quellen zitiert.",
+    "check": "Quellenprüfung: {supported} gestützt, {weak} schwach, {unsupported} nicht gestützt.",
+    "withheld": "Die Satzprüfung hat {n} {n:Satz|Sätze} zurückgehalten.",
+    "receipt_note": "Der Antwortbeleg umfasst den Teil aus den Dokumenten; Webseiten sind aufgeführt, aber nicht geprüft."
+  },
+  "this": "Dazu recherchieren",
+  "prefilled": "Die Frage steht im Tab Recherche. Passe sie an und starte die Recherche."
+}
