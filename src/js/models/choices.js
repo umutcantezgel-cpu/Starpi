@@ -273,7 +273,7 @@ export function assistantGroups(state) {
   for (const provider of PROVIDER_GROUPS) {
     if (!state.keyed.includes(provider)) continue;
     const items = (state.models[provider] ?? []).map((m) => /** @type {PickerItem} */ ({ value: `${provider}:${m.id}`, runtime: 'key', provider, label: m.label || m.id, ...(m.unverified ? { unverified: true } : {}) }));
-    groups.push({ id: provider, items });
+    groups.push({ id: /** @type {GroupId} */ (provider), items });
   }
   if (state.server || state.current?.startsWith('local:')) {
     const items = [{ value: 'local:*', runtime: /** @type {const} */ ('server'), labelKey: 'chat-thread.picker.server_first' }, ...state.serverModels.map((id) => ({ value: `local:${id}`, runtime: /** @type {const} */ ('server'), label: id }))];

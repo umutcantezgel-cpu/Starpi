@@ -20,7 +20,7 @@
 // stops for a server-side pause (Anthropic pause_turn) is sent again with its content appended, so
 // the server continues it; the parts are merged into one answer with one set of provider state.
 import { createAdapter, registerBuiltInAdapters } from '../ai/adapters/index.js';
-import { capsFor, fetchModels, roleModel } from '../ai/catalog/models.js';
+import { capsFor, fetchModels, roleModel, snapshotModels } from '../ai/catalog/models.js';
 import { POOLS } from '../ai/catalog/pools.js';
 import { getProvider } from '../ai/catalog/providers.js';
 import { AiError, isRetryable } from '../ai/errors.js';
@@ -70,7 +70,7 @@ import { getEngineState } from '../webgpu/engine.js';
 /**
  * @typedef {object} RunOptions
  * @property {Target[]} candidates
- * @property {(target: Target) => AiRequest} build  the request for one model (its history budget depends on the model)
+ * @property {(target: Target) => AiRequest | Promise<AiRequest>} build  the request for one model (its history budget depends on the model)
  * @property {AbortSignal} signal
  * @property {(target: Target, served: string) => void} [onStart]  a model started answering
  * @property {(ev: AiEvent, target: Target) => void} [onEvent]     every event of the answering model
@@ -167,7 +167,7 @@ async function refreshModelLists() {
   /** @type {Partial<Record<ProviderId, import('../models/choices.js').ModelOption[]>>} */
   const models = {};
   for (const provider of providerState().keyed) {
-    const entries = catalogs.get(provider) ?? (await import('../ai/catalog/models.js')).snapshotModels(provider);
+    const entries = catalogs.get(provider) ?? snapshotModels(provider);
     models[provider] = entries.filter((m) => m.listed !== false && !m.caps.imageOut).map((m) => ({ id: m.id, label: m.label || m.id, ...(m.caps.verified ? {} : { unverified: true }) }));
   }
   updateProviderState({ models, serverModels: liveIds.get('local') ?? providerState().serverModels });
@@ -368,7 +368,7 @@ export async function runAnswer(opts) {
       record({ provider: target.provider, model: target.model, outcome: 'skipped', latencyMs: 0 });
       continue;
     }
-    let req = opts.build(target);
+    let req = await opts.build(target);
     let started = false;
     let committed = false;
     const t0 = now();

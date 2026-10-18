@@ -20,6 +20,7 @@ import { STORAGE_KEYS, TIMEOUTS_MS } from './config.js';
 import { t } from './i18n/index.js';
 import { findNvidiaModel } from './models/nvidia-catalog.js';
 import { WASM_CATALOG } from './models/wasm-catalog.js';
+import { onLlmUrlChange } from './state.js';
 import { readLocal } from './storage.js';
 import { MODEL_CATALOG } from './webgpu/models.js';
 
@@ -282,6 +283,7 @@ export function refreshProviders() {
  */
 export function initProviders() {
   onKeysChange(() => void refreshProviders());
+  onLlmUrlChange(() => void refreshProviders());
   const run = () => void refreshProviders();
   if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 1_500 });
   else setTimeout(run, 0);

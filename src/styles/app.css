@@ -322,8 +322,18 @@ body {
   .mode-toggle button {
     @apply inline-flex items-center gap-1 px-2 py-1 min-h-[24px] rounded-md transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900;
   }
-  .chat-menu > summary::-webkit-details-marker {
+  .chat-menu > summary::-webkit-details-marker,
+  .tools-menu > summary::-webkit-details-marker,
+  .regen-menu > summary::-webkit-details-marker {
     @apply hidden;
+  }
+  /* Thinking and Web in the composer: pressed shows filled, never colour alone (aria-pressed). */
+  .composer-toggle[aria-pressed='true'] {
+    @apply bg-amber-100 text-amber-950 ring-1 ring-amber-300;
+  }
+  /* The composer while files are dragged over it. */
+  .drop-target {
+    @apply ring-2 ring-amber-400 border-amber-400;
   }
   .chat-menu-item {
     @apply w-full flex items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs font-medium text-slate-800 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900;
