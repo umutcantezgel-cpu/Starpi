@@ -1720,13 +1720,15 @@ async function routeFor(question, mode, attachments, value) {
   const native = Boolean(candidates[0] && searchesWeb(candidates[0]));
   const deviceOnly = value === 'device';
   const webOn = getWebSearch();
+  const titles = mode === 'auto' ? await knownTitles() : [];
   return decideRoute({
     question,
     mode,
     attachments,
     workspaceProbe: (q) => workspaceProbe(q),
     hooks: { classify: single.route ? async (q) => (await single.route?.({ question: q, mode, attachments, workspaceDocs: listWorkspace().length })) ?? null : null },
-    names: mode === 'auto' ? [...listWorkspace().map((d) => d.name), ...(await knownTitles())] : [],
+    names: mode === 'auto' ? [...listWorkspace().map((d) => d.name), ...titles] : [],
+    titles,
     modelReady: mode !== 'auto' || value === 'device' || candidates.length > 0,
     deviceOnly,
     web: { on: webOn, native, searchApi: mode === 'auto' && webOn && !native && !deviceOnly ? Boolean(await browserWebSearch(getLocale())) : false },

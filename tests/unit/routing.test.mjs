@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { decideRoute, namesSources, PROBE_THRESHOLDS, probeRoute, searchWebHits, stricter, webHits } from '../../src/js/ai/hybrid.js';
+import { decideRoute, namesSources, namesTitle, PROBE_THRESHOLDS, probeRoute, searchWebHits, stricter, webHits } from '../../src/js/ai/hybrid.js';
 import { BM25Index } from '../../src/js/rag/bm25.js';
 import { probeIndex } from '../../src/js/rag/hybrid.js';
 
@@ -138,6 +138,19 @@ describe('references', () => {
     assert.ok(!namesSources('Tell me about cats', ['a.md', 'cat']), 'names under four characters do not count');
     assert.ok(!namesSources('Take notes for me', ['notes.md']), 'a single common word without its extension does not count');
     assert.ok(namesSources('Was sagt notes.md dazu?', ['notes.md']));
+  });
+});
+
+describe('titles of the knowledge base', () => {
+  it('routes a question that names the subject of a library document to the sources', async () => {
+    const titles = ['Project Beta Kickoff', 'Quarterly report.pdf'];
+    assert.ok(namesTitle('When is the launch of Project Beta?', titles));
+    assert.ok(namesTitle('Wann ist der Launch von Projekt Beta?', ['Projekt Beta Kickoff']));
+    assert.ok(namesTitle('Summarise the quarterly report', titles));
+    assert.ok(!namesTitle('What is a project?', titles), 'one word of a title is not its subject');
+    assert.ok(!namesTitle('Beta project ideas', titles), 'the words in another order');
+    const d = await decideRoute({ question: 'When is the launch of Project Beta?', mode: 'auto', titles });
+    assert.deepEqual([d.route, d.reasons], ['grounded', ['title']]);
   });
 });
 

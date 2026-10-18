@@ -10,8 +10,10 @@
 //         classifier). It can only make a route stricter, never looser: its answer is combined with
 //         the rules below and the stricter route wins.
 //      b. Attached documents, and phrases that point at the user's files ("in the document",
-//         "laut Quelle", a file name of the workspace), route to grounded. Questions that carry
-//         only images stay free (an image is read by a model that sees, not searched).
+//         "laut Quelle", a file name of the workspace), route to grounded, and so does a question
+//         that names the subject of a document in the knowledge base (two words of its title in a
+//         row: the library is not probed, its titles are known). Questions that carry only images
+//         stay free (an image is read by a model that sees, not searched).
 //      c. Otherwise the workspace probe decides: a strong match (normalised score >= strong, query
 //         term coverage >= 0.5, at least two matched terms) routes to grounded, a weaker match of at
 //         least two terms (score >= weak) to mixed, anything else to free.
@@ -22,6 +24,8 @@
 //
 // The thresholds are tuned on tests/fixtures/routing (neutral workspace and questions); the unit
 // test fails when a change of the probe or of a threshold moves a case to a looser route.
+import { tokenize } from '../rag/bm25.js';
+
 /** @typedef {import('../rag/hybrid.js').WorkspaceProbe} WorkspaceProbe */
 /** @typedef {'free' | 'mixed' | 'grounded'} Route */
 /** @typedef {'workspace' | 'supabase' | 'web' | 'engine'} RetrievalSource */
@@ -134,6 +138,23 @@ export function namesSources(question, names = []) {
 }
 
 /**
+ * Whether a question names the subject of a titled document: two content words of a title in a
+ * row ("Project Beta" for "Project Beta kickoff"), compared without stop words and case.
+ * @param {string} question
+ * @param {readonly string[]} [titles]
+ */
+export function namesTitle(question, titles = []) {
+  const q = tokenize(question);
+  const pairs = new Set(q.slice(1).map((w, i) => `${q[i]} ${w}`));
+  if (!pairs.size) return false;
+  for (const title of titles) {
+    const words = tokenize(String(title).replace(/\.[a-z0-9]{1,5}$/i, '')).filter((w) => w.length >= 3);
+    for (let i = 1; i < words.length; i += 1) if (pairs.has(`${words[i - 1]} ${words[i]}`)) return true;
+  }
+  return false;
+}
+
+/**
  * The route a workspace probe gives: grounded on a strong match, mixed on a weaker one, else free.
  * @param {WorkspaceProbe | null | undefined} probe
  * @param {typeof PROBE_THRESHOLDS} [thresholds]
@@ -167,6 +188,7 @@ export function stricter(a, b) {
  * @property {((question: string) => Promise<WorkspaceProbe> | WorkspaceProbe) | null} [workspaceProbe]
  * @property {{ classify?: ((question: string) => Promise<{ route: string, reasons?: string[] } | null> | { route: string, reasons?: string[] } | null) | null }} [hooks]
  * @property {readonly string[]} [names]      document names the question may refer to
+ * @property {readonly string[]} [titles]     titles of the knowledge base's documents (their subject counts as a reference)
  * @property {boolean} [modelReady]           a model can answer (default true)
  * @property {boolean} [deviceOnly]           the question stays on this device (no web search, no question to the library)
  * @property {{ on: boolean, native: boolean, searchApi: boolean }} [web]  the Web toggle, the model's own search, a search API
@@ -221,6 +243,9 @@ export async function decideRoute(input) {
     } else if (namesSources(input.question, input.names)) {
       route = stricter(route, 'grounded');
       reasons.push('reference');
+    } else if (namesTitle(input.question, input.titles)) {
+      route = stricter(route, 'grounded');
+      reasons.push('title');
     } else if (input.workspaceProbe && input.question.trim()) {
       // c. The workspace probe.
       try {
