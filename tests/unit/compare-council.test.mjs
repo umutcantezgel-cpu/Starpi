@@ -202,6 +202,7 @@ describe('compare in the side panel', () => {
       assert.match(stats, /in · \d+ out tokens/);
       assert.match(stats, /No cost: your own server/);
       assert.ok(col.querySelector('[data-action="compare-continue"]'));
+      assert.equal(col.hasAttribute('data-stays-on-device'), false, 'an answer of the own server to a question that may travel');
     }
     assert.match(columns()[1].querySelector('[data-column-model]')?.textContent ?? '', /fake-local-reasoner:4b/);
     const sent = fake.requests.filter((r) => /chat\/completions/.test(r.path) && JSON.stringify(r.body).includes('Name three rivers')).slice(-3);
@@ -275,6 +276,21 @@ describe('compare in the side panel', () => {
     assert.equal(panel().querySelector('[data-action="compare-add"]'), null);
     assert.deepEqual([...new Set(compare.compareState().values)].length, 4);
   });
+
+  it('marks the columns of a question that stays on this device as staying (for the canvas)', async () => {
+    const store = await chatStore.chatData();
+    const id = chatStore.currentSessionId();
+    const leaf = (await storedPath()).at(-1);
+    const local = await store.appendNode(id, { parentId: leaf?.id ?? null, role: 'user', parts: [{ type: 'text', text: 'About my own notes' }], localOnly: true, meta: { chat_mode: 'free' } });
+    compare.openCompare({ conversationId: id, questionId: local.id, text: 'About my own notes' });
+    /** @type {HTMLFormElement} */ (panel().querySelector('[data-compare-form]')).requestSubmit();
+    await until(() => columns().length >= 2);
+    await until(settled, 10_000);
+    for (const col of columns()) {
+      assert.equal(col.dataset.status, 'done');
+      assert.ok(col.hasAttribute('data-stays-on-device'));
+    }
+  });
 });
 
 /** @param {any} provider @param {string} model @param {Array<import('../../src/js/ai/roles.js').ModelRole>} roles */
@@ -298,7 +314,7 @@ function councilWorld(drafts, judge, gate) {
 }
 
 describe('the council: pool and stored copy', () => {
-  it('adds the own server and this device to the pool, each model once', () => {
+  it('adds the own server to the pool, each model once', () => {
     const pool = council.councilPool([entry('openai', 'a', ['fast'])], [entry('local', 'srv', ['fast']), entry('openai', 'a', ['reasoning'])]);
     assert.deepEqual(pool.map((e) => `${e.provider}:${e.model}`), ['openai:a', 'local:srv']);
     assert.equal(council.sharedTarget([entry('local', 'srv', ['fast'])])?.provider, 'local', 'only the server: its request');
