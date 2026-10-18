@@ -164,7 +164,7 @@ const EFFECT_TONES = /** @type {const} */ ({ read: 'chip-info', low: 'chip-warn'
 export function activityBox(messageEl) {
   let box = /** @type {HTMLElement | null} */ (messageEl.querySelector('.tool-activity'));
   if (box) return box;
-  box = document.createElement('div');
+  box = messageEl.ownerDocument.createElement('div');
   box.className = 'tool-activity mb-2 flex flex-col gap-1.5';
   const content = messageEl.querySelector('.message-content');
   if (content?.parentElement) content.parentElement.insertBefore(box, content);
@@ -195,7 +195,7 @@ export function argsPreview(args) {
  * @returns {Promise<ApprovalAnswer>}
  */
 export function renderApprovalCard(host, req, signal) {
-  const card = document.createElement('div');
+  const card = host.ownerDocument.createElement('div');
   card.className = 'tool-approval rounded-xl border border-amber-300 bg-amber-50 text-amber-950 p-3 text-xs space-y-2';
   card.setAttribute('role', 'group');
   card.dataset.tool = req.tool;
@@ -252,7 +252,7 @@ export function createToolActivity(host) {
      * @param {string} title
      */
     start(id, title) {
-      const line = document.createElement('p');
+      const line = host.ownerDocument.createElement('p');
       line.className = 'tool-call flex items-center gap-1.5 text-[11px] text-slate-600';
       line.dataset.call = id;
       line.dataset.status = 'running';
@@ -267,7 +267,7 @@ export function createToolActivity(host) {
      * @param {'done' | 'failed' | 'denied' | 'forbidden'} status
      */
     finish(id, title, status) {
-      const line = /** @type {HTMLElement | null} */ (host.querySelector(`.tool-call[data-call="${CSS.escape(id)}"]`));
+      const line = /** @type {HTMLElement | undefined} */ ([...host.querySelectorAll('.tool-call')].find((el) => /** @type {HTMLElement} */ (el).dataset.call === id));
       if (!line) return;
       line.dataset.status = status;
       const iconName = status === 'done' ? 'check' : status === 'failed' ? 'triangle-alert' : 'x';
@@ -277,7 +277,7 @@ export function createToolActivity(host) {
     },
     /** @param {number} rounds */
     limit(rounds) {
-      const note = document.createElement('p');
+      const note = host.ownerDocument.createElement('p');
       note.className = 'tool-limit text-[11px] text-amber-900';
       setText(note, 'tools.activity.round_limit', { n: String(rounds) });
       host.append(note);
