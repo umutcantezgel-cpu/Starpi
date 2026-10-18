@@ -3,14 +3,17 @@
 // starts all of them; an embedding program may pick its own list. A module that has nothing
 // configured stays quiet (no feeds, no connectors, no voice server), so the full list is safe to
 // start on any machine.
+import { createAgendaModule } from '../agenda/module.js';
+import { createAskModule, createChatModule } from '../chat/module.js';
 import { createDocsModule } from '../docs/module.js';
+import { createFeedsModule } from '../feeds/module.js';
 import { createMemoryModule } from '../memory/module.js';
 import { createNotifyModule } from '../notify/module.js';
 import { createRetrievalModule } from '../retrieval/module.js';
 import { createHub } from './hub.js';
 
 /** Ids of the standard modules, in start order. */
-export const STANDARD_MODULE_IDS = Object.freeze(['retrieval', 'notify', 'memory', 'docs']);
+export const STANDARD_MODULE_IDS = Object.freeze(['retrieval', 'notify', 'memory', 'docs', 'feeds', 'agenda', 'ask', 'chat']);
 
 /**
  * @param {{ hub?: import('./hub.js').Hub, only?: readonly string[], fetchImpl?: typeof fetch }} [options]
@@ -24,6 +27,10 @@ export function standardModules({ hub = createHub(), only, fetchImpl } = {}) {
     notify: () => createNotifyModule({ hub }),
     memory: () => createMemoryModule({ hub }),
     docs: () => createDocsModule({ hub }),
+    feeds: () => createFeedsModule({ hub }),
+    agenda: () => createAgendaModule({ hub }),
+    ask: () => createAskModule({ hub }),
+    chat: () => createChatModule({ hub }),
   };
   const wanted = only ?? STANDARD_MODULE_IDS;
   for (const id of wanted) if (!Object.hasOwn(factories, id)) throw new TypeError(`no standard module ${id}`);
