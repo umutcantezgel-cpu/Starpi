@@ -425,7 +425,7 @@ async function userMessage(node, target, caps) {
     } else if (p.type === 'file' && typeof p.blobId === 'string') {
       const size = typeof p.size === 'number' ? p.size : 0;
       if (p.kind === 'pdf' && caps.pdf && target.route !== 'pool' && size <= MAX_NATIVE_PDF_BYTES) {
-        content.push({ type: 'file', mime: 'application/pdf', data: await blobBase64(p.blobId), name: String(p.name ?? 'file.pdf') });
+        content.push({ type: 'file', mime: 'application/pdf', data: await blobBase64(p.blobId), name: String(p.name ?? 'document') });
       } else {
         const text = fitText(await blobText(p), room);
         room -= text.length;

@@ -2,8 +2,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { assistantGroups, choiceValue, GROUP_KEYS, nvidiaStatus, optionParts, parseAssistantChoice } from '../../src/js/models/choices.js';
-import { GIB } from '../../src/js/models/device.js';
+import { POOLS } from '../../src/js/ai/catalog/pools.js';
+import { assistantGroups, choiceValue, defaultPoolValue, GROUP_KEYS, groupLabel, optionParts, parsePickerValue, PROVIDER_GROUPS } from '../../src/js/models/choices.js';
+import { classifyDevice, GIB } from '../../src/js/models/device.js';
 import { NVIDIA_DEFAULT_MODEL, NVIDIA_MODELS } from '../../src/js/models/nvidia-catalog.js';
 import { WASM_CATALOG } from '../../src/js/models/wasm-catalog.js';
 import { MODEL_CATALOG } from '../../src/js/webgpu/models.js';
@@ -14,217 +15,177 @@ const cpu = { isMobile: false, deviceMemoryGB: 8, maxBufferSize: 0, hasF16: fals
 const pro = { ...desktop, vendor: 'nvidia', maxStorageBufferBindingSize: 2 * GIB };
 const LOCAL_REFS = [...Object.keys(MODEL_CATALOG).map((k) => `webgpu:${k}`), ...Object.keys(WASM_CATALOG).map((k) => `wasm:${k}`)];
 
-/** @param {Partial<import('../../src/js/models/choices.js').NvidiaStatus>} [patch] */
-const nvidia = (patch) => ({ state: 'configured', ids: NVIDIA_IDS, defaultModel: NVIDIA_DEFAULT_MODEL, currentMode: 'council', currentId: NVIDIA_DEFAULT_MODEL, ...patch });
+/**
+ * @param {Partial<import('../../src/js/models/choices.js').PickerState>} [patch]
+ * @returns {import('../../src/js/models/choices.js').PickerState}
+ */
+const state = (patch) => ({
+  hw: desktop,
+  history: [],
+  pools: { nvidia: { configured: true, models: NVIDIA_IDS, defaultModel: NVIDIA_DEFAULT_MODEL }, groq: { configured: false, models: [], defaultModel: null } },
+  keyed: [],
+  models: {},
+  server: false,
+  serverModels: [],
+  ...patch,
+});
+/** @param {import('../../src/js/models/choices.js').PickerGroup[]} groups @param {string} id */
 const group = (groups, id) => groups.find((g) => g.id === id);
-const item = (groups, value) => groups.flatMap((g) => g.items).find((i) => i.value === value);
+/** @param {import('../../src/js/models/choices.js').PickerGroup[]} groups @param {string} value */
+const item = (groups, value) => /** @type {import('../../src/js/models/choices.js').PickerItem} */ (groups.flatMap((g) => g.items).find((i) => i.value === value));
 
-describe('parseAssistantChoice', () => {
-  it('maps modes, local refs and allowlisted NVIDIA models', () => {
-    for (const mode of ['council', 'local', 'client', 'nvidia']) assert.deepEqual(parseAssistantChoice(mode, NVIDIA_IDS), { mode });
-    assert.deepEqual(parseAssistantChoice('webgpu:qwen-3b', NVIDIA_IDS), { mode: 'client', local: 'webgpu:qwen-3b' });
-    assert.deepEqual(parseAssistantChoice('wasm:smollm2-135m', NVIDIA_IDS), { mode: 'client', local: 'wasm:smollm2-135m' });
-    assert.deepEqual(parseAssistantChoice(`nvidia:${NVIDIA_IDS[1]}`, NVIDIA_IDS), { mode: 'nvidia', nvidia: NVIDIA_IDS[1] });
+describe('parsePickerValue', () => {
+  it('maps Auto, the device, presets, provider models and the 2.x modes', () => {
+    assert.deepEqual(parsePickerValue('auto'), { assistant: 'auto' });
+    assert.deepEqual(parsePickerValue('council'), { assistant: 'auto' });
+    assert.deepEqual(parsePickerValue('device'), { assistant: 'device' });
+    assert.deepEqual(parsePickerValue('client'), { assistant: 'device' });
+    assert.deepEqual(parsePickerValue('local'), { assistant: 'local:*' });
+    assert.deepEqual(parsePickerValue('nvidia', { nvidiaModel: NVIDIA_IDS[2] }), { assistant: `nvidia:${NVIDIA_IDS[2]}` });
+    assert.deepEqual(parsePickerValue('webgpu:qwen-3b'), { assistant: 'device', preference: 'webgpu:qwen-3b' });
+    assert.deepEqual(parsePickerValue('wasm:smollm2-135m'), { assistant: 'device', preference: 'wasm:smollm2-135m' });
+    assert.deepEqual(parsePickerValue('anthropic:claude-opus-5-5'), { assistant: 'anthropic:claude-opus-5-5' });
+    assert.deepEqual(parsePickerValue('openrouter:meta-llama/llama-3.3-70b-instruct:free'), { assistant: 'openrouter:meta-llama/llama-3.3-70b-instruct:free' });
+    assert.deepEqual(parsePickerValue('local:*'), { assistant: 'local:*' });
+    assert.deepEqual(parsePickerValue('local:llama3.2:3b'), { assistant: 'local:llama3.2:3b' });
+    assert.deepEqual(parsePickerValue(`nvidia:${NVIDIA_IDS[1]}`), { assistant: `nvidia:${NVIDIA_IDS[1]}` });
   });
 
-  it('rejects values the pickers never offer', () => {
-    for (const value of ['nvidia:openai/not-listed', 'nvidia:', 'webgpu:bogus', 'wasm:qwen-3b', 'qwen-3b', 'auto', '__proto__', 'constructor', '']) {
-      assert.equal(parseAssistantChoice(value, NVIDIA_IDS), null, value);
+  it('refuses values the pickers never offer', () => {
+    for (const value of ['nvidia:openai/not-listed', 'nvidia:', 'nvidia', 'webgpu:bogus', 'wasm:qwen-3b', 'qwen-3b', 'anthropic:*', 'webgpu:auto', 'unknown:model', '__proto__', 'constructor', '', 'anthropic:has space']) {
+      assert.equal(parsePickerValue(value), null, value);
     }
-    assert.equal(parseAssistantChoice(`nvidia:${NVIDIA_IDS[0]}`, []), null);
   });
 });
 
 describe('choiceValue', () => {
-  const state = { mode: 'client', local: 'auto', nvidia: NVIDIA_DEFAULT_MODEL };
-  it('shows auto as the model it resolves to once the device is known', () => {
-    assert.equal(choiceValue(state, desktop), 'webgpu:qwen-3b');
-    assert.equal(choiceValue(state, cpu), 'wasm:qwen-0.5b');
-    assert.equal(choiceValue({ ...state, local: 'wasm:smollm2-135m' }, desktop), 'wasm:smollm2-135m');
+  it('shows the device as the model its auto resolves to once the device is known, stepped down by the history', () => {
+    assert.equal(choiceValue({ assistant: 'device', preference: 'auto' }, desktop), 'webgpu:qwen-3b');
+    assert.equal(choiceValue({ assistant: 'device', preference: 'auto' }, cpu), 'wasm:qwen-0.5b');
+    assert.equal(choiceValue({ assistant: 'device', preference: 'wasm:smollm2-135m' }, desktop), 'wasm:smollm2-135m');
+    const slow = [{ ref: 'webgpu:qwen-3b', deviceClass: classifyDevice(desktop), tokPerSec: 4, failures: 0 }];
+    assert.equal(choiceValue({ assistant: 'device', preference: 'auto' }, desktop, slow), 'webgpu:qwen-1.5b');
   });
 
-  it('shows the bare mode before the device probe', () => {
-    assert.equal(choiceValue(state, null), 'client');
-    assert.equal(choiceValue({ ...state, local: 'webgpu:gemma-2b' }, null), 'client');
-    assert.equal(choiceValue({ ...state, mode: 'nvidia' }, null), 'nvidia');
-  });
-
-  it('names the NVIDIA model and keeps the other modes', () => {
-    assert.equal(choiceValue({ ...state, mode: 'nvidia' }, desktop), `nvidia:${NVIDIA_DEFAULT_MODEL}`);
-    assert.equal(choiceValue({ ...state, mode: 'council' }, desktop), 'council');
-    assert.equal(choiceValue({ ...state, mode: 'local' }, desktop), 'local');
+  it('shows "device" before the probe and every other value as stored', () => {
+    assert.equal(choiceValue({ assistant: 'device', preference: 'auto' }, null), 'device');
+    assert.equal(choiceValue({ assistant: 'device', preference: 'webgpu:gemma-2b' }, null), 'device');
+    for (const value of /** @type {const} */ (['auto', 'local:*', 'anthropic:claude-opus-5-5', `nvidia:${NVIDIA_DEFAULT_MODEL}`])) assert.equal(choiceValue({ assistant: value, preference: 'auto' }, desktop), value);
   });
 });
 
 describe('assistantGroups', () => {
-  it('orders the groups and lists every local preset exactly once', () => {
+  it('orders the groups and lists every on-device preset exactly once', () => {
     for (const hw of [desktop, cpu, pro, { ...desktop, isMobile: true }, null]) {
-      const groups = assistantGroups(hw, nvidia());
-      assert.deepEqual(groups.map((g) => g.id), hw ? ['recommended', 'local', 'nvidia', 'other'] : ['local', 'nvidia', 'other']);
+      const groups = assistantGroups(state({ hw }));
+      assert.deepEqual(groups.map((g) => g.id), ['recommended', 'device', 'pools']);
       const values = groups.flatMap((g) => g.items.map((i) => i.value));
       assert.equal(new Set(values).size, values.length, 'values are unique');
       for (const ref of LOCAL_REFS) assert.equal(values.filter((v) => v === ref).length, 1, ref);
-      assert.deepEqual(group(groups, 'other').items.map((i) => i.value), ['council', 'local']);
-      assert.deepEqual(group(groups, 'other').items.map((i) => i.labelKey), ['engine.mode_cloud', 'engine.mode_server']);
+      assert.equal(groups[0].items[0].value, 'auto');
+      assert.equal(groups[0].items[0].labelKey, 'chat-thread.picker.auto');
     }
   });
 
-  it('recommends what auto picks, a larger model on strong GPUs and the default NVIDIA model', () => {
-    const recommended = (hw) => group(assistantGroups(hw, nvidia()), 'recommended').items;
-    assert.deepEqual(recommended(desktop).map((i) => [i.value, i.recommended]), [['webgpu:qwen-3b', 'auto'], [`nvidia:${NVIDIA_DEFAULT_MODEL}`, undefined]]);
-    assert.deepEqual(recommended(pro).map((i) => i.value), ['webgpu:qwen-3b', 'webgpu:qwen-7b', `nvidia:${NVIDIA_DEFAULT_MODEL}`]);
-    assert.equal(recommended(pro)[1].recommended, 'pro');
-    assert.equal(recommended(cpu)[0].value, 'wasm:qwen-0.5b');
-    const unconfigured = group(assistantGroups(desktop, nvidia({ state: 'unconfigured' })), 'recommended').items;
-    assert.deepEqual(unconfigured.map((i) => i.value), ['webgpu:qwen-3b']);
+  it('recommends Auto, what the device runs best, a larger model on strong GPUs and the default free model', () => {
+    const recommended = (/** @type {any} */ hw) => /** @type {any} */ (group(assistantGroups(state({ hw })), 'recommended')).items;
+    assert.deepEqual(recommended(desktop).map((/** @type {any} */ i) => [i.value, i.recommended]), [['auto', undefined], ['webgpu:qwen-3b', 'auto'], [`nvidia:${NVIDIA_DEFAULT_MODEL}`, undefined]]);
+    assert.deepEqual(recommended(pro).map((/** @type {any} */ i) => i.value), ['auto', 'webgpu:qwen-3b', 'webgpu:qwen-7b', `nvidia:${NVIDIA_DEFAULT_MODEL}`]);
+    assert.equal(recommended(pro)[2].recommended, 'pro');
+    assert.equal(recommended(cpu)[1].value, 'wasm:qwen-0.5b');
+    // Without the site's pools nothing free is recommended.
+    const none = /** @type {any} */ (group(assistantGroups(state({ pools: {} })), 'recommended')).items;
+    assert.deepEqual(none.map((/** @type {any} */ i) => i.value), ['auto', 'webgpu:qwen-3b']);
+    assert.equal(defaultPoolValue(state({ pools: null })), null);
   });
 
-  it('labels presets from the catalogs with tier and download size', () => {
-    const groups = assistantGroups(desktop, nvidia());
+  it('suggests a larger model the history measured fast on this device', () => {
+    const history = [{ ref: 'webgpu:qwen-7b', deviceClass: classifyDevice(desktop), tokPerSec: 41, failures: 0 }];
+    const items = /** @type {any} */ (group(assistantGroups(state({ history })), 'recommended')).items;
+    assert.deepEqual(items.find((/** @type {any} */ i) => i.recommended === 'measured')?.value, 'webgpu:qwen-7b');
+  });
+
+  it('lists the free models of the pools that have keys, and a provider group for every key of the user', () => {
+    const pools = { nvidia: { configured: true, models: NVIDIA_IDS.slice(0, 3), defaultModel: NVIDIA_IDS[0] }, groq: { configured: true, models: [], defaultModel: null } };
+    const groups = assistantGroups(state({ pools }));
+    const free = /** @type {any} */ (group(groups, 'pools')).items;
+    assert.ok(free.every((/** @type {any} */ i) => i.runtime === 'pool' && i.free === true));
+    assert.ok(free.some((/** @type {any} */ i) => i.value === `groq:${POOLS.groq.defaultModel}`));
+    assert.equal(free.filter((/** @type {any} */ i) => i.provider === 'nvidia').length + 1, 3, 'the default free model moved to the recommended group');
+
+    // A key of the user's: its provider gets its own group, and the pool leaves its models to it.
+    const keyed = assistantGroups(state({ pools, keyed: ['groq', 'anthropic'], models: { anthropic: [{ id: 'claude-opus-5-5', label: 'Claude Opus 5.5' }, { id: 'claude-new', label: 'claude-new', unverified: true }], groq: [{ id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B Versatile' }] } }));
+    assert.deepEqual(keyed.map((g) => g.id), ['recommended', 'device', 'pools', 'anthropic', 'groq']);
+    assert.ok(/** @type {any} */ (group(keyed, 'pools')).items.every((/** @type {any} */ i) => i.provider !== 'groq'));
+    assert.deepEqual(item(keyed, 'anthropic:claude-opus-5-5'), { value: 'anthropic:claude-opus-5-5', runtime: 'key', provider: 'anthropic', label: 'Claude Opus 5.5' });
+    assert.equal(item(keyed, 'anthropic:claude-new').unverified, true);
+    assert.deepEqual(groupLabel('anthropic'), { text: 'Anthropic' });
+    assert.deepEqual(groupLabel('pools'), { key: GROUP_KEYS.pools });
+    assert.ok(PROVIDER_GROUPS.every((id) => groupLabel(id).text));
+  });
+
+  it('shows the own server with its listed models and keeps a stored value nothing offers', () => {
+    const groups = assistantGroups(state({ server: true, serverModels: ['llama3.2:3b', 'qwen3:8b'] }));
+    assert.deepEqual(/** @type {any} */ (group(groups, 'server')).items.map((/** @type {any} */ i) => i.value), ['local:*', 'local:llama3.2:3b', 'local:qwen3:8b']);
+    // A model that left a list, and a free model while the site has not answered.
+    assert.ok(item(assistantGroups(state({ keyed: ['openai'], models: { openai: [] }, current: 'openai:gpt-old' })), 'openai:gpt-old'));
+    assert.ok(item(assistantGroups(state({ pools: null, current: `nvidia:${NVIDIA_IDS[4]}` })), `nvidia:${NVIDIA_IDS[4]}`));
+    assert.ok(item(assistantGroups(state({ current: 'local:qwen3:8b' })), 'local:qwen3:8b'));
+  });
+
+  it('labels presets from the catalogs with tier and download size and warns where they will not run well', () => {
+    const groups = assistantGroups(state());
     assert.deepEqual(item(groups, 'webgpu:gemma-2b'), { value: 'webgpu:gemma-2b', runtime: 'webgpu', label: 'Gemma 2 2B', tier: 't2', sizeMB: 1500 });
     assert.deepEqual(item(groups, 'wasm:smollm2-135m'), { value: 'wasm:smollm2-135m', runtime: 'wasm', label: 'SmolLM2 135M', tier: 't1', sizeMB: 140 });
-    assert.deepEqual(item(groups, `nvidia:${NVIDIA_IDS[1]}`), { value: `nvidia:${NVIDIA_IDS[1]}`, runtime: 'nvidia', label: NVIDIA_MODELS[1].label });
-  });
-
-  it('warns about WebGPU models without WebGPU and about T3 models without a strong GPU', () => {
-    const onCpu = assistantGroups(cpu, nvidia());
-    for (const key of Object.keys(MODEL_CATALOG)) {
-      const entry = item(onCpu, `webgpu:${key}`);
-      assert.equal(entry.warning, 'needs-webgpu', key);
-      assert.equal(entry.disabled, undefined, `${key} stays selectable and explains itself when picked`);
+    const onCpu = assistantGroups(state({ hw: cpu }));
+    for (const key of Object.keys(MODEL_CATALOG)) assert.equal(item(onCpu, `webgpu:${key}`).warning, 'needs-webgpu', key);
+    for (const [hw, heavy] of /** @type {const} */ ([[desktop, true], [null, true], [pro, false]])) {
+      const g = assistantGroups(state({ hw }));
+      for (const [key, spec] of Object.entries(MODEL_CATALOG)) assert.equal(item(g, `webgpu:${key}`).warning, spec.tier === 't3' && heavy ? 'heavy' : undefined, key);
     }
-    for (const key of Object.keys(WASM_CATALOG)) assert.equal(item(onCpu, `wasm:${key}`).warning, undefined, key);
-    for (const [hw, heavy] of [[desktop, true], [null, true], [pro, false]]) {
-      const groups = assistantGroups(hw, nvidia());
-      for (const [key, spec] of Object.entries(MODEL_CATALOG)) {
-        assert.equal(item(groups, `webgpu:${key}`).warning, spec.tier === 't3' && heavy ? 'heavy' : undefined, `${key} on ${JSON.stringify(hw)}`);
-      }
-    }
-  });
-
-  it('shows the NVIDIA group as the server reports it', () => {
-    const nvidiaGroup = (status) => group(assistantGroups(desktop, nvidia(status)), 'nvidia');
-    // Configured: the server's models in catalog order, enabled.
-    const configured = nvidiaGroup({ ids: [NVIDIA_IDS[3], NVIDIA_IDS[2], 'vendor/unknown'] });
-    assert.deepEqual(configured.items.map((i) => i.value), [`nvidia:${NVIDIA_IDS[2]}`, `nvidia:${NVIDIA_IDS[3]}`]);
-    assert.ok(configured.items.every((i) => !i.disabled));
-    // Reachable without keys: every model disabled with a reason.
-    const unconfigured = nvidiaGroup({ state: 'unconfigured' });
-    assert.equal(unconfigured.items.length, NVIDIA_IDS.length);
-    assert.ok(unconfigured.items.every((i) => i.disabled === true && i.warning === 'not-configured'));
-    // No models offered, or not asked yet / no route, while another mode is active: no group.
-    assert.equal(nvidiaGroup({ ids: [] }), undefined);
-    assert.equal(nvidiaGroup({ state: 'pending' }), undefined);
-    assert.equal(nvidiaGroup({ state: 'absent' }), undefined);
-  });
-
-  it('keeps a selected NVIDIA model visible whatever the server says', () => {
-    const selected = NVIDIA_IDS[4];
-    const status = (state, ids = NVIDIA_IDS) => nvidia({ state, ids, currentMode: 'nvidia', currentId: selected });
-    const items = (state, ids) => group(assistantGroups(desktop, status(state, ids)), 'nvidia').items;
-    assert.deepEqual(items('pending'), [{ value: `nvidia:${selected}`, runtime: 'nvidia', label: NVIDIA_MODELS[4].label }]);
-    assert.deepEqual(items('absent'), [{ value: `nvidia:${selected}`, runtime: 'nvidia', label: NVIDIA_MODELS[4].label, warning: 'not-configured', disabled: true }]);
-    assert.deepEqual(items('configured', [NVIDIA_IDS[1]]).map((i) => i.value), [`nvidia:${NVIDIA_IDS[1]}`, `nvidia:${selected}`]);
-  });
-});
-
-describe('nvidiaStatus', () => {
-  const current = { mode: 'nvidia', local: 'auto', nvidia: NVIDIA_IDS[2] };
-  const offered = { reachable: true, configured: true, defaultModel: NVIDIA_IDS[1], models: NVIDIA_IDS.slice(0, 3).map((id) => ({ id })) };
-
-  it('is pending until the proxy answers, and names the bundled default meanwhile', () => {
-    assert.deepEqual(nvidiaStatus(null, current), { state: 'pending', ids: [], defaultModel: NVIDIA_DEFAULT_MODEL, currentMode: 'nvidia', currentId: NVIDIA_IDS[2] });
-  });
-
-  it('tells a missing proxy, a proxy without keys and a ready one apart', () => {
-    assert.equal(nvidiaStatus({ ...offered, reachable: false, configured: false, models: [] }, current).state, 'absent');
-    assert.equal(nvidiaStatus({ ...offered, configured: false }, current).state, 'unconfigured');
-    const ready = nvidiaStatus(offered, { ...current, mode: 'council' });
-    assert.deepEqual(ready, { state: 'configured', ids: NVIDIA_IDS.slice(0, 3), defaultModel: NVIDIA_IDS[1], currentMode: 'council', currentId: NVIDIA_IDS[2] });
-    assert.equal(nvidiaStatus({ ...offered, defaultModel: null }, current).defaultModel, NVIDIA_DEFAULT_MODEL);
-  });
-
-  it('feeds assistantGroups: the recommended NVIDIA entry is the proxy default', () => {
-    const groups = assistantGroups(desktop, nvidiaStatus(offered, { ...current, mode: 'council' }));
-    assert.deepEqual(group(groups, 'recommended').items.at(-1)?.value, `nvidia:${NVIDIA_IDS[1]}`);
-    assert.deepEqual(group(groups, 'nvidia').items.map((i) => i.value), [`nvidia:${NVIDIA_IDS[0]}`, `nvidia:${NVIDIA_IDS[2]}`]);
-    // No proxy here: the group is gone unless NVIDIA is the current mode.
-    const absent = { reachable: false, configured: false, defaultModel: null, models: [] };
-    assert.equal(group(assistantGroups(desktop, nvidiaStatus(absent, { ...current, mode: 'council' })), 'nvidia'), undefined);
-    assert.deepEqual(group(assistantGroups(desktop, nvidiaStatus(absent, current)), 'nvidia').items.map((i) => [i.value, i.disabled]), [[`nvidia:${NVIDIA_IDS[2]}`, true]]);
   });
 });
 
 describe('optionParts', () => {
-  const groups = assistantGroups(desktop, nvidia());
+  const groups = assistantGroups(state({ hw: pro }));
 
   it('names the model, where it runs, its download, the recommendation and a warning, in that order', () => {
-    assert.deepEqual(optionParts(item(groups, 'webgpu:qwen-3b')), [
-      { text: 'Qwen 2.5 3B' },
-      { key: 'models.runtime_webgpu' },
-      { key: 'models.download_size', gb: 1.9 },
-      { key: 'models.recommended' },
-    ]);
-    assert.deepEqual(optionParts(item(groups, 'webgpu:gemma-9b')), [
-      { text: 'Gemma 2 9B' },
-      { key: 'models.runtime_webgpu' },
-      { key: 'models.download_size', gb: 5.3 },
-      { key: 'models.warn_heavy' },
-    ]);
-    assert.deepEqual(optionParts(item(groups, 'wasm:smollm2-135m')), [{ text: 'SmolLM2 135M' }, { key: 'models.runtime_wasm' }, { key: 'models.download_size', gb: 0.14 }]);
-    assert.deepEqual(optionParts(item(assistantGroups(pro, nvidia()), 'webgpu:qwen-7b')).at(-1), { key: 'models.pro_pick' });
-    assert.deepEqual(optionParts(item(assistantGroups(cpu, nvidia()), 'webgpu:llama-1b')).at(-1), { key: 'models.warn_needs_webgpu' });
+    assert.deepEqual(optionParts(item(groups, 'webgpu:qwen-3b')), [{ text: 'Qwen 2.5 3B' }, { key: 'models.runtime_webgpu' }, { key: 'models.download_size', gb: 1.9 }, { key: 'models.recommended' }]);
+    assert.deepEqual(optionParts(item(groups, 'webgpu:qwen-7b')).at(-1), { key: 'models.pro_pick' });
+    assert.deepEqual(optionParts(item(assistantGroups(state()), 'webgpu:gemma-9b')).at(-1), { key: 'models.warn_heavy' });
+    assert.deepEqual(optionParts(item(groups, `nvidia:${NVIDIA_IDS[1]}`)), [{ text: NVIDIA_MODELS[1].label }, { key: 'chat-thread.picker.runtime_pool' }]);
+    assert.deepEqual(optionParts(item(groups, 'auto')), [{ key: 'chat-thread.picker.auto' }]);
+    assert.deepEqual(optionParts({ value: 'openai:x', runtime: 'key', label: 'x', unverified: true }), [{ text: 'x' }, { key: 'chat-thread.picker.unverified' }]);
   });
 
-  it('gives NVIDIA models no download and marks them when the proxy has no keys', () => {
-    assert.deepEqual(optionParts(item(groups, `nvidia:${NVIDIA_IDS[1]}`)), [{ text: NVIDIA_MODELS[1].label }, { key: 'models.runtime_nvidia' }]);
-    const unconfigured = assistantGroups(desktop, nvidia({ state: 'unconfigured' }));
-    assert.deepEqual(optionParts(item(unconfigured, `nvidia:${NVIDIA_IDS[1]}`)), [
-      { text: NVIDIA_MODELS[1].label },
-      { key: 'models.runtime_nvidia' },
-      { key: 'models.warn_not_configured' },
-    ]);
-  });
-
-  it('uses a single key for the other assistants', () => {
-    assert.deepEqual(optionParts(item(groups, 'council')), [{ key: 'engine.mode_cloud' }]);
-    assert.deepEqual(optionParts(item(groups, 'local')), [{ key: 'engine.mode_server' }]);
-  });
-
-  it('only uses keys both locales define, with the placeholders the parts fill', async () => {
-    const { hasKey, t } = await import('../../src/js/i18n/index.js');
+  it('only uses keys both locales define', async () => {
+    const { hasKey } = await import('../../src/js/i18n/index.js');
     const keys = new Set(Object.values(GROUP_KEYS));
     for (const hw of [desktop, cpu, pro, null]) {
-      for (const state of ['configured', 'unconfigured']) {
-        for (const g of assistantGroups(hw, nvidia({ state }))) {
-          for (const part of g.items.flatMap(optionParts)) if ('key' in part) keys.add(part.key);
-        }
+      for (const g of assistantGroups(state({ hw, server: true, keyed: ['openai'], models: { openai: [{ id: 'm', label: 'M', unverified: true }] } }))) {
+        for (const part of g.items.flatMap(optionParts)) if ('key' in part) keys.add(part.key);
       }
     }
-    assert.deepEqual(Object.keys(GROUP_KEYS), ['recommended', 'local', 'nvidia', 'other']);
-    for (const key of keys) {
-      for (const locale of ['en', 'de']) assert.ok(hasKey(key, locale), `${locale}:${key}`);
-    }
-    assert.equal(t('models.download_size', { gb: '1.9' }, 'en'), '1.9 GB download');
-    assert.equal(t('models.group_recommended', undefined, 'de'), 'Empfohlen für Ihr Gerät');
+    for (const key of keys) for (const locale of ['en', 'de']) assert.ok(hasKey(key, locale), `${locale}:${key}`);
   });
 });
 
 describe('model names are catalog data', () => {
   it('never appear in the locale files', () => {
     const labels = [...Object.values(MODEL_CATALOG), ...Object.values(WASM_CATALOG), ...NVIDIA_MODELS].map((m) => m.label);
-    for (const locale of ['en', 'de']) {
-      const dict = JSON.parse(readFileSync(new URL(`../../src/locales/${locale}.json`, import.meta.url), 'utf8'));
+    for (const file of ['en.json', 'de.json', 'chat-thread/en.json', 'chat-thread/de.json']) {
+      const dict = JSON.parse(readFileSync(new URL(`../../src/locales/${file}`, import.meta.url), 'utf8'));
       /** @type {Array<[string, string]>} */
       const entries = [];
+      /** @param {Record<string, unknown>} obj @param {string} prefix */
       const walk = (obj, prefix) => {
         for (const [k, v] of Object.entries(obj)) {
-          if (v && typeof v === 'object') walk(v, `${prefix}${k}.`);
+          if (v && typeof v === 'object') walk(/** @type {Record<string, unknown>} */ (v), `${prefix}${k}.`);
           else entries.push([`${prefix}${k}`, String(v)]);
         }
       };
       walk(dict, '');
-      for (const [key, value] of entries) for (const label of labels) assert.ok(!value.includes(label), `${locale}:${key} contains "${label}"`);
+      for (const [key, value] of entries) for (const label of labels) assert.ok(!value.includes(label), `${file}:${key} contains "${label}"`);
     }
   });
 });

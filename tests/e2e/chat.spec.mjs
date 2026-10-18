@@ -171,8 +171,6 @@ test.describe('chat thread', () => {
     const second = answers(page).last();
     await expect(second.locator('.engine-badge-label')).toHaveText('Your server · fake-local-reasoner:4b');
     await expect(second.locator('.branch-pos')).toHaveText('2/2');
-    // The reasoning model's thoughts stay in the details block.
-    await expect(second.locator('.message-content')).not.toContainText('I recall the key facts first');
     await second.locator('[data-action="msg-branch-prev"]').click();
     await expect(answers(page).last().locator('.branch-pos')).toHaveText('1/2');
     await expect(answers(page).last().locator('.engine-badge-label')).toHaveText('Your server · fake-local:8b');

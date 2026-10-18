@@ -39,13 +39,10 @@ let handlers = null;
 
 /**
  * A small icon button of the bar.
- * @param {string} action
- * @param {string} nodeId
- * @param {string} icon
- * @param {string} labelKey
- * @param {{ disabled?: boolean, text?: boolean, extra?: string }} [opts]
+ * @param {{ action: string, nodeId: string, icon: string, labelKey: string, disabled?: boolean, text?: boolean, extra?: string }} opts
  */
-function button(action, nodeId, icon, labelKey, opts = {}) {
+function button(opts) {
+  const { action, nodeId, icon, labelKey } = opts;
   const label = escapeHtml(t(labelKey));
   const text = opts.text ? `<span class="msg-action-text" data-i18n="${labelKey}">${label}</span>` : '';
   return `<button type="button" class="msg-action btn btn-ghost px-1.5 py-1 text-[11px]" data-action="${action}" data-arg="${escapeHtml(nodeId)}"${opts.extra ?? ''} data-i18n-aria="${labelKey}" aria-label="${label}" data-i18n-title="${labelKey}" title="${label}"${opts.disabled ? ' disabled' : ''}><i data-lucide="${icon}" class="w-3.5 h-3.5"></i>${text}</button>`;
@@ -63,24 +60,24 @@ export function renderActions(el, state) {
   const id = node.id;
   const answer = node.role === 'assistant';
   const parts = [];
-  parts.push(button('msg-copy', id, 'copy', 'chat-thread.action.copy'));
+  parts.push(button({ action: 'msg-copy', nodeId: id, icon: 'copy', labelKey: 'chat-thread.action.copy' }));
   if (answer) {
-    parts.push(button('msg-copy-md', id, 'braces', 'chat-thread.action.copy_md'));
+    parts.push(button({ action: 'msg-copy-md', nodeId: id, icon: 'braces', labelKey: 'chat-thread.action.copy_md' }));
     parts.push(
       `<details class="regen-menu relative inline-block" data-node="${escapeHtml(id)}"><summary class="msg-action btn btn-ghost px-1.5 py-1 text-[11px] list-none cursor-pointer" data-i18n-aria="chat-thread.action.regenerate" aria-label="${escapeHtml(t('chat-thread.action.regenerate'))}" data-i18n-title="chat-thread.action.regenerate" title="${escapeHtml(t('chat-thread.action.regenerate'))}"${busy ? ' aria-disabled="true"' : ''}><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i><i data-lucide="chevron-down" class="w-3 h-3"></i></summary><div class="regen-list absolute left-0 bottom-full z-30 mb-1 w-64 max-h-72 overflow-y-auto card p-1 flex flex-col" role="menu"></div></details>`,
     );
   } else {
-    parts.push(button('msg-edit', id, 'square-pen', 'chat-thread.action.edit', { disabled: busy }));
+    parts.push(button({ action: 'msg-edit', nodeId: id, icon: 'square-pen', labelKey: 'chat-thread.action.edit', disabled: busy }));
   }
   if (branch && branch.count > 1) {
     parts.push(
-      `<span class="branch-nav inline-flex items-center gap-0.5 text-[11px] ${answer ? 'text-slate-600' : 'text-slate-200'}">${button('msg-branch-prev', id, 'arrow-left', 'chat-thread.action.branch_prev', { disabled: busy || branch.position <= 1 })}<span class="branch-pos font-mono" aria-live="polite">${branch.position}/${branch.count}</span>${button('msg-branch-next', id, 'arrow-right', 'chat-thread.action.branch_next', { disabled: busy || branch.position >= branch.count })}</span>`,
+      `<span class="branch-nav inline-flex items-center gap-0.5 text-[11px] ${answer ? 'text-slate-600' : 'text-slate-200'}">${button({ action: 'msg-branch-prev', nodeId: id, icon: 'arrow-left', labelKey: 'chat-thread.action.branch_prev', disabled: busy || branch.position <= 1 })}<span class="branch-pos font-mono" aria-live="polite">${branch.position}/${branch.count}</span>${button({ action: 'msg-branch-next', nodeId: id, icon: 'arrow-right', labelKey: 'chat-thread.action.branch_next', disabled: busy || branch.position >= branch.count })}</span>`,
     );
   }
-  if (answer && state.canContinue) parts.push(button('msg-continue', id, 'arrow-right', 'chat-thread.action.continue', { disabled: busy, text: true }));
+  if (answer && state.canContinue) parts.push(button({ action: 'msg-continue', nodeId: id, icon: 'arrow-right', labelKey: 'chat-thread.action.continue', disabled: busy, text: true }));
   for (const action of messageActions.values()) {
     const fits = action.when ? action.when(node) : answer;
-    if (fits) parts.push(button('msg-extra', id, action.icon, action.labelKey, { extra: ` data-extra="${escapeHtml(action.id)}"` }));
+    if (fits) parts.push(button({ action: 'msg-extra', nodeId: id, icon: action.icon, labelKey: action.labelKey, extra: ` data-extra="${escapeHtml(action.id)}"` }));
   }
   // On the dark bubble of a question the bar keeps a light ink.
   bar.className = `message-actions mt-2 flex flex-wrap items-center gap-0.5 ${answer ? 'text-slate-500' : 'text-slate-200 on-dark'}`;
