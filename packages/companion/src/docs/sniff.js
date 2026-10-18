@@ -69,7 +69,7 @@ export function sniffDocument(bytes, name) {
     throw refuse('not UTF-8 text');
   }
   if (ext === 'html' || ext === 'htm') return 'html';
-  const start = new TextDecoder().decode(probe.subarray(0, 512)).replace(/^﻿/, '').trimStart().toLowerCase();
+  const start = new TextDecoder().decode(probe.subarray(0, 512)).replace(/^\uFEFF/, '').trimStart().toLowerCase();
   if (ext !== 'md' && ext !== 'txt' && (start.startsWith('<!doctype html') || start.startsWith('<html'))) return 'html';
   if (ext === 'md' || ext === 'markdown') return 'md';
   if (ext === 'csv') return 'csv';
@@ -82,7 +82,7 @@ export function sniffDocument(bytes, name) {
  * @param {Uint8Array} probe
  */
 function lastBoundary(probe) {
-  let end = probe.length;
+  const end = probe.length;
   for (let back = 1; back <= 3 && end - back >= 0; back += 1) {
     const b = probe[end - back];
     if ((b & 0xc0) === 0xc0) return end - back;

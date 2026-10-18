@@ -82,7 +82,7 @@ export function createInbox({ namespace, clock = systemClock, keepDays = 30, max
      */
     post(input) {
       if (!KIND.test(input.kind)) throw fail('notification_kind', 'a kind is a lower-case code', { status: 400 });
-      if (input.ref != null && !REF.test(input.ref)) throw fail('notification_ref', 'a reference is an id', { status: 400 });
+      if (input.ref !== undefined && input.ref !== null && !REF.test(input.ref)) throw fail('notification_ref', 'a reference is an id', { status: 400 });
       const dataClass = isDataClass(input.dataClass) ? input.dataClass : 'personal';
       const items = all();
       const seq = (items.at(-1)?.seq ?? 0) + 1;

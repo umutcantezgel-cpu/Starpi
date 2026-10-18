@@ -79,7 +79,7 @@ export function instantOf(local, zone) {
   if (exact.length > 0) return exact[0];
   // The local time falls into a jump: the first instant whose local time is at or after it.
   let lo = candidates[0] - 3 * 3_600_000;
-  let hi = candidates.at(-1) + 3 * 3_600_000;
+  let hi = candidates[candidates.length - 1] + 3 * 3_600_000;
   while (hi - lo > MINUTE) {
     const mid = lo + Math.floor((hi - lo) / 2 / MINUTE) * MINUTE;
     if (stamp(localFields(mid, zone)) >= want) hi = mid;
@@ -107,7 +107,7 @@ export function ruleProblems(rule) {
     const valid = m && new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).toISOString().slice(0, 10) === r.date;
     if (!valid) problems.push('rule.date: a date YYYY-MM-DD');
   }
-  if (r.type === 'weekly' && (!Array.isArray(r.days) || r.days.length === 0 || r.days.length > 7 || new Set(r.days).size !== r.days.length || !r.days.every((d) => Number.isInteger(d) && d >= 1 && d <= 7))) {
+  if (r.type === 'weekly' && (!Array.isArray(r.days) || r.days.length === 0 || r.days.length > 7 || new Set(r.days).size !== r.days.length || !r.days.every((/** @type {unknown} */ d) => Number.isInteger(d) && /** @type {number} */ (d) >= 1 && /** @type {number} */ (d) <= 7))) {
     problems.push('rule.days: distinct weekdays 1 (Monday) to 7 (Sunday)');
   }
   if (r.type === 'monthly' && r.day !== 'last' && !(Number.isInteger(r.day) && r.day >= 1 && r.day <= 31)) problems.push("rule.day: 1 to 31 or 'last'");

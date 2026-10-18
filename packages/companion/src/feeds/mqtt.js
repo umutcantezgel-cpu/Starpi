@@ -92,6 +92,7 @@ export function isTopicFilter(filter) {
  * @param {(type: number, flags: number, body: Buffer) => void} onPacket
  */
 export function packetReader(onPacket) {
+  /** @type {Buffer} */
   let pending = Buffer.alloc(0);
   return {
     /** @param {Buffer} chunk */
@@ -312,7 +313,7 @@ export function createMqttSubscriber(options) {
     s.on('data', (chunk) => {
       if (socket !== s) return;
       try {
-        reader.push(chunk);
+        reader.push(/** @type {Buffer} */ (chunk));
       } catch (err) {
         drop(`a malformed packet: ${/** @type {Error} */ (err).message}`);
       }

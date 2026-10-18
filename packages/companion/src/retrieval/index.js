@@ -15,7 +15,7 @@ import { classRank } from '../contracts/data-classes.js';
 import { codeOf } from '../lib/errors.js';
 
 /** The collections the standard modules fill. */
-export const COLLECTIONS = Object.freeze(['documents', 'notes']);
+export const COLLECTIONS = /** @type {readonly Collection[]} */ (Object.freeze(['documents', 'notes']));
 /** Passages per embedding job, so the background lane can yield in between. */
 export const EMBED_STEP = 16;
 /** Longest text the index takes for one entry. */

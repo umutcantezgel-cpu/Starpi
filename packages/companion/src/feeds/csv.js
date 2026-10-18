@@ -62,7 +62,7 @@ const seriesName = (name) => name.trim().toLowerCase().replace(/\s+/g, '_');
  * @returns {{ samples: FeedSample[], problems: Array<{ line: number, problem: string }>, layout: 'long' | 'wide' | null, rows: number }}
  */
 export function samplesFromCsv(text, { sourceId, timeZone, now }) {
-  const body = text.replace(/^﻿/, '');
+  const body = text.replace(/^\uFEFF/, '');
   const firstLine = body.slice(0, body.indexOf('\n') === -1 ? body.length : body.indexOf('\n'));
   const delimiter = [',', ';', '\t'].map((d) => /** @type {[string, number]} */ ([d, firstLine.split(d).length])).sort((a, b) => b[1] - a[1])[0][0];
   const rows = parseCsv(body, delimiter);

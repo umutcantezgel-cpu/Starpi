@@ -18,7 +18,7 @@ export const EXTRACT_FAILURES = Object.freeze(['too_large', 'empty', 'invalid_js
  * @returns {Promise<{ text: string, pages: number | null }>}
  */
 export async function extractDocument(bytes, type) {
-  const file = new File([bytes], `document.${type}`);
+  const file = new File([new Uint8Array(bytes)], `document.${type}`);
   try {
     const result = await extractText(file);
     return { text: result.text, pages: result.pages ?? null };

@@ -17,3 +17,5 @@ export { createBrainRouter } from './brain/router.js';
 export { createNoneBrain, TEMPLATE_TEXTS } from './brain/none.js';
 export { createSpliceServer } from './egress/splice.js';
 export { minimalProfile, demoReadings, latestReadings } from './profiles/minimal/index.js';
+export { standardModules, STANDARD_MODULE_IDS } from './setup/standard.js';
+export { createHub } from './setup/hub.js';

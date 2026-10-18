@@ -27,7 +27,7 @@ async function brokerSim() {
   const seen = /** @type {Array<{ type: number, protocol?: number, filters?: string[] }>} */ ([]);
   /** @type {Array<(s: import('node:net').Socket, protocol: number) => void>} */
   const onSubscribed = [];
-  let protocolOf = new Map();
+  const protocolOf = new Map();
   const server = createServer((socket) => {
     sockets.add(socket);
     socket.on('close', () => sockets.delete(socket));
