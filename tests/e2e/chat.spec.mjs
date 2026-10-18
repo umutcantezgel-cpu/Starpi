@@ -1,9 +1,11 @@
 // The 3.0 chat thread against the local provider fakes (scripts/fakes): streaming from the user's
-// own server, Stop, Continue after the length limit, regenerating with another model, editing a
-// question into a new branch, copying, the chat title, the thread after a reload, images scaled
-// down before they go to a model that sees, reading answers aloud (while streaming and with the
-// speaker button), "Research this" on an answer, and grounded answers with the source check, all
-// without a page error and with the thread passing axe.
+// own server (the first text within 1.5 s), Stop, a new chat started while an answer streams (the
+// answer stays in its own chat), Continue after the length limit, regenerating
+// with another model, editing a question into a new branch, copying, the chat title, the thread
+// after a reload, images scaled down before they go to a model that sees, reading answers aloud
+// (while streaming and with the speaker button), "Research this" on an answer, Auto answering free
+// without files and grounded with one (the source check, a receipt, the file kept when the question
+// is edited), all without a page error and with the thread passing axe.
 import AxeBuilder from '@axe-core/playwright';
 import { expect, mockSupabase, storedChatNodes, test } from './fixtures.mjs';
 
@@ -35,6 +37,34 @@ async function useServer(page, opts = {}) {
 async function ask(page, text) {
   await page.fill('#chatInput', text);
   await page.press('#chatInput', 'Enter');
+}
+
+/**
+ * Asks a question and measures, in the page, the milliseconds from Enter to the first text of the
+ * answer on screen.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} text
+ */
+async function askTimed(page, text) {
+  await page.fill('#chatInput', text);
+  await page.evaluate(() => {
+    const w = /** @type {any} */ (window);
+    w.__firstText = null;
+    const box = /** @type {HTMLElement} */ (document.getElementById('chatMessages'));
+    const seen = new Set(box.querySelectorAll('.message-row[data-role="assistant"]'));
+    document.getElementById('chatInput')?.addEventListener('keydown', () => (w.__asked = performance.now()), { once: true, capture: true });
+    const observer = new MutationObserver(() => {
+      const fresh = [...box.querySelectorAll('.message-row[data-role="assistant"]')].find((el) => !seen.has(el));
+      if (fresh && fresh.querySelector('.message-content')?.textContent?.trim()) {
+        w.__firstText = performance.now() - w.__asked;
+        observer.disconnect();
+      }
+    });
+    observer.observe(box, { childList: true, subtree: true, characterData: true });
+  });
+  await page.press('#chatInput', 'Enter');
+  await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__firstText)).not.toBeNull();
+  return /** @type {number} */ (await page.evaluate(() => /** @type {any} */ (window).__firstText));
 }
 
 /** @param {import('@playwright/test').Page} page */
@@ -94,7 +124,9 @@ test.describe('chat thread', () => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await useServer(page);
     await page.goto('/');
-    await ask(page, 'Hello there, how are you today?');
+    // The first text of the answer is on screen within 1.5 s of Enter (the fake answers at once).
+    const latency = await askTimed(page, 'Hello there, how are you today?');
+    expect(latency).toBeLessThanOrEqual(1500);
     const answer = answers(page).last();
     await expect(answer.locator('.message-content')).toContainText(ANSWER);
     await settled(page);
@@ -137,6 +169,29 @@ test.describe('chat thread', () => {
     await expect(answer).toHaveAttribute('data-node-id', /.+/);
     const nodes = await storedChatNodes(page);
     expect(nodes.at(-1)?.role).toBe('assistant');
+  });
+
+  test('keeps an answer in its own chat when a new chat starts while it streams', async ({ page, isMobile, diagnostics: _diagnostics }) => {
+    test.skip(isMobile, 'the conversation list is a drawer on phones');
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await useServer(page);
+    await page.goto('/');
+    await ask(page, '[[fake-fault:stall-mid-stream]] Tell me a long story');
+    await expect(answers(page).last().locator('.message-content')).toContainText('simulated');
+    await page.locator('#main [data-action="new-chat"]').click();
+    await expect(answers(page)).toHaveCount(0);
+    // The answer goes on in its chat until it is stopped; the new chat shows nothing of it.
+    await expect(page.locator('#stopBtn')).toBeVisible();
+    await page.click('#stopBtn');
+    await expect(page.locator('#stopBtn')).toBeHidden();
+    await expect(answers(page)).toHaveCount(0);
+    await expect(page.locator('#chatMessages')).not.toContainText('could not be completed');
+    await page.locator('#chat-sidebar [data-action="conv-open"]', { hasText: 'long story' }).click();
+    await expect(answers(page)).toHaveCount(1);
+    await expect(answers(page).last().locator('.message-content')).toContainText('simulated');
+    await expect(answers(page).last()).toHaveAttribute('data-node-id', /.+/);
+    const nodes = await storedChatNodes(page);
+    expect(nodes.map((n) => n.role)).toEqual(['user', 'assistant']);
   });
 
   test('continues an answer cut at its length limit as a new turn', async ({ page, diagnostics: _diagnostics }) => {
@@ -325,10 +380,24 @@ test.describe('answers and the other features', () => {
 });
 
 test.describe('grounded thread', () => {
-  test('answers from an attached file with the source check and a receipt, and stays free without files in Auto', async ({ page, diagnostics: _diagnostics }) => {
+  test('stays free without files in Auto, answers from an attached file with the source check and a receipt, and keeps the file when the question is edited', async ({ page, diagnostics: _diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    // A knowledge base without documents (the newest route answers first).
+    await page.route(/^https:\/\/[a-z0-9]+\.supabase\.co\/rest\/v1\/knowledge_documents/, (route) =>
+      route.request().method() === 'OPTIONS'
+        ? route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } })
+        : route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[]' }),
+    );
     await useServer(page, { mode: 'auto' });
     await page.goto('/');
+    // No files anywhere: Auto answers freely, without a source check.
+    await ask(page, 'What is a budget?');
+    await settled(page);
+    const free = answers(page).last();
+    await expect(free.locator('.free-note')).toBeVisible();
+    await expect(free.locator('.grounding-bar')).toHaveCount(0);
+    await expect(free.locator('[data-action="open-receipt"]')).toHaveCount(0);
+
     await page.setInputFiles('#chatFileInput', { name: 'budget.md', mimeType: 'text/markdown', buffer: Buffer.from('# Budget\n\nThe approved budget for Project Nebula is 480,000 EUR.') });
     await expect(page.locator('#attachedInfo')).toContainText('budget.md · 1 chunk');
     await ask(page, 'What is the approved budget?');
@@ -337,5 +406,22 @@ test.describe('grounded thread', () => {
     await expect(answer.locator('[data-action="open-receipt"]')).toBeVisible();
     await expect(answer.locator('[data-provenance="checked"]')).toBeVisible();
     await settled(page);
+    await expect(questions(page).last().locator('.attachment-chip')).toContainText('budget.md');
+
+    // The edited question keeps its file and is answered from it again, as a new branch.
+    await questions(page).last().locator('[data-action="msg-edit"]').click();
+    await page.fill('.message-editor textarea', 'What is the approved budget for Project Nebula?');
+    await page.click('.message-editor button[type="submit"]');
+    await settled(page);
+    const edited = questions(page).last();
+    await expect(edited).toContainText('What is the approved budget for Project Nebula?');
+    await expect(edited.locator('.attachment-chip')).toContainText('budget.md');
+    await expect(edited.locator('.branch-pos')).toHaveText('2/2');
+    await expect(answers(page).last().locator('.grounding-bar')).toBeVisible();
+    await expect(answers(page).last().locator('[data-action="open-receipt"]')).toBeVisible();
+    await expect(answers(page).last().locator('.message-sources')).toContainText('budget.md');
+    const nodes = await storedChatNodes(page);
+    const asked = nodes.filter((n) => n.role === 'user' && n.parts.some((/** @type {any} */ p) => p.type === 'file'));
+    expect(asked.map((n) => n.parts.find((/** @type {any} */ p) => p.type === 'file').name)).toEqual(['budget.md', 'budget.md']);
   });
 });
