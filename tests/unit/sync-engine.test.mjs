@@ -194,6 +194,22 @@ describe('conflict resolution', () => {
     assert.equal(row().rev, 2);
   });
 
+  it('copies that differ only in their creation time settle without writing each other back', async () => {
+    const server = createFakeServer();
+    const a = createBrowser(server, { userId: USER });
+    const b = createBrowser(server, { userId: USER });
+    await a.store.createConversation({ id: 'starpi_same', createdAt: 1_000, mode: 'free' });
+    await b.store.createConversation({ id: 'starpi_same', createdAt: 9_000, mode: 'free' });
+    await turn(a, 'starpi_same', 'From A', 'A');
+    await turn(b, 'starpi_same', 'From B', 'B');
+    await a.sync.enable(PASSPHRASE);
+    await b.sync.enable(PASSPHRASE);
+    await a.sync.syncNow();
+    assert.deepEqual(await b.sync.syncNow(), { applied: 0, written: 0, skipped: 0 });
+    assert.deepEqual(await a.sync.syncNow(), { applied: 0, written: 0, skipped: 0 });
+    assert.deepEqual(await texts(a, 'starpi_same'), await texts(b, 'starpi_same'));
+  });
+
   it('a deletion travels to the other browser', async () => {
     const { a, b, server } = await pair();
     assert.equal(await (await a.store).deleteConversation('starpi_c'), true);

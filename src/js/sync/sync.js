@@ -289,8 +289,12 @@ export function createChatSync(options) {
     return run;
   }
 
-  /** @param {SyncRecord} record */
-  const hashOf = (record) => digestText(canonicalJson(record), cryptoOpts);
+  /**
+   * The hash that tells whether a conversation changed. Its creation time is left out: the store
+   * cannot change it later, so two copies that differ only there must not write each other back.
+   * @param {SyncRecord} record
+   */
+  const hashOf = (record) => digestText(canonicalJson(record.kind === 'conversation' ? { ...record, conversation: { ...record.conversation, createdAt: 0 } } : record), cryptoOpts);
 
   /**
    * The record of a stored conversation; `exists` is false when there is no such conversation.
