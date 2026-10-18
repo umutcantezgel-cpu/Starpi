@@ -115,10 +115,14 @@ const canvasFeature = {
       const detail = /** @type {CustomEvent<{ code: string, language: string, title: string }>} */ (event).detail;
       if (!detail || typeof detail.code !== 'string') return;
       event.preventDefault();
-      const row = event.target instanceof Element ? event.target.closest('.message-row') : null;
+      const source = event.target instanceof Element ? event.target : null;
+      const row = source?.closest('.message-row') ?? null;
       const nodeId = row instanceof HTMLElement && row.dataset.role === 'assistant' ? (row.dataset.nodeId ?? '') : '';
+      // A block of an answer that stays on this device (a compare column says so; a stored answer
+      // tells the canvas itself) makes a document that stays too.
+      const localOnly = Boolean(source?.closest('[data-stays-on-device]'));
       void canvas()
-        .then((m) => m.openInCanvas({ ...detail, nodeId, model: badgeOf(row) }))
+        .then((m) => m.openInCanvas({ ...detail, nodeId, model: badgeOf(row), ...(localOnly ? { localOnly } : {}) }))
         .catch((err) => console.warn('[starpi] the canvas could not open the block', err));
     });
     enableCanvas();

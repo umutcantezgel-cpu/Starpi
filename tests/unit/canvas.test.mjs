@@ -3,7 +3,10 @@
 // versions go beyond the limit), the AI edit's question and context block (the passage marked, a
 // long passage only in the context), what an answer says the passage becomes, and the panel in a
 // DOM with the documents in an in-memory database: opening a block, a model's revision as version 2,
-// a saved edit as version 3, choosing an older version, and "Edit with AI" replacing the selection.
+// a saved edit as version 3, choosing an older version, and "Edit with AI" replacing the selection;
+// documents from answers that stay on this device stay too (their AI edits ask to stay), an AI edit
+// lands on its own document when the canvas shows another one by then, and a deleted chat takes its
+// document off the canvas without it being written back.
 /* global document, window */
 import './setup.mjs';
 import 'fake-indexeddb/auto';
@@ -126,8 +129,33 @@ describe('the canvas panel', () => {
       return a;
     },
   };
-  /** @type {Array<{ question: string, conversationId: string, notes: readonly string[] }>} */
+  /** @type {Array<{ question: string, conversationId: string, notes: readonly string[], localOnly: boolean }>} */
   const asked = [];
+  /** Stored messages of the chats, by id (the canvas asks whether one stays on this device). */
+  /** @type {Map<string, any>} */
+  const nodes = new Map([['secret-answer', { id: 'secret-answer', role: 'assistant', localOnly: true }], ['plain-answer', { id: 'plain-answer', role: 'assistant', localOnly: false }]]);
+  /** @type {Array<(change: any) => void>} */
+  const chatListeners = [];
+  /** @param {any} change */
+  const chatChange = (change) => {
+    for (const fn of chatListeners) fn(change);
+  };
+  /** What the next AI edit gets back (default: an answer with a code block). */
+  /** @type {(() => Promise<any>) | null} */
+  let nextAnswer = null;
+  const answer = (/** @type {string} */ id, /** @type {string} */ text, extra = {}) => ({ node: /** @type {any} */ ({ id, role: 'assistant', model: 'fake-model', parts: [{ type: 'text', text }], ...extra }) });
+  /** @returns {{ promise: Promise<any>, resolve: (value: any) => void }} */
+  const deferred = () => {
+    /** @type {(value: any) => void} */
+    let resolve = () => {};
+    const promise = new Promise((r) => (resolve = r));
+    return { promise, resolve };
+  };
+  const submitEdit = (/** @type {string} */ text) => {
+    /** @type {HTMLTextAreaElement} */ (panel().querySelector('[data-canvas-instruction]')).value = text;
+    /** @type {HTMLFormElement} */ (panel().querySelector('[data-canvas-ai]')).requestSubmit();
+  };
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
   const panel = () => /** @type {HTMLElement} */ (document.getElementById('chat-aside-canvas'));
   const editor = () => /** @type {HTMLTextAreaElement} */ (panel().querySelector('[data-canvas-editor]'));
   const versions = () => /** @type {HTMLSelectElement} */ (panel().querySelector('[data-canvas-versions]'));
@@ -139,13 +167,20 @@ describe('the canvas panel', () => {
     canvas.mountCanvas(panel(), {
       store: memoryStore,
       openAside: (tab) => opened.push(String(tab)),
-      ask: async (question, conversationId) => {
+      ask: async (question, conversationId, opts) => {
         // The context block of the turn carries the document, as the thread would ask the notes.
         const notes = [];
         for (const hook of hooks.turnNoteHooks) notes.push(...(await hook({ conversationId, question: question.trim(), mode: 'free', route: 'free', target: null, locale: 'en', attachments: [] })));
-        asked.push({ question, conversationId, notes });
-        return { node: /** @type {any} */ ({ id: 'answer-1', role: 'assistant', model: 'fake-model', parts: [{ type: 'text', text: 'Sure:\n\n```html\nHi\n```' }] }) };
+        asked.push({ question, conversationId, notes, localOnly: opts.localOnly });
+        if (nextAnswer) {
+          const next = nextAnswer;
+          nextAnswer = null;
+          return next();
+        }
+        return answer('answer-1', 'Sure:\n\n```html\nHi\n```');
       },
+      nodeOf: async (id) => nodes.get(id) ?? null,
+      onChatChange: async (listener) => chatListeners.push(listener),
     });
   });
 
@@ -220,6 +255,7 @@ describe('the canvas panel', () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
     assert.equal(asked.length, 1);
     assert.equal(asked[0].conversationId, 'c1');
+    assert.equal(asked[0].localOnly, false, 'nothing of this document stays on this device');
     assert.match(asked[0].question, /^Edit "Landing page" in the canvas: say hi/);
     assert.match(asked[0].question, /```html\nWelcome to the page\n```/);
     assert.equal(asked[0].notes.length, 1, 'the document goes along in the context block');
@@ -252,6 +288,113 @@ describe('the canvas panel', () => {
     picker.dispatchEvent(new window.Event('change', { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(panel().querySelector('[data-canvas-title]')?.textContent, 'Landing page');
+  });
+
+  it('keeps a document from an answer that stays on this device on it, and asks its AI edits to stay', async () => {
+    const doc = await canvas.openInCanvas({ code: '# Notes\n\nprivate line', language: 'markdown', title: 'Private notes', nodeId: 'secret-answer', conversationId: 'c1' });
+    assert.equal(doc?.localOnly, true);
+    assert.equal(records.get(/** @type {string} */ (doc?.id))?.localOnly, true, 'stored as staying here');
+    assert.ok(panel().querySelector('[data-canvas-local]'), 'the canvas says so');
+    // A later revision from an answer that may travel keeps the document on this device.
+    await canvas.openInCanvas({ code: '# Notes\n\nprivate line, revised', language: 'markdown', title: 'Private notes', nodeId: 'plain-answer', conversationId: 'c1' });
+    assert.equal(canvas.canvasState().artifact?.localOnly, true);
+    submitEdit('translate');
+    await settle();
+    assert.equal(asked.at(-1)?.localOnly, true, 'the edit is a question that stays on this device');
+    assert.equal(canvas.canvasState().artifact?.versions.at(-1)?.by, 'ai');
+    // With a model chosen that does not answer here, nothing is asked and nothing changes.
+    const before = canvas.canvasState().artifact?.versions.length;
+    nextAnswer = async () => ({ error: 'stays_on_device' });
+    submitEdit('shorter');
+    await settle();
+    assert.match(statusText(), /This document stays on this device/);
+    assert.equal(canvas.canvasState().artifact?.versions.length, before);
+  });
+
+  it('learns from the answers a document came from that it stays, and a block marked so too', async () => {
+    // A document stored before it said so: one of its versions came from an answer that stays.
+    records.set('old-doc', { id: 'old-doc', conversationId: 'c1', nodeId: 'plain-answer', type: 'code', language: 'js', title: 'Helper', versions: [{ content: 'one()', at: 1, by: 'model', nodeId: 'plain-answer' }, { content: 'two()', at: 2, by: 'model', nodeId: 'secret-answer' }], updatedAt: 2 });
+    const picker = /** @type {HTMLSelectElement} */ (panel().querySelector('[data-canvas-picker]'));
+    picker.append(Object.assign(document.createElement('option'), { value: 'old-doc', textContent: 'Helper' }));
+    picker.value = 'old-doc';
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await settle();
+    assert.equal(panel().querySelector('[data-canvas-title]')?.textContent, 'Helper');
+    submitEdit('rename');
+    await settle();
+    assert.equal(asked.at(-1)?.localOnly, true);
+    assert.equal(records.get('old-doc')?.localOnly, true, 'it says so from now on');
+    // A block whose answer stays on this device (a compare column) opens as such a document.
+    const marked = await canvas.openInCanvas({ code: 'three()', language: 'ts', title: 'Column block', conversationId: 'c1', localOnly: true });
+    assert.equal(marked?.localOnly, true);
+  });
+
+  it('adds an AI edit to its own document when the canvas shows another one by then', async () => {
+    const a = await canvas.openInCanvas({ code: '<p>A</p>', language: 'html', title: 'Doc A', conversationId: 'c1' });
+    const b = await canvas.openInCanvas({ code: '<svg></svg>', language: 'svg', title: 'Doc B', conversationId: 'c1' });
+    assert.ok(a && b);
+    let picker = /** @type {HTMLSelectElement} */ (panel().querySelector('[data-canvas-picker]'));
+    picker.value = a.id;
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await settle();
+    const pending = deferred();
+    nextAnswer = () => pending.promise;
+    submitEdit('replace it');
+    await settle();
+    assert.equal(canvas.canvasState().editing, true);
+    assert.equal(editor().readOnly, true, 'the edited document waits for its answer');
+    // Doc B is chosen while the answer is written.
+    picker = /** @type {HTMLSelectElement} */ (panel().querySelector('[data-canvas-picker]'));
+    picker.value = b.id;
+    picker.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await settle();
+    assert.equal(editor().readOnly, false, 'another document can be edited meanwhile');
+    pending.resolve(answer('answer-a', '```html\nREPLACED\n```'));
+    await settle();
+    assert.equal(panel().querySelector('[data-canvas-title]')?.textContent, 'Doc B');
+    assert.equal(editor().value, '<svg></svg>');
+    assert.equal(canvas.canvasState().artifact?.id, b.id);
+    assert.equal(records.get(a.id)?.versions.at(-1)?.content, 'REPLACED', 'the answer went to Doc A');
+    assert.equal(records.get(b.id)?.versions.length, 1);
+    assert.match(statusText(), /The answer was added to "Doc A" as version 2/);
+    // Saving now saves into the document on screen.
+    editor().value = '<svg><rect/></svg>';
+    editor().dispatchEvent(new window.Event('input', { bubbles: true }));
+    /** @type {HTMLButtonElement} */ (panel().querySelector('[data-action="canvas-save"]')).click();
+    await settle();
+    assert.equal(records.get(b.id)?.versions.at(-1)?.content, '<svg><rect/></svg>');
+    assert.equal(records.get(a.id)?.versions.length, 2);
+  });
+
+  it('lets go of the document of a deleted chat and never writes it back', async () => {
+    const doc = await canvas.openInCanvas({ code: 'gone = 1', language: 'py', title: 'Script', conversationId: 'c-deleted' });
+    assert.ok(doc);
+    const pending = deferred();
+    nextAnswer = () => pending.promise;
+    submitEdit('rename');
+    await settle();
+    // The chat is deleted while the answer is written (the store deletes its documents).
+    records.delete(doc.id);
+    chatChange({ kind: 'conversation', op: 'delete', id: 'c-deleted' });
+    assert.ok(panel().querySelector('[data-canvas-empty]'), 'the canvas shows no document');
+    pending.resolve(answer('answer-late', '```py\nrenamed = 1\n```'));
+    await settle();
+    assert.equal(records.has(doc.id), false, 'the answer did not bring it back');
+    assert.equal(canvas.canvasState().artifact, null);
+    assert.equal(await canvas.openInCanvas({ code: 'again = 1', language: 'py', title: 'Script', conversationId: 'c-deleted' }), null);
+    // "Delete all": the document on screen goes when the store no longer has it, with its unsaved changes.
+    const other = await canvas.openInCanvas({ code: 'kept = 1', language: 'py', title: 'Other', conversationId: 'c1' });
+    assert.ok(other);
+    chatChange({ kind: 'all' });
+    await settle();
+    assert.equal(canvas.canvasState().artifact?.id, other.id, 'chats imported: the document stays');
+    editor().value = 'kept = 2';
+    editor().dispatchEvent(new window.Event('input', { bubbles: true }));
+    records.clear();
+    chatChange({ kind: 'all' });
+    await settle();
+    assert.equal(canvas.canvasState().artifact, null);
+    assert.equal(records.size, 0, 'nothing written back');
   });
 });
 

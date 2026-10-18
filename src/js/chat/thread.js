@@ -1582,7 +1582,7 @@ async function withTurn(fn) {
  * choice that reaches the model here or the own server.
  * @param {AssistantValue} value
  */
-async function answersHere(value) {
+export async function answersHere(value) {
   return value === 'device' || (await chatCandidates(value)).some(onThisDevice);
 }
 
@@ -1617,9 +1617,12 @@ async function contextFor(ctx) {
 
 /**
  * Sends the composer's draft (or a given question).
- * @param {{ text?: string, chatMode?: 'grounded' | 'free', workspaceOnly?: boolean }} [options]
+ * @param {{ text?: string, chatMode?: 'grounded' | 'free', workspaceOnly?: boolean, localOnly?: boolean }} [options]
  *   text: a question from elsewhere (quick prompts); chatMode: answer it this way (the mode control
- *   switches along, so it shows what this question does)
+ *   switches along, so it shows what this question does); localOnly: the question carries content
+ *   that stays on this device (a canvas document from such an answer): it goes the free route, is
+ *   stored as staying here and only the model here or the own server answers it (with another
+ *   model chosen it is not even stored)
  */
 export async function sendQuestion(options = {}) {
   if (busy) {
@@ -1636,21 +1639,27 @@ export async function sendQuestion(options = {}) {
     setAssistantStatus('status.ready');
   }
   if (!draft.text && !draft.attachments.length) return;
+  const value = getAssistant();
+  const deviceOnly = options.localOnly === true;
+  if (deviceOnly && !(await answersHere(value))) {
+    appendNotice(STAYS_ON_DEVICE);
+    return;
+  }
   if (options.text === undefined) clearComposer();
-  if (options.chatMode === 'grounded' && getChatMode() !== 'grounded') setChatMode('grounded');
+  if (options.chatMode === 'grounded' && getChatMode() !== 'grounded' && !deviceOnly) setChatMode('grounded');
   const mode = options.chatMode ?? getChatMode();
   const kinds = draft.attachments.map((a) => ({ name: a.name, kind: a.kind }));
-  const value = getAssistant();
-  const route =
-    options.chatMode ??
-    (await decideRoute({
-      question: draft.text,
-      mode,
-      attachments: kinds,
-      workspaceDocs: listWorkspace().length,
-      knowledgeDocs: mode === 'auto' ? (await knownTitles()).length : 0,
-      modelReady: mode !== 'auto' || value === 'device' || (await chatCandidates(value)).length > 0,
-    }));
+  const route = deviceOnly
+    ? 'free'
+    : (options.chatMode ??
+      (await decideRoute({
+        question: draft.text,
+        mode,
+        attachments: kinds,
+        workspaceDocs: listWorkspace().length,
+        knowledgeDocs: mode === 'auto' ? (await knownTitles()).length : 0,
+        modelReady: mode !== 'auto' || value === 'device' || (await chatCandidates(value)).length > 0,
+      })));
   const onlyImages = draft.attachments.length > 0 && draft.attachments.every((a) => a.kind === 'image');
   const text =
     draft.text ||
@@ -1662,7 +1671,7 @@ export async function sendQuestion(options = {}) {
     }
     /** @type {TurnContext} */
     const ctx = { conversationId: turnConversation(), question: text, mode, route: 'free', target: null, locale: getLocale(), attachments: kinds };
-    const question = await storeQuestion({ text, attachments: draft.attachments, parentId: leafId(), route: 'free', localOnly: value === 'device', context: await contextFor(ctx) });
+    const question = await storeQuestion({ text, attachments: draft.attachments, parentId: leafId(), route: 'free', localOnly: value === 'device' || deviceOnly, context: await contextFor(ctx) });
     if (onScreen()) renderNode(question);
     const answer = await answerFree(question, value, signal);
     if (answer && turnThread()?.path.length === 2) void nameConversation(turnConversation(), text, answer);

@@ -5,7 +5,8 @@
  * with its versions, "Edit with AI", Copy, Download and a preview in the sandboxed render frame.
  *
  * Documents are kept in the app database (store `artifacts`, one record per document with all its
- * versions); a chat that is deleted takes its documents along (chat/store.js).
+ * versions); a chat that is deleted takes its documents along (chat/store.js), and the canvas lets
+ * go of such a document: nothing writes it back.
  * - Opening a block: a block with a fence title opens the document of this chat with that title
  *   and type, an untitled block the open document when it is of this chat and language; otherwise
  *   it starts a new document. A block that differs from the newest version becomes a new version
@@ -15,7 +16,11 @@
  *   overwritten.
  * - Edit with AI: the selection (or the whole document) and an instruction become a new turn of
  *   the chat (the document goes along in the turn's context block, chat/hooks.js registerTurnNotes);
- *   the answer's code block (else its text) replaces the selection as a new version.
+ *   the answer's code block (else its text) replaces the selection as a new version of the document
+ *   it was asked for, also when the canvas shows another one by then.
+ * - Stays on this device: a document from an answer that stays on this device (or with a version
+ *   from one) stays too. Its AI edits are questions that stay on this device: only the model here
+ *   or the own server answers them; with another model chosen nothing is asked.
  * - Preview: HTML, SVG and diagrams render in the render frame (render.js mountRenderFrame); HTML
  *   scripts run only after "Run preview". Markdown documents read rendered.
  */
@@ -46,12 +51,15 @@ import { nodeText } from './tree.js';
  */
 
 /**
- * A canvas document as the store keeps it.
- * @typedef {Omit<ArtifactRecord, 'type' | 'versions'> & { type: ArtifactType, language: string, versions: ArtifactVersion[], updatedAt: number }} CanvasArtifact
+ * A canvas document as the store keeps it. localOnly: it comes from content that stays on this
+ * device.
+ * @typedef {Omit<ArtifactRecord, 'type' | 'versions'> & { type: ArtifactType, language: string, versions: ArtifactVersion[], updatedAt: number, localOnly?: boolean }} CanvasArtifact
  */
 
 /** What "Open in canvas" hands over (code-blocks.js OPEN_CANVAS_EVENT). */
 /** @typedef {{ code: string, language: string, title: string }} CanvasBlock */
+
+/** @typedef {import('./store.js').ChatChange} ChatChange */
 
 /** Versions kept per document: the first and the newest ones. */
 export const MAX_VERSIONS = 50;
@@ -109,7 +117,7 @@ export function withVersion(artifact, version) {
 
 /**
  * A new document from a block.
- * @param {CanvasBlock & { conversationId: string, nodeId: string, model?: string }} block
+ * @param {CanvasBlock & { conversationId: string, nodeId: string, model?: string, localOnly?: boolean }} block
  * @param {{ id?: string, now?: number }} [opts]
  * @returns {CanvasArtifact}
  */
@@ -124,7 +132,20 @@ export function newArtifact(block, opts = {}) {
     title: block.title.trim().slice(0, 120),
     versions: [{ content: block.code.slice(0, MAX_DOCUMENT_CHARS), at, by: 'model', ...(block.nodeId ? { nodeId: block.nodeId } : {}), ...(block.model ? { model: block.model } : {}) }],
     updatedAt: at,
+    ...(block.localOnly ? { localOnly: true } : {}),
   };
+}
+
+/**
+ * The answers a document's content came from (to learn whether one of them stays on this device).
+ * @param {CanvasArtifact} artifact
+ * @returns {string[]}
+ */
+export function sourceNodes(artifact) {
+  /** @type {Set<string>} */
+  const ids = new Set();
+  for (const id of [artifact.nodeId, ...artifact.versions.map((v) => v.nodeId)]) if (typeof id === 'string' && id) ids.add(id);
+  return [...ids];
 }
 
 /**
@@ -223,11 +244,15 @@ export function artifactStore(open = appDb) {
 // The panel
 // ---------------------------------------------------------------------------------------------
 
+/** @typedef {{ node: NodeRecord } | { error: 'busy' | 'no_answer' | 'stays_on_device' }} AskResult */
+
 /**
  * @typedef {object} CanvasDeps
  * @property {(tab?: string) => void} [openAside]  shows the side panel on a tab
  * @property {ReturnType<typeof artifactStore>} [store]
- * @property {(question: string, conversationId: string) => Promise<{ node: NodeRecord } | { error: 'busy' | 'no_answer' }>} [ask]  asks a question as a new chat turn
+ * @property {(question: string, conversationId: string, opts: { localOnly: boolean }) => Promise<AskResult>} [ask]  asks a question as a new chat turn (localOnly: it stays on this device)
+ * @property {(nodeId: string) => Promise<NodeRecord | null | undefined>} [nodeOf]  a stored message of the chats
+ * @property {(listener: (change: ChatChange) => void) => Promise<unknown>} [onChatChange]  follows the conversation store's changes
  */
 
 /** @type {{ el: HTMLElement | null, deps: CanvasDeps, store: ReturnType<typeof artifactStore>, artifact: CanvasArtifact | null, list: CanvasArtifact[], index: number, mode: 'edit' | 'read', dirty: boolean, editing: boolean, preview: ReturnType<typeof mountRenderFrame> | null, selection: { start: number, end: number } }} */
@@ -235,6 +260,12 @@ const state = { el: null, deps: {}, store: artifactStore(), artifact: null, list
 /** The pending AI edit's question and its note, for the turn note hook. */
 /** @type {{ question: string, note: string } | null} */
 let pendingEdit = null;
+/** The document the running AI edit was asked for. */
+let editingId = '';
+/** Chats deleted while this page is open: their documents are never written again. */
+const deletedChats = new Set();
+/** Documents the store could not take (they live on this page only until a write succeeds). */
+const pageOnly = new Set();
 let wired = false;
 
 /** @param {string} selector */
@@ -392,7 +423,7 @@ function render() {
       ${picker}
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h3 class="text-sm font-semibold text-slate-900 break-all" data-canvas-title>${titleOf(artifact)}</h3>
-        ${label(`canvas.type.${artifact.type}`, { className: 'chip chip-neutral' })}
+        <span class="flex flex-wrap items-center gap-1.5">${artifact.localOnly ? html`<span class="chip chip-info" title="${t('canvas.stays_on_device_hint')}" data-i18n-title="canvas.stays_on_device_hint" data-canvas-local>${icon('lock', 'w-3 h-3')}${label('canvas.stays_on_device')}</span>` : ''}${label(`canvas.type.${artifact.type}`, { className: 'chip chip-neutral' })}</span>
       </div>
       <div class="flex flex-wrap items-center gap-1.5">
         ${segmented({ action: 'canvas-mode', label: 'canvas.mode.label', value: state.mode, options: [{ value: 'edit', label: 'canvas.mode.edit', icon: 'square-pen' }, { value: 'read', label: 'canvas.mode.read', icon: 'file-text' }] })}
@@ -432,7 +463,89 @@ function render() {
     e.preventDefault();
     void editWithAi();
   });
+  // One AI edit at a time; the document it was asked for stays read-only until its answer is in.
+  const run = /** @type {HTMLButtonElement | null} */ (find('[data-canvas-ai-run]'));
+  if (run) run.disabled = state.editing;
+  if (area) area.readOnly = state.editing && editingId === artifact.id;
   showVersion();
+}
+
+/** Takes the document off the canvas (its chat was deleted). */
+function forget() {
+  state.artifact = null;
+  state.list = [];
+  state.index = 0;
+  state.dirty = false;
+  render();
+}
+
+/**
+ * Stores a new record of a document the store keeps, unless the document went in the meantime
+ * (its chat was deleted): nothing writes a deleted chat's document back.
+ * @param {CanvasArtifact} next
+ * @returns {Promise<CanvasArtifact | null>} null: the document is gone
+ */
+async function storeKept(next) {
+  if (deletedChats.has(next.conversationId)) return null;
+  let kept = true;
+  if (!pageOnly.has(next.id)) {
+    try {
+      kept = Boolean(await state.store.get(next.id));
+    } catch {
+      // The store cannot be read: the write below says whether it takes the record.
+    }
+  }
+  if (!kept) return null;
+  const stored = await state.store.put(next);
+  pageOnly.delete(next.id);
+  return stored;
+}
+
+/**
+ * Whether a document stays on this device: it says so, or one of the answers it came from stays
+ * (documents opened before they said so). A message that cannot be read counts as staying.
+ * @param {CanvasArtifact} artifact
+ */
+async function staysHere(artifact) {
+  if (artifact.localOnly) return true;
+  for (const id of sourceNodes(artifact)) {
+    try {
+      if ((await nodeOf(id))?.localOnly) return true;
+    } catch {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * A stored message of the chats.
+ * @param {string} id
+ * @returns {Promise<NodeRecord | null | undefined>}
+ */
+async function nodeOf(id) {
+  if (state.deps.nodeOf) return state.deps.nodeOf(id);
+  return (await chatData()).getNode(id);
+}
+
+/**
+ * Follows the conversation store: the document of a deleted chat leaves the canvas.
+ * @param {ChatChange} change
+ */
+function onChatChange(change) {
+  const open = state.artifact;
+  if (change.kind === 'conversation' && change.op === 'delete') {
+    deletedChats.add(change.id);
+    if (open?.conversationId === change.id) forget();
+  } else if (change.kind === 'all' && open) {
+    // Every chat deleted (or chats imported): the document stays when the store still keeps it.
+    void state.store.get(open.id).then(
+      (kept) => {
+        if (!kept && !pageOnly.has(open.id) && state.artifact?.id === open.id) forget();
+      },
+      () => {},
+    );
+  }
 }
 
 /**
@@ -444,7 +557,12 @@ async function keepDraft() {
   const area = editor();
   if (!state.artifact || !state.dirty || !area) return;
   const { artifact, index } = withVersion(state.artifact, { content: area.value, at: Date.now(), by: 'you' });
-  state.artifact = await state.store.put(artifact);
+  const kept = await storeKept(artifact);
+  if (!kept) {
+    forget();
+    return;
+  }
+  state.artifact = kept;
   state.index = index;
   state.dirty = false;
 }
@@ -463,7 +581,8 @@ async function refreshList() {
 /**
  * Opens a block of an answer in the canvas: as a version of the document it continues, or as a new
  * document (see the file comment).
- * @param {CanvasBlock & { nodeId?: string, model?: string, conversationId?: string }} block
+ * @param {CanvasBlock & { nodeId?: string, model?: string, conversationId?: string, localOnly?: boolean }} block
+ *   localOnly: the block shows content that stays on this device (else the answer `nodeId` says)
  * @returns {Promise<CanvasArtifact | null>}
  */
 export async function openInCanvas(block) {
@@ -471,7 +590,17 @@ export async function openInCanvas(block) {
   if (!code.trim()) return null;
   await keepDraft();
   const conversationId = block.conversationId ?? currentSessionId();
-  const full = { code, language: String(block.language ?? '').toLowerCase(), title: String(block.title ?? ''), conversationId, nodeId: block.nodeId ?? '', model: block.model };
+  if (deletedChats.has(conversationId)) return null;
+  const nodeId = block.nodeId ?? '';
+  let localOnly = block.localOnly === true;
+  if (!localOnly && nodeId) {
+    try {
+      localOnly = (await nodeOf(nodeId))?.localOnly === true;
+    } catch {
+      localOnly = true;
+    }
+  }
+  const full = { code, language: String(block.language ?? '').toLowerCase(), title: String(block.title ?? ''), conversationId, nodeId, model: block.model, localOnly };
   /** @type {CanvasArtifact[]} */
   let list = [];
   try {
@@ -491,10 +620,15 @@ export async function openInCanvas(block) {
     artifact = newArtifact(full);
     index = 0;
   }
+  // Content that stays on this device makes the whole document stay.
+  const marked = localOnly && !artifact.localOnly;
+  if (marked) artifact = { ...artifact, localOnly: true };
   try {
-    if (added) await state.store.put(artifact);
+    if (added || marked) await state.store.put(artifact);
+    pageOnly.delete(artifact.id);
   } catch (err) {
     // The document still opens; it is not kept beyond this page.
+    pageOnly.add(artifact.id);
     console.warn('[starpi] the canvas document could not be stored', err);
   }
   state.artifact = artifact;
@@ -516,18 +650,25 @@ async function saveVersion() {
 }
 
 /**
- * Asks a question as a new turn of the chat and returns its answer (the chat's own path).
+ * Asks a question as a new turn of the chat and returns its answer (the chat's own path). A
+ * question that stays on this device is asked only when the chosen model answers here or on the
+ * own server, and it is stored as staying here.
  * @param {string} question
  * @param {string} conversationId
- * @returns {Promise<{ node: NodeRecord } | { error: 'busy' | 'no_answer' }>}
+ * @param {{ localOnly: boolean }} opts
+ * @returns {Promise<AskResult>}
  */
-async function askInChat(question, conversationId) {
+async function askInChat(question, conversationId, opts) {
   const chat = await import('../chat.js');
   if (chat.isChatBusy()) return { error: 'busy' };
+  if (opts.localOnly) {
+    const [{ answersHere }, { getAssistant }] = await Promise.all([import('./thread.js'), import('../state.js')]);
+    if (!(await answersHere(getAssistant()))) return { error: 'stays_on_device' };
+  }
   if (currentSessionId() !== conversationId) await chat.openConversation(conversationId);
   const asked = question.trim().slice(0, LIMITS.chatInputChars);
   const started = Date.now();
-  await chat.submitChat(question, { chatMode: 'free' });
+  await chat.submitChat(question, { chatMode: 'free', ...(opts.localOnly ? { localOnly: true } : {}) });
   const thread = await (await chatData()).loadThread(conversationId);
   const answer = thread?.path.at(-1);
   const q = thread?.path.at(-2);
@@ -548,39 +689,57 @@ async function editWithAi() {
     return;
   }
   const { start, end } = state.selection;
-  await keepDraft();
-  const base = artifact.id === state.artifact?.id ? (state.artifact?.versions[state.index]?.content ?? area.value) : area.value;
-  const req = editRequest({ title: artifact.title, language: artifact.language, instruction, document: base, start, end });
   state.editing = true;
+  editingId = artifact.id;
   const run = /** @type {HTMLButtonElement | null} */ (find('[data-canvas-ai-run]'));
   if (run) run.disabled = true;
-  area.readOnly = true;
-  showDirty();
-  status('canvas.edit.running');
-  pendingEdit = { question: req.question.trim().slice(0, LIMITS.chatInputChars), note: req.note };
   try {
+    await keepDraft();
+    // Unsaved changes became a version (or the document went with its chat).
+    const doc = state.artifact?.id === artifact.id ? state.artifact : null;
+    if (!doc) return;
+    const base = doc.versions[state.index]?.content ?? area.value;
+    const req = editRequest({ title: doc.title, language: doc.language, instruction, document: base, start, end });
+    const localOnly = await staysHere(doc);
+    area.readOnly = true;
+    showDirty();
+    status('canvas.edit.running');
+    pendingEdit = { question: req.question.trim().slice(0, LIMITS.chatInputChars), note: req.note };
     const ask = state.deps.ask ?? askInChat;
-    const res = await ask(req.question, artifact.conversationId);
+    const res = await ask(req.question, doc.conversationId, { localOnly });
     if ('error' in res) {
-      status(res.error === 'busy' ? 'canvas.edit.busy' : 'canvas.edit.failed');
+      status(res.error === 'busy' ? 'canvas.edit.busy' : res.error === 'stays_on_device' ? 'canvas.edit.stays_on_device' : 'canvas.edit.failed');
       return;
     }
     const replacement = extractReplacement(nodeText(res.node));
     const content = end > start ? replaceRange(base, start, end, replacement) : replacement;
     const model = res.node.model ? String(res.node.model) : '';
-    // The newest record of the document (the canvas may show another one by now).
-    const current = state.artifact?.id === artifact.id ? state.artifact : ((await state.store.get(artifact.id)) ?? artifact);
-    const next = withVersion(current, { content, at: Date.now(), by: 'ai', nodeId: res.node.id, ...(model ? { model } : {}) });
-    state.artifact = await state.store.put(next.artifact);
-    state.index = next.index;
-    input.value = '';
-    showVersion();
-    status('canvas.edit.done', { n: formatNumber(next.index + 1) });
+    // The newest record of the document: the canvas may show another one by now, or none (deleted).
+    const current = state.artifact?.id === doc.id ? state.artifact : pageOnly.has(doc.id) ? doc : await state.store.get(doc.id);
+    const next = current ? withVersion(current, { content, at: Date.now(), by: 'ai', nodeId: res.node.id, ...(model ? { model } : {}) }) : null;
+    const kept = next ? await storeKept(localOnly || res.node.localOnly ? { ...next.artifact, localOnly: true } : next.artifact) : null;
+    if (!next || !kept) {
+      if (state.artifact?.id === doc.id) forget();
+      status('canvas.edit.gone');
+      return;
+    }
+    if (state.artifact?.id === doc.id) {
+      state.artifact = kept;
+      state.index = next.index;
+      input.value = '';
+      showVersion();
+      status('canvas.edit.done', { n: formatNumber(next.index + 1) });
+    } else {
+      // The canvas shows another document now: it stays as it is, the answer went to its own.
+      state.list = state.list.map((a) => (a.id === kept.id ? kept : a));
+      status('canvas.edit.done_other', { n: formatNumber(next.index + 1), title: titleOf(kept) });
+    }
   } catch (err) {
     console.warn('[starpi] the AI edit failed', err);
     status('canvas.edit.failed');
   } finally {
     pendingEdit = null;
+    editingId = '';
     state.editing = false;
     const again = editor();
     if (again) again.readOnly = false;
@@ -693,6 +852,9 @@ export function mountCanvas(el, deps = {}) {
   wired = true;
   // The document goes along with the AI edit's question, in the turn's context block.
   registerTurnNotes((ctx) => (pendingEdit && ctx.question === pendingEdit.question ? [pendingEdit.note] : []));
+  // A deleted chat takes its documents along; the canvas follows.
+  const follow = deps.onChatChange ?? (async (/** @type {(change: ChatChange) => void} */ listener) => (await chatData()).onChange(listener));
+  follow(onChatChange).catch((err) => console.warn('[starpi] the canvas cannot follow the chats', err));
   onAction('canvas-mode', (btn) => {
     const mode = btn.dataset.arg === 'read' ? 'read' : 'edit';
     if (mode === state.mode) return;

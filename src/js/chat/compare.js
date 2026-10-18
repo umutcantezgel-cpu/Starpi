@@ -12,8 +12,10 @@
  *   the same system prompt, the history it may see (turns that stay on this device only for the
  *   models here) and the question. Each column streams on its own (chat/runner.js runAnswer with
  *   that one model, no fallback to another), so one slow or failing model holds up no other.
- * - Each finished column is labelled as the thread labels a free answer (thread.js presentAnswer:
- *   "not checked", a stop before the end, the web pages it cites).
+ * - Each finished column is labelled as the thread labels a free answer (thread.js presentAnswer on
+ *   the fields freeAnswerInput stores: "not checked", a stop before the end, the web pages it cites).
+ * - A column whose answer stays on this device (the model here, or a question that stays) is
+ *   marked so (data-stays-on-device); the canvas keeps a block taken from it on this device too.
  * - Models: the header picker's choices (models of this device that are not loaded stay out, as a
  *   download would start), different providers first.
  */
@@ -283,6 +285,8 @@ function paintColumn(i) {
   const el = col?.el;
   if (!col || !el) return;
   el.dataset.status = col.status;
+  // An answer that stays on this device says so to whoever takes its content (the canvas).
+  el.toggleAttribute('data-stays-on-device', col.target?.route === 'device' || state.prepared?.question.localOnly === true);
   const model = /** @type {HTMLElement} */ (el.querySelector('[data-column-model]'));
   model.textContent = servedLabel(col);
   const chip = STATUS[col.status];
@@ -461,7 +465,10 @@ async function runColumn(i) {
       }
       paintBody(i, true);
       finish(i, signal.aborted ? 'stopped' : 'done', null);
-      if (col.el) (await threadModule()).presentAnswer(col.el, provisionalNode(col, prepared));
+      if (col.el) {
+        const thread = await threadModule();
+        thread.presentAnswer(col.el, provisionalNode(col, prepared, thread));
+      }
     } catch (err) {
       if (frame) cancelAnimationFrame(frame);
       col.durationMs = Math.round(performance.now() - col.startedAt);
@@ -491,28 +498,33 @@ function finish(i, status, error) {
 }
 
 /**
- * A column's answer as it would be stored (for its label).
+ * A column's answer as it would be stored (for its labels: the web pages it cites, its grounding
+ * suggestions, a stop before the end), from the fields the thread stores for a free answer.
  * @param {Column} col
  * @param {PreparedQuestion} prepared
+ * @param {typeof import('./thread.js')} thread
  * @returns {NodeRecord}
  */
-function provisionalNode(col, prepared) {
-  const result = /** @type {CompletionResult} */ (col.result);
-  const target = /** @type {Target} */ (col.target);
+function provisionalNode(col, prepared, thread) {
+  const answer = thread.freeAnswerInput({
+    question: prepared.question,
+    target: /** @type {Target} */ (col.target),
+    result: /** @type {CompletionResult} */ (col.result),
+    durationMs: col.durationMs,
+    aborted: col.status === 'stopped',
+  });
   return {
+    ...answer,
     id: `compare-${state.columns.indexOf(col)}`,
     conversationId: state.conversationId,
     parentId: prepared.question.id,
-    role: 'assistant',
-    parts: [{ type: 'text', text: result.text }],
-    opaque: [],
-    model: result.model,
-    provider: result.provider,
-    label: 'free',
-    usage: null,
-    localOnly: target.route === 'device' || prepared.question.localOnly,
+    opaque: answer.opaque ?? [],
+    model: answer.model ?? null,
+    provider: answer.provider ?? null,
+    label: answer.label ?? 'free',
+    usage: answer.usage ?? null,
+    localOnly: answer.localOnly === true,
     createdAt: Date.now(),
-    meta: { chat_mode: 'free', stop_reason: col.status === 'stopped' ? 'cancelled' : result.stopReason },
   };
 }
 

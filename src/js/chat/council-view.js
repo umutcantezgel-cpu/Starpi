@@ -11,8 +11,9 @@
  *   composer (stored with the result). The drafts get the request the thread's free route would
  *   send (thread.js prepareQuestion): the same system prompt, history and question. A question
  *   that stays on this device is not sent to a council.
- * - Members and judge come from the models that are set up: the providers' role models, the own
- *   server's first model and the model loaded on this device.
+ * - Members and judge come from the models that are set up: the providers' role models and the own
+ *   server's first model. The model on this device takes no part: it writes one answer at a time,
+ *   so the drafts and the judge would queue behind each other.
  * - The stored answer keeps a bounded copy of the council (members, drafts, the judge's reasons), so
  *   the thread shows how it was decided under the answer (an answer decorator) after a reload too.
  */
@@ -28,7 +29,7 @@ import { getPinnedModel } from '../ai/model-selection.js';
 import { rolePool } from '../ai/roles.js';
 import { routerDeps } from '../ai/router.js';
 import { patchChildren, panelParts, renderCouncilPanel } from '../ui/council-panel.js';
-import { capsOf, deviceModel } from './runner.js';
+import { capsOf } from './runner.js';
 
 /** @typedef {import('../ai/council.js').CouncilResult} CouncilResult */
 /** @typedef {import('../ai/council.js').CouncilOptions} CouncilOptions */
@@ -48,8 +49,8 @@ const REASON_CHARS = 300;
 // ---------------------------------------------------------------------------------------------
 
 /**
- * The council's pool: the providers' role models and the extra models (the own server, this
- * device), each model once.
+ * The council's pool: the providers' role models and the extra models (the own server), each model
+ * once.
  * @param {readonly PoolEntry[]} base
  * @param {readonly PoolEntry[]} extras
  * @returns {PoolEntry[]}
@@ -74,8 +75,6 @@ function setUpPool() {
     const model = deps.liveModels('local')?.[0] ?? providerState().serverModels[0];
     if (model) extras.push({ provider: 'local', model, roles: ['fast'], pinned: false });
   }
-  const device = deviceModel();
-  if (device) extras.push({ provider: device.provider, model: device.model, roles: ['fast'], pinned: false });
   return councilPool(base, extras);
 }
 
@@ -265,6 +264,7 @@ export async function askCouncil(ask) {
     await notice('canvas.council.stays_on_device_title', 'canvas.council.stays_on_device_body');
     return null;
   }
+  // The model on this device stays out (see the file comment), also from a pool that was handed in.
   const pool = [...(ask.pool ?? setUpPool())].filter((e) => e.provider !== 'webgpu' && e.provider !== 'wasm');
   const shared = sharedTarget(pool);
   const providers = new Set(pool.map((e) => e.provider));
