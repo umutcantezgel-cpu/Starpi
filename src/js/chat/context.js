@@ -329,10 +329,12 @@ function showSuggestions(nodeId, ideas, scope, toast) {
 
 /** @type {HTMLElement | null} */
 let chipHost = null;
+/** @type {HTMLElement | null} */
+let chipMount = null;
 
 async function refreshChip() {
   const host = chipHost;
-  if (!host) return;
+  if (!host || !chipMount) return;
   const id = currentSessionId();
   const { project, assistant } = await contextOf(id).catch(() => ({ project: null, assistant: null }));
   if (host !== chipHost || id !== currentSessionId()) return;
@@ -340,8 +342,14 @@ async function refreshChip() {
     project ? html`<span class="chip chip-neutral max-w-[10rem]" title="${t('memory.chip.project', { name: project.name })}" data-context-chip="project">${icon('folder', '')}<span class="truncate">${project.name}</span></span>` : '',
     assistant ? html`<span class="chip chip-neutral max-w-[10rem]" title="${t('memory.chip.assistant', { name: assistant.name })}" data-context-chip="assistant">${icon(assistant.icon, '')}<span class="truncate">${assistant.name}</span></span>` : '',
   ];
+  // Without a project or assistant the mount point stays empty (and hidden).
+  if (!project && !assistant) {
+    host.remove();
+    return;
+  }
   host.innerHTML = html`${chips}`.value;
   refreshIcons(host);
+  if (!host.isConnected) chipMount.prepend(host);
 }
 
 /**
@@ -349,9 +357,9 @@ async function refreshChip() {
  * @param {HTMLElement} el
  */
 export function mountContextChip(el) {
+  chipMount = el;
   chipHost = document.createElement('span');
-  chipHost.className = 'hidden sm:flex items-center gap-1 empty:hidden';
-  el.append(chipHost);
+  chipHost.className = 'hidden sm:flex items-center gap-1';
   const refresh = () => void refreshChip();
   onSessionChange(refresh);
   onLocaleChange(refresh);

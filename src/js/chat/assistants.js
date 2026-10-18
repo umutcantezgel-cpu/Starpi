@@ -288,13 +288,13 @@ export function mountAssistantsSection(host, deps) {
   let alive = true;
   /** @type {Array<() => void>} */
   const cleanups = [];
-  const ghost = 'rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900';
+  const ghost = 'rounded-md p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900';
 
   /** @param {AssistantRecord} a */
   const row = (a) =>
     html`<li class="group flex items-center gap-0.5" data-assistant-id="${a.id}">
       <button type="button" data-as="start" data-id="${a.id}" class="flex-1 min-w-0 flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] text-slate-700 transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900" title="${t('memory.assistants.start_named', { name: a.name })}">${icon(a.icon, 'w-3.5 h-3.5 flex-shrink-0 text-amber-600')}<span class="truncate">${a.name}</span></button>
-      <button type="button" data-as="edit" data-id="${a.id}" class="flex-shrink-0 ${ghost} p-1.5" aria-label="${t('memory.assistants.edit_named', { name: a.name })}" title="${t('memory.assistants.edit_named', { name: a.name })}">${icon('pencil', 'w-3.5 h-3.5')}</button>
+      <button type="button" data-as="edit" data-id="${a.id}" class="flex-shrink-0 ${ghost}" aria-label="${t('memory.assistants.edit_named', { name: a.name })}" title="${t('memory.assistants.edit_named', { name: a.name })}">${icon('pencil', 'w-3.5 h-3.5')}</button>
     </li>`;
 
   function render() {

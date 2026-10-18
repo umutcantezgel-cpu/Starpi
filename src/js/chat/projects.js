@@ -385,7 +385,7 @@ export function mountProjectsSection(host, deps) {
     host.innerHTML = html`<section class="pt-1" aria-labelledby="sbProjectsTitle">
       <div class="flex items-center justify-between gap-1 px-2">
         <h2 id="sbProjectsTitle" class="text-[11px] font-semibold uppercase tracking-wide text-slate-500" data-i18n="memory.projects.title">${t('memory.projects.title')}</h2>
-        <button type="button" data-pj="new" class="rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900" aria-label="${t('memory.projects.new')}" data-i18n-aria="memory.projects.new" title="${t('memory.projects.new')}" data-i18n-title="memory.projects.new">${icon('folder-plus', 'w-3.5 h-3.5')}</button>
+        <button type="button" data-pj="new" class="rounded-md p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900" aria-label="${t('memory.projects.new')}" data-i18n-aria="memory.projects.new" title="${t('memory.projects.new')}" data-i18n-title="memory.projects.new">${icon('folder-plus', 'w-3.5 h-3.5')}</button>
       </div>
       ${state.projects.length ? html`<ul class="mt-1 space-y-0.5">${state.projects.map(projectRow)}</ul>` : label('memory.projects.empty', { tag: 'p', className: 'px-2 pb-1 text-[11px] text-slate-500 leading-snug' })}
     </section>`.value;
