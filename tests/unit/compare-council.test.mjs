@@ -196,7 +196,7 @@ describe('compare in the side panel', () => {
     for (const col of columns()) {
       assert.equal(col.dataset.status, 'done');
       assert.match(col.querySelector('[data-column-body]')?.textContent ?? '', /simulated answer from the local test provider/);
-      assert.ok(col.querySelector('.free-note'), 'labelled as a free answer');
+      assert.ok(col.querySelector('[data-answer-label="free"]'), 'labelled as a free answer');
       const stats = col.querySelector('[data-column-stats]')?.textContent ?? '';
       assert.match(stats, /\d s/);
       assert.match(stats, /in · \d+ out tokens/);
@@ -228,7 +228,7 @@ describe('compare in the side panel', () => {
     assert.equal(shown.dataset.nodeId, fresh?.id);
     assert.equal(shown.querySelector('.branch-pos')?.textContent, '2/2');
     assert.match(shown.querySelector('[data-compared]')?.textContent ?? '', /Chosen in a comparison of 3 models/);
-    assert.ok(shown.querySelector('.free-note'));
+    assert.ok(shown.querySelector('[data-answer-label="free"]'));
     assert.match(columns()[1].textContent ?? '', /In the chat as the newest branch/);
   });
 
@@ -394,7 +394,7 @@ describe('the council in the chat', () => {
     assert.match(shown.querySelector('[data-council-label]')?.textContent ?? '', /Council · the judge's choice/);
     assert.equal(shown.querySelectorAll('[data-council-details] [data-member]').length, 3, 'the drafts can be read under the answer');
     assert.ok(shown.querySelector('[data-council-details] [data-judge]'));
-    assert.ok(shown.querySelector('.free-note'), 'not checked, like every free answer');
+    assert.ok(shown.querySelector('[data-answer-label="free"]'), 'not checked, like every free answer');
     assert.equal(shown.querySelector('.branch-pos')?.textContent, '2/2');
   });
 
