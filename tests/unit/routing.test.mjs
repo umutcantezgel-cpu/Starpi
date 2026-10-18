@@ -221,12 +221,13 @@ describe('web passages', () => {
   it('turns the pages of a search answer into passages of the parts that rest on them', () => {
     const hits = webHits(answer);
     assert.deepEqual(
-      hits.map((h) => [h.documentId, h.documentTitle, h.heading, h.content]),
+      hits.map((h) => [h.web?.url, h.documentTitle, h.heading, h.content]),
       [
         ['https://news.example/cars', 'Car news', 'news.example', 'Electric cars sold well in 2025. Prices fell.'],
         ['https://prices.example/', 'prices.example', 'prices.example', 'Prices fell.'],
       ],
     );
+    assert.ok(hits.every((h) => h.documentId === null && !h.workspace), 'a web page is no library document');
     assert.equal(webHits(answer, 1).length, 1);
   });
 

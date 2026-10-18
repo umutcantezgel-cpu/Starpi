@@ -338,9 +338,10 @@ export const MAX_WEB_PASSAGES = 6;
 const WEB_PASSAGE_CHARS = 1600;
 
 /**
- * The pages of a search answer as passages for a context pack, in the shape of library hits: each
- * page with the parts of the answer that rest on it (only those; a page without one gives no
- * passage, as nothing says what it contains).
+ * The pages of a search answer as passages for a context pack, in the shape of library hits marked
+ * as web passages (`web.url`, no library document id, so citations and receipts never take them for
+ * the knowledge base): each page with the parts of the answer that rest on it (only those; a page
+ * without one gives no passage, as nothing says what it contains).
  * @param {WebAnswer} answer
  * @param {number} [max]
  * @returns {KnowledgeHit[]}
@@ -369,7 +370,7 @@ export function webHits(answer, max = MAX_WEB_PASSAGES) {
       // keep the address as it is
     }
     const content = list.join(' ').slice(0, WEB_PASSAGE_CHARS);
-    out.push({ documentId: source.uri, documentTitle: (source.title || host).slice(0, 120), heading: host, content, tags: ['web'], rank: null });
+    out.push({ documentId: null, documentTitle: (source.title || host).slice(0, 120), heading: host, content, tags: ['web'], rank: null, web: { url: source.uri } });
   });
   return out;
 }

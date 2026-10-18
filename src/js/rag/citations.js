@@ -12,6 +12,14 @@ import { getChunkContext } from './workspace.js';
 /** @typedef {import('../retrieval.js').Citation} Citation */
 
 const MAX_SCOPES = 200;
+
+/** Where a citation comes from: its icon, its name in the drawer and the note under its excerpt. */
+const SOURCE_TEXT = Object.freeze({
+  workspace: { icon: 'file-text', source: 'citation.source_workspace', score: 'citation.score_bm25', note: 'citation.loading_context' },
+  knowledge: { icon: 'database', source: 'citation.source_knowledge', score: 'citation.score_rank', note: 'citation.note_knowledge' },
+  // A web passage is what the search said about a page, so the drawer links the page itself.
+  web: { icon: 'globe', source: 'citation.source_web', score: 'citation.score_rank', note: 'citation.note_web' },
+});
 /** @type {Map<string, Citation[]>} */
 const scopes = new Map();
 let scopeSeq = 0;
@@ -55,7 +63,7 @@ export function citationButton(scope, index, variant) {
   btn.setAttribute('data-i18n-params', JSON.stringify({ doc: c.doc, chunk: c.chunk }));
   btn.setAttribute('aria-label', t('citation.open', { doc: c.doc, chunk: c.chunk }));
   const icon = document.createElement('i');
-  icon.dataset.lucide = c.source === 'workspace' ? 'file-text' : 'database';
+  icon.dataset.lucide = SOURCE_TEXT[c.source].icon;
   icon.className = 'w-3 h-3';
   // Two parts, so a long document name is cut and the chunk number that tells chips apart is not.
   const name = document.createElement('span');
@@ -158,19 +166,23 @@ async function openCitation(arg, trigger) {
 
   const docEl = byId('citationModalDoc');
   if (docEl) docEl.textContent = c.doc;
-  setText(byId('citationModalSource'), c.source === 'workspace' ? 'citation.source_workspace' : 'citation.source_knowledge');
+  const text = SOURCE_TEXT[c.source];
+  setText(byId('citationModalSource'), text.source);
   const chunkEl = byId('citationModalChunkIdx');
   if (chunkEl) chunkEl.textContent = String(c.chunk);
   const scoreEl = byId('citationModalScore');
   if (scoreEl) scoreEl.textContent = c.score === null ? '–' : formatNumber(c.score, { maximumFractionDigits: 3 });
-  setText(byId('citationModalScoreLabel'), c.source === 'workspace' ? 'citation.score_bm25' : 'citation.score_rank');
+  setText(byId('citationModalScoreLabel'), text.score);
   const offsets = byId('citationModalOffsets');
   if (offsets) offsets.textContent = c.span ? `${formatNumber(c.span.start)}–${formatNumber(c.span.end)}` : '–';
   const note = byId('citationModalNote');
   const token = ++openSeq;
 
   renderHighlighted(content, { before: '', match: c.text, after: '', cutStart: false, cutEnd: false });
-  setText(note, c.source === 'workspace' ? 'citation.loading_context' : 'citation.note_knowledge');
+  setText(note, text.note);
+  note?.parentElement?.querySelector('.citation-page-link')?.remove();
+  const page = c.source === 'web' ? pageUrl(c.url) : null;
+  if (note && page) note.after(pageLink(page));
   openDialog(modal, { trigger, initialFocus: modal.querySelector('[data-action="close-citation"]') });
 
   if (c.span) {
@@ -191,6 +203,36 @@ async function openCitation(arg, trigger) {
       setText(note, 'citation.note_missing');
     }
   }
+}
+
+/**
+ * The address of a web passage's page, when it is a web address.
+ * @param {string | undefined} raw
+ */
+function pageUrl(raw) {
+  try {
+    const url = new URL(String(raw ?? ''));
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A link to the page a web passage rests on, under the excerpt in the drawer.
+ * @param {URL} url
+ */
+function pageLink(url) {
+  const p = document.createElement('p');
+  p.className = 'citation-page-link mt-1 text-[11px]';
+  const a = document.createElement('a');
+  a.href = url.href;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.className = 'text-sky-800 underline hover:text-sky-950 break-all';
+  setText(a, 'citation.open_page', { host: url.host });
+  p.append(a);
+  return p;
 }
 
 function closeCitation() {

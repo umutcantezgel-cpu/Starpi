@@ -22,6 +22,7 @@ import { withTimeoutSignal } from './signals.js';
  * @property {string[]} tags
  * @property {number | null} rank
  * @property {{ docId: string, chunkIndex: number, start: number, end: number }} [workspace] set for chunks from the on-device workspace
+ * @property {{ url: string }} [web] set for passages from a web search: the page they rest on
  */
 
 /**

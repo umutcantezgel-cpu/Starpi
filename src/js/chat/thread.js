@@ -1551,50 +1551,56 @@ async function answerGrounded(q, signal, placement = {}) {
             localOnly,
           });
       renderAnswerLabel(messageEl, answerLabel);
-      const docs = new Map(listWorkspace().map((d) => [d.docId, d]));
-      /** @type {import('../core/receipt.js').ReceiptDraft} */
-      let draft = {
-        createdAt: new Date().toISOString(),
-        version: APP_VERSION,
-        answer: { text: answerText, engine, locale: getLocale() },
-        question: q.text,
-        grounding: report,
-        citations: citationList.map((c, i) => {
-          const doc = c.span ? docs.get(c.span.docId) : undefined;
-          return {
-            label: c.label,
-            doc: c.doc,
-            heading: c.heading,
-            source: c.source,
-            delivered: coverage[i].delivered,
-            deliveredChars: coverage[i].delivered === 'partial' && c.text.startsWith(coverage[i].text) ? coverage[i].text.length : undefined,
-            text: c.text,
-            truncated: c.truncated,
-            documentId: c.source === 'knowledge' ? c.documentId : null,
-            document: doc && { name: doc.name, kind: doc.kind, bytes: doc.bytes, fileSha256: doc.fileSha256, textSha256: doc.textSha256, textChars: doc.chars, pages: doc.pages, extractor: doc.extractor, chunker: doc.chunker },
-            chunk: c.span ? { index: c.span.chunkIndex, start: c.span.start, end: c.span.end } : undefined,
-          };
-        }),
-      };
-      const gate = await gateCounts(answerText, excerpts);
-      if (gate) draft.gate = gate;
-      // The relations the source check found across statements (comparisons, order in time, values
-      // carried over). Second opinions are asked for after the answer, with the buttons of the
-      // source check, and land in the report; the receipt reads them from there when it is built.
-      if (report) {
-        const { relations } = receiptAdvisory(report);
-        if (relations.length) draft.relations = relations;
-      }
-      for (const hook of receiptHooks) {
-        try {
-          draft = await hook(draft, { answer: answerText, question: q.text });
-        } catch (err) {
-          console.warn('[starpi] a receipt hook failed', err);
+      // A receipt vouches for passages a verifier can read again, from the workspace or the library.
+      // A web passage is what the search said about a page, not the page, and the receipt format has
+      // no place for it: an answer that rests on web pages is checked and labelled, without a receipt.
+      if (!citationList.some((c) => c.source === 'web')) {
+        const docs = new Map(listWorkspace().map((d) => [d.docId, d]));
+        /** @type {import('../core/receipt.js').ReceiptDraft} */
+        let draft = {
+          createdAt: new Date().toISOString(),
+          version: APP_VERSION,
+          answer: { text: answerText, engine, locale: getLocale() },
+          question: q.text,
+          grounding: report,
+          citations: citationList.map((c, i) => {
+            const doc = c.span ? docs.get(c.span.docId) : undefined;
+            return {
+              label: c.label,
+              doc: c.doc,
+              heading: c.heading,
+              // Only library and workspace passages reach this point (see above).
+              source: c.source === 'workspace' ? 'workspace' : 'knowledge',
+              delivered: coverage[i].delivered,
+              deliveredChars: coverage[i].delivered === 'partial' && c.text.startsWith(coverage[i].text) ? coverage[i].text.length : undefined,
+              text: c.text,
+              truncated: c.truncated,
+              documentId: c.source === 'knowledge' ? c.documentId : null,
+              document: doc && { name: doc.name, kind: doc.kind, bytes: doc.bytes, fileSha256: doc.fileSha256, textSha256: doc.textSha256, textChars: doc.chars, pages: doc.pages, extractor: doc.extractor, chunker: doc.chunker },
+              chunk: c.span ? { index: c.span.chunkIndex, start: c.span.start, end: c.span.end } : undefined,
+            };
+          }),
+        };
+        const gate = await gateCounts(answerText, excerpts);
+        if (gate) draft.gate = gate;
+        // The relations the source check found across statements (comparisons, order in time, values
+        // carried over). Second opinions are asked for after the answer, with the buttons of the
+        // source check, and land in the report; the receipt reads them from there when it is built.
+        if (report) {
+          const { relations } = receiptAdvisory(report);
+          if (relations.length) draft.relations = relations;
         }
+        for (const hook of receiptHooks) {
+          try {
+            draft = await hook(draft, { answer: answerText, question: q.text });
+          } catch (err) {
+            console.warn('[starpi] a receipt hook failed', err);
+          }
+        }
+        receiptId = storeReceiptDraft(draft);
+        messageEl.querySelector('.message-provenance')?.append(receiptButton(receiptId));
+        refreshIcons(messageEl);
       }
-      receiptId = storeReceiptDraft(draft);
-      messageEl.querySelector('.message-provenance')?.append(receiptButton(receiptId));
-      refreshIcons(messageEl);
     }
     const target = run?.target ?? null;
     const result = run?.result;

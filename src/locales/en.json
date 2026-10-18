@@ -317,6 +317,7 @@
     "open": "Open source: {doc}, chunk {chunk}",
     "source_workspace": "On-device workspace",
     "source_knowledge": "Knowledge base",
+    "source_web": "Web page",
     "chunk": "Chunk",
     "score_bm25": "BM25 score",
     "score_rank": "Search rank",
@@ -325,6 +326,8 @@
     "loading_context": "Loading the surrounding text…",
     "note_workspace": "Highlighted: the cited chunk inside the text extracted from the file ({length} characters).",
     "note_knowledge": "The excerpt from the knowledge base as it was cited.",
+    "note_web": "What the web search said about this page, as it was cited, not the page itself.",
+    "open_page": "Open the page ({host})",
     "note_missing": "The file is no longer in the workspace; showing the cited excerpt."
   },
   "grounding": {

@@ -134,7 +134,7 @@ export function distinctSources(hits) {
   /** @type {Map<string, { title: string, rank: number | null }>} */
   const seen = new Map();
   for (const h of hits) {
-    const key = h.documentId ?? h.documentTitle;
+    const key = h.documentId ?? h.web?.url ?? h.documentTitle;
     if (!seen.has(key)) seen.set(key, { title: h.documentTitle, rank: h.rank });
   }
   return [...seen.values()];
@@ -145,13 +145,14 @@ export function distinctSources(hits) {
  * @property {string} label       exact label shown to the model and the user, e.g. "[Doc: a.pdf, Chunk: 2]"
  * @property {string} doc         document or file name
  * @property {number} chunk       1-based chunk number within the document
- * @property {'workspace' | 'knowledge'} source  on-device workspace or Supabase knowledge base
+ * @property {'workspace' | 'knowledge' | 'web'} source  on-device workspace, Supabase knowledge base, or a page of a web search
  * @property {string} heading
  * @property {string} text        the excerpt text as given to the model (cut to the excerpt limit)
  * @property {boolean} truncated  whether `text` was cut, i.e. ends before the retrieved passage does
  * @property {number | null} score  BM25 score (workspace) or search rank (knowledge base)
  * @property {string | null} documentId  knowledge-base document id, or the workspace document id
  * @property {{ docId: string, chunkIndex: number, start: number, end: number } | null} span  workspace chunk and its character offsets in the extracted text
+ * @property {string} [url]   the page of a web passage (its text is what the search said about the page, not the page)
  */
 
 /**
@@ -189,13 +190,14 @@ export function assignCitations(hits, limits) {
       label,
       doc,
       chunk,
-      source: h.workspace ? 'workspace' : 'knowledge',
+      source: h.workspace ? 'workspace' : h.web ? 'web' : 'knowledge',
       heading: h.heading.replace(/^#+\s*/, ''),
       text: truncated ? `${safeSlice(h.content, limits.excerptChars)}…` : h.content,
       truncated,
       score: h.rank,
       documentId: h.documentId ?? null,
       span: h.workspace ? { docId: h.workspace.docId, chunkIndex: h.workspace.chunkIndex, start: h.workspace.start, end: h.workspace.end } : null,
+      ...(h.web ? { url: h.web.url } : {}),
     });
   }
   return out;
