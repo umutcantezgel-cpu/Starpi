@@ -235,7 +235,9 @@
             "from_conversation",
             "not_delivered",
             "negation_inversion",
-            "name_context"
+            "name_context",
+            "relation_inverted",
+            "relation_unsupported"
           ]
         },
         "level": { "enum": ["weak", "unsupported"] },

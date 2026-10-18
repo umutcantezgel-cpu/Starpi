@@ -60,6 +60,9 @@ const INTEGRITY_WORKER_PLACEHOLDER = '__STARPI_INTEGRITY_WORKER_URL__';
 const ORT_WASM_PLACEHOLDER = '__STARPI_ORT_WASM_URL__';
 const RENDER_EXTRAS_PLACEHOLDER = '__STARPI_RENDER_EXTRAS_URL__';
 const SUPABASE_LIB_PLACEHOLDER = '__STARPI_SUPABASE_LIB_URL__';
+// The microphone's AudioWorklet (src/js/voice/capture.js loads it with audioWorklet.addModule()).
+const PCM_WORKLET_PLACEHOLDER = '__STARPI_PCM_WORKLET_URL__';
+const PCM_WORKLET = 'src/js/voice/pcm-worklet.js';
 
 const RENDER_EXTRAS = 'src/js/render-extras.js';
 const SUPABASE_LIB = 'src/js/supabase-lib.js';
@@ -166,6 +169,7 @@ const URL_PLACEHOLDERS = Object.freeze({
   [ORT_WASM_PLACEHOLDER]: 'ort-wasm-simd-threaded.wasm',
   [RENDER_EXTRAS_PLACEHOLDER]: RENDER_EXTRAS,
   [SUPABASE_LIB_PLACEHOLDER]: SUPABASE_LIB,
+  [PCM_WORKLET_PLACEHOLDER]: PCM_WORKLET,
 });
 /** Placeholders a source may use but need not: their entry is optional, or nothing refers to it by URL. */
 const OPTIONAL_PLACEHOLDERS = new Set([RENDER_EXTRAS_PLACEHOLDER]);
@@ -222,6 +226,7 @@ function entryPoints() {
     'ingest-worker': 'src/js/rag/ingest.worker.js',
     'wasm-worker': 'src/js/wasm/worker.js',
     'integrity-worker': 'src/js/models/integrity.worker.js',
+    'pcm-worklet': PCM_WORKLET,
     supabase: SUPABASE_LIB,
     ...(present(RENDER_EXTRAS) ? { 'render-extras': RENDER_EXTRAS } : {}),
     app: 'src/styles/entry.css',

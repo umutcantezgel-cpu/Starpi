@@ -1,10 +1,11 @@
 // Version 2 of the source check: negations, names and values bound to the wrong thing, and version
-// numbers; version 1 stays available and unchanged.
+// numbers; version 1 stays available and unchanged. The checks here run version 2 explicitly (version
+// 3 adds relations, tests/unit/grounding-v3.test.mjs).
 import './setup.mjs';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { extractFacts, indexSource, lookupFact } from '../../src/js/core/facts.js';
-import { blocksFromMarkdown, GROUNDING, GROUNDING_VERSIONS, groundAnswer, REASON_CODES, REASON_CODES_V1 } from '../../src/js/core/grounding.js';
+import { blocksFromMarkdown, GROUNDING_VERSIONS, groundAnswer, REASON_CODES_V1, REASON_CODES_V2 } from '../../src/js/core/grounding.js';
 import { canonicalText, clausesOf, polarityDiffers, profileClause } from '../../src/js/core/polarity.js';
 import { unitsOf } from '../../src/js/core/binding.js';
 import { buildReceipt, validateReceipt, verifyReceipt } from '../../src/js/core/receipt.js';
@@ -38,13 +39,14 @@ const EN = [source(SPEC_EN, '[Doc: spec.md, Chunk: 1]')];
 const DE = [source(SPEC_DE, '[Doc: spez.md, Chunk: 1]')];
 
 /**
- * Verdict and reason codes of each checked statement.
+ * Verdict and reason codes of each checked statement, with version 2 of the rules unless `options`
+ * names another.
  * @param {string} answer
  * @param {ReturnType<typeof source>[]} sources
  * @param {{ version?: number, given?: string[] }} [options]
  */
 function check(answer, sources, options = {}) {
-  return groundAnswer(blocksFromMarkdown(answer, sources), sources, options)
+  return groundAnswer(blocksFromMarkdown(answer, sources), sources, { version: 2, ...options })
     .sentences.filter((s) => s.verdict !== 'neutral')
     .map((s) => `${s.verdict}${s.reasons.length ? `:${s.reasons.map((r) => r.code).join('+')}` : ''}`);
 }
@@ -52,14 +54,14 @@ const en = (/** @type {string} */ statement, /** @type {{ version?: number, give
 const de = (/** @type {string} */ statement, /** @type {{ version?: number }} */ options) => check(`${statement} [Doc: spez.md, Chunk: 1]`, DE, options)[0];
 
 describe('version 2 of the source check', () => {
-  it('is the current version, with version 1 still available', () => {
-    assert.deepEqual(GROUNDING, { id: 'starpi-grounding', version: 2 });
-    assert.deepEqual([...GROUNDING_VERSIONS], [1, 2]);
-    assert.deepEqual([...REASON_CODES], [...REASON_CODES_V1, 'negation_inversion', 'name_context']);
+  it('stays available next to version 1, with its own reason codes', () => {
+    assert.ok(GROUNDING_VERSIONS.includes(1) && GROUNDING_VERSIONS.includes(2));
+    assert.deepEqual([...REASON_CODES_V2], [...REASON_CODES_V1, 'negation_inversion', 'name_context']);
     const answer = 'Power over Ethernet is supported [Doc: spec.md, Chunk: 1].';
-    assert.equal(groundAnswer(blocksFromMarkdown(answer, EN), EN).algorithm.version, 2);
+    assert.equal(groundAnswer(blocksFromMarkdown(answer, EN), EN, { version: 2 }).algorithm.version, 2);
     assert.equal(groundAnswer(blocksFromMarkdown(answer, EN), EN, { version: 1 }).algorithm.version, 1);
-    assert.throws(() => groundAnswer(blocksFromMarkdown(answer, EN), EN, { version: 3 }), /unknown rules version 3/);
+    assert.equal(groundAnswer(blocksFromMarkdown(answer, EN), EN, { version: 2 }).relations, undefined, 'version 2 reports no relations');
+    assert.throws(() => groundAnswer(blocksFromMarkdown(answer, EN), EN, { version: 4 }), /unknown rules version 4/);
   });
 });
 

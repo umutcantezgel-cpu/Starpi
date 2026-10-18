@@ -1,24 +1,28 @@
 // @ts-check
 /// <reference lib="webworker" />
 // Processor (WASM) runtime: Transformers.js runs a catalog model on the CPU with a self-hosted ONNX
-// Runtime: a language model (src/js/models/wasm-catalog.js) or an embedding model for semantic
-// search (src/js/models/embed-catalog.js). Only catalog models load, and every download comes from
-// huggingface.co at the model's pinned revision.
+// Runtime: a language model (src/js/models/wasm-catalog.js), an embedding model for semantic
+// search or the entailment model of the source check's second opinion (src/js/models/
+// embed-catalog.js). Only catalog models load, and every download comes from huggingface.co at the
+// model's pinned revision.
 //
 // Protocol (main -> worker), handled one after another:
 //   { id, type: 'load', source: { repo, revision, dtype } }               -> progress*, ready
 //   { id, type: 'generate', messages, maxTokens, temperature, ignoreEos } -> delta*, done { usage }
 //   { id, type: 'embed', source: { repo, revision, dtype }, texts, kind } -> progress*, embedded
 //        (at most EMBED_BATCH_SIZE texts; kind 'query' | 'passage' picks the model's prefix)
+//   { id, type: 'nli', source: { repo, revision, dtype }, pairs }          -> progress*, classified
+//        (at most NLI_BATCH_SIZE { premise, hypothesis } pairs)
 //   { id, type: 'unload' }                                                -> unloaded
 //   { type: 'interrupt', upTo } stops the running generation at its next token and skips queued
 //                                generations with an id up to `upTo` (handled at once)
 // Replies: { id, type: 'progress', file, loaded, done } | { id, type: 'ready' } | { id, type: 'delta', text }
 //   | { id, type: 'done', usage: { prompt_tokens, completion_tokens } } | { id, type: 'unloaded' }
 //   | { id, type: 'embedded', dim, count, data: Float32Array }   (count × dim values, L2-normalised; transferred)
+//   | { id, type: 'classified', scores: Array<{ entailment, neutral, contradiction }> }   (one per pair)
 //   | { id, type: 'error', name, message }   (no stack traces)
-import { AutoModelForCausalLM, AutoTokenizer, env, InterruptableStoppingCriteria, pipeline, TextStreamer } from '@huggingface/transformers';
-import { EMBED_BATCH_SIZE, embedInput, findEmbedSource, pinnedEmbedUrl } from '../models/embed-catalog.js';
+import { AutoModelForCausalLM, AutoModelForSequenceClassification, AutoTokenizer, env, InterruptableStoppingCriteria, pipeline, TextStreamer } from '@huggingface/transformers';
+import { EMBED_BATCH_SIZE, embedInput, findEmbedSource, findNliSource, NLI_BATCH_SIZE, pinnedEmbedUrl } from '../models/embed-catalog.js';
 import { findWasmSource, pinnedWasmUrl, WASM_CACHE_NAME } from '../models/wasm-catalog.js';
 
 /**
@@ -36,6 +40,9 @@ import { findWasmSource, pinnedWasmUrl, WASM_CACHE_NAME } from '../models/wasm-c
  * @typedef {{ generate(options: object): Promise<unknown>, forward(inputs: unknown): Promise<unknown>, dispose(): Promise<unknown> }} CausalLM
  * @typedef {{ status: string, file?: string, loaded?: number }} ProgressInfo
  * @typedef {{ (texts: string[], options: { pooling: 'mean', normalize: boolean }): Promise<{ data: Float32Array, dims: number[] }>, dispose(): Promise<unknown> }} FeatureExtractor
+ * @typedef {import('../models/embed-catalog.js').NliSource} NliSource
+ * @typedef {import('./client.js').NliRequest} NliRequest
+ * @typedef {{ (inputs: unknown): Promise<{ logits: { data: ArrayLike<number>, dims: number[] } }>, dispose(): Promise<unknown> }} SequenceClassifier
  */
 
 /** Replaced at build time with the content-hashed ONNX Runtime binary (scripts/build.mjs). */
@@ -75,6 +82,10 @@ let stopping = null;
 let embedSource = null;
 /** @type {FeatureExtractor | null} */
 let extractor = null;
+/** @type {NliSource | null} */
+let nliSource = null;
+/** @type {{ tokenizer: Tokenizer, model: SequenceClassifier } | null} */
+let nliModel = null;
 /** Requests run one after another; 'interrupt' bypasses the queue. */
 let queue = Promise.resolve();
 /** Generations with an id up to this one were stopped, possibly before they started. */
@@ -90,7 +101,7 @@ let interruptedUpTo = 0;
  */
 env.fetch = async (input, init) => {
   const url = input instanceof Request ? input.url : String(input);
-  const pinned = (source && pinnedWasmUrl(source, url)) || (embedSource && pinnedEmbedUrl(embedSource, url));
+  const pinned = (source && pinnedWasmUrl(source, url)) || (embedSource && pinnedEmbedUrl(embedSource, url)) || (nliSource && pinnedEmbedUrl(nliSource, url));
   if (!pinned) throw new TypeError(`Blocked a request outside the pinned model: ${url}`);
   const cached = await caches.match(pinned, { cacheName: WASM_CACHE_NAME }).catch(() => undefined);
   return cached ?? fetch(pinned, init);
@@ -216,16 +227,78 @@ async function embed(id, req) {
   self.postMessage(/** @type {WorkerReply} */ ({ id, type: 'embedded', dim: src.dim, count: texts.length, data }), [data.buffer]);
 }
 
+// --- Entailment (NLI) for the source check's second opinion ----------------------------------
+// The model reads a premise (a passage of the cited excerpt) and a hypothesis (the statement) as one
+// pair and gives the probabilities of its classes. It loads on the first request; the page asks for
+// one only after the user chose a second opinion on this device.
+
+/**
+ * @param {number} id
+ * @param {NliSource} src
+ */
+async function loadNli(id, src) {
+  const previous = nliModel;
+  nliModel = null;
+  nliSource = src;
+  await previous?.model.dispose();
+  const options = {
+    revision: src.revision,
+    progress_callback: (/** @type {ProgressInfo} */ p) => {
+      if ((p.status === 'progress' || p.status === 'done') && p.file) post({ id, type: 'progress', file: p.file, loaded: p.loaded ?? 0, done: p.status === 'done' });
+    },
+  };
+  const [loadedTokenizer, loadedModel] = await Promise.all([
+    AutoTokenizer.from_pretrained(src.repo, options),
+    AutoModelForSequenceClassification.from_pretrained(src.repo, { ...options, dtype: src.dtype, device: 'wasm' }),
+  ]);
+  nliModel = { tokenizer: loadedTokenizer, model: /** @type {SequenceClassifier} */ (/** @type {unknown} */ (loadedModel)) };
+}
+
+/**
+ * Classifies up to NLI_BATCH_SIZE premise/hypothesis pairs with the catalog entailment model.
+ * @param {number} id
+ * @param {NliRequest} req
+ */
+async function classify(id, req) {
+  const src = findNliSource(req.source);
+  if (!src) throw new Error('Only catalog models can be loaded');
+  const pairs = Array.isArray(req.pairs) ? req.pairs.map((p) => ({ premise: String(p?.premise ?? ''), hypothesis: String(p?.hypothesis ?? '') })) : [];
+  if (pairs.length === 0 || pairs.length > NLI_BATCH_SIZE) throw new RangeError(`An entailment request holds 1 to ${NLI_BATCH_SIZE} pairs`);
+  if (nliSource !== src || !nliModel) await loadNli(id, src);
+  const { tokenizer: tok, model: classifier } = /** @type {NonNullable<typeof nliModel>} */ (nliModel);
+  const scores = [];
+  for (const pair of pairs) {
+    const inputs = tok(pair.premise, { text_pair: pair.hypothesis, padding: true, truncation: true, max_length: src.maxTokens });
+    const { logits } = await classifier(inputs);
+    const values = Array.from(logits.data, Number);
+    const top = Math.max(...values);
+    const exp = values.map((v) => Math.exp(v - top));
+    const sum = exp.reduce((a, b) => a + b, 0);
+    /** @type {Record<string, number>} */
+    const out = { entailment: 0, neutral: 0, contradiction: 0 };
+    exp.forEach((v, k) => {
+      const label = src.labels[k];
+      if (label) out[label] = v / sum;
+    });
+    scores.push(out);
+  }
+  post({ id, type: 'classified', scores: /** @type {Array<{ entailment: number, neutral: number, contradiction: number }>} */ (scores) });
+}
+
 async function unload() {
   const m = model;
   const e = extractor;
+  const n = nliModel;
   model = null;
   tokenizer = null;
   source = null;
   extractor = null;
   embedSource = null;
+  nliModel = null;
+  nliSource = null;
   await m?.dispose();
   await e?.dispose();
+  await n?.model.dispose();
 }
 
 /** @param {MessageEvent} event */
@@ -244,7 +317,9 @@ function onMessage(event) {
         ? () => generate(id, msg)
         : msg.type === 'embed'
           ? () => embed(id, msg)
-          : () => unload().then(() => post({ id, type: 'unloaded' }));
+          : msg.type === 'nli'
+            ? () => classify(id, msg)
+            : () => unload().then(() => post({ id, type: 'unloaded' }));
   queue = queue.then(run).catch((err) => {
     post({ id, type: 'error', name: err instanceof Error ? err.name : 'Error', message: err instanceof Error ? err.message : String(err) });
   });

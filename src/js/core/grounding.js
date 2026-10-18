@@ -8,21 +8,31 @@
 // Input is the rendered answer as blocks of text and citation markers (see grounding-view.js for
 // the DOM side, blocksFromMarkdown() for plain text) plus the excerpts, index-aligned with the
 // citation markers. Pure: no DOM, runs in the browser, in workers and in Node.
+//
+// Versions of the rules: 1 compares facts and wording; 2 adds negations, names and values next to
+// other words (polarity.js, binding.js); 3 adds relations within and across neighbouring statements
+// (relations.js): a change, comparison, order in time or carried-over value that the cited excerpts
+// give the other way round, or do not give. Each version runs as it was, so a receipt recomputes
+// with the version it records; version 2 results are unchanged by version 3.
 import { contentTokens, extractFacts, fold, guessLanguage, indexSource, lookupFact, tokenMatches } from './facts.js';
 import { STOPWORDS_EN } from '../rag/bm25.js';
 import { misplacedName, misplacedValues, nameLexicon, unitsOf, valuePassages } from './binding.js';
 import { negationInversion, sourceClauses } from './polarity.js';
 import { CITATION_PATTERN, LOOSE_LABEL_PATTERN, parseLabel } from './labels.js';
+import { findRelations } from './relations.js';
 import { safeSlice, sentenceSpans } from './sentences.js';
 
 /** Currency and unit words: they stand next to a value everywhere, so they say nothing about where it belongs. */
 const UNIT_WORDS = new Set(['eur', 'euro', 'euros', 'usd', 'dollar', 'dollars', 'chf', 'gbp', 'uhr', 'am', 'pm']);
 
 /** The current rules. Receipts record the version; earlier versions stay available (GROUNDING_VERSIONS). */
-export const GROUNDING = Object.freeze({ id: 'starpi-grounding', version: 2 });
+export const GROUNDING = Object.freeze({ id: 'starpi-grounding', version: 3 });
 
-/** Every version of the rules this code can run: an answer or receipt checked with version 1 gives the same verdicts as Starpi 1.x. */
-export const GROUNDING_VERSIONS = Object.freeze([1, 2]);
+/**
+ * Every version of the rules this code can run: an answer or receipt checked with version 1 gives
+ * the same verdicts as Starpi 1.x, one checked with version 2 the same as Starpi 2.x.
+ */
+export const GROUNDING_VERSIONS = Object.freeze([1, 2, 3]);
 
 export const THRESHOLDS = Object.freeze({
   /** share of a statement's content words that must appear in its cited excerpts */
@@ -65,7 +75,7 @@ export const THRESHOLDS = Object.freeze({
 /**
  * @typedef {'missing_fact' | 'fact_elsewhere' | 'fact_context' | 'name_missing' | 'uncited_found' | 'uncited_missing' | 'low_overlap'
  *   | 'unknown_citation' | 'label_mismatch' | 'quote_missing' | 'approximate' | 'from_conversation'
- *   | 'not_delivered' | 'negation_inversion' | 'name_context'} ReasonCode
+ *   | 'not_delivered' | 'negation_inversion' | 'name_context' | 'relation_inverted' | 'relation_unsupported'} ReasonCode
  */
 
 /** The reason codes of version 1 of the rules (receipts of format v1 use only these). */
@@ -87,8 +97,20 @@ export const REASON_CODES_V1 = Object.freeze(
   ]),
 );
 
-/** Every reason code, in the order of the ReasonCode type: version 1's and the two of version 2. */
-export const REASON_CODES = Object.freeze(/** @type {ReasonCode[]} */ ([...REASON_CODES_V1, 'negation_inversion', 'name_context']));
+/** The reason codes of version 2 of the rules: version 1's and two for negations and names. */
+export const REASON_CODES_V2 = Object.freeze(/** @type {ReasonCode[]} */ ([...REASON_CODES_V1, 'negation_inversion', 'name_context']));
+
+/** Every reason code, in the order of the ReasonCode type: version 2's and the two relation codes of version 3. */
+export const REASON_CODES = Object.freeze(/** @type {ReasonCode[]} */ ([...REASON_CODES_V2, 'relation_inverted', 'relation_unsupported']));
+
+/**
+ * The reason codes a version of the rules can give.
+ * @param {number} version
+ * @returns {readonly ReasonCode[]}
+ */
+export function reasonCodes(version) {
+  return version <= 1 ? REASON_CODES_V1 : version === 2 ? REASON_CODES_V2 : REASON_CODES;
+}
 
 /**
  * @typedef {object} Reason
@@ -115,12 +137,37 @@ export const REASON_CODES = Object.freeze(/** @type {ReasonCode[]} */ ([...REASO
  */
 
 /**
+ * Version 3: a relation one or two statements state, checked against the cited excerpts. A relation
+ * the excerpts give the other way round (`inverted`) or do not give (`unsupported`) is also a reason
+ * of its (last) statement.
+ * @typedef {object} Relation
+ * @property {'comparative' | 'temporal' | 'reference'} kind
+ * @property {number[]} sentences  one or two indexes into GroundingReport.sentences
+ * @property {number[]} cites  the excerpts the decision rests on
+ * @property {'supported' | 'inverted' | 'unsupported'} verdict
+ * @property {string} text  the words of the statement that state the relation
+ */
+
+/**
+ * An advisory second check of a weak statement by an entailment model or a judge model (entail.js).
+ * It never changes a verdict; the view adds it to the report it shows, and a receipt records it.
+ * @typedef {object} SecondOpinion
+ * @property {number} sentence  index into GroundingReport.sentences
+ * @property {number[]} cites
+ * @property {'nli' | 'judge'} engine
+ * @property {string} model
+ * @property {'entailed' | 'neutral' | 'contradicted'} result
+ */
+
+/**
  * @typedef {object} GroundingReport
  * @property {{ id: string, version: number }} algorithm
  * @property {SentenceResult[]} sentences
  * @property {{ supported: number, weak: number, unsupported: number, unchecked: number }} counts
  * @property {boolean} crossLanguage  some statements were compared by facts only (answer and excerpt in different languages)
  * @property {null | 'too_long'} skipped
+ * @property {Relation[]} [relations]  version 3: the relations found, supported ones included
+ * @property {SecondOpinion[]} [secondOpinion]  second opinions added after the check (never by groundAnswer)
  */
 
 /**
@@ -614,6 +661,68 @@ function clip(text, max) {
 }
 
 /**
+ * Version 3: finds the relations of the checked statements (in answer order) and checks them
+ * against the cited excerpts (relations.js). A relation the excerpts give the other way round or do
+ * not give becomes a weak reason of the statement that states it last; a supported statement turns
+ * weak. Neutral statements take no part. Statements in `contextOnly` (and statements compared across
+ * languages) are only context: their values can be carried over, but they get no reason. Version 1
+ * and 2 return the results unchanged.
+ * @param {SentenceResult[]} results  in answer order
+ * @param {CheckContext} ctx
+ * @param {ReadonlySet<number>} [contextOnly]  indexes into `results`
+ * @returns {{ sentences: SentenceResult[], relations: Relation[] }}
+ */
+export function applyRelations(results, ctx, contextOnly = new Set()) {
+  if ((ctx.version ?? GROUNDING.version) < 3) return { sentences: results, relations: [] };
+  const order = results.flatMap((r, i) => (r.verdict === 'neutral' ? [] : [i]));
+  const delivered = (/** @type {number} */ c) => Boolean(ctx.indexes[c] && ctx.sources[c]);
+  const findings = findRelations(
+    order.map((i) => ({ text: results[i].text, cites: results[i].cites.filter(delivered), context: contextOnly.has(i) || results[i].crossLanguage })),
+    ctx.sources.map((s, i) => (delivered(i) ? { text: s.text } : null)),
+    { split: (sentence) => valueParts(sentence, 2) },
+  );
+  const sentences = results.slice();
+  /** @type {Relation[]} */
+  const relations = [];
+  for (const f of findings) {
+    const indexes = f.sentences.map((k) => order[k]);
+    relations.push({ kind: f.kind, sentences: indexes, cites: f.cites.slice(), verdict: f.verdict, text: f.text });
+    if (f.verdict === 'supported') continue;
+    const at = /** @type {number} */ (indexes.at(-1));
+    const r = sentences[at];
+    /** @type {Reason} */
+    const reason = { code: f.verdict === 'inverted' ? 'relation_inverted' : 'relation_unsupported', level: 'weak', fact: f.text, cites: f.cites.slice(), found: quote(f.found) };
+    const reasons = [...r.reasons, reason];
+    sentences[at] = { ...r, reasons, verdict: reasons.some((x) => x.level === 'unsupported') ? 'unsupported' : 'weak' };
+  }
+  return { sentences, relations };
+}
+
+/**
+ * The relations and second opinions of a report as a receipt records them (receipt.js
+ * ReceiptRelation, ReceiptSecondOpinion): statement indexes count only the checked statements, as
+ * the receipt's grounding.sentences do.
+ * @param {GroundingReport} report
+ * @returns {{ relations: import('./receipt.js').ReceiptRelation[], secondOpinion: import('./receipt.js').ReceiptSecondOpinion[] }}
+ */
+export function receiptAdvisory(report) {
+  /** @type {Map<number, number>} */
+  const at = new Map();
+  report.sentences.forEach((s, i) => {
+    if (s.verdict !== 'neutral') at.set(i, at.size);
+  });
+  const indexes = (/** @type {number[]} */ list) => list.map((i) => /** @type {number} */ (at.get(i)));
+  return {
+    relations: (report.relations ?? [])
+      .filter((r) => r.sentences.every((i) => at.has(i)))
+      .map((r) => ({ kind: r.kind, sentences: indexes(r.sentences), cites: r.cites.slice(), verdict: r.verdict, text: clip(r.text, 500) })),
+    secondOpinion: (report.secondOpinion ?? [])
+      .filter((o) => at.has(o.sentence))
+      .map((o) => ({ sentence: /** @type {number} */ (at.get(o.sentence)), cites: o.cites.slice(), engine: o.engine, model: o.model.slice(0, 100), result: o.result })),
+  };
+}
+
+/**
  * Checks a whole answer.
  * @param {Block[]} blocks
  * @param {GroundingSource[]} sources  index-aligned with the `index` of cite segments
@@ -624,6 +733,7 @@ export function groundAnswer(blocks, sources, options = {}) {
   const version = options.version ?? GROUNDING.version;
   if (!GROUNDING_VERSIONS.includes(version)) throw new RangeError(`groundAnswer: unknown rules version ${version} (known: ${GROUNDING_VERSIONS.join(', ')})`);
   const counts = { supported: 0, weak: 0, unsupported: 0, unchecked: 0 };
+  /** @type {GroundingReport} */
   const report = { algorithm: { id: GROUNDING.id, version }, sentences: /** @type {SentenceResult[]} */ ([]), counts, crossLanguage: false, skipped: /** @type {null | 'too_long'} */ (null) };
   const chars = blocks.reduce((n, b) => n + b.segments.reduce((m, s) => m + (s.type === 'text' ? s.text.length : 0), 0), 0);
   if (chars > THRESHOLDS.maxChars) return { ...report, skipped: 'too_long' };
@@ -638,9 +748,14 @@ export function groundAnswer(blocks, sources, options = {}) {
   for (const d of drafts) {
     const r = checkSentence(d, ctx);
     if (r.crossLanguage) report.crossLanguage = true;
-    if (r.verdict !== 'neutral') counts[r.verdict] += 1;
     report.sentences.push(r);
   }
+  if (version >= 3) {
+    const { sentences, relations } = applyRelations(report.sentences, ctx);
+    report.sentences = sentences;
+    report.relations = relations;
+  }
+  for (const r of report.sentences) if (r.verdict !== 'neutral') counts[r.verdict] += 1;
   return report;
 }
 

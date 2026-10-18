@@ -9,6 +9,7 @@ export { sentenceSpans, splitSentences } from '../../../src/js/core/sentences.js
 // Source check: facts and statement-by-statement comparison with cited excerpts.
 export { contentTokens, extractFacts, fold, guessLanguage, indexSource, lookupFact, numKey, parseNumber, tokenMatches } from '../../../src/js/core/facts.js';
 export {
+  applyRelations,
   associate,
   blocksFromMarkdown,
   checkSentence,
@@ -18,9 +19,17 @@ export {
   groundAnswer,
   REASON_CODES,
   REASON_CODES_V1,
+  REASON_CODES_V2,
+  reasonCodes,
+  receiptAdvisory,
   resolveLabel,
   THRESHOLDS,
 } from '../../../src/js/core/grounding.js';
+
+// Grounding version 3: relations within and across neighbouring statements (changes, comparisons,
+// orders in time, carried-over values), and the rules of the advisory second opinion.
+export { changesIn, findRelations, RELATIONS } from '../../../src/js/core/relations.js';
+export { ENTAIL, eligible, judgeResult, nliResult, opinionCites, opinionReason, premiseFor, SECOND_OPINION_REASON, secondOpinions, shownVerdict } from '../../../src/js/core/entail.js';
 
 // Language packs: the words and conventions the checks read a language with; English and German
 // are built in, registerLanguage() adds one.

@@ -8,6 +8,10 @@
 // The default model is also the one the shared library's 384-dimensional vectors were computed
 // with (tools/library-publisher), at the same revision and quantisation, so a query vector made in
 // the browser can rank the library without sending the question text.
+//
+// NLI_CATALOG holds the entailment model of the source check's optional second opinion
+// (core/entail.js, wasm/nli.js), pinned the same way. It downloads only after the user asked for a
+// second opinion on this device.
 
 /**
  * @typedef {'e5-small' | 'minilm-l6'} EmbedModelKey
@@ -163,4 +167,78 @@ export function suggestSemanticSearch(hints) {
   if (hints.isMobile) return false;
   if (hints.deviceMemoryGB !== null && hints.deviceMemoryGB < 4) return false;
   return hints.cores === null || hints.cores >= 4;
+}
+
+/**
+ * @typedef {'minilm-xnli'} NliModelKey
+ *
+ * @typedef {object} NliSource
+ * @property {NliModelKey} key
+ * @property {string} label Name shown in the app (a proper name, never translated).
+ * @property {string} repo Hugging Face repository.
+ * @property {string} revision Commit every file is downloaded from.
+ * @property {'fp16'} dtype Transformers.js dtype; fp16 loads the 16-bit ONNX weights.
+ * @property {string} weights ONNX file the dtype maps to.
+ * @property {ReadonlyArray<readonly [string, number, string]>} files Every downloaded file: path, size in bytes, SHA-256.
+ * @property {readonly string[]} cacheProbe Files whose presence in the cache means the model is stored.
+ * @property {number} approxDownloadMB
+ * @property {Readonly<Record<number, 'entailment' | 'neutral' | 'contradiction'>>} labels The model's output classes, by index.
+ * @property {number} maxTokens Longest premise and statement pair the model reads, in tokens (longer pairs are cut).
+ * @property {'multilingual'} languages
+ */
+
+/** Premise and statement pairs per entailment request to the worker. */
+export const NLI_BATCH_SIZE = 8;
+
+/** The 16-bit weights of the entailment model: its 8-bit weights lose most of the entailment class. */
+const NLI_WEIGHTS = 'onnx/model_fp16.onnx';
+
+/**
+ * Entailment models: a statement and a passage go in, the probabilities of entailment, neutral and
+ * contradiction come out. One small multilingual model (MiniLM, trained on MNLI and XNLI), in 16-bit
+ * weights: the 8-bit build of the same model rates even "A cat is sitting on a mat." after "The cat
+ * sat on the mat." as neutral.
+ * @type {Readonly<Record<NliModelKey, NliSource>>}
+ */
+export const NLI_CATALOG = Object.freeze({
+  'minilm-xnli': {
+    key: 'minilm-xnli',
+    label: 'multilingual-MiniLMv2-L6-mnli-xnli',
+    repo: 'onnx-community/multilingual-MiniLMv2-L6-mnli-xnli-ONNX',
+    revision: 'ca5daf3d11b6c4b3143b1f4602a2edfb64c3ad7e',
+    dtype: 'fp16',
+    weights: NLI_WEIGHTS,
+    files: [
+      ['config.json', 989, '3ebbbdf3c3803649b49715fd169207c0f42c4250dfea5dd304b1d8b8f745852a'],
+      ['tokenizer.json', 17_082_832, 'd0091a328b3441d754e481db5a390d7f3b8dabc6016869fd13ba350d23ddc4cd'],
+      ['tokenizer_config.json', 1286, '329b7d21f02c6c6c9d358733b03a34a89cd8e4fe36998869a6ab824b98e9bf9d'],
+      [NLI_WEIGHTS, 214_160_435, '911561370b93632d5c6f5c1541454382ebc263ee7915e695a8565fcc8830175e'],
+    ],
+    cacheProbe: ['config.json', 'tokenizer.json', NLI_WEIGHTS],
+    approxDownloadMB: 232,
+    labels: { 0: 'entailment', 1: 'neutral', 2: 'contradiction' },
+    maxTokens: 512,
+    languages: 'multilingual',
+  },
+});
+
+/** @type {NliModelKey} */
+export const DEFAULT_NLI_MODEL = 'minilm-xnli';
+
+/**
+ * The catalog NLI model with exactly this repository, revision and dtype, or null. The worker loads
+ * nothing else.
+ * @param {{ repo?: unknown, revision?: unknown, dtype?: unknown } | null | undefined} source
+ * @returns {NliSource | null}
+ */
+export function findNliSource(source) {
+  return Object.values(NLI_CATALOG).find((e) => e.repo === source?.repo && e.revision === source?.revision && e.dtype === source?.dtype) ?? null;
+}
+
+/**
+ * The model as a receipt's second opinion records it: repository, revision and dtype.
+ * @param {NliSource} src
+ */
+export function nliModelId(src) {
+  return `${src.repo}@${src.revision}/${src.dtype}`;
 }

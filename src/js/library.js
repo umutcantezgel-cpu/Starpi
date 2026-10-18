@@ -3,6 +3,7 @@
 import { closeDialog, isDialogOpen, openDialog } from './dialog.js';
 import { byId, onAction, setHtml } from './dom.js';
 import { formatDate, formatNumber, setText, t } from './i18n/index.js';
+import { refreshIcons } from './icons.js';
 import { escapeHtml, renderMarkdown } from './render.js';
 import { getDocument, listDocuments } from './supabase.js';
 
@@ -147,6 +148,30 @@ async function viewDocument(id, trigger) {
   let markdown = doc.summary ? `> **${t('library.summary')}:** ${doc.summary}\n\n` : '';
   markdown += sections.length > 0 ? sections.map((s) => s.markdown_content ?? '').join('\n\n') : doc.raw_content || t('library.no_content');
   content.innerHTML = renderMarkdown(markdown);
+  content.prepend(researchThisButton(doc.title));
+}
+
+/**
+ * "Research this" for a document: the Research feature (features/research.js) handles the action
+ * and puts the title into its question box, about this document.
+ * @param {string} title
+ */
+function researchThisButton(title) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-secondary mb-4';
+  btn.dataset.action = 'research-this';
+  btn.dataset.question = title;
+  btn.dataset.focus = title;
+  btn.dataset.origin = 'library';
+  const i = document.createElement('i');
+  i.dataset.lucide = 'telescope';
+  i.className = 'w-3.5 h-3.5';
+  const text = document.createElement('span');
+  setText(text, 'research.this');
+  btn.append(i, text);
+  refreshIcons(btn);
+  return btn;
 }
 
 function closeDocModal() {

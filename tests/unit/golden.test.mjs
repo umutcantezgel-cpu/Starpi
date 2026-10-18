@@ -12,7 +12,7 @@ import { blocksFromMarkdown, GROUNDING, groundAnswer } from '../../src/js/core/g
 import { CHUNKER, chunkText } from '../../src/js/rag/chunker.js';
 import { EXTRACTOR, extractText } from '../../src/js/rag/parser.js';
 import { makePdf } from '../fixtures/pdf.mjs';
-import { loadCorpora, loadItems, loadParaphrases, loadV2Items } from '../../scripts/eval-source-check.mjs';
+import { loadCorpora, loadItems, loadParaphrases, loadRelationItems, loadV2Items } from '../../scripts/eval-source-check.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const sha = (/** @type {string} */ s) => createHash('sha256').update(s).digest('hex');
@@ -82,5 +82,20 @@ describe(`source check pins (${GROUNDING.id} ${GROUNDING.version})`, () => {
     });
     assert.equal(lines.length, 2930);
     assert.equal(sha(lines.join('\n')), '6f82eccfce1d87d3c7ceead38f4df482f268d7938e2e47d7dedd882e8ebf0a06');
+  });
+
+  it('verdicts, reasons and relations of version 3 on every statement of every answer set are unchanged', async () => {
+    const corpora = await loadCorpora();
+    const items = [...(await loadItems()), ...(await loadV2Items({ unblind: true })), ...(await loadParaphrases()), ...(await loadRelationItems({ unblind: true }))];
+    const lines = items.flatMap((item) => {
+      const sources = corpora[item.corpus];
+      const report = groundAnswer(blocksFromMarkdown(item.answer, sources), sources, { version: 3 });
+      return [
+        ...report.sentences.map((s) => `${item.id}|${s.verdict}|${s.reasons.map((r) => `${r.code}:${r.fact ?? ''}`).join(',')}`),
+        ...(report.relations ?? []).map((r) => `${item.id}|rel|${r.kind}|${r.verdict}|${r.sentences.join(',')}|${r.text}`),
+      ];
+    });
+    assert.equal(lines.length, 3275);
+    assert.equal(sha(lines.join('\n')), 'e8b992111eb7cea703f9fa8ff117e4d57c441b84acb59c0b02de93ee60ffd51d');
   });
 });

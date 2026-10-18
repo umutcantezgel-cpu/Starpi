@@ -89,10 +89,19 @@ import {
   Telescope,
 } from 'lucide';
 
+// Voice and Live (voice/*, live/*, features/{voice,live}.js), kept as one block.
+import {
+  AudioLines,
+  Camera,
+  Volume2,
+} from 'lucide';
+
 const SHELL_ICONS = { CircleDashed, Columns2, EyeOff, Globe, Inbox, Monitor, Moon, OctagonAlert, PanelLeftClose, PanelLeftOpen, PanelRight, Plug, SquarePen, Sun, Telescope };
+const VOICE_ICONS = { AudioLines, Camera, Volume2 };
 
 const ICONS = {
   ...SHELL_ICONS,
+  ...VOICE_ICONS,
   Activity,
   AlertCircle,
   ArrowLeft,

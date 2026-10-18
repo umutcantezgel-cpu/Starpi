@@ -1,6 +1,6 @@
 // model-lock.json and its generator (scripts/models-lock.mjs). The committed lock covers every file
 // the app's runtimes download: each WebLLM preset (config, tensor index, shards, model library), each
-// file of the processor and embedding catalogs with the catalog's size (and SHA-256 where the
+// file of the processor, embedding and entailment catalogs with the catalog's size (and SHA-256 where the
 // catalog names one), and the self-hosted ONNX Runtime binary as installed. The generator runs
 // against a stand-in model host: large files get their hash from the LFS listing without being
 // downloaded, small files and libraries are hashed, a refresh is stable, --check notices an upstream
@@ -14,7 +14,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { appSources, hfFileUrl, LOCK_FILE, LOCK_FORMAT, lockText, main, ortKey, validateLock, webllmSources } from '../../scripts/models-lock.mjs';
-import { EMBED_CATALOG } from '../../src/js/models/embed-catalog.js';
+import { EMBED_CATALOG, NLI_CATALOG } from '../../src/js/models/embed-catalog.js';
 import { WASM_CATALOG, wasmFileUrl } from '../../src/js/models/wasm-catalog.js';
 import { ALL_MODEL_IDS } from '../../src/js/webgpu/models.js';
 
@@ -42,6 +42,15 @@ describe('the committed model lock', () => {
     for (const src of Object.values(EMBED_CATALOG)) {
       for (const [file, size, hash] of src.files) assert.deepEqual(LOCK.files[hfFileUrl(src, file)], { sha256: hash, size }, `${src.key} ${file}`);
     }
+  });
+
+  it('pins every file of the entailment model of the second opinion, which the generator reads from the catalog', async () => {
+    assert.ok(Object.keys(NLI_CATALOG).length > 0);
+    for (const src of Object.values(NLI_CATALOG)) {
+      for (const [file, size, hash] of src.files) assert.deepEqual(LOCK.files[hfFileUrl(src, file)], { sha256: hash, size }, `${src.key} ${file}`);
+    }
+    const ids = (await appSources()).map((s) => s.id);
+    for (const key of Object.keys(NLI_CATALOG)) assert.ok(ids.includes(`nli:${key}`), key);
   });
 
   it('pins the ONNX Runtime binary the build ships', async () => {

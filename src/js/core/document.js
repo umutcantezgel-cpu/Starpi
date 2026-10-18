@@ -12,7 +12,7 @@
 //
 // Pure: runs in the browser, in workers and in Node. Used by the starpi-ground command.
 import { contentTokens, extractFacts } from './facts.js';
-import { associate, blocksFromMarkdown, groundAnswer, THRESHOLDS } from './grounding.js';
+import { associate, blocksFromMarkdown, GROUNDING, groundAnswer, THRESHOLDS } from './grounding.js';
 
 /**
  * @typedef {import('./grounding.js').SentenceResult & { line: number, column: number }} DocumentStatement
@@ -24,6 +24,7 @@ import { associate, blocksFromMarkdown, groundAnswer, THRESHOLDS } from './groun
  * @property {{ id: string, version: number }} algorithm
  * @property {DocumentStatement[]} statements  every checked statement (verdict not neutral), in document order
  * @property {{ supported: number, weak: number, unsupported: number, unchecked: number }} counts
+ * @property {import('./grounding.js').Relation[]} [relations]  version 3: the relations found, with statement indexes into `statements`
  * @property {number} sections  how many parts the document was checked in
  * @property {Array<{ line: number, endLine: number }>} skipped  parts above the limits, not checked
  * @property {boolean} crossLanguage
@@ -64,10 +65,11 @@ function columnOf(line, text, from) {
  * Checks a Markdown document.
  * @param {string} markdown
  * @param {import('./grounding.js').GroundingSource[]} sources
- * @param {{ cite?: 'auto' | 'labels' | 'all' }} [options]
+ * @param {{ cite?: 'auto' | 'labels' | 'all', version?: number }} [options]  version: the rules to run (default: the current GROUNDING.version)
  * @returns {DocumentReport}
  */
 export function checkDocument(markdown, sources, options = {}) {
+  const version = options.version ?? GROUNDING.version;
   const blocks = blocksFromMarkdown(markdown, sources);
   const labelled = blocks.some((b) => b.segments.some((s) => s.type === 'cite' || s.type === 'badcite'));
   const cite = options.cite ?? 'auto';
@@ -94,7 +96,7 @@ export function checkDocument(markdown, sources, options = {}) {
   /** @param {number} from @param {number} to */
   const fits = (from, to) => {
     const list = sectionBlocks(from, to);
-    return list.reduce((n, b) => n + charsOf(b), 0) <= THRESHOLDS.maxChars && associate(list).length <= THRESHOLDS.maxSentences;
+    return list.reduce((n, b) => n + charsOf(b), 0) <= THRESHOLDS.maxChars && associate(list, version).length <= THRESHOLDS.maxSentences;
   };
 
   /** @type {Array<[number, number]>} */
@@ -142,21 +144,28 @@ export function checkDocument(markdown, sources, options = {}) {
   /** @type {DocumentReport} */
   const result = { mode, algorithm: { id: '', version: 0 }, statements: [], counts: { supported: 0, weak: 0, unsupported: 0, unchecked: 0 }, sections: ranges.length, skipped: [], crossLanguage: false };
   for (const [from, to] of ranges) {
-    const report = groundAnswer(sectionBlocks(from, to), sources);
+    const report = groundAnswer(sectionBlocks(from, to), sources, { version });
     result.algorithm = report.algorithm;
     if (report.crossLanguage) result.crossLanguage = true;
     if (report.skipped) {
       result.skipped.push({ line: blocks[from].line ?? 1, endLine: blocks[to - 1].line ?? 1 });
       continue;
     }
-    for (const s of report.sentences) {
+    /** @type {Map<number, number>} statement indexes of this section in `result.statements` */
+    const at = new Map();
+    for (const [i, s] of report.sentences.entries()) {
       if (s.verdict === 'neutral') continue;
+      at.set(i, result.statements.length);
       result.counts[s.verdict] += 1;
       const block = blocks[from + s.block];
       const line = block?.line ?? 1;
       const { column, next } = columnOf(lines[line - 1] ?? '', s.text, cursor.get(line) ?? 0);
       cursor.set(line, next);
       result.statements.push({ ...s, block: from + s.block, line, column });
+    }
+    if (report.relations) {
+      result.relations ??= [];
+      for (const r of report.relations) if (r.sentences.every((i) => at.has(i))) result.relations.push({ ...r, sentences: r.sentences.map((i) => /** @type {number} */ (at.get(i))) });
     }
   }
   return result;

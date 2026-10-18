@@ -78,7 +78,8 @@
     "runtime": {
       "webgpu": "GPU (WebGPU)",
       "wasm": "Prozessor (WASM)",
-      "embed": "Suchmodell"
+      "embed": "Suchmodell",
+      "nli": "Zweitmeinungsmodell"
     },
     "checked": "{n} {n:Datei|Dateien} geprüft · {date}",
     "mismatched": "Weicht vom festgelegten Hash ab: {files}",

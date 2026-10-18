@@ -1,1 +1,98 @@
-{}
+{
+  "read": {
+    "free_notice": "Freie Antwort, nicht geprüft.",
+    "withheld": "{count} {count:Satz|Sätze} zurückgehalten.",
+    "nothing": "Nichts in dieser Antwort ließ sich geprüft vorlesen.",
+    "button": "Vorlesen",
+    "stop": "Vorlesen beenden",
+    "unavailable": "Diese Antwort kann nicht vorgelesen werden."
+  },
+  "preview": {
+    "sample": "So klingen Ihre Antworten, wenn sie vorgelesen werden."
+  },
+  "source": {
+    "browser": "Browser",
+    "gemini": "Gemini",
+    "openai": "OpenAI",
+    "groq": "Groq",
+    "local": "Lokaler Sprachserver",
+    "companion": "Begleiter",
+    "elevenlabs": "ElevenLabs"
+  },
+  "fallback": {
+    "to": "{from} konnte nicht sprechen, deshalb liest {to} vor.",
+    "none": "Gerade kann keine Stimme sprechen. Der Text bleibt auf dem Bildschirm."
+  },
+  "dictation": {
+    "listening": "hört zu",
+    "recording": "nimmt auf",
+    "transcribing": "schreibt mit",
+    "chip": "{source} · {state}",
+    "no_source": "Keine Spracheingabe eingerichtet. Fügen Sie unter Einstellungen → Sprache einen Schlüssel oder einen lokalen Sprachserver hinzu.",
+    "too_short": "Das war zu kurz. Mikrofon drücken, sprechen, dann erneut drücken.",
+    "failed": "Ihre Sprache konnte nicht in Text umgewandelt werden. Versuchen Sie es erneut oder wählen Sie unter Einstellungen → Sprache eine andere Quelle.",
+    "fallback": "Der Sprachdienst des Browsers ist nicht erreichbar ({code}). Stattdessen wird aufgenommen: Drücken Sie das Mikrofon erneut, wenn Sie fertig sind."
+  },
+  "capture": {
+    "unsupported": "Dieser Browser kann hier nicht vom Mikrofon aufnehmen.",
+    "denied": "Der Mikrofonzugriff wurde blockiert. Erlauben Sie ihn in den Website-Einstellungen des Browsers.",
+    "no_microphone": "Es wurde kein Mikrofon gefunden.",
+    "busy": "Das Mikrofon wird von einem anderen Programm verwendet.",
+    "worklet": "Die Audioverarbeitung konnte nicht starten. Laden Sie die Seite neu und versuchen Sie es erneut.",
+    "aborted": "Die Aufnahme wurde beendet."
+  },
+  "settings": {
+    "title": "Sprache",
+    "subtitle": "Fragen diktieren, Antworten vorlesen lassen und live sprechen. Geprüfte Antworten werden nur so weit vorgelesen, wie die Satzprüfung sie freigibt.",
+    "stt_title": "Spracheingabe",
+    "stt_label": "Zuerst versuchen",
+    "stt_auto": "Automatische Reihenfolge",
+    "not_ready": "nicht eingerichtet",
+    "stt_chain": "Aktuelle Reihenfolge: {sources}",
+    "stt_none": "Noch keine Spracheingabe eingerichtet.",
+    "glossary_label": "Namen und Begriffe (optional)",
+    "glossary_placeholder": "Einer pro Zeile oder durch Kommas getrennt",
+    "glossary_hint": "Hilft der Transkription, Ihre Namen und Begriffe richtig zu schreiben. Wird nur mit Ihren Aufnahmen gesendet.",
+    "tts_title": "Vorlesen",
+    "tts_label": "Stimmquelle",
+    "voice_label": "Stimme",
+    "voice_auto": "Standardstimme",
+    "voice_online": "online",
+    "rate_label": "Tempo",
+    "preview": "Stimme anhören",
+    "auto_read": "Antworten automatisch vorlesen",
+    "tts_hint": "Fällt die gewählte Quelle aus, übernehmen die eigenen Stimmen des Browsers; es wird nie zu einem anderen Clouddienst gewechselt.",
+    "local_title": "Lokaler Sprachserver",
+    "local_label": "Adresse des lokalen Sprachservers",
+    "local_hint": "Ein Sprachserver auf Ihrem eigenen Rechner (zum Beispiel faster-whisper mit Piper). Es werden nur Piper-Stimmen mit offener Lizenz verwendet.",
+    "save": "Speichern",
+    "eleven_title": "ElevenLabs-Schlüssel",
+    "eleven_label": "ElevenLabs-API-Schlüssel",
+    "eleven_placeholder": "ElevenLabs-Schlüssel einfügen",
+    "remove": "Entfernen",
+    "eleven_hint": "Es werden nur die vorgefertigten Stimmen von ElevenLabs verwendet. Der Schlüssel bleibt wie Ihre anderen Schlüssel in diesem Browser.",
+    "live_title": "Live-Gespräch",
+    "live_voice": "Live-Stimme",
+    "camera": "Kamerabild erlauben",
+    "saved": "Gespeichert.",
+    "local_invalid": "Geben Sie eine http- oder https-Adresse ein, zum Beispiel http://127.0.0.1:8000.",
+    "local_saved": "Lokaler Sprachserver gespeichert.",
+    "local_cleared": "Lokaler Sprachserver entfernt.",
+    "key_empty": "Fügen Sie zuerst einen Schlüssel ein.",
+    "key_stored": "Schlüssel gespeichert.",
+    "key_failed": "Der Schlüssel konnte nicht gespeichert werden. Entsperren Sie den Schlüsseltresor und versuchen Sie es erneut.",
+    "key_removed": "Schlüssel entfernt.",
+    "key_saved": "Schlüssel gespeichert",
+    "key_none": "Kein Schlüssel"
+  },
+  "privacy": {
+    "title": "Wohin Ihre Stimme geht",
+    "browser": "Die Erkennung läuft in den meisten Browsern auf den Servern des Browser-Herstellers; auf dem Gerät, wo der Browser das anbietet.",
+    "gemini": "Audio geht an Google, mit Ihrem Schlüssel direkt oder mit dem Schlüssel dieser Website über diese Website.",
+    "openai": "Audio geht mit Ihrem Schlüssel an OpenAI.",
+    "groq": "Audio geht mit Ihrem Schlüssel an Groq, direkt oder über das Relay dieser Website.",
+    "elevenlabs": "Der vorzulesende Text geht an ElevenLabs, mit Ihrem Schlüssel oder dem dieser Website.",
+    "local": "Audio und Text bleiben auf Ihrem Rechner.",
+    "companion": "Audio bleibt über den gekoppelten Begleiter auf Ihren Geräten."
+  }
+}
