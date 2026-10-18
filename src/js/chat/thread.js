@@ -1065,7 +1065,7 @@ async function answerFree(question, value, signal, placement = {}) {
   // bubble), and it returns the answer after them.
   if (single.tools && run.target && !signal.aborted) {
     const asked = run.target;
-    const after = await single.tools({ result, request: () => freeRequest(asked, path, ctx), ctx, signal, view: { element: stream.element, update: (t) => stream.update(t) } }).catch(() => null);
+    const after = await single.tools({ result, request: () => freeRequest(asked, path, ctx), ctx, signal, view: { element: stream.element, update: (next) => stream.update(next) } }).catch(() => null);
     if (after) result = after;
   }
   const text = result.text;
