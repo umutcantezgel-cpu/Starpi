@@ -16,6 +16,7 @@
  * @property {import('../agenda/module.js').AgendaService} agenda
  * @property {import('../feeds/module.js').FeedsService} feeds
  * @property {import('../connectors/module.js').ToolsService} tools
+ * @property {import('../relay/module.js').VoiceService} voice
  */
 
 /** @typedef {keyof HubServices} HubName */

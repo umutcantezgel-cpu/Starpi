@@ -11,18 +11,21 @@ import { createFeedsModule } from '../feeds/module.js';
 import { createMcpModule } from '../mcp/module.js';
 import { createMemoryModule } from '../memory/module.js';
 import { createNotifyModule } from '../notify/module.js';
+import { createVoiceModule } from '../relay/module.js';
 import { createRetrievalModule } from '../retrieval/module.js';
 import { createHub } from './hub.js';
+import { createSetupModule } from './module.js';
 
 /** Ids of the standard modules, in start order. */
-export const STANDARD_MODULE_IDS = Object.freeze(['retrieval', 'notify', 'memory', 'docs', 'feeds', 'agenda', 'connectors', 'ask', 'chat', 'mcp']);
+export const STANDARD_MODULE_IDS = Object.freeze(['retrieval', 'notify', 'memory', 'docs', 'feeds', 'agenda', 'connectors', 'ask', 'chat', 'mcp', 'voice', 'setup']);
 
 /**
- * @param {{ hub?: import('./hub.js').Hub, only?: readonly string[], fetchImpl?: typeof fetch }} [options]
- *   only: start just these ids (in standard order); fetchImpl: the fetch of local HTTP clients (tests)
+ * @param {{ hub?: import('./hub.js').Hub, only?: readonly string[], brains?: Array<Record<string, any>>, fetchImpl?: typeof fetch }} [options]
+ *   only: start just these ids (in standard order); brains: the configured brain entries, which the
+ *   setup checks probe; fetchImpl: the fetch of local HTTP clients (tests)
  * @returns {import('../contracts/module.js').CompanionModule[]}
  */
-export function standardModules({ hub = createHub(), only, fetchImpl } = {}) {
+export function standardModules({ hub = createHub(), only, brains = [], fetchImpl } = {}) {
   /** @type {Record<string, () => import('../contracts/module.js').CompanionModule>} */
   const factories = {
     retrieval: () => createRetrievalModule({ hub, fetchImpl }),
@@ -35,6 +38,8 @@ export function standardModules({ hub = createHub(), only, fetchImpl } = {}) {
     ask: () => createAskModule({ hub }),
     chat: () => createChatModule({ hub }),
     mcp: () => createMcpModule({ hub }),
+    voice: () => createVoiceModule({ hub, fetchImpl }),
+    setup: () => createSetupModule({ hub, brains, fetchImpl }),
   };
   const wanted = only ?? STANDARD_MODULE_IDS;
   for (const id of wanted) if (!Object.hasOwn(factories, id)) throw new TypeError(`no standard module ${id}`);

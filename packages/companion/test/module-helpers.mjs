@@ -14,7 +14,7 @@ export const APP = 'https://www.starpi.app';
  */
 export async function startModules(root, { only, raw = {}, modules, options = {} } = {}) {
   const hub = createHub();
-  const list = modules ?? standardModules({ hub, only });
+  const list = modules ?? standardModules({ hub, only, brains: /** @type {any[]} */ (raw.brains ?? []) });
   const started = await startTest(root, raw, { modules: list, ...options });
   return { ...started, hub };
 }
