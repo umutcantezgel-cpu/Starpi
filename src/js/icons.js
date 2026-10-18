@@ -98,7 +98,22 @@ import {
 
 // Memory, projects and assistants (ai/memory.js, chat/{projects,assistants}.js, settings/memory-view.js,
 // the archive entries of the conversation list), kept as one block.
-import { Archive, ArchiveRestore, BookmarkPlus, Bot, Brain, Briefcase, Code, Compass, Folder, FolderPlus, GraduationCap, Palette, PenLine, Pencil } from 'lucide';
+import {
+  Archive,
+  ArchiveRestore,
+  BookmarkPlus,
+  Bot,
+  Brain,
+  Briefcase,
+  Code,
+  Compass,
+  Folder,
+  FolderPlus,
+  GraduationCap,
+  Palette,
+  PenLine,
+  Pencil,
+} from 'lucide';
 
 const MEMORY_ICONS = { Archive, ArchiveRestore, BookmarkPlus, Bot, Brain, Briefcase, Code, Compass, Folder, FolderPlus, GraduationCap, Palette, PenLine, Pencil };
 const SHELL_ICONS = { CircleDashed, Columns2, EyeOff, Globe, Inbox, Monitor, Moon, OctagonAlert, PanelLeftClose, PanelLeftOpen, PanelRight, Plug, SquarePen, Sun, Telescope };

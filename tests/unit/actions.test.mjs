@@ -60,6 +60,9 @@ describe('icons', () => {
     // names chosen at runtime (device type, privacy notice, workspace file kind, graph edge direction,
     // trace phases, provider test result, source check result, sample questions)
     ...collect(/'(laptop|tablet|smartphone|lock|server|cloud|library|file-text|braces|file|database|arrow-right|arrow-left|loader-2|upload|info|alert-circle|search|sparkles|clipboard-list|zap|shield-alert|shield-question-mark|shield-check|shield|calendar|wallet|triangle-alert|check-circle-2)'/g),
+    // the icons an assistant may show (chat/assistants.js ASSISTANT_ICONS) and the archive entry of
+    // the conversation list
+    ...collect(/'(bot|brain|graduation-cap|pen-line|code|languages|lightbulb|briefcase|palette|compass|book-open|archive-restore)'/g),
   ]);
   const registered = new Set([...iconsSrc.matchAll(/^ {2}([A-Z]\w*),$/gm)].map((m) => m[1]));
 
