@@ -65,8 +65,12 @@ export function startChatSync() {
       // written with a later sync then).
       flush: async () => (sync.status().phase === 'on' ? (await sync.syncNow()) !== null : true),
     });
-    sync.onStatus(() => void refreshSyncStatus());
-    await sync.start();
+    // The store is followed only while sync is on, so a browser that does not sync loads nothing.
+    sync.onStatus((s) => {
+      if (s.phase === 'on') void sync.start();
+      void refreshSyncStatus();
+    });
+    if (sync.status().phase === 'on') await sync.start();
     const kick = () => {
       if (sync.status().phase === 'on' && getConnection().status === 'ready') void sync.syncNow({ ifAvailable: true });
     };
