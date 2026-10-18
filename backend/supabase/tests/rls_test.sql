@@ -1455,12 +1455,281 @@ select rls_test.expect_count('deleting a document cascades to its sections', $q$
     where not exists (select 1 from public.knowledge_documents d where d.id = s.document_id)
 $q$, 0);
 
+-- ------------------------------------------------------------------------------
+-- End-to-end encrypted chat sync: chat_sync and chat_sync_keys
+-- ------------------------------------------------------------------------------
+-- Values below have the shapes the browser sends: a 32-character base64url row
+-- id, a 16-character IV and base64 ciphertext. Nothing is readable.
+:as_super
+select rls_test.expect_count('RLS enabled on chat_sync and chat_sync_keys', $q$
+    select 1 from pg_class
+    where oid in ('public.chat_sync'::regclass, 'public.chat_sync_keys'::regclass) and relrowsecurity
+$q$, 2);
+
+select rls_test.expect_none('chat sync policy set is exactly the expected one', $q$
+    with expected(tablename, policyname, cmd, roles) as (values
+        ('chat_sync', 'chat_sync_select_own', 'SELECT', '{authenticated}'),
+        ('chat_sync', 'chat_sync_insert_own', 'INSERT', '{authenticated}'),
+        ('chat_sync', 'chat_sync_update_own', 'UPDATE', '{authenticated}'),
+        ('chat_sync', 'chat_sync_delete_own', 'DELETE', '{authenticated}'),
+        ('chat_sync_keys', 'chat_sync_keys_select_own', 'SELECT', '{authenticated}'),
+        ('chat_sync_keys', 'chat_sync_keys_insert_own', 'INSERT', '{authenticated}'),
+        ('chat_sync_keys', 'chat_sync_keys_delete_own', 'DELETE', '{authenticated}')
+    ),
+    actual as (
+        select tablename::text, policyname::text, cmd::text, roles::text as roles
+        from pg_policies
+        where schemaname = 'public' and tablename in ('chat_sync', 'chat_sync_keys')
+    )
+    (select 'missing' as problem, * from expected except select 'missing', * from actual)
+    union all
+    (select 'unexpected', * from actual except select 'unexpected', * from expected)
+$q$);
+
+select rls_test.expect_count('every chat sync policy checks the owner', $q$
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename in ('chat_sync', 'chat_sync_keys')
+      and coalesce(qual, with_check) not like '%user_id = ( SELECT auth.uid() AS uid)%'
+$q$, 0);
+
+select rls_test.expect_none('chat sync privilege matrix (anon / authenticated / service_role)', $q$
+    with roles(r) as (values ('anon'), ('authenticated'), ('service_role')),
+    tables(t) as (values ('chat_sync'), ('chat_sync_keys')),
+    privs(p) as (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')),
+    granted(r, t, p) as (
+        select 'authenticated', 'chat_sync', p from unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) as p
+        union all
+        select 'authenticated', 'chat_sync_keys', p from unnest(array['SELECT', 'INSERT', 'DELETE']) as p
+        union all
+        select 'service_role', t, p
+        from unnest(array['chat_sync', 'chat_sync_keys']) as t,
+             unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) as p
+    )
+    select roles.r, tables.t, privs.p
+    from roles, tables, privs
+    where has_table_privilege(roles.r, 'public.' || tables.t, privs.p)
+          <> exists (select 1 from granted g where g.r = roles.r and g.t = tables.t and g.p = privs.p)
+$q$);
+
+select rls_test.expect_none('chat_sync_guard: SECURITY INVOKER, search_path pinned, not callable by API roles', $q$
+    select p.oid::regprocedure, p.prosecdef, p.proconfig
+    from pg_proc p
+    where p.oid = 'public.chat_sync_guard()'::regprocedure
+      and (p.prosecdef or p.proconfig is distinct from array['search_path=""']
+           or has_function_privilege('anon', p.oid, 'EXECUTE')
+           or has_function_privilege('authenticated', p.oid, 'EXECUTE'))
+$q$);
+
+select rls_test.expect_true('chat_sync_guard runs before every insert and update', $q$
+    select count(*) = 1 from pg_trigger
+    where tgrelid = 'public.chat_sync'::regclass and tgname = 'chat_sync_guard' and not tgisinternal
+      and tgfoid = 'public.chat_sync_guard()'::regprocedure
+$q$);
+
+:as_a
+select rls_test.expect_ok('A stores an encrypted conversation', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1', 1, 'MDEyMzQ1Njc4OWFi', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$);
+
+select rls_test.expect_true('user_id defaults to auth.uid(); the server stamps updated_at', $q$
+    select user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and updated_at is not null
+    from public.chat_sync where conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1'
+$q$);
+
+select rls_test.expect_affected('A writes the next revision against the matching base revision', $q$
+    update public.chat_sync set rev = 2, iv = 'ZmVkY2JhOTg3NjU0', ciphertext = 'Y2lwaGVydGV4dC10d28tYmJiYmJiYmI='
+    where conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1' and rev = 1
+$q$, 1);
+
+select rls_test.expect_affected('a write against a stale base revision changes nothing', $q$
+    update public.chat_sync set rev = 2, ciphertext = 'c3RhbGUtd3JpdGUtY2NjY2NjY2NjY2M='
+    where conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1' and rev = 1
+$q$, 0);
+
+select rls_test.expect_error('the revision cannot go back', $q$
+    update public.chat_sync set rev = 1 where conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1'
+$q$, '40001');
+
+select rls_test.expect_error('a row keeps its id', $q$
+    update public.chat_sync set conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA9', rev = 3
+    where conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1'
+$q$, '42501');
+
+select rls_test.expect_error('the same row id cannot be inserted twice', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1', 5, 'MDEyMzQ1Njc4OWFi', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$, '23505');
+
+select rls_test.expect_error('a local conversation id instead of the opaque row id is refused', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('starpi_2f6c1d0e-8a1b-4c2d-9e3f-0a1b2c3d4e5f', 1, 'MDEyMzQ1Njc4OWFi', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$, '23514');
+
+select rls_test.expect_error('an IV of the wrong size is refused', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2', 1, 'MDEy', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$, '23514');
+
+select rls_test.expect_error('plain text instead of base64 ciphertext is refused', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2', 1, 'MDEyMzQ1Njc4OWFi', 'What did we plan for the summer?')
+$q$, '23514');
+
+select rls_test.expect_error('ciphertext above 2800000 characters is refused', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2', 1, 'MDEyMzQ1Njc4OWFi', repeat('A', 2800004))
+$q$, '23514');
+
+select rls_test.expect_error('revision 0 is refused', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2', 0, 'MDEyMzQ1Njc4OWFi', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$, '23514');
+
+select rls_test.expect_error('A cannot store a row for B', $q$
+    insert into public.chat_sync (user_id, conv_id, rev, iv, ciphertext)
+    values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA3', 1,
+            'MDEyMzQ1Njc4OWFi', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$);
+
+select rls_test.expect_ok('A stores its wrapped sync key', $q$
+    insert into public.chat_sync_keys (key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('a0a0a0a0a0a0a0a0a0a0a0', 'PBKDF2-SHA256', 600000, 'c2FsdC1zYWx0LXNhbHQtMQ==', 'MDEyMzQ1Njc4OWFi',
+            'd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXkx')
+$q$);
+
+select rls_test.expect_error('a second key row for A is refused', $q$
+    insert into public.chat_sync_keys (key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('a1a1a1a1a1a1a1a1a1a1a1', 'PBKDF2-SHA256', 600000, 'c2FsdC1zYWx0LXNhbHQtMQ==', 'MDEyMzQ1Njc4OWFi',
+            'd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXkx')
+$q$, '23505');
+
+select rls_test.expect_error('the key row cannot be updated in place', $q$
+    update public.chat_sync_keys set iterations = 700000
+$q$);
+
+select rls_test.expect_affected('A replaces its key row by delete and insert', $q$
+    delete from public.chat_sync_keys where user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+$q$, 1);
+
+select rls_test.expect_ok('... and inserts the new wrapped key', $q$
+    insert into public.chat_sync_keys (key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('a2a2a2a2a2a2a2a2a2a2a2', 'PBKDF2-SHA256', 650000, 'c2FsdC1zYWx0LXNhbHQtMg==', 'ZmVkY2JhOTg3NjU0',
+            'd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXky')
+$q$);
+
+:as_b
+select rls_test.expect_count('B sees none of A''s encrypted rows', $q$
+    select 1 from public.chat_sync
+$q$, 0);
+
+select rls_test.expect_count('B sees no other user''s sync key', $q$
+    select 1 from public.chat_sync_keys
+$q$, 0);
+
+select rls_test.expect_affected('B cannot overwrite A''s rows', $q$
+    update public.chat_sync set rev = 9, ciphertext = 'b3ZlcndyaXR0ZW4tYnktYi1iYmJiYmI='
+    where conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1'
+$q$, 0);
+
+select rls_test.expect_affected('B cannot delete A''s rows', $q$
+    delete from public.chat_sync where conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1'
+$q$, 0);
+
+select rls_test.expect_affected('B cannot delete A''s sync key', $q$
+    delete from public.chat_sync_keys where user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+$q$, 0);
+
+select rls_test.expect_error('B cannot insert a row owned by A', $q$
+    insert into public.chat_sync (user_id, conv_id, rev, iv, ciphertext)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4', 1,
+            'MDEyMzQ1Njc4OWFi', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$);
+
+select rls_test.expect_error('B cannot insert a key owned by A', $q$
+    insert into public.chat_sync_keys (user_id, key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'b0b0b0b0b0b0b0b0b0b0b0', 'PBKDF2-SHA256', 600000,
+            'c2FsdC1zYWx0LXNhbHQtMQ==', 'MDEyMzQ1Njc4OWFi',
+            'd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXkx')
+$q$);
+
+select rls_test.expect_ok('B stores its own row under the same row id', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1', 1, 'MDEyMzQ1Njc4OWFi', 'Yi1jaXBoZXJ0ZXh0LWJiYmJiYmJiYmI=')
+$q$);
+
+select rls_test.expect_error('fewer than 600000 PBKDF2 iterations are refused', $q$
+    insert into public.chat_sync_keys (key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('b0b0b0b0b0b0b0b0b0b0b0', 'PBKDF2-SHA256', 100000, 'c2FsdC1zYWx0LXNhbHQtMQ==', 'MDEyMzQ1Njc4OWFi',
+            'd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXkx')
+$q$, '23514');
+
+select rls_test.expect_error('another key derivation is refused', $q$
+    insert into public.chat_sync_keys (key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('b0b0b0b0b0b0b0b0b0b0b0', 'SHA1', 600000, 'c2FsdC1zYWx0LXNhbHQtMQ==', 'MDEyMzQ1Njc4OWFi',
+            'd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXkx')
+$q$, '23514');
+
+select rls_test.expect_error('a wrapped key of the wrong size is refused', $q$
+    insert into public.chat_sync_keys (key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('b0b0b0b0b0b0b0b0b0b0b0', 'PBKDF2-SHA256', 600000, 'c2FsdC1zYWx0LXNhbHQtMQ==', 'MDEyMzQ1Njc4OWFi',
+            'c2hvcnQ=')
+$q$, '23514');
+
+select rls_test.expect_ok('B stores its wrapped sync key', $q$
+    insert into public.chat_sync_keys (key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('b0b0b0b0b0b0b0b0b0b0b0', 'PBKDF2-SHA256', 600000, 'c2FsdC1zYWx0LXNhbHQtMw==', 'MDEyMzQ1Njc4OWFi',
+            'd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXkz')
+$q$);
+
+select rls_test.expect_affected('B deletes all of its synced conversations', $q$
+    delete from public.chat_sync where user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+$q$, 1);
+
+select rls_test.expect_ok('B syncs again', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB1', 1, 'MDEyMzQ1Njc4OWFi', 'Yi1jaXBoZXJ0ZXh0LWJiYmJiYmJiYmI=')
+$q$);
+
+:as_anon
+select rls_test.expect_error('anon cannot read chat_sync', $q$
+    select * from public.chat_sync
+$q$);
+
+select rls_test.expect_error('anon cannot write chat_sync', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA5', 1, 'MDEyMzQ1Njc4OWFi', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$);
+
+select rls_test.expect_error('anon cannot read chat_sync_keys', $q$
+    select * from public.chat_sync_keys
+$q$);
+
+select rls_test.expect_error('anon cannot delete chat_sync', $q$
+    delete from public.chat_sync
+$q$);
+
+:as_super
+select rls_test.expect_true('A''s encrypted row and key are intact after B''s attempts', $q$
+    select (select rev = 2 and ciphertext = 'Y2lwaGVydGV4dC10d28tYmJiYmJiYmI='
+            from public.chat_sync
+            where user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1')
+       and (select key_id = 'a2a2a2a2a2a2a2a2a2a2a2' from public.chat_sync_keys
+            where user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+$q$);
+
 select rls_test.expect_ok('deleting an auth user', $q$
     delete from auth.users where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 $q$);
 
 select rls_test.expect_count('... removes the user''s chat rows', $q$
     select 1 from public.chat_history where session_id = 'sess-b'
+$q$, 0);
+
+select rls_test.expect_count('... removes the user''s encrypted chat rows and sync key', $q$
+    select 1 from public.chat_sync where user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    union all
+    select 1 from public.chat_sync_keys where user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 $q$, 0);
 
 select rls_test.expect_true('... and keeps the user''s knowledge rows private without owner', $q$

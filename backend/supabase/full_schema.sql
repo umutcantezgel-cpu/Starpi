@@ -4,8 +4,9 @@
 --
 -- Canonical schema for a new Supabase project: knowledge base (documents,
 -- sections with 1536-dim and 384-dim pgvector embeddings and HNSW indexes,
--- German full-text search), knowledge graph, chat history, settings and the
--- RPCs used by the browser and the library publisher.
+-- German full-text search), knowledge graph, chat history, end-to-end
+-- encrypted chat sync, settings and the RPCs used by the browser and the
+-- library publisher.
 --
 -- Existing databases are upgraded with the files in migrations/ instead; this
 -- file refuses to run on a pre-hardening schema. After a fresh install the
@@ -20,8 +21,9 @@
 --     which bypasses RLS.
 --   * Knowledge rows are public (is_public, set by the service role) or
 --     private to owner_id. Published rows are read-only for browser roles.
---     chat_history is always private to its owner; brain_settings is service
---     role only.
+--     chat_history, chat_sync and chat_sync_keys are always private to their
+--     owner; brain_settings is service role only. chat_sync holds only
+--     ciphertext the browser made.
 --   * CHECK constraints bound the size of every column the browser can write.
 --
 -- Prerequisite: Authentication > Sign In / Providers > Anonymous sign-ins.
@@ -875,6 +877,161 @@ revoke all on function public.ingest_document_atomic(text, text, text[], text, t
     from public, anon, authenticated, service_role;
 grant execute on function public.ingest_document_atomic(text, text, text[], text, text, text, jsonb)
     to service_role;
+
+-- ------------------------------------------------------------------------------
+-- 11. End-to-end encrypted chat sync (migrations/20261102000000_chat_sync.sql)
+-- ------------------------------------------------------------------------------
+-- 11.1 Tables
+-- ------------------------------------------------------------------------------
+-- Formats (checked here so that a row can only ever hold opaque data):
+--   conv_id      32 characters of base64url (24 bytes of an HMAC-SHA-256)
+--   iv           16 characters of base64 (12 bytes)
+--   ciphertext   base64 of the AES-GCM output, at most 2800000 characters
+--   key_id       22 characters of base64url (16 random bytes)
+--   salt         24 characters of base64 (16 bytes)
+--   wrapped_key  64 characters of base64 (a 32-byte key plus the 16-byte tag)
+create table if not exists public.chat_sync (
+    user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+    conv_id text not null,
+    rev bigint not null,
+    iv text not null,
+    ciphertext text not null,
+    updated_at timestamptz not null default now(),
+    constraint chat_sync_pkey primary key (user_id, conv_id),
+    constraint chat_sync_conv_id_format check (conv_id ~ '^[A-Za-z0-9_-]{32}$'),
+    constraint chat_sync_rev_positive check (rev > 0),
+    constraint chat_sync_iv_format check (iv ~ '^[A-Za-z0-9+/]{16}$'),
+    constraint chat_sync_ciphertext_format check (
+        char_length(ciphertext) between 24 and 2800000
+        and char_length(ciphertext) % 4 = 0
+        and ciphertext ~ '^[A-Za-z0-9+/]+={0,2}$'
+    )
+);
+
+comment on table public.chat_sync is
+    'End-to-end encrypted conversations: AES-GCM ciphertext made in the browser, opaque ids, owner only.';
+
+create table if not exists public.chat_sync_keys (
+    user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+    key_id text not null,
+    kdf text not null,
+    iterations integer not null,
+    salt text not null,
+    iv text not null,
+    wrapped_key text not null,
+    created_at timestamptz not null default now(),
+    constraint chat_sync_keys_pkey primary key (user_id),
+    constraint chat_sync_keys_key_id_format check (key_id ~ '^[A-Za-z0-9_-]{22}$'),
+    constraint chat_sync_keys_kdf_check check (kdf = 'PBKDF2-SHA256'),
+    constraint chat_sync_keys_iterations_range check (iterations between 600000 and 10000000),
+    constraint chat_sync_keys_salt_format check (salt ~ '^[A-Za-z0-9+/]{22}==$'),
+    constraint chat_sync_keys_iv_format check (iv ~ '^[A-Za-z0-9+/]{16}$'),
+    constraint chat_sync_keys_wrapped_key_format check (wrapped_key ~ '^[A-Za-z0-9+/]{64}$')
+);
+
+comment on table public.chat_sync_keys is
+    'The chat sync key of a user, wrapped with a key derived from a passphrase that never leaves the browser.';
+
+-- ------------------------------------------------------------------------------
+-- 11.2 Row guard
+-- ------------------------------------------------------------------------------
+-- A row keeps its owner and id; an update must raise the revision (a stale
+-- write fails with SQLSTATE 40001 instead of replacing a newer one); the
+-- server sets updated_at.
+create or replace function public.chat_sync_guard()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+    if tg_op = 'UPDATE' then
+        if new.user_id is distinct from old.user_id or new.conv_id is distinct from old.conv_id then
+            raise exception 'a chat_sync row keeps its owner and id' using errcode = '42501';
+        end if;
+        if new.rev <= old.rev then
+            raise exception 'chat_sync revision % is not newer than %', new.rev, old.rev using errcode = '40001';
+        end if;
+    end if;
+    new.updated_at := now();
+    return new;
+end;
+$$;
+
+revoke all on function public.chat_sync_guard() from public, anon, authenticated, service_role;
+
+drop trigger if exists chat_sync_guard on public.chat_sync;
+create trigger chat_sync_guard
+    before insert or update on public.chat_sync
+    for each row execute function public.chat_sync_guard();
+
+-- ------------------------------------------------------------------------------
+-- 11.3 Row level security: owner only, nothing for anon
+-- ------------------------------------------------------------------------------
+alter table public.chat_sync enable row level security;
+alter table public.chat_sync_keys enable row level security;
+
+drop policy if exists chat_sync_select_own on public.chat_sync;
+drop policy if exists chat_sync_insert_own on public.chat_sync;
+drop policy if exists chat_sync_update_own on public.chat_sync;
+drop policy if exists chat_sync_delete_own on public.chat_sync;
+drop policy if exists chat_sync_keys_select_own on public.chat_sync_keys;
+drop policy if exists chat_sync_keys_insert_own on public.chat_sync_keys;
+drop policy if exists chat_sync_keys_delete_own on public.chat_sync_keys;
+
+-- Any other policy on these tables would be OR-ed with the ones below.
+do $$
+declare
+    pol record;
+begin
+    for pol in
+        select tablename, policyname
+        from pg_policies
+        where schemaname = 'public' and tablename in ('chat_sync', 'chat_sync_keys')
+    loop
+        raise notice 'dropping unexpected policy % on public.%', pol.policyname, pol.tablename;
+        execute format('drop policy %I on public.%I', pol.policyname, pol.tablename);
+    end loop;
+end
+$$;
+
+create policy chat_sync_select_own on public.chat_sync
+    for select to authenticated
+    using (user_id = (select auth.uid()));
+
+create policy chat_sync_insert_own on public.chat_sync
+    for insert to authenticated
+    with check (user_id = (select auth.uid()));
+
+create policy chat_sync_update_own on public.chat_sync
+    for update to authenticated
+    using (user_id = (select auth.uid()))
+    with check (user_id = (select auth.uid()));
+
+create policy chat_sync_delete_own on public.chat_sync
+    for delete to authenticated
+    using (user_id = (select auth.uid()));
+
+create policy chat_sync_keys_select_own on public.chat_sync_keys
+    for select to authenticated
+    using (user_id = (select auth.uid()));
+
+create policy chat_sync_keys_insert_own on public.chat_sync_keys
+    for insert to authenticated
+    with check (user_id = (select auth.uid()));
+
+create policy chat_sync_keys_delete_own on public.chat_sync_keys
+    for delete to authenticated
+    using (user_id = (select auth.uid()));
+
+-- ------------------------------------------------------------------------------
+-- 11.4 Privileges
+-- ------------------------------------------------------------------------------
+-- The key row is written once and replaced by delete + insert, never updated.
+revoke all on table public.chat_sync, public.chat_sync_keys from public, anon, authenticated, service_role;
+grant select, insert, update, delete on table public.chat_sync to authenticated, service_role;
+grant select, insert, delete on table public.chat_sync_keys to authenticated;
+grant select, insert, update, delete on table public.chat_sync_keys to service_role;
 
 -- Let PostgREST pick up the new functions and privileges.
 notify pgrst, 'reload schema';

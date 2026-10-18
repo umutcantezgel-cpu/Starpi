@@ -29,6 +29,13 @@ select rls_test.expect_count('re-run keeps owned chat rows', $q$
     where owner_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and session_id = 'sess-a-only'
 $q$, 1);
 
+select rls_test.expect_true('re-run keeps A''s encrypted chat row and sync key', $q$
+    select (select count(*) = 1 from public.chat_sync
+            where user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and rev = 2)
+       and (select count(*) = 1 from public.chat_sync_keys
+            where user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+$q$);
+
 select rls_test.expect_true('re-run keeps the private service document private', $q$
     select not is_public from public.knowledge_documents where id = 'd0000000-0000-4000-8000-000000000004'
 $q$);
