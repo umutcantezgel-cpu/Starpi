@@ -383,8 +383,7 @@ function render() {
     ? html`<label class="block"><span class="field-label" data-i18n="canvas.picker_label">${t('canvas.picker_label')}</span><select class="field mt-1" data-change="canvas-pick" data-canvas-picker>${[artifact, ...others].map((a) => html`<option value="${a.id}"${a.id === artifact.id ? html` selected` : ''}>${titleOf(a)}</option>`)}</select></label>`
     : '';
   const canPreview = PREVIEWS.has(artifact.type);
-  const btn = (/** @type {string} */ action, /** @type {string} */ glyph, /** @type {string} */ key, extra = '') =>
-    html`<button type="button" class="btn btn-secondary px-2 py-1 text-xs" data-action="${action}"${extra ? html` ${extra}` : ''}>${icon(glyph, 'w-3.5 h-3.5')}${label(key)}</button>`;
+  const btn = (/** @type {{ action: string, icon: string, label: string }} */ b) => html`<button type="button" class="btn btn-secondary px-2 py-1 text-xs" data-action="${b.action}">${icon(b.icon, 'w-3.5 h-3.5')}${label(b.label)}</button>`;
   setHtml(
     el,
     html`<section class="space-y-3" data-canvas data-artifact="${artifact.id}">
@@ -395,8 +394,8 @@ function render() {
       </div>
       <div class="flex flex-wrap items-center gap-1.5">
         ${segmented({ action: 'canvas-mode', label: 'canvas.mode.label', value: state.mode, options: [{ value: 'edit', label: 'canvas.mode.edit', icon: 'square-pen' }, { value: 'read', label: 'canvas.mode.read', icon: 'file-text' }] })}
-        ${btn('canvas-copy', 'copy', 'canvas.copy')}
-        ${btn('canvas-download', 'download', 'canvas.download')}
+        ${btn({ action: 'canvas-copy', icon: 'copy', label: 'canvas.copy' })}
+        ${btn({ action: 'canvas-download', icon: 'download', label: 'canvas.download' })}
         ${canPreview ? html`<button type="button" class="btn btn-secondary px-2 py-1 text-xs" data-action="canvas-preview" aria-expanded="false" aria-controls="canvasPreview">${icon('monitor', 'w-3.5 h-3.5')}${label('canvas.preview')}</button>` : ''}
       </div>
       <label class="flex items-center gap-2 text-xs text-slate-600"><span data-i18n="canvas.version.label">${t('canvas.version.label')}</span><select class="field py-1 text-xs flex-1 min-w-0" data-change="canvas-version" data-canvas-versions></select></label>
