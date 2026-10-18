@@ -339,7 +339,7 @@ export function mountSyncView(el, services, deps) {
 
   services.onAction('sync-now', () =>
     act(async () => {
-      const done = await sync.syncNow();
+      const done = await sync.syncNow({ full: true });
       const s = sync.status();
       if (done) report(`${NS}.result.synced`, 'ok');
       else if (s.phase === 'on') report(s.error === 'network' || s.error === 'timeout' ? `${NS}.error.offline` : `${NS}.error.failed`, 'warn');

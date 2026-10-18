@@ -423,16 +423,18 @@ export function createChatSync(options) {
   }
 
   /**
-   * One sync, inside exclusive().
+   * One sync, inside exclusive(). Checks the conversations changed since the last sync, or all of
+   * them: with `full`, after an error, and while the engine does not follow the store (start()).
+   * @param {boolean} [full]
    * @returns {Promise<SyncReport | null>}
    */
-  async function cycle() {
+  async function cycle(full = false) {
     const st = await options.state.load().catch(() => null);
     if (!st) {
       if (status.phase !== 'unavailable') setStatus({ phase: 'off' });
       return null;
     }
-    const check = dirty;
+    const check = full || !unsubscribe ? null : dirty;
     dirty = new Set();
     setStatus({ busy: true });
     /** @type {CycleContext | null} */
@@ -499,14 +501,15 @@ export function createChatSync(options) {
   }
 
   /**
-   * Syncs now (after any sync already running).
-   * @param {{ ifAvailable?: boolean }} [opts]
+   * Syncs now (after any sync already running). `full` checks every conversation, not only the
+   * ones changed since the last sync.
+   * @param {{ ifAvailable?: boolean, full?: boolean }} [opts]
    * @returns {Promise<SyncReport | null>}
    */
   async function syncNow(opts = {}) {
     await ready();
     if (status.phase === 'unavailable') return null;
-    return exclusive(cycle, opts);
+    return exclusive(() => cycle(opts.full === true), opts);
   }
 
   /**
@@ -546,7 +549,7 @@ export function createChatSync(options) {
         await options.state.save({ v: 1, userId: account.userId, keyId: keys.keyId, enc: keys.enc, ids: keys.ids, rows: sameKey ? previous.rows : {}, lastSyncAt: sameKey ? previous.lastSyncAt : null });
         dirty = null;
         setStatus({ phase: 'on', error: null, skipped: 0 });
-        return { ok: true, joined, report: await cycle() };
+        return { ok: true, joined, report: await cycle(true) };
       };
       try {
         return await attempt();
