@@ -99,19 +99,13 @@ export const TIMEOUTS_MS = Object.freeze({
 
 export const LIMITS = Object.freeze({
   chatInputChars: 8_000,
-  attachmentBytes: 512 * 1024,
   ingestFileBytes: 2 * 1024 * 1024,
   ingestContentChars: 200_000,
   titleChars: 200,
-  localChatMessagesPerSession: 200,
-  localChatSessions: 10,
   retrievalRows: 6,
   contextCharsCloud: 9_000,
   excerptChars: 1_600,
-  // Free chat: the conversation window sent with a question, and the part of an attached file.
-  freeHistoryTurns: 16,
-  freeHistoryChars: 24_000,
-  historyTurnChars: 4_000,
+  // Free chat: the part of an attached file when the model's context is not known.
   freeAttachmentChars: 12_000,
   // Free chat with the 3.0 thread: files and images per message, the long edge images are scaled
   // to (JPEG at this quality) before they go to a model, and the text budget of an attached file

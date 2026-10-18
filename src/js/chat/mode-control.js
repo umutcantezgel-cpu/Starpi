@@ -4,15 +4,11 @@
 //
 // The thread decides Auto per question with ai/hybrid.js (what the question carries and names,
 // the workspace probe; a decider set with hooks.js setRouteDecider runs first and can only tighten
-// the route). builtInRoute below is the earlier coarse rule, kept for callers that have no probe.
-// Free never searches sources; Grounded always does, and every answer gets the source check and a
-// receipt.
+// the route). Free never searches sources; Grounded always does, and every answer gets the source
+// check and a receipt.
 import { byId, onAction } from '../dom.js';
 import { setText, t } from '../i18n/index.js';
 import { getChatMode, getWebSearch, onChatModeChange, onWebSearchChange, setChatMode, setWebSearch } from '../state.js';
-import { single } from './hooks.js';
-
-/** @typedef {import('../config.js').ChatMode} ChatMode */
 
 /** Hint and placeholder per mode. */
 const MODE_TEXT = Object.freeze({
@@ -20,48 +16,6 @@ const MODE_TEXT = Object.freeze({
   free: { hint: 'chat.mode_free_hint', placeholder: 'chat.placeholder_free' },
   grounded: { hint: 'chat.mode_grounded_hint', placeholder: 'chat.placeholder' },
 });
-
-/**
- * What Auto decides with.
- * @typedef {object} RouteInput
- * @property {ChatMode} mode
- * @property {readonly { kind: string }[]} attachments
- * @property {number} workspaceDocs   files in the on-device workspace
- * @property {number} [knowledgeDocs] documents of the knowledge base (0 while unknown or offline)
- * @property {boolean} [modelReady]   a model is set up for the question (default true)
- */
-
-/**
- * The built-in route of a question: an explicit mode is kept; Auto answers from the sources when the
- * question brings a document, when it brings no images and there are documents to answer from, and
- * when no model is set up (the sources are then quoted).
- * @param {RouteInput} input
- * @returns {'free' | 'grounded'}
- */
-export function builtInRoute(input) {
-  if (input.mode !== 'auto') return input.mode;
-  const kinds = input.attachments.map((a) => a.kind);
-  if (kinds.some((k) => k !== 'image')) return 'grounded';
-  if (kinds.length > 0) return 'free';
-  if (input.modelReady === false) return 'grounded';
-  return input.workspaceDocs > 0 || (input.knowledgeDocs ?? 0) > 0 ? 'grounded' : 'free';
-}
-
-/**
- * The route of a question: the registered decider's when it decides, else the built-in rule.
- * @param {RouteInput & { question: string, attachments: readonly { name: string, kind: string }[] }} input
- * @returns {Promise<'free' | 'grounded'>}
- */
-export async function decideRoute(input) {
-  if (input.mode !== 'auto') return input.mode;
-  try {
-    const decided = single.route ? await single.route(input) : null;
-    if (decided?.route === 'free' || decided?.route === 'grounded') return decided.route;
-  } catch (err) {
-    console.warn('[starpi] the route decider failed; the built-in rule decides', err);
-  }
-  return builtInRoute(input);
-}
 
 /** @type {Promise<typeof import('../ai/thinking.js')> | null} */
 let thinkingModule = null;

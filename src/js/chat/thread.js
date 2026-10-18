@@ -5,7 +5,7 @@
  * tree append-only: editing a question and regenerating an answer add siblings, Continue after the
  * length limit adds a new turn, and the branch navigator switches the active leaf.
  *
- * Two routes per question (mode-control.js decides for Auto):
+ * Two routes per question (ai/hybrid.js decides for Auto, see routeFor):
  * - free: the stable free-chat system prompt (prompts.js freeSystemPrompt), the conversation as
  *   history and the question with its attachments and a per-turn context block (date and time,
  *   notes). Answers are labelled "not checked". Anthropic conversations are replayed whole with
