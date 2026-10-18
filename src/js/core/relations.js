@@ -58,6 +58,8 @@ import { sentenceSpans } from './sentences.js';
 export const RELATIONS = Object.freeze({
   /** relative distance between a stated factor or share and the one the values give */
   factorTolerance: 0.1,
+  /** relative distance a factor stated as "nearly" ("nearly doubled", "knapp verdoppelt") may fall short */
+  hedgeReach: 0.3,
   /** absolute distance in percentage points for "X % of" */
   shareTolerance: 0.5,
   /** characters of a statement quoted as the relation */
@@ -88,11 +90,33 @@ const FACTORS = /** @type {Array<[RegExp, number]>} */ ([
   [words('quadrupled|quadruples|vervierfachte|vervierfachten|vervierfacht'), 4],
   [words('halved|halves|halving|cut in half|halbierte|halbierten|halbiert'), 0.5],
 ]);
-/** Factor phrases next to a change verb ("fell to a third", "sanken um zwei Drittel"). */
-const FACTOR_PHRASES = /** @type {Array<[RegExp, number]>} */ ([
-  [words('(?:to|auf) (?:a|one|ein) third|(?:by|um) two thirds|(?:um )?zwei drittel'), 1 / 3],
-  [words('(?:to|auf) (?:a|one|ein) quarter|(?:auf )?ein viertel|(?:by|um) three quarters|(?:um )?drei viertel'), 1 / 4],
-  [words('(?:by|to) half|by a half|um die hälfte|auf die hälfte'), 0.5],
+/**
+ * Factor phrases next to a change verb. "to a third" ("auf ein Drittel") names where the value went,
+ * as a share of where it was; "by a third" ("um ein Drittel") names how much of it was gained or
+ * lost, so its factor follows the verb: "fell by half" is 0.5, "rose by half" 1.5.
+ */
+const FACTOR_PHRASES = /** @type {Array<[RegExp, 'to' | 'by', number]>} */ ([
+  [words('to (?:a|one) third|auf ein drittel'), 'to', 1 / 3],
+  [words('to two thirds|auf zwei drittel'), 'to', 2 / 3],
+  [words('to (?:a|one) quarter|auf ein viertel'), 'to', 1 / 4],
+  [words('to three quarters|auf drei viertel'), 'to', 3 / 4],
+  [words('to (?:a |one )?half|auf die hälfte'), 'to', 1 / 2],
+  [words('by (?:a|one) third|um ein drittel'), 'by', 1 / 3],
+  [words('by two thirds|um zwei drittel'), 'by', 2 / 3],
+  [words('by (?:a|one) quarter|um ein viertel'), 'by', 1 / 4],
+  [words('by three quarters|um drei viertel'), 'by', 3 / 4],
+  [words('by (?:a |one )?half|um die hälfte'), 'by', 1 / 2],
+]);
+/**
+ * Words right before a factor that make it a bound or an estimate: "more than doubled" (at least
+ * the factor), "nearly tripled" (not quite), "roughly halved" (about). A bound is checked as a bound,
+ * an estimate with twice the tolerance.
+ * @typedef {'exact' | 'over' | 'under' | 'about'} Hedge
+ */
+const HEDGES = /** @type {Array<[RegExp, Hedge]>} */ ([
+  [/(?<![\p{L}])(?:more than|at least|well over|over|mehr als|mindestens|gut)\s+$/iu, 'over'],
+  [/(?<![\p{L}])(?:nearly|almost|close to|just under|less than|fast|beinahe|nahezu|annähernd|knapp|weniger als)\s+$/iu, 'under'],
+  [/(?<![\p{L}])(?:about|roughly|around|approximately|some|etwa|rund|ungefähr|circa|ca\.)\s+$/iu, 'about'],
 ]);
 const MORE = 'more|higher|greater|larger|bigger|longer|warmer|hotter|heavier|older|mehr|höher(?:e[nmrs]?)?|größer(?:e[nmrs]?)?|länger(?:e[nmrs]?)?|wärmer(?:e[nmrs]?)?|häufiger|öfter|stärker(?:e[nmrs]?)?|älter(?:e[nmrs]?)?';
 const LESS = 'less|fewer|lower|smaller|shorter|colder|cooler|lighter|younger|weniger|niedriger(?:e[nmrs]?)?|geringer(?:e[nmrs]?)?|kleiner(?:e[nmrs]?)?|kürzer(?:e[nmrs]?)?|kälter(?:e[nmrs]?)?|seltener(?:e[nmrs]?)?';
@@ -106,16 +130,29 @@ const AS_FACTORS = /** @type {Array<[RegExp, number]>} */ ([
   [words('half as|halb so', 'giu'), 0.5],
 ]);
 const AS = words('as|wie', 'iu');
-/** Order in time: the side that comes first is `left` (before) or `right` (after). */
-const TEMPORAL = /** @type {Array<{ re: RegExp, order: 1 | -1, prep: boolean, lang: 'en' | 'de' | null, dated: boolean }>} */ ([
+/** Right after "more than" / "mehr als": a factor, not the other side of a comparison ("more than doubled", "mehr als doppelt so viele"). */
+const FACTOR_AFTER = new RegExp(`^\\s*(?:${[...FACTORS, ...AS_FACTORS].map(([re]) => re.source).join('|')}|${L}(?:double|triple|half|twice|thrice|doppelt|halb|die hälfte|das doppelte|das dreifache)${R})`, 'iu');
+/**
+ * Order in time: the side that comes first is `left` (before) or `right` (after). `voice`: the cue is
+ * an active verb whose passive or participle turns the order around ("X followed Y" against "X was
+ * followed by Y" and "X, followed by Y").
+ */
+const TEMPORAL = /** @type {Array<{ re: RegExp, order: 1 | -1, prep: boolean, lang: 'en' | 'de' | null, dated: boolean, voice?: boolean }>} */ ([
   { re: words('before|prior to|ahead of|bevor'), order: -1, prep: false, lang: null, dated: true },
   { re: words('after|following|nachdem'), order: 1, prep: false, lang: null, dated: true },
-  { re: words('preceded'), order: -1, prep: false, lang: null, dated: false },
-  { re: words('followed|folgte auf|folgten auf'), order: 1, prep: false, lang: null, dated: false },
+  { re: words('preceded'), order: -1, prep: false, lang: null, dated: false, voice: true },
+  { re: words('followed'), order: 1, prep: false, lang: null, dated: false, voice: true },
+  { re: words('folgte auf|folgten auf'), order: 1, prep: false, lang: null, dated: false },
+  // "X, gefolgt von Y": the participle, X first.
+  { re: words('gefolgt vo[nm]'), order: -1, prep: false, lang: null, dated: false },
   // German prepositions: only before a noun phrase that names a dated event of the excerpts.
   { re: words('vor'), order: -1, prep: true, lang: 'de', dated: true },
   { re: words('nach'), order: 1, prep: true, lang: 'de', dated: true },
 ]);
+/** Before "followed" / "preceded": an auxiliary (with an adverb) or a comma make it a passive or a participle. */
+const PASSIVE_BEFORE = /(?:(?<![\p{L}])(?:am|is|are|was|were|be|been|being|get|gets|got)(?:\s+\p{L}+ly)?|,)\s*$/iu;
+/** After "followed" / "preceded": "by" names the other side of a passive. */
+const PASSIVE_BY = /^\s+by(?![\p{L}])/iu;
 /** A relation in a clause with one of these is not checked: negated or conditional. */
 const GUARD = words("not|n't|never|no|none|nobody|neither|nor|without|unless|if|whether|nicht|nie|niemals|kein|keine|keinen|keinem|keiner|keines|ohne|wenn|falls|sofern|ob");
 /** Words that refer back to the statement before ("it", "that number", "es", "ihre Zahl"). */
@@ -123,9 +160,9 @@ const REFERENCE = new Set(['it', 'they', 'this', 'that', 'these', 'those', 'numb
 /** Words of the lexicons and function words that never tell two sides apart. */
 const NOT_KEYS = new Set([
   ...['more', 'less', 'fewer', 'higher', 'lower', 'greater', 'larger', 'bigger', 'smaller', 'longer', 'shorter', 'warmer', 'colder', 'earlier', 'later', 'than', 'twice', 'half', 'times', 'mehr', 'weniger', 'hoeher', 'niedriger', 'groesser', 'kleiner', 'geringer', 'laenger', 'kuerzer', 'waermer', 'kaelter', 'haeufiger', 'frueher', 'spaeter', 'doppelt', 'halb', 'dreimal', 'zweimal', 'als', 'wie'],
-  ...['before', 'after', 'prior', 'ahead', 'following', 'followed', 'preceded', 'bevor', 'nachdem', 'vor', 'nach', 'folgte', 'folgten', 'erst', 'noch', 'bereits', 'schon', 'also', 'damit', 'weeks', 'days', 'months', 'wochen', 'tage', 'monate', 'year', 'jahr'],
+  ...['before', 'after', 'prior', 'ahead', 'following', 'followed', 'preceded', 'gefolgt', 'bevor', 'nachdem', 'vor', 'nach', 'folgte', 'folgten', 'erst', 'noch', 'bereits', 'schon', 'also', 'damit', 'weeks', 'days', 'months', 'wochen', 'tage', 'monate', 'year', 'jahr'],
   ...['eur', 'euro', 'euros', 'usd', 'dollar', 'dollars', 'chf', 'gbp', 'percent', 'prozent', 'million', 'millionen', 'billion', 'milliarden', 'mio', 'mrd'],
-  ...['third', 'thirds', 'quarter', 'quarters', 'drittel', 'viertel', 'haelfte'],
+  ...['third', 'thirds', 'quarter', 'quarters', 'drittel', 'viertel', 'haelfte', 'two', 'three', 'zwei', 'drei'],
 ]);
 /** Words before a number that make it a version or an identifier, not a quantity. */
 const VERSION_BEFORE = /(?:version|versions|firmware|release|v|build|nr|no|number|nummer)\.?\s*$/iu;
@@ -268,7 +305,7 @@ function compareDays(a, b) {
 
 /**
  * A change an excerpt states.
- * @typedef {{ dir: 1 | -1 | 0, factor: number | null, from: number | null, to: number | null, unit: string, words: SourceIndex, passage: string, source: number }} ExcerptChange
+ * @typedef {{ dir: 1 | -1 | 0, factor: number | null, hedge: Hedge, from: number | null, to: number | null, unit: string, words: SourceIndex, passage: string, source: number }} ExcerptChange
  */
 
 /** @typedef {{ source: number, text: string, index: SourceIndex, parts: Part[], changes: ExcerptChange[] }} ExcerptModel */
@@ -292,17 +329,28 @@ function clausesOf(text) {
 }
 
 /**
- * Change verbs of a text with their direction or factor, in text order.
+ * The hedge written right before a factor at `start` ("more than doubled", "fast doppelt so viele").
  * @param {string} text
- * @returns {Array<{ start: number, end: number, dir: 1 | -1, factor: number | null, surface: string }>}
+ * @param {number} start
+ * @returns {Hedge}
+ */
+function hedgeBefore(text, start) {
+  const before = text.slice(Math.max(0, start - 24), start);
+  return HEDGES.find(([re]) => re.test(before))?.[1] ?? 'exact';
+}
+
+/**
+ * Change verbs of a text with their direction or factor (and its hedge), in text order.
+ * @param {string} text
+ * @returns {Array<{ start: number, end: number, dir: 1 | -1, factor: number | null, hedge: Hedge, surface: string }>}
  */
 function changeVerbs(text) {
-  /** @type {Array<{ start: number, end: number, dir: 1 | -1, factor: number | null, surface: string }>} */
+  /** @type {Array<{ start: number, end: number, dir: 1 | -1, factor: number | null, hedge: Hedge, surface: string }>} */
   const out = [];
   const add = (/** @type {RegExpMatchArray} */ m, /** @type {1 | -1} */ dir, /** @type {number | null} */ factor) => {
     const start = m.index ?? 0;
     if (out.some((v) => start < v.end && v.start < start + m[0].length)) return;
-    out.push({ start, end: start + m[0].length, dir, factor, surface: m[0] });
+    out.push({ start, end: start + m[0].length, dir, factor, hedge: factor === null ? 'exact' : hedgeBefore(text, start), surface: m[0] });
   };
   for (const [re, factor] of FACTORS) for (const m of text.matchAll(re)) add(m, factor > 1 ? 1 : -1, factor);
   for (const m of text.matchAll(UP_RE)) add(m, 1, null);
@@ -315,14 +363,20 @@ function changeVerbs(text) {
     }
   }
   out.sort((a, b) => a.start - b.start);
-  // A factor phrase next to a change verb ("fell to a third") gives that verb its factor.
+  // A factor phrase next to a change verb ("fell to a third", "rose by half") gives that verb its
+  // factor.
   for (const v of out) {
     if (v.factor !== null) continue;
     const near = text.slice(v.end, v.end + 30);
-    for (const [re, factor] of FACTOR_PHRASES) {
+    for (const [re, kind, share] of FACTOR_PHRASES) {
       re.lastIndex = 0;
       const m = re.exec(near);
-      if (m && (m.index ?? 0) <= 4) v.factor = factor;
+      if (!m || (m.index ?? 0) > 4) continue;
+      // "half a million", "a quarter of a million": an amount, not a factor. A rise "to two thirds"
+      // is a share of something else (of the capacity), not of the value before.
+      if (/^\s+(?:of\s+)?(?:a|an|one)\s+(?:hundred|thousand|million|billion|dozen)/iu.test(text.slice(v.end + (m.index ?? 0) + m[0].length))) continue;
+      if (kind === 'to' && v.dir === 1) continue;
+      v.factor = kind === 'to' ? share : 1 + v.dir * share;
     }
   }
   return out;
@@ -351,11 +405,12 @@ function valuesAfter(text, facts, re, start, end) {
 }
 
 /**
- * The changes a text states: per change verb its direction or factor and, where written, the value
- * before ("from A", "up from A") and after ("to B", or the value before "up from").
+ * The changes a text states: per change verb its direction or factor (with its hedge: "more than
+ * doubled" is at least a factor of 2) and, where written, the value before ("from A", "up from A")
+ * and after ("to B", or the value before "up from").
  * @param {string} text
  * @param {Fact[]} facts
- * @returns {Array<{ dir: 1 | -1, factor: number | null, from: Fact | null, to: Fact | null, verb: { start: number, end: number, surface: string }, window: { start: number, end: number }, clause: { start: number, end: number } }>}
+ * @returns {Array<{ dir: 1 | -1, factor: number | null, hedge: Hedge, from: Fact | null, to: Fact | null, verb: { start: number, end: number, surface: string }, window: { start: number, end: number }, clause: { start: number, end: number } }>}
  */
 export function changesIn(text, facts) {
   const out = [];
@@ -390,7 +445,7 @@ export function changesIn(text, facts) {
       if (tail) to = facts.find((f) => f.start === clause.end + tail[0].length && isQuantity(text, f)) ?? null;
     }
     if (from && to && from === to) to = null;
-    out.push({ dir: v.dir, factor: v.factor, from, to, verb: { start: v.start, end: v.end, surface: v.surface }, window, clause });
+    out.push({ dir: v.dir, factor: v.factor, hedge: v.hedge, from, to, verb: { start: v.start, end: v.end, surface: v.surface }, window, clause });
   }
   // "up from" / "down from" are verbs of their own.
   for (const m of text.matchAll(UP_FROM)) {
@@ -399,7 +454,7 @@ export function changesIn(text, facts) {
     const clause = clauses.find((c) => start >= c.start && start < c.end) ?? { start: 0, end: text.length };
     const from = valuesAfter(text, facts, words('from', 'iu'), start, Math.min(text.length, start + m[0].length + 4))[0] ?? null;
     const to = [...facts].reverse().find((f) => f.end <= start && isQuantity(text, f) && start - f.end < 40) ?? null;
-    out.push({ dir: /** @type {1 | -1} */ (/^up/iu.test(m[0]) ? 1 : -1), factor: null, from, to, verb: { start, end: start + m[0].length, surface: m[0] }, window: { start: to?.start ?? clause.start, end: Math.min(text.length, (from?.end ?? start + m[0].length)) }, clause });
+    out.push({ dir: /** @type {1 | -1} */ (/^up/iu.test(m[0]) ? 1 : -1), factor: null, hedge: /** @type {Hedge} */ ('exact'), from, to, verb: { start, end: start + m[0].length, surface: m[0] }, window: { start: to?.start ?? clause.start, end: Math.min(text.length, (from?.end ?? start + m[0].length)) }, clause });
   }
   return out;
 }
@@ -449,7 +504,7 @@ function modelOf(text, source, options) {
       let to = c.to ? valueOf(c.to) : null;
       if (c.from && c.to) [from, to] = aligned(c.from, c.to);
       const dir = from !== null && to !== null ? /** @type {1 | -1 | 0} */ (Math.sign(to - from)) : c.dir;
-      changes.push({ dir, factor: c.factor, from, to, unit: c.to ? unitOf(sentence, c.to) : c.from ? unitOf(sentence, c.from) : '', words: indexSource(spanWords(sentence, facts, c.window.start, c.window.end).join(' ')), passage: sentence.slice(c.clause.start, c.clause.end), source });
+      changes.push({ dir, factor: c.factor, hedge: c.hedge, from, to, unit: c.to ? unitOf(sentence, c.to) : c.from ? unitOf(sentence, c.from) : '', words: indexSource(spanWords(sentence, facts, c.window.start, c.window.end).join(' ')), passage: sentence.slice(c.clause.start, c.clause.end), source });
     }
   }
   return { source, text, index: indexSource(text), parts, changes };
@@ -636,19 +691,38 @@ function clip(text) {
 }
 
 /**
+ * Whether a ratio of two values is the stated factor: within the tolerance, or with a hedge as far
+ * as the hedge says. "More than doubled" wants at least about 2 (at most about 0.5 for "more than
+ * halved"), "nearly doubled" a little less than 2 (down to hedgeReach), "roughly doubled" about 2
+ * with twice the tolerance. The direction is checked before.
+ * @param {number} factor
+ * @param {number} ratio
+ * @param {Hedge} hedge
+ */
+function factorFits(factor, ratio, hedge) {
+  const tolerance = RELATIONS.factorTolerance * factor;
+  const reach = RELATIONS.hedgeReach * factor;
+  const grows = factor > 1;
+  if (hedge === 'over') return grows ? ratio >= factor - tolerance : ratio <= factor + tolerance;
+  if (hedge === 'under') return grows ? ratio >= factor - reach && ratio <= factor + tolerance : ratio <= factor + reach && ratio >= factor - tolerance;
+  return Math.abs(ratio - factor) <= (hedge === 'about' ? 2 : 1) * tolerance;
+}
+
+/**
  * Verdict of a stated direction (and factor) against the values: inverted when they go the other
  * way, unsupported when the factor is off or they do not move, else supported.
  * @param {1 | -1} dir
  * @param {number | null} factor
+ * @param {Hedge} hedge
  * @param {number} from
  * @param {number} to
  * @returns {RelationFinding['verdict']}
  */
-function changeVerdict(dir, factor, from, to) {
+function changeVerdict(dir, factor, hedge, from, to) {
   const moved = Math.sign(to - from);
   if (moved === 0) return 'unsupported';
   if (moved !== dir) return 'inverted';
-  if (factor !== null && from !== 0 && Math.abs(to / from - factor) > RELATIONS.factorTolerance * factor) return 'unsupported';
+  if (factor !== null && from !== 0 && !factorFits(factor, to / from, hedge)) return 'unsupported';
   return 'supported';
 }
 
@@ -657,15 +731,16 @@ function changeVerdict(dir, factor, from, to) {
  * (twice as many) the ratio.
  * @param {1 | -1} dir
  * @param {number | null} factor
+ * @param {Hedge} hedge
  * @param {number} left
  * @param {number} right
  * @returns {RelationFinding['verdict']}
  */
-function compareVerdict(dir, factor, left, right) {
+function compareVerdict(dir, factor, hedge, left, right) {
   const order = Math.sign(left - right);
   if (order === 0) return 'unsupported';
   if (order !== dir) return 'inverted';
-  if (factor !== null && right !== 0 && Math.abs(left / right - factor) > RELATIONS.factorTolerance * factor) return 'unsupported';
+  if (factor !== null && right !== 0 && !factorFits(factor, left / right, hedge)) return 'unsupported';
   return 'supported';
 }
 
@@ -702,12 +777,12 @@ function checkChanges(s) {
       if (e && e.from !== null && e.to !== null) {
         // The excerpt says which value came first.
         const swapped = same(e.from, to) && !same(e.from, from);
-        const verdict = swapped ? 'inverted' : changeVerdict(c.dir, c.factor, from, to);
+        const verdict = swapped ? 'inverted' : changeVerdict(c.dir, c.factor, c.hedge, from, to);
         out.push({ kind: 'comparative', sentences: [s.i], cites: [e.source], verdict, text: relationText, found: e.passage });
         continue;
       }
       // No order in the excerpt: the statement must at least agree with itself.
-      const verdict = changeVerdict(c.dir, c.factor, from, to);
+      const verdict = changeVerdict(c.dir, c.factor, c.hedge, from, to);
       if (verdict !== 'supported') out.push({ kind: 'comparative', sentences: [s.i], cites: where, verdict, text: relationText, found: s.models.filter((m) => where.includes(m.source)).map((m) => passageWith(m, [c.from, c.to])).join(' … ') });
       continue;
     }
@@ -716,13 +791,13 @@ function checkChanges(s) {
       const to = /** @type {number} */ (valueOf(c.to));
       const e = changes.find((x) => x.to !== null && same(x.to, to) && x.dir !== 0);
       if (e) {
-        const verdict = e.from !== null ? changeVerdict(c.dir, c.factor, e.from, to) : e.dir !== c.dir ? 'inverted' : 'supported';
+        const verdict = e.from !== null ? changeVerdict(c.dir, c.factor, c.hedge, e.from, to) : e.dir !== c.dir ? 'inverted' : 'supported';
         out.push({ kind: 'comparative', sentences: [s.i], cites: [e.source], verdict, text: relationText, found: e.passage });
         continue;
       }
       const carried = carriedValue(s, c.to, c.clause);
       if (carried) {
-        const verdict = changeVerdict(c.dir, c.factor, carried.value, to);
+        const verdict = changeVerdict(c.dir, c.factor, c.hedge, carried.value, to);
         out.push({ kind: 'reference', sentences: [carried.view.i, s.i], cites: carried.cites, verdict, text: relationText, found: carried.found });
       }
       continue;
@@ -734,9 +809,11 @@ function checkChanges(s) {
     if (!e) continue;
     /** @type {RelationFinding['verdict']} */
     let verdict;
-    if (e.from !== null && e.to !== null) verdict = changeVerdict(c.dir, c.factor, e.from, e.to);
+    if (e.from !== null && e.to !== null) verdict = changeVerdict(c.dir, c.factor, c.hedge, e.from, e.to);
     else if (e.dir !== 0 && e.dir !== c.dir) verdict = 'inverted';
-    else if (c.factor !== null && e.factor !== null && Math.abs(e.factor - c.factor) > RELATIONS.factorTolerance * c.factor) verdict = 'unsupported';
+    // Two factors without values are compared only when neither is hedged ("more than doubled"
+    // says too little against "tripled").
+    else if (c.factor !== null && e.factor !== null && c.hedge === 'exact' && e.hedge === 'exact' && !factorFits(c.factor, e.factor, 'exact')) verdict = 'unsupported';
     else if (e.dir !== 0) verdict = 'supported';
     else continue;
     out.push({ kind: 'comparative', sentences: [s.i], cites: [e.source], verdict, text: relationText, found: e.passage });
@@ -818,12 +895,14 @@ function carriedValue(s, value, clause) {
 function checkComparisons(s) {
   /** @type {RelationFinding[]} */
   const out = [];
-  /** @type {Array<{ start: number, end: number, dir: 1 | -1, factor: number | null, temporal: boolean, close: RegExp }>} */
+  /** @type {Array<{ start: number, end: number, dir: 1 | -1, factor: number | null, hedge: Hedge, temporal: boolean, close: RegExp }>} */
   const cues = [];
   for (const [re, dir, temporal] of /** @type {Array<[RegExp, 1 | -1, boolean]>} */ ([[MORE_RE, 1, false], [LESS_RE, -1, false], [EARLIER_RE, -1, true], [LATER_RE, 1, true]])) {
-    for (const m of s.text.matchAll(re)) cues.push({ start: m.index ?? 0, end: (m.index ?? 0) + m[0].length, dir, factor: null, temporal, close: THAN });
+    for (const m of s.text.matchAll(re)) cues.push({ start: m.index ?? 0, end: (m.index ?? 0) + m[0].length, dir, factor: null, hedge: 'exact', temporal, close: THAN });
   }
-  for (const [re, factor] of AS_FACTORS) for (const m of s.text.matchAll(re)) cues.push({ start: m.index ?? 0, end: (m.index ?? 0) + m[0].length, dir: factor > 1 ? 1 : -1, factor, temporal: false, close: AS });
+  for (const [re, factor] of AS_FACTORS) {
+    for (const m of s.text.matchAll(re)) cues.push({ start: m.index ?? 0, end: (m.index ?? 0) + m[0].length, dir: factor > 1 ? 1 : -1, factor, hedge: hedgeBefore(s.text, m.index ?? 0), temporal: false, close: AS });
+  }
   for (const cue of cues) {
     // The word that closes the comparison within a few words, in the same clause.
     const ahead = s.text.slice(cue.end, cue.end + 60);
@@ -837,6 +916,9 @@ function checkComparisons(s) {
     if (s.facts.some((f) => f.end <= cue.start && cue.start - f.end <= 3) || /(?:\bfour|\bthree|\btwo|\bone|zwei|drei|vier)\s+$/iu.test(s.text.slice(0, cue.start))) continue;
     const thanStart = cue.end + (close.index ?? 0);
     const thanEnd = thanStart + close[0].length;
+    // "more than doubled", "less than half as many": a hedge of the factor that follows (checked
+    // with that factor), not a comparison of two sides.
+    if (cue.factor === null && FACTOR_AFTER.test(s.text.slice(thanEnd))) continue;
     const start = leftStart(s.text, cue.start);
     const end = rightEnd(s.text, thanEnd, s.facts);
     if (guarded(s.text, start, end)) continue;
@@ -879,7 +961,7 @@ function checkComparisons(s) {
       verdict = order === cue.dir ? 'supported' : 'inverted';
     } else {
       const [l, r] = aligned(pair.left, pair.right);
-      verdict = compareVerdict(cue.dir, cue.factor, l, r);
+      verdict = compareVerdict(cue.dir, cue.factor, cue.hedge, l, r);
     }
     out.push({ kind: cue.temporal ? 'temporal' : 'comparative', sentences: [s.i], cites: pair.cites, verdict, text: relationText, found: pair.found });
   }
@@ -903,7 +985,7 @@ function carriedComparison(s, cue) {
   const carried = carriedValue(s, own[0], { start, end });
   if (!carried) return [];
   const [now] = aligned(own[0], own[0]);
-  const verdict = compareVerdict(cue.dir, null, now, carried.value);
+  const verdict = compareVerdict(cue.dir, null, 'exact', now, carried.value);
   return [{ kind: 'reference', sentences: [carried.view.i, s.i], cites: carried.cites, verdict, text: clip(s.text.slice(cue.start, own[0].end > cue.start ? own[0].end : cue.end)), found: carried.found }];
 }
 
@@ -921,7 +1003,12 @@ function checkOrder(s, lang) {
     if (t.lang && t.lang !== lang) continue;
     for (const m of s.text.matchAll(t.re)) {
       const at = m.index ?? 0;
-      const cueEnd = at + m[0].length;
+      // "X was followed by Y", "X, followed by Y": the passive or the participle of an active cue
+      // turns the order around; a "by" right after it belongs to the cue.
+      const by = t.voice ? PASSIVE_BY.exec(s.text.slice(at + m[0].length)) : null;
+      const passive = Boolean(t.voice && (by || PASSIVE_BEFORE.test(s.text.slice(Math.max(0, at - 24), at))));
+      const wanted = passive ? -t.order : t.order;
+      const cueEnd = at + m[0].length + (by ? by[0].length : 0);
       // "Before Y, X": the connective opens the sentence and its clause ends at the first comma.
       const opens = /^\s*$/u.test(s.text.slice(leftStart(s.text, at), at));
       let left;
@@ -966,7 +1053,7 @@ function checkOrder(s, lang) {
       const order = compareDays(pair.left, pair.right);
       if (order === null || order === 0) continue;
       // `order` -1: left came first. "X before Y" wants -1, "X after Y" wants 1.
-      const verdict = order === t.order ? 'supported' : 'inverted';
+      const verdict = order === wanted ? 'supported' : 'inverted';
       out.push({ kind: 'temporal', sentences: [s.i], cites: pair.cites, verdict, text: clip(s.text.slice(opens ? at : at, right.end)), found: pair.found });
     }
   }

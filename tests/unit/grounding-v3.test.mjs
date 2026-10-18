@@ -33,6 +33,8 @@ const REPORT_DE = [
 const source = (text, label) => ({ label, doc: label.slice(6, label.indexOf(',')), heading: '', text, delivered: /** @type {const} */ ('full') });
 const EN = [source(REPORT_EN, '[Doc: report.md, Chunk: 1]')];
 const DE = [source(REPORT_DE, '[Doc: bericht.md, Chunk: 1]')];
+const FIGURES = [source('Visits rose from 1,000 to 2,500. Costs fell from 1,000 EUR to 560 EUR. The north branch lent 4,100 items and the south branch 1,800 items.', '[Doc: figures.md, Chunk: 1]')];
+const ZAHLEN = [source('Die Zahl der Besuche stieg von 1.000 auf 2.500. Die Zweigstelle Nord verlieh 4.100 Medien, die Zweigstelle Süd 1.800.', '[Doc: zahlen.md, Chunk: 1]')];
 
 /**
  * The checked statements (verdict and reason codes) and the relations of an answer whose statements
@@ -111,6 +113,40 @@ describe('changes', () => {
     assert.deepEqual(en('Energy costs doubled after the switch to heat pumps.').sentences, ['weak:relation_inverted']);
   });
 
+  it('reads "by half" and "um ein Viertel" by the direction of the verb, and "to half" as where the value went', () => {
+    // Membership: 1,200 to 1,500 is a quarter more, not half; energy costs: 90,000 to 45,000 is half.
+    assert.deepEqual(en('Membership rose by a quarter, from 1,200 to 1,500.').sentences, ['supported']);
+    assert.deepEqual(en('Membership rose by half, from 1,200 to 1,500.').sentences, ['weak:relation_unsupported']);
+    assert.deepEqual(en('Energy costs fell by half, from 90,000 EUR to 45,000 EUR.').sentences, ['supported']);
+    assert.deepEqual(en('Energy costs fell to half, from 90,000 EUR to 45,000 EUR.').sentences, ['supported']);
+    assert.deepEqual(de('Die Zahl der Mitglieder stieg um ein Viertel, von 1.200 auf 1.500.').sentences, ['supported']);
+    assert.deepEqual(de('Die Zahl der Mitglieder stieg um die Hälfte, von 1.200 auf 1.500.').sentences, ['weak:relation_unsupported']);
+    // "half a million" is an amount, not a factor.
+    const visits = [source('Visitors rose from 800,000 to 1.3 million.', '[Doc: visits.md, Chunk: 1]')];
+    assert.deepEqual(check('Visitors rose by half a million to 1.3 million.', visits).sentences, ['supported']);
+  });
+
+  it('checks a hedged factor as the bound it states: "more than doubled", "nearly halved", "mehr als verdoppelt"', () => {
+    const figures = (/** @type {string} */ answer) => check(answer, FIGURES).sentences;
+    // Visits: 1,000 to 2,500 (2.5 times); costs: 1,000 EUR to 560 EUR (0.56).
+    assert.deepEqual(figures('Visits more than doubled from 1,000 to 2,500.'), ['supported']);
+    assert.deepEqual(figures('Visits doubled from 1,000 to 2,500.'), ['weak:relation_unsupported']);
+    assert.deepEqual(figures('Visits more than tripled from 1,000 to 2,500.'), ['weak:relation_unsupported']);
+    assert.deepEqual(figures('Visits nearly tripled from 1,000 to 2,500.'), ['supported']);
+    assert.deepEqual(figures('Visits nearly doubled from 1,000 to 2,500.'), ['weak:relation_unsupported']);
+    assert.deepEqual(figures('Costs nearly halved from 1,000 EUR to 560 EUR.'), ['supported']);
+    assert.deepEqual(figures('Costs more than halved from 1,000 EUR to 560 EUR.'), ['weak:relation_unsupported']);
+    // "more than twice as many … as": a bound of the factor, not a comparison of its own.
+    assert.deepEqual(check('The north branch lent more than twice as many items as the south branch.', FIGURES).relations, ['comparative/supported']);
+    assert.deepEqual(figures('The north branch lent twice as many items as the south branch.'), ['weak:relation_unsupported']);
+    assert.deepEqual(figures('The north branch lent more than three times as many items as the south branch.'), ['weak:relation_unsupported']);
+    const zahlen = (/** @type {string} */ answer) => check(answer, ZAHLEN).sentences;
+    assert.deepEqual(zahlen('Die Zahl der Besuche hat sich mehr als verdoppelt, von 1.000 auf 2.500.'), ['supported']);
+    assert.deepEqual(zahlen('Die Zahl der Besuche hat sich verdoppelt, von 1.000 auf 2.500.'), ['weak:relation_unsupported']);
+    assert.deepEqual(zahlen('Die Zweigstelle Nord verlieh mehr als doppelt so viele Medien wie die Zweigstelle Süd.'), ['supported']);
+    assert.deepEqual(zahlen('Die Zweigstelle Nord verlieh doppelt so viele Medien wie die Zweigstelle Süd.'), ['weak:relation_unsupported']);
+  });
+
   it('finds the values of each verb of a clause with two changes', () => {
     const facts = extractFacts('Access requests rose from 12 to 19 and incidents fell from 40 to 10.');
     const changes = changesIn('Access requests rose from 12 to 19 and incidents fell from 40 to 10.', facts);
@@ -155,6 +191,20 @@ describe('orders in time', () => {
 
   it('does not read a duration or a time as an event', () => {
     assert.deepEqual(en('The café opened after 7 days of testing.').relations, []);
+  });
+
+  it('reads "was followed by", "X, followed by Y" and "was preceded by" the other way round than the active verb', () => {
+    // The café opened first (3 April), the lift came later (17 June).
+    assert.deepEqual(en('The opening of the café was followed by the installation of the new lift.').sentences, ['supported']);
+    assert.deepEqual(en('The café opened on 3 April 2025, followed by the new lift on 17 June 2025.').sentences, ['supported']);
+    assert.deepEqual(en('The installation of the new lift was preceded by the opening of the café.').sentences, ['supported']);
+    assert.deepEqual(en('The new lift followed the café.').sentences, ['supported']);
+    assert.deepEqual(en('The installation of the new lift was followed by the opening of the café.').sentences, ['weak:relation_inverted']);
+    assert.deepEqual(en('The new lift was installed, followed by the opening of the café.').sentences, ['weak:relation_inverted']);
+    assert.deepEqual(en('The opening of the café was preceded by the installation of the new lift.').sentences, ['weak:relation_inverted']);
+    assert.deepEqual(en('The new lift preceded the café.').sentences, ['weak:relation_inverted']);
+    assert.deepEqual(de('Das Café wurde eröffnet, gefolgt vom Einbau des neuen Aufzugs.').sentences, ['supported']);
+    assert.deepEqual(de('Der neue Aufzug wurde eingebaut, gefolgt von der Eröffnung des Cafés.').sentences, ['weak:relation_inverted']);
   });
 });
 
