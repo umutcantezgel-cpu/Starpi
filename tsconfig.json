@@ -163,6 +163,7 @@
     "src/js/features/trust.js",
     "src/js/features/voice.js",
     "src/js/features/workspace.js",
+    "src/js/graph-extract.js",
     "src/js/graph-tab.js",
     "src/js/graph.js",
     "src/js/i18n/index.js",
