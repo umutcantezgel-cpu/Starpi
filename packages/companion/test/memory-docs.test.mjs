@@ -125,7 +125,7 @@ test('notes over HTTP: explicit add, recall with ranking, change, delete, erase 
   const keyNote = a.json().note;
   assert.equal(keyNote.dataClass, 'personal');
   assert.equal(keyNote.title, 'The spare house key is with the neighbour at number 12.');
-  await c.post('/v1/memory/notes', { text: 'Water the garden plants twice a week.', pinned: true });
+  await c.post('/v1/memory/notes', { text: 'Water the herbs on the balcony twice a week.', pinned: true });
   await c.post('/v1/memory/notes', { text: 'Wifi password: correct horse battery staple', dataClass: 'secret' });
   assert.equal((await c.post('/v1/memory/notes', { text: '' })).status, 400);
   assert.equal((await c.post('/v1/memory/notes', { text: 'x', colour: 'red' })).status, 400);
@@ -159,7 +159,7 @@ test('notes over HTTP: explicit add, recall with ranking, change, delete, erase 
   // A crypto-erase of the namespace is followed without a restart.
   assert.equal((await c.post('/v1/vault/erase', { namespace: 'notes', confirm: 'notes' })).status, 200);
   assert.equal((await c.get('/v1/memory/notes')).json().notes.length, 0);
-  assert.equal((await c.post('/v1/memory/recall', { query: 'garden plants' })).json().notes.length, 0);
+  assert.equal((await c.post('/v1/memory/recall', { query: 'balcony herbs' })).json().notes.length, 0);
 });
 
 test('documents: upload, extraction in the background, passages, original, duplicates, class and delete', async (t) => {

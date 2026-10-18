@@ -89,7 +89,7 @@ test('agenda after a stop: a recent reminder fires late, an old one is reported 
   const raw = { timeZone: 'UTC', modules: { agenda: { catchUpMinutes: 45 } } };
   const first = await startModules(dir, { only: ['notify', 'agenda'], raw, options: { clock } });
   const c = await client(first.companion);
-  const soon = (await c.post('/v1/agenda', { title: 'Water the plants', rule: { type: 'once', date: '2026-10-18', time: '07:00' } })).json().item;
+  const soon = (await c.post('/v1/agenda', { title: 'Water the herbs', rule: { type: 'once', date: '2026-10-18', time: '07:00' } })).json().item;
   const daily = (await c.post('/v1/agenda', { title: 'Stretch', rule: { type: 'daily', time: '06:30' } })).json().item;
   await first.companion.stop();
   // Back at 07:30: the first reminder is 30 minutes late, the daily one 60 minutes.

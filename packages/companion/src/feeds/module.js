@@ -342,7 +342,7 @@ export function createFeedsModule({ hub }) {
           if (!source) throw fail('feed_source_unknown', 'name a configured csv source (?source=)', { status: 404 });
           let text;
           try {
-            text = new TextDecoder('utf-8', { fatal: true }).decode(req.body);
+            text = new TextDecoder('utf-8', { fatal: true }).decode(req.body ?? new Uint8Array(0));
           } catch {
             throw fail('feed_csv_encoding', 'the file is not UTF-8 text', { status: 415 });
           }
