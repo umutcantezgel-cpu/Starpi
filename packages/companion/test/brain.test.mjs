@@ -165,7 +165,7 @@ test('router: a failing brain rests, the breaker and the admission take part', a
   const router = createBrainRouter({ brains: [flaky], none: createNoneBrain(), clock, breaker });
   for (let i = 0; i < REST_AFTER_FAILURES; i += 1) await router.complete(ask('x'));
   assert.equal(router.describe()[0].resting, true);
-  assert.equal((await router.complete(ask('x'))).notice, 'no_brain_for_class');
+  assert.equal((await router.complete(ask('x'))).notice, 'brain_unavailable');
   clock.advance(61_000);
   assert.equal((await router.complete(ask('x'))).text, 'back');
 
@@ -184,7 +184,37 @@ test('router: a failing brain rests, the breaker and the admission take part', a
     yield { type: 'text', text: 'c' };
     yield { type: 'end', stopReason: 'end_turn', model: 'm', usage: null };
   });
-  assert.equal((await createBrainRouter({ brains: [cloud], none: createNoneBrain(), breaker: isolating }).complete(ask('x'))).notice, 'no_brain_for_class', 'isolated: no cloud call leaves');
+  assert.equal((await createBrainRouter({ brains: [cloud], none: createNoneBrain(), breaker: isolating }).complete(ask('x'))).notice, 'breaker', 'isolated: no cloud call leaves');
+  const localBehind = scripted('local', 'local', async function* () {
+    yield { type: 'text', text: 'l' };
+    yield { type: 'end', stopReason: 'end_turn', model: 'm', usage: null };
+  });
+  const held = await createBrainRouter({ brains: [cloud, localBehind], none: createNoneBrain(), breaker: isolating }).complete(ask('x'));
+  assert.deepEqual({ notice: held.notice, cloudCalls: cloud.calls, localCalls: localBehind.calls }, { notice: 'breaker', cloudCalls: 0, localCalls: 0 }, 'a held cloud model is not replaced by a local one either');
+});
+
+test('router: a resting local model is not replaced by the cloud model behind it', async () => {
+  const clock = manualClock();
+  const failingLocal = scripted('local', 'local', async function* (n) {
+    if (n <= REST_AFTER_FAILURES) throw Object.assign(new Error('down'), { code: 'brain_unreachable' });
+    yield { type: 'text', text: 'local again' };
+    yield { type: 'end', stopReason: 'end_turn', model: 'm', usage: null };
+  });
+  const cloud = scripted('cloud', 'cloud', async function* () {
+    yield { type: 'text', text: 'cloud' };
+    yield { type: 'end', stopReason: 'end_turn', model: 'm', usage: null };
+  });
+  const router = createBrainRouter({ brains: [failingLocal, cloud], none: createNoneBrain(), clock });
+  for (let i = 0; i < REST_AFTER_FAILURES + 3; i += 1) {
+    const r = await router.complete(ask('x', 'personal'));
+    assert.deepEqual({ source: r.source, notice: r.notice, locality: r.locality }, { source: 'template', notice: 'brain_unavailable', locality: 'none' }, `request ${i + 1}`);
+  }
+  assert.equal(router.describe()[0].resting, true);
+  assert.equal(cloud.calls, 0, 'nothing went to the cloud while the local model rested');
+  assert.equal(failingLocal.calls, REST_AFTER_FAILURES, 'a resting brain is not asked');
+  clock.advance(61_000);
+  const back = await router.complete(ask('x', 'personal'));
+  assert.deepEqual({ brain: back.brain, text: back.text, cloudCalls: cloud.calls }, { brain: 'local', text: 'local again', cloudCalls: 0 });
 });
 
 test('building brains: locality, egress list, private hosts and config problems', () => {

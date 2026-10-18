@@ -5,8 +5,9 @@
 //  - secret content reaches no model (template answer);
 //  - sensitive content reaches only local models; personal content reaches cloud models only when
 //    the owner allows it (on by default); public content any configured model;
-//  - the first allowed brain fixes the locality of the request: a failing local model is never
-//    replaced by a cloud model, nor the other way round; the fallback is the template;
+//  - the first allowed brain fixes the locality of the request, whether it is resting or held by the
+//    breaker or not: a failing local model is never replaced by a cloud model, nor the other way
+//    round; while no brain of that locality may run, the answer is the template with its notice;
 //  - after the first piece of text has gone out, a failing brain is not replaced either: the answer
 //    becomes the template and the caller is told to withdraw what it showed (`reset`);
 //  - a model's refusal is passed on as the refusal template with its notice, not retried elsewhere.
@@ -76,17 +77,24 @@ export function createBrainRouter({ brains, none, policy = {}, breaker, admissio
   }
 
   /**
-   * The brains a request may use, in order, all of one locality.
+   * The brains a request may use, in order, all of the locality of the first brain its data class
+   * allows; or the notice to answer with when none of them may run now.
    * @param {import('./contract.js').BrainRequest} request
    * @param {'interactive' | 'events' | 'background'} lane
+   * @returns {{ list: import('./contract.js').Brain[], notice: import('./none.js').Notice | null }}
    */
   function candidates(request, lane) {
-    let list = brains.filter((b) => mayReach(request.dataClass, b.locality, policy) && b.locality !== 'none');
-    if (request.brain !== undefined) list = list.filter((b) => b.id === request.brain);
-    list = list.filter((b) => !breaker || breaker.allows(lane, { cloud: b.locality === 'cloud' }));
-    const first = list.find((b) => !resting(b));
-    if (!first) return [];
-    return list.filter((b) => b.locality === first.locality && !resting(b));
+    let allowed = brains.filter((b) => mayReach(request.dataClass, b.locality, policy) && b.locality !== 'none');
+    if (request.brain !== undefined) allowed = allowed.filter((b) => b.id === request.brain);
+    if (allowed.length === 0) return { list: [], notice: brains.length === 0 ? 'no_model' : 'no_brain_for_class' };
+    // The locality is fixed before anything is left out for its state.
+    const locality = allowed[0].locality;
+    const same = allowed.filter((b) => b.locality === locality);
+    const open = same.filter((b) => !breaker || breaker.allows(lane, { cloud: b.locality === 'cloud' }));
+    if (open.length === 0) return { list: [], notice: 'breaker' };
+    const awake = open.filter((b) => !resting(b));
+    if (awake.length === 0) return { list: [], notice: 'brain_unavailable' };
+    return { list: awake, notice: null };
   }
 
   return {
@@ -104,8 +112,8 @@ export function createBrainRouter({ brains, none, policy = {}, breaker, admissio
       const req = checkBrainRequest(request);
       if (req.dataClass === 'secret') return template('class_secret');
       if (breaker && !breaker.allows(lane)) return template('breaker');
-      const list = candidates(req, lane);
-      if (list.length === 0) return template(brains.length === 0 ? 'no_model' : 'no_brain_for_class');
+      const { list, notice } = candidates(req, lane);
+      if (notice !== null) return template(notice);
       /** @type {Array<{ brain: string, error: string }>} */
       const attempts = [];
       for (const brain of list) {
