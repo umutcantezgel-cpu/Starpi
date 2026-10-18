@@ -103,8 +103,10 @@ async function withTimeout(run, outer, ms) {
       run(controller.signal),
       new Promise((_, reject) => {
         timer = setTimeout(() => {
-          controller.abort(new DOMException('The tool took too long', 'TimeoutError'));
-          reject(new DOMException('The tool took too long', 'TimeoutError'));
+          // The time limit wins over whatever the tool does once it is told to stop.
+          const late = new DOMException('The tool took too long', 'TimeoutError');
+          reject(late);
+          controller.abort(late);
         }, ms);
       }),
     ]);
