@@ -14,7 +14,7 @@
       "route": "grounded"
     },
     {
-      "q": "Up to how much are hotel costs reimbursed per night?",
+      "q": "For how many nights are hotel stays reimbursed per trip?",
       "route": "grounded"
     },
     {
@@ -83,7 +83,7 @@
       "route": "free"
     },
     {
-      "q": "Is a hotel at 140 EUR expensive in Paris?",
+      "q": "How do other firms reimburse hotel stays?",
       "route": "mixed"
     },
     {
