@@ -62,11 +62,14 @@ export function invalidateKnownTitles() {
   loaded?.invalidateKnownTitles();
 }
 
-/** Clears the conversation on screen (new chat, deleted history). */
+/**
+ * Clears the conversation on screen (new chat, deleted history). An answer still being written is
+ * stored in its own conversation.
+ */
 export function resetConversation() {
   if (loaded) loaded.resetThread();
   else void thread().then((m) => m.resetThread());
-  setAssistantStatus('status.ready');
+  if (!isChatBusy()) setAssistantStatus('status.ready');
 }
 
 /**

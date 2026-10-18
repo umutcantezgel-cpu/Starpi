@@ -85,7 +85,11 @@
     "no_model_body": "Fügen Sie in Einstellungen › Modellanbieter und Schlüssel einen Schlüssel hinzu, laden Sie ein Modell auf diesem Gerät oder verbinden Sie Ihren eigenen Server. Der Quellen-Modus antwortet auch ohne Modell, indem er Ihre Quellen zitiert.",
     "no_vision_model": "Keines der eingerichteten Modelle sieht Bilder. Fügen Sie den Schlüssel eines Anbieters hinzu, dessen Modelle Bilder lesen, oder fragen Sie ohne das Bild.",
     "image_not_source": "{name} wurde nicht zu Ihren Quellen hinzugefügt: Text in Bildern zu lesen braucht ein Modell, das Bilder sieht, und Ihre Zustimmung.",
-    "rate_limited_wait": "Der Anbieter erhält gerade zu viele Anfragen: Bitte warten Sie {seconds} s und versuchen Sie es dann erneut."
+    "rate_limited_wait": "Der Anbieter erhält gerade zu viele Anfragen: Bitte warten Sie {seconds} s und versuchen Sie es dann erneut.",
+    "stays_on_device_title": "Diese Frage bleibt auf diesem Gerät",
+    "stays_on_device_body": "Sie wurde auf diesem Gerät gestellt, deshalb beantwortet sie nur das Modell hier oder Ihr eigener Server. Wählen Sie eines davon oder stellen Sie die Frage als neue Nachricht.",
+    "failed_body": "Beim Antworten ist etwas schiefgegangen. Bitte versuchen Sie es noch einmal.",
+    "store_failed": "Der Chat konnte in diesem Browser nicht gespeichert werden (privates Fenster, blockierter oder voller Speicher)."
   },
   "continued": "Fortgesetzt nach der Längengrenze",
   "continue_prompt": "Mach genau dort weiter, wo du aufgehört hast.",

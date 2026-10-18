@@ -30,7 +30,7 @@ import { splitStreamingText } from '../chat-stream.js';
 import { APP_VERSION, LIMITS, TIMEOUTS_MS } from '../config.js';
 import { contextCoverage, receiptAdvisory } from '../core/grounding.js';
 import { startLocalEngine } from '../engine-ui.js';
-import { formatNumber, getLocale, setText, t } from '../i18n/index.js';
+import { formatNumber, getLocale, hasKey, setText, t } from '../i18n/index.js';
 import { refreshIcons } from '../icons.js';
 import { appendLoading, appendMessage, appendNotice, createStreamingMessage, markFreeAnswer, resetMessages } from '../messages.js';
 import { modelLabel, providerLabel } from '../providers.js';
@@ -129,6 +129,14 @@ let conversationId = currentSessionId();
 /** @type {Thread | null} */
 let current = null;
 let busy = false;
+/**
+ * The running turn: the conversation its question and answer belong to (taken when the turn starts)
+ * and that conversation's thread. The user may open another chat or start a new one while an answer
+ * is written; the answer is still stored beside its question, and shows when its chat is shown again
+ * (`left`: the screen changed during the turn; `live`: the bubble the answer streams into).
+ * @type {{ conversationId: string, thread: Thread | null, left: boolean, live: HTMLElement | null } | null}
+ */
+let turn = null;
 /** @type {AbortController | null} */
 let controller = null;
 let showSeq = 0;
@@ -227,13 +235,55 @@ function setBusy(on) {
   refreshBars();
 }
 
-async function reload() {
-  current = await (await store()).loadThread(conversationId);
+/** The conversation the running turn writes to; between turns the one shown. */
+function turnConversation() {
+  return turn?.conversationId ?? conversationId;
 }
 
-/** The newest message of the active path. */
-function leafId() {
-  return current?.path.at(-1)?.id ?? null;
+/** The thread of the running turn's conversation; between turns the one shown. */
+function turnThread() {
+  return turn ? turn.thread : current;
+}
+
+/** Whether the running turn's conversation is the one on screen (always true between turns). */
+function onScreen() {
+  return !turn || turn.conversationId === conversationId;
+}
+
+/**
+ * A notice of the running turn: shown only while its conversation is on screen.
+ * @param {Parameters<typeof appendNotice>[0]} notice
+ */
+function turnNotice(notice) {
+  if (onScreen()) appendNotice(notice);
+}
+
+/**
+ * A message element the running turn just added: it stays on screen only while the turn's
+ * conversation is shown (otherwise it was added to another chat).
+ * @template {Element} T
+ * @param {T} el
+ * @returns {T}
+ */
+function placed(el) {
+  if (!onScreen()) el.remove();
+  return el;
+}
+
+/** Reads the running turn's conversation again (and the one shown, when it is that one). */
+async function reload() {
+  const id = turnConversation();
+  const loaded = await (await store()).loadThread(id);
+  if (turn?.conversationId === id) turn.thread = loaded;
+  if (id === conversationId) current = loaded;
+}
+
+/**
+ * The newest message of the active path.
+ * @param {Thread | null} [thread]  default: the running turn's
+ */
+function leafId(thread = turnThread()) {
+  return thread?.path.at(-1)?.id ?? null;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -409,7 +459,7 @@ function chipsOf(node) {
 function barState(node) {
   const branch = current ? branchInfo(current.tree, node.id) : null;
   const meta = metaOf(node);
-  const canContinue = node.role === 'assistant' && meta.stop_reason === 'max_tokens' && (meta.chat_mode ?? node.label) === 'free' && leafId() === node.id;
+  const canContinue = node.role === 'assistant' && meta.stop_reason === 'max_tokens' && (meta.chat_mode ?? node.label) === 'free' && leafId(current) === node.id;
   return { node, branch: branch ? { position: branch.position, count: branch.count } : null, canContinue, busy };
 }
 
@@ -492,6 +542,7 @@ function removeFrom(nodeId) {
 export async function showConversation(id = currentSessionId(), opts = {}) {
   const seq = ++showSeq;
   conversationId = id;
+  if (turn) turn.left = true;
   /** @type {Thread | null} */
   let loaded = null;
   try {
@@ -505,16 +556,22 @@ export async function showConversation(id = currentSessionId(), opts = {}) {
   const shownSinceBoot = opts.keepNotices && box ? [...box.children].slice(1).filter((el) => !(el instanceof HTMLElement && el.dataset.nodeId)) : [];
   resetMessages();
   for (const node of current?.path ?? []) renderNode(node);
+  // An answer still being written in this conversation goes on streaming below its question.
+  if (turn?.conversationId === id && turn.live) box?.append(turn.live);
   box?.append(...shownSinceBoot);
 }
 
-/** Clears the thread on screen (a new chat). */
+/**
+ * Clears the thread on screen (a new chat). An answer still being written goes on in its own
+ * conversation and is stored there.
+ */
 export function resetThread() {
   conversationId = currentSessionId();
+  if (turn) turn.left = true;
   current = null;
   ++showSeq;
   resetMessages();
-  setAssistantStatus('status.ready');
+  setAssistantStatus(busy ? 'status.generating' : 'status.ready');
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -620,15 +677,35 @@ function assistantMessage(node) {
 }
 
 /**
+ * Whether a model runs on this device or on the user's own server (turns that stay on this device
+ * may go to it).
+ * @param {Target} target
+ */
+function onThisDevice(target) {
+  return target.route === 'device' || target.route === 'local';
+}
+
+/**
  * The turns of a path a model may get: questions answered on this device stay on it for every
  * model that is not on this device too.
  * @param {NodeRecord[]} path
  * @param {Target} target
  */
 function shareable(path, target) {
-  const onDevice = target.route === 'device' || target.route === 'local';
-  if (onDevice) return path;
+  if (onThisDevice(target)) return path;
   return path.filter((node, i) => !node.localOnly && !(node.role === 'user' && path[i + 1]?.localOnly));
+}
+
+/** The notice for a question that stays on this device when another model was asked to answer it. */
+const STAYS_ON_DEVICE = Object.freeze({ icon: 'lock', tone: /** @type {const} */ ('info'), title: 'chat-thread.notice.stays_on_device_title', body: 'chat-thread.notice.stays_on_device_body' });
+
+/**
+ * Whether a free question was asked to stay on this device: then only the model here or the own
+ * server answers it (again), never a provider or the site's pools.
+ * @param {NodeRecord} question
+ */
+function staysOnDevice(question) {
+  return question.role === 'user' && question.localOnly && metaOf(question).chat_mode !== 'grounded';
 }
 
 /**
@@ -675,15 +752,17 @@ async function freeRequest(target, path, ctx) {
   const who = target.route === 'device' ? 'local' : target.route === 'local' ? 'server' : 'cloud';
   const notes = [...systemNoteHooks].map((fn) => fn(ctx)).filter(Boolean);
   const system = [freeSystemPrompt(who, locale), ...notes].join('\n\n');
-  const turns = shareable(path, target);
+  const asked = /** @type {NodeRecord} */ (path.at(-1));
+  // Never reached: answerFree offers such a question to the model here and the own server only.
+  if (staysOnDevice(asked) && !onThisDevice(target)) throw Object.assign(new Error('The question stays on this device'), { code: 'stays_on_device' });
   /** @type {Message[]} */
-  const messages = [];
-  for (const node of turns) {
-    if (node.role === 'user') messages.push(await userMessage(node, target, caps));
-    else if (node.role === 'assistant') messages.push(assistantMessage(node));
+  let history = [];
+  for (const node of shareable(path.slice(0, -1), target)) {
+    if (node.role === 'user') history.push(await userMessage(node, target, caps));
+    else if (node.role === 'assistant') history.push(assistantMessage(node));
   }
-  const question = /** @type {Message} */ (messages.pop());
-  let history = messages;
+  // The question itself always goes along (the history above only leaves out what stays here).
+  const question = await userMessage(asked, target, caps);
   const maxOutputTokens = answerTokens(target, caps);
   if (target.provider !== 'anthropic') {
     const budget = caps.contextTokens - (maxOutputTokens ?? Math.floor(caps.contextTokens / 2)) - estimateTokens(system) - estimateTokens(question) - 256;
@@ -738,41 +817,54 @@ export function readableSoFar(text, read) {
  */
 async function streamAnswer(candidates, build, signal, placement = {}, read) {
   const stream = createStreamingMessage('', undefined, placement);
+  placed(stream.element);
+  if (turn) turn.live = stream.element;
   let text = '';
   let reasoning = '';
   /** @type {import('../voice/hooks.js').AnswerReader | null | undefined} undefined: not decided yet */
   let reader;
   /** The part of the answer handed to the reader: never reasoning a model wrote into its text. */
   let readText = '';
-  const run = await runAnswer({
-    candidates,
-    signal,
-    build,
-    onStart: (target, served) => {
-      stream.setBadge(...badgeArgs(target, served));
-      const badge = document.getElementById('servedModel');
-      if (badge) {
-        setText(badge, 'chat-thread.picker.served', { model: `${providerLabel(target.provider)} · ${modelLabel(target.provider, served || target.model)}` });
-        badge.classList.remove('hidden');
-      }
-    },
-    onEvent: (ev, target) => {
-      if (ev.type === 'text') {
-        text += ev.delta;
-        stream.update(text);
-        if (reader === undefined) reader = read ? readAloudStream(read(target)) : null;
-        const next = reader ? readableSoFar(text, readText) : readText;
-        if (reader && next.length > readText.length) {
-          reader.push(next.slice(readText.length));
-          readText = next;
+  /** @type {import('./runner.js').RunResult} */
+  let run;
+  try {
+    run = await runAnswer({
+      candidates,
+      signal,
+      build,
+      onStart: (target, served) => {
+        stream.setBadge(...badgeArgs(target, served));
+        const badge = document.getElementById('servedModel');
+        if (badge && onScreen()) {
+          setText(badge, 'chat-thread.picker.served', { model: `${providerLabel(target.provider)} · ${modelLabel(target.provider, served || target.model)}` });
+          badge.classList.remove('hidden');
         }
-      } else if (ev.type === 'reasoning' && typeof ev.delta === 'string') {
-        reasoning += ev.delta;
-        stream.reasoning(reasoning);
-      }
-    },
-    adapterFor: (target, req) => (target.provider === 'anthropic' && (estimateTokens(JSON.stringify(req.messages)) > COMPACTION_TOKENS || hasCompaction(current?.path ?? [])) ? compactingAnthropic() : undefined),
-  });
+      },
+      onEvent: (ev, target) => {
+        if (ev.type === 'text') {
+          text += ev.delta;
+          stream.update(text);
+          if (reader === undefined) reader = read ? readAloudStream(read(target)) : null;
+          const next = reader ? readableSoFar(text, readText) : readText;
+          if (reader && next.length > readText.length) {
+            reader.push(next.slice(readText.length));
+            readText = next;
+          }
+        } else if (ev.type === 'reasoning' && typeof ev.delta === 'string') {
+          reasoning += ev.delta;
+          stream.reasoning(reasoning);
+        }
+      },
+      adapterFor: (target, req) => (target.provider === 'anthropic' && (estimateTokens(JSON.stringify(req.messages)) > COMPACTION_TOKENS || hasCompaction(turnThread()?.path ?? [])) ? compactingAnthropic() : undefined),
+    });
+  } catch (err) {
+    // A request that could not be built or sent leaves no bubble behind.
+    reader?.abort();
+    stream.remove();
+    throw err;
+  } finally {
+    if (turn?.live === stream.element) turn.live = null;
+  }
   if (reader) {
     if (signal.aborted || !run.target || !run.result.text.trim()) reader.abort();
     else reader.end({ grounding: webGrounding(run.result) });
@@ -849,12 +941,15 @@ function engineOf(target) {
  * @param {'free' | 'grounded'} route
  */
 async function ensureConversation(db, route) {
-  const existing = await db.getConversation(conversationId);
+  const id = turnConversation();
+  const existing = await db.getConversation(id);
   if (existing) {
-    void db.updateConversation(conversationId, { mode: getChatMode(), model: getAssistant() }).catch(() => {});
+    void db.updateConversation(id, { mode: getChatMode(), model: getAssistant() }).catch(() => {});
     return existing;
   }
-  return db.createConversation({ id: conversationId, mode: route === 'grounded' && getChatMode() === 'grounded' ? 'grounded' : getChatMode(), model: getAssistant() });
+  // The chat was stored when the turn started and is gone now: it was deleted meanwhile, and stays so.
+  if (turn?.thread) throw new DOMException('The chat was deleted', 'AbortError');
+  return db.createConversation({ id, mode: route === 'grounded' && getChatMode() === 'grounded' ? 'grounded' : getChatMode(), model: getAssistant() });
 }
 
 /**
@@ -887,29 +982,43 @@ async function storeQuestion(q) {
   const meta = { chat_mode: q.route };
   if (q.context) meta.context = q.context;
   if (q.continueOf) meta.continue = true;
-  const node = await db.appendNode(conversationId, { id, parentId: q.parentId, role: 'user', parts, localOnly: q.localOnly, meta });
+  const node = await db.appendNode(turnConversation(), { id, parentId: q.parentId, role: 'user', parts, localOnly: q.localOnly, meta });
   await reload();
   return node;
 }
 
 /**
+ * The providers that may name a conversation after its first answer: the one that answered (on the
+ * route it answered on, as a provider has one route at a time), so the question and the answer
+ * reach no one the answer did not already go to; none for an answer that stays on this device
+ * (then only the model here names it).
+ * @param {Pick<NodeRecord, 'provider' | 'localOnly'>} answer
+ * @returns {import('../ai/contract.js').ProviderId[]}
+ */
+export function titleProviders(answer) {
+  if (answer.localOnly || !answer.provider || answer.provider === 'webgpu' || answer.provider === 'wasm') return [];
+  return [/** @type {import('../ai/contract.js').ProviderId} */ (answer.provider)];
+}
+
+/**
  * Asks for a short title after the first answer of a conversation that still has the automatic
  * one; the first words of the question stay when no model names it.
+ * @param {string} id  the conversation
  * @param {string} question
- * @param {string} answer
- * @param {boolean} localOnly  the conversation stays on this device: only the model here may name it
+ * @param {NodeRecord} answer
  */
-async function nameConversation(question, answer, localOnly) {
+async function nameConversation(id, question, answer) {
   const db = await store();
-  const conversation = await db.getConversation(conversationId);
+  const conversation = await db.getConversation(id);
   const { titleFromText } = await import('./store.js');
   if (!conversation || conversation.title !== titleFromText(question)) return;
   try {
     const { runPurpose } = await import('../ai/router.js');
-    const r = await runPurpose('title_chat', { messages: [{ role: 'user', text: question }, { role: 'assistant', text: answer.slice(0, 1500) }] }, { cache: 'off', signal: AbortSignal.timeout(TIMEOUTS_MS.chatTitle), ...(localOnly ? { providers: [] } : {}) });
+    const input = { messages: [{ role: 'user', text: question }, { role: 'assistant', text: nodeText(answer).slice(0, 1500) }] };
+    const r = await runPurpose('title_chat', input, { cache: 'off', signal: AbortSignal.timeout(TIMEOUTS_MS.chatTitle), providers: titleProviders(answer) });
     if (!r.ok || r.tier === 'template' || !r.text) return;
-    const now = await db.getConversation(conversationId);
-    if (now && now.title === conversation.title) await db.updateConversation(conversationId, { title: r.text });
+    const now = await db.getConversation(id);
+    if (now && now.title === conversation.title) await db.updateConversation(id, { title: r.text });
   } catch {
     // The automatic title stays.
   }
@@ -927,13 +1036,22 @@ async function answerFree(question, value, signal, placement = {}) {
   const hasImages = needsVision(question.parts.map((p) => ({ kind: p.type === 'image' ? 'image' : 'file' })));
   let candidates = await chatCandidates(value, { vision: hasImages });
   if (!candidates.length && value === 'device' && !signal.aborted && (await startLocalEngine({ interactive: true }))) candidates = await chatCandidates(value, { vision: hasImages });
+  // A question that stays on this device is answered here or by the own server, by no one else.
+  if (staysOnDevice(question)) {
+    const here = candidates.filter(onThisDevice);
+    if (candidates.length && !here.length) {
+      turnNotice(STAYS_ON_DEVICE);
+      return null;
+    }
+    candidates = here;
+  }
   if (!candidates.length) {
-    appendNotice({ icon: 'info', tone: 'info', title: 'chat.free_no_model_title', body: hasImages ? 'chat-thread.notice.no_vision_model' : 'chat-thread.notice.no_model_body' });
+    turnNotice({ icon: 'info', tone: 'info', title: 'chat.free_no_model_title', body: hasImages ? 'chat-thread.notice.no_vision_model' : 'chat-thread.notice.no_model_body' });
     return null;
   }
-  const path = current?.path ?? [question];
+  const path = turnThread()?.path ?? [question];
   /** @type {TurnContext} */
-  const ctx = { conversationId, question: nodeText(question), mode: getChatMode(), route: 'free', target: candidates[0], locale: getLocale(), attachments: chipsOf(question) };
+  const ctx = { conversationId: turnConversation(), question: nodeText(question), mode: getChatMode(), route: 'free', target: candidates[0], locale: getLocale(), attachments: chipsOf(question) };
   const { stream, run } = await streamAnswer(candidates, (target) => freeRequest(target, path, ctx), signal, placement, (target) => ({ label: searchesWeb(target) ? 'web' : 'free', question: ctx.question, locale: ctx.locale }));
   let { result } = run;
   // Tool calls an answer stopped for go to the registered runner, which returns the answer after them.
@@ -945,7 +1063,7 @@ async function answerFree(question, value, signal, placement = {}) {
   const durationMs = Math.round(performance.now() - started);
   if (!text.trim() || !run.target) {
     stream.remove();
-    if (!signal.aborted) noticeFor(result, true);
+    if (!signal.aborted && onScreen()) noticeFor(result, true);
     return null;
   }
   const target = run.target;
@@ -954,7 +1072,7 @@ async function answerFree(question, value, signal, placement = {}) {
   const trace = describeChatTrace({ engineLabel: t(badge.badge, badge.badgeParams), durationMs, attachment: chipsOf(question).map((c) => c.name).join(', ') || null, note });
   const grounding = webGrounding(result);
   const db = await store();
-  const node = await db.appendNode(conversationId, {
+  const node = await db.appendNode(turnConversation(), {
     parentId: question.id,
     role: 'assistant',
     parts: [{ type: 'text', text }],
@@ -985,7 +1103,7 @@ async function answerFree(question, value, signal, placement = {}) {
   stream.finalize(text, { citations: null, trace, durationMs, traceRoles: FREE_TRACE_ROLES, reasoning: result.reasoning, meta: metaLine(node) });
   labelAnswer(stream.element, node);
   decorateAnswer(stream.element, node);
-  if (result.error && !signal.aborted) noticeFor(result, true);
+  if (result.error && !signal.aborted && onScreen()) noticeFor(result, true);
   return node;
 }
 
@@ -1065,6 +1183,16 @@ async function retrieve(query, focus, opts) {
 }
 
 /**
+ * The i18n key of a workspace error: the workspace's own text for every code it names, else the
+ * general one.
+ * @param {unknown} err
+ */
+export function workspaceErrorKey(err) {
+  const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : '';
+  return /^[a-z_]+$/.test(code) && code !== 'title' && hasKey(`workspace.error_${code}`) ? `workspace.error_${code}` : 'workspace.error_internal';
+}
+
+/**
  * Adds the files of a grounded question to the workspace (an image only after the user agreed to
  * have its text recognised by a model that reads images). Returns their document ids.
  * @param {PreparedAttachment[]} attachments
@@ -1084,7 +1212,7 @@ async function addToSources(attachments) {
       if (att.kind === 'image') {
         const { ocrAvailable, ocrHook } = await import('../rag/ocr-hook.js');
         if (!(await ocrAvailable()) || !window.confirm(t('workspace.ocr_confirm', { name: att.name }))) {
-          appendNotice({ icon: 'info', tone: 'info', title: 'chat-thread.notice.image_not_source', params: { name: att.name } });
+          turnNotice({ icon: 'info', tone: 'info', title: 'chat-thread.notice.image_not_source', params: { name: att.name } });
           continue;
         }
         ocr = ocrHook();
@@ -1092,8 +1220,38 @@ async function addToSources(attachments) {
       const doc = await addToWorkspace(att.file, ocr ? { ocr } : {});
       ids.push(doc.docId);
     } catch (err) {
-      const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : 'internal';
-      appendNotice({ icon: 'triangle-alert', tone: 'warn', title: 'workspace.error_title', body: `workspace.error_${['unsupported_type', 'too_large', 'empty', 'invalid_json', 'invalid_pdf', 'encrypted_pdf', 'pdf_reader', 'worker_crashed', 'cleared'].includes(code) ? code : 'internal'}`, params: { name: att.name } });
+      turnNotice({ icon: 'triangle-alert', tone: 'warn', title: 'workspace.error_title', body: workspaceErrorKey(err), params: { name: att.name } });
+    }
+  }
+  return ids;
+}
+
+/**
+ * The workspace documents of the files an edited grounded question keeps: each stored file is added
+ * again (the workspace knows a file it holds already and returns it), an image is found by its name
+ * when its recognised text is still there (recognising it again would need the user's consent).
+ * @param {StoredPart[]} parts
+ * @returns {Promise<string[]>}
+ */
+async function keptSources(parts) {
+  /** @type {string[]} */
+  const ids = [];
+  const db = await store();
+  for (const p of parts) {
+    const name = String(p.name ?? 'file');
+    if (p.type === 'image') {
+      const doc = listWorkspace().find((d) => d.name === name);
+      if (doc) ids.push(doc.docId);
+      continue;
+    }
+    if (p.type !== 'file' || typeof p.blobId !== 'string') continue;
+    try {
+      const record = await db.getBlob(p.blobId);
+      if (!record) continue;
+      const doc = await addToWorkspace(new File([record.data], name, { type: record.type }));
+      ids.push(doc.docId);
+    } catch (err) {
+      turnNotice({ icon: 'triangle-alert', tone: 'warn', title: 'workspace.error_title', body: workspaceErrorKey(err), params: { name } });
     }
   }
   return ids;
@@ -1188,29 +1346,32 @@ async function gateCounts(answer, sources) {
 /**
  * Answers a grounded question: retrieval, an answer from the model (or quoted from the sources),
  * the source check and a receipt draft, for every model.
- * @param {{ text: string, attachments: PreparedAttachment[], parentId: string | null, value: AssistantValue, workspaceOnly: boolean, question?: NodeRecord }} q
+ * @param {{ text: string, attachments: PreparedAttachment[], reuseParts?: StoredPart[], parentId: string | null, value: AssistantValue, workspaceOnly: boolean, question?: NodeRecord }} q
+ *   reuseParts: the stored files an edited question keeps (they are searched first, as attached files are)
  * @param {AbortSignal} signal
  * @param {{ before?: Element | null }} [placement]
  */
 async function answerGrounded(q, signal, placement = {}) {
   const started = performance.now();
+  const kept = (q.reuseParts ?? []).filter((p) => p.type === 'image' || p.type === 'file');
+  const chips = [...q.attachments.map((a) => ({ name: a.name, kind: /** @type {'image' | 'file'} */ (a.kind === 'image' ? 'image' : 'file') })), ...kept.map((p) => ({ name: String(p.name ?? ''), kind: /** @type {'image' | 'file'} */ (p.type === 'image' ? 'image' : 'file') }))];
   // The question shows at once; it is stored once retrieval shows whether it stays on this device.
-  const pending = q.question ? null : appendMessage('user', q.text, { attachments: q.attachments.map((a) => ({ name: a.name, kind: a.kind === 'image' ? 'image' : 'file' })) });
+  const pending = q.question ? null : appendMessage('user', q.text, { attachments: chips });
   const removeLoading = appendLoading('chat.thinking');
   try {
-    const focus = await addToSources(q.attachments);
+    const focus = [...new Set([...(await addToSources(q.attachments)), ...(await keptSources(kept))])];
     const deviceOnly = q.value === 'device';
     const { hits, method, kbUnavailable } = await retrieve(q.text, focus, { workspaceOnly: q.workspaceOnly, deviceOnly });
-    const greeting = !q.attachments.length && isGreeting(q.text);
+    const greeting = !chips.length && isGreeting(q.text);
     const used = greeting ? [] : hits;
     const usesWorkspace = used.some((h) => h.workspace);
     // The question follows its answer's storage rule: about the workspace (or on this device), it stays here.
-    const question = q.question ?? (await storeQuestion({ text: q.text, attachments: q.attachments, parentId: q.parentId, route: 'grounded', localOnly: deviceOnly || usesWorkspace }));
+    const question = q.question ?? (await storeQuestion({ text: q.text, attachments: q.attachments, reuseParts: kept, parentId: q.parentId, route: 'grounded', localOnly: deviceOnly || usesWorkspace }));
     if (pending) {
       pending.dataset.nodeId = question.id;
       renderActions(pending, barState(question));
     }
-    const history = (current?.path ?? []).slice(0, -1);
+    const history = (turnThread()?.path ?? []).slice(0, -1);
     const citationList = assignCitations(used, { excerptChars: LIMITS.excerptChars });
     const scope = registerCitations(citationList);
     const sources = distinctSources(used);
@@ -1251,7 +1412,7 @@ async function answerGrounded(q, signal, placement = {}) {
       }
     }
     if (signal.aborted && !text) throw new DOMException('Aborted', 'AbortError');
-    if (failure) appendNotice({ icon: 'triangle-alert', tone: 'warn', title: 'chat.provider_failed_title', body: 'chat.provider_failed_body', params: { reason: failure } });
+    if (failure) turnNotice({ icon: 'triangle-alert', tone: 'warn', title: 'chat.provider_failed_title', body: 'chat.provider_failed_body', params: { reason: failure } });
     const durationMs = Math.round(performance.now() - started);
     if (!text) {
       text = synthesizeAnswer({
@@ -1261,11 +1422,11 @@ async function answerGrounded(q, signal, placement = {}) {
         knownTitles: [...new Set([...listWorkspace().map((d) => d.name), ...(await knownTitles())])],
         modelAvailable: !failure && candidates.length > 0,
         kbUnavailable,
-        focusName: q.attachments.find((a) => a.kind !== 'image')?.name ?? null,
+        focusName: chips.find((c) => c.kind === 'file')?.name ?? null,
       });
       const trace = describeTrace({ query: q.text, method, hits: used, engineLabel: t('engine.label_synthesizer'), durationMs });
       removeLoading();
-      messageEl = appendMessage('assistant', text, { citations: scope, badge: 'engine.label_synthesizer', trace, durationMs });
+      messageEl = placed(appendMessage('assistant', text, { citations: scope, badge: 'engine.label_synthesizer', trace, durationMs }));
     }
     const answerText = text;
     // An answer quoted without a model can list the files in the workspace: their names stay on this device.
@@ -1337,7 +1498,7 @@ async function answerGrounded(q, signal, placement = {}) {
     const result = run?.result;
     const trace = describeTrace({ query: q.text, method, hits: used, engineLabel: target ? t(...badgeArgs(target, result?.model ?? target.model)) : t('engine.label_synthesizer'), durationMs, note: run && result ? attemptNote(run.attempts, result) : failure });
     const db = await store();
-    const node = await db.appendNode(conversationId, {
+    const node = await db.appendNode(turnConversation(), {
       parentId: question.id,
       role: 'assistant',
       parts: [{ type: 'text', text: answerText }],
@@ -1381,18 +1542,33 @@ async function answerGrounded(q, signal, placement = {}) {
  */
 async function withTurn(fn) {
   controller = new AbortController();
+  const own = { conversationId, thread: current, left: false, live: /** @type {HTMLElement | null} */ (null) };
+  turn = own;
   setBusy(true);
   try {
     await fn(controller.signal);
   } catch (err) {
     if (!(err instanceof DOMException && err.name === 'AbortError')) {
+      // The text comes from i18n only; what went wrong is in the console.
       console.warn('[starpi] the answer failed', err);
-      appendNotice({ icon: 'triangle-alert', tone: 'warn', title: 'chat.error_title', body: 'chat.error_body', params: { reason: err instanceof Error ? err.message : String(err) } });
+      turnNotice({ icon: 'triangle-alert', tone: 'warn', title: 'chat.error_title', body: err instanceof Error && err.name === 'StoreError' ? 'chat-thread.notice.store_failed' : 'chat-thread.notice.failed_body' });
     }
   } finally {
     controller = null;
+    turn = null;
     setBusy(false);
   }
+  // The chat on screen changed during the turn: when it is the turn's chat, it shows what is stored now.
+  if (own.left && own.conversationId === conversationId) await showConversation(conversationId);
+}
+
+/**
+ * Whether a model choice can answer a question that stays on this device: the model here, or a
+ * choice that reaches the model here or the own server.
+ * @param {AssistantValue} value
+ */
+async function answersHere(value) {
+  return value === 'device' || (await chatCandidates(value)).some(onThisDevice);
 }
 
 /** Stops the answer being written; what arrived so far is kept. */
@@ -1470,11 +1646,11 @@ export async function sendQuestion(options = {}) {
       return;
     }
     /** @type {TurnContext} */
-    const ctx = { conversationId, question: text, mode, route: 'free', target: null, locale: getLocale(), attachments: kinds };
+    const ctx = { conversationId: turnConversation(), question: text, mode, route: 'free', target: null, locale: getLocale(), attachments: kinds };
     const question = await storeQuestion({ text, attachments: draft.attachments, parentId: leafId(), route: 'free', localOnly: value === 'device', context: await contextFor(ctx) });
-    renderNode(question);
+    if (onScreen()) renderNode(question);
     const answer = await answerFree(question, value, signal);
-    if (answer && current?.path.length === 2) void nameConversation(text, nodeText(answer), answer.localOnly);
+    if (answer && turnThread()?.path.length === 2) void nameConversation(turnConversation(), text, answer);
   });
 }
 
@@ -1504,22 +1680,27 @@ export async function regenerate(nodeId, value) {
   const picked = value ? parsePickerValue(value) : null;
   const target = picked?.assistant ?? sameModel(node);
   const route = (metaOf(node).chat_mode ?? node.label) === 'grounded' ? 'grounded' : 'free';
+  // A question asked to stay on this device is answered again here or by the own server only.
+  if (route === 'free' && staysOnDevice(question) && !(await answersHere(target))) {
+    appendNotice(STAYS_ON_DEVICE);
+    return;
+  }
   await withTurn(async (signal) => {
     const db = await store();
     // The path to the question is the thread now; the new answer becomes its newest child.
-    await db.setActiveLeaf(conversationId, question.id);
+    await db.setActiveLeaf(turnConversation(), question.id);
     await reload();
-    removeFrom(nodeId);
+    if (onScreen()) removeFrom(nodeId);
     let answer = null;
     try {
       answer = route === 'grounded' ? await answerGrounded({ text: nodeText(question), attachments: [], parentId: question.parentId, value: target, workspaceOnly: false, question }, signal) : await answerFree(question, target, signal);
     } finally {
       // No new answer: the one before stays the thread.
       if (!answer) {
-        await db.setActiveLeaf(conversationId, nodeId);
+        await db.setActiveLeaf(turnConversation(), nodeId);
         await reload();
-        const old = threadNode(nodeId);
-        if (old) renderNode(old);
+        const old = turnThread()?.tree.byId.get(nodeId);
+        if (old && onScreen()) renderNode(old);
       }
       refreshBars();
     }
@@ -1537,16 +1718,22 @@ export async function editQuestion(nodeId, text) {
   if (!node || node.role !== 'user') return;
   const route = metaOf(node).chat_mode === 'grounded' ? 'grounded' : 'free';
   const value = getAssistant();
+  // An edited question that stays on this device (like the one it replaces) is answered here or by
+  // the own server only.
+  if (route === 'free' && staysOnDevice(node) && !(await answersHere(value))) {
+    appendNotice(STAYS_ON_DEVICE);
+    return;
+  }
+  const reuse = node.parts.filter((p) => p.type !== 'text');
   await withTurn(async (signal) => {
     removeFrom(nodeId);
     if (route === 'grounded') {
-      await answerGrounded({ text, attachments: [], parentId: node.parentId, value, workspaceOnly: false }, signal);
+      await answerGrounded({ text, attachments: [], reuseParts: reuse, parentId: node.parentId, value, workspaceOnly: false }, signal);
     } else {
       /** @type {TurnContext} */
-      const ctx = { conversationId, question: text, mode: getChatMode(), route: 'free', target: null, locale: getLocale(), attachments: chipsOf(node) };
-      const reuse = node.parts.filter((p) => p.type !== 'text');
+      const ctx = { conversationId: turnConversation(), question: text, mode: getChatMode(), route: 'free', target: null, locale: getLocale(), attachments: chipsOf(node) };
       const question = await storeQuestion({ text, attachments: [], reuseParts: reuse, parentId: node.parentId, route: 'free', localOnly: node.localOnly, context: await contextFor(ctx) });
-      renderNode(question);
+      if (onScreen()) renderNode(question);
       await answerFree(question, value, signal);
     }
     refreshBars();
@@ -1573,13 +1760,13 @@ export async function showBranch(nodeId, delta) {
 export async function continueAnswer(nodeId) {
   if (busy) return;
   const node = threadNode(nodeId);
-  if (!node || node.role !== 'assistant' || leafId() !== node.id) return;
+  if (!node || node.role !== 'assistant' || leafId(current) !== node.id) return;
   const value = sameModel(node);
   await withTurn(async (signal) => {
     /** @type {TurnContext} */
-    const ctx = { conversationId, question: '', mode: getChatMode(), route: 'free', target: null, locale: getLocale(), attachments: [] };
+    const ctx = { conversationId: turnConversation(), question: '', mode: getChatMode(), route: 'free', target: null, locale: getLocale(), attachments: [] };
     const question = await storeQuestion({ text: t('chat-thread.continue_prompt'), attachments: [], parentId: node.id, route: 'free', localOnly: node.localOnly, context: await contextFor(ctx), continueOf: true });
-    renderNode(question);
+    if (onScreen()) renderNode(question);
     await answerFree(question, value, signal);
     refreshBars();
   });

@@ -89,8 +89,21 @@ export function renderActions(el, state) {
 }
 
 /**
+ * Whether an answer's question was asked to stay on this device (a free question asked on this
+ * device): then only the model here or the own server answers it again.
+ * @param {string} nodeId  the answer
+ */
+function staysOnDevice(nodeId) {
+  const node = handlers?.node(nodeId) ?? null;
+  const question = node?.parentId ? (handlers?.node(node.parentId) ?? null) : null;
+  const route = /** @type {Record<string, unknown>} */ (node?.meta ?? {}).chat_mode ?? node?.label;
+  return Boolean(question?.localOnly) && route !== 'grounded';
+}
+
+/**
  * The regenerate menu's entries, built when it opens: the same model, then the picker's choices
- * (without on-device presets that are not loaded, which would start a download).
+ * (without on-device presets that are not loaded, which would start a download; only the own
+ * server's models for a question that stays on this device).
  * @param {HTMLDetailsElement} menu
  */
 function fillRegenMenu(menu) {
@@ -98,7 +111,8 @@ function fillRegenMenu(menu) {
   const nodeId = menu.dataset.node ?? '';
   if (!list) return;
   const picker = /** @type {HTMLSelectElement | null} */ (byId('engineSelector'));
-  const options = picker ? [...picker.querySelectorAll('option')].filter((o) => !o.disabled && !/^(?:webgpu|wasm):/.test(o.value) && o.value !== 'device') : [];
+  const here = staysOnDevice(nodeId);
+  const options = picker ? [...picker.querySelectorAll('option')].filter((o) => !o.disabled && !/^(?:webgpu|wasm):/.test(o.value) && o.value !== 'device' && (!here || o.value.startsWith('local:'))) : [];
   const entry = (/** @type {string} */ value, /** @type {string} */ text) =>
     `<button type="button" role="menuitem" class="chat-menu-item text-left" data-action="msg-regenerate" data-arg="${escapeHtml(nodeId)}" data-value="${escapeHtml(value)}">${escapeHtml(text)}</button>`;
   list.innerHTML = [entry('', t('chat-thread.action.regenerate_same')), ...options.map((o) => entry(o.value, o.textContent ?? o.value))].join('');
