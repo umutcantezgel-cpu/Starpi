@@ -21,7 +21,9 @@ describe('chat-store.js with the encrypted sync', () => {
   it('flushes the sync after deleting a chat and the whole history', async () => {
     let flushes = 0;
     let flushResult = true;
-    facade.bindChatSync({ statusLine: () => ({ key: 'sync.line.on', params: { n: '1' } }), flush: async () => ((flushes += 1), flushResult) });
+    /** @type {string[][]} */
+    const flushed = [];
+    facade.bindChatSync({ statusLine: () => ({ key: 'sync.line.on', params: { n: '1' } }), flush: async (ids) => ((flushes += 1), flushed.push([...ids].sort()), flushResult) });
     assert.equal(facade.chatSyncActive(), true);
     const sid = facade.currentSessionId();
     await facade.persistMessage(sid, row('user', 'Hello'), { localOnly: false });
@@ -30,6 +32,7 @@ describe('chat-store.js with the encrypted sync', () => {
 
     assert.equal(await facade.deleteSession(sid), true);
     assert.equal(flushes, 1);
+    assert.deepEqual(flushed[0], [sid], 'the sync learns which chat was deleted (it may come back with new messages)');
     assert.equal(await facade.loadSessionThread(sid), null);
 
     const next = facade.currentSessionId();
@@ -37,6 +40,7 @@ describe('chat-store.js with the encrypted sync', () => {
     flushResult = false;
     assert.equal(await facade.deleteChatHistory(), false, 'a deletion the sync could not write yet is a partial delete');
     assert.equal(flushes, 2);
+    assert.deepEqual(flushed[1], [next]);
 
     facade.bindChatSync(null);
     assert.equal(facade.chatSyncActive(), false);

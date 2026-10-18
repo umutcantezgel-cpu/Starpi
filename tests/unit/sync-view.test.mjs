@@ -49,13 +49,15 @@ const settle = async () => {
  */
 function fakeSync(opts = {}) {
   /** @type {import('../../src/js/sync/sync.js').SyncStatus} */
-  let status = { phase: 'off', busy: false, conversations: 0, lastSyncAt: null, skipped: 0, error: null };
+  let status = { phase: 'off', busy: false, conversations: 0, lastSyncAt: null, skipped: 0, error: null, purging: false };
   /** @type {Set<(s: typeof status) => void>} */
   const listeners = new Set();
   /** @type {string[]} */
   const calls = [];
   /** @type {import('../../src/js/sync/sync.js').EnableResult} */
   let enableResult = { ok: true, joined: false, report: { applied: 0, written: 2, skipped: 0 } };
+  /** A turn-off with deletion that cannot delete the rows yet. */
+  let deleteFails = false;
   const set = (/** @type {Partial<typeof status>} */ patch) => {
     status = { ...status, ...patch };
     for (const fn of listeners) fn(status);
@@ -72,11 +74,17 @@ function fakeSync(opts = {}) {
     },
     disable: async (/** @type {{ deleteRemote: boolean }} */ o) => {
       calls.push(`disable:${o.deleteRemote}`);
-      set({ phase: 'off', conversations: 0 });
+      if (o.deleteRemote && deleteFails) {
+        set({ purging: true, error: 'network' });
+        return false;
+      }
+      set({ phase: 'off', conversations: 0, purging: false });
       return true;
     },
     syncNow: async () => {
       calls.push('syncNow');
+      // A sync with a deletion pending finishes it (sync is off then).
+      if (status.purging) set({ phase: 'off', conversations: 0, purging: false, error: null });
       return { applied: 0, written: 0, skipped: 0 };
     },
   };
@@ -86,6 +94,8 @@ function fakeSync(opts = {}) {
     set,
     /** @param {typeof enableResult} r */
     enableWith: (r) => (enableResult = r),
+    /** @param {boolean} fails */
+    deleteFailsWith: (fails) => (deleteFails = fails),
   };
 }
 
@@ -218,6 +228,22 @@ describe('Settings › Chat sync', () => {
     await settle();
     await ui2.click('sync-off-local');
     assert.deepEqual(s.calls, ['syncNow', 'disable:true', 'disable:false']);
+  });
+
+  it('says when deleting the synced copy has not finished, and a later sync finishes it', async () => {
+    const s = fakeSync();
+    s.set({ phase: 'on', conversations: 3, lastSyncAt: Date.parse('2026-10-18T10:00:00Z') });
+    s.deleteFailsWith(true);
+    const ui = await mount(s, fakeApi());
+    await ui.click('sync-off-delete');
+    assert.match(ui.result(), /could not be deleted completely.*tries again/s);
+    assert.match(ui.$('[data-sv="summary"]')?.textContent ?? '', /has not finished/);
+    assert.ok(ui.$('[data-action="sync-off-delete"]'), 'the deletion can be tried again now');
+    assert.equal(ui.$('[data-sync-state]')?.dataset.syncState, 'on');
+    await ui.click('sync-now');
+    assert.match(ui.result(), /synced copy was deleted/);
+    assert.equal(ui.$('[data-sync-state]')?.dataset.syncState, 'off');
+    assert.deepEqual(s.calls, ['disable:true', 'syncNow']);
   });
 
   it('explains the other phases', async () => {

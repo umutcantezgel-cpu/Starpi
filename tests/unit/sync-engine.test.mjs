@@ -3,10 +3,13 @@
 // - turning sync on in one browser and restoring in a second one with the passphrase;
 // - a wrong passphrase, an account switch, sync turned off (and set up again) in another browser;
 // - conflict resolution: concurrent messages merge, conversation fields go to the later writer, a
-//   stale browser adopts the newer revision, deletions travel and lose against new messages;
-// - local-only turns, keys and signing keys never leave the browser; nothing but ciphertext,
-//   opaque ids and revision numbers reaches the server;
-// - failures: offline, rows that do not open, conversations above the size limit.
+//   stale browser adopts the newer revision, deletions travel, lose against new messages and win
+//   over changed fields (in both orders), metadata attached differently on both sides settles;
+// - local-only turns (also questions answered on the device, and titles made from them), keys and
+//   signing keys never leave the browser; nothing but ciphertext, opaque ids and revision numbers
+//   reaches the server;
+// - failures: offline, rows that do not open, conversations above the size limit, a turn-off whose
+//   row deletion failed after the key was deleted.
 import './setup.mjs';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -236,13 +239,73 @@ describe('conflict resolution', () => {
     assert.deepEqual(await texts(a, 'starpi_c'), ['First answer', 'First question', 'Kept', 'Still needed']);
   });
 
-  it('a deletion loses against messages another browser synced first', async () => {
+  it('a deletion loses against messages another browser synced first, and the delete says so', async () => {
     const { a, b } = await pair();
     await turn(b, 'starpi_c', 'Added in B', 'While A deleted');
     await b.sync.syncNow();
     await a.store.deleteConversation('starpi_c');
-    assert.deepEqual(await a.sync.syncNow(), { applied: 1, written: 0, skipped: 0 });
+    // What the chat view's delete waits for: false, as the chat is back.
+    assert.equal(await a.sync.flushDeleted(['starpi_c']), false);
     assert.deepEqual(await texts(a, 'starpi_c'), ['Added in B', 'First answer', 'First question', 'While A deleted']);
+    assert.deepEqual(await a.sync.syncNow(), { applied: 0, written: 0, skipped: 0 });
+  });
+
+  it('a deletion made here wins over fields another browser changed first (branch, pin, title, model, mode)', async () => {
+    const { server, a, b, row } = await pair();
+    const nodes = await b.store.getNodes('starpi_c');
+    const answer = /** @type {import('../../src/js/store/schema.js').NodeRecord} */ (nodes.find((n) => n.role === 'assistant'));
+    // A second answer in A first, so B has a branch to switch back to.
+    await a.store.addSibling(answer.id, { role: 'assistant', parts: text('Second answer'), model: 'model-b', provider: 'openai' });
+    await a.sync.syncNow();
+    await b.sync.syncNow();
+    await b.store.setActiveLeaf('starpi_c', answer.id);
+    await b.store.updateConversation('starpi_c', { pinned: true, title: 'Renamed in B', model: 'model-z', mode: 'grounded' });
+    assert.equal((await b.sync.syncNow())?.written, 1);
+    const before = row().rev;
+
+    await a.store.deleteConversation('starpi_c');
+    assert.equal(await a.sync.flushDeleted(['starpi_c']), true, 'the delete is complete');
+    assert.equal(await a.store.getConversation('starpi_c'), undefined);
+    assert.equal(row().rev, before + 1);
+    assert.deepEqual(
+      (await decryptedRows(server, a)).map((r) => /** @type {any} */ (r).kind),
+      ['deleted'],
+    );
+    assert.deepEqual(await b.sync.syncNow(), { applied: 1, written: 0, skipped: 0 });
+    assert.equal(await b.store.getConversation('starpi_c'), undefined);
+    for (const x of [a, b]) assert.deepEqual(await x.sync.syncNow({ full: true }), { applied: 0, written: 0, skipped: 0 });
+  });
+
+  it('a deletion made elsewhere wins over fields changed here before it arrived', async () => {
+    const { server, a, b } = await pair();
+    await a.store.deleteConversation('starpi_c');
+    await a.sync.syncNow();
+    await b.store.updateConversation('starpi_c', { pinned: true, title: 'Pinned in B' });
+    assert.deepEqual(await b.sync.syncNow(), { applied: 1, written: 0, skipped: 0 });
+    assert.equal(await b.store.getConversation('starpi_c'), undefined);
+    assert.deepEqual(
+      (await decryptedRows(server, b)).map((r) => /** @type {any} */ (r).kind),
+      ['deleted'],
+    );
+    assert.deepEqual(await a.sync.syncNow(), { applied: 0, written: 0, skipped: 0 });
+  });
+
+  it('metadata both browsers attached with different values settles on one value', async () => {
+    const { a, b } = await pair();
+    const answer = /** @type {import('../../src/js/store/schema.js').NodeRecord} */ ((await a.store.getNodes('starpi_c')).find((n) => n.role === 'assistant'));
+    await a.store.annotateNode(answer.id, { label: 'from-a', meta: { checkedBy: 'a', shared: 1 } });
+    await b.store.annotateNode(answer.id, { label: 'from-b', meta: { checkedBy: 'b', other: true } });
+    await a.sync.syncNow();
+    await b.sync.syncNow();
+    await a.sync.syncNow();
+    for (let round = 0; round < 2; round += 1) {
+      for (const x of [a, b]) assert.deepEqual(await x.sync.syncNow({ full: true }), { applied: 0, written: 0, skipped: 0 });
+    }
+    const [na, nb] = [await a.store.getNodes('starpi_c'), await b.store.getNodes('starpi_c')].map((all) => all.find((n) => n.id === answer.id));
+    assert.equal(na?.label, 'from-a');
+    assert.equal(nb?.label, 'from-a');
+    assert.deepEqual(na?.meta, { checkedBy: 'a', shared: 1, other: true });
+    assert.deepEqual(nb?.meta, na?.meta);
   });
 });
 
@@ -287,6 +350,67 @@ describe('what never leaves the browser', () => {
     assert.equal(thread?.nodes.length, 6);
     assert.equal(thread?.nodes.filter((n) => n.localOnly).length, 2);
     assert.equal(thread?.conversation.title, 'Summarise my private notes', 'the local title stays on this device');
+  });
+
+  it('a question answered on this device stays here, also while any answer is still to come', async () => {
+    const server = createFakeServer();
+    const a = createBrowser(server, { userId: USER });
+    await turn(a, 'starpi_q', 'Cloud question', 'Cloud answer');
+    // Asked for any model, answered by the one on this device: the answer is local-only, the
+    // question is not marked, and stays here all the same.
+    await a.store.appendToActive('starpi_q', { role: 'user', parts: text('Is this mole worrying?'), localOnly: false });
+    const device = await a.store.appendToActive('starpi_q', { role: 'assistant', parts: text('Device answer'), localOnly: true });
+    // A question still waiting for its answer is not synced yet.
+    await a.store.appendToActive('starpi_w', { role: 'user', parts: text('Waiting for an answer') }, { create: { mode: 'free' } });
+    assert.equal((await a.sync.enable(PASSPHRASE)).ok, true);
+    let records = /** @type {any[]} */ (await decryptedRows(server, a));
+    assert.deepEqual(records.map((r) => r.id), ['starpi_q']);
+    assert.deepEqual(records[0].nodes.map((/** @type {any} */ n) => n.parts[0].text).sort(), ['Cloud answer', 'Cloud question']);
+    assert.equal(JSON.stringify(records).includes('mole'), false);
+    // The active leaf (the device answer) moves up to the last synced message.
+    assert.equal(nodeText(/** @type {any} */ (records[0].nodes.find((/** @type {any} */ n) => n.id === records[0].conversation.activeLeafId))), 'Cloud answer');
+
+    // Once the waiting question gets an answer from the cloud, both sync.
+    await a.store.appendToActive('starpi_w', { role: 'assistant', parts: text('Here it is'), provider: 'openai' });
+    // The device-answered question asked again of a cloud model (regenerate): now it syncs.
+    await a.store.addSibling(device.id, { role: 'assistant', parts: text('Cloud second opinion'), provider: 'openai' });
+    await a.sync.syncNow();
+    records = /** @type {any[]} */ (await decryptedRows(server, a));
+    const byId = new Map(records.map((r) => [r.id, r.nodes.map((/** @type {any} */ n) => n.parts[0].text).sort()]));
+    assert.deepEqual(byId.get('starpi_w'), ['Here it is', 'Waiting for an answer']);
+    assert.deepEqual(byId.get('starpi_q'), ['Cloud answer', 'Cloud question', 'Cloud second opinion', 'Is this mole worrying?']);
+    assert.equal(JSON.stringify(records).includes('Device answer'), false);
+    assert.deepEqual(await a.sync.syncNow({ full: true }), { applied: 0, written: 0, skipped: 0 });
+  });
+
+  it('a title a model wrote from a device-only exchange stays here; renames from elsewhere still arrive', async () => {
+    const server = createFakeServer();
+    const a = createBrowser(server, { userId: USER });
+    await turn(a, 'starpi_t', 'My lab results show XYZ, what now?', 'Device answer', { localOnly: true });
+    // The model on this device names the conversation after its first answer.
+    await a.store.updateConversation('starpi_t', { title: 'Lab result XYZ follow-up' });
+    await turn(a, 'starpi_t', 'General question', 'General answer');
+    assert.equal((await a.sync.enable(PASSPHRASE)).ok, true);
+    let [record] = /** @type {any[]} */ (await decryptedRows(server, a));
+    assert.equal(record.conversation.title, 'General question');
+    assert.equal(JSON.stringify(record).includes('XYZ'), false);
+
+    // A rename in another browser arrives here and is not written back.
+    const b = createBrowser(server, { userId: USER });
+    assert.equal((await b.sync.enable(PASSPHRASE)).ok, true);
+    assert.equal((await b.store.getConversation('starpi_t'))?.title, 'General question');
+    await b.store.updateConversation('starpi_t', { title: 'Renamed in B' });
+    await b.sync.syncNow();
+    assert.deepEqual(await a.sync.syncNow(), { applied: 1, written: 0, skipped: 0 });
+    assert.equal((await a.store.getConversation('starpi_t'))?.title, 'Renamed in B');
+    assert.deepEqual(await a.sync.syncNow({ full: true }), { applied: 0, written: 0, skipped: 0 });
+
+    // A first exchange that synced keeps the title a model wrote for it.
+    await turn(a, 'starpi_cloud', 'Cloud first', 'Cloud reply');
+    await a.store.updateConversation('starpi_cloud', { title: 'Named by the provider' });
+    await a.sync.syncNow();
+    record = (/** @type {any[]} */ (await decryptedRows(server, a))).find((r) => r.id === 'starpi_cloud');
+    assert.equal(record.conversation.title, 'Named by the provider');
   });
 
   it('sends only ciphertext, opaque row ids and revisions; provider keys and signing keys are never read or sent', async () => {
@@ -392,6 +516,35 @@ describe('failures', () => {
     server.offline = false;
     assert.deepEqual(await a.sync.syncNow(), { applied: 0, written: 1, skipped: 0 });
     assert.equal(a.sync.status().error, null);
+  });
+
+  it('a turn-off whose row deletion failed after the key was deleted is retried by later syncs', async () => {
+    const server = createFakeServer();
+    const a = createBrowser(server, { userId: USER });
+    await turn(a, 'starpi_p', 'Question', 'Answer');
+    assert.equal((await a.sync.enable(PASSPHRASE)).ok, true);
+    server.failRowsDelete = true;
+    assert.equal(await a.sync.disable({ deleteRemote: true }), false);
+    assert.equal(server.account(USER).envelope, null, 'the key is gone');
+    assert.equal(server.account(USER).rows.size, 1, 'the rows are still there');
+    assert.deepEqual([a.sync.status().phase, a.sync.status().purging, a.sync.status().error], ['on', true, 'network']);
+    // Not "turned off in another browser": the next sync retries the deletion, never writes rows.
+    await turn(a, 'starpi_p2', 'Later question', 'Later answer');
+    assert.equal(await a.sync.syncNow(), null);
+    assert.deepEqual([a.sync.status().phase, a.sync.status().purging], ['on', true]);
+    assert.equal(server.account(USER).rows.size, 1);
+    // A reload remembers it.
+    const { createChatSync, settingsStateStore } = await import('../../src/js/sync/sync.js');
+    const reloaded = createChatSync({ remote: server.remoteFor(() => a.user), store: async () => a.store, state: settingsStateStore(a.open) });
+    await reloaded.ready();
+    assert.deepEqual([reloaded.status().phase, reloaded.status().purging], ['on', true]);
+
+    server.failRowsDelete = false;
+    assert.deepEqual(await reloaded.syncNow(), { applied: 0, written: 0, skipped: 0 });
+    assert.equal(server.account(USER).rows.size, 0);
+    assert.deepEqual([reloaded.status().phase, reloaded.status().purging], ['off', false]);
+    assert.equal(await settingsStateStore(a.open).load(), null);
+    assert.equal(await a.store.getConversation('starpi_p') !== undefined, true, 'the conversations stay in this browser');
   });
 
   it('skips rows that do not open and conversations above the size limit', async () => {

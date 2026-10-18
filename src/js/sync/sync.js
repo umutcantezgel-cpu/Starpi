@@ -656,6 +656,23 @@ export function createChatSync(options) {
   }
 
   /**
+   * Syncs right after conversations were deleted here, so the deletion reaches the server (and the
+   * other browsers) now.
+   * @param {string[]} deleted  the conversations deleted
+   * @returns {Promise<boolean>} true when sync is off here or the deletion was written; false when
+   *   the sync failed (a later one writes it), or when a deleted conversation is back because
+   *   another browser added messages to it meanwhile (new messages win over a deletion)
+   */
+  async function flushDeleted(deleted) {
+    await ready();
+    if (status.phase !== 'on') return true;
+    if ((await syncNow()) === null) return false;
+    const store = await options.store();
+    for (const id of deleted) if (await store.getConversation(id)) return false;
+    return true;
+  }
+
+  /**
    * Notes a change of the conversation store and schedules a sync.
    * @param {ChatChange} change
    */
@@ -722,6 +739,7 @@ export function createChatSync(options) {
     enable,
     disable,
     syncNow,
+    flushDeleted,
     schedule,
     start,
     stop,

@@ -191,7 +191,9 @@ changed functions and privileges immediately.
   with `... where conv_id = $1 and rev = $base`, so a write that builds on an old revision
   changes nothing, and the browser merges the newer row first.
 - Turning sync off with deletion removes the key row first and then the rows, so other
-  browsers stop syncing instead of writing the conversations back.
+  browsers stop syncing instead of writing the conversations back. When the rows cannot be
+  deleted after the key, the browser keeps retrying the row delete with every sync until it
+  succeeds (owner-only `delete` needs no key).
 
 ## Schema
 

@@ -23,6 +23,7 @@ export function createFakeServer() {
     accounts,
     sent,
     offline: false,
+    failRowsDelete: false,
     /** @param {string} userId */
     account(userId) {
       if (!accounts.has(userId)) accounts.set(userId, { envelope: null, rows: new Map() });
@@ -70,12 +71,16 @@ export function createFakeServer() {
             a.rows.set(row.rowId, { rev: row.rev, iv: row.iv, ciphertext: row.ciphertext });
             return 'written';
           }),
-        deleteAll: () =>
-          handle('deleteAll', [], (a) => {
+        // The key goes first; with `failRowsDelete` the rows then fail to delete (key already gone).
+        deleteAll: async () => {
+          const res = await handle('deleteAll', [], (a) => {
             a.envelope = null;
+            if (server.failRowsDelete) return 'rows_failed';
             a.rows.clear();
             return null;
-          }),
+          });
+          return res.ok && res.data === 'rows_failed' ? down() : res;
+        },
       };
     },
   };
