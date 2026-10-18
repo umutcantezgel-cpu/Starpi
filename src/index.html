@@ -122,13 +122,14 @@
         <label class="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg pl-2.5 pr-1 py-1 text-xs focus-within:ring-2 focus-within:ring-slate-900 focus-within:ring-offset-1">
           <span class="w-2 h-2 rounded-full bg-slate-400 flex-shrink-0" id="engineStatusDot"></span>
           <span class="sr-only" data-i18n="settings.mode_label">Assistant mode</span>
-          <select id="engineSelector" data-change="change-engine" class="bg-transparent text-slate-800 font-medium text-base sm:text-xs focus:outline-none cursor-pointer max-w-[10rem] md:max-w-[7.5rem] lg:max-w-none">
-            <option value="council" selected data-i18n="engine.mode_cloud">Cloud assistant</option>
-            <option value="client" data-i18n="engine.mode_local">On-device (automatic)</option>
-            <option value="nvidia" data-i18n="engine.mode_nvidia">NVIDIA NIM cloud (fast &amp; free)</option>
-            <option value="local" data-i18n="engine.mode_server">Own server</option>
+          <select id="engineSelector" data-change="change-engine" class="bg-transparent text-slate-800 font-medium text-base sm:text-xs focus:outline-none cursor-pointer max-w-[10rem] md:max-w-[7.5rem] lg:max-w-[16rem]">
+            <option value="auto" selected data-i18n="chat-thread.picker.auto">Auto · best available</option>
+            <option value="device" data-i18n="engine.mode_local">On-device (automatic)</option>
+            <option value="local:*" data-i18n="engine.mode_server">Own server</option>
           </select>
         </label>
+        <!-- The model that wrote the newest answer (it may differ from the picked one after a fallback). -->
+        <span class="hidden xl:inline-flex"><span id="servedModel" class="hidden badge badge-muted max-w-[14rem] truncate" role="status"></span></span>
 
         <button type="button" data-action="switch-tab" data-arg="ingest" class="hidden sm:inline-flex btn btn-primary justify-center" data-i18n-aria="nav.ingest" aria-label="Add knowledge">
           <i data-lucide="plus" class="w-4 h-4"></i>
@@ -238,37 +239,55 @@
 
         <div class="p-2.5 sm:p-3 md:p-4 border-t border-slate-200 bg-white sticky bottom-0 z-20 pb-[max(0.65rem,env(safe-area-inset-bottom,12px))] mb-14 md:mb-0">
           <form id="chatForm" class="max-w-4xl mx-auto flex flex-col bg-white border border-slate-300 focus-within:border-amber-400 focus-within:ring-2 focus-within:ring-amber-200/50 rounded-xl p-1.5 transition">
-            <div class="flex items-center gap-2 px-1 pb-1 min-w-0">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pb-1 min-w-0">
               <div class="mode-toggle" role="group" data-i18n-aria="chat.mode_label" aria-label="Chat mode">
+                <button type="button" data-action="set-chat-mode" data-arg="auto" aria-pressed="true">
+                  <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                  <span data-i18n="chat-thread.mode.auto">Auto</span>
+                </button>
                 <button type="button" data-action="set-chat-mode" data-arg="free" aria-pressed="false">
                   <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
-                  <span data-i18n="chat.mode_free">Free chat</span>
+                  <span data-i18n="chat-thread.mode.free">Free</span>
                 </button>
-                <button type="button" data-action="set-chat-mode" data-arg="grounded" aria-pressed="true">
+                <button type="button" data-action="set-chat-mode" data-arg="grounded" aria-pressed="false">
                   <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
-                  <span data-i18n="chat.mode_grounded">Verified source mode</span>
+                  <span data-i18n="chat-thread.mode.grounded">Grounded</span>
                 </button>
               </div>
-              <span id="chatModeHint" class="hidden sm:inline text-[11px] text-slate-500 truncate" data-i18n="chat.mode_grounded_hint">Answers come from your sources and are checked sentence by sentence.</span>
-              <!-- Mount point: composer controls of features (e.g. thinking, web, voice mode). -->
-              <div id="composerExtras" class="ml-auto flex items-center gap-1 flex-shrink-0 empty:hidden" data-mount></div>
+              <span id="chatModeHint" class="hidden md:inline text-[11px] text-slate-500 truncate min-w-0 flex-1" data-i18n="chat-thread.mode.auto_hint">Answers from your files when you have some, otherwise a free conversation.</span>
+              <div class="ml-auto flex items-center gap-1 flex-shrink-0">
+                <button type="button" id="thinkingToggle" data-action="toggle-thinking" class="composer-toggle btn btn-ghost px-2 py-1 text-[11px]" aria-pressed="false" data-i18n-title="ai-orchestration.thinking.hint" title="Lets capable models reason before they answer. Slower, and it uses more tokens.">
+                  <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i>
+                  <span data-i18n="chat-thread.toggle.thinking">Thinking</span>
+                </button>
+                <button type="button" id="webToggle" data-action="toggle-web" class="composer-toggle btn btn-ghost px-2 py-1 text-[11px]" aria-pressed="false" data-i18n-title="chat-thread.toggle.web_hint" title="Models that can search the web may use it for this answer.">
+                  <i data-lucide="globe" class="w-3.5 h-3.5"></i>
+                  <span data-i18n="chat-thread.toggle.web">Web</span>
+                </button>
+                <details class="tools-menu relative">
+                  <summary class="btn btn-ghost px-2 py-1 text-[11px] list-none cursor-pointer select-none" data-i18n-aria="chat-thread.tools.label" aria-label="Tools">
+                    <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i>
+                    <span class="hidden sm:inline" data-i18n="chat-thread.tools.label">Tools</span>
+                  </summary>
+                  <div id="toolsMenuList" class="absolute right-0 bottom-full z-30 mb-1 w-56 card p-1 flex flex-col"></div>
+                </details>
+                <!-- Mount point: composer controls of features (e.g. voice mode). -->
+                <div id="composerExtras" class="flex items-center gap-1 flex-shrink-0 empty:hidden" data-mount></div>
+              </div>
             </div>
-            <div id="attachedInfo" class="hidden px-2 py-1 mb-1 text-xs text-amber-950 bg-amber-50 rounded-lg flex items-center justify-between gap-2 border border-amber-200">
-              <span class="flex items-center gap-1.5 min-w-0">
-                <i data-lucide="paperclip" class="w-3.5 h-3.5 flex-shrink-0"></i>
-                <span id="attachedFileName" class="font-medium truncate" data-i18n="chat.attached_placeholder">File attached</span>
-              </span>
-              <button type="button" data-action="remove-attachment" class="btn btn-ghost p-1" data-i18n-aria="chat.remove_attachment" aria-label="Remove attachment"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
-            </div>
+            <div id="attachedInfo" class="hidden px-1 pb-1 flex flex-wrap items-center gap-1.5"></div>
+            <p id="composerNotice" class="hidden px-2 pb-1 text-[11px] text-amber-900" role="status"></p>
             <div class="flex items-end gap-1 sm:gap-1.5">
-              <button type="button" data-action="pick-chat-file" class="btn btn-ghost btn-icon touch-target-min justify-center" data-i18n-aria="chat.attach_file" aria-label="Attach a file (added to the on-device workspace)" data-i18n-title="chat.attach_file" title="Attach a file (added to the on-device workspace)">
+              <button type="button" data-action="pick-chat-file" class="btn btn-ghost btn-icon touch-target-min justify-center" data-i18n-aria="chat-thread.composer.attach" aria-label="Attach files or images" data-i18n-title="chat-thread.composer.attach" title="Attach files or images">
                 <i data-lucide="paperclip" class="w-5 h-5"></i>
               </button>
-              <input type="file" id="chatFileInput" class="hidden" tabindex="-1" data-change="attach-file" accept=".pdf,.docx,.xlsx,.pptx,.html,.htm,.txt,.md,.markdown,.json,.csv,.log">
-              <button type="button" id="voiceBtn" data-action="toggle-voice" class="relative btn btn-ghost btn-icon touch-target-min justify-center" data-i18n-aria="chat.voice_input" aria-label="Voice input" aria-pressed="false" data-i18n-title="chat.voice_hint" title="Voice input: your browser's speech service turns speech into text">
+              <input type="file" id="chatFileInput" class="hidden" tabindex="-1" data-change="attach-file" multiple accept="image/jpeg,image/png,image/webp,image/gif,.pdf,.docx,.xlsx,.pptx,.html,.htm,.txt,.md,.markdown,.json,.csv,.log">
+              <!-- Slots the voice features fill (chat/composer.js registerComposerSlot). -->
+              <span id="composerMicSlot" class="contents"><button type="button" id="voiceBtn" data-action="toggle-voice" class="relative btn btn-ghost btn-icon touch-target-min justify-center" data-i18n-aria="chat.voice_input" aria-label="Voice input" aria-pressed="false" data-i18n-title="chat.voice_hint" title="Voice input: your browser's speech service turns speech into text">
                 <i data-lucide="mic" class="w-5 h-5"></i>
                 <span id="voicePulse" class="hidden absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-              </button>
+              </button></span>
+              <span id="composerVoiceSlot" class="contents"></span>
               <label for="chatInput" class="sr-only" data-i18n="chat.input_label">Message</label>
               <textarea id="chatInput" rows="1" data-i18n-placeholder="chat.placeholder" placeholder="Ask a question…" class="flex-1 bg-transparent border-0 focus:ring-0 text-slate-900 text-base sm:text-sm placeholder-slate-500 resize-none py-2.5 px-1.5 focus:outline-none max-h-32 custom-scrollbar"></textarea>
               <button type="button" id="stopBtn" data-action="stop-generation" class="hidden btn touch-target-min justify-center bg-slate-900 hover:bg-slate-700 text-white" data-i18n-aria="chat.stop" aria-label="Stop generating">
@@ -644,12 +663,25 @@
           <div>
             <label for="cfgComputeMode" class="field-label" data-i18n="settings.mode_label">Assistant mode</label>
             <select id="cfgComputeMode" data-change="change-engine" class="field">
-              <option value="council" selected data-i18n="settings.mode_cloud">Cloud assistant · your own provider key</option>
-              <option value="client" data-i18n="settings.mode_local">On-device (automatic) · WebGPU or the processor in this browser, nothing leaves the device</option>
-              <option value="nvidia" data-i18n="settings.mode_nvidia">NVIDIA NIM cloud (fast &amp; free) · through Starpi's server, no key of your own</option>
-              <option value="local" data-i18n="settings.mode_server">Own server · MLX, Ollama or vLLM</option>
+              <option value="auto" selected data-i18n="chat-thread.picker.auto_long">Auto · the best model that is set up: your keys, the site's free models, your server, this device</option>
+              <option value="device" data-i18n="settings.mode_local">On-device (automatic) · WebGPU or the processor in this browser, nothing leaves the device</option>
+              <option value="local:*" data-i18n="settings.mode_server">Own server · MLX, Ollama or vLLM</option>
             </select>
             <div id="cfgDeviceBadges" class="hidden flex flex-wrap gap-1.5 mt-2"></div>
+            <div class="flex flex-wrap items-center gap-1.5 mt-2 text-[11px] text-slate-600">
+              <span data-i18n="chat-thread.picker.pools_label">Free models of this site:</span>
+              <span id="cfgPoolHealth" class="flex flex-wrap gap-1.5"></span>
+            </div>
+          </div>
+          <div>
+            <label for="cfgStrength" class="field-label" data-i18n="ai-orchestration.strength.label">Model strength</label>
+            <select id="cfgStrength" data-change="change-strength" class="field">
+              <option value="max" data-i18n="ai-orchestration.strength.max">Maximum</option>
+              <option value="super" data-i18n="ai-orchestration.strength.super">Strong</option>
+              <option value="auto" selected data-i18n="ai-orchestration.strength.auto">Automatic</option>
+              <option value="fast" data-i18n="ai-orchestration.strength.fast">Fast</option>
+            </select>
+            <p class="text-[11px] text-slate-500 mt-1.5" data-i18n="chat-thread.picker.strength_hint">Which model Auto takes at a provider when you picked none of its models.</p>
             <p id="cfgModelHint" class="text-[11px] text-slate-500 mt-1.5" data-i18n="settings.model_hint">Local models are downloaded once, only after you confirm, and cached by this browser. GPUs without shader-f16 use the f32 variant; without WebGPU, processor (WASM) models run instead.</p>
             <p class="text-xs text-slate-500 mt-1.5 leading-relaxed" data-i18n="settings.mode_hint">Models outside this device (the cloud assistant, NVIDIA NIM cloud, your own server) receive your question: in source mode with the matching excerpts, in free chat with earlier messages and an attached file. Models in this browser keep everything on the device. Without a model, Starpi quotes the knowledge base directly.</p>
           </div>
@@ -714,26 +746,7 @@
           </summary>
 
           <div class="mt-4 pt-4 border-t border-slate-100 space-y-4">
-            <div>
-              <label for="cfgGeminiKey" class="field-label" data-i18n="settings.gemini_label">Google Gemini API key (optional)</label>
-              <input type="password" id="cfgGeminiKey" autocomplete="off" spellcheck="false" class="field font-mono" data-i18n-placeholder="settings.key_placeholder" placeholder="Paste a key">
-              <p id="cfgGeminiKeyHint" class="text-[11px] text-slate-500 mt-1" data-i18n="settings.key_none">No key saved.</p>
-            </div>
-            <div>
-              <label for="cfgOpenrouterKey" class="field-label" data-i18n="settings.openrouter_label">OpenRouter API key (optional)</label>
-              <input type="password" id="cfgOpenrouterKey" autocomplete="off" spellcheck="false" class="field font-mono" placeholder="sk-or-v1-…">
-              <p id="cfgOpenrouterKeyHint" class="text-[11px] text-slate-500 mt-1" data-i18n="settings.key_none">No key saved.</p>
-            </div>
-            <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-              <p class="flex-1 min-w-0 text-[11px] text-slate-500" data-i18n="settings.keys_notice">Keys are kept until this tab is closed. To keep them on this device, set a vault passphrase under Model providers and keys.</p>
-              <button type="button" data-action="clear-keys" class="btn btn-ghost py-1 text-rose-700" data-i18n="settings.clear_keys">Delete keys</button>
-            </div>
-            <div>
-              <label for="cfgLlmUrl" class="field-label" data-i18n="settings.server_label">Own server base URL</label>
-              <input type="text" id="cfgLlmUrl" value="http://localhost:8000/v1" placeholder="http://localhost:8000/v1" spellcheck="false" class="field font-mono">
-              <p class="text-[11px] text-slate-500 mt-1" data-i18n="settings.server_hint">A Chat Completions endpoint (/v1/chat/completions). Allowed: https:// addresses, http://localhost and http://127.0.0.1.</p>
-            </div>
-            <div class="pt-3 border-t border-slate-100 flex flex-wrap gap-2">
+            <div class="flex flex-wrap gap-2">
               <button type="button" data-action="delete-model-cache" class="btn btn-danger">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                 <span data-i18n="settings.delete_models">Delete downloaded model data</span>
@@ -742,17 +755,7 @@
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                 <span data-i18n="settings.delete_history">Delete chat history</span>
               </button>
-              <button type="button" data-action="test-gemini" id="btnTestPrimary" class="btn btn-secondary">
-                <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-600"></i>
-                <span data-i18n="settings.test_primary">Test Gemini</span>
-              </button>
-              <button type="button" data-action="test-openrouter" id="btnTestSecondary" class="btn btn-secondary">
-                <i data-lucide="activity" class="w-3.5 h-3.5 text-indigo-600"></i>
-                <span data-i18n="settings.test_secondary">Test OpenRouter</span>
-              </button>
             </div>
-            <div id="primaryTestStatus" class="hidden text-xs p-2.5 rounded-lg border" role="status"></div>
-            <div id="secondaryTestStatus" class="hidden text-xs p-2.5 rounded-lg border" role="status"></div>
           </div>
         </details>
       </div>

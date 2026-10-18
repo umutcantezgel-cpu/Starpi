@@ -22,7 +22,7 @@ test.describe('grounding version 3', () => {
     await useNvidia(page);
     await page.goto('/');
     await page.setInputFiles('#chatFileInput', { name: 'costs.md', mimeType: 'text/markdown', buffer: Buffer.from(COSTS_MD) });
-    await expect(page.locator('#attachedFileName')).toContainText('chunk');
+    await expect(page.locator('#attachedInfo')).toContainText('costs.md · 1 chunk');
     await ask(page, 'How did the server costs change?');
 
     const answer = page.locator('#chatMessages > div').last();

@@ -64,6 +64,9 @@ function usedKeys() {
     /\b(?:label|toast)\(\s*'([a-z][\w]*\.[\w.-]+)'/g,
     /[?:]\s*'([a-z][\w]*\.[\w.-]+)'/g,
     /data-arg="([a-z][\w]*\.[\w.-]+)"/g,
+    // Keys of namespaces with a hyphen in their name, wherever they are written literally (a
+    // section prefix such as 'ai-orchestration.council' is not a key).
+    /["'`]((?:chat-thread|ai-orchestration)\.(?!council["'`])[a-z][\w.-]*[\w])["'`]/g,
   ];
   for (const text of files) for (const re of patterns) for (const m of text.matchAll(re)) keys.add(m[1]);
   // Keys assembled at runtime.
