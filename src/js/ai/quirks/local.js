@@ -25,7 +25,8 @@ export const PROBE_TIMEOUT_MS = 3000;
 
 /**
  * @typedef {object} LocalQuirkOptions
- * @property {LocalServer} [server]   which server runs there (detectServer() guesses it from the port)
+ * @property {LocalServer | (() => LocalServer)} [server]  which server runs there (detectServer() guesses it from
+ *   the port); a function is asked for every request, so the server's address may change meanwhile
  * @property {boolean} [reasoningOff] send `reasoning_effort: 'none'` when thinking is off; only for
  *   servers known to accept it (one that refuses the field answers 400, and the caller retries without)
  */
@@ -34,13 +35,14 @@ export const PROBE_TIMEOUT_MS = 3000;
  * @param {LocalQuirkOptions} [options]
  */
 export function createLocalQuirks(options = {}) {
-  const server = options.server ?? 'other';
+  const serverOf = typeof options.server === 'function' ? options.server : () => /** @type {LocalServer} */ (options.server ?? 'other');
   return defineQuirks({
     id: 'local',
     reasoningFields: ['reasoning_content', 'reasoning'],
     thinkTags: true,
     stopDialect: 'local',
     shape(body, req) {
+      const server = serverOf();
       if (server === 'ollama') body.keep_alive = '30m';
       if (server === 'llamacpp') body.cache_prompt = true;
       if (options.reasoningOff && req.thinking?.mode === 'off') body.reasoning_effort = 'none';

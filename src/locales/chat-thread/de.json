@@ -3,7 +3,7 @@
     "auto": "Auto",
     "free": "Frei",
     "grounded": "Quellen",
-    "auto_hint": "Antworten aus Ihren Dateien, wenn es welche gibt, sonst ein freies Gespräch.",
+    "auto_hint": "Antworten aus Ihren Dateien, wenn die Frage sie betrifft, sonst ein freies Gespräch.",
     "placeholder_auto": "Fragen Sie, was Sie wollen…"
   },
   "toggle": {

@@ -1,0 +1,34 @@
+{
+  "label": {
+    "free": "Free chat · not checked",
+    "grounded": "Checked against your sources",
+    "mixed": "Partly from sources (checked parts marked)",
+    "web": "From the web · cited, not verified",
+    "checking": "checking…",
+    "hint_free": "Answered from the model's own knowledge; nothing was compared with sources.",
+    "hint_grounded": "Every statement was compared with the excerpts of your sources.",
+    "hint_mixed": "Statements taken from your sources are checked and marked; the rest is general knowledge.",
+    "hint_web": "The answer cites pages a web search found; their content was not verified."
+  },
+  "mixed": {
+    "title": "Checked parts",
+    "summary": "{ok} of {total} statements found in your sources",
+    "none": "No statement could be compared with your sources.",
+    "from_sources": "From your sources",
+    "partly": "Partly found in the source",
+    "not_in_sources": "Not in your sources",
+    "cited_not_found": "Cited, but not found in the source",
+    "note": "Statements without a source are general knowledge of the model and were not checked."
+  },
+  "web": {
+    "checked": "Checked against the cited text: {ok} of {total} statements found",
+    "checked_none": "Checked against the cited text: no statement to compare",
+    "segments_ok": "Numbers checked: all lie in cited passages",
+    "segments_flagged": "Numbers checked: {n} sentence(s) with numbers outside the cited passages",
+    "cited": "Cited, not checked"
+  },
+  "notice": {
+    "web_unavailable_title": "This model cannot search the web",
+    "web_unavailable_body": "No web search is set up for it, so the answer comes without web pages. Pick a model that can search, or add a key for one."
+  }
+}
