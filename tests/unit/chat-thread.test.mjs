@@ -236,6 +236,17 @@ describe('voice and web helpers of the thread', () => {
     assert.match(String(device.system), /on-device AI assistant/);
   });
 
+  it('reads a streaming answer aloud without the reasoning a model writes into its text', () => {
+    assert.equal(thread.readableSoFar('Hello wor', ''), 'Hello wor');
+    assert.equal(thread.readableSoFar('Hello world. ', 'Hello wor'), 'Hello world.');
+    assert.equal(thread.readableSoFar('<thi', ''), '', 'an opening tag waits');
+    assert.equal(thread.readableSoFar('<think>Let me see', ''), '');
+    assert.equal(thread.readableSoFar('<think>Let me see</think>', ''), '');
+    assert.equal(thread.readableSoFar('<think>Let me see</think>The answer', ''), 'The answer');
+    // Text that no longer extends what was read (it turned out to be reasoning) adds nothing.
+    assert.equal(thread.readableSoFar('<think>x', 'Hi'), 'Hi');
+  });
+
   it('turns the web citations of an answer into the read-aloud grounding', () => {
     const base = { text: 'Paris has 2.1 million people. It is old.', reasoning: '', reasoningTokens: 0, toolCalls: [], images: [], opaque: [], stopReason: /** @type {const} */ ('end'), provider: /** @type {const} */ ('gemini'), model: 'm', requestId: null, usage: null };
     assert.equal(thread.webGrounding({ ...base, citations: [] }), null);

@@ -26,6 +26,7 @@
  * - setAnswerLabeler(fn): the provenance label of an answer.
  */
 import { chatData, currentSessionId, loadSessionThread } from '../chat-store.js';
+import { splitStreamingText } from '../chat-stream.js';
 import { APP_VERSION, LIMITS, TIMEOUTS_MS } from '../config.js';
 import { contextCoverage, receiptAdvisory } from '../core/grounding.js';
 import { startLocalEngine } from '../engine-ui.js';
@@ -713,6 +714,19 @@ async function freeRequest(target, path, ctx) {
  */
 
 /**
+ * The part of a streaming answer that may be read aloud: its visible text (reasoning a model wrote
+ * into its text stays out, and an opening tag still arriving is held until it shows whether it
+ * starts reasoning), as long as it extends what was read already; otherwise what was read.
+ * @param {string} text  the streamed text so far
+ * @param {string} read  the part handed to the reader so far
+ */
+export function readableSoFar(text, read) {
+  const view = splitStreamingText(text);
+  const visible = view.thinking || /^\s*<[a-z]*$/i.test(view.answer) ? '' : view.answer;
+  return visible.length > read.length && visible.startsWith(read) ? visible : read;
+}
+
+/**
  * Streams one answer into a new bubble. With "read answers aloud" switched on (voice settings), the
  * answer is read while it streams, through the gate its `read` description names (decided once the
  * answering model is known); a stopped or failed answer ends the reading.
@@ -728,6 +742,8 @@ async function streamAnswer(candidates, build, signal, placement = {}, read) {
   let reasoning = '';
   /** @type {import('../voice/hooks.js').AnswerReader | null | undefined} undefined: not decided yet */
   let reader;
+  /** The part of the answer handed to the reader: never reasoning a model wrote into its text. */
+  let readText = '';
   const run = await runAnswer({
     candidates,
     signal,
@@ -745,7 +761,11 @@ async function streamAnswer(candidates, build, signal, placement = {}, read) {
         text += ev.delta;
         stream.update(text);
         if (reader === undefined) reader = read ? readAloudStream(read(target)) : null;
-        reader?.push(ev.delta);
+        const next = reader ? readableSoFar(text, readText) : readText;
+        if (reader && next.length > readText.length) {
+          reader.push(next.slice(readText.length));
+          readText = next;
+        }
       } else if (ev.type === 'reasoning' && typeof ev.delta === 'string') {
         reasoning += ev.delta;
         stream.reasoning(reasoning);
