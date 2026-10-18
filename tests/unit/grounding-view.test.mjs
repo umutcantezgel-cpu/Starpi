@@ -208,7 +208,7 @@ describe('grounding version 3 in the rendered answer', () => {
     view.applyGrounding(ok, { scope, sources });
     assert.equal(ok.querySelector('.grounding-second'), null);
     const weak = message('Members praised the friendly staff and the long opening hours of the library [Doc: report.md, Chunk: 1].', scope);
-    view.applyGrounding(weak, { scope, sources });
+    view.applyGrounding(weak, { scope, sources, localOnly: false });
     const judge = /** @type {HTMLButtonElement} */ (weak.querySelector('[data-second-opinion="judge"]'));
     judge.click();
     const status = /** @type {HTMLElement} */ (weak.querySelector('.grounding-second [role="status"]'));
@@ -224,5 +224,21 @@ describe('grounding version 3 in the rendered answer', () => {
     assert.ok(panel);
     assert.equal(panel.querySelector('[data-second-opinion="judge"]'), null);
     assert.match(panel.textContent ?? '', /this answer stays on this device, so no AI judge is asked/);
+  });
+
+  it('offers the AI judge only when the caller says the answer may leave this device', () => {
+    const { scope, sources } = registerReport();
+    const text = 'Members praised the friendly staff and the long opening hours of the library [Doc: report.md, Chunk: 1].';
+    const unsaid = message(text, scope);
+    view.applyGrounding(unsaid, { scope, sources });
+    const quiet = /** @type {HTMLElement} */ (unsaid.querySelector('.grounding-second'));
+    assert.ok(quiet, 'the on-device second opinion is still offered');
+    assert.equal(quiet.querySelector('[data-second-opinion="judge"]'), null, 'no judge without an explicit localOnly: false');
+    assert.doesNotMatch(quiet.textContent ?? '', /AI judge|AI provider/);
+    const cloud = message(text, scope);
+    view.applyGrounding(cloud, { scope, sources, localOnly: false });
+    const open = /** @type {HTMLElement} */ (cloud.querySelector('.grounding-second'));
+    assert.equal(open.querySelector('[data-second-opinion="judge"]')?.textContent, 'Ask the AI judge');
+    assert.match(open.textContent ?? '', /sends each statement and its passages to your AI provider/);
   });
 });

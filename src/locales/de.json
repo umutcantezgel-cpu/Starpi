@@ -358,6 +358,7 @@
     "second_title": "Zweitmeinung (nur Hinweis)",
     "second_intro": "Schwache Aussagen lassen sich zusätzlich prüfen: von einem Folgerungsmodell auf diesem Gerät oder vom KI-Gutachter, der jede Aussage mit ihren Stellen an Ihren KI-Anbieter sendet. Die Zweitmeinung macht keine Aussage grün; ein Widerspruch lässt sie gelb.",
     "second_intro_local": "Schwache Aussagen lassen sich zusätzlich von einem Folgerungsmodell auf diesem Gerät prüfen; diese Antwort bleibt auf diesem Gerät, darum wird kein KI-Gutachter gefragt. Die Zweitmeinung macht keine Aussage grün; ein Widerspruch lässt sie gelb.",
+    "second_intro_device": "Schwache Aussagen lassen sich zusätzlich von einem Folgerungsmodell auf diesem Gerät prüfen. Die Zweitmeinung macht keine Aussage grün; ein Widerspruch lässt sie gelb.",
     "second_nli": "Auf diesem Gerät prüfen (lädt einmalig etwa {size} MB)",
     "second_nli_stored": "Auf diesem Gerät prüfen",
     "second_judge": "KI-Gutachter fragen",

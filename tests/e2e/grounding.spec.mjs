@@ -1,7 +1,7 @@
 // End-to-end test of grounding version 3 in the chat: a model answer that turns a change of the
 // attached file around is flagged with the relation and the excerpt passage, the relations are
-// counted, a weak statement gets the second-opinion controls without anything being downloaded, and
-// the receipt records the relation.
+// counted, a weak statement gets the on-device second opinion without anything being downloaded (and
+// no AI judge, since the answer quotes a file on this device), and the receipt records the relation.
 import { readFileSync } from 'node:fs';
 import { expect, mockNvidia, mockSupabase, test, useNvidia } from './fixtures.mjs';
 
@@ -33,11 +33,13 @@ test.describe('grounding version 3', () => {
     await expect(bar).toContainText('1 relation between values or events compared with the excerpts; 1 the wrong way round or not supported.');
 
     // The second opinion is offered for the weak statements; nothing is downloaded before a click
-    // (the diagnostics fixture fails the test on any request to another host).
+    // (the diagnostics fixture fails the test on any request to another host). The answer quotes a
+    // file attached on this device, so no AI judge (which would send the statements to the provider)
+    // is offered.
     const panel = bar.locator('.grounding-second');
     await expect(panel).toBeVisible();
-    await expect(panel.locator('[data-second-opinion="judge"]')).toHaveText('Ask the AI judge');
     await expect(panel.locator('[data-second-opinion="nli"]')).toHaveText('Check on this device (downloads about 232 MB once)');
+    await expect(panel.locator('[data-second-opinion="judge"]')).toHaveCount(0);
 
     await answer.locator('[data-action="open-receipt"]').click();
     const dialog = page.locator('#receiptModal');
