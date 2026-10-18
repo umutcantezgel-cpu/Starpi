@@ -82,6 +82,7 @@
   "web_released": "Als Ganzes geprüft: Jede Zahl steht in einer Passage, die die Suchergebnisse stützen.",
   "web_withheld": "Die Webantwort wird zurückgehalten, weil sie die Prüfung als Ganzes nicht bestanden hat: {reason}. Nur die Seiten, die sie herangezogen hat, sind aufgeführt.",
   "web_off": "Keine Websuche: Keiner deiner Anbieter sucht im Web, und diese Website bietet keine an.",
+  "web_empty": "Nach dem Entfernen persönlicher Angaben blieb von der Frage nichts für eine Websuche übrig.",
   "web_failed": "Die Websuche ist fehlgeschlagen ({code}).",
   "web_running": "Die Websuche läuft …",
   "web_sources": "Herangezogene Seiten (aufgeführt, nicht geprüft)",

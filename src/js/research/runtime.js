@@ -67,6 +67,20 @@ function firstWith(order, needs) {
 }
 
 /**
+ * The built-in adapters, registered when nothing registered any yet (the chat registers its own;
+ * a later registration replaces these).
+ */
+async function ensureAdapters() {
+  if (listAdapters().length > 0) return;
+  try {
+    const { registerBuiltInAdapters } = await import('../ai/adapters/index.js');
+    if (listAdapters().length === 0) registerBuiltInAdapters();
+  } catch (err) {
+    console.warn('[starpi] research: the AI adapters could not load', err);
+  }
+}
+
+/**
  * POST /api/research/step with the site's access code.
  * @param {Record<string, unknown>} body
  * @param {AbortSignal} [signal]
@@ -162,7 +176,7 @@ export function browserRuntime() {
     step: postStep,
     backends: { search: searchSources, documents: documentNames },
     async routes() {
-      await keysReady().catch(() => {});
+      await Promise.all([keysReady().catch(() => {}), ensureAdapters()]);
       const health = getHealth().data ?? (await loadHealth().catch(() => null))?.data ?? null;
       return {
         sources: firstWith(PROVIDER_ORDER, (caps) => caps.tools),

@@ -107,6 +107,7 @@ export function progressText(job) {
   const p = job.progress;
   if (job.status !== 'running' || !p) return null;
   const step = t(`research.step.${p.step}`);
+  if (p.round === 0 && p.sources === 0) return ['research.progress_short', { step }];
   return ['research.progress', { step, round: p.round, n: p.sources }];
 }
 
@@ -231,7 +232,7 @@ export function renderReport(host, job, deps) {
     } else if (web.status === 'withheld') {
       section.append(keyed('p', 'text-sm text-slate-700', 'research.web_withheld', { reason: t(`research.web_reason.${webReasonKey(web.reason)}`) }));
     } else if (web.status === 'off') {
-      section.append(keyed('p', 'text-sm text-slate-700', 'research.web_off'));
+      section.append(keyed('p', 'text-sm text-slate-700', web.reason === 'empty_query' ? 'research.web_empty' : 'research.web_off'));
     } else if (web.status === 'running') {
       section.append(keyed('p', 'text-sm text-slate-700', 'research.web_running'));
     } else {

@@ -51,7 +51,10 @@ export function researchJobs() {
       channel: typeof BroadcastChannel === 'function' ? new BroadcastChannel(CHANNEL_NAME) : null,
       locale: getLocale,
     });
-    globalThis.addEventListener?.('pagehide', () => jobs.dispose(), { once: true });
+    // A page kept in the back-forward cache comes back with its engine; any other leaves for good.
+    globalThis.addEventListener?.('pagehide', (ev) => {
+      if (!(/** @type {PageTransitionEvent} */ (ev).persisted)) jobs.dispose();
+    });
     return jobs;
   })();
   return engine;

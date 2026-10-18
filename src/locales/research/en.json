@@ -82,6 +82,7 @@
   "web_released": "Checked as a whole: every number lies in a passage the search results support.",
   "web_withheld": "The web answer is withheld because it did not pass the check as a whole: {reason}. Only the pages it consulted are listed.",
   "web_off": "No web search: none of your providers searches the web, and this site offers none.",
+  "web_empty": "Nothing was left of the question for a web search once personal details were taken out.",
   "web_failed": "The web search failed ({code}).",
   "web_running": "The web search runs…",
   "web_sources": "Pages consulted (listed, not verified)",
