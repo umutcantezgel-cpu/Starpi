@@ -158,11 +158,13 @@ idealised design. When the code changes, change the diagram in the same pull req
     - [Re-checking a receipt in the app and on the command line](#re-checking-a-receipt-in-the-app-and-on-the-command-line)
     - [starpi-ground: from arguments to exit code](#starpi-ground-from-arguments-to-exit-code)
     - [Sample files and the source-check demo](#sample-files-and-the-source-check-demo)
-13. [NVIDIA cloud proxy](#13-nvidia-cloud-proxy)
-    - [NVIDIA proxy: request guards and limits](#nvidia-proxy-request-guards-and-limits)
-    - [NVIDIA proxy: key rotation and failover before the first byte](#nvidia-proxy-key-rotation-and-failover-before-the-first-byte)
-    - [NVIDIA proxy: relaying the stream to the browser](#nvidia-proxy-relaying-the-stream-to-the-browser)
-    - [One model allowlist for the app and the functions](#one-model-allowlist-for-the-app-and-the-functions)
+13. [Server functions](#13-server-functions)
+    - [Routes and the front guards](#routes-and-the-front-guards)
+    - [The BYOK relay](#the-byok-relay)
+    - [One model allowlist for the picker and the pools](#one-model-allowlist-for-the-picker-and-the-pools)
+    - [Site pools: request checks, key rotation and failover before the first byte](#site-pools-request-checks-key-rotation-and-failover-before-the-first-byte)
+    - [Relaying a pool stream to the browser](#relaying-a-pool-stream-to-the-browser)
+    - [Speech routes, research steps, health and the 2.x routes](#speech-routes-research-steps-health-and-the-2x-routes)
 
 ## 1. System overview
 
@@ -6429,226 +6431,222 @@ flowchart TD
 
 <sub>Sources: [`src/js/demo.js`](../src/js/demo.js), [`src/index.html`](../src/index.html), [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`public/samples/en/nebula-plan.md`](../public/samples/en/nebula-plan.md), [`public/samples/de/nebula-projektplan.md`](../public/samples/de/nebula-projektplan.md), [`src/locales/en.json`](../src/locales/en.json), [`src/locales/de.json`](../src/locales/de.json), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs)</sub>
 
-## 13. NVIDIA cloud proxy
+## 13. Server functions
 
-NVIDIA mode answers through Starpi's own proxy: two Vercel Functions under api/ (on an operator's own host served by node scripts/serve.mjs --functions) keep a pool of NVIDIA API keys in the server environment, accept chat requests only from the app's own pages, check every request against one shared model allowlist and fixed limits, and relay NVIDIA's event stream to the browser, moving to the next key until one delivers the first byte. The browser never holds a key and sends none. The proxy keeps no conversation and logs no request or answer content: its log lines name a key by its index, with a status or a cooldown, and count malformed key entries. The per-IP limit and the key cooldowns live in one function instance or one server process, so they are best effort, and the Origin check stops other websites' pages, not scripts that forge headers.
+The Vercel Functions under api/ (on an operator's own host served by `node scripts/serve.mjs --functions`) are small and stateless: the BYOK relay for providers whose API refuses browser calls, the site pools that answer with keys the site holds, the speech routes, research steps on the Gemini pool, a health route and the NVIDIA routes of 2.x. They never store a request, an answer or a key and never write a header or a body to a log; log lines name a key by its index. Every route that reaches a provider runs the same front guards first, the per-IP limits and daily budgets live in one function instance, so they brake abuse rather than set a quota, and the Origin check stops other websites' pages, not scripts that forge headers. docs/SERVER.md lists the routes, variables and defaults for operators.
 
-### NVIDIA proxy: request guards and limits
+### Routes and the front guards
 
-Each route file exports its handler (POST for the chat route, GET for the models route) and, for the other common methods (GET or POST, PUT, PATCH, DELETE and OPTIONS), an answer of 405 method_not_allowed with Allow. POST /api/chat/nvidia then runs handleChat, whose guards come in a fixed order, each refusing with a flat JSON body {error, field?} that carries Cache-Control no-store and nosniff. A request whose Origin is listed in NVIDIA_ALLOWED_ORIGINS passes the origin check; otherwise a Sec-Fetch-Site other than same-origin gives 403 cross_site_request, a missing Origin 403 origin_required, and an Origin whose host differs from the request's Host (X-Forwarded-Host first, as the platform sets it) 403 origin_not_allowed. Next a fixed one-minute window per client address (x-real-ip, else the first X-Forwarded-For entry) allows NVIDIA_RATE_LIMIT_PER_MINUTE requests, 20 by default, and answers 429 rate_limited with Retry-After; without a valid key in NVIDIA_API_KEYS the route answers 503 nvidia_not_configured before it reads any body. The body is read with a 256 KiB cap: a declared size above the cap gives 413 before the media type is checked (415 unless application/json), then the bytes actually read are capped (413), decoded as strict UTF-8 and parsed (400 invalid_json), and must be an object (400 json_body_must_be_object). validateChatRequest accepts only an allowlisted model (400 model_not_allowed), 1 to 40 messages with role system (first only), user or assistant and string content of at most 24,000 UTF-16 code units each and 64,000 in all, the last one a non-blank user message, an integer max_tokens of at least 1, a temperature from 0 to 2 and a top_p above 0 up to 1 (400 invalid_field with the field otherwise). The upstream body is built from these fields alone: the model's fixed upstream extras first (for the default model, thinking switched off), then model, the messages with role and content only, max_tokens capped at the model's maxOutputTokens, stream true and the optional temperature and top_p, so tools, n, stop, stream settings and every other client field are dropped. GET /api/models/nvidia answers the public catalog and whether keys are configured, and never a key or a key count.
+Each route file exports its handler and answers other methods with 405 method_not_allowed. Every route that reaches a provider (relay, pools, speech, research) first runs the shared front guards of api/_lib/origins.js, always in this order: the same-origin check (Sec-Fetch-Site same-origin when sent, an Origin whose host equals the request's Host, or an origin listed in STARPI_ALLOWED_ORIGINS), the route's per-IP limit with 429 and Retry-After, then the access code when STARPI_ACCESS_CODE is set (header x-starpi-access, both values hashed and compared in constant time, 401). The limit comes before the code, so the code cannot be guessed faster than the limit allows. Then each route checks its own allowlist, keys, body and budget. Refusals are flat JSON bodies `{ error, field? }` with no-store and nosniff. The GET routes (the pool model list, the voice list and health) report booleans and fixed lists only; GET /api/voice/voices skips the origin check like any same-origin GET.
 
-<!-- diagram: nvidia-proxy-guards -->
+<!-- diagram: server-routes -->
 ```mermaid
-flowchart TD
-    Req(["request to api/chat/nvidia.js or api/models/nvidia.js<br/>on Vercel or serve.mjs --functions"])
-    Meth{"method of the request"}
-    E405["405 method_not_allowed, Allow POST or GET,<br/>exported for the other common methods"]
-    Models["GET /api/models/nvidia: handleModels,<br/>publicCatalog(router not null): configured, version,<br/>defaultModel, limits, models without upstream extras"]
-    Req --> Meth
-    Meth -->|"another method"| E405
-    Meth -->|"GET on the models route"| Models
-    Meth -->|"POST on the chat route"| Allowed
-
-    Allowed{"Origin is listed in<br/>NVIDIA_ALLOWED_ORIGINS?"}
-    Site{"Sec-Fetch-Site present<br/>and not same-origin?"}
-    HasOrigin{"Origin header present?"}
-    SameHost{"Origin is http or https and its host<br/>equals X-Forwarded-Host, else Host?"}
-    E403a["403 cross_site_request"]
-    E403b["403 origin_required"]
-    E403c["403 origin_not_allowed"]
-    Allowed -->|"yes"| Rate
-    Allowed -->|"no"| Site
-    Site -->|"yes"| E403a
-    Site -->|"no"| HasOrigin
-    HasOrigin -->|"no"| E403b
-    HasOrigin -->|"yes"| SameHost
-    SameHost -->|"no"| E403c
-    SameHost -->|"yes"| Rate
-
-    Rate{"limiter.hit(client address):<br/>x-real-ip, else the first X-Forwarded-For entry,<br/>more than NVIDIA_RATE_LIMIT_PER_MINUTE, default 20,<br/>in this one-minute window of this instance?"}
-    E429["429 rate_limited,<br/>Retry-After until the window ends"]
-    Keys{"a router exists: NVIDIA_API_KEYS holds at least<br/>one key of nvapi- and 64 characters?"}
-    E503["503 nvidia_not_configured"]
-    Rate -->|"yes"| E429
-    Rate -->|"no"| Keys
-    Keys -->|"no"| E503
-    Keys -->|"yes"| Body
-
-    Body{"readJsonBody, cap 262144 bytes:<br/>declared Content-Length within the cap,<br/>media type application/json,<br/>bytes read within the cap, strict UTF-8,<br/>JSON.parse ok, an object?"}
-    E4xx["413 payload_too_large, 415 unsupported_media_type,<br/>400 invalid_json or json_body_must_be_object"]
-    Body -->|"no"| E4xx
-    Body -->|"yes"| Valid
-
-    Valid{"validateChatRequest: model is a string<br/>and in the allowlist, 1 to 40 messages,<br/>system only first, 24000 code units each,<br/>64000 in all, last one a non-blank user message,<br/>max_tokens an integer of 1 or more,<br/>temperature 0 to 2, top_p above 0 up to 1?"}
-    E400["400 model_not_allowed, or<br/>400 invalid_field with the field"]
-    Upstream["upstream body: model upstream extras first,<br/>then model, messages with role and content only,<br/>max_tokens = min(requested or defaultMaxTokens,<br/>model maxOutputTokens, 4096), stream true,<br/>temperature and top_p when given, nothing else"]
-    Valid -->|"no"| E400
-    Valid -->|"yes"| Upstream
-    Upstream --> Router(["router.open, see nvidia-proxy-failover"])
-
-    Refuse["every refusal: flat JSON error and field,<br/>Content-Type application/json, Cache-Control no-store,<br/>nosniff, Retry-After on 429 and 503"]
-    E429 -.- Refuse
-    E400 -.- Refuse
+flowchart LR
+    subgraph routes["Routes under api/"]
+        relay["GET or POST /api/relay/provider/path: BYOK relay,<br/>the user's own key"]
+        pool["POST /api/pool?provider and path: site pools"]
+        nv["POST /api/chat/nvidia: the NVIDIA pool,<br/>2.x address and rules"]
+        voice["POST /api/voice/speak, transcribe, live-token"]
+        research["POST /api/research/step"]
+        gets["GET /api/models/pool, /api/models/nvidia,<br/>/api/voice/voices, /api/health"]
+    end
+    subgraph front["origins.js guardRequest, in this order"]
+        o["1 origin: Sec-Fetch-Site same-origin, Origin host = Host,<br/>or listed in STARPI_ALLOWED_ORIGINS, else 403"]
+        l["2 per-IP limit of the route, fixed window,<br/>429 with Retry-After"]
+        a["3 access code when STARPI_ACCESS_CODE is set:<br/>x-starpi-access, constant time, else 401"]
+        o --> l --> a
+    end
+    own["then the route's own checks: allowlist, keys,<br/>body, per-IP daily budget for calls that reach a provider"]
+    relay --> o
+    pool --> o
+    nv --> o
+    voice --> o
+    research --> o
+    a --> own
+    gets --> bools(["booleans and fixed lists only:<br/>no key, key count or address"])
 ```
 
-<sub>Sources: [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`api/models/nvidia.js`](../api/models/nvidia.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`api/_lib/guards.js`](../api/_lib/guards.js), [`api/_lib/env.js`](../api/_lib/env.js), [`api/_lib/nvidia-request.js`](../api/_lib/nvidia-request.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`backend/test_fixtures/nvidia_validation.json`](../backend/test_fixtures/nvidia_validation.json), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs)</sub>
+<sub>Sources: [`api/_lib/origins.js`](../api/_lib/origins.js), [`api/_lib/guards.js`](../api/_lib/guards.js), [`api/_lib/access.js`](../api/_lib/access.js), [`api/_lib/env.js`](../api/_lib/env.js), [`api/relay.js`](../api/relay.js), [`api/pool.js`](../api/pool.js), [`api/health.js`](../api/health.js), [`vercel.json`](../vercel.json), [`docs/SERVER.md`](SERVER.md)</sub>
 
-### NVIDIA proxy: key rotation and failover before the first byte
+### The BYOK relay
 
-The key router of the Vercel Functions starts each request at the next key (round robin over the whole pool) and skips keys whose cooldown has not ended; when every key is cooling it answers 503 all_keys_exhausted at once, without an upstream request, with Retry-After until the first key is free (1 to 300 s). Each attempt sends the upstream body to NVIDIA's chat completions endpoint with that key as Bearer token, redirects refused, and waits for the first non-empty chunk of a text/event-stream for at most 20 s, or for the time left of the 25 s failover budget, which runs from the start of the request. A 429 parks the key for its Retry-After (delta seconds or an HTTP date, 20 s without one, clamped to 1 to 300 s), a 401 or 403 for 30 minutes, and a 408, a 5xx, a network error, a timeout or a stream that ends or stalls before its first byte for 10 s; then the next key is tried. An attempt that timed out only because the budget had less than 20 s left parks nothing, because it says nothing about the key. A 404 gives 502 model_unavailable and any other answer, a 200 that is not an event stream included, 502 upstream_rejected, without failover, because another key would get the same answer. Upstream bodies are cancelled unread and never echoed, and a log line names only the key index, the reason and the cooldown. When the budget or the keys run out, 504 upstream_timeout says that every attempt timed out (or the budget was spent before the first one), otherwise 503 all_keys_exhausted. Once the first byte has arrived the response is committed and there is no failover.
+The relay forwards one request with the user's own key to an allowlisted path of a fixed provider table (api/_lib/relay/upstreams.js: anthropic, openai, gemini, xai, groq, mistral, deepseek, openrouter, nvidia, elevenlabs for speech and voices, brave and tavily for search). The host never comes from the browser, so local servers and custom URLs cannot be reached through it; the browser calls those directly. vercel.json rewrites `/api/relay/:provider/:path*` to the relay function, which reads provider and path from the original URL (or from the query parameters a rewrite may pass). After the front guards (STARPI_RELAY_RPM_PER_IP, 30 a minute by default) it checks the provider (404 unknown_provider), the method and path (404 path_not_allowed, 405) and a query without credentials (400 key_in_query); exactly one auth header in the provider's own style (401 key_required without one, 400 for any other credential header); a body of at most 4 MB, a JSON object or multipart form data for transcription; and it forwards only content-type, accept, anthropic-version, known anthropic-beta values and OpenRouter's attribution headers, never cookies or client addresses. The upstream request refuses redirects. A 200 event stream is relayed as it arrives (90 s without data or 16 MB end it with an error event, and it ends 3 s before the function's time limit), JSON and audio pass through with the same limits, and any other status becomes `{ error, upstreamStatus }`, where the identifier is the provider's own short snake_case code from at most 2 KB of its body. The browser's auto transport (xAI, Groq, Mistral, DeepSeek and the ElevenLabs and Tavily services) sends a call through the relay only after the direct call was blocked before any answer, and remembers that route.
 
-<!-- diagram: nvidia-proxy-failover -->
+<!-- diagram: server-relay -->
 ```mermaid
 flowchart TD
-    Start(["router.open(body, signal, deadline):<br/>deadline = request start + failoverBudgetMs 25 s"])
-    Order["order: rotate from the cursor, cursor + 1 per request,<br/>keep keys whose cooldownUntil has passed"]
-    Empty{"any key not cooling?"}
-    Exh0["503 all_keys_exhausted at once, no upstream request,<br/>Retry-After = soonest cooldown end, 1 to 300 s"]
-    Next{"next key in the order"}
-    Gone{"client signal aborted?"}
-    Closed["499 client_closed: the browser left,<br/>nobody reads the answer"]
-    Cooling{"parked meanwhile by a<br/>concurrent request?"}
-    Budget{"budget = deadline - now<br/>above 0?"}
-    Fetch["fetch POST integrate.api.nvidia.com/v1/chat/completions,<br/>Authorization Bearer key, Accept text/event-stream,<br/>redirect error, timer min(attemptTimeoutMs 20 s, budget)"]
-    Net{"fetch throws:<br/>network error or the timer fired?"}
-    Status{"upstream status"}
-    First{"200 text/event-stream and a first<br/>non-empty chunk before the timer?"}
-    Commit(["commit: first chunk and reader to the relay,<br/>see nvidia-proxy-stream, no failover after this"])
-    C429["429: cooldown = Retry-After in seconds or an HTTP date,<br/>default 20 s, clamped to 1 to 300 s"]
-    CAuth["401 or 403: key parked for 30 min"]
-    CTr["408, 5xx, network error, timeout,<br/>empty or stalled stream: cooldown 10 s"]
-    Short{"a timeout of an attempt that<br/>the budget had cut below 20 s?"}
-    NoPark["key not parked"]
-    Park["cooldownUntil = now + cooldown,<br/>log key i of n, reason, cooling s,<br/>never the key or a body"]
-    Fatal["404: 502 model_unavailable<br/>any other status, a 200 that is not SSE included:<br/>502 upstream_rejected, no failover,<br/>body cancelled unread, log key i got status"]
-    AllT{"every attempt timed out,<br/>or the budget ran out before the first?"}
-    E504["504 upstream_timeout"]
-    E503["503 all_keys_exhausted<br/>Retry-After = soonest cooldown end, 1 to 300 s"]
-
-    Start --> Order --> Empty
-    Empty -->|"no"| Exh0
-    Empty -->|"yes"| Next
-    Next -->|"a key"| Gone
-    Gone -->|"yes"| Closed
-    Gone -->|"no"| Cooling
-    Cooling -->|"yes, skip it"| Next
-    Cooling -->|"no"| Budget
-    Budget -->|"no"| AllT
-    Budget -->|"yes"| Fetch --> Net
-    Net -->|"client aborted"| Closed
-    Net -->|"yes"| CTr
-    Net -->|"no, a response"| Status
-    Status -->|"200"| First
-    First -->|"yes"| Commit
-    First -->|"no"| CTr
-    Status -->|"429"| C429
-    Status -->|"401, 403"| CAuth
-    Status -->|"408, 500 to 599"| CTr
-    Status -->|"404 or other"| Fatal
-    C429 --> Park
-    CAuth --> Park
-    CTr --> Short
-    Short -->|"yes"| NoPark
-    Short -->|"no"| Park
-    Park --> Next
-    NoPark --> Next
-    Next -->|"none left"| AllT
-    AllT -->|"yes"| E504
-    AllT -->|"no"| E503
+    req(["/api/relay/provider/path, the original URL<br/>after the vercel.json rewrite"]) --> front["front guards: origin, STARPI_RELAY_RPM_PER_IP 30,<br/>access code"]
+    front --> prov{"provider in upstreams.js?"}
+    prov -->|"no"| e404(["404 unknown_provider"])
+    prov -->|"yes"| path{"method and path allowed for it,<br/>query without credentials?"}
+    path -->|"no"| e4xx(["404 path_not_allowed, 405,<br/>or 400 key_in_query"])
+    path -->|"yes"| key{"exactly one auth header in the provider's style:<br/>Authorization Bearer, x-api-key, x-goog-api-key,<br/>xi-api-key or x-subscription-token?"}
+    key -->|"none"| e401(["401 key_required"])
+    key -->|"another credential header"| e400(["400"])
+    key -->|"yes"| body{"body at most 4 MB: a JSON object,<br/>or multipart for transcription?"}
+    body -->|"no"| eBody(["413, 415 or 400"])
+    body -->|"yes"| hdr["forwarded headers: content-type, accept, anthropic-version,<br/>known anthropic-beta values, OpenRouter attribution;<br/>no cookies, no client address"]
+    hdr --> up["fetch the fixed API root, redirect error"]
+    up --> st{"upstream answer"}
+    st -->|"200 event stream"| sse["relayStream: idle 90 s, 16 MB, ends 3 s before<br/>maxDuration, an error event on a limit"]
+    st -->|"200 JSON or audio"| pass["passed through, 16 MB"]
+    st -->|"any other status"| scrub["at most 2 KB read: { error, upstreamStatus },<br/>error = the provider's code matching ^[a-z_]{1,40}$"]
 ```
 
-<sub>Sources: [`api/_lib/nvidia-router.js`](../api/_lib/nvidia-router.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs)</sub>
+<sub>Sources: [`api/_lib/relay/handler.js`](../api/_lib/relay/handler.js), [`api/_lib/relay/upstreams.js`](../api/_lib/relay/upstreams.js), [`api/_lib/relay/scrub.js`](../api/_lib/relay/scrub.js), [`api/relay.js`](../api/relay.js), [`api/_lib/nvidia-stream.js`](../api/_lib/nvidia-stream.js), [`scripts/lib/routes.mjs`](../scripts/lib/routes.mjs), [`vercel.json`](../vercel.json), [`src/js/ai/transport.js`](../src/js/ai/transport.js)</sub>
 
-### NVIDIA proxy: relaying the stream to the browser
+### One model allowlist for the picker and the pools
 
-After the commit handleChat answers 200 with text/event-stream, Cache-Control no-store, no-transform, nosniff and X-Accel-Buffering no, and relayStream passes the upstream bytes through unchanged, starting with the first chunk; the proxy does not parse the events, so reasoning_content and content deltas reach callNvidia as NVIDIA sent them. Every read may wait at most 30 s (idleTimeoutMs) and never past the hard deadline, 240 s (streamMaxMs) after the request started, which ends well before the function's maxDuration of 300 s, and the relayed bytes may not exceed 4 MiB. A failure after the first byte can no longer change the HTTP status, so a silent upstream or the deadline ends the stream with an SSE event of code stream_timeout, too many bytes with stream_too_large and a read error with upstream_interrupted; the event starts with a blank line, which ends any event the upstream left half-written. Every end cancels the upstream reader and aborts the upstream request, and so does a Stop in the tab: the cancelled response stream stops the relay, and with supportsCancellation Vercel also aborts the function's request signal, which the router's attempt still listens to. The browser's own limits (35 s to the first byte, 40 s between reads, 255 s in all) are each longer than the proxy's, so the proxy's error normally arrives first; unit tests pin these inequalities and the vercel.json durations.
+src/js/ai/catalog/pools.js is the single source of what the site pools may call: per pool its models (name, vendor, reasoning and image flags, output caps), its default model and its output limit; the NVIDIA pool takes its list from src/js/models/nvidia-catalog.js, which also holds NVIDIA's per-model limits, fixed upstream fields and the proxy timings. esbuild bundles it into the app, where the picker shows the "Free (via Starpi)" group from it, and api/_lib/pool/allowlist.js imports it from src/ for validation (so .vercelignore keeps src/). Each pool spec adds its dialect (OpenAI chat completions for nvidia, groq and openrouter, streamGenerateContent for gemini), its fixed API root, its auth header, its key variable and key pattern, a per-key request budget and its message limits. A pool model must be free or cheap to serve and must not need tools. GET /api/models/pool publishes per pool whether it has keys and which models it allows, never how many keys; `npm run providers:ping -- --provider <id>` checks the lists with real keys before a release, because the ids of free models change often.
 
-<!-- diagram: nvidia-proxy-stream -->
+<!-- diagram: server-pool-allowlist -->
+```mermaid
+flowchart LR
+    pools["src/js/ai/catalog/pools.js: per pool models,<br/>default model, output cap"]
+    nvcat["src/js/models/nvidia-catalog.js: NVIDIA models,<br/>limits, upstream fields, NVIDIA_PROXY timings"]
+    subgraph app["browser bundle"]
+        pick["model picker: Free (via Starpi) group,<br/>pool:model values"]
+        adapter["pool transport: POST /api/pool, no key"]
+    end
+    subgraph srv["api/_lib/pool"]
+        allow["allowlist.js POOL_SPECS: dialect, root, auth header,<br/>key variable and pattern, keyRpm 40, 30, 10, 20,<br/>message limits, timing, models"]
+        reqv["request.js validatePoolRequest"]
+        router["key-router.js"]
+    end
+    pub["GET /api/models/pool: configured, models"]
+    ping["npm run providers:ping, maintainer with real keys"]
+    nvcat --> pools
+    pools --> pick
+    pools -->|"imported from src/, kept by .vercelignore"| allow
+    nvcat --> allow
+    allow --> reqv
+    allow --> router
+    allow --> pub
+    pub --> pick
+    pick --> adapter
+    ping -.->|"live check before a release"| pools
+```
+
+<sub>Sources: [`src/js/ai/catalog/pools.js`](../src/js/ai/catalog/pools.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`api/_lib/pool/allowlist.js`](../api/_lib/pool/allowlist.js), [`api/_lib/pool/request.js`](../api/_lib/pool/request.js), [`api/models/pool.js`](../api/models/pool.js), [`scripts/provider-ping.mjs`](../scripts/provider-ping.mjs), [`.vercelignore`](../.vercelignore)</sub>
+
+### Site pools: request checks, key rotation and failover before the first byte
+
+A pool spends the site's keys, so it accepts much less than the relay. After the front guards (STARPI_POOL_RPM_PER_IP, 20 a minute over all pools) the handler needs a pool the site enables in STARPI_POOL_PROVIDERS (404 unknown_pool otherwise), keys in the pool's variable (503 pool_not_configured otherwise), and a capped JSON object that validatePoolRequest accepts: a path of the pool's dialect, an allowlisted model, 1 to 40 messages with role system, user or assistant ending with a user message, text and, for models flagged as vision models, up to 4 PNG, JPEG, WebP or GIF images in user messages, no tools, no response formats, no provider extras, an output limit clamped to the model's. The per-IP daily budget (STARPI_POOL_DAILY_PER_IP, 200; 429 daily_limit_reached) counts only requests that reach a provider. The key router then starts at the next key (round robin) and skips keys that are parked or have spent their token bucket (keyRpm per minute); when no key is usable it answers 503 all_keys_exhausted with Retry-After until the first one is free. Each attempt waits for the first non-empty chunk of an event stream within the 25 s failover budget; a 429 parks the key for its Retry-After (20 s without one, clamped to 1 to 300 s), a 401 or 403 for 30 minutes, a 408, 5xx, network error, timeout or a stream that ends before its first byte for 10 s, and the next key is tried. A 404 gives 502 model_unavailable and any other answer 502 upstream_rejected without failover. Upstream bodies are cancelled unread, and once the first byte has arrived the response is committed and there is no failover. POST /api/chat/nvidia is the same handler with the NVIDIA pool and path fixed and the earlier rules (text only, 256 KiB body).
+
+<!-- diagram: server-pool-failover -->
+```mermaid
+flowchart TD
+    req(["POST /api/pool?provider and path, or POST /api/chat/nvidia"]) --> front["front guards: origin, STARPI_POOL_RPM_PER_IP 20, access code"]
+    front --> en{"pool in STARPI_POOL_PROVIDERS?"}
+    en -->|"no"| eEn(["404 unknown_pool"])
+    en -->|"yes"| keys{"keys in its variable, entries of the key pattern?"}
+    keys -->|"no"| e503(["503 pool_not_configured"])
+    keys -->|"yes"| val{"validatePoolRequest: a path of its dialect, allowlisted model,<br/>1 to 40 messages, last one from the user, text, images only for vision models,<br/>no tools, formats or extras, output limit clamped?"}
+    val -->|"no"| e400(["400 with the field"])
+    val -->|"yes"| day{"per-IP daily budget STARPI_POOL_DAILY_PER_IP 200 left?"}
+    day -->|"no"| e429(["429 daily_limit_reached"])
+    day -->|"yes"| pickKey{"next key, round robin: not parked<br/>and its token bucket keyRpm not empty?"}
+    pickKey -->|"none usable"| eAll(["503 all_keys_exhausted, Retry-After until the first is free"])
+    pickKey -->|"key n"| att["POST to the fixed root with key n, redirect error,<br/>wait for the first non-empty chunk, within the 25 s budget"]
+    att --> res{"answer"}
+    res -->|"first chunk of an event stream"| commit(["committed: relayStream, no failover after this"])
+    res -->|"429"| p429["park for Retry-After, 20 s default, 1 to 300 s"]
+    res -->|"401 or 403"| pAuth["park 30 minutes"]
+    res -->|"408, 5xx, network error, timeout,<br/>empty stream"| pTr["park 10 s"]
+    res -->|"404"| e502m(["502 model_unavailable"])
+    res -->|"other, a 200 without a stream included"| e502r(["502 upstream_rejected"])
+    p429 --> budget
+    pAuth --> budget
+    pTr --> budget
+    budget{"failover budget left?"}
+    budget -->|"yes"| pickKey
+    budget -->|"no, every attempt timed out"| e504(["504 upstream_timeout"])
+    budget -->|"no"| eAll
+```
+
+<sub>Sources: [`api/_lib/pool/handler.js`](../api/_lib/pool/handler.js), [`api/_lib/pool/request.js`](../api/_lib/pool/request.js), [`api/_lib/pool/key-router.js`](../api/_lib/pool/key-router.js), [`api/_lib/pool/allowlist.js`](../api/_lib/pool/allowlist.js), [`api/_lib/origins.js`](../api/_lib/origins.js), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`docs/SERVER.md`](SERVER.md)</sub>
+
+### Relaying a pool stream to the browser
+
+After the commit the pool answers 200 with text/event-stream, no-store, no-transform, nosniff and X-Accel-Buffering no, and relayStream passes the upstream bytes through unchanged, starting with the first chunk; it does not parse the events. Every read may wait at most 30 s and never past the hard deadline, 240 s after the request started and 3 s before the function's time limit, and the relayed bytes may not exceed 4 MiB. A failure after the first byte can no longer change the HTTP status, so a silent upstream or the deadline ends the stream with an SSE error event stream_timeout, too many bytes with stream_too_large and a read error with upstream_interrupted; the event starts with a blank line, which ends any event the upstream left half-written. Every end cancels the upstream reader and aborts the upstream request, and so does a Stop in the tab, because the cancelled response stream stops the relay. The browser's own limits are each longer than the server's, so the server's error normally arrives first; unit tests pin these inequalities and the vercel.json durations.
+
+<!-- diagram: server-pool-stream -->
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Tab as Browser tab callNvidia
-    participant Fn as api/chat/nvidia.js handleChat
-    participant R as nvidia-router.js
-    participant NIM as integrate.api.nvidia.com
+    participant Tab as Browser, pool transport
+    participant Fn as api/pool.js
+    participant R as key-router.js
+    participant Up as provider API
     participant Rel as nvidia-stream.js relayStream
-
-    Tab->>Fn: POST /api/chat/nvidia, same origin, JSON, no key
-    Fn->>Fn: guards, rate limit, keys, body and validation, see nvidia-proxy-guards
-    Fn->>R: open with the upstream body, deadline = request start + 25 s
-    R->>NIM: POST stream true, Bearer key n
-    NIM-->>R: 429 with Retry-After
-    R->>R: key n parked for Retry-After, log line with the key index only
-    R->>NIM: POST stream true, Bearer key of the next index
-    NIM-->>R: 200 text/event-stream, first non-empty chunk
+    Tab->>Fn: POST /api/pool, same origin, JSON, no key
+    Fn->>Fn: front guards, pool, keys, validation, daily budget
+    Fn->>R: open with the upstream body, deadline = start + 25 s
+    R->>Up: POST, stream, the auth header of the pool with key n
+    Up-->>R: 429 with Retry-After
+    R->>R: key n parked, log line with the key index only
+    R->>Up: POST with the next key
+    Up-->>R: 200 text/event-stream, first non-empty chunk
     R-->>Fn: commit, the first chunk and the reader
-    Fn->>Rel: relayStream, idle 30 s, hard deadline start + min of 240 s and 297 s, 4 MiB
-    Rel-->>Tab: 200 text/event-stream, no-store, no-transform, X-Accel-Buffering no, the first chunk
+    Fn->>Rel: idle 30 s, hard deadline start + 240 s, 4 MiB
+    Rel-->>Tab: 200 text/event-stream, no-store, no-transform, the first chunk
     loop each pull until the stream ends
-        Rel->>NIM: read, at most 30 s and never past the hard deadline
-        NIM-->>Rel: bytes with content or reasoning_content deltas
+        Rel->>Up: read, at most 30 s and never past the deadline
+        Up-->>Rel: bytes
         Rel-->>Tab: the same bytes, size counted
     end
     alt upstream finishes
-        NIM-->>Rel: data DONE, then the end of the body
         Rel-->>Tab: close
-    else no bytes within 30 s, or the hard deadline
-        Rel-->>Tab: blank line, data error code stream_timeout, close
-        Rel->>NIM: reader cancelled, request aborted
-    else more than 4 MiB relayed
-        Rel-->>Tab: blank line, data error code stream_too_large, close
-        Rel->>NIM: reader cancelled, request aborted
-    else read error
-        Rel-->>Tab: blank line, data error code upstream_interrupted, close
-        Rel->>NIM: reader cancelled, request aborted
-    else Stop in the tab or the connection closes
+    else silence, deadline, more than 4 MiB or a read error
+        Rel-->>Tab: blank line, data error stream_timeout, stream_too_large or upstream_interrupted
+        Rel->>Up: reader cancelled, request aborted
+    else Stop in the tab
         Tab-->>Rel: response stream cancelled
-        Rel->>NIM: reader cancelled, request aborted
+        Rel->>Up: reader cancelled, request aborted
     end
-    Note over Tab,Fn: browser limits 35 s to the first byte, 40 s between reads<br/>and 255 s in all, each longer than the proxy's, so its error arrives first
 ```
 
-<sub>Sources: [`api/_lib/nvidia-stream.js`](../api/_lib/nvidia-stream.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`api/_lib/nvidia-router.js`](../api/_lib/nvidia-router.js), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`vercel.json`](../vercel.json), [`src/js/providers.js`](../src/js/providers.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>
+<sub>Sources: [`api/_lib/nvidia-stream.js`](../api/_lib/nvidia-stream.js), [`api/_lib/pool/handler.js`](../api/_lib/pool/handler.js), [`api/_lib/pool/key-router.js`](../api/_lib/pool/key-router.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`vercel.json`](../vercel.json), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs)</sub>
 
-### One model allowlist for the app and the functions
+### Speech routes, research steps, health and the 2.x routes
 
-src/js/models/nvidia-catalog.js is the single source of the NVIDIA models (13 entries with id, label, vendor, reasoning and vision flags, output token limits and fixed upstream extras), the default model, the request limits, the proxy timings and cooldowns, and the browser timeouts derived from them; it is deep-frozen, so no importer can change it at run time. esbuild bundles it into the app, where the pickers list its models, state.js normalizes starpi_nvidia_model against it, prompts.js fits requests to its limits and providers.js takes its timeouts. The Vercel Functions import it from src/ for validation, the router and the public catalog, so .vercelignore keeps src/. nvidia-catalog.test.mjs fails when the README's T4 table does not list the same models with the same names and reasoning flags in the same order, or when a timing would let the browser give up before the proxy. GET /api/models/nvidia publishes the models without their upstream extras, and the browser offers only the models the proxy lists. npm run nvidia:ping, run by a maintainer with real keys before the list changes, checks every allowlisted id against NVIDIA's live API.
+The speech routes run the front guards with their own per-IP limit (STARPI_VOICE_RPM_PER_IP) and use the site's Gemini keys (GEMINI_API_KEYS, while the Gemini pool is enabled and STARPI_VOICE_POOL is not off) and ElevenLabs keys, with the same rotation, failover and parking as a pool. speak takes one piece of at most 600 characters (the app sends only units its sentence gate released) and a voice from the app's list and answers a WAV file; transcribe takes a base64 WAV of at most 60 seconds, the locale and the user's glossary and answers the text; live-token mints a single-use token for one Gemini Live session that carries the whole setup (model, voice, instruction), from the site's key or, with x-goog-api-key, from the user's own key for that one call. The site's keys have daily ceilings per instance for characters spoken, seconds transcribed and Live sessions. A research step (POST /api/research/step) runs one step of a research job on the Gemini pool: a tool round over the visitor's own documents, whose model turns the server signs with HMAC-SHA-256 under a key derived with HKDF from the pool's first Gemini key (a turn that does not match is refused with 400 history_not_signed before anything reaches Google; after five tool rounds the model may only answer), or one web search with Google Search, returned as grounded. GET /api/health reports `{ version, pools, simulated, voice: { tts, stt, live }, research, access }` as booleans. POST /api/chat/nvidia and GET /api/models/nvidia keep the 2.x addresses of the NVIDIA pool with their earlier rules.
 
-<!-- diagram: nvidia-proxy-allowlist -->
+<!-- diagram: server-voice-research -->
 ```mermaid
-flowchart LR
-    Cat["src/js/models/nvidia-catalog.js<br/>NVIDIA_CATALOG, deep-frozen: version 1, upstream URL,<br/>defaultModel, 13 models, limits, proxy timings,<br/>NVIDIA_CLIENT_TIMEOUTS derived: first byte 35 s,<br/>idle 40 s, total 255 s, models 6 s"]
-
-    subgraph app["esbuild bundle, the browser"]
-        Pick["models/choices.js and settings.js<br/>picker values nvidia:id, allowlist check"]
-        State["state.js normalizeNvidiaModel<br/>starpi_nvidia_model"]
-        Fit["prompts.js fitNvidiaMessages<br/>NVIDIA_LIMITS"]
-        Prov["providers.js callNvidia, parseNvidiaCatalog<br/>NVIDIA_CLIENT_TIMEOUTS, model labels"]
+flowchart TD
+    subgraph sp["Speech routes, voice-routes.js"]
+        vg["front guards, STARPI_VOICE_RPM_PER_IP 20, access code;<br/>GET /api/voice/voices: booleans and the fixed voice lists"]
+        speak["speak: one piece up to 600 characters, a listed voice,<br/>Gemini prebuilt or ElevenLabs premade, WAV back"]
+        tr["transcribe: base64 WAV up to 60 s, locale, glossary, text back"]
+        live["live-token: single-use token for one Live session,<br/>setup fixed in the token; x-goog-api-key: the user's key"]
+        ceil["daily ceilings of the site's keys: characters,<br/>seconds, Live sessions; per-IP daily budget"]
+        vg --> speak
+        vg --> tr
+        vg --> live
+        speak --> ceil
+        tr --> ceil
+        live --> ceil
     end
-
-    subgraph fns["Vercel Functions, api/_lib"]
-        Req["nvidia-request.js validateChatRequest<br/>findNvidiaModel, NVIDIA_LIMITS"]
-        Rt["nvidia-router.js<br/>NVIDIA_PROXY, NVIDIA_UPSTREAM_URL"]
-        Hd["handlers.js publicCatalog,<br/>idle, stream and size limits"]
+    subgraph rs["POST /api/research/step"]
+        rg["front guards, STARPI_RESEARCH_RPM_PER_IP 60, access code"]
+        rk{"Gemini pool keys?"}
+        rshape["body capped, shape checked"]
+        rsig{"every model turn signed: HMAC-SHA-256,<br/>key by HKDF from the first Gemini key?"}
+        rday["per-IP daily budget, counted for steps that reach Google"]
+        rpart{"which part?"}
+        rsrc["sources part: Gemini with the tool results; a tool call<br/>comes back signed, the browser runs search_sources,<br/>read_excerpt, list_documents on its own documents;<br/>after 5 rounds the model may only answer"]
+        rweb["web part: one step with Google Search, the grounded answer<br/>with segments, sources, queries and suggestions"]
+        rg --> rk
+        rk -->|"no"| r503(["503 research_not_configured"])
+        rk -->|"yes"| rshape --> rsig
+        rsig -->|"no"| r400(["400 history_not_signed, nothing sent to Google"])
+        rsig -->|"yes"| rday --> rpart
+        rpart -->|"sources"| rsrc
+        rpart -->|"web"| rweb
     end
-
-    Pub["GET /api/models/nvidia<br/>models without upstream extras"]
-    Readme["README.md T4 table<br/>id, name, reasoning"]
-    Test["nvidia-catalog.test.mjs: README table,<br/>timing inequalities, frozen, ids unique,<br/>labels outside the i18n key shape"]
-    Ping["npm run nvidia:ping, maintainer only:<br/>GET /v1/models and one streamed request<br/>per allowlisted id, real keys and quota"]
-
-    Cat --> Pick
-    Cat --> State
-    Cat --> Fit
-    Cat --> Prov
-    Cat -->|"imported from src/,<br/>kept by .vercelignore"| Req
-    Cat --> Rt
-    Cat --> Hd
-    Hd --> Pub
-    Pub -->|"the offered models"| Prov
-    Test -.->|"checks"| Readme
-    Test -.->|"checks"| Cat
-    Ping -.->|"live check before a change"| Cat
+    health(["GET /api/health: version, pools, simulated,<br/>voice tts, stt, live, research, access, booleans only"])
+    legacy(["POST /api/chat/nvidia, GET /api/models/nvidia:<br/>the NVIDIA pool at its 2.x addresses, text only, 256 KiB"])
 ```
 
-<sub>Sources: [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/state.js`](../src/js/state.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/providers.js`](../src/js/providers.js), [`api/_lib/nvidia-request.js`](../api/_lib/nvidia-request.js), [`api/_lib/nvidia-router.js`](../api/_lib/nvidia-router.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`scripts/nvidia-ping.mjs`](../scripts/nvidia-ping.mjs), [`.vercelignore`](../.vercelignore), [`README.md`](../README.md), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>
+<sub>Sources: [`api/_lib/voice-routes.js`](../api/_lib/voice-routes.js), [`api/voice/speak.js`](../api/voice/speak.js), [`api/voice/transcribe.js`](../api/voice/transcribe.js), [`api/voice/live-token.js`](../api/voice/live-token.js), [`api/voice/voices.js`](../api/voice/voices.js), [`api/_lib/gemini/budget.js`](../api/_lib/gemini/budget.js), [`api/_lib/gemini/live.js`](../api/_lib/gemini/live.js), [`api/research/step.js`](../api/research/step.js), [`api/_lib/gemini/research.js`](../api/_lib/gemini/research.js), [`api/health.js`](../api/health.js), [`api/_lib/nvidia-router.js`](../api/_lib/nvidia-router.js), [`api/_lib/nvidia-request.js`](../api/_lib/nvidia-request.js), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`api/models/nvidia.js`](../api/models/nvidia.js), [`docs/SERVER.md`](SERVER.md)</sub>
