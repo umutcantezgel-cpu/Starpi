@@ -37,7 +37,9 @@ const MEMO_SIZE = 16;
  * @property {number} progress  share of the model's bytes loaded, 0..1
  * @property {number} done  chunks embedded in this indexing run
  * @property {number} total  chunks of this run, known so far
- * @property {string | null} error
+ * @property {string | null} error  the failure as logged (English); the view shows `integrity` in words
+ * @property {{ code: 'mismatch' | 'unverified', model: string, files: string } | null} integrity
+ *   set when the download check refused the model's files (models/integrity.js IntegrityError)
  */
 
 /** @returns {{ enabled: boolean, model: EmbedModelKey }} */
@@ -48,9 +50,25 @@ function readSetting() {
 
 const initial = readSetting();
 /** @type {SemanticState} */
-let state = { enabled: initial.enabled, model: initial.model, phase: initial.enabled ? 'idle' : 'off', progress: 0, done: 0, total: 0, error: null };
+let state = { enabled: initial.enabled, model: initial.model, phase: initial.enabled ? 'idle' : 'off', progress: 0, done: 0, total: 0, error: null, integrity: null };
 /** @type {Set<(state: SemanticState) => void>} */
 const listeners = new Set();
+
+/**
+ * The error state of a failure: its message for the log, and what the download check refused, so
+ * the settings can say it in the reader's language.
+ * @param {unknown} err
+ * @returns {Pick<SemanticState, 'phase' | 'error' | 'integrity'>}
+ */
+function failed(err) {
+  const e = /** @type {{ name?: unknown, code?: unknown, model?: unknown, files?: unknown }} */ (err ?? {});
+  /** @type {SemanticState['integrity']} */
+  const integrity =
+    e.name === 'IntegrityError' && (e.code === 'mismatch' || e.code === 'unverified')
+      ? { code: e.code, model: String(e.model ?? ''), files: Array.isArray(e.files) ? e.files.join(', ') : '' }
+      : null;
+  return { phase: 'error', error: err instanceof Error ? err.message : String(err), integrity };
+}
 /** @type {WasmEmbedClient | null} */
 let client = null;
 /** @type {Promise<void> | null} */
@@ -160,7 +178,7 @@ async function embedBatch(texts, kind) {
   const src = semanticModel();
   const sizes = new Map(src.files.map(([file, bytes]) => [file, bytes]));
   const total = src.files.reduce((sum, [, bytes]) => sum + bytes, 0);
-  if (!modelReady && state.phase !== 'loading' && state.phase !== 'indexing') update({ phase: 'loading', error: null });
+  if (!modelReady && state.phase !== 'loading' && state.phase !== 'indexing') update({ phase: 'loading', error: null, integrity: null });
   if (!modelReady) {
     // Stored files are checked before the worker reads them.
     checkedBefore = checkModelFiles(src, checkedBefore).catch((err) => {
@@ -249,7 +267,7 @@ async function indexPass(mine) {
     if (mine !== epoch || !state.enabled) return;
     const batch = await pendingVectors(ROUND);
     if (batch.length === 0) break;
-    update({ phase: modelReady ? 'indexing' : 'loading', done, total: Math.max(state.total, done + batch.length), error: null });
+    update({ phase: modelReady ? 'indexing' : 'loading', done, total: Math.max(state.total, done + batch.length), error: null, integrity: null });
     for (let i = 0; i < batch.length; i += EMBED_BATCH_SIZE) {
       if (mine !== epoch) return;
       const part = batch.slice(i, i + EMBED_BATCH_SIZE);
@@ -260,7 +278,7 @@ async function indexPass(mine) {
           'passage',
         );
       } catch (err) {
-        if (mine === epoch) update({ phase: 'error', error: err instanceof Error ? err.message : String(err) });
+        if (mine === epoch) update(failed(err));
         return;
       }
       if (mine !== epoch) return;
@@ -297,7 +315,7 @@ export async function setSemanticSearch(enabled, model = state.model) {
   epoch += 1;
   writeLocalJson(SEMANTIC_SETTING_KEY, { enabled, model: src.key });
   if (!enabled || changedModel) stopClient();
-  update({ enabled, model: src.key, phase: enabled ? 'idle' : 'off', progress: enabled && !changedModel ? state.progress : 0, done: 0, total: 0, error: null });
+  update({ enabled, model: src.key, phase: enabled ? 'idle' : 'off', progress: enabled && !changedModel ? state.progress : 0, done: 0, total: 0, error: null, integrity: null });
   setQueryEmbedder(enabled ? embedQuery : null);
   await setVectorModel(enabled ? { id: embedModelId(src), dim: src.dim } : null);
   if (enabled) await indexWorkspace();
@@ -348,7 +366,7 @@ export async function initSemanticSearch() {
     update({ phase: 'ready' });
     // Start the model in the background, so the first question after a reload can be searched by
     // meaning within the query timeout (the files are in the browser's cache by now).
-    void embedBatch([' '], 'query').catch((err) => update({ phase: 'error', error: err instanceof Error ? err.message : String(err) }));
+    void embedBatch([' '], 'query').catch((err) => update(failed(err)));
   }
   void indexWorkspace();
 }
