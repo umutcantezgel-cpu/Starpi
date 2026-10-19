@@ -34,6 +34,7 @@ export default [
         __STARPI_SUPABASE_URL__: 'readonly',
         __STARPI_SUPABASE_ANON_KEY__: 'readonly',
         __STARPI_VERSION__: 'readonly',
+        __STARPI_PROFILE__: 'readonly',
       },
     },
     rules: {

@@ -456,7 +456,7 @@ export function mountCompanionTab(el, services, deps) {
       ${section(
         `${NS}.status.brains`,
         brains.length
-          ? html`<ul class="text-xs space-y-1.5">${brains.map((b) => html`<li class="flex flex-wrap items-center gap-1.5"><span class="font-medium">${String(b.id)}</span>${chip({ label: hasKey(`${NS}.locality.${b.locality}`) ? `${NS}.locality.${b.locality}` : { text: String(b.locality) }, tone: b.locality === 'cloud' ? 'info' : 'neutral', icon: b.locality === 'cloud' ? 'cloud' : 'hard-drive' })}${b.model ? html`<span class="font-mono text-slate-600">${String(b.model)}</span>` : ''}${b.resting ? chip({ label: `${NS}.status.resting`, tone: 'warn' }) : ''}</li>`)}</ul>`
+          ? html`<ul class="text-xs space-y-1.5">${brains.map((/** @type {any} */ b) => html`<li class="flex flex-wrap items-center gap-1.5"><span class="font-medium">${String(b.id)}</span>${chip({ label: hasKey(`${NS}.locality.${b.locality}`) ? `${NS}.locality.${b.locality}` : { text: String(b.locality) }, tone: b.locality === 'cloud' ? 'info' : 'neutral', icon: b.locality === 'cloud' ? 'cloud' : 'hard-drive' })}${b.model ? html`<span class="font-mono text-slate-600">${String(b.model)}</span>` : ''}${b.resting ? chip({ label: `${NS}.status.resting`, tone: 'warn' }) : ''}</li>`)}</ul>`
           : quiet(`${NS}.status.no_brains`),
       )}
       ${section(
@@ -488,7 +488,7 @@ export function mountCompanionTab(el, services, deps) {
         `${NS}.ask.conversations`,
         conversations.length
           ? html`<ul class="divide-y divide-slate-100 text-sm">${conversations.map(
-              (c) =>
+              (/** @type {any} */ c) =>
                 html`<li class="flex items-center gap-2 py-2"><button type="button" class="flex-1 min-w-0 text-left truncate hover:underline" data-action="companion-conv-open" data-arg="${String(c.id)}">${String(c.title || '…')}</button>${classChip(c.dataClass)}<span class="text-xs text-slate-500">${when(c.updated)}</span><button type="button" class="btn btn-ghost p-1" data-action="companion-conv-delete" data-arg="${String(c.id)}" aria-label="${labelText(`${NS}.delete`)}" data-i18n-aria="${NS}.delete">${icon('trash-2', 'w-3.5 h-3.5')}</button></li>`,
             )}</ul>`
           : quiet(`${NS}.ask.no_conversations`),

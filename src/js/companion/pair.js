@@ -103,11 +103,11 @@ export function idbLinkStore() {
   let opening = null;
   const db = () => {
     opening ??= import('../store/idb.js').then(({ openDb }) =>
-      openDb(LINK_DB, LINK_DB_VERSION, ({ db: upgrade, oldVersion }) => {
+      openDb(LINK_DB, LINK_DB_VERSION, ({ oldVersion, createStore }) => {
         if (oldVersion < 1) {
-          upgrade.createObjectStore('link', { keyPath: 'id' });
-          upgrade.createObjectStore('heads', { keyPath: 'keyId' });
-          upgrade.createObjectStore('keys', { keyPath: 'id' });
+          createStore('link', { keyPath: 'id' });
+          createStore('heads', { keyPath: 'keyId' });
+          createStore('keys', { keyPath: 'id' });
         }
       }),
     );
