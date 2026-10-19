@@ -641,10 +641,13 @@ export async function showConversation(id = currentSessionId(), opts = {}) {
   if (turn) turn.left = true;
   /** @type {Thread | null} */
   let loaded = null;
+  showing++;
   try {
     loaded = await (await store()).loadThread(id);
   } catch (err) {
     console.warn('[starpi] could not load the conversation', err);
+  } finally {
+    showing--;
   }
   if (seq !== showSeq) return;
   current = loaded;
@@ -685,6 +688,8 @@ const FOLLOW_EDIT_MS = 1_500;
 let followed = null;
 /** @type {ReturnType<typeof setTimeout> | null} */
 let followTimer = null;
+/** showConversation calls still reading the store (a follow waits for them rather than overtake them). */
+let showing = 0;
 
 /**
  * What the screen shows of a conversation, to tell whether a change elsewhere touched it: the active
@@ -727,9 +732,10 @@ function followStore() {
 function noteStoreChange(change) {
   const id = conversationId;
   const concerns = change.kind === 'all' || (change.kind === 'conversation' && change.id === id) || (change.kind === 'node' && change.conversationId === id);
-  if (!concerns) return;
+  // A message stored here is on screen already (or shows with the end of its turn).
+  if (!concerns || (change.kind === 'node' && ownNodes.has(change.id))) return;
   if (turn && turn.conversationId === id) {
-    if (change.kind === 'all' || (change.kind === 'conversation' && change.op === 'delete') || (change.kind === 'node' && !ownNodes.has(change.id))) turn.foreign = true;
+    if (change.kind === 'all' || change.kind === 'node' || (change.kind === 'conversation' && change.op === 'delete')) turn.foreign = true;
     return;
   }
   scheduleFollow(FOLLOW_MS);
@@ -754,8 +760,12 @@ async function followShown() {
   const id = conversationId;
   if (!current || current.conversation.id !== id || currentSessionId() !== id) return;
   if (turn?.conversationId === id) return;
+  // A conversation being shown right now: its showing may read the store before the change, so the
+  // follow comes again after it.
+  if (showing > 0) return scheduleFollow(FOLLOW_MS);
   const loaded = await (await store()).loadThread(id).catch(() => undefined);
   if (loaded === undefined || conversationId !== id || currentSessionId() !== id || turn?.conversationId === id) return;
+  if (showing > 0) return scheduleFollow(FOLLOW_MS);
   if (!loaded) {
     startNewSession();
     resetThread();
@@ -2389,9 +2399,13 @@ export async function adoptAnswer(input) {
   if (!input.stored) {
     if (!(await db.getConversation(input.conversationId))) await db.createConversation({ id: input.conversationId, mode: getChatMode(), model: getAssistant() });
     const q = input.question;
-    questionId = (await db.appendNode(input.conversationId, { parentId: q.parentId, role: 'user', parts: q.parts, localOnly: q.localOnly, ...(q.meta ? { meta: q.meta } : {}) })).id;
+    questionId = crypto.randomUUID();
+    ownNode(questionId);
+    await db.appendNode(input.conversationId, { id: questionId, parentId: q.parentId, role: 'user', parts: q.parts, localOnly: q.localOnly, ...(q.meta ? { meta: q.meta } : {}) });
   }
-  const node = await db.appendNode(input.conversationId, { ...input.answer, parentId: questionId });
+  const answerId = input.answer.id ?? crypto.randomUUID();
+  ownNode(answerId);
+  const node = await db.appendNode(input.conversationId, { ...input.answer, id: answerId, parentId: questionId });
   if (input.conversationId === conversationId) await showConversation(conversationId);
   return node;
 }
