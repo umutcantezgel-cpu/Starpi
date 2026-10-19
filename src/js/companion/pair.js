@@ -451,7 +451,8 @@ export function createPairing(options = {}) {
           update({});
           return state;
         };
-        let stored = null;
+        /** @type {StoredLink | null} */
+        let stored;
         try {
           stored = await store.load();
         } catch (err) {
