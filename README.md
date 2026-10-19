@@ -992,9 +992,9 @@ Details and known limitations are in [SECURITY.md](SECURITY.md#known-limitations
 Beside it, `codeql.yml` (CodeQL on every change and weekly), `workflow-lint.yml` (actionlint and
 zizmor) and `model-lock.yml` (the model lock against the hosts, weekly) run.
 
-In numbers: UNIT_TESTS unit tests in UNIT_FILES files, E2E_TESTS end-to-end tests on desktop Chromium
-(CI also runs them on a mobile viewport; the diagram check runs on desktop only), COMPANION_TESTS
-tests of the companion, and the Python suites of the library publisher and the voice server.
+In numbers: 2,394 unit tests in 191 files, 136 end-to-end tests in 26 specs on desktop Chromium
+(CI also runs them on a mobile viewport; the diagram check runs on desktop only), 146
+tests of the companion in 24 files, and the Python suites of the library publisher and the voice server.
 
 The unit and end-to-end suites also check the documentation: every Mermaid block renders, diagram
 copies match the atlas, and links and anchors resolve.
