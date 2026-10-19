@@ -110,11 +110,11 @@ idealised design. When the code changes, change the diagram in the same pull req
    - [classifyError: mapping failures to error kinds](#classifyerror-mapping-failures-to-error-kinds)
    - [Database badge states (renderConnection)](#database-badge-states-renderconnection)
    - [Data access functions: callers, tables and failure paths](#data-access-functions-callers-tables-and-failure-paths)
-   - [Chat sync: chat_history and the localStorage fallback](#chat-sync-chat_history-and-the-localstorage-fallback)
+   - [Encrypted chat sync](#encrypted-chat-sync)
    - [Supabase schema: knowledge base and knowledge graph](#supabase-schema-knowledge-base-and-knowledge-graph)
-   - [Supabase schema: chat history and settings](#supabase-schema-chat-history-and-settings)
+   - [Supabase schema: chat sync, chat history and settings](#supabase-schema-chat-sync-chat-history-and-settings)
    - [RLS decisions for documents, entities and relations](#rls-decisions-for-documents-entities-and-relations)
-   - [RLS for sections, chat history and settings](#rls-for-sections-chat-history-and-settings)
+   - [RLS for sections, the chat tables and settings](#rls-for-sections-the-chat-tables-and-settings)
    - [RPC EXECUTE grants and size limits](#rpc-execute-grants-and-size-limits)
    - [search_knowledge: full matches first, then shared terms](#search_knowledge-full-matches-first-then-shared-terms)
    - [Migration apply order and guards](#migration-apply-order-and-guards)
@@ -4066,11 +4066,11 @@ sequenceDiagram
 
 ## 8. Supabase
 
-The browser connects with the public anon key and an anonymous session; grants and row level security decide every read and write. The migrations are idempotent and are tested on PostgreSQL 16 with pgvector in CI.
+The browser connects with the public key and an anonymous session; grants and row level security decide every read and write. Supabase serves the shared library and the end-to-end encrypted chat sync; the 2.x plaintext chat table is only deleted from. The migrations are idempotent and are tested on PostgreSQL 16 with pgvector in CI.
 
 ### connect(): anonymous session and schema probe
 
-The Supabase client is created once, on first use (connect() or the first query), from the library's lazy entry, with the anon key, a persisted session under storageKey starpi-auth (detectSessionInUrl false), a fetch wrapper that aborts every request after 12000 ms and db retry false, so postgrest-js does not repeat a timed-out or failed read. connect() first reads navigator.onLine: when the browser reports offline it sets status offline without any request and calls scheduleReconnect(). Because that branch has no await, scheduleReconnect() clears connectPromise before connect() stores the promise, so connectPromise keeps this settled offline result and every later retry() gets it back without a new attempt. Otherwise connect() loads the library first. A load gets the same 12000 ms as a request: client() races the import against that deadline, so a stalled network cannot keep connect(), boot() and every query that shares the pending load waiting. When the load fails (no network, or the file is gone after a deploy) classifyError reads the failure as network, and a passed deadline (a TimeoutError) as timeout; either way connect() sets status offline with that error as authError and probeError and calls scheduleReconnect(), and the next load asks for the file under another URL (?attempt=n), because a browser keeps a failed module import for the life of the page. An import cannot be cancelled: when a load that ran out of time still arrives, the next attempt uses it instead of downloading the file again, and an attempt still waiting for its own download finishes with it as well. Then ensureSession() restores the session with getSession(); without one anonymousSignInsEnabled() reads GET /auth/v1/settings through the same 12000 ms fetch wrapper. When external.anonymous_users is false, ensureSession() returns auth_disabled without a sign-in request; when that request throws and classifyError calls it a timeout, ensureSession() returns the timeout error, also without a sign-in request; in every other case (the flag is true, the response is not ok, the JSON cannot be read, the flag is not a boolean, or the request throws any other error, a network failure included) it calls signInAnonymously(). The probe select id, is_public on knowledge_documents always runs, as role anon when there is no session. A network or timeout probe error yields status offline and scheduleReconnect(), which clears connectPromise and, unless a retry is already pending, calls connect() again on the window online event or after 30 s, doubling per attempt up to 5 min; anything else yields status ready with signedIn = no authError and hardened = probe.ok and resets the backoff. updateConnection calls the only listener (main.js: renderConnection, renderPrivacyNotice, refreshSyncStatus), then boot() renders the state once more and awaits restoreHistory(). A later retry reaches only the listener and never restores history again.
+The Supabase client is created once, on first use (connect() or the first query), from the library's lazy entry, with the anon key, a persisted session under storageKey starpi-auth (detectSessionInUrl false), a fetch wrapper that aborts every request after 12000 ms and db retry false, so postgrest-js does not repeat a timed-out or failed read. A build the companion serves (profile companion) never loads the library: connect() ends offline at once without a retry, and every query answers as if the network were gone. Otherwise connect() first reads navigator.onLine: when the browser reports offline it sets status offline without any request and calls scheduleReconnect(). Because that branch has no await, scheduleReconnect() clears connectPromise before connect() stores the promise, so connectPromise keeps this settled offline result and every later retry() gets it back without a new attempt. Otherwise connect() loads the library first. A load gets the same 12000 ms as a request: client() races the import against that deadline, so a stalled network cannot keep connect(), boot() and every query that shares the pending load waiting. When the load fails (no network, or the file is gone after a deploy) classifyError reads the failure as network, and a passed deadline (a TimeoutError) as timeout; either way connect() sets status offline with that error as authError and probeError and calls scheduleReconnect(), and the next load asks for the file under another URL (?attempt=n), because a browser keeps a failed module import for the life of the page. An import cannot be cancelled: when a load that ran out of time still arrives, the next attempt uses it instead of downloading the file again, and an attempt still waiting for its own download finishes with it as well. Then ensureSession() restores the session with getSession(); without one anonymousSignInsEnabled() reads GET /auth/v1/settings through the same 12000 ms fetch wrapper. When external.anonymous_users is false, ensureSession() returns auth_disabled without a sign-in request; when that request throws and classifyError calls it a timeout, ensureSession() returns the timeout error, also without a sign-in request; in every other case (the flag is true, the response is not ok, the JSON cannot be read, the flag is not a boolean, or the request throws any other error, a network failure included) it calls signInAnonymously(). The probe select id, is_public on knowledge_documents always runs, as role anon when there is no session. A network or timeout probe error yields status offline and scheduleReconnect(), which clears connectPromise and, unless a retry is already pending, calls connect() again on the window online event or after 30 s, doubling per attempt up to 5 min; anything else yields status ready with signedIn = no authError and hardened = probe.ok and resets the backoff. updateConnection calls the listeners (main.js: renderConnection, renderPrivacyNotice, refreshSyncStatus; sync/service.js kicks a sync when the status is ready and sync is on), then boot() renders the state once more and awaits restoreHistory(), which opens the conversation store on the device (section 2) and asks Supabase nothing. A later retry reaches only the listeners and never restores history again.
 
 <!-- diagram: supabase-connection-connect -->
 ```mermaid
@@ -4083,14 +4083,17 @@ sequenceDiagram
     participant DB as PostgREST
     participant L as onConnectionChange listener
     participant UI as ui.js renderConnection
-    participant CS as chat-store.js
+    participant CS as chat-store.js, chat.js
     participant Win as window timer and online event
 
     Note over Sb: No client at module load: client() creates it on first use,<br/>by connect() or by any query through run()
     Note over Sb: Initial state is status pending, signedIn false,<br/>hardened false, authError null, probeError null
     Boot->>Sb: onConnectionChange(listener)
     Boot->>Sb: await connect()
-    alt connectPromise already set
+    alt build profile companion
+        Sb->>Sb: updateConnection status offline, kind network, no library, no retry
+        Sb-->>Boot: ConnectionState, status offline
+    else connectPromise already set
         Sb-->>Boot: the same promise, no new attempt
         Note over Sb: boot() calls connect() once. A retry() finds a promise here<br/>only after the navigator.onLine false branch below
     else navigator.onLine is false
@@ -4152,9 +4155,7 @@ sequenceDiagram
             L->>UI: renderConnection(state)
             L->>L: renderPrivacyNotice() from settings.js
             L->>CS: void refreshSyncStatus()
-            opt status ready and canSyncChats()
-                CS->>DB: countChatMessages(), HEAD count on chat_history
-            end
+            Note over L,CS: refreshSyncStatus writes the sync line from the encrypted sync's state,<br/>no request
         end
         alt status offline
             Sb->>Sb: scheduleReconnect() sets connectPromise = null
@@ -4168,9 +4169,7 @@ sequenceDiagram
         Sb-->>Boot: ConnectionState
     end
     Boot->>UI: renderConnection(state)
-    Boot->>CS: await restoreHistory() in chat.js calls loadCurrentSession()
-    Note over CS,DB: chat_history is read only when canSyncChats(), see Chat sync below
-    CS-->>Boot: ChatRow list, rendered by restoreHistory()
+    Boot->>CS: await restoreHistory(): the conversation store in IndexedDB, no Supabase request
     opt later, after an offline result or a run() request that switched ready to offline
         Win->>Sb: retry() on the online event or timer: clearTimeout, remove online listener, void connect()
         Note over Sb,CS: a new attempt as above, unless connectPromise is still set. The badge stays Offline<br/>until it settles, then the listener re-renders badge, privacy notice and sync status.<br/>restoreHistory() is not called again
@@ -4181,63 +4180,58 @@ sequenceDiagram
 
 ### classifyError: mapping failures to error kinds
 
-classifyError checks its rules in a fixed order, so a timeout or network failure wins over any database code: abort and timeout signals first, then fetch and network failures, then disabled anonymous sign-ins, PGRST202 (missing function), missing table or column codes, and finally 42501, PGRST301 and HTTP 401 or 403; everything else is unknown. Only the message regexes are case-insensitive. The dotted edges show what a kind means: a probe error in connect() decides offline, Migration pending or Restricted; network and timeout from any later request that goes through run() switch a ready connection to offline; an ensureSession error of any kind (even a timeout) only clears signedIn. That includes a timeout of the auth settings request: anonymousSignInsEnabled() returns a thrown error only when classifyError calls it timeout, and null for any other thrown error, network included, so the sign-in is tried. Three errors are built without classifyError: the network error of the navigator.onLine false branch, auth_disabled when the auth settings report anonymous sign-ins off, and not_found from getDocument() when no visible document row exists. The ErrorKind typedef also lists not_signed_in, which no code returns.
+classifyError checks its rules in a fixed order, so a timeout or network failure wins over any database code: abort and timeout signals first, then fetch and network failures (including a library chunk that does not load), then disabled anonymous sign-ins, then the answers of the email sign-in the encrypted sync uses to reach one account from several browsers (an expired or wrong code, an address already taken, no account, email sign-in off, an invalid address, a rate limit), then conflicts (a unique row exists already, or the sync's revision guard refused a stale write: 23505, 40001 or HTTP 409), then PGRST202 (missing function), missing table or column codes, and finally 42501, PGRST301 and HTTP 401 or 403; everything else is unknown. A probe error in connect() decides offline, Migration pending or Restricted; network and timeout from any later request that goes through run() switch a ready connection to offline; an ensureSession error of any kind only clears signedIn. Three errors are built without classifyError: the network error of the offline browser (or of a build the companion serves), auth_disabled when the auth settings report anonymous sign-ins off, and not_found from getDocument().
 
 <!-- diagram: supabase-connection-classify-error -->
 ```mermaid
 flowchart TD
-    input["err from supabase-js, auth-js or fetch, returned or thrown<br/>via run(), ensureSession(), anonymousSignInsEnabled(),<br/>countChatMessages() or deleteOwnChats()<br/>fetchWithTimeout aborts every request after 12000 ms"]
-    norm["message = err.message, else String(err)<br/>code = err.code, name = err.name, status = err.status<br/>message regexes are case-insensitive,<br/>name, code and status compare exactly"]
+    input["err from supabase-js, auth-js, fetch or a failed import,<br/>returned or thrown via run(), ensureSession(),<br/>anonymousSignInsEnabled() or the sync and email calls"]
+    norm["message, code, name, status;<br/>message regexes case-insensitive"]
     input --> norm
-    norm --> qTimeout{"name TimeoutError or AbortError, or message matches<br/>TimeoutError, AbortError, timed? ?out<br/>(timeout, time out, timed out) or signal is aborted?"}
+    norm --> qTimeout{"TimeoutError, AbortError, timed out,<br/>signal is aborted?"}
     qTimeout -->|"yes"| kTimeout(["timeout"])
-    qTimeout -->|"no"| qNetwork{"message matches Failed to fetch, NetworkError,<br/>Load failed, fetch failed or ERR_[A-Z_]+,<br/>or name TypeError and message mentions fetch or network?"}
+    qTimeout -->|"no"| qNetwork{"Failed to fetch, NetworkError, Load failed, fetch failed,<br/>ERR_*, a dynamically imported module that failed?"}
     qNetwork -->|"yes"| kNetwork(["network"])
-    qNetwork -->|"no"| qAuth{"code anonymous_provider_disabled or message<br/>anonymous sign-ins are disabled?"}
+    qNetwork -->|"no"| qAuth{"anonymous sign-ins disabled?"}
     qAuth -->|"yes"| kAuth(["auth_disabled"])
-    qAuth -->|"no"| qFn{"code PGRST202?"}
+    qAuth -->|"no"| qEmail{"email sign-in codes:<br/>otp_expired, invalid_otp; email_exists, user_already_exists;<br/>otp_disabled, signup_disabled, user_not_found;<br/>email_provider_disabled; email_address_invalid;<br/>over_email_send_rate_limit, over_request_rate_limit, 429"}
+    qEmail -->|"yes"| kEmail(["invalid_code, email_taken, no_account,<br/>email_disabled, invalid_email or rate_limited"])
+    qEmail -->|"no"| qConflict{"23505, 40001 or status 409?"}
+    qConflict -->|"yes"| kConflict(["conflict"])
+    qConflict -->|"no"| qFn{"PGRST202?"}
     qFn -->|"yes"| kFn(["missing_function"])
-    qFn -->|"no"| qSchema{"code 42P01, PGRST205,<br/>42703 or PGRST204?"}
+    qFn -->|"no"| qSchema{"42P01, PGRST205, 42703 or PGRST204?"}
     qSchema -->|"yes"| kSchema(["missing_schema"])
-    qSchema -->|"no"| qForbidden{"code 42501 or PGRST301,<br/>or status 401 or 403?"}
+    qSchema -->|"no"| qForbidden{"42501, PGRST301, 401 or 403?"}
     qForbidden -->|"yes"| kForbidden(["forbidden"])
     qForbidden -->|"no"| kUnknown(["unknown"])
 
-    subgraph sg_direct["DataErrors built without classifyError"]
-        dOffline["connect(): navigator.onLine false,<br/>kind network, The browser is offline"]
-        dAuth["ensureSession(): GET /auth/v1/settings reports<br/>external.anonymous_users false, kind auth_disabled,<br/>code anonymous_provider_disabled"]
-        dNotFound["getDocument(): no visible knowledge_documents row,<br/>kind not_found, the modal shows data.error_not_found"]
+    subgraph sg_effect["Effect"]
+        eOffline["probe error in connect(): status offline, reconnect later"]
+        eRunOffline["later request while ready: status offline, reconnect later"]
+        eMigration["probe error: ready, not hardened, badge Migration pending"]
+        eRestricted["probe error: ready, not hardened, badge Restricted"]
+        eAuth["ensureSession error: signedIn false, badge Public knowledge"]
+        eSync["sync: conflict merges the newer row and writes again;<br/>email kinds are shown in the sync settings"]
     end
-
-    subgraph sg_effect["Effect on the connection"]
-        eOffline["probe error in connect(): status offline, badge Offline,<br/>scheduleReconnect() resets connectPromise<br/>and retries connect() later"]
-        eRunOffline["later request through run() while status ready:<br/>updateConnection status offline, signedIn and hardened kept,<br/>scheduleReconnect()"]
-        eNavOffline["status offline, signedIn and hardened false,<br/>scheduleReconnect() runs before connectPromise is stored,<br/>so retries start no new attempt"]
-        eMigration["probe error: status ready, hardened false,<br/>badge Migration pending"]
-        eRestricted["probe error: status ready, hardened false,<br/>badge Restricted, Error (code, else kind)"]
-        eAuth["ensureSession error of any kind, also timeout or network,<br/>from getSession, the auth settings request or signInAnonymously:<br/>authError set, signedIn false, status still set by the probe,<br/>after a good probe badge Public knowledge with<br/>Anonymous sign-ins are disabled for auth_disabled, else No session"]
-        eSettings["auth settings request throws: timeout is returned<br/>as authError without a sign-in request, any other kind,<br/>network included, gives null and signInAnonymously() runs"]
-    end
-    kTimeout -.->|"probe"| eOffline
-    kNetwork -.->|"probe"| eOffline
-    kTimeout -.->|"later request"| eRunOffline
-    kNetwork -.->|"later request"| eRunOffline
-    kSchema -.->|"probe"| eMigration
-    kFn -.->|"probe"| eRestricted
-    kForbidden -.->|"probe"| eRestricted
-    kUnknown -.->|"probe"| eRestricted
-    kAuth -.->|"ensureSession"| eAuth
-    kTimeout -.->|"auth settings request"| eSettings
-    eSettings -.-> eAuth
-    dAuth -.-> eAuth
-    dOffline -.-> eNavOffline
+    kTimeout -.-> eOffline
+    kNetwork -.-> eOffline
+    kTimeout -.-> eRunOffline
+    kNetwork -.-> eRunOffline
+    kSchema -.-> eMigration
+    kFn -.-> eRestricted
+    kForbidden -.-> eRestricted
+    kUnknown -.-> eRestricted
+    kAuth -.-> eAuth
+    kConflict -.-> eSync
+    kEmail -.-> eSync
 ```
 
-<sub>Sources: [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/library.js`](../src/js/library.js), [`src/js/signals.js`](../src/js/signals.js), [`src/js/config.js`](../src/js/config.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/sync/sync.js`](../src/js/sync/sync.js), [`src/js/sync/settings-view.js`](../src/js/sync/settings-view.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/library.js`](../src/js/library.js)</sub>
 
 ### Database badge states (renderConnection)
 
-dbStatusBadge and settingsDbBadge start as Connecting and dbStatusDetail as status.detail_connecting from the index.html markup; renderConnection first runs when connect() has a result, through the listener and then once more from boot(). It shows Offline for status offline, and for status ready Live, Public knowledge, Migration pending or Restricted depending on hardened, signedIn and the probe error kind, together with the badge class, the detail line, the settingsDbAuth text and the project ref. refreshSyncStatus sets the chat sync text. The buttons marked data-requires-session (Save to knowledge base, New entity and Save in the entity dialog) are enabled in the markup; from the first render on, only Live keeps them enabled and hides the session-note. canSyncChats() is signedIn and hardened, so among the ready states chat_history is written and read only in Live, and even there on-device turns, questions with an attached file, turns that use workspace excerpts and answers quoted without a model that name a workspace file stay in localStorage. A ready state is not final: any later request through run() that fails with network or timeout switches the status to offline. Offline is not final either: scheduleReconnect() repeats connect() on the window online event or after 30 s, doubling up to 5 min, except after the navigator.onLine false branch, where the retry starts no new attempt and the badge stays Offline until the page is reloaded.
+dbStatusBadge and settingsDbBadge start as Connecting from the index.html markup; renderConnection first runs when connect() has a result, through the listener and once more from boot(). It shows Offline for status offline, and for status ready Live, Public knowledge, Migration pending or Restricted depending on hardened, signedIn and the probe error kind, with the badge class, the detail line, the settingsDbAuth text and the project ref. The buttons marked data-requires-session (Save to knowledge base, New entity and Save in the entity dialog) stay enabled only in Live. The sync line in Settings comes from refreshSyncStatus: "This device only" while the encrypted sync is off, else its own state (on with the number of conversations, waiting for the network, or needs attention); no request counts rows any more. A ready state is not final: a later request through run() that fails with network or timeout switches to Offline, and scheduleReconnect() repeats connect() on the online event or after 30 s, doubling up to 5 min (after the offline-browser branch the retry gets that settled attempt back, so Offline stays until a reload).
 
 <!-- diagram: supabase-connection-badge-states -->
 ```mermaid
@@ -4250,231 +4244,149 @@ stateDiagram-v2
         state "Public knowledge (tone ok)" as public_kb
         state "Migration pending (tone warn)" as migration_pending
         state "Restricted (tone warn)" as restricted
-        live : badge-ok, green dot, detail status.detail_live
+        live : badge-ok, detail status.detail_live
         live : settingsDbAuth status.rls_session
-        live : sync text sync.synced_count, sync.synced if the count fails
-        public_kb : badge-ok, green dot, detail status.detail_public
-        public_kb : settingsDbAuth status.rls_disabled if auth_disabled, else status.no_session
-        public_kb : sync text sync.device_no_session
-        migration_pending : badge-warn, amber dot, detail status.detail_setup
+        public_kb : badge-ok, detail status.detail_public
+        public_kb : settingsDbAuth status.rls_disabled or status.no_session
+        migration_pending : badge-warn, detail status.detail_setup
         migration_pending : settingsDbAuth status.migration_needed
-        migration_pending : sync text sync.device_migration
-        restricted : badge-warn, amber dot, detail status.detail_setup
-        restricted : settingsDbAuth status.probe_error with probeError code, else kind
-        restricted : sync text sync.device_migration
+        restricted : badge-warn, detail status.detail_setup
+        restricted : settingsDbAuth status.probe_error with the code or kind
         [*] --> ready_choice
         ready_choice --> live : hardened and signedIn
         ready_choice --> public_kb : hardened, not signedIn
-        ready_choice --> migration_pending : not hardened, probeError missing_schema
-        ready_choice --> restricted : not hardened, any other probeError
+        ready_choice --> migration_pending : not hardened, missing_schema
+        ready_choice --> restricted : not hardened, any other probe error
         note right of live
-            canSyncChats() is signedIn and hardened.
-            persistMessage inserts into chat_history and
-            loadCurrentSession reads it, except localOnly messages
-            (on-device mode, a question with an attached file,
-            question and answer of a turn that uses workspace
-            excerpts, an answer quoted without a model that names
-            a workspace file) and failed inserts, which stay in
-            localStorage. Only Live enables the
-            data-requires-session buttons.
+            Only Live enables the data-requires-session buttons.
+            The encrypted sync needs a session too; it syncs
+            only while switched on and the status is ready.
         end note
     }
-
-    connecting : badge-muted, grey dot, status pending
-    connecting : detail status.detail_connecting
-    connecting : settingsDbAuth status.rls_session
-    connecting : sync text sync.checking
-    offline : badge-muted, grey dot, detail status.detail_offline
-    offline : settingsDbAuth status.no_session
-    offline : sync text sync.device_offline
-
-    [*] --> connecting : page load, connect() running
-    connecting --> offline : navigator.onLine false, or probe error network or timeout
+    connecting : badge-muted, detail status.detail_connecting
+    offline : badge-muted, detail status.detail_offline
+    [*] --> connecting : page load
+    connecting --> offline : offline browser, companion build, library or probe network or timeout
     connecting --> ready : status ready
-    ready --> offline : a later request through run() gets network or timeout
-    offline --> offline : retry gets network or timeout again, next delay doubled up to 5 min
-    offline --> ready : retry on the online event or timer gets status ready
-
+    ready --> offline : a later request gets network or timeout
+    offline --> ready : a retry gets status ready
     note left of offline
-        Offline whatever signedIn and hardened say.
-        After a run() failure both keep their values, so after
-        Live canSyncChats() stays true and chat inserts are still
-        tried, then kept in localStorage when they fail. retrieve() skips the
-        knowledge base while offline. scheduleReconnect() calls
-        connect() again after 30 s, 60 s, ... up to 5 min or on
-        the online event. After the navigator.onLine false
-        branch the retry gets that settled attempt back and
-        starts none, so Offline stays until the page is reloaded.
-        History is not restored again, new messages sync once Live.
+        retrieve() skips the library while offline.
+        The sync line is "This device only" while sync is off,
+        else the sync's own state (on, waiting, attention).
     end note
 ```
 
-<sub>Sources: [`src/js/ui.js`](../src/js/ui.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/main.js`](../src/js/main.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/ui.js`](../src/js/ui.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/sync/service.js`](../src/js/sync/service.js), [`src/js/main.js`](../src/js/main.js), [`src/index.html`](../src/index.html)</sub>
 
 ### Data access functions: callers, tables and failure paths
 
-Every exported query of supabase.js resolves to a Result ({ ok, data } or { ok, error }) and never rejects. run() awaits the supabase-js request, passes a returned or thrown error through classifyError and, when the kind is network or timeout while the status is ready, switches the connection to offline and schedules a reconnect; countChatMessages() classifies its errors itself without that switch. Each request aborts after 12000 ms and is not retried by postgrest-js. Reads run through RLS as anon or as the anonymous user, and the browser writes only rows that RLS makes its own and private. The views turn an error into text with dataErrorKey in library.js; retrieve() in chat.js uses its own retrieval texts instead.
+Every exported query of supabase.js resolves to a Result ({ ok, data } or { ok, error }) and never rejects. run() loads the library on first use, awaits the supabase-js request, passes a returned or thrown error through classifyError and, when the kind is network or timeout while the status is ready, switches the connection to offline and schedules a reconnect. Each request aborts after 12,000 ms and is not retried by postgrest-js. Reads run through RLS as anon or as the signed-in user, and the browser writes only rows that RLS makes its own and private. The library is reached for retrieval (full text, a 384-dimension query vector for device-only questions, or recent documents ranked in the browser), document titles, the library tab, saving a document, the knowledge graph and its entities; the encrypted sync reads and writes `chat_sync` and `chat_sync_keys`, and the email sign-in lets a second browser reach the same account. The 2.x plaintext `chat_history` table is only deleted from (own rows, by owner id).
 
 <!-- diagram: supabase-data-access -->
 ```mermaid
 flowchart TD
     subgraph sg_callers["Callers"]
-        cRetrieve["chat.js retrieve(), verified source mode only,<br/>skipped for workspace-only questions and while status offline:<br/>searchKnowledge except in client mode,<br/>recentKnowledge(30) in client mode or after<br/>no search hit or a search error"]
-        cTitles["chat.js knownTitles(), cached 60 s,<br/>empty list while offline or on error"]
-        cLibrary["library.js loadDocuments()<br/>and the document modal"]
+        cRetrieve["chat/thread.js retrieve(): searchKnowledge, else<br/>recentKnowledge(30); device-only: libraryHitsByMeaning,<br/>else recentKnowledge(30) without the question"]
+        cTitles["thread knownTitles() and Auto's titles,<br/>cached 60 s, none while offline"]
+        cLibrary["library.js, the document modal"]
         cIngest["ingest.js submitIngest()"]
-        cGraph["graph.js loadKnowledgeGraph()<br/>and saveEntity()"]
-        cStore["chat-store.js, see Chat sync"]
+        cGraph["graph.js"]
+        cSync["sync/service.js engine, sync/settings-view.js"]
+        cDelete["chat-store.js deleteChatHistory, deleteSession"]
     end
-
     subgraph sg_fns["supabase.js exports"]
-        fSearch["searchKnowledge(query, limit 6)<br/>rpc search_knowledge, query_text cut to 1000 chars,<br/>hits with document_id, title, heading, content, tags, rank"]
-        fRecent["recentKnowledge(limit)<br/>documents with embedded knowledge_sections, newest first,<br/>one hit per section by section_index, else one hit<br/>from summary or raw_content, rank null"]
-        fList["listDocuments()<br/>id, title, source_type, summary, raw_content,<br/>tags, created_at, newest first, limit 200"]
-        fGet["getDocument(id), two requests in parallel:<br/>the document with maybeSingle,<br/>its sections by section_index"]
-        fInsDoc["insertDocument(input)<br/>document with source_name = title, then one section:<br/>section_index 0, token_count = word count, embedding null"]
-        fGraph["listEntities(): id, name, entity_type, description,<br/>ordered by name, limit 500<br/>listRelations(): limit 2000"]
-        fInsEnt["insertEntity(): name, entity_type, description"]
-        fChat["insertChatMessage, loadChatSession,<br/>countChatMessages, deleteOwnChats,<br/>deleteChatSession"]
+        fSearch["searchKnowledge(query, 6): rpc search_knowledge,<br/>query_text cut to 1,000 chars"]
+        fVec["matchKnowledgeVector(vector, 6): rpc match_knowledge_vector_384,<br/>384 values rounded to 6 decimals, 1 to 20 rows"]
+        fRecent["recentKnowledge(limit): documents with their sections"]
+        fList["listDocuments(), getDocument(id)"]
+        fInsDoc["insertDocument(input): document and one section,<br/>no vectors from the browser"]
+        fGraph["listEntities(), listRelations(), insertEntity()"]
+        fSync["syncAccount, getSyncKeyEnvelope, putSyncKeyEnvelope,<br/>listSyncRevisions, fetchSyncRows, writeSyncRow, deleteSyncData"]
+        fEmail["sendEmailCode, verifyEmailCode, signOutAccount"]
+        fDel["deleteOwnChats(), deleteChatSession(sid)"]
     end
-
-    subgraph sg_db["PostgREST with the anon key, RLS as anon or the anonymous user"]
-        tRpc["search_knowledge, SECURITY INVOKER"]
-        tDocs["knowledge_documents"]
-        tSec["knowledge_sections"]
+    subgraph sg_db["PostgREST and Auth with the public key, RLS"]
+        tRpc["search_knowledge, match_knowledge_vector_384"]
+        tDocs["knowledge_documents, knowledge_sections"]
         tGraph["knowledge_entities, knowledge_relations"]
-        tChat["chat_history"]
+        tSync["chat_sync, chat_sync_keys"]
+        tAuth["Auth: email one-time code"]
+        tChat["chat_history: delete own rows only"]
     end
-
     cRetrieve --> fSearch
+    cRetrieve --> fVec
     cRetrieve --> fRecent
     cTitles --> fList
     cLibrary --> fList
-    cLibrary --> fGet
     cIngest --> fInsDoc
     cGraph --> fGraph
-    cGraph --> fInsEnt
-    cStore --> fChat
+    cSync --> fSync
+    cSync --> fEmail
+    cDelete --> fDel
     fSearch --> tRpc
+    fVec --> tRpc
     fRecent --> tDocs
-    fRecent --> tSec
     fList --> tDocs
-    fGet --> tDocs
-    fGet --> tSec
     fInsDoc --> tDocs
-    fInsDoc --> tSec
     fGraph --> tGraph
-    fInsEnt --> tGraph
-    fChat --> tChat
-
-    run["run(request): a returned or thrown error goes through classifyError,<br/>network or timeout while status ready gives status offline<br/>and scheduleReconnect(), countChatMessages() classifies<br/>its errors itself, without this switch"]
+    fSync --> tSync
+    fEmail --> tAuth
+    fDel --> tChat
+    run["run(request): client() loads the library, classifyError on failure,<br/>network or timeout while ready: status offline, reconnect"]
     sg_fns -.- run
-    fail["Failure paths<br/>getDocument: a document error is returned, no visible row gives not_found,<br/>a sections error gives an empty section list<br/>insertDocument: a failed section insert deletes the new document,<br/>best effort, and returns the section error<br/>loadKnowledgeGraph: an entities error is shown, a relations error gives no edges"]
-    fGet -.- fail
-    fInsDoc -.- fail
-    fGraph -.- fail
-    msgs["dataErrorKey in library.js, used by the library, the document modal,<br/>the graph and ingest: network, timeout to data.error_unreachable,<br/>missing_schema, missing_function to data.error_missing_schema,<br/>forbidden to data.error_forbidden, not_found to data.error_not_found,<br/>auth_disabled to data.error_auth_disabled, else data.error_other"]
-    fail -.- msgs
+    msgs["dataErrorKey in library.js for the views: unreachable, missing schema,<br/>forbidden, not found, auth disabled, other"]
+    run -.- msgs
 ```
 
-<sub>Sources: [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/library.js`](../src/js/library.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/config.js`](../src/js/config.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/rag/embed-client.js`](../src/js/rag/embed-client.js), [`src/js/library.js`](../src/js/library.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/sync/service.js`](../src/js/sync/service.js), [`src/js/sync/settings-view.js`](../src/js/sync/settings-view.js), [`src/js/chat-store.js`](../src/js/chat-store.js)</sub>
 
-### Chat sync: chat_history and the localStorage fallback
+### Encrypted chat sync
 
-Chats go to chat_history only when canSyncChats() is true, which is signedIn and hardened; the status is not part of the check, so after a request failure has switched a ready connection to offline, inserts are still tried and land in localStorage when they fail. persistMessage stores nothing for empty content, keeps localOnly messages in localStorage with metadata.local_only, and falls back to localStorage without that flag when the insert fails, so loadCurrentSession later treats the message as on-device. loadChatSession reads the newest 200 rows of the current session and returns them oldest first; loadCurrentSession merges them with the local messages by created_at. Deleting the history from Settings is refused while an answer is still being written (settings.delete_history_busy) and needs a confirmation. deleteChatHistory then waits for message writes still under way, marks their sessions as deleted so a late write cannot store them again, clears every local chat and starts a new session. It skips the server and reports success only when the status is ready and chats cannot sync; otherwise, also while offline or still connecting, deleteOwnChats() tries to delete every chat_history row of the anonymous user in all sessions (without a session user it reports success without a request), and a failed delete, for example a network error while offline, shows settings.delete_history_partial instead of settings.delete_history_done. Delete this chat in the chat menu runs deleteSession for the current session the same way: it waits for that session's writes, removes the session from localStorage, starts a new session, and deleteChatSession deletes the user's rows with that session_id, reported as chat.deleted_title or chat.delete_partial_title. refreshSyncStatus counts the user's rows for the sync text.
+Sync is off until the user turns it on in Settings with a passphrase of at least 12 characters. Without a key envelope on the server, the browser makes a 32-byte sync secret and derives two non-extractable keys from it with HKDF-SHA-256 (AES-GCM-256 for records, HMAC-SHA-256 for row ids); the secret is wrapped with a key derived from the passphrase (PBKDF2-SHA-256, 600,000 iterations, a random 16-byte salt) and the envelope goes to `chat_sync_keys`. With an envelope (sync is on in another browser of the same account) the passphrase opens it, which is how a second browser restores the conversations; reaching the same account from another browser needs Email sign-in with a one-time code. The opened keys and the revision each row had when this device last synced are the sync state in the app database. A sync reads the revisions of all rows (ids and numbers only), fetches and merges the rows that are newer (sync/payload.js), and writes every conversation that changed here as the next revision; a write names the revision it builds on (an insert for a new row, else an update of the row at exactly that revision); a write that finds the row moved on changes nothing and counts as a conflict, as does an insert of a row that exists, so the newer row is merged in and written again. The row guard also refuses a revision that does not grow. Records are built from a field allowlist: local-only turns (and questions whose only answers are local-only), attachments, receipts, project and assistant links and every key stay out; a title that may come from such a turn is replaced. Each record is JSON padded to a multiple of 512 bytes and encrypted under a fresh IV, with the key id, row id and revision as additional data, so the server cannot move a record to another row or revision. Merging: messages are append-only and merge as a union; changed conversation fields of this device win over older remote ones; new messages win over a deletion, and a deletion wins over changed fields. Deleting a conversation writes a deletion marker so other browsers delete it too. Turning sync off with deletion removes the key envelope first, then the rows; until that finished every sync retries it. Syncs never overlap (a queue in the tab, a Web Lock across tabs). The table has no per-user quota, and the passphrase cannot be changed without turning sync off and on again.
 
 <!-- diagram: supabase-chat-sync -->
 ```mermaid
 flowchart TD
-    subgraph sg_persist["persistMessage(sid, message, localOnly)"]
-        pEmpty{"content empty?"}
-        pSkip(["nothing stored"])
-        pRoute{"localOnly or not canSyncChats()?<br/>canSyncChats() = signedIn and hardened,<br/>the status is not checked"}
-        pLocal["appendLocal with metadata.local_only = localOnly"]
-        pInsert["insertChatMessage(sid, message): insert session_id,<br/>role, content, sources, metadata into chat_history,<br/>owner_id defaults to auth.uid()"]
-        pOk{"insert ok?"}
-        pSynced["void refreshSyncStatus()"]
-        pFallback["console.warn, appendLocal without local_only,<br/>read back later as an on-device message"]
-        pEmpty -->|"yes"| pSkip
-        pEmpty -->|"no"| pRoute
-        pRoute -->|"yes"| pLocal
-        pRoute -->|"no"| pInsert
-        pInsert --> pOk
-        pOk -->|"yes"| pSynced
-        pOk -->|"no, e.g. network, timeout or 23514"| pFallback
-    end
-
-    subgraph sg_load["loadCurrentSession(), called by restoreHistory()"]
-        lLocal["local = messages of the current session in starpi_local_chats_v1,<br/>rows without a boolean local_only get local_only true"]
-        lGate{"canSyncChats()?"}
-        lReq["loadChatSession(sessionId): select role, content, sources,<br/>metadata, created_at where session_id matches,<br/>order created_at desc, limit 200, reversed to oldest first"]
-        lRes{"result?"}
-        lMerge["mergeByTime(remote, local): drop local rows without created_at<br/>that repeat a remote role and content, stable sort by<br/>created_at, rows without a time last"]
-        lOut(["ChatRow list for restoreHistory()"])
-        lLocal --> lGate
-        lGate -->|"no, local messages"| lOut
-        lGate -->|"yes"| lReq
-        lReq --> lRes
-        lRes -->|"error: console.warn, local messages"| lOut
-        lRes -->|"no rows: local, no local rows: remote"| lOut
-        lRes -->|"both"| lMerge
-        lMerge --> lOut
-    end
-
-    subgraph sg_delete["deleteHistory() in settings.js, then deleteChatHistory()"]
-        dBusy{"isChatBusy()?"}
-        dBusyMsg(["alert settings.delete_history_busy,<br/>nothing deleted"])
-        dConfirm{"confirm settings.delete_history_confirm?"}
-        dCancel(["nothing deleted"])
-        dClear["settleWrites: await pending writes, their sessions<br/>marked deleted, then starpi_local_chats_v1 set<br/>to an empty object, startNewSession()"]
-        dGate{"status ready and not canSyncChats()?"}
-        dUid{"deleteOwnChats(): user id<br/>from getSession()?"}
-        dReq["run() delete from chat_history where owner_id = user id,<br/>every session, RLS chat_history_delete_own"]
-        dDone["void refreshSyncStatus(), return res.ok"]
-        dTrue["return true without a request"]
-        dAlert(["resetConversation(), alert settings.delete_history_done<br/>for true, settings.delete_history_partial for false"])
-        dBusy -->|"yes"| dBusyMsg
-        dBusy -->|"no"| dConfirm
-        dConfirm -->|"no"| dCancel
-        dConfirm -->|"yes"| dClear
-        dClear --> dGate
-        dGate -->|"yes, treated as nothing synced"| dTrue
-        dGate -->|"no: chats sync, or status offline or pending"| dUid
-        dUid -->|"no user: ok without a request,<br/>getSession throws: classified error"| dDone
-        dUid -->|"yes"| dReq
-        dReq --> dDone
-        dTrue --> dAlert
-        dDone --> dAlert
-        dOne(["chat menu Delete this chat: deleteSession(sid),<br/>the same steps for that session only,<br/>deleteChatSession: owner_id and session_id"])
-        dOne -.-> dClear
-    end
-
-    subgraph sg_status["refreshSyncStatus(), text of chatSyncStatusText"]
-        sReady{"status ready?"}
-        sGate{"canSyncChats()?"}
-        sCount["countChatMessages(): HEAD request, exact count<br/>of select id on chat_history, own rows of every session"]
-        sOffline["sync.device_offline"]
-        sNoSync["hardened: sync.device_no_session,<br/>else sync.device_migration"]
-        sOk["ok: sync.synced_count with n,<br/>error: sync.synced"]
-        sReady -->|"no"| sOffline
-        sReady -->|"yes"| sGate
-        sGate -->|"no"| sNoSync
-        sGate -->|"yes"| sCount
-        sCount --> sOk
-    end
-
-    store["appendLocal: created_at stamped when missing, last 200 messages<br/>per session, 10 most recently updated sessions in starpi_local_chats_v1"]
-    pLocal -.- store
-    pFallback -.- store
-    sg_persist ~~~ sg_load
-    sg_delete ~~~ sg_status
+    on(["Settings: turn sync on with a passphrase, at least 12 chars"])
+    sess{"signed-in session?"}
+    noSess(["no_session: sign in, Email one-time code<br/>for a second browser"])
+    env{"key envelope in chat_sync_keys?"}
+    create["new 32-byte secret; HKDF: AES-GCM-256 records key,<br/>HMAC-SHA-256 row id key; wrap with PBKDF2-SHA-256<br/>600,000 iterations, 16-byte salt; putSyncKeyEnvelope"]
+    open["open the envelope with the passphrase;<br/>wrong passphrase: no change"]
+    state[("sync state in IndexedDB settings: keys (non-extractable),<br/>account, per row: revision, hash, base fields, node ids")]
+    cycle["cycle (queued in the tab, Web Lock across tabs)"]
+    revs["listSyncRevisions: row ids and revisions only"]
+    fetch["fetchSyncRows for rows newer than the state"]
+    dec["decrypt: AES-GCM, AAD = key id, row id, revision"]
+    merge["merge (payload.js): message union; this device's changed<br/>fields win; new messages beat a deletion;<br/>a deletion beats changed fields"]
+    apply[("conversation store: applyPayload")]
+    build["changed conversations: buildPayload from an allowlist,<br/>no localOnly turns, attachments, receipts, links or keys"]
+    enc["JSON padded to 512 bytes, fresh 12-byte IV,<br/>AES-GCM with AAD; row id = HMAC(conversation id)"]
+    write["writeSyncRow(row, baseRev): insert for a new row,<br/>else update where rev = baseRev"]
+    guard{"row updated or inserted?<br/>(row guard: revision grows, owner and id fixed)"}
+    conflict["conflict: no row at baseRev, an existing row,<br/>or 40001; fetch the newer row, merge, write again"]
+    done(["revision stored in the state"])
+    delMark(["deleted here: deletion marker written,<br/>other browsers delete the conversation"])
+    off(["turn off with deletion: envelope deleted first,<br/>then the rows; retried until done"])
+    on --> sess
+    sess -->|"no"| noSess
+    sess -->|"yes"| env
+    env -->|"no"| create --> state
+    env -->|"yes"| open --> state
+    state --> cycle --> revs --> fetch --> dec --> merge --> apply
+    apply --> build --> enc --> write --> guard
+    guard -->|"yes"| done
+    guard -->|"no"| conflict --> merge
+    build -.-> delMark
+    cycle -.-> off
 ```
 
-<sub>Sources: [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/config.js`](../src/js/config.js), [`src/js/storage.js`](../src/js/storage.js), [`src/locales/en.json`](../src/locales/en.json), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
+<sub>Sources: [`src/js/sync/sync.js`](../src/js/sync/sync.js), [`src/js/sync/crypto.js`](../src/js/sync/crypto.js), [`src/js/sync/payload.js`](../src/js/sync/payload.js), [`src/js/sync/service.js`](../src/js/sync/service.js), [`src/js/sync/settings-view.js`](../src/js/sync/settings-view.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat/store.js`](../src/js/chat/store.js), [`backend/supabase/migrations/20261102000000_chat_sync.sql`](../backend/supabase/migrations/20261102000000_chat_sync.sql)</sub>
 
 ### Supabase schema: knowledge base and knowledge graph
 
-Four of the six public Starpi tables plus auth.users (drawn as auth_users), as full_schema.sql creates them. Each knowledge_sections row belongs to exactly one knowledge_documents row and is deleted with it. Both tables have a generated German tsvector column fts with a GIN index, and sections hold a nullable vector(1536) embedding with an HNSW cosine index. knowledge_documents, knowledge_entities and knowledge_relations have owner_id (default auth.uid(), null for service role rows, set null when the user is deleted) and is_public (default false; rows that existed before migration 20260923000000 were set public). knowledge_relations points at two knowledge_entities rows through nullable source_entity_id and target_entity_id with on delete cascade. The global UNIQUE (name, entity_type) on entities is dropped. The max limits are CHECK constraints added NOT VALID (characters unless noted), and databases upgraded from the older full_schema.sql keep legacy columns such as knowledge_relations.document_id.
+Four of the eight public Starpi tables plus auth.users (drawn as auth_users), as full_schema.sql creates them. Each knowledge_sections row belongs to exactly one knowledge_documents row and is deleted with it. Both tables have a generated German tsvector column fts with a GIN index, and sections hold a nullable vector(1536) embedding with an HNSW cosine index. knowledge_documents, knowledge_entities and knowledge_relations have owner_id (default auth.uid(), null for service role rows, set null when the user is deleted) and is_public (default false; rows that existed before migration 20260923000000 were set public). knowledge_relations points at two knowledge_entities rows through nullable source_entity_id and target_entity_id with on delete cascade. The global UNIQUE (name, entity_type) on entities is dropped. The max limits are CHECK constraints added NOT VALID (characters unless noted), and databases upgraded from the older full_schema.sql keep legacy columns such as knowledge_relations.document_id.
 
 <!-- diagram: db-schema-er -->
 ```mermaid
@@ -4541,9 +4453,9 @@ erDiagram
 
 <sub>Sources: [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql)</sub>
 
-### Supabase schema: chat history and settings
+### Supabase schema: chat sync, chat history and settings
 
-chat_history.owner_id is not null, defaults to auth.uid() and cascades when the auth user is deleted. Migration 20260923000000 deletes the older rows that had no owner. Validated CHECK constraints limit role to user, assistant or system, session_id to 1 to 128 characters, content to 100000 characters and sources and metadata to 64 KiB each. A NOT VALID constraint from 20260924000000 lowers the content limit to 20000 for new and updated rows. brain_settings has no foreign keys, a text primary key and the seeded keys llm_config and rag_config.
+chat_sync holds one row per synced conversation and user: the primary key (user_id, conv_id), user_id defaulting to auth.uid() and cascading when the auth user is deleted, conv_id 32 characters of base64url (an HMAC of the conversation id), a revision above 0, a 16-character base64 IV and base64 ciphertext of at most 2,800,000 characters; the server stamps updated_at. chat_sync_keys holds one row per user: a key id, the KDF (only PBKDF2-SHA256), 600,000 to 10,000,000 iterations, the salt, the IV and the wrapped key. The trigger chat_sync_guard (SECURITY INVOKER, empty search_path, callable by no API role) keeps a row's owner and id fixed, lets the revision only grow (40001 otherwise) and sets updated_at. Both tables come with the optional migration 20261102000000 and with full_schema.sql. chat_history is the plaintext table of 2.x: 3.0 never reads or writes it and only deletes the rows an earlier version stored; its owner_id is not null and cascades with the auth user, and its CHECK constraints stay (role, session_id 1 to 128 characters, content at most 20,000 for new rows). brain_settings has a text primary key, the seeded keys llm_config and rag_config, and is reachable by the service role only.
 
 <!-- diagram: db-schema-chat-settings -->
 ```mermaid
@@ -4551,15 +4463,33 @@ erDiagram
     auth_users {
         uuid id PK "Supabase auth.users"
     }
+    chat_sync {
+        uuid user_id PK "PK 1, FK, default auth.uid(), on delete cascade"
+        text conv_id PK "PK 2, 32 chars base64url, HMAC of the conversation id"
+        bigint rev "not null, above 0, only grows"
+        text iv "16 chars base64"
+        text ciphertext "base64, 24 to 2800000 chars, AES-GCM"
+        timestamptz updated_at "set by chat_sync_guard"
+    }
+    chat_sync_keys {
+        uuid user_id PK "FK, default auth.uid(), on delete cascade"
+        text key_id "22 chars base64url"
+        text kdf "PBKDF2-SHA256"
+        int iterations "600000 to 10000000"
+        text salt "24 chars base64"
+        text iv "16 chars base64"
+        text wrapped_key "64 chars base64"
+        timestamptz created_at "default now()"
+    }
     chat_history {
-        uuid id PK "default gen_random_uuid()"
-        text session_id "not null, 1 to 128 chars"
-        text role "not null, user, assistant or system"
-        text content "not null, max 20000 chars, older validated bound 100000"
-        jsonb sources "not null, default empty array, max 64 KiB"
-        jsonb metadata "not null, default empty object, max 64 KiB"
-        timestamptz created_at "not null, default now()"
-        uuid owner_id FK "not null, default auth.uid(), index with session_id, created_at"
+        uuid id PK "2.x, no longer read or written"
+        text session_id "1 to 128 chars"
+        text role "user, assistant or system"
+        text content "max 20000 chars for new rows"
+        jsonb sources "max 64 KiB"
+        jsonb metadata "max 64 KiB"
+        timestamptz created_at "default now()"
+        uuid owner_id FK "not null, own rows still deleted on delete"
     }
     brain_settings {
         text key PK "seeded llm_config and rag_config"
@@ -4567,11 +4497,12 @@ erDiagram
         text description
         timestamptz updated_at "not null, default now()"
     }
-
+    auth_users ||--o{ chat_sync : "user_id, on delete cascade"
+    auth_users ||--o| chat_sync_keys : "user_id, on delete cascade"
     auth_users ||--o{ chat_history : "owner_id, on delete cascade"
 ```
 
-<sub>Sources: [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql)</sub>
+<sub>Sources: [`backend/supabase/migrations/20261102000000_chat_sync.sql`](../backend/supabase/migrations/20261102000000_chat_sync.sql), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql)</sub>
 
 ### RLS decisions for documents, entities and relations
 
@@ -4624,9 +4555,9 @@ flowchart TD
 
 <sub>Sources: [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql), [`backend/supabase/tests/rls_test.sql`](../backend/supabase/tests/rls_test.sql), [`tools/library-publisher/publisher/supabase_service.py`](../tools/library-publisher/publisher/supabase_service.py)</sub>
 
-### RLS for sections, chat history and settings
+### RLS for sections, the chat tables and settings
 
-knowledge_sections have no owner column. A section is visible when its parent document is visible (knowledge_sections_select_visible_document), and browser writes need a parent that is own and private, so the sections of a published document are read-only too. chat_history is owner-only for authenticated (select, insert and delete of own rows, no UPDATE at all), completely closed to anon, and bounded by CHECK constraints that fail with 23514; the browser's deleteOwnChats() also filters by its own owner_id, which RLS enforces anyway. brain_settings has RLS enabled with no policy and no anon or authenticated grant, so only the service role can read or change it.
+chat_sync and chat_sync_keys are owner-only for authenticated (user_id = auth.uid() in every policy: select, insert, update and delete of chat_sync; select, insert and delete of chat_sync_keys, whose row is replaced by delete and insert, never updated) and closed to anon; the migration drops any other policy on them, because policies are OR-ed. knowledge_sections have no owner column. A section is visible when its parent document is visible (knowledge_sections_select_visible_document), and browser writes need a parent that is own and private, so the sections of a published document are read-only too. chat_history is owner-only for authenticated (select, insert and delete of own rows, no UPDATE at all), completely closed to anon, and bounded by CHECK constraints that fail with 23514; the browser's deleteOwnChats() also filters by its own owner_id, which RLS enforces anyway. brain_settings has RLS enabled with no policy and no anon or authenticated grant, so only the service role can read or change it.
 
 <!-- diagram: rls-access-sections-chat-settings -->
 ```mermaid
@@ -4639,7 +4570,7 @@ flowchart TD
         bRole -->|"anon, authenticated"| bDeny["Error 42501 on read and write, no table grant<br/>(full_schema.sql never grants it, 20260924000000<br/>revokes it), RLS on with no policy"]
     end
 
-    subgraph sg_chat["chat_history, owner only"]
+    subgraph sg_chat["chat_history, 2.x: owner only, the app only deletes own rows"]
         cReq["Chat row request"]
         cRole{"Role?"}
         cReq --> cRole
@@ -4675,15 +4606,33 @@ flowchart TD
         sChk -->|"yes"| sDone["Section written"]
         sChk -->|"no"| sSize["Error 23514"]
     end
+    subgraph sg_sync["chat_sync and chat_sync_keys, owner only"]
+        yReq["Sync request"]
+        yRole{"Role?"}
+        yReq --> yRole
+        yRole -->|"service_role"| ySvc["RLS bypassed, all rows"]
+        yRole -->|"anon"| yAnon["Error 42501, no grant, no policy"]
+        yRole -->|"authenticated"| yOwn{"user_id = auth.uid()?<br/>user_id defaults to auth.uid()"}
+        yOwn -->|"no: read"| yHide["other users' rows invisible,<br/>update and delete affect 0 rows"]
+        yOwn -->|"no: insert for another user"| yErr["Error 42501"]
+        yOwn -->|"yes"| yOp{"Operation?"}
+        yOp -->|"chat_sync_keys update"| yNoUpd["Error 42501: the key row<br/>is replaced by delete and insert"]
+        yOp -->|"chat_sync insert or update"| yGuard{"chat_sync_guard: owner and id kept,<br/>revision grows; format CHECKs?"}
+        yGuard -->|"yes"| yOk["Row written, updated_at = now()"]
+        yGuard -->|"revision not newer"| y40001["Error 40001"]
+        yGuard -->|"format"| y23514["Error 23514"]
+        yOp -->|"select, delete"| yRw["own rows only"]
+    end
     sg_settings ~~~ sg_chat
-    sg_chat ~~~ sg_sections
+    sg_chat ~~~ sg_sync
+    sg_sync ~~~ sg_sections
 ```
 
-<sub>Sources: [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql), [`backend/supabase/tests/rls_test.sql`](../backend/supabase/tests/rls_test.sql), [`src/js/supabase.js`](../src/js/supabase.js)</sub>
+<sub>Sources: [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql), [`backend/supabase/migrations/20261102000000_chat_sync.sql`](../backend/supabase/migrations/20261102000000_chat_sync.sql), [`backend/supabase/tests/rls_test.sql`](../backend/supabase/tests/rls_test.sql), [`src/js/supabase.js`](../src/js/supabase.js)</sub>
 
 ### RPC EXECUTE grants and size limits
 
-All five RPCs run as SECURITY INVOKER with an empty search_path, so the caller's RLS decides which rows they return or write. full_schema.sql drops every overload of the five names before it creates them, 20260923000000 those of the first four; 20260924120000 replaces search_knowledge in place with create or replace, keeps its signature and applies the same revoke and grant again, and the optional 20261101000000 does the same for ingest_document_atomic (which then also stores embedding_384) and creates match_knowledge_vector_384. search_knowledge and match_knowledge_vector_384 are executable by anon, authenticated and service_role, match_knowledge_sections and match_knowledge_hybrid by authenticated and service_role, and ingest_document_atomic by service_role only. Any other call fails with 42501. CHECK constraints bound the text and JSON columns the browser can write. The _max_length and _max_size constraints are added NOT VALID, so they apply to new and updated rows of every role, while legacy rows are not scanned.
+All five RPCs run as SECURITY INVOKER with an empty search_path, so the caller's RLS decides which rows they return or write. full_schema.sql drops every overload of the five names before it creates them, 20260923000000 those of the first four; 20260924120000 replaces search_knowledge in place with create or replace, keeps its signature and applies the same revoke and grant again, and the optional 20261101000000 does the same for ingest_document_atomic (which then also stores embedding_384) and creates match_knowledge_vector_384. search_knowledge and match_knowledge_vector_384 are executable by anon, authenticated and service_role, match_knowledge_sections and match_knowledge_hybrid by authenticated and service_role, and ingest_document_atomic by service_role only. Any other call fails with 42501. CHECK constraints bound the text and JSON columns the browser can write, and the chat sync tables accept only opaque, well-formed values (validated constraints, not NOT VALID). The trigger function chat_sync_guard is revoked from every API role. The _max_length and _max_size constraints are added NOT VALID, so they apply to new and updated rows of every role, while legacy rows are not scanned.
 
 <!-- diagram: rls-access-functions-limits -->
 ```mermaid
@@ -4735,6 +4684,8 @@ flowchart TD
         ckNote --- ckRel
         ckNote --- ckChat
     end
+    ckSync["chat_sync and chat_sync_keys format CHECKs, validated:<br/>conv_id 32 base64url, iv 16 base64, ciphertext base64 up to 2800000,<br/>rev above 0; key_id, salt, iv, wrapped_key formats,<br/>kdf PBKDF2-SHA256, iterations 600000 to 10000000"]
+    ckNote --- ckSync
     ckOld["Validated chat_history checks, inline in full_schema.sql<br/>and added by 20260923000000: role user, assistant or system,<br/>session_id 1 to 128 chars, content 100000 chars,<br/>sources and metadata 65536 bytes"]
     ckChat -.- ckOld
     invoker ~~~ sg_checks
@@ -4778,7 +4729,7 @@ flowchart TD
 
 ### Migration apply order and guards
 
-A new project gets full_schema.sql, an existing database gets every migrations/*.sql file in file-name order (four files, the last one optional), either by hand or through apply_migration.py (no argument means full_schema.sql, --migrations stops at the first failed file, exit 2 for setup errors and exit 1 for SQL errors). Each SQL file is its own transaction whose preconditions raise an exception and roll back only that file: full_schema.sql refuses a pre-hardening schema, 20260923000000 refuses a database without the Starpi tables, 20260924000000 refuses to run before 20260923000000 (missing owner_id / is_public or tables), and 20260924120000 refuses a database without search_knowledge(text, integer), knowledge_sections or knowledge_documents; it does not check that 20260924000000 ran. 20261101000000 refuses a database without the hardened knowledge tables, search_knowledge and ingest_document_atomic. All files are idempotent, but re-running 20260923000000 on its own drops the 20260924000000 policies, opens brain_settings to anon and authenticated for reading again and puts back the older search_knowledge that only returns full matches, so the whole set is always re-run. The last migration ends with commit and, unlike the other files, sends no notify pgrst.
+A new project gets full_schema.sql, an existing database gets every migrations/*.sql file in file-name order (five files, the last two optional), either by hand or through apply_migration.py (no argument means full_schema.sql, --migrations stops at the first failed file, exit 2 for setup errors and exit 1 for SQL errors). Each SQL file is its own transaction whose preconditions raise an exception and roll back only that file: full_schema.sql refuses a pre-hardening schema, 20260923000000 refuses a database without the Starpi tables, 20260924000000 refuses to run before 20260923000000 (missing owner_id / is_public or tables), and 20260924120000 refuses a database without search_knowledge(text, integer), knowledge_sections or knowledge_documents; it does not check that 20260924000000 ran. 20261101000000 refuses a database without the hardened knowledge tables, search_knowledge and ingest_document_atomic, and 20261102000000 needs only auth.users and auth.uid(), so it may run before or after the others. All files are idempotent, but re-running 20260923000000 on its own drops the 20260924000000 policies, opens brain_settings to anon and authenticated for reading again and puts back the older search_knowledge that only returns full matches, so the whole set is always re-run. 20260924120000 ends with commit and, unlike the other files, sends no notify pgrst.
 
 <!-- diagram: migrations-tests-apply-order -->
 ```mermaid
@@ -4798,7 +4749,7 @@ flowchart TD
         fs0["create extension if not exists vector with schema public"]
         fs1{"vector in schema public and<br/>auth.users, auth.uid() present?"}
         fs2{"knowledge_documents, knowledge_entities,<br/>knowledge_relations or chat_history<br/>exists without owner_id?"}
-        fs3["create table if not exists, 16 size CHECKs NOT VALID<br/>only if the name is new, create index if not exists,<br/>drop every policy, create the 19 policies,<br/>drop every RPC overload and recreate SECURITY INVOKER,<br/>search_knowledge as in 20260924120000,<br/>embedding_384, its index and match_knowledge_vector_384<br/>as in 20261101000000, revoke all, then grant per role"]
+        fs3["create table if not exists, 16 size CHECKs NOT VALID<br/>only if the name is new, create index if not exists,<br/>drop every policy, create the 19 policies,<br/>drop every RPC overload and recreate SECURITY INVOKER,<br/>search_knowledge as in 20260924120000,<br/>embedding_384, its index and match_knowledge_vector_384<br/>as in 20261101000000, chat_sync and chat_sync_keys<br/>as in 20261102000000, revoke all, then grant per role"]
     end
     fs0 --> fs1
     fs1 -->|"yes"| fs2
@@ -4865,15 +4816,25 @@ flowchart TD
     m3b --> m3Done
     m4Done(["notify pgrst, reload schema, then commit"])
     m4b --> m4Done
+
+    subgraph sg_m5["20261102000000_chat_sync.sql, optional, one transaction, lock_timeout 15s"]
+        m5a{"auth.users and auth.uid() present?"}
+        m5b["create chat_sync and chat_sync_keys if not exists with format CHECKs,<br/>chat_sync_guard trigger, RLS on, unexpected policies dropped,<br/>owner-only policies for authenticated,<br/>revoke all, grants to authenticated and service_role"]
+    end
+    m4Done -->|"then the next file in file-name order"| m5a
+    m5a -->|"yes"| m5b
+    m5a -->|"no"| abortVec
+    m5Done(["notify pgrst, reload schema, then commit"])
+    m5b --> m5Done
     rerun["Re-running 20260923000000 alone drops the 20260924000000 policies,<br/>restores brain_settings_select_all with the SELECT grant to anon<br/>and authenticated, and the full-match-only search_knowledge:<br/>always re-run the whole set"]
     rerun -.- m1e
 ```
 
-<sub>Sources: [`backend/supabase/README.md`](../backend/supabase/README.md), [`backend/supabase/apply_migration.py`](../backend/supabase/apply_migration.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql), [`backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql`](../backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql)</sub>
+<sub>Sources: [`backend/supabase/README.md`](../backend/supabase/README.md), [`backend/supabase/apply_migration.py`](../backend/supabase/apply_migration.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql), [`backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql`](../backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql), [`backend/supabase/migrations/20261101000000_embedding_384.sql`](../backend/supabase/migrations/20261101000000_embedding_384.sql), [`backend/supabase/migrations/20261102000000_chat_sync.sql`](../backend/supabase/migrations/20261102000000_chat_sync.sql)</sub>
 
 ### run_rls_tests.sh scenarios and assertions
 
-run_rls_tests.sh starts a throwaway PostgreSQL cluster on a Unix socket, loads stub_supabase.sql into one database per scenario and runs its steps in order; the first failing step fails that scenario. A migrations step applies every migrations/*.sql file in file-name order, today the four files. The upgrade scenarios (live, legacy_v2, legacy_v1) apply all migrations twice to prove idempotency, the fresh scenarios cover full_schema.sql via apply_migration.py and a schema.sql plus full_schema.sql re-run, and the guard scenarios pass only when full_schema.sql, 20260924000000 or 20261101000000 fails on the live shape; no scenario runs 20260924120000 alone against a database that lacks search_knowledge. Finally pg_dump output of live, fresh and fresh_rerun must be identical, so full_schema.sql has to carry the same search_knowledge, embedding_384 column, index and functions as the migrations; any failed group exits 1, setup problems exit 2, and the work directory is removed unless PGTEST_KEEP=1.
+run_rls_tests.sh starts a throwaway PostgreSQL cluster on a Unix socket, loads stub_supabase.sql into one database per scenario and runs its steps in order; the first failing step fails that scenario. A migrations step applies every migrations/*.sql file in file-name order, today the five files. The upgrade scenarios (live, legacy_v2, legacy_v1) apply all migrations twice to prove idempotency, the fresh scenarios cover full_schema.sql via apply_migration.py and a schema.sql plus full_schema.sql re-run, and the guard scenarios pass only when full_schema.sql, 20260924000000 or 20261101000000 fails on the live shape; no scenario runs 20260924120000 alone against a database that lacks search_knowledge. Finally pg_dump output of live, fresh and fresh_rerun must be identical, so full_schema.sql has to carry the same search_knowledge, embedding_384 column, index and functions and the same chat sync tables, trigger and policies as the migrations; any failed group exits 1, setup problems exit 2, and the work directory is removed unless PGTEST_KEEP=1.
 
 <!-- diagram: migrations-tests-rls-harness -->
 ```mermaid
@@ -4912,8 +4873,8 @@ flowchart TD
     scen --> guardVectors
 
     aIdem["Second migrations run succeeds on the upgraded schema:<br/>idempotent on the live shape and both earlier schema versions"]
-    aRls["rls_test.sql: 220 checks, 227 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback<br/>and match_knowledge_vector_384"]
-    aPost["post_rerun_check.sql, 13 checks: a further migrations run keeps<br/>ownership, visibility, chat rows, the published-row lock,<br/>size limits and brain_settings closed to A and anon"]
+    aRls["rls_test.sql: 270 checks, 277 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback,<br/>match_knowledge_vector_384 and the encrypted chat sync"]
+    aPost["post_rerun_check.sql, 14 checks: a further migrations run keeps<br/>ownership, visibility, chat rows, the published-row lock,<br/>size limits and brain_settings closed to A and anon"]
     aGuard["Step passes only when psql exits non-zero:<br/>pre-hardening database refused, order enforced"]
     aFreshRerun["full_schema.sql re-runs cleanly on a database it created"]
     live --> aIdem
@@ -4952,7 +4913,7 @@ flowchart TD
 
 ### What rls_test.sql asserts, in order
 
-rls_test.sql runs as superuser, service_role, anon and two anonymous users A and B, switching roles the way PostgREST does, and stops at the first failing check. It checks the catalog (policies, constraints, RPC security, privilege matrices), then tenant isolation in both directions, per-column size limits (SQLSTATE 23514) and permission errors (42501). As anon it also checks how search_knowledge ranks, including the fallback to rows that share terms with a question. It also checks that published rows are read-only for their owner, and the cascade and auth-user deletion paths. Then it checks the 384-dimension vectors: the column and its index, match_knowledge_vector_384 for every role and ingest_document_atomic with embedding_384. With legacy=true it adds 7 checks on rows that existed before the migration (227 instead of 220 checks).
+rls_test.sql runs as superuser, service_role, anon and two anonymous users A and B, switching roles the way PostgREST does, and stops at the first failing check. It checks the catalog (policies, constraints, RPC security, privilege matrices), then tenant isolation in both directions, per-column size limits (SQLSTATE 23514) and permission errors (42501). As anon it also checks how search_knowledge ranks, including the fallback to rows that share terms with a question. It also checks that published rows are read-only for their owner, and the cascade and auth-user deletion paths. Then it checks the 384-dimension vectors: the column and its index, match_knowledge_vector_384 for every role and ingest_document_atomic with embedding_384. The encrypted chat sync follows: RLS, the exact policy set and privilege matrix, the guard trigger, revisions that only grow, the format checks, one key row per user replaced by delete and insert, isolation between A and B, anon locked out, and the deletion of an auth user removing their encrypted rows and key. With legacy=true it adds 7 checks on rows that existed before the migration (277 instead of 270 checks).
 
 <!-- diagram: migrations-tests-rls-assertions -->
 ```mermaid
@@ -4972,7 +4933,7 @@ flowchart TD
     vectors["384-dimension vectors: embedding_384 is a nullable vector(384) with an HNSW cosine index,<br/>match_knowledge_vector_384 SECURITY INVOKER, EXECUTE for anon, authenticated, service_role, not PUBLIC,<br/>ingest_document_atomic stores embedding_384, an empty array stores null,<br/>another length fails with 22000 and stores nothing,<br/>A and B rank public and own sections only, never each other's or ownerless rows,<br/>A cannot change embedding_384 of a published section, anon cannot write it,<br/>anon: ranked by similarity, match_threshold filters, match_count clamped to 1 and 20,<br/>null query gives none, another dimension fails with 22023,<br/>service_role reaches every row, test documents removed"]
     publish["Publishing: service_role publishes the ingested document,<br/>its sections become visible to anon and to A's vector search,<br/>A deletes own session and own draft document"]
     locked["Published rows read-only for the owner: A edits own private section,<br/>entity and relation, service_role publishes them, then A cannot update,<br/>unpublish or delete own published document, entity or relation,<br/>and cannot add, update, move or delete sections of the published document"]
-    cascade["Cleanup: deleting a document cascades to its sections,<br/>deleting an auth user removes their chat rows<br/>and leaves their knowledge rows private without owner"]
+    cascade["Cleanup: deleting a document cascades to its sections,<br/>deleting an auth user removes their chat rows, their encrypted<br/>sync rows and key, and leaves their knowledge rows private without owner"]
     notice(["raise notice rls_test: N checks passed<br/>the runner greps it into the PASS line"])
 
     helpers --> catalog --> isLegacy
@@ -4981,7 +4942,8 @@ flowchart TD
     service --> userA --> userB --> aVsB --> anon --> anonSearch
     anonSearch -.->|"legacy=true"| legacyAnon
     legacyAnon -.-> anonExec
-    anonSearch --> anonExec --> vectors --> publish --> locked --> cascade --> notice
+    syncChecks["chat sync: RLS on, exact policies and privileges, chat_sync_guard invoker and not callable,<br/>A stores and advances a row, a stale base revision changes nothing, the revision cannot go back,<br/>id and owner fixed, format checks refuse plain ids, IVs, plain text, oversize, revision 0,<br/>one key row per user, replaced by delete and insert, iterations and KDF and sizes checked,<br/>B cannot read, overwrite or delete A's rows or key, anon locked out"]
+    anonSearch --> anonExec --> vectors --> publish --> locked --> syncChecks --> cascade --> notice
 ```
 
 <sub>Sources: [`backend/supabase/tests/rls_test.sql`](../backend/supabase/tests/rls_test.sql), [`backend/supabase/tests/post_rerun_check.sql`](../backend/supabase/tests/post_rerun_check.sql)</sub>

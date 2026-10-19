@@ -372,7 +372,7 @@ flowchart TD
         fs0["create extension if not exists vector with schema public"]
         fs1{"vector in schema public and<br/>auth.users, auth.uid() present?"}
         fs2{"knowledge_documents, knowledge_entities,<br/>knowledge_relations or chat_history<br/>exists without owner_id?"}
-        fs3["create table if not exists, 16 size CHECKs NOT VALID<br/>only if the name is new, create index if not exists,<br/>drop every policy, create the 19 policies,<br/>drop every RPC overload and recreate SECURITY INVOKER,<br/>search_knowledge as in 20260924120000,<br/>embedding_384, its index and match_knowledge_vector_384<br/>as in 20261101000000, revoke all, then grant per role"]
+        fs3["create table if not exists, 16 size CHECKs NOT VALID<br/>only if the name is new, create index if not exists,<br/>drop every policy, create the 19 policies,<br/>drop every RPC overload and recreate SECURITY INVOKER,<br/>search_knowledge as in 20260924120000,<br/>embedding_384, its index and match_knowledge_vector_384<br/>as in 20261101000000, chat_sync and chat_sync_keys<br/>as in 20261102000000, revoke all, then grant per role"]
     end
     fs0 --> fs1
     fs1 -->|"yes"| fs2
@@ -439,6 +439,16 @@ flowchart TD
     m3b --> m3Done
     m4Done(["notify pgrst, reload schema, then commit"])
     m4b --> m4Done
+
+    subgraph sg_m5["20261102000000_chat_sync.sql, optional, one transaction, lock_timeout 15s"]
+        m5a{"auth.users and auth.uid() present?"}
+        m5b["create chat_sync and chat_sync_keys if not exists with format CHECKs,<br/>chat_sync_guard trigger, RLS on, unexpected policies dropped,<br/>owner-only policies for authenticated,<br/>revoke all, grants to authenticated and service_role"]
+    end
+    m4Done -->|"then the next file in file-name order"| m5a
+    m5a -->|"yes"| m5b
+    m5a -->|"no"| abortVec
+    m5Done(["notify pgrst, reload schema, then commit"])
+    m5b --> m5Done
     rerun["Re-running 20260923000000 alone drops the 20260924000000 policies,<br/>restores brain_settings_select_all with the SELECT grant to anon<br/>and authenticated, and the full-match-only search_knowledge:<br/>always re-run the whole set"]
     rerun -.- m1e
 ```
