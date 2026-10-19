@@ -164,11 +164,13 @@ jobs:
       - name: Install dependencies (lockfile, no install scripts)
         run: npm ci --ignore-scripts
 
-      - name: Typecheck
-        run: npm run typecheck --workspace @starpi/companion
+      # Both scripts build @starpi/core into packages/core/dist first: the companion imports the
+      # built package, and dist is not checked in.
+      - name: Typecheck (builds @starpi/core first)
+        run: npm run typecheck:companion
 
-      - name: Tests
-        run: npm test --workspace @starpi/companion
+      - name: Tests (builds @starpi/core first)
+        run: npm run test:companion
 
       - name: Dependency rules (declared packages, node prefixes, restricted modules)
         run: node scripts/companion-deps-check.mjs
@@ -176,8 +178,11 @@ jobs:
       - name: Licences (npm tree of the companion, voice server requirements, voice allowlist)
         run: node scripts/companion-license-check.mjs
 
+      # The bundle copies the published files of @starpi/core (its dist), so the build comes first.
       - name: Offline bundle and an install from its tarball into a temporary folder
-        run: node --test tests/unit/companion-offline-pack.test.mjs
+        run: |
+          npm run build:core
+          node --test tests/unit/companion-offline-pack.test.mjs
 
   companion-systemd:
     name: Companion under a systemd user manager (systemd-run --user smoke)
@@ -209,6 +214,9 @@ jobs:
           done
           echo "::error title=systemd::the user manager of the runner account did not start"
           exit 1
+
+      - name: Build @starpi/core (the bundle carries its dist)
+        run: npm run build:core
 
       - name: Build the offline bundle
         run: node scripts/companion-offline-pack.mjs --out "$RUNNER_TEMP/bundle"
