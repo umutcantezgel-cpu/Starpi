@@ -173,6 +173,10 @@ idealised design. When the code changes, change the diagram in the same pull req
 15. [Chat thread and conversations](#15-chat-thread-and-conversations)
     - [One turn of the thread](#one-turn-of-the-thread)
     - [Conversations, branches, projects and the seams of the chat](#conversations-branches-projects-and-the-seams-of-the-chat)
+16. [Voice, Live and research](#16-voice-live-and-research)
+    - [Speech in and out: dictation, the speech queue and read-aloud](#speech-in-and-out-dictation-the-speech-queue-and-read-aloud)
+    - [Live conversations](#live-conversations)
+    - [Research jobs](#research-jobs)
 
 ## 1. System overview
 
@@ -6909,3 +6913,102 @@ flowchart LR
 ```
 
 <sub>Sources: [`src/js/chat/hooks.js`](../src/js/chat/hooks.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/chat/store.js`](../src/js/chat/store.js), [`src/js/chat/tree.js`](../src/js/chat/tree.js), [`src/js/chat/context.js`](../src/js/chat/context.js), [`src/js/chat/projects.js`](../src/js/chat/projects.js), [`src/js/chat/assistants.js`](../src/js/chat/assistants.js), [`src/js/chat/sidebar.js`](../src/js/chat/sidebar.js), [`src/js/chat/search.js`](../src/js/chat/search.js), [`src/js/chat/export.js`](../src/js/chat/export.js), [`src/js/chat/canvas.js`](../src/js/chat/canvas.js), [`src/js/chat/compare.js`](../src/js/chat/compare.js), [`src/js/chat/council-view.js`](../src/js/chat/council-view.js), [`src/js/ai/council.js`](../src/js/ai/council.js), [`src/js/voice/hooks.js`](../src/js/voice/hooks.js), [`src/js/features/companion.js`](../src/js/features/companion.js)</sub>
+
+## 16. Voice, Live and research
+
+Voice, Live and research are features that load on first use and reach the chat through its hooks (registerVoiceUi, registerMessageAction). They share one rule: nothing is spoken or reported as checked unless a sentence gate released it (section 12), and audio, pictures and transcripts are never stored.
+
+### Speech in and out: dictation, the speech queue and read-aloud
+
+Dictation (voice/dictation.js) starts the first speech-input source of STT_SOURCES that can run now: the browser's own recognition, Gemini, OpenAI, Groq, the local voice server or the paired companion, with a source the user picks moved to the front; in the on-device mode only sources that keep audio on the user's machines count, plus the browser where it recognizes on the device. The browser writes while the user speaks; every other source takes the recorded utterance as a 16 kHz WAV of at most 60 seconds, and transcribeWithFallback hands over to the next source when one is not configured, refuses, is rate limited or unreachable, reporting every attempt. The user's glossary (at most 60 terms, 600 characters) goes along as hints. Speech output goes through one queue (voice/tts.js) that accepts only units a sentence gate released (isReleased) and the app's fixed notices from an allowlisted key; a string or a copy of a released unit is refused, so no code path can speak a model's text that did not pass a gate. Read-aloud (voice/read-aloud.js) picks the gate by the answer's label: the free gate for free answers, preceded by the notice "Free answer, not checked", the source gate with the excerpts the answer was given for grounded and mixed answers, and the web gate with its grounding segments for web answers; afterwards it says how many sentences were withheld. Each item is spoken as its spoken form, split into pieces the engines of TTS_SOURCES accept (browser, Gemini, ElevenLabs, OpenAI, the local voice server); when an engine fails the queue moves to the next for the rest of the reading, the browser's own voices last. Playback runs through WebAudio, so the CSP keeps media-src 'none', and the microphone stays muted 300 ms after the app stopped speaking.
+
+<!-- diagram: voice-gate-speech -->
+```mermaid
+flowchart TD
+    subgraph stt["Speech in: voice/stt.js, dictation.js"]
+        mic(["microphone button"]) --> order["STT_SOURCES that can run now: browser, gemini, openai,<br/>groq, local, companion; the user's pick first;<br/>on-device mode: only sources that keep audio local"]
+        order --> br{"browser recognition available and working?"}
+        br -->|"yes"| live["text while the user speaks, ends at the pause"]
+        br -->|"no, refused or its service failed"| rec["record a 16 kHz WAV, at most 60 s"]
+        rec --> tf["transcribeWithFallback: next source on not configured,<br/>refused, rate limited or unreachable; glossary as hints"]
+        live --> box(["text after what the message box holds; audio never stored"])
+        tf --> box
+    end
+    subgraph tts["Speech out: read-aloud.js, tts.js, playback.js"]
+        ans(["an answer to read, complete or streaming"]) --> lab{"answer label"}
+        lab -->|"free or none"| gf["free gate: characters and links;<br/>notice Free answer, not checked"]
+        lab -->|"grounded or mixed"| gs["source gate with the excerpts the answer was given"]
+        lab -->|"web"| gw["web gate with the grounding segments"]
+        gf --> q
+        gs --> q
+        gw --> q
+        q{"speech queue: isReleased(unit) or a fixed notice?"}
+        q -->|"no"| refuse(["refused, never spoken"])
+        q -->|"yes"| eng["spoken form split into pieces; engines of TTS_SOURCES:<br/>browser, gemini, elevenlabs, openai, local;<br/>on failure the next engine, browser voices last"]
+        eng --> pb["WebAudio playback, media-src none;<br/>microphone muted 300 ms after speaking"]
+        pb --> cnt(["N sentences withheld, when any were"])
+    end
+```
+
+<sub>Sources: [`src/js/voice/stt.js`](../src/js/voice/stt.js), [`src/js/voice/dictation.js`](../src/js/voice/dictation.js), [`src/js/voice/recognition.js`](../src/js/voice/recognition.js), [`src/js/voice/catalog.js`](../src/js/voice/catalog.js), [`src/js/voice/sources/index.js`](../src/js/voice/sources/index.js), [`src/js/voice/tts.js`](../src/js/voice/tts.js), [`src/js/voice/read-aloud.js`](../src/js/voice/read-aloud.js), [`src/js/voice/playback.js`](../src/js/voice/playback.js), [`src/js/core/gate.js`](../src/js/core/gate.js), [`src/js/voice/hooks.js`](../src/js/voice/hooks.js)</sub>
+
+### Live conversations
+
+A Live conversation (live/controller.js) runs in one of two modes. In a free conversation with Gemini Live (the user's Gemini key or the site's offer), the microphone streams to a Live session over a WebSocket (live/session.js): the site's live-token route returns a single-use ephemeral token with the socket endpoint and the setup it locked in, the socket opens only to Google's Live endpoint (or a loopback fake in tests) with the token as the only query parameter, and both sides are transcribed and labelled "Free · not checked". Without Gemini Live, or when the service refuses the setup or the token (close 1007 or 1008), the conversation runs as push-to-talk turns: speech to text, the chat's model, the free gate, speech output. A sources conversation always runs as turns, because native audio cannot be gated: every turn retrieves excerpts for what was said, the model answers from them, and only the sentences the source gate released are spoken, then how many were withheld. The paired companion is asked only in free conversations. A camera picture is taken only when the user presses the button and Settings allow it: one frame, at most a fixed size, encoded as JPEG, and the camera closes at once. A session ends after 15 minutes, after 3 minutes of silence on both sides, when the tab is hidden, or on Stop, and nothing still under way carries on after that. Nothing of the conversation is stored.
+
+<!-- diagram: live-modes -->
+```mermaid
+flowchart TD
+    go(["Live: start, after a user gesture unlocks audio"]) --> mode{"conversation mode"}
+    mode -->|"free"| gl{"Gemini Live: the user's Gemini key or the site's offer?"}
+    gl -->|"yes"| tok["POST /api/voice/live-token: single-use token,<br/>endpoint and the locked setup"]
+    tok --> ws["live/session.js: WebSocket only to Google's Live endpoint,<br/>token as the only query parameter, setup sent as returned"]
+    ws --> refused{"closed with 1007 or 1008?"}
+    refused -->|"no"| native["native audio both ways, both sides transcribed,<br/>labelled Free, not checked"]
+    refused -->|"yes"| ptt
+    gl -->|"no"| ptt["push-to-talk turns: speech to text, the chat's model<br/>(the companion only here), free gate, speech queue"]
+    mode -->|"sources"| turns["turns only: retrieve excerpts for what was said,<br/>the model answers from them, source gate,<br/>released sentences spoken, then the withheld count"]
+    cam(["camera button, when Settings allow it"]) -.-> shot["one JPEG frame, camera closed at once, not kept"]
+    shot -.-> native
+    shot -.-> ptt
+    native --> end1
+    ptt --> end1
+    turns --> end1
+    end1(["ends after 15 min, 3 min of silence, a hidden tab or Stop;<br/>nothing stored"])
+```
+
+<sub>Sources: [`src/js/live/controller.js`](../src/js/live/controller.js), [`src/js/live/session.js`](../src/js/live/session.js), [`src/js/live/camera.js`](../src/js/live/camera.js), [`src/js/live/ask.js`](../src/js/live/ask.js), [`src/js/voice/catalog.js`](../src/js/voice/catalog.js), [`api/voice/live-token.js`](../api/voice/live-token.js), [`api/_lib/gemini/live.js`](../api/_lib/gemini/live.js)</sub>
+
+### Research jobs
+
+A research job (research/deep.js) turns a question into up to four search queries, lets a model search the person's own documents with three read-only tools (search_sources, read_excerpt, list_documents) and answer with a citation label on every statement, optionally adds a web part, writes a report with summary, details, sources and open questions as an artifact, and runs the source check over the kept sentences for the report and its receipt. The sources part runs the tool loop in the browser with the person's own key, or over POST /api/research/step on the site's Gemini pool, where the browser runs the tools and sends every signed model turn back unchanged; without any model it quotes the best matching sentences. Whatever wrote the text, the sentence gate in sources mode keeps a sentence only when every number in it stands with the same value in an excerpt it cites. The web part searches in at most four rounds and twenty sources and is judged as a whole in web mode: one unit that fails withholds the whole part, which then keeps only its list of sources and the class of the reason. What goes to a web search is the question as typed, tidied and capped, and with the optional stripping on, e-mail addresses, phone numbers, IBANs, card numbers and IP addresses are taken out first; a run of 7 to 15 digits that starts with 0 counts as a phone number on purpose. Jobs run in the background of the page and survive a reload (research/jobs.js): at most 3 run at a time, one tab holding the Web Lock starpi-research-runner runs them all and stamps a heartbeat every 10 s, other tabs talk to it over a BroadcastChannel, and a job still marked running when a new tab takes the lock becomes stale and offers a retry that runs only the missing parts. A web part through the site pool records its provider as `{ id: 'gemini', model: 'pool' }`.
+
+<!-- diagram: research-job -->
+```mermaid
+flowchart TD
+    start(["start(question, options): job stored at once, id returned"]) --> queue{"fewer than MAX_RUNNING 3 running?"}
+    queue -->|"no"| wait["queued, oldest first"] --> queue
+    queue -->|"yes"| runner["the runner tab: holds the Web Lock starpi-research-runner,<br/>heartbeat every 10 s, others talk over BroadcastChannel"]
+    runner --> plan["plan: up to four search queries,<br/>the question itself without a capable model"]
+    plan --> src{"sources part: which model?"}
+    src -->|"the person's key, a model with tools"| loop["runToolLoop in the browser: search_sources,<br/>read_excerpt, list_documents"]
+    src -->|"the site's Gemini pool"| signed["runSignedLoop over POST /api/research/step:<br/>signed model turns sent back unchanged, at most 5 tool rounds"]
+    src -->|"no model"| quote["quoteExcerpts: best matching sentences"]
+    loop --> gate
+    signed --> gate
+    quote --> gate
+    gate["gateSources: sentence gate in sources mode, a sentence kept<br/>only when each number is in an excerpt it cites"]
+    gate --> webq{"web part asked for?"}
+    webq -->|"no"| report
+    webq -->|"yes"| strip["webQuery: the question as typed; with stripping on,<br/>e-mail, phone (7 to 15 digits from 0), IBAN, card, IP removed"]
+    strip --> web["web part: at most 4 rounds and 20 sources, the provider's search<br/>or the site pool, recorded as id gemini, model pool"]
+    web --> wgate{"sentence gate in web mode over the joined text:<br/>every number inside a grounded segment?"}
+    wgate -->|"no"| wheld["part withheld: sources list and reason class only"]
+    wgate -->|"yes"| report
+    wheld --> report
+    report["report: summary, details, sources, open questions,<br/>stored in artifacts"] --> check["source check over the kept sentences,<br/>into the report and its receipt"]
+    check --> done(["done"])
+    runner -.->|"the runner tab closes"| stale(["a running job without its runner: stale,<br/>retry runs only the missing parts"])
+```
+
+<sub>Sources: [`src/js/research/deep.js`](../src/js/research/deep.js), [`src/js/research/jobs.js`](../src/js/research/jobs.js), [`src/js/research/runtime.js`](../src/js/research/runtime.js), [`src/js/research/sources-part.js`](../src/js/research/sources-part.js), [`src/js/research/web-part.js`](../src/js/research/web-part.js), [`src/js/research/web-query.js`](../src/js/research/web-query.js), [`src/js/research/view.js`](../src/js/research/view.js), [`api/research/step.js`](../api/research/step.js)</sub>
