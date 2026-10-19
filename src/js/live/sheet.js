@@ -64,6 +64,9 @@ function liveController() {
     queue,
     transcribe: (wav, signal) => transcribeWithFallback(wav, { chain: transcribers(), ctx: pageContext, locale: getIntlLocale(), signal }),
     canTranscribe: () => transcribers().length > 0,
+    // The companion answers from its own documents, not from excerpts found here (chat/thread.js
+    // liveAnswer): a source conversation with it picked ends before anything is retrieved.
+    refused: (mode) => (mode === 'sources' && getAssistant().startsWith('companion:') ? 'companion_sources' : null),
     ask: (turn) => (voiceUi().ask ?? defaultAsk)(turn),
     retrieve: (query, options) => (voiceUi().retrieve ?? defaultRetrieve)(query, options),
     camera: () => captureStill(),

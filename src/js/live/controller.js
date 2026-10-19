@@ -8,7 +8,8 @@
 //   - sources: every turn retrieves excerpts for what was said, the model answers from them, its text
 //     goes through the source gate (core/gate.js) and the speech queue speaks only the released
 //     sentences, then how many were withheld. Native audio cannot be gated, so this mode always runs
-//     as turns.
+//     as turns. A model choice that cannot answer from these excerpts (refused()) ends the
+//     conversation before anything is retrieved.
 // A session ends after LIMITS.liveSessionMin minutes, after LIMITS.liveSilenceMin minutes without
 // speech on either side, when the tab is hidden, or on stop(); nothing that was still under way
 // (a recording being closed, a transcription, an answer) carries on after that. Free sessions start
@@ -60,6 +61,9 @@ const ENDING_CODES = Object.freeze(new Set(/** @type {const} */ (['no_model', 'c
  * @property {() => boolean} [canTranscribe]     a speech input source can transcribe a recording (default: yes)
  * @property {LiveAsk} ask
  * @property {LiveRetrieve} retrieve
+ * @property {(mode: LiveMode) => EndReason | null} [refused]  why the model choice cannot answer a turn
+ *   of this mode at all (an ending reason, e.g. 'companion_sources'), else null; asked when the
+ *   conversation starts and before each turn, so nothing is retrieved for a turn that cannot be answered
  * @property {() => Promise<{ mime: 'image/jpeg', data: string }>} [camera]
  * @property {() => string} locale
  * @property {() => string} voice               the Live voice
@@ -294,6 +298,13 @@ export function createLiveController(deps) {
     transcript.append('user', text);
     transcript.close('user');
     touch();
+    // The model choice may have changed since the start: a turn it cannot answer ends the
+    // conversation before anything is retrieved for it.
+    const refusal = deps.refused?.(mode) ?? null;
+    if (refusal) {
+      stop(refusal);
+      return;
+    }
     set('thinking');
     turn = new AbortController();
     const { signal } = turn;
@@ -454,6 +465,12 @@ export function createLiveController(deps) {
       ticker = setInterval(tick, deps.tickMs ?? 5000);
       doc?.addEventListener('visibilitychange', onHidden);
       cleanups.push(() => doc?.removeEventListener('visibilitychange', onHidden));
+      // A conversation the model choice cannot answer ends at once, with its reason.
+      const refusal = deps.refused?.(mode) ?? null;
+      if (refusal) {
+        stop(refusal);
+        return;
+      }
       if (mode === 'free') announceFree();
       if (mode === 'free' && deps.canUseLive() && (await startLive())) return;
       if (!active()) return;
