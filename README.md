@@ -493,13 +493,16 @@ conversations, documents and API keys, sealed at rest.
   and notes" for grounded questions (a question that stays on this device may take passages up to
   the class sensitive, other questions up to the ceiling you choose, secret passages never); and
   **Starpi Core (local companion)** in the model menu. It gets the bare question, never the app's
-  prompt, in sources mode for Grounded and in free mode for Free and Auto, with the question's data
-  class. Its answers arrive already gated and are shown as released, with their label, notice and
-  withheld count; they and the questions asked there stay on this device and never enter the
-  encrypted sync. Each branch of a thread is its own conversation on the companion: asking again,
-  changing a question or going on in another branch continues in a copy of the turns up to there.
-  A stopped answer is not kept, on either side. A Compare column asks it like the thread does, without
-  the app's tools; the council never seats it; Live asks it in free conversations only.
+  prompt, in sources mode for Grounded and in free mode for Free and Auto, marked sensitive when the
+  question was asked to stay on this device; a question with images is not sent to it. Its answers
+  arrive already gated and are shown as released, with their label, notice and withheld count; they
+  and the questions asked there stay on this device and never enter the encrypted sync (with sync
+  on, the line under the composer says so). Each branch of a thread is its own conversation on the
+  companion: asking again, changing a question or going on in another branch continues in a copy of
+  the turns up to there. A stopped answer is not kept, on either side. A Compare column asks it the
+  same way (sources mode for a grounded question, free otherwise), without the app's tools; the
+  council never seats it; Live asks it in free conversations only, and a conversation from your
+  sources with it picked ends at once, before anything is retrieved.
 - **Packaging:** systemd user and system units with readiness and a watchdog, a launchd agent,
   install scripts, and an offline bundle with `SHA256SUMS` that each release signs
   ([Linux](packages/companion/deploy/linux/README.md), [macOS](packages/companion/deploy/macos/README.md));
