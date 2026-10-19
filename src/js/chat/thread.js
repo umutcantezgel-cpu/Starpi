@@ -1490,7 +1490,8 @@ function companionAnswerFields(answer, target) {
  * (from its documents and notes, every number checked by its gate) or `free` (general knowledge).
  * A question that stays on this device goes with the data class `sensitive`. The live view shows
  * exactly the units released so far (a withdrawal takes them away again); the stored answer is the
- * companion's own text.
+ * companion's own text. A stopped answer is not kept: the companion drops an abandoned turn from its
+ * conversation too, so both histories stay alike.
  * @param {NodeRecord} question
  * @param {AbortSignal} signal
  * @param {{ before?: Element | null }} placement
