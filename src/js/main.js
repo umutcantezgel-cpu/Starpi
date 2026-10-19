@@ -4,6 +4,7 @@ import { initBenchUi, refreshDiagnostics } from './bench/bench-ui.js';
 import { refreshSyncStatus } from './chat-store.js';
 import { initChat, restoreHistory } from './chat.js';
 import { initDemo } from './demo.js';
+import { loadShippedLanguages } from './core/lang/index.js';
 import { closeDialog, openDialog } from './dialog.js';
 import { byId, installDelegation, onAction, onChange, reportUnexpected, setHidden } from './dom.js';
 import { initEngineUi } from './engine-ui.js';
@@ -99,6 +100,9 @@ async function boot() {
   refreshIcons();
   detectAndDisplayDevice();
   registerServiceWorker();
+  // The language packs beyond English and German load after the first paint, each from a chunk of
+  // its own; the source check, Auto routing and the graph read those languages once they are in.
+  void loadShippedLanguages().catch(reportUnexpected);
 
   onConnectionChange((state) => {
     renderConnection(state);
