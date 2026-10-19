@@ -24,7 +24,8 @@
   "probe": {
     "looking": "Begleiter wird gesucht …",
     "found": "Starpi Core {version} antwortet unter {origin}.",
-    "none": "Unter dieser Adresse antwortet kein Begleiter. Starten Sie ihn mit „starpi-companion start“."
+    "none": "Unter dieser Adresse antwortet kein Begleiter. Starten Sie ihn mit „starpi-companion start“.",
+    "again": "Erneut suchen"
   },
   "info": {
     "origin": "Adresse",
@@ -141,7 +142,8 @@
     "approval": "Das Modell möchte {tool} verwenden. Diesen Aufruf erlauben?",
     "conversations": "Gespräche",
     "no_conversations": "Noch keine Gespräche.",
-    "delete_confirm": "Dieses Gespräch im Begleiter löschen?"
+    "delete_confirm": "Dieses Gespräch im Begleiter löschen?",
+    "label_template": "Vorlagenantwort, kein Modell hat sie geschrieben"
   },
   "notice": {
     "no_model": "Im Begleiter ist kein Sprachmodell eingerichtet, daher ist dies eine Vorlagenantwort.",
@@ -275,7 +277,9 @@
     "title": "Gekoppelte Geräte",
     "this": "dieser Browser",
     "revoke": "Sitzung beenden",
-    "revoke_confirm": "Diese Sitzung beenden? Das Gerät muss sich neu koppeln."
+    "revoke_confirm": "Diese Sitzung beenden? Das Gerät muss sich neu koppeln.",
+    "kind_cookie": "Browser mit der App, die der Begleiter ausliefert",
+    "kind_bearer": "Browser auf einer anderen Website"
   },
   "mcp": {
     "title": "MCP-Clients auf dem Desktop",

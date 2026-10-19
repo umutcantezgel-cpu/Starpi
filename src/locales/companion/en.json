@@ -24,7 +24,8 @@
   "probe": {
     "looking": "Looking for the companion…",
     "found": "Starpi Core {version} answers at {origin}.",
-    "none": "No companion answers at this address. Start it with “starpi-companion start”."
+    "none": "No companion answers at this address. Start it with “starpi-companion start”.",
+    "again": "Look again"
   },
   "info": {
     "origin": "Address",
@@ -141,7 +142,8 @@
     "approval": "The model wants to use {tool}. Allow this call?",
     "conversations": "Conversations",
     "no_conversations": "No conversations yet.",
-    "delete_confirm": "Delete this conversation in the companion?"
+    "delete_confirm": "Delete this conversation in the companion?",
+    "label_template": "Template answer, no model wrote it"
   },
   "notice": {
     "no_model": "No language model is configured in the companion, so this is a template answer.",
@@ -275,7 +277,9 @@
     "title": "Paired devices",
     "this": "this browser",
     "revoke": "End session",
-    "revoke_confirm": "End this session? The device has to pair again."
+    "revoke_confirm": "End this session? The device has to pair again.",
+    "kind_cookie": "Browser with the app the companion serves",
+    "kind_bearer": "Browser on another site"
   },
   "mcp": {
     "title": "Desktop MCP clients",

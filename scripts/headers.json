@@ -121,7 +121,9 @@
       "headers": { "Cache-Control": "no-cache" }
     },
     {
+      "$comment": "The companion sets the media type of every file it serves itself and refuses a build that sets one.",
       "source": "/manifest.webmanifest",
+      "profiles": ["public", "self-host", "test"],
       "headers": { "Content-Type": "application/manifest+json" }
     }
   ]

@@ -232,7 +232,7 @@ export function mountCompanionSettings(el, services, deps) {
       return html`${lost}<details class="disclosure" data-companion-connect>
         <summary>${icon('search', 'w-4 h-4 text-amber-600')}${label(`${NS}.pair.connect`)}${icon('chevron-down', 'disclosure-chevron')}</summary>
         <div class="disclosure-body space-y-3">
-          <p class="text-xs" data-companion-probe aria-live="polite"></p>
+          <div class="flex flex-wrap items-center gap-2"><p class="text-xs flex-1 min-w-0" data-companion-probe aria-live="polite"></p><button type="button" class="btn btn-ghost py-1" data-action="companion-probe">${icon('refresh-cw', 'w-3.5 h-3.5')}${label(`${NS}.probe.again`)}</button></div>
           ${pairForm('companionSettings', s, false)}
           ${label(`${NS}.pair.network_hint`, { tag: 'p', className: 'text-xs text-slate-500 leading-relaxed' })}
         </div>
@@ -282,6 +282,8 @@ export function mountCompanionSettings(el, services, deps) {
     details?.addEventListener('toggle', () => {
       if (details.open) void probe();
     });
+    // A changed address is asked again right away.
+    el.querySelector('[data-companion-field="origin"]')?.addEventListener('change', () => void probe());
   }
 
   async function probe() {
@@ -303,6 +305,7 @@ export function mountCompanionSettings(el, services, deps) {
     services.toast(`${NS}.unpaired`, { tone: 'info' });
   });
   services.onAction('companion-open', () => services.switchTab('companion'));
+  services.onAction('companion-probe', () => void probe());
   services.onChange('companion-source-enabled', (input) => {
     setSourceSettings({ enabled: /** @type {HTMLInputElement} */ (input).checked });
   });
@@ -450,7 +453,7 @@ export function mountCompanionTab(el, services, deps) {
       )}
       ${section(
         `${NS}.status.egress`,
-        html`${s.egress?.guarded ? line(`${NS}.status.egress_guarded`, 'ok') : line(`${NS}.status.egress_unguarded`, 'warn')}
+        html`<p class="text-sm">${s.egress?.guarded ? line(`${NS}.status.egress_guarded`, 'ok') : line(`${NS}.status.egress_unguarded`, 'warn')}</p>
         ${allow.length ? html`<ul class="text-xs space-y-1">${allow.map(([mod, hosts]) => html`<li class="flex flex-wrap gap-1.5 items-center"><span class="font-medium">${mod}</span>${/** @type {string[]} */ (hosts).map((h) => html`<span class="chip chip-neutral font-mono">${h}</span>`)}</li>`)}</ul>` : quiet(`${NS}.status.egress_none`)}`,
       )}
       ${section(
@@ -484,15 +487,7 @@ export function mountCompanionTab(el, services, deps) {
         <div data-cv="thread" class="space-y-3"></div>`,
         ask.conversation ? chip({ label: `${NS}.ask.continuing`, tone: 'info', icon: 'message-square' }) : '',
       )}
-      ${section(
-        `${NS}.ask.conversations`,
-        conversations.length
-          ? html`<ul class="divide-y divide-slate-100 text-sm">${conversations.map(
-              (/** @type {any} */ c) =>
-                html`<li class="flex items-center gap-2 py-2"><button type="button" class="flex-1 min-w-0 text-left truncate hover:underline" data-action="companion-conv-open" data-arg="${String(c.id)}">${String(c.title || '…')}</button>${classChip(c.dataClass)}<span class="text-xs text-slate-500">${when(c.updated)}</span><button type="button" class="btn btn-ghost p-1" data-action="companion-conv-delete" data-arg="${String(c.id)}" aria-label="${labelText(`${NS}.delete`)}" data-i18n-aria="${NS}.delete">${icon('trash-2', 'w-3.5 h-3.5')}</button></li>`,
-            )}</ul>`
-          : quiet(`${NS}.ask.no_conversations`),
-      )}`;
+      ${section(`${NS}.ask.conversations`, html`<div data-cv="conversations">${conversationList(conversations)}</div>`)}`;
     },
 
     async documents() {
@@ -630,7 +625,7 @@ export function mountCompanionTab(el, services, deps) {
         `${NS}.devices.title`,
         html`<ul class="divide-y divide-slate-100 text-sm">${sessions.map(
           (/** @type {any} */ d) =>
-            html`<li class="flex flex-wrap items-center gap-2 py-2"><span class="flex-1 min-w-0 truncate">${String(d.label || d.origin || d.kind)}</span>${chip({ label: `${NS}.role.${d.role === 'owner' ? 'owner' : 'member'}`, tone: 'neutral' })}${d.id === mine ? chip({ label: `${NS}.devices.this`, tone: 'info' }) : ''}<span class="text-xs text-slate-500">${when(d.lastUsed ?? d.created)}</span>${d.id === mine ? '' : html`<button type="button" class="btn btn-ghost py-1 text-rose-700" data-action="companion-session-revoke" data-arg="${String(d.id)}">${label(`${NS}.devices.revoke`)}</button>`}</li>`,
+            html`<li class="flex flex-wrap items-center gap-2 py-2"><span class="flex-1 min-w-0 truncate">${d.label || d.origin ? String(d.label || d.origin) : label(d.kind === 'bearer' ? `${NS}.devices.kind_bearer` : `${NS}.devices.kind_cookie`)}</span>${chip({ label: `${NS}.role.${d.role === 'owner' ? 'owner' : 'member'}`, tone: 'neutral' })}${d.id === mine ? chip({ label: `${NS}.devices.this`, tone: 'info' }) : ''}<span class="text-xs text-slate-500">${when(d.lastUsed ?? d.created)}</span>${d.id === mine ? '' : html`<button type="button" class="btn btn-ghost py-1 text-rose-700" data-action="companion-session-revoke" data-arg="${String(d.id)}">${label(`${NS}.devices.revoke`)}</button>`}</li>`,
         )}</ul>`,
       )}
       ${
@@ -669,6 +664,23 @@ export function mountCompanionTab(el, services, deps) {
     inbox: () => startInbox(),
   };
 
+  /** @param {any[]} conversations */
+  function conversationList(conversations) {
+    return conversations.length
+      ? html`<ul class="divide-y divide-slate-100 text-sm">${conversations.map(
+          (c) =>
+            html`<li class="flex items-center gap-2 py-2"><button type="button" class="flex-1 min-w-0 text-left truncate hover:underline" data-action="companion-conv-open" data-arg="${String(c.id)}">${String(c.title || '…')}</button>${classChip(c.dataClass)}<span class="text-xs text-slate-500">${when(c.updated)}</span><button type="button" class="btn btn-ghost p-1" data-action="companion-conv-delete" data-arg="${String(c.id)}" aria-label="${labelText(`${NS}.delete`)}" data-i18n-aria="${NS}.delete">${icon('trash-2', 'w-3.5 h-3.5')}</button></li>`,
+        )}</ul>`
+      : quiet(`${NS}.ask.no_conversations`);
+  }
+
+  async function refreshConversations() {
+    const box = /** @type {HTMLElement | null} */ (el.querySelector('[data-cv="conversations"]'));
+    if (!box) return;
+    const list = await pairing.call('GET', '/v1/chat/conversations').catch(() => null);
+    if (list && Array.isArray(list.conversations)) setHtml(box, String(conversationList(list.conversations.slice(0, 30))));
+  }
+
   /** @param {any} rule */
   function ruleText(rule) {
     if (!rule || typeof rule !== 'object') return '';
@@ -693,16 +705,17 @@ export function mountCompanionTab(el, services, deps) {
   function answerMarkup(question, answer) {
     const notice = noticeKey(answer.notice);
     const checked = answer.mode === 'sources' && answer.source === 'model';
+    const badge = answer.source === 'template' ? provenanceBadge('withheld', { label: `${NS}.ask.label_template` }) : provenanceBadge(checked ? 'checked' : 'unchecked', { label: checked ? `${NS}.ask.label_checked` : `${NS}.ask.label_free` });
     const withheld = Array.isArray(answer.withheld) ? answer.withheld.length : 0;
     const sources = Array.isArray(answer.sources) ? answer.sources : [];
     return html`<div class="space-y-2" data-companion-turn>
       <p class="text-sm font-medium text-slate-900 whitespace-pre-wrap">${question}</p>
       <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
-        <div class="flex flex-wrap items-center gap-1.5">${provenanceBadge(checked ? 'checked' : 'unchecked', { label: checked ? `${NS}.ask.label_checked` : `${NS}.ask.label_free` })}${answer.locality ? chip({ label: hasKey(`${NS}.locality.${answer.locality}`) ? `${NS}.locality.${answer.locality}` : { text: String(answer.locality) }, tone: 'neutral', icon: answer.locality === 'cloud' ? 'cloud' : 'hard-drive' }) : ''}${answer.model ? html`<span class="text-xs font-mono text-slate-500">${String(answer.model)}</span>` : ''}</div>
+        <div class="flex flex-wrap items-center gap-1.5">${badge}${answer.locality && answer.locality !== 'none' ? chip({ label: hasKey(`${NS}.locality.${answer.locality}`) ? `${NS}.locality.${answer.locality}` : { text: String(answer.locality) }, tone: 'neutral', icon: answer.locality === 'cloud' ? 'cloud' : 'hard-drive' }) : ''}${answer.model ? html`<span class="text-xs font-mono text-slate-500">${String(answer.model)}</span>` : ''}</div>
         <div class="text-sm text-slate-800 whitespace-pre-wrap" data-companion-answer>${String(answer.text ?? '')}</div>
         ${notice ? threadNotice(notice, 'info') : ''}
         ${withheld ? threadNotice({ key: `${NS}.ask.withheld`, params: { n: formatNumber(withheld) } }, 'warn') : ''}
-        ${sources.length ? html`<ul class="text-xs text-slate-600 space-y-0.5">${sources.map((src) => html`<li><span class="font-mono">[${String(src.label)}]</span> ${String(src.title ?? '')}</li>`)}</ul>` : ''}
+        ${sources.length ? html`<ul class="text-xs text-slate-600 space-y-0.5">${sources.map((src) => html`<li><span class="font-mono">${String(src.label)}</span> ${String(src.title ?? '')}</li>`)}</ul>` : ''}
       </div>
     </div>`;
   }
@@ -750,6 +763,7 @@ export function mountCompanionTab(el, services, deps) {
       );
       ask.conversation = done.conversation;
       setHtml(turn, String(answerMarkup(question, done.answer)));
+      void refreshConversations();
     } catch (err) {
       live.textContent = units.join(' ');
       turn.insertAdjacentHTML('beforeend', String(threadNotice(err instanceof CompanionError && err.code === 'aborted' ? `${NS}.ask.stopped` : errorLabel(err), 'warn')));
