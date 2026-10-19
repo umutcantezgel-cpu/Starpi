@@ -165,6 +165,11 @@ idealised design. When the code changes, change the diagram in the same pull req
     - [Site pools: request checks, key rotation and failover before the first byte](#site-pools-request-checks-key-rotation-and-failover-before-the-first-byte)
     - [Relaying a pool stream to the browser](#relaying-a-pool-stream-to-the-browser)
     - [Speech routes, research steps, health and the 2.x routes](#speech-routes-research-steps-health-and-the-2x-routes)
+14. [AI layer and providers](#14-ai-layer-and-providers)
+    - [Contract, adapters, transports and catalogs](#contract-adapters-transports-and-catalogs)
+    - [Which way a call goes](#which-way-a-call-goes)
+    - [Purposes, roles, the router and the model wheel](#purposes-roles-the-router-and-the-model-wheel)
+    - [Tools, MCP servers, web search, images and memory](#tools-mcp-servers-web-search-images-and-memory)
 
 ## 1. System overview
 
@@ -6650,3 +6655,163 @@ flowchart TD
 ```
 
 <sub>Sources: [`api/_lib/voice-routes.js`](../api/_lib/voice-routes.js), [`api/voice/speak.js`](../api/voice/speak.js), [`api/voice/transcribe.js`](../api/voice/transcribe.js), [`api/voice/live-token.js`](../api/voice/live-token.js), [`api/voice/voices.js`](../api/voice/voices.js), [`api/_lib/gemini/budget.js`](../api/_lib/gemini/budget.js), [`api/_lib/gemini/live.js`](../api/_lib/gemini/live.js), [`api/research/step.js`](../api/research/step.js), [`api/_lib/gemini/research.js`](../api/_lib/gemini/research.js), [`api/health.js`](../api/health.js), [`api/_lib/nvidia-router.js`](../api/_lib/nvidia-router.js), [`api/_lib/nvidia-request.js`](../api/_lib/nvidia-request.js), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`api/models/nvidia.js`](../api/models/nvidia.js), [`docs/SERVER.md`](SERVER.md)</sub>
+
+## 14. AI layer and providers
+
+src/js/ai is the one way the app talks to a model, in the cloud, on the user's own server, in this browser or on the paired companion. A request in one contract goes through a provider adapter and a transport, comes back as one normalized event stream, and every failure is reduced to one short error code. The chat's runner (chat/runner.js) installs the layer and streams answers along a list of candidate models; the router runs the small jobs besides chat (titles, query rewriting, OCR, judging) along a fallback chain; the model wheel remembers which models are busy or broken. The layer has no DOM and no storage of its own beyond the key store and small per-provider memories, so workers and tests use it the same way.
+
+### Contract, adapters, transports and catalogs
+
+contract.js defines the request (messages with text, image, file and tool parts, tools, tool choice, response format, search, reasoning effort, output limit), the model capabilities and the events every adapter emits: exactly one start, then text, reasoning, citation, image, tool-call and usage events, and exactly one end with the stop reason or an AiError, also when a call fails (stream.js). A wire adapter is a pure pair (buildRequest, parseEvent) whose request a transport sends; an SDK adapter runs its own client with the transport's fetch: Anthropic's official SDK (loaded as its own chunk, holding only a placeholder key while the transport sets the real one) or its wire twin, OpenAI's Responses API (stateless with store false, encrypted reasoning items kept as opaque state and sent back unchanged), OpenAI-compatible Chat Completions shaped by a quirks object per provider (xAI, Groq, Mistral, DeepSeek, OpenRouter, NVIDIA, a local server), Gemini (thought signatures kept as opaque state, the key in x-goog-api-key, never in the URL), the in-browser engines (WebLLM, the WASM runtime) and the companion (only the bare question goes to its POST /v1/chat, in a conversation per branch it keeps itself). Provider state the next turn needs stays opaque and goes back only to the provider that made it. catalog/providers.js names each provider's dialect, API root, auth header and first transport; catalog/models.js merges the curated snapshot (snapshot.json, written by `npm run models:sync`) with the live model lists of providers the user has keys for, marking guessed capabilities unverified; catalog/pools.js lists what the site pools allow. keys.js keeps provider keys in this tab's session storage or, optionally, in the key vault (AES-GCM-256 under a PBKDF2-SHA-256 key of 600,000 iterations, locked after 30 minutes without activity); errors.js maps every failure to one of auth, quota, rate_limited, not_found, bad_request, context_length, server, timeout, network, aborted, bad_response, cors, stream_cut and refusal, and never keeps provider error text.
+
+<!-- diagram: ai-layer-overview -->
+```mermaid
+flowchart LR
+    subgraph callers["Callers"]
+        runner["chat/runner.js: free and grounded answers,<br/>candidates one after the other"]
+        router["router.js runPurpose: titles, query_rewrite,<br/>summarize_doc, extract_graph, entail_check,<br/>research_brief, council_judge, ocr_image,<br/>describe_image, memory_suggest"]
+        others["image-view.js, research, Live, compare and council"]
+    end
+    subgraph core["src/js/ai"]
+        contract["contract.js: request, parts, tools,<br/>capabilities, events"]
+        stream["stream.js: one start, deltas, one end,<br/>AiError on failure"]
+        errors["errors.js: 14 codes, no provider text"]
+        keys["keys.js: session storage or the key vault"]
+        wheel["wheel.js: cooldowns, circuit, gone models"]
+    end
+    subgraph adapters["adapters/"]
+        anth["anthropic: SDK or wire"]
+        oresp["openai-responses: store false,<br/>encrypted reasoning kept opaque"]
+        ochat["openai-chat + quirks: xai, groq, mistral,<br/>deepseek, openrouter, nvidia, local"]
+        gem["gemini: thought signatures opaque"]
+        dev["webllm and wasm: in this browser"]
+        comp["companion: the bare question,<br/>POST /v1/chat with after"]
+    end
+    subgraph catalogs["catalog/"]
+        provs["providers.js: dialect, root, auth, transport"]
+        models["models.js: snapshot.json + live lists"]
+        pools["pools.js: what the site pools allow"]
+    end
+    tr["transports: direct, auto, relay, pool, device,<br/>see ai-layer-transports"]
+    runner --> stream
+    router --> stream
+    others --> stream
+    stream --> adapters
+    adapters --> tr
+    contract -.-> stream
+    keys -.-> tr
+    catalogs -.-> runner
+    catalogs -.-> router
+    stream -.-> errors
+    stream -.-> wheel
+```
+
+<sub>Sources: [`src/js/ai/index.js`](../src/js/ai/index.js), [`src/js/ai/contract.js`](../src/js/ai/contract.js), [`src/js/ai/stream.js`](../src/js/ai/stream.js), [`src/js/ai/errors.js`](../src/js/ai/errors.js), [`src/js/ai/keys.js`](../src/js/ai/keys.js), [`src/js/ai/adapters/index.js`](../src/js/ai/adapters/index.js), [`src/js/ai/adapters/anthropic.js`](../src/js/ai/adapters/anthropic.js), [`src/js/ai/adapters/openai-responses.js`](../src/js/ai/adapters/openai-responses.js), [`src/js/ai/adapters/openai-chat.js`](../src/js/ai/adapters/openai-chat.js), [`src/js/ai/adapters/gemini.js`](../src/js/ai/adapters/gemini.js), [`src/js/ai/adapters/on-device.js`](../src/js/ai/adapters/on-device.js), [`src/js/ai/adapters/companion.js`](../src/js/ai/adapters/companion.js), [`src/js/ai/quirks/index.js`](../src/js/ai/quirks/index.js), [`src/js/ai/catalog/providers.js`](../src/js/ai/catalog/providers.js), [`src/js/ai/catalog/models.js`](../src/js/ai/catalog/models.js), [`src/js/ai/catalog/pools.js`](../src/js/ai/catalog/pools.js), [`src/js/chat/runner.js`](../src/js/chat/runner.js)</sub>
+
+### Which way a call goes
+
+planTransport decides per call. Anthropic (with its browser-access header), OpenAI, Gemini and OpenRouter answer browser calls, so the browser calls them direct with the user's key. xAI, Groq, Mistral and DeepSeek may refuse browsers: the auto route calls them direct first and, when the call is blocked before any answer (an AiError cors), sends it once more through the site's relay, if "use the relay for providers that block browsers" is on (the default), and remembers per provider which route answered. A provider whose API never answers browsers goes through the relay with the user's key. Without a key of the user's, a provider with a site pool goes to /api/pool, when GET /api/models/pool says the pool has keys; otherwise the call does not start (no_key). The user's own server is always called direct (the relay cannot and must not reach the user's network), and in-browser engines and the companion need no transport. The site's access code travels with relay and pool calls, never with a direct one. When the relay retry reaches a static host without the site's functions (its HTML page, or a 404 without JSON), the original cors error stands.
+
+<!-- diagram: ai-layer-transports -->
+```mermaid
+flowchart TD
+    call(["planTransport(provider, key, settings)"]) --> known{"known provider or service?"}
+    known -->|"no"| none1(["none: unknown"])
+    known -->|"yes"| devq{"transport device?"}
+    devq -->|"webgpu, wasm, companion"| inb(["no transport: the engine or the<br/>companion client runs the call"])
+    devq -->|"local"| loc{"own server address set?"}
+    loc -->|"yes"| locd(["direct to the user's server, never the relay"])
+    loc -->|"no"| none2(["none: no_server"])
+    devq -->|"no"| key{"a key of the user's?"}
+    key -->|"no"| poolq{"a site pool for it with keys,<br/>per GET /api/models/pool?"}
+    poolq -->|"yes"| pool(["pool: POST /api/pool, no key in the browser,<br/>the access code when the site wants one"])
+    poolq -->|"no"| none3(["none: no_key"])
+    key -->|"yes"| mode{"provider transport?"}
+    mode -->|"direct: anthropic, openai, gemini, openrouter"| direct(["direct: browser to the provider,<br/>key in its own header"])
+    mode -->|"auto: xai, groq, mistral, deepseek"| relayOn{"relay setting on?"}
+    relayOn -->|"no"| direct
+    relayOn -->|"yes"| mem{"remembered: needed the relay?"}
+    mem -->|"yes"| relay(["relay: /api/relay/provider/path,<br/>key per request, nothing kept"])
+    mem -->|"no"| auto["direct first"]
+    auto --> blocked{"blocked before any answer, AiError cors?"}
+    blocked -->|"yes"| relay
+    blocked -->|"no"| direct
+    mode -->|"relay, or a pool provider with the user's key"| relayOn2{"relay setting on?"}
+    relayOn2 -->|"yes"| relay
+    relayOn2 -->|"no"| none4(["none: relay_off"])
+```
+
+<sub>Sources: [`src/js/ai/transport-select.js`](../src/js/ai/transport-select.js), [`src/js/ai/transport.js`](../src/js/ai/transport.js), [`src/js/ai/catalog/providers.js`](../src/js/ai/catalog/providers.js), [`src/js/ai/health-client.js`](../src/js/ai/health-client.js), [`src/js/ai/keys.js`](../src/js/ai/keys.js), [`api/_lib/relay/handler.js`](../api/_lib/relay/handler.js), [`api/_lib/pool/handler.js`](../api/_lib/pool/handler.js)</sub>
+
+### Purposes, roles, the router and the model wheel
+
+A purpose (purposes.js) is a small job with its own prompt, answer schema, token and time limits and validation, and names the role of the model it needs: fast (titles, query rewriting, document summaries, memory suggestions), reasoning (graph extraction, research briefs), judge (the council's verdict, the second opinion of the source check) or vision (OCR, image descriptions). roles.js turns a role into each provider's preferred models, intersected with the provider's live list; model-selection.js turns the user's strength (max, super, auto, fast) or pinned model into the first choice. The router runs a purpose along its chain: the selected model, the other models of the role at that provider and then its fallback roles (vision has none), the next configured provider in the user's order, the model loaded on this device when the purpose can run there, the cached answer for the same purpose, language and input, and finally a deterministic template. Every answer is validated, one rejected answer gets one retry with a hint, and at most 8 calls are made. The model wheel is asked before each call: a 429 cools a model down for its Retry-After (20 s without one), 3 failures in a row open its circuit for 60 s with one probe call afterwards, a 404 marks it gone for 10 minutes, and a fast-role model slower than 6 s moves behind the others for 15 minutes; failures the request caused never count. The chat runner uses the same wheel for its candidates (an explicit pick, or Auto: the user's keys first, then the site pools, the own server and the model on this device) and moves on only before the first text arrived. The paired companion is never a step of a chain, and none of its answers is cached.
+
+<!-- diagram: ai-layer-router -->
+```mermaid
+flowchart TD
+    p(["runPurpose(name, input): role, schema, limits"]) --> sel["1 selected: the pinned model,<br/>or the one the strength max, super, auto or fast names"]
+    sel --> wheel{"model wheel: cooling down after a 429,<br/>circuit open, gone after a 404, slow for fast?"}
+    wheel -->|"usable"| callm["call through the stream driver"]
+    wheel -->|"busy"| next
+    callm --> valid{"answer valid for the purpose?"}
+    valid -->|"yes"| done(["answer, kept in the cache"])
+    valid -->|"no, first time"| retry["one retry with the purpose's hint"]
+    retry --> valid2{"valid now?"}
+    valid2 -->|"yes"| done
+    valid2 -->|"no"| next
+    callm -->|"error before the answer"| next
+    next["next step, at most 8 calls"] --> role["2 role: other models of the role at this provider,<br/>then the fallback roles, vision has none"]
+    role --> prov["3 provider: the next configured provider in the user's order"]
+    prov --> devc{"4 device: the model on this device,<br/>purpose runs there, no images?"}
+    devc --> cache{"5 cache: last good answer for the same<br/>purpose, language and input, simulated or not?"}
+    cache -->|"yes"| cached(["cached answer"])
+    cache -->|"no"| tmpl(["6 template: quote-only answer, the purpose's<br/>fallback, or unavailable"])
+    subgraph wheelrules["wheel.js rules"]
+        w1["429: cool down for Retry-After, 20 s default"]
+        w2["3 failures in a row: circuit open 60 s, then one probe"]
+        w3["404: unavailable 10 minutes"]
+        w4["fast role slower than 6 s, timeout or invalid:<br/>behind the others 15 minutes"]
+    end
+    wheel -.- wheelrules
+    comp(["the companion: never a chain step, never cached"])
+```
+
+<sub>Sources: [`src/js/ai/router.js`](../src/js/ai/router.js), [`src/js/ai/purposes.js`](../src/js/ai/purposes.js), [`src/js/ai/roles.js`](../src/js/ai/roles.js), [`src/js/ai/model-selection.js`](../src/js/ai/model-selection.js), [`src/js/ai/wheel.js`](../src/js/ai/wheel.js), [`src/js/ai/council.js`](../src/js/ai/council.js), [`src/js/chat/runner.js`](../src/js/chat/runner.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js)</sub>
+
+### Tools, MCP servers, web search, images and memory
+
+The free chat offers tools from one registry, each with a side-effect class that decides what a call needs (tools/approval.js): read tools run without asking (the built-in date and time, calculator with its own parser, workspace search, memory lookup and web search), low ones ask and may be always allowed, high ones ask every time, forbidden ones never run, and a tool whose every call costs money (generating an image) asks every time. The loop (tools/loop.js) checks each call's arguments against the tool's schema, asks the approval gate, runs the tool with a time limit and returns its output quoted as untrusted data; only tools the request offered can run, and after 8 rounds the model must answer without tools. A question that stays on this device is offered only the tools that keep it here. MCP servers are reached over Streamable HTTP (protocol 2025-06-18) when they allow cross-origin calls; a bearer token is a key-store slot, and every tool is pinned with the SHA-256 of the canonical JSON of its name, title, description, schema and hints, so a changed tool waits for a new approval. Provider-side MCP (Anthropic's connector, OpenAI's mcp tool) is behind a flag, off by default, and limited to the tools the user allowed; the provider then runs them without asking per call. Web search for models without their own goes to Brave (always through the relay), Tavily or a self-hosted SearXNG, as fenced, numbered excerpts ([W1]); a Gemini web turn keeps Google Search and offers no functions. Images are generated only with the user's own key, through the Images API of OpenAI and xAI or an image model of Gemini, and kept as blobs of the chat store. Memory is off by default: a note is stored only by an explicit act, and at most 8 notes and 800 characters go along with one question, in that question's request only. Known limits: answers grounded by a search API carry no receipt, Gemini web turns offer no client tools, and provider-side MCP cannot ask per call.
+
+<!-- diagram: ai-layer-tools -->
+```mermaid
+flowchart TD
+    ans(["an answer stopped for tool calls"]) --> look{"a tool the request offered?"}
+    look -->|"no"| errr["error result to the model"]
+    look -->|"yes"| schema{"arguments valid for its schema?"}
+    schema -->|"no"| errr
+    schema -->|"yes"| cls{"side-effect class and origin"}
+    cls -->|"read, built in"| run
+    cls -->|"low"| askL["ask; always allow may be remembered"]
+    cls -->|"high, or askEachTime"| askH["ask every time"]
+    cls -->|"forbidden"| refused["refused, the model is told"]
+    cls -->|"MCP tool"| pin{"approved with its current pin:<br/>SHA-256 of name, title, description,<br/>schema and hints?"}
+    pin -->|"no, or changed"| held["held back until approved again"]
+    pin -->|"yes"| askM["ask until always allowed, for read and low only"]
+    askL --> run
+    askH --> run
+    askM --> run
+    run["run with a time limit; output quoted as untrusted data"] --> again{"fewer than 8 rounds?"}
+    again -->|"yes"| model["the model is asked again, tools still offered"]
+    again -->|"no"| final["asked once more with toolChoice none"]
+    errr --> again
+    refused --> again
+    subgraph offered["What a request offers"]
+        b["built in: datetime, calculator, workspace_search,<br/>memory_lookup, web_search; generate_image asks each time"]
+        m["MCP: Streamable HTTP 2025-06-18, approved pinned tools;<br/>provider-side only behind a flag, without asking per call"]
+        l["a question that stays on this device:<br/>only tools that keep it here"]
+        g["a Gemini web turn: Google Search, no functions"]
+    end
+```
+
+<sub>Sources: [`src/js/ai/tools/registry.js`](../src/js/ai/tools/registry.js), [`src/js/ai/tools/builtin.js`](../src/js/ai/tools/builtin.js), [`src/js/ai/tools/approval.js`](../src/js/ai/tools/approval.js), [`src/js/ai/tools/loop.js`](../src/js/ai/tools/loop.js), [`src/js/ai/mcp/client.js`](../src/js/ai/mcp/client.js), [`src/js/ai/mcp/pin.js`](../src/js/ai/mcp/pin.js), [`src/js/ai/mcp/view.js`](../src/js/ai/mcp/view.js), [`src/js/ai/search.js`](../src/js/ai/search.js), [`src/js/ai/memory.js`](../src/js/ai/memory.js), [`src/js/chat/tools.js`](../src/js/chat/tools.js), [`src/js/chat/image-view.js`](../src/js/chat/image-view.js)</sub>
