@@ -744,7 +744,7 @@ Vercel reads environment variables when it creates a deployment: set them first,
 redeploy after a change. Each request starts at the next key and moves on to the following keys
 when one is rate limited (429), rejected (401, 403), fails (408, 5xx) or does not answer in time,
 until a stream starts; a key that failed waits before it is used again. The guards, limits and
-timeouts are in [SECURITY.md](SECURITY.md#nvidia-cloud-models-and-offline-use).
+timeouts are in [SECURITY.md](SECURITY.md#relay-pools-and-the-other-server-functions).
 
 Locally, `npm run dev` and `npm run preview` serve the routes for `localhost`, IP addresses and the
 hosts in `NVIDIA_ALLOWED_ORIGINS`; the end-to-end tests run without them and mock `/api/*`:
