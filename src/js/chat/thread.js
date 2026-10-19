@@ -268,7 +268,8 @@ export function readableAnswer(id) {
   const route = meta.chat_mode ?? node.label;
   return {
     text: nodeText(node),
-    label: kept?.label ?? (route === 'grounded' ? 'grounded' : storedGrounding ? 'web' : 'free'),
+    // A companion answer passed the companion's own gate already: it is read as released.
+    label: kept?.label ?? (meta.engine === 'companion' ? 'free' : route === 'grounded' ? 'grounded' : storedGrounding ? 'web' : 'free'),
     sources: kept?.sources ?? [],
     grounding: kept?.grounding ?? storedGrounding,
     question: question && !metaOf(question).continue ? nodeText(question) : '',

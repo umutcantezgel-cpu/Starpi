@@ -144,7 +144,7 @@ function serverBase() {
 }
 
 /** Set while a companion link is stored (companion/pair.js LINK_MARKER). */
-const COMPANION_LINK_MARKER = 'starpi_companion_linked';
+export const COMPANION_LINK_MARKER = 'starpi_companion_linked';
 
 /** Whether a companion is paired, from the flag alone (no database is opened for it). */
 const companionLinked = () => readLocal(COMPANION_LINK_MARKER) === '1';

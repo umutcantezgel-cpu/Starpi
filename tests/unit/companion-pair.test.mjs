@@ -119,9 +119,11 @@ describe('pairing', () => {
     assert.equal(await openSecret(key, { iv: 'bad', data: sealed.data }, link), null);
   });
 
-  it('keeps its stored-link flag under the name the feature module reads', async () => {
+  it('keeps its stored-link flag under the name the feature module and the pickers read', async () => {
     const feature = await import('../../src/js/features/companion.js');
     assert.equal(feature.LINK_MARKER, LINK_MARKER);
+    const providers = await import('../../src/js/providers.js');
+    assert.equal(providers.COMPANION_LINK_MARKER, LINK_MARKER);
   });
 
   it('normalizes what the user typed', () => {
