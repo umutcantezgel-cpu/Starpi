@@ -91,7 +91,7 @@ describe('the app against the voice server', { skip }, () => {
 
   /** @param {string[]} glossary */
   const transcribe = (glossary) =>
-    serverTranscribe(/** @type {any} */ ({}), { base, headers: {} }, encodeWav(new Int16Array(4000), 16000), { locale: 'en-GB', glossary });
+    serverTranscribe(/** @type {any} */ ({}), { base, headers: {} }, encodeWav(new Int16Array(4000), 16000), { locale: 'en-GB', glossary, signal: AbortSignal.timeout(20_000) });
 
   it('serves a glossary of the most terms and characters the app allows', async () => {
     const shapes = [
