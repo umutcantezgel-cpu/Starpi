@@ -92,9 +92,28 @@ The whole file is checked before anything starts; every problem is reported at o
   ask for it get `Access-Control-Allow-Private-Network: true`.
 
 Once paired, the app also offers the companion as a model of its chat ("Starpi Core (local
-companion)" in the model picker). A question asked there goes to `POST /v1/chat` (Grounded mode as
-`sources`, Free and Auto as `free`; a question the app keeps on the device as `sensitive`), and the
-answer is shown as the gate released it, with its label, notice and withheld count.
+companion)" in the model picker). A question asked there goes to `POST /v1/chat` as the bare
+question, never with the app's prompt or its date and time block (Grounded mode as `sources`, Free
+and Auto as `free`; a question the app keeps on the device for what it holds as `sensitive`), and
+the answer is shown as the gate released it, with its label, notice and withheld count.
+
+- **Branches.** The app keeps its chat as a tree, the companion one line per conversation. Every
+  question carries the conversation and the turn of the latest companion answer before it
+  (`after`); when an answer is asked for again, a question is changed or another branch goes on,
+  the companion continues in a copy of the turns up to that one, so its history is always the
+  branch being asked.
+- **On this device.** A question to the companion stays in the browser like its answer: neither
+  goes into the end-to-end encrypted chat sync, and only the model in the browser, the user's own
+  server or the companion answers such a question again.
+- **Auto.** With the companion picked, Auto asks it in `free` mode. The app does not probe the
+  companion's documents to decide between the modes; pick Grounded to have it answer from them.
+- **Stopping.** A stopped companion answer is not kept: the companion drops an abandoned turn from
+  its conversation too, so both histories stay alike (other models keep the text that arrived).
+- **Compare, council and Live.** A compare column asks the companion the same way and shows what
+  its gate released so far. The council never seats it (drafts get the app's prompt and a judge
+  reads them all). Live asks it in free conversations only, as push-to-talk turns, and speaks its
+  answer once released; a conversation from your sources ends, as the companion answers from its own
+  documents rather than the excerpts found in the browser.
 
 The store keeps only hashes of codes, cookies, CSRF values and tokens. Five wrong codes in a row
 void every open code. Roles: `owner` (may change configuration, secrets and sessions) and `member`
@@ -300,7 +319,7 @@ vault namespace; the audit chain records ids, classes and counts, never the text
 | `memory` | `GET/POST /memory/notes`, `GET/PUT/DELETE /memory/notes/:id`, `POST /memory/recall` | notes added on purpose; recall ranks by match, use, spread over days and freshness (halving every `halfLifeDays`, 30); a pinned note does not fade |
 | `docs` | `POST /docs?name=&class=` (raw file), `GET /docs`, `GET /docs/:id`, `GET /docs/:id/passages/:n`, `GET /docs/:id/file`, `PUT /docs/:id/class`, `DELETE /docs/:id` | PDF text layer (needs the optional peer `pdfjs-dist`), Word, Excel, PowerPoint, HTML, Markdown, CSV, JSON and text, read by `@starpi/core` in the background lane; original and text are sealed blobs |
 | `ask` | `POST /ask` | one question, one JSON answer |
-| `chat` | `POST /chat` (server-sent events), `GET /chat/conversations`, `GET/PUT/DELETE /chat/conversations/:id` | conversations with history; a conversation's data class only rises; turns of one conversation run one after the other (a turn sent while another runs waits for it, more than `waitingTurns` (4) waiting get 409 `conversation_busy`; a waiting turn whose client goes away gives its place back at once) |
+| `chat` | `POST /chat` (server-sent events), `GET /chat/conversations`, `GET/PUT/DELETE /chat/conversations/:id` | conversations with history; a conversation's data class only rises; turns of one conversation run one after the other (a turn sent while another runs waits for it, more than `waitingTurns` (4) waiting get 409 `conversation_busy`; a waiting turn whose client goes away gives its place back at once); `after` (with `conversation`) is the number of turns the question follows: when the conversation has more, the turns up to it are copied into a new conversation (named in `start` and `done`, `start.from` names the original) and the question goes on there; a copy whose first own turn is not answered is not kept |
 | `mcp` | `POST /mcp`, `GET/POST /mcp/clients`, `DELETE /mcp/clients/:id` | an MCP server (2025-06-18) with the read-only tools `search_documents`, `read_excerpt`, `recall_notes`, `list_agenda`; MCP client tokens only (no cookie, no browser session, no Origin) |
 | `connectors` | `GET /connectors`, `POST /connectors/:server/{refresh,approve,revoke}`, `GET /connectors/approvals`, `POST /connectors/approvals/:id` | tools of MCP servers on this machine for the chat: each tool description is pinned by SHA-256 and offered only with the pin the owner approved; a changed description needs a new approval; the list is read again before every call (and once more after a call waited for a person), and a call runs only when that fresh list carries the approved pin |
 | `agenda` | `GET/POST /agenda`, `GET /agenda/upcoming`, `GET/PUT/DELETE /agenda/:id` | reminders (once, daily, weekly, monthly) in the item's, the module's or the companion's time zone, computed with `Intl` |

@@ -50,7 +50,12 @@
  * The companion gets the bare question (never the context block), in its sources mode for a
  * grounded turn and free otherwise, as `sensitive` when the question was asked to stay on this
  * device for what it holds. The compare columns ask it the same way (prepareQuestion builds that
- * request); the council and source Live turns cannot, so they never ask it.
+ * request); the council and source Live turns cannot, so they never ask it. Every question names
+ * the companion conversation and turn of the latest companion answer before it, so an answer asked
+ * again, a changed question or another branch goes on in a copy of the turns up to that one (the
+ * companion's `after`). Auto with the companion picked asks it in free mode: nothing probes the
+ * companion's documents to choose the mode. A stopped companion answer is not kept, because the
+ * companion drops the abandoned turn too (other models keep the text that arrived).
  */
 import { chatData, currentSessionId, loadSessionThread, startNewSession } from '../chat-store.js';
 import { splitStreamingText } from '../chat-stream.js';
