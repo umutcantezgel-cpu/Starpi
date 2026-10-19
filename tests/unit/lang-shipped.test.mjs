@@ -12,7 +12,7 @@ import { numberWordTag } from '../../src/js/core/number-words.js';
 import { negationInversion, sourceClauses } from '../../src/js/core/polarity.js';
 import { splitSentences } from '../../src/js/core/sentences.js';
 import { spokenForm } from '../../src/js/core/spoken.js';
-import { tokenize } from '../../src/js/rag/bm25.js';
+import { BM25Index, tokenize } from '../../src/js/rag/bm25.js';
 import { loadCorpora, loadItems, loadParaphrases, loadRelationItems, loadV2Items } from '../../scripts/eval-source-check.mjs';
 
 /** @param {string} text */
@@ -101,6 +101,17 @@ describe('retrieval and sentences in each language', () => {
     assert.deepEqual(tokenize('el plan de la dirección para los equipos'), ['plan', 'dirección', 'equipos']);
     assert.deepEqual(tokenize('il piano della direzione per le squadre'), ['piano', 'direzione', 'per', 'squadre']);
     assert.deepEqual(tokenize('İstanbul ve İzmir için bir plan'), ['istanbul', 'izmir', 'plan']);
+  });
+
+  it('find a Turkish word in capitals and in lowercase alike', () => {
+    assert.deepEqual(tokenize('KULLANIM KILAVUZU: ISITMA SİSTEMİ'), tokenize('kullanım kılavuzu ısıtma sistemi'));
+    assert.deepEqual(tokenize('Bunları ARASINDA bazı notlar'), ['notlar'], 'stop words with the dotless i drop in either case');
+    const upper = new BM25Index();
+    upper.add([{ docId: 'a', docName: 'a.txt', chunkIndex: 0, start: 0, end: 29, text: 'ISITMA SİSTEMİ BAKIM KILAVUZU' }]);
+    assert.deepEqual(upper.search('ısıtma kılavuzu').map((h) => h.chunk.docId), ['a']);
+    const lower = new BM25Index();
+    lower.add([{ docId: 'b', docName: 'b.txt', chunkIndex: 0, start: 0, end: 29, text: 'ısıtma sistemi bakım kılavuzu' }]);
+    assert.deepEqual(lower.search('ISITMA KILAVUZU').map((h) => h.chunk.docId), ['b']);
   });
 
   it('keep abbreviations inside a sentence', () => {
