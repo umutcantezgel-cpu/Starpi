@@ -472,19 +472,27 @@ follows these conventions, and it passes the checks.
 
 ## Releases
 
-The app and `@starpi/core` are released together and share one version number.
+The app, `@starpi/core` and `@starpi/companion` are released together and share one version
+number.
 
-0. **Set new Vercel environment variables first.** Set any new Vercel environment variable (such
-   as `NVIDIA_API_KEYS`, type Sensitive) for Production and Preview before the release deploys:
-   Vercel reads them when it creates a deployment, so a deployment created earlier does not see
-   them until it is redeployed.
+0. **Set new environment variables and secrets first.** Set any new Vercel environment variable
+   (keys as type Sensitive) for Production and Preview before the release deploys: Vercel reads
+   them when it creates a deployment, so a deployment created earlier does not see them until it
+   is redeployed. For the release workflow: `NPM_TOKEN` (a granular npm token with publish rights
+   on the `@starpi` scope; only needed until trusted publishing is set up for both packages on
+   npmjs.com) as a secret of the environment `npm`, and optionally `STARPI_RELEASE_SIGNING_KEY`
+   (an Ed25519 private key, `node scripts/sign-release.mjs keygen --out <dir>`) as a secret of the
+   environment `release`.
 1. **Prepare the release commit.**
-   - Set the version in `package.json` and in `packages/core/package.json`, then run
-     `npm install --package-lock-only --ignore-scripts` so the lockfile records both.
+   - Set the version in `package.json`, `packages/core/package.json` and
+     `packages/companion/package.json` (and the companion's `@starpi/core` dependency), then run
+     `npm install --package-lock-only --ignore-scripts --no-audit --no-fund` so the lockfile
+     records them.
    - Update `version` and `date-released` in `CITATION.cff`.
    - Move the `[Unreleased]` entries of `CHANGELOG.md` into a section for the version and add its
      compare link.
-   - Write `docs/releases/vX.Y.Z.md`; the release workflow publishes it as the release notes.
+   - Write `docs/releases/vX.Y.Z.md`; the release workflow publishes it as the release notes. Work
+     through its "Before tagging" list.
 2. **Get it onto `main`.** Push the commit with an annotated tag `vX.Y.Z`. The tag must point at
    the commit that ends up on `main`, so fast-forward `main` to it instead of merging with a
    merge or squash commit, and push nothing else to `main` until the release exists: a newer push
@@ -493,22 +501,32 @@ The app and `@starpi/core` are released together and share one version number.
    Or merge the release pull request with **Rebase and merge** and push no tag: `release.yml`
    creates the tag `vX.Y.Z` at the commit CI tested. Here too, push nothing else to `main` until
    the release exists.
-3. **CI and the release workflow.** Once CI has passed on `main`, `release.yml` builds the
-   `@starpi/core` tarball and the SBOMs without write access, smoke-tests the tarball and creates
-   the release with `starpi-core-X.Y.Z.tgz`, `starpi-X.Y.Z.cdx.json`,
-   `starpi-core-X.Y.Z.cdx.json` and `SHA256SUMS`. If an interrupted upload left a draft release,
-   the job stops with an error; delete the draft (`gh release delete vX.Y.Z --yes`) and re-run it.
-4. **Publish `@starpi/core` to npm from the release asset**, not from a local build, so the npm
-   package is the file CI built and checksummed. The account needs publish rights on the npm
-   organisation `starpi` (the `@starpi` scope):
+3. **CI and the release workflow.** Once CI has passed on `main`, `release.yml`:
+   - builds, without write access and without secrets, the tarballs of both packages, the
+     CycloneDX SBOMs, the companion's offline bundle and `SHA256SUMS`, and smoke-tests the
+     `@starpi/core` tarball;
+   - attests every asset (`actions/attest-build-provenance`), signs `SHA256SUMS` and the offline
+     bundle keyless with cosign, and signs `SHA256SUMS` with the Ed25519 release key when that
+     secret exists, in a job that installs nothing;
+   - creates the release with `starpi-core-X.Y.Z.tgz`, `starpi-companion-X.Y.Z.tgz`,
+     `starpi-X.Y.Z.cdx.json`, `starpi-core-X.Y.Z.cdx.json`, `starpi-companion-X.Y.Z.tar.gz`,
+     `SHA256SUMS`, the `.sigstore.json` bundles and `SHA256SUMS.sig`;
+   - publishes the two tarballs of the release to npm with `--provenance`, the core first; a version
+     npm already has is skipped.
+   If an interrupted upload left a draft release, the release job stops with an error; delete the
+   draft (`gh release delete vX.Y.Z --yes`) and re-run it. If publishing fails after the release
+   was created, re-run the failed publish job (its artifacts are kept for 7 days); publishing by
+   hand (`npm publish ./starpi-core-X.Y.Z.tgz --access public` from the release asset, after
+   `sha256sum -c --ignore-missing SHA256SUMS`) works too, but carries no provenance.
+4. **Check what was published.**
 
    ```bash
-   cd "$(mktemp -d)"
-   curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/vX.Y.Z/starpi-core-X.Y.Z.tgz
-   curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/vX.Y.Z/SHA256SUMS
-   sha256sum -c --ignore-missing SHA256SUMS
-   npm publish ./starpi-core-X.Y.Z.tgz --access public
    npm view @starpi/core@X.Y.Z dist.integrity
+   npm view @starpi/companion@X.Y.Z dist.integrity
+   gh attestation verify starpi-core-X.Y.Z.tgz --repo umutcantezgel-cpu/Starpi
+   cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+     --certificate-identity https://github.com/umutcantezgel-cpu/Starpi/.github/workflows/release.yml@refs/heads/main \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
    ```
 
 ## Reporting bugs
