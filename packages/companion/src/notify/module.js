@@ -6,9 +6,9 @@
 //   POST   /v1/notify/:id/read                member  marks one as read
 //   POST   /v1/notify/read-all                member  marks all as read
 //   DELETE /v1/notify/:id                     member  removes one
-// When `after` is higher than the newest number (the inbox was erased or restored), the answer
-// says `reset: true` and starts from the beginning, so the app never waits for numbers that will
-// not come. Configuration (`modules.notify`): { "keepDays": 30, "maxItems": 1000, "streams": 8 }.
+// Numbers are never reused, also after the newest notification was removed. When `after` is higher
+// than any number handed out (the inbox was erased or restored), the answer says `reset: true` and
+// starts from the beginning, so the app never waits for numbers that will not come. Configuration (`modules.notify`): { "keepDays": 30, "maxItems": 1000, "streams": 8 }.
 import { fail } from '../lib/errors.js';
 import { intIn, moduleConfig, notFound, pushStream } from '../setup/kit.js';
 import { createInbox } from './inbox.js';
