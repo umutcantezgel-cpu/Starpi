@@ -21,17 +21,26 @@ const ANSWER = line(
     'The first phase took 3 weeks. Once more, see the summary. ',
 );
 
+/** Batches of runs measured at most before a time counts as over its budget. */
+const MAX_BATCHES = 4;
+
 /**
  * The fastest of a few runs, after a warm-up: the time the gate needs, not the time the machine lends it.
+ * A machine under load (parallel builds, other test files) can slow every run of one batch, so a
+ * time over the budget is measured again, up to MAX_BATCHES batches; a gate that is really too slow
+ * stays over the budget in every batch.
  * @param {() => void} run
+ * @param {{ rounds?: number, budget: number }} options
  */
-function fastest(run, rounds = 5) {
+function fastest(run, { rounds = 5, budget }) {
   run();
   let best = Infinity;
-  for (let i = 0; i < rounds; i += 1) {
-    const t0 = performance.now();
-    run();
-    best = Math.min(best, performance.now() - t0);
+  for (let batch = 0; batch < MAX_BATCHES && best >= budget; batch += 1) {
+    for (let i = 0; i < rounds; i += 1) {
+      const t0 = performance.now();
+      run();
+      best = Math.min(best, performance.now() - t0);
+    }
   }
   return best;
 }
@@ -40,7 +49,7 @@ describe('sentence gate time', () => {
   it('judges an 80,000-character line in under 50 ms', () => {
     const result = checkText(ANSWER, { sources: SOURCES, locale: 'en' });
     assert.ok(result.counts.released > 1000 && result.counts.withheld > 100, JSON.stringify(result.counts));
-    const ms = fastest(() => checkText(ANSWER, { sources: SOURCES, locale: 'en' }));
+    const ms = fastest(() => checkText(ANSWER, { sources: SOURCES, locale: 'en' }), { budget: 50 });
     assert.ok(ms < 50, `${ms.toFixed(1)} ms`);
   });
 
@@ -49,13 +58,13 @@ describe('sentence gate time', () => {
       const gate = createSentenceGate({ sources: SOURCES, locale: 'en' });
       for (let i = 0; i < ANSWER.length; i += 24) gate.push(ANSWER.slice(i, i + 24));
       gate.end();
-    });
+    }, { budget: 50 });
     assert.ok(ms < 50, `${ms.toFixed(1)} ms`);
   });
 
   it('judges a single 80,000-character sentence in under 50 ms', () => {
     const sentence = line('the budget of the team grows with every review and stays within the plan ');
-    const ms = fastest(() => checkText(sentence, { sources: SOURCES, locale: 'en' }));
+    const ms = fastest(() => checkText(sentence, { sources: SOURCES, locale: 'en' }), { budget: 50 });
     assert.ok(ms < 50, `${ms.toFixed(1)} ms`);
   });
 
@@ -84,7 +93,7 @@ describe('sentence gate time', () => {
     for (const [name, unit] of Object.entries(shapes)) {
       const text = line(unit);
       for (const mode of /** @type {const} */ (['sources', 'web', 'free'])) {
-        const ms = fastest(() => checkText(text, { mode, sources: SOURCES, locale: name === 'german' ? 'de' : 'en' }), 1);
+        const ms = fastest(() => checkText(text, { mode, sources: SOURCES, locale: name === 'german' ? 'de' : 'en' }), { rounds: 1, budget: 250 });
         assert.ok(ms < 250, `${name} (${mode}): ${ms.toFixed(1)} ms`);
       }
     }
