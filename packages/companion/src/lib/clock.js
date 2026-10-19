@@ -46,14 +46,22 @@ export function manualClock(start = Date.UTC(2026, 0, 1)) {
     /** @param {number} ms */
     advance(ms) {
       const until = current + ms;
-      for (;;) {
-        /** @type {[number, { at: number, fn: () => void }] | null} */
-        let due = null;
-        for (const [id, t] of timers) if (t.at <= until && (due === null || t.at < due[1].at)) due = [id, t];
-        if (due === null) break;
-        timers.delete(due[0]);
-        current = Math.max(current, due[1].at);
-        due[1].fn();
+      // A callback may add or clear timers, so the earliest one is looked up afresh each round.
+      const earliest = () => {
+        let pick = 0;
+        let pickAt = Infinity;
+        timers.forEach((entry, id) => {
+          if (entry.at <= until && entry.at < pickAt) [pick, pickAt] = [id, entry.at];
+        });
+        return pick;
+      };
+      let id = earliest();
+      while (id !== 0) {
+        const entry = /** @type {{ at: number, fn: () => void }} */ (timers.get(id));
+        timers.delete(id);
+        if (entry.at > current) current = entry.at;
+        entry.fn();
+        id = earliest();
       }
       current = until;
     },
