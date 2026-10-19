@@ -18,7 +18,9 @@
  * - Tools: the request offers the tools the thread's would, so a column's answer goes through the
  *   tool runner as the thread's does (hooks.js setToolRunner): the calls it stopped for run in the
  *   column, with their approval cards there, and the answer goes on after them; a web answer from
- *   a search pack is checked. Stop in the column stops its tool calls too.
+ *   a search pack is checked. Stop in the column stops its tool calls too. A question that stays
+ *   on this device (a new one for models here and the own server only, or a stored one that
+ *   stays) is offered only the tools that keep it here, and goes to no search service.
  * - A column whose answer stays on this device (the model here, or a question that stays) is
  *   marked so (data-stays-on-device); the canvas keeps a block taken from it on this device too.
  * - Models: the header picker's choices (models of this device that are not loaded stay out, as a

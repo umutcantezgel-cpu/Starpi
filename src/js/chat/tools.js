@@ -18,6 +18,8 @@
  *   answers written again from the same turn (regenerate, compare columns) until the next question.
  * - memory_lookup answers from the memory feature (hooks.js setMemoryLookup): offered only while
  *   memory is on, with the notes the conversation of the turn may use.
+ * - A question that stays on this device (TurnContext.localOnly) gets no web pack and is offered
+ *   only the tools whose results stay with the model answering it (ON_DEVICE_TOOLS).
  * - Provider-side MCP servers (behind their flag) reach Anthropic and OpenAI calls through an
  *   adapter chooser.
  */
