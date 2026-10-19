@@ -39,6 +39,7 @@ export const CONFIG_FILE = 'config.json';
  * @property {{ concurrency: number, interactiveReserve: number }} scheduler
  * @property {{ level: 'debug' | 'info' | 'warn' | 'error' }} log
  * @property {Record<string, unknown>} modules
+ * @property {{ computer: boolean }} experimental  features that are off unless switched on here
  */
 
 /**
@@ -96,6 +97,7 @@ export function checkConfig(raw) {
     scheduler: (v) => checkRecord(v, 'scheduler', { concurrency: int(2, 64), interactiveReserve: int(0, 63) }).join('; ') || null,
     log: (v) => checkRecord(v, 'log', { level: oneOf(['debug', 'info', 'warn', 'error']) }).join('; ') || null,
     modules: (v) => (isRecord(v) && Object.keys(v).every((k) => MODULE_ID.test(k)) ? null : 'an object keyed by module id'),
+    experimental: (v) => checkRecord(v, 'experimental', { computer: bool }).join('; ') || null,
   });
   if (isRecord(raw.vault)) {
     problems.push(...checkRecord(raw.vault, 'vault', { kek: () => null }));
@@ -190,5 +192,6 @@ export function loadConfig({ file, overrides = {}, env = process.env, platform, 
     scheduler: { concurrency: raw.scheduler?.concurrency ?? 4, interactiveReserve: raw.scheduler?.interactiveReserve ?? 1 },
     log: { level: raw.log?.level ?? 'info' },
     modules: raw.modules ?? {},
+    experimental: { computer: raw.experimental?.computer === true },
   };
 }
