@@ -112,7 +112,7 @@ export function createAnswerEngine({ hub, router, audit, auditKind, clock, timeZ
     const { question, mode } = req;
     let dataClass = req.dataClass;
     const sources = mode === 'sources' && dataClass !== 'secret'
-      ? await gatherSources(hub, question, { maxClass: 'sensitive', documents: req.documents ?? null, notes: req.notes !== false, feeds: req.feeds !== false, signal, log })
+      ? await gatherSources(hub, question, { maxClass: 'sensitive', documents: req.documents ?? null, notes: req.notes !== false, feeds: req.feeds !== false, timeZone, signal, log })
       : [];
     for (const s of sources) dataClass = strictest(dataClass, s.dataClass);
     const toolService = req.tools && dataClass !== 'secret' ? hub.get('tools') : null;

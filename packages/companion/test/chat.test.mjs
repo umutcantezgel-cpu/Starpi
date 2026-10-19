@@ -6,6 +6,7 @@ import { tempDir } from './helpers.mjs';
 import { chatModel, client, eventually, startModules } from './module-helpers.mjs';
 import { joinUnits } from '../src/chat/engine.js';
 import { parseToolCall, sourceBlock, toolResultBlock } from '../src/chat/rules.js';
+import { readingText } from '../src/chat/sources.js';
 
 /** @param {string} url */
 const localBrain = (url) => ({ brains: [{ id: 'local', type: 'openai-compat', baseUrl: `${url}/v1`, model: 'test-model' }] });
@@ -132,6 +133,31 @@ test('feed readings are citable sources; secret questions and secret notes never
   assert.equal(secret.notice, 'class_secret');
   assert.equal(model.calls(), before, 'no model was asked');
   assert.ok(secret.text.length > 0, 'the template passed the gate');
+});
+
+test('a reading carries its local time and date, so a sentence may give them in a usual form', async (t) => {
+  const reading = { source_id: 'home-sensor', series: 'room.temperature', value: 21.5, unit: '°C', ts_source: '2026-10-05T07:05:09Z', quality: 'good' };
+  assert.equal(readingText(reading, 'Europe/Berlin'), 'room.temperature from home-sensor: 21.5 °C, measured at 2026-10-05T07:05:09Z (local time in Europe/Berlin: 09:05:09, 09:05, 9:05 on 2026-10-05, 05.10.2026, 5.10.2026), quality good.');
+  assert.match(readingText({ ...reading, ts_source: '2026-10-18T23:30:00Z' }, 'Asia/Tokyo'), /\(local time in Asia\/Tokyo: 08:30, 8:30 on 2026-10-19, 19\.10\.2026\)/, 'the local date, not the UTC one');
+  assert.match(readingText({ ...reading, ts_source: '2026-10-18T14:00:00Z' }, 'UTC'), /\(local time in UTC: 14:00 on 2026-10-18, 18\.10\.2026\)/);
+  assert.equal(readingText({ ...reading, ts_source: 'never' }, 'UTC'), 'room.temperature from home-sensor: 21.5 °C, measured at never, quality good.');
+
+  const model = await chatModel((messages) => {
+    assert.match(systemOf(messages), /local time in Europe\/Berlin: 09:05, 9:05 on 2026-10-18, 18\.10\.2026/);
+    return 'The living room had 21.5 °C at 9:05 on 18.10.2026 [S1]. Um 09:05 Uhr waren es 21,5 °C [S1]. It was 18 °C warmer than outside [S1].';
+  });
+  const { dir, cleanup } = tempDir();
+  const { companion, hub } = await startModules(dir, { only: ['retrieval', 'feeds', 'ask'], raw: { ...localBrain(model.url), timeZone: 'Europe/Berlin' } });
+  t.after(async () => {
+    await companion.stop();
+    await model.close();
+    cleanup();
+  });
+  const c = await client(companion);
+  /** @type {any} */ (hub.get('feeds')).ingest([{ ...reading, ts_source: '2026-10-18T07:05:00Z' }], { dataClass: 'public' });
+  const { answer } = (await c.post('/v1/ask', { question: 'When was the room temperature measured?' })).json();
+  assert.equal(answer.text, 'The living room had 21.5 °C at 9:05 on 18.10.2026. Um 09:05 Uhr waren es 21,5 °C.');
+  assert.deepEqual(answer.withheld, [{ reason: 'unsupported_number', kind: 'sentence' }], 'the day of the date is no number of its own');
 });
 
 test('without a model the template passes the gate with its notice', async (t) => {
