@@ -13,6 +13,7 @@ import { pinOf, pinState, readTool } from '../src/connectors/pins.js';
 async function mcpServer() {
   const state = {
     description: 'Looks up the opening hours of a place by its name.',
+    failList: false,
     calls: /** @type {any[]} */ ([]),
     sessions: 0,
     methods: /** @type {string[]} */ ([]),
@@ -41,6 +42,11 @@ async function mcpServer() {
       }
       if (req.headers['mcp-session-id'] !== `s-${state.sessions}`) {
         res.writeHead(400);
+        res.end();
+        return;
+      }
+      if (msg.method === 'tools/list' && state.failList) {
+        res.writeHead(500);
         res.end();
         return;
       }
@@ -187,4 +193,35 @@ test('a denied call becomes an error result the model answers without', async (t
   assert.equal(done.answer.text, 'I could not look that up.');
   assert.deepEqual(done.answer.tools, [{ tool: 'hours.opening_hours', outcome: 'tool_denied' }]);
   assert.equal(tools.state.calls.length, 0, 'a denied call never reaches the server');
+});
+
+test('a call fails closed when the list right before it cannot be read', async (t) => {
+  const tools = await mcpServer();
+  const { dir, cleanup } = tempDir();
+  const { companion, hub } = await startModules(dir, { only: ['connectors'], raw: { modules: { connectors: { servers: [{ id: 'hours', url: tools.url }] } } } });
+  t.after(async () => {
+    await companion.stop();
+    await tools.close();
+    cleanup();
+  });
+  const owner = await client(companion);
+  const tool = await eventually(async () => (await owner.get('/v1/connectors')).json().servers[0].tools[0]);
+  await owner.post('/v1/connectors/hours/approve', { tool: 'opening_hours', pin: tool.pin, calls: 'allow' });
+  const service = /** @type {import('../src/connectors/module.js').ToolsService} */ (hub.get('tools'));
+  const ask = () => service.call('hours.opening_hours', { place: 'the museum' }, { tainted: false });
+  assert.equal((await ask()).text, 'the museum opens at 08:00 and closes at 18:30.');
+  assert.equal(service.offer('personal').length, 1);
+
+  // The list fails right before the next call: the approved pin of the earlier list counts for nothing.
+  tools.state.failList = true;
+  await assert.rejects(ask(), { code: 'connector_down' });
+  assert.equal(tools.state.calls.length, 1, 'no call reached the server');
+  assert.equal((await owner.get('/v1/connectors')).json().servers[0].state, 'down');
+  assert.deepEqual(service.offer('personal'), [], 'nor is the tool offered');
+
+  tools.state.failList = false;
+  assert.match((await ask()).text, /^the museum opens/);
+  assert.equal(tools.state.calls.length, 2);
+  const outcomes = /** @type {any[]} */ (companion.installation.store.db.prepare("SELECT details FROM audit_log WHERE kind = 'connectors.call' ORDER BY seq").all()).map((r) => JSON.parse(r.details));
+  assert.deepEqual(outcomes, [{ outcome: 'ok', approval: 'allow' }, { outcome: 'server_down', approval: 'none' }, { outcome: 'ok', approval: 'allow' }]);
 });
