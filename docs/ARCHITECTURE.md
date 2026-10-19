@@ -459,523 +459,637 @@ flowchart LR
 
 <sub>Sources: [`tools/library-publisher/publisher/cli_supabase.py`](../tools/library-publisher/publisher/cli_supabase.py), [`tools/library-publisher/publisher/config.py`](../tools/library-publisher/publisher/config.py), [`tools/library-publisher/publisher/supabase_service.py`](../tools/library-publisher/publisher/supabase_service.py), [`tools/library-publisher/publisher/model_files.py`](../tools/library-publisher/publisher/model_files.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
 
-### Frontend import graph (1 of 4): main.js and its application imports
+### Frontend import graph (1 of 4): main.js and the first load
 
-main.js is the only main-thread entry point and has 20 imports: the 15 application modules drawn here (with the names it imports from each) and 5 infrastructure modules (dom, i18n, icons, state, supabase) drawn in frontend-modules-infrastructure. Application modules are every module reachable from main.js except the 10 infrastructure modules drawn in frontend-modules-infrastructure; there are 45 of them, including the ten core/ modules the page reaches, rag/bm25.js and rag/chunker.js, which core/ reuses from the ingestion worker, and models/wasm-catalog.js, which the processor (WASM) worker shares. The 121 imports between them are split across four diagrams: the 15 made by main.js here, the 31 made by settings.js, model-picker.js, models/choices.js, graph.js, ingest.js, bench/bench-ui.js and voice.js in frontend-modules-views, the 38 made by chat.js, engine-ui.js, messages.js, prompts.js, providers.js, rag/citations.js, webgpu/engine.js, webgpu/models.js and wasm/client.js in frontend-modules-chat, and the 37 made by demo.js, synthesizer.js, retrieval.js, rag/grounding-view.js, rag/receipts.js and the core/ modules in frontend-modules-trust. An import and a re-export of the same module count as one edge. The import graph has no cycles.
+The numbers in this part come from esbuild's metafile of the production build (`STARPI_META_OUT=<file> npm run build`), not from reading imports by hand. The build bundles 261 inputs under `src/js/` (258 modules and three JSON files: the model catalog snapshot, the role candidates and the model lock), joined by 1,001 static imports and 113 lazy `import()` calls between them; the static graph has no cycles. main.js is the only main-thread entry and imports 27 modules directly. Its static closure, the first load, is 92 modules: the shell, the chat composer and its hooks, the 13 feature modules (each registers what it renders and loads its views later), the model pickers and the device probe, the workspace client, the source check with the English and German language packs, the receipt dialog and the voice entry. Everything else loads on demand: the chat thread and its runner, the AI layer's router, adapters and transports, the conversation store and its 2.x migration, settings views, research, Live, the companion view, the Supabase library, the rendering extras, pdf.js and the French, Spanish, Italian and Turkish language packs. The German pack stays in the first load on purpose: verdicts and the verification of receipts read every pack that a receipt may have been checked with, and `STOPWORDS` is a public export of `@starpi/core`. Every edge below is a static import of main.js; the labels name what main.js calls.
 
 <!-- diagram: frontend-modules-overview -->
 ```mermaid
 flowchart LR
-    main["main.js<br/>boot(), registerServiceWorker()"]
-
-    subgraph views["Feature views: their imports in frontend-modules-views"]
+    subgraph g0["Shell: frontend-modules-infrastructure and the views"]
+        ui["ui.js<br/>switchTab, onTabOpen, renderConnection,<br/>renderLanguageSwitch, initChatAside"]
+        ui__sidebar["ui/sidebar.js<br/>initSidebar, setNavVisible"]
+        ui__theme["ui/theme.js<br/>initTheme"]
+        ui__kit["ui/kit.js<br/>toast"]
+        dialog["dialog.js<br/>openDialog, closeDialog"]
+        messages["messages.js<br/>initMessages"]
+    end
+    subgraph g1["Chat and model choice: frontend-modules-chat"]
+        chat["chat.js<br/>initChat, restoreHistory"]
+        chat_store["chat-store.js<br/>refreshSyncStatus"]
+        providers["providers.js<br/>initProviders: the AI layer when idle"]
         settings["settings.js<br/>initSettings, changeEngine,<br/>renderPrivacyNotice"]
-        picker["model-picker.js<br/>initModelPicker"]
+        model_picker["model-picker.js<br/>initModelPicker"]
+        engine_ui["engine-ui.js<br/>initEngineUi"]
+        rag__citations["rag/citations.js<br/>initCitations"]
+    end
+    subgraph g2["Feature modules: frontend-modules-views"]
+        features__index["features/index.js<br/>mountFeatures: 13 feature modules"]
+    end
+    subgraph g3["Tabs and views"]
         library["library.js<br/>initLibrary, loadDocuments"]
-        graphview["graph-tab.js<br/>initGraphTab (loads graph.js<br/>when the tab first opens)"]
+        graph_tab["graph-tab.js<br/>initGraphTab, graph.js on first open"]
         ingest["ingest.js<br/>initIngest"]
         voice["voice.js<br/>initVoice"]
-        benchui["bench/bench-ui.js<br/>initBenchUi, refreshDiagnostics"]
+        bench__bench_ui["bench/bench-ui.js<br/>initBenchUi, refreshDiagnostics"]
     end
-
-    subgraph core["Chat and UI modules: their imports in frontend-modules-chat"]
-        chat["chat.js<br/>initChat, restoreHistory"]
-        chatstore["chat-store.js<br/>refreshSyncStatus"]
-        engineui["engine-ui.js<br/>initEngineUi"]
-        messages["messages.js<br/>initMessages"]
-        ui["ui.js<br/>switchTab, toggleSidebar, syncSidebarAccess,<br/>onTabOpen, renderConnection,<br/>detectAndDisplayDevice"]
-        citations["rag/citations.js<br/>initCitations"]
-    end
-
-    subgraph trust["Demo and receipts: their imports in frontend-modules-trust"]
+    subgraph g4["Trust: frontend-modules-trust"]
         demo["demo.js<br/>initDemo"]
-        receipts["rag/receipts.js<br/>initReceipts"]
+        rag__receipts["rag/receipts.js<br/>initReceipts"]
+        core__lang__index["core/lang/index.js<br/>loadShippedLanguages: fr, es, it, tr<br/>after the first paint"]
     end
+    subgraph g5["Infrastructure"]
+        dom["dom.js<br/>installDelegation, onAction, onChange"]
+        i18n__index["i18n/index.js<br/>initI18n, setLocale, onLocaleChange"]
+        icons["icons.js<br/>refreshIcons"]
+        state["state.js<br/>getAssistant"]
+        supabase["supabase.js<br/>connect, onConnectionChange"]
+    end
+    main["main.js<br/>boot(), registerServiceWorker()"]
 
-    main --> settings
-    main --> picker
-    main --> library
-    main --> graphview
-    main --> ingest
-    main --> voice
-    main --> benchui
+    main --> bench__bench_ui
+    main --> chat_store
     main --> chat
-    main --> chatstore
-    main --> engineui
-    main --> messages
-    main --> ui
-    main --> citations
     main --> demo
-    main --> receipts
+    main --> core__lang__index
+    main --> dialog
+    main --> dom
+    main --> engine_ui
+    main --> features__index
+    main --> graph_tab
+    main --> i18n__index
+    main --> icons
+    main --> ingest
+    main --> library
+    main --> messages
+    main --> model_picker
+    main --> rag__citations
+    main --> rag__receipts
+    main --> providers
+    main --> settings
+    main --> state
+    main --> supabase
+    main --> ui
+    main --> ui__kit
+    main --> ui__sidebar
+    main --> ui__theme
+    main --> voice
 ```
 
-<sub>Sources: [`src/js/main.js`](../src/js/main.js)</sub>
+<sub>Sources: [`src/js/main.js`](../src/js/main.js), [`scripts/build.mjs`](../scripts/build.mjs)</sub>
 
-### Frontend import graph (2 of 4): imports made by the feature views and the model pickers
+### Frontend import graph (2 of 4): the feature modules and what they load when mounted
 
-Every import between application modules made by settings.js, model-picker.js, models/choices.js, graph.js, ingest.js, bench/bench-ui.js and voice.js (31 of the 121); library.js imports only infrastructure modules (dialog, dom, i18n, render, supabase). Views that call into chat.js use narrow imports (graph.js submitChat, ingest.js invalidateKnownTitles, bench-ui.js isChatBusy, settings.js isChatBusy and resetConversation), and chat.js imports no view back. settings.js deletes the chat history through deleteChatHistory in chat-store.js and refuses to start while isChatBusy() reports an answer still being written (settings.delete_history_busy), graph.js and ingest.js reuse describeDataError from library.js, settings.js and bench-ui.js drive the on-device engine both through engine-ui.js and directly through webgpu/engine.js, and voice.js reports speech errors with appendNotice from messages.js. model-picker.js fills both assistant pickers from assistantGroups in models/choices.js once getDeviceProbe() and getNvidiaCatalog() have answered, and settings.js applies a picked value through parseAssistantChoice, checked against the NVIDIA_MODELS allowlist, and then calls syncPickerValue; model-picker.js imports neither settings.js nor chat.js, because settings.js imports it. models/choices.js is pure: it reads the three model catalogs and recommendModels from models/device.js and returns i18n keys, never translated text.
+features/index.js imports the 13 feature modules for their registrations, and main.js mounts them into the shell's 18 mount points (features/registry.js `MOUNT_POINTS`) once at boot; a failing mount is logged and does not stop the others. The feature modules are small and in the first load. What they render or run, the views, the conversation list, the canvas, compare and council panels, research jobs, the sync engine, the Live sheet, the companion view and the trust and tools settings, is imported lazily (dashed) when the feature mounts or is first used. They reach the chat only through its seams (chat/hooks.js, voice/hooks.js), never by editing the thread. The edges are every import of the feature modules except the infrastructure modules (i18n, dom, ui/kit, icons, config, storage, state, store/schema), which frontend-modules-infrastructure counts; the labels name the mount points each one fills.
 
 <!-- diagram: frontend-modules-views -->
 ```mermaid
 flowchart LR
-    subgraph views["Feature views and the model pickers"]
-        settings["settings.js"]
-        picker["model-picker.js"]
-        graphview["graph.js"]
-        ingest["ingest.js"]
-        benchui["bench/bench-ui.js"]
-        voice["voice.js"]
+    subgraph g0["Feature modules, in the first load (features/index.js)"]
+        features__canvas["features/canvas.js<br/>chat-aside-canvas, chat-aside-compare"]
+        features__companion["features/companion.js<br/>tab-companion, companionSettings"]
+        features__conversations["features/conversations.js<br/>chat-sidebar"]
+        features__live["features/live.js<br/>liveSheet, composerExtras"]
+        features__memory["features/memory.js<br/>memorySettings, chatToolbarExtras"]
+        features__providers["features/providers.js<br/>providerSettings"]
+        features__research["features/research.js<br/>tab-research, chat-aside-research"]
+        features__sources["features/sources.js<br/>chat-aside-sources, empty in 3.0"]
+        features__sync["features/sync.js<br/>syncSettings"]
+        features__tools["features/tools.js<br/>toolSettings"]
+        features__trust["features/trust.js<br/>trustSettings"]
+        features__voice["features/voice.js<br/>voiceSettings, composerExtras"]
+        features__workspace["features/workspace.js<br/>workspaceSettings"]
+    end
+    subgraph g1["Seams they register with"]
+        features__registry["features/registry.js<br/>registerFeature, MOUNT_POINTS"]
+        chat__hooks["chat/hooks.js"]
+        voice__hooks["voice/hooks.js"]
+        code_blocks["code-blocks.js"]
+        ui["ui.js"]
+        chat_store["chat-store.js"]
+        ai__keys["ai/keys.js"]
+        rag__workspace["rag/workspace.js"]
+        rag__embed_client["rag/embed-client.js"]
+        store__quota["store/quota.js"]
+        bench__diagnostics["bench/diagnostics.js"]
+    end
+    subgraph g2["Loaded when a feature mounts or is first used"]
+        chat__canvas["chat/canvas.js"]
+        chat__compare["chat/compare.js"]
+        chat__council_view["chat/council-view.js"]
+        chat__thread["chat/thread.js"]
+        companion__pair["companion/pair.js"]
+        companion__tier["companion/tier.js"]
+        companion__view["companion/view.js"]
+        chat__sidebar["chat/sidebar.js"]
+        live__sheet["live/sheet.js"]
+        chat__context["chat/context.js"]
+        settings__memory_view["settings/memory-view.js"]
+        ai__transport_select["ai/transport-select.js"]
+        settings__providers_view["settings/providers-view.js"]
+        research__jobs["research/jobs.js"]
+        research__deep["research/deep.js"]
+        research__runtime["research/runtime.js"]
+        research__view["research/view.js"]
+        sync__service["sync/service.js"]
+        sync__settings_view["sync/settings-view.js"]
+        supabase["supabase.js"]
+        chat__tools["chat/tools.js"]
+        ai__mcp__view["ai/mcp/view.js"]
+        trust__settings_view["trust/settings-view.js"]
+        trust__model_integrity_view["trust/model-integrity-view.js"]
+        voice__settings_view["voice/settings-view.js"]
     end
 
-    chat["chat.js"]
-    chatstore["chat-store.js"]
-    library["library.js"]
-    engineui["engine-ui.js"]
-    ui["ui.js"]
-    messages["messages.js"]
-    prompts["prompts.js"]
-    providers["providers.js"]
-    engine["webgpu/engine.js"]
-    models["webgpu/models.js"]
-    diag["bench/diagnostics.js"]
-    citations["rag/citations.js"]
-    workspace["rag/workspace.js"]
-    retrieval["retrieval.js"]
-
-    subgraph catalogs["Model choice, pure (models/)"]
-        choices["models/choices.js"]
-        device["models/device.js"]
-        nvcat["models/nvidia-catalog.js"]
-        wasmcat["models/wasm-catalog.js"]
-    end
-
-    graphview -->|"submitChat"| chat
-    ingest -->|"invalidateKnownTitles"| chat
-    benchui -->|"isChatBusy"| chat
-    settings -->|"isChatBusy,<br/>resetConversation"| chat
-    settings -->|"deleteChatHistory"| chatstore
-    graphview -->|"describeDataError"| library
-    ingest -->|"describeDataError"| library
-    graphview -->|"switchTab"| ui
-    settings -->|"setAssistantStatus,<br/>setEngineDot"| ui
-    settings -->|"startLocalEngine,<br/>renderEngineState"| engineui
-    benchui -->|"startLocalEngine"| engineui
-    settings -->|"* as engine"| engine
-    benchui -->|"* as engine"| engine
-    settings -->|"readinessPrompt"| prompts
-    settings -->|"callGemini, callOpenRouter,<br/>hasGeminiKey, hasOpenRouterKey,<br/>normalizeServerUrl, probeLocalServer,<br/>getNvidiaCatalog"| providers
-    settings -->|"currentPickerValue,<br/>syncPickerValue"| picker
-    settings -->|"parseAssistantChoice"| choices
-    settings -->|"NVIDIA_MODELS"| nvcat
-    picker -->|"assistantGroups, choiceValue,<br/>GROUP_KEYS, nvidiaStatus, optionParts"| choices
-    picker -->|"hardwareBadges"| device
-    picker -->|"getNvidiaCatalog,<br/>onNvidiaCatalog"| providers
-    picker -->|"getDeviceProbe"| engine
-    choices -->|"MODEL_CATALOG,<br/>normalizePreference"| models
-    choices -->|"recommendModels"| device
-    choices -->|"NVIDIA_DEFAULT_MODEL,<br/>NVIDIA_MODELS"| nvcat
-    choices -->|"WASM_CATALOG"| wasmcat
-    benchui -->|"computeBenchmarkMetrics,<br/>formatBytes, BYTE_LIMITS"| diag
-    ingest -->|"registerCitations,<br/>citationButton"| citations
-    ingest -->|"addToWorkspace, searchWorkspace,<br/>listWorkspace, onWorkspaceChange,<br/>getDocumentText, removeFromWorkspace,<br/>clearWorkspace"| workspace
-    ingest -->|"assignCitations"| retrieval
-    voice -->|"appendNotice"| messages
+    features__canvas --> code_blocks
+    features__canvas --> chat__hooks
+    features__canvas --> ui
+    features__canvas --> features__registry
+    features__canvas -.-> chat__canvas
+    features__canvas -.-> chat__compare
+    features__canvas -.-> chat__council_view
+    features__canvas -.-> chat__thread
+    features__companion --> chat__hooks
+    features__companion --> features__registry
+    features__companion -.-> companion__pair
+    features__companion -.-> companion__tier
+    features__companion -.-> companion__view
+    features__conversations --> chat_store
+    features__conversations --> features__registry
+    features__conversations -.-> chat__sidebar
+    features__live --> features__registry
+    features__live -.-> live__sheet
+    features__memory --> chat__hooks
+    features__memory --> features__registry
+    features__memory -.-> chat__context
+    features__memory -.-> settings__memory_view
+    features__providers --> ai__keys
+    features__providers --> features__registry
+    features__providers -.-> ai__transport_select
+    features__providers -.-> settings__providers_view
+    features__research --> features__registry
+    features__research -.-> research__jobs
+    features__research -.-> research__deep
+    features__research -.-> research__runtime
+    features__research -.-> research__view
+    features__sources --> features__registry
+    features__sync --> features__registry
+    features__sync -.-> sync__service
+    features__sync -.-> sync__settings_view
+    features__sync -.-> supabase
+    features__tools --> features__registry
+    features__tools -.-> chat__tools
+    features__tools -.-> ai__mcp__view
+    features__tools -.-> ai__keys
+    features__trust --> features__registry
+    features__trust -.-> trust__settings_view
+    features__trust -.-> trust__model_integrity_view
+    features__voice --> features__registry
+    features__voice --> voice__hooks
+    features__voice -.-> voice__settings_view
+    features__workspace --> bench__diagnostics
+    features__workspace --> rag__embed_client
+    features__workspace --> rag__workspace
+    features__workspace --> store__quota
+    features__workspace --> features__registry
 ```
 
-<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/models/device.js`](../src/js/models/device.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/voice.js`](../src/js/voice.js), [`src/js/library.js`](../src/js/library.js)</sub>
+<sub>Sources: [`src/js/features/index.js`](../src/js/features/index.js), [`src/js/features/registry.js`](../src/js/features/registry.js), [`src/js/features/canvas.js`](../src/js/features/canvas.js), [`src/js/features/companion.js`](../src/js/features/companion.js), [`src/js/features/conversations.js`](../src/js/features/conversations.js), [`src/js/features/live.js`](../src/js/features/live.js), [`src/js/features/memory.js`](../src/js/features/memory.js), [`src/js/features/providers.js`](../src/js/features/providers.js), [`src/js/features/research.js`](../src/js/features/research.js), [`src/js/features/sources.js`](../src/js/features/sources.js), [`src/js/features/sync.js`](../src/js/features/sync.js), [`src/js/features/tools.js`](../src/js/features/tools.js), [`src/js/features/trust.js`](../src/js/features/trust.js), [`src/js/features/voice.js`](../src/js/features/voice.js), [`src/js/features/workspace.js`](../src/js/features/workspace.js)</sub>
 
-### Frontend import graph (3 of 4): chat pipeline, workspace client and on-device engine
+### Frontend import graph (3 of 4): chat thread and AI layer
 
-The 38 imports between application modules made by chat.js, engine-ui.js, messages.js, prompts.js, providers.js, rag/citations.js, webgpu/engine.js, webgpu/models.js and wasm/client.js. chat.js is the hub: 18 of its 26 imports are drawn here, and the other 8 go to infrastructure (config, dom, i18n, icons, render, signals, state, supabase). chat-store.js, chat-stream.js, chat-export.js, code-blocks.js, ui.js, rag/workspace.js, models/device.js, models/nvidia-catalog.js and models/wasm-catalog.js import no other application module. chat-stream.js holds the pure SSE parser and stream assembler that callNvidia in providers.js uses and the splitReasoning that chat.js and messages.js use; models/nvidia-catalog.js is the one NVIDIA allowlist with the proxy's limits and timings, which prompts.js (fitNvidiaMessages), providers.js and chat.js read and the Vercel functions import too (section 13). messages.js adds the copy buttons of code blocks through code-blocks.js, and chat.js writes the chat export through chat-export.js. After an answer in source mode is rendered, chat.js runs the source check through applyGrounding in rag/grounding-view.js, with contextCoverage from core/grounding.js telling which part of each excerpt reached the model, and keeps a receipt draft through rag/receipts.js, passing for a partly delivered excerpt how many of its leading characters reached the model (deliveredChars); the imports of those modules, and of synthesizer.js and retrieval.js, are in frontend-modules-trust. rag/citations.js takes CITATION_PATTERN and citationLabel from retrieval.js, which re-exports them from core/labels.js, and reads source text back from the workspace worker through getChunkContext. webgpu/engine.js runs a WebGPU preset in its WebLLM worker or a processor (WASM) model through WasmEngineClient from wasm/client.js, and both it and webgpu/models.js read the processor catalog in models/wasm-catalog.js.
+chat.js is in the first load and imports chat/thread.js lazily, so the thread (97 KiB) and the AI layer behind it load after the first paint. The thread imports the runner, the conversation store and tree, the composer and attachments, the answer labels, Auto's route decision (ai/hybrid.js) and the context packs (ai/context-pack.js), the retrieval and citation modules, the source check's view and receipts, the web check and the on-device engine; it reaches the router, the OCR hook, the benchmark rates, the sentence gate and the model choices lazily. The runner installs the AI layer (adapters, the transport resolver, the router's world) and asks ai/index.js complete(), which drives one adapter over one transport (ai/stream.js, ai/transport.js). providers.js keeps the state of keys, pools, the own server and the companion, and loads the runner when the layer is first needed. The edges are every import of chat.js, chat/thread.js, chat/runner.js, providers.js, ai/index.js and ai/router.js, without the infrastructure modules; section 14 describes the layer itself.
 
 <!-- diagram: frontend-modules-chat -->
 ```mermaid
-flowchart TD
-    chat["chat.js<br/>submitChat, answerGrounded, answerFree,<br/>retrieve, shareableHistory, answerWith* helpers"]
-
-    subgraph pipeline["Chat pipeline"]
-        chatstore["chat-store.js<br/>persistMessage, loadCurrentSession, deleteSession"]
-        chatexport["chat-export.js<br/>chatToJson, chatToMarkdown, exportFileName"]
-        prompts["prompts.js<br/>buildSystemPrompt, buildChatPrompt,<br/>historyWindow, fitNvidiaMessages"]
-        providers["providers.js<br/>callGemini, callOpenRouter, callLocalServer,<br/>getNvidiaCatalog, callNvidia"]
-        chatstream["chat-stream.js<br/>createSseParser, createChatStreamAssembler,<br/>splitReasoning, splitStreamingText"]
-        synth["synthesizer.js<br/>synthesizeAnswer, describeTrace,<br/>describeChatTrace, isGreeting"]
-        retrieval["retrieval.js<br/>rankHitsLocally, mergeHits,<br/>assignCitations, buildContext"]
+flowchart LR
+    subgraph g0["Chat thread"]
+        chat["chat.js"]
+        chat__thread["chat/thread.js"]
+        chat__runner["chat/runner.js"]
+        chat__hooks["chat/hooks.js"]
+        chat__store["chat/store.js"]
+        chat__tree["chat/tree.js"]
+        chat__composer["chat/composer.js"]
+        chat__actions["chat/actions.js"]
+        chat__attachments["chat/attachments.js"]
+        chat__answer_labels["chat/answer-labels.js"]
+        chat__image_view["chat/image-view.js"]
+        chat__mode_control["chat/mode-control.js"]
+        chat_export["chat-export.js"]
+        chat_store["chat-store.js"]
+        chat_stream["chat-stream.js"]
+    end
+    subgraph g1["AI layer"]
+        providers["providers.js"]
+        ai__index["ai/index.js"]
+        ai__router["ai/router.js"]
+        ai__purposes["ai/purposes.js"]
+        ai__roles["ai/roles.js"]
+        ai__wheel["ai/wheel.js"]
+        ai__contract["ai/contract.js"]
+        ai__stream["ai/stream.js"]
+        ai__sse["ai/sse.js"]
+        ai__stop_reason["ai/stop-reason.js"]
+        ai__transport["ai/transport.js"]
+        ai__transport_select["ai/transport-select.js"]
+        ai__errors["ai/errors.js"]
+        ai__keys["ai/keys.js"]
+        ai__thinking["ai/thinking.js"]
+        ai__model_selection["ai/model-selection.js"]
+        ai__health_client["ai/health-client.js"]
+        ai__hybrid["ai/hybrid.js"]
+        ai__context_pack["ai/context-pack.js"]
+        ai__catalog__models["ai/catalog/models.js"]
+        ai__catalog__pools["ai/catalog/pools.js"]
+        ai__catalog__providers["ai/catalog/providers.js"]
+        ai__adapters__index["ai/adapters/index.js"]
+        ai__adapters__companion["ai/adapters/companion.js"]
+        ai__quirks__local["ai/quirks/local.js"]
+    end
+    subgraph g2["Retrieval, prompts and answers"]
+        retrieval["retrieval.js"]
+        synthesizer["synthesizer.js"]
+        prompts["prompts.js"]
+        rag__citations["rag/citations.js"]
+        rag__workspace["rag/workspace.js"]
+        rag__embed_client["rag/embed-client.js"]
+        rag__web_check["rag/web-check.js"]
+        rag__ocr_hook["rag/ocr-hook.js"]
+        supabase["supabase.js"]
+    end
+    subgraph g3["Trust"]
+        core__grounding["core/grounding.js"]
+        core__gate["core/gate.js"]
+        rag__grounding_view["rag/grounding-view.js"]
+        rag__receipts["rag/receipts.js"]
+    end
+    subgraph g4["Engines and models"]
+        webgpu__engine["webgpu/engine.js"]
+        webgpu__models["webgpu/models.js"]
+        engine_ui["engine-ui.js"]
+        models__bench_rates["models/bench-rates.js"]
+        models__choices["models/choices.js"]
+        models__nvidia_catalog["models/nvidia-catalog.js"]
+        models__wasm_catalog["models/wasm-catalog.js"]
+    end
+    subgraph g5["Features the thread calls"]
+        features__voice["features/voice.js"]
+        features__research["features/research.js"]
     end
 
-    subgraph rendering["Rendering and engine UI"]
-        engineui["engine-ui.js<br/>startLocalEngine, renderEngineState"]
-        messages["messages.js<br/>appendMessage, createStreamingMessage,<br/>markFreeAnswer"]
-        codeblocks["code-blocks.js<br/>decorateCodeBlocks, initCodeBlocks"]
-        ui["ui.js<br/>setAssistantStatus, setEngineDot"]
-    end
-
-    subgraph trust["Source check and receipts"]
-        groundview["rag/grounding-view.js<br/>applyGrounding, clearGroundingHighlights"]
-        receipts["rag/receipts.js<br/>storeReceiptDraft, receiptButton"]
-        coregrounding["core/grounding.js<br/>contextCoverage"]
-        coresentences["core/sentences.js<br/>safeSlice"]
-    end
-
-    subgraph ragmain["On-device workspace, main thread (rag/)"]
-        citations["rag/citations.js<br/>registerCitations, linkifyCitations"]
-        workspace["rag/workspace.js<br/>searchWorkspace, firstChunks,<br/>getDocumentText, getChunkContext"]
-    end
-
-    subgraph gpu["On-device engine (webgpu/, wasm/) and catalogs (models/)"]
-        engine["webgpu/engine.js<br/>loadModel, generate, isReady"]
-        models["webgpu/models.js<br/>chooseModel, budgetPrompt"]
-        wasmclient["wasm/client.js<br/>WasmEngineClient, wasmCacheStatus"]
-        wasmcat["models/wasm-catalog.js<br/>WASM_CATALOG, WASM_CACHE_NAME"]
-        nvcat["models/nvidia-catalog.js<br/>NVIDIA_LIMITS, NVIDIA_CLIENT_TIMEOUTS"]
-        device["models/device.js<br/>recommendModels"]
-    end
-
-    chat --> chatstore
-    chat -->|"chatToJson, chatToMarkdown,<br/>exportFileName"| chatexport
-    chat --> prompts
+    chat --> chat_store
+    chat --> chat__actions
+    chat --> chat__composer
+    chat --> chat__hooks
+    chat --> chat__mode_control
+    chat --> features__research
+    chat --> features__voice
     chat --> providers
-    chat -->|"splitReasoning"| chatstream
-    chat --> synth
-    chat --> retrieval
-    chat -->|"startLocalEngine"| engineui
-    chat --> messages
-    chat -->|"setAssistantStatus"| ui
-    chat -->|"applyGrounding"| groundview
-    chat -->|"storeReceiptDraft,<br/>receiptButton"| receipts
-    chat -->|"contextCoverage"| coregrounding
-    chat -->|"registerCitations"| citations
-    chat -->|"searchWorkspace, firstChunks,<br/>getDocumentText, addToWorkspace,<br/>listWorkspace"| workspace
-    chat -->|"* as engine"| engine
-    chat -->|"budgetPrompt"| models
-    chat -->|"findNvidiaModel, NVIDIA_LIMITS"| nvcat
-
-    engineui -->|"appendNotice"| messages
-    engineui -->|"setEngineDot"| ui
-    engineui -->|"* as engine"| engine
-    engineui -->|"WASM_RUNTIME_MB"| wasmcat
-
-    messages -->|"linkifyCitations,<br/>citationSources"| citations
-    messages -->|"clearGroundingHighlights"| groundview
-    messages -->|"splitReasoning,<br/>splitStreamingText"| chatstream
-    messages -->|"decorateCodeBlocks,<br/>initCodeBlocks"| codeblocks
-    prompts -->|"safeSlice"| coresentences
-    prompts -->|"NVIDIA_LIMITS"| nvcat
-    providers -->|"createSseParser,<br/>createChatStreamAssembler,<br/>splitStreamingText"| chatstream
-    providers -->|"findNvidiaModel, NVIDIA_LIMITS,<br/>NVIDIA_CLIENT_TIMEOUTS"| nvcat
-    citations -->|"CITATION_PATTERN, citationLabel,<br/>re-exported from core/labels.js"| retrieval
-    citations -->|"getChunkContext"| workspace
-    engine -->|"ALL_MODEL_IDS, chooseModel,<br/>detectMobile"| models
-    engine -->|"WasmEngineClient,<br/>wasmCacheStatus"| wasmclient
-    engine -->|"WASM_CACHE_NAME,<br/>WASM_RUNTIME_MB"| wasmcat
-    models -->|"recommendModels,<br/>re-exports detectMobile"| device
-    models -->|"WASM_CATALOG"| wasmcat
-    wasmclient -->|"WASM_CACHE_NAME, wasmFileUrl"| wasmcat
+    chat -.-> chat__thread
+    chat -.-> chat_export
+    chat__thread --> chat_store
+    chat__thread --> chat_stream
+    chat__thread --> core__grounding
+    chat__thread --> engine_ui
+    chat__thread --> providers
+    chat__thread --> prompts
+    chat__thread --> rag__citations
+    chat__thread --> rag__embed_client
+    chat__thread --> rag__grounding_view
+    chat__thread --> rag__receipts
+    chat__thread --> rag__web_check
+    chat__thread --> rag__workspace
+    chat__thread --> retrieval
+    chat__thread --> supabase
+    chat__thread --> synthesizer
+    chat__thread --> webgpu__engine
+    chat__thread --> webgpu__models
+    chat__thread --> ai__thinking
+    chat__thread --> ai__context_pack
+    chat__thread --> ai__hybrid
+    chat__thread --> ai__keys
+    chat__thread --> features__voice
+    chat__thread --> chat__actions
+    chat__thread --> ai__adapters__companion
+    chat__thread --> chat__answer_labels
+    chat__thread --> chat__attachments
+    chat__thread --> chat__composer
+    chat__thread --> chat__image_view
+    chat__thread --> chat__hooks
+    chat__thread --> chat__runner
+    chat__thread --> chat__tree
+    chat__thread -.-> chat__store
+    chat__thread -.-> ai__router
+    chat__thread -.-> rag__ocr_hook
+    chat__thread -.-> models__bench_rates
+    chat__thread -.-> core__gate
+    chat__thread -.-> models__choices
+    chat__runner --> ai__adapters__index
+    chat__runner --> ai__catalog__models
+    chat__runner --> ai__catalog__pools
+    chat__runner --> ai__catalog__providers
+    chat__runner --> ai__errors
+    chat__runner --> ai__health_client
+    chat__runner --> ai__index
+    chat__runner --> ai__keys
+    chat__runner --> ai__model_selection
+    chat__runner --> ai__quirks__local
+    chat__runner --> ai__router
+    chat__runner --> ai__transport_select
+    chat__runner --> ai__wheel
+    chat__runner --> providers
+    chat__runner --> webgpu__engine
+    providers --> ai__catalog__providers
+    providers --> ai__catalog__pools
+    providers --> ai__keys
+    providers --> models__nvidia_catalog
+    providers --> models__wasm_catalog
+    providers --> webgpu__models
+    providers -.-> chat__runner
+    ai__index --> ai__contract
+    ai__index --> ai__errors
+    ai__index --> ai__stream
+    ai__index --> ai__stop_reason
+    ai__index --> ai__sse
+    ai__index --> ai__transport
+    ai__router --> ai__catalog__models
+    ai__router --> ai__contract
+    ai__router --> ai__health_client
+    ai__router --> ai__index
+    ai__router --> ai__model_selection
+    ai__router --> ai__purposes
+    ai__router --> ai__roles
+    ai__router --> ai__thinking
+    ai__router --> ai__wheel
+    ai__router -.-> synthesizer
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat-export.js`](../src/js/chat-export.js), [`src/js/chat-stream.js`](../src/js/chat-stream.js), [`src/js/code-blocks.js`](../src/js/code-blocks.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/sentences.js`](../src/js/core/sentences.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`src/js/models/device.js`](../src/js/models/device.js)</sub>
+<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/chat/runner.js`](../src/js/chat/runner.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/ai/index.js`](../src/js/ai/index.js), [`src/js/ai/router.js`](../src/js/ai/router.js)</sub>
 
-### Frontend import graph (4 of 4): demo, source check, receipts and core/
+### Frontend import graph (4 of 4): source check, sentence gate, receipts and core/
 
-The remaining 37 of the 121 imports: every import made by demo.js, synthesizer.js, retrieval.js, rag/grounding-view.js, rag/receipts.js and the core/ modules. The ten core/ modules the page reaches import no infrastructure module and use no DOM, so the same code runs in the page, in the ingestion worker and in Node: core/labels.js holds the citation label format that retrieval.js re-exports, core/sentences.js the sentence splitting that synthesizer.js re-exports and safeSlice, with which retrieval.js shortens excerpts, prompts.js shortens history turns and fenced blocks (frontend-modules-chat) and core/grounding.js the passage it quotes in a reason without splitting a surrogate pair, core/facts.js and core/grounding.js the source check, core/polarity.js its version 2 negation check and core/binding.js its version 2 checks of names and values in another place, and core/receipt.js builds and verifies starpi.receipt/v2 receipts (and still reads v1), with core/merkle.js for the Merkle tree over the citations, core/signature.js for Ed25519 and ES256 signatures and core/hash.js for SHA-256, canonical JSON, hex and base64url. core/facts.js reuses tokenize and the stopword lists of rag/bm25.js, core/grounding.js reuses its English stopword list, core/polarity.js and core/binding.js its combined STOPWORDS, and core/receipt.js reuses chunkText and CHUNKER from rag/chunker.js, so both worker modules are part of the main-thread graph too. Outside this graph, rag/ingest.worker.js imports core/receipt.js to hash files and verify receipts and core/signature.js to import a signer's public key, scripts/verify-receipt.mjs imports core/receipt.js, core/signature.js and rag/parser.js in Node, scripts/ground.mjs imports core/document.js and core/sarif.js, the two core/ modules the page never loads, and packages/core/src/index.js re-exports nine of the twelve core/ modules (core/polarity.js, core/binding.js and core/hash.js come in through them, canonicalJson and sha256Hex through core/receipt.js), rag/parser.js, rag/chunker.js and rag/bm25.js as the @starpi/core package. demo.js fetches the sample files from /samples/ into the workspace and shows a fixed answer with one deliberate error through applyGrounding, in the language of the sample set that is complete in the workspace (the interface language first, and also when neither set is complete).
+The modules of core/ are the code `@starpi/core` publishes: the source check (labels, sentences, facts, negations, bindings, relations and grounding), the sentence gate (canonical text, release units, spoken digits and the gate), and receipts (hashes, the Merkle tree, signatures and the receipt format), plus the language packs. core/ imports nothing from the app except rag/bm25.js and rag/chunker.js, which the ingestion worker shares, so the same files run in the page, in the worker and in Node. core/lang/index.js imports the English and German packs statically and the four others with `import()`; loadShippedLanguages() (main.js, after the first paint) and a receipt that names one of them load the rest. The app modules on the left use core/: rag/grounding-view.js renders the source check, rag/receipts.js builds and verifies receipts (core/receipt.js and trust/signing.js lazily, when a receipt is opened), rag/web-check.js and chat/answer-labels.js check and label web and mixed answers, demo.js runs the prepared check, and retrieval.js and synthesizer.js label excerpts. The edges are every import among these 35 modules.
 
 <!-- diagram: frontend-modules-trust -->
 ```mermaid
 flowchart LR
-    subgraph users["Main-thread importers"]
-        demo["demo.js<br/>initDemo, loadSamples, showCheckDemo"]
-        synth["synthesizer.js<br/>synthesizeAnswer, isGreeting"]
-        retrieval["retrieval.js<br/>workspaceHit, assignCitations, tokenize"]
-        groundview["rag/grounding-view.js<br/>applyGrounding, blocksFromElement"]
-        receipts["rag/receipts.js<br/>initReceipts, storeReceiptDraft"]
+    subgraph g0["App modules"]
+        demo["demo.js"]
+        synthesizer["synthesizer.js"]
+        retrieval["retrieval.js"]
+        rag__citations["rag/citations.js"]
+        rag__grounding_view["rag/grounding-view.js"]
+        rag__receipts["rag/receipts.js"]
+        rag__web_check["rag/web-check.js"]
+        chat__answer_labels["chat/answer-labels.js"]
+        trust__signing["trust/signing.js"]
+    end
+    subgraph g1["core/: source check"]
+        core__labels["core/labels.js"]
+        core__sentences["core/sentences.js"]
+        core__facts["core/facts.js"]
+        core__entail["core/entail.js"]
+        core__binding["core/binding.js"]
+        core__polarity["core/polarity.js"]
+        core__relations["core/relations.js"]
+        core__grounding["core/grounding.js"]
+        core__number_words["core/number-words.js"]
+    end
+    subgraph g2["core/: sentence gate"]
+        core__canonical["core/canonical.js"]
+        core__release["core/release.js"]
+        core__spoken["core/spoken.js"]
+        core__gate["core/gate.js"]
+    end
+    subgraph g3["core/: receipts"]
+        core__hash["core/hash.js"]
+        core__merkle["core/merkle.js"]
+        core__signature["core/signature.js"]
+        core__receipt["core/receipt.js"]
+    end
+    subgraph g4["core/lang: en and de in the first load, fr, es, it, tr lazy"]
+        core__lang__index["core/lang/index.js"]
+        core__lang__en["core/lang/en.js"]
+        core__lang__de["core/lang/de.js"]
+        core__lang__fr["core/lang/fr.js"]
+        core__lang__es["core/lang/es.js"]
+        core__lang__it["core/lang/it.js"]
+        core__lang__tr["core/lang/tr.js"]
+    end
+    subgraph g5["Shared with the ingestion worker"]
+        rag__bm25["rag/bm25.js"]
+        rag__chunker["rag/chunker.js"]
     end
 
-    messages["messages.js"]
-    citations["rag/citations.js"]
-    workspace["rag/workspace.js"]
-    ui["ui.js"]
-
-    subgraph core["core/: pure modules, also used by the ingestion worker and Node"]
-        labels["core/labels.js<br/>citationLabel, CITATION_PATTERN,<br/>LOOSE_LABEL_PATTERN, parseLabel"]
-        sentences["core/sentences.js<br/>sentenceSpans, splitSentences, safeSlice"]
-        facts["core/facts.js<br/>extractFacts, indexSource, lookupFact"]
-        grounding["core/grounding.js<br/>groundAnswer, checkSentence,<br/>contextCoverage, GROUNDING"]
-        polarity["core/polarity.js<br/>negationInversion, sourceClauses"]
-        binding["core/binding.js<br/>misplacedName, misplacedValues,<br/>unitsOf, valuePassages"]
-        receipt["core/receipt.js<br/>buildReceipt, verifyReceipt,<br/>validateReceipt, signReceipt"]
-        merkle["core/merkle.js<br/>merkleTree, verifyMerkleProof"]
-        signature["core/signature.js<br/>signHead, verifyHead, importPublicKey"]
-        hash["core/hash.js<br/>sha256Hex, canonicalJson,<br/>hex and base64url"]
-    end
-
-    subgraph ragw["Worker modules reached through core/"]
-        bm25["rag/bm25.js<br/>tokenize, STOPWORDS,<br/>STOPWORDS_EN, STOPWORDS_DE"]
-        chunker["rag/chunker.js<br/>chunkText, CHUNKER"]
-    end
-
-    demo -->|"appendMessage, appendNotice"| messages
-    demo -->|"registerCitations"| citations
-    demo -->|"applyGrounding"| groundview
-    demo -->|"addToWorkspace, listWorkspace,<br/>searchWorkspace"| workspace
-    demo -->|"assignCitations, workspaceHit"| retrieval
-    demo -->|"switchTab"| ui
-    synth -->|"tokenize"| retrieval
-    synth -->|"sentenceSpans, splitSentences,<br/>re-exports splitSentences"| sentences
-    retrieval -->|"citationLabel, labelName,<br/>re-exports CITATION_PATTERN, citationLabel"| labels
-    retrieval -->|"safeSlice"| sentences
-    groundview -->|"groundAnswer, resolveLabel"| grounding
-    groundview -->|"LOOSE_LABEL_PATTERN"| labels
-    groundview -->|"citationButton"| citations
-    receipts -->|"buildReceipt, RECEIPT_LIMITS"| receipt
-    receipts -->|"verifyReceiptFiles"| workspace
-    facts -->|"tokenize, STOPWORDS_EN,<br/>STOPWORDS_DE"| bm25
-    facts -->|"LOOSE_LABEL_PATTERN"| labels
-    grounding -->|"extractFacts, indexSource, lookupFact,<br/>contentTokens, fold, guessLanguage,<br/>tokenMatches"| facts
-    grounding -->|"STOPWORDS_EN"| bm25
-    grounding -->|"CITATION_PATTERN, LOOSE_LABEL_PATTERN,<br/>parseLabel"| labels
-    grounding -->|"safeSlice, sentenceSpans"| sentences
-    grounding -->|"negationInversion, sourceClauses"| polarity
-    grounding -->|"misplacedName, misplacedValues,<br/>nameLexicon, unitsOf, valuePassages"| binding
-    polarity -->|"contentTokens, fold,<br/>indexSource, tokenMatches"| facts
-    polarity -->|"STOPWORDS"| bm25
-    polarity -->|"sentenceSpans"| sentences
-    binding -->|"contentTokens, extractFacts, fold,<br/>indexSource, lookupFact, tokenMatches"| facts
-    binding -->|"STOPWORDS"| bm25
-    binding -->|"sentenceSpans"| sentences
-    receipt -->|"chunkText, CHUNKER"| chunker
-    receipt -->|"guessLanguage, indexSource"| facts
-    receipt -->|"checkSentence, GROUNDING, GROUNDING_VERSIONS,<br/>REASON_CODES, REASON_CODES_V1, THRESHOLDS"| grounding
-    receipt -->|"canonicalJson, sha256Hex,<br/>re-exports both"| hash
-    receipt -->|"MERKLE_ALG, merkleLeafHash,<br/>merkleTree, verifyMerkleProof"| merkle
-    receipt -->|"signHead, SIGNATURE_ALGS, verifyHead"| signature
-    merkle -->|"fromHex, sha256Bytes, toHex"| hash
-    signature -->|"canonicalJson, fromBase64url,<br/>sha256Hex, toBase64url"| hash
+    demo --> rag__citations
+    demo --> rag__grounding_view
+    demo --> retrieval
+    synthesizer --> core__sentences
+    synthesizer --> retrieval
+    retrieval --> core__labels
+    retrieval --> core__sentences
+    rag__citations --> retrieval
+    rag__grounding_view --> core__entail
+    rag__grounding_view --> core__grounding
+    rag__grounding_view --> core__labels
+    rag__grounding_view --> rag__citations
+    rag__receipts --> core__grounding
+    rag__receipts -.-> core__receipt
+    rag__receipts -.-> trust__signing
+    rag__web_check --> core__gate
+    rag__web_check --> core__grounding
+    rag__web_check --> core__labels
+    chat__answer_labels --> core__grounding
+    chat__answer_labels --> rag__grounding_view
+    trust__signing --> core__receipt
+    trust__signing --> core__signature
+    core__sentences --> core__lang__index
+    core__facts --> rag__bm25
+    core__facts --> core__lang__index
+    core__facts --> core__labels
+    core__entail --> core__facts
+    core__entail --> core__sentences
+    core__binding --> core__facts
+    core__binding --> rag__bm25
+    core__binding --> core__sentences
+    core__polarity --> core__facts
+    core__polarity --> core__lang__index
+    core__polarity --> core__sentences
+    core__relations --> core__facts
+    core__relations --> core__sentences
+    core__grounding --> core__facts
+    core__grounding --> rag__bm25
+    core__grounding --> core__binding
+    core__grounding --> core__polarity
+    core__grounding --> core__labels
+    core__grounding --> core__relations
+    core__grounding --> core__sentences
+    core__canonical --> core__lang__index
+    core__number_words --> core__facts
+    core__number_words --> core__lang__index
+    core__release --> core__labels
+    core__release --> core__sentences
+    core__spoken --> core__facts
+    core__spoken --> core__lang__index
+    core__spoken --> core__number_words
+    core__gate --> core__canonical
+    core__gate --> core__facts
+    core__gate --> core__labels
+    core__gate --> core__lang__index
+    core__gate --> core__number_words
+    core__gate --> core__release
+    core__gate --> core__spoken
+    core__merkle --> core__hash
+    core__signature --> core__hash
+    core__receipt --> rag__chunker
+    core__receipt --> core__facts
+    core__receipt --> core__grounding
+    core__receipt --> core__hash
+    core__receipt --> core__merkle
+    core__receipt --> core__signature
+    core__lang__index --> core__lang__de
+    core__lang__index --> core__lang__en
+    core__lang__index -.-> core__lang__fr
+    core__lang__index -.-> core__lang__es
+    core__lang__index -.-> core__lang__it
+    core__lang__index -.-> core__lang__tr
+    rag__bm25 --> core__lang__index
 ```
 
-<sub>Sources: [`src/js/demo.js`](../src/js/demo.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/labels.js`](../src/js/core/labels.js), [`src/js/core/sentences.js`](../src/js/core/sentences.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/polarity.js`](../src/js/core/polarity.js), [`src/js/core/binding.js`](../src/js/core/binding.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/hash.js`](../src/js/core/hash.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`scripts/ground.mjs`](../scripts/ground.mjs), [`packages/core/src/index.js`](../packages/core/src/index.js)</sub>
+<sub>Sources: [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/gate.js`](../src/js/core/gate.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/lang/index.js`](../src/js/core/lang/index.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/web-check.js`](../src/js/rag/web-check.js), [`src/js/chat/answer-labels.js`](../src/js/chat/answer-labels.js), [`src/js/trust/signing.js`](../src/js/trust/signing.js), [`src/js/demo.js`](../src/js/demo.js), [`packages/core/src/index.js`](../packages/core/src/index.js)</sub>
 
 ### Shared infrastructure modules, their importers and npm packages
 
-Every import of config.js (9 importers), supabase.js (7), state.js (6), storage.js (4) and signals.js (3) is drawn. The most widely imported modules, i18n/index.js (21 importers), dom.js (18), icons.js (13) and render.js (8), show their importer count in the label instead of individual edges, and dialog.js, which gives the citation, document, entity and receipt dialogs their focus handling, names its 4 importers in its label. config.js, signals.js and storage.js import nothing; config.js takes APP_VERSION and the Supabase URL and key from build-time defines, state.js reaches into webgpu/models.js for normalizePreference and into models/nvidia-catalog.js for normalizeNvidiaModel, and supabase.js passes a fetch wrapped with withTimeoutSignal to createClient. The main thread's static npm dependencies (lucide, dompurify, marked) come in only through icons.js and render.js, while @supabase/supabase-js is a lazy entry of its own (supabase-lib.js) that supabase.js imports by URL on first use, with the 12000 ms Supabase timeout as its deadline (the dotted edge), and i18n/index.js bundles both locale JSON files via import attributes; @huggingface/transformers is bundled into the processor (WASM) worker only. JSDoc typedef imports are not counted.
+Nine modules are imported from almost everywhere, and the four diagrams above leave them out. The counts are static importers among the 261 inputs, by area. i18n/index.js also imports the English dictionaries (`src/locales/index.js`: the root file and every namespace in English, the fallback for every key); the other languages are lazy chunks of their own, one per root file and namespace. Only six npm packages reach the main thread: lucide (icons.js) and marked with DOMPurify (render.js) in the first load; @anthropic-ai/sdk (the Anthropic adapter), @mlc-ai/web-llm (webgpu/engine.js) and pdfjs-dist (rag/parser.js, inside the ingestion worker) by `import()`; @supabase/supabase-js through the lazy entry supabase-lib.js, and highlight.js, KaTeX and a second DOMPurify profile through the lazy entry render-extras.js. @huggingface/transformers runs only in the processor worker, and mermaid only in the sandboxed render frame (a classic bundle of public/render-frame.js, outside this graph).
 
 <!-- diagram: frontend-modules-infrastructure -->
 ```mermaid
 flowchart LR
-    subgraph importers["Importers of the narrow shared modules"]
-        main["main.js"]
-        chat["chat.js"]
-        chatstore["chat-store.js"]
-        demo["demo.js"]
-        graphview["graph.js"]
-        ingest["ingest.js"]
-        library["library.js"]
-        providers["providers.js"]
-        settings["settings.js"]
-        picker["model-picker.js"]
-        engineui["engine-ui.js"]
-        ui["ui.js"]
-        voice["voice.js"]
+    subgraph infra["Infrastructure modules: static importers by area"]
+        i18n["i18n/index.js: 66<br/>top level 17, chat 15, voice 7, features 4,<br/>rag 3, ai 3, ui 3, bench 3, others 11"]
+        dom["dom.js: 43<br/>top level 15, chat 8, voice 3, ui 3, bench 3, others 11"]
+        kit["ui/kit.js: 35<br/>chat 10, voice 5, top level 4, others 16"]
+        icons["icons.js: 32<br/>chat 12, top level 9, rag 3, features 3, others 5"]
+        config["config.js: 22<br/>top level 9, chat 6, others 7"]
+        storage["storage.js: 22<br/>ai 8, top level 3, others 11"]
+        schema["store/schema.js: 17<br/>chat 5, models 4, ai 2, rag 2, others 4"]
+        state["state.js: 16<br/>top level 7, chat 5, others 4"]
+        render["render.js: 14<br/>top level 7, chat 6, research 1"]
     end
-
-    subgraph infra["Infrastructure"]
-        state["state.js<br/>getMode, getModelPreference, getNvidiaModel,<br/>getChatMode, getLlmUrl"]
-        supabase["supabase.js<br/>connect, searchKnowledge,<br/>insertChatMessage, canSyncChats"]
-        storage["storage.js<br/>readLocal, writeLocal, readSecret"]
-        signals["signals.js<br/>withTimeoutSignal, isUserAbort"]
-        config["config.js<br/>APP_VERSION, LIMITS, STORAGE_KEYS,<br/>TIMEOUTS_MS, no imports"]
-        dom["dom.js<br/>byId, onAction, setHidden, downloadText<br/>imported by 18 modules"]
-        dialog["dialog.js<br/>openDialog, closeDialog, isDialogOpen<br/>imported by graph.js, library.js,<br/>rag/citations.js, rag/receipts.js"]
-        icons["icons.js<br/>refreshIcons<br/>imported by 13 modules"]
-        render["render.js<br/>renderMarkdown, escapeHtml<br/>imported by 8 modules"]
-        sblib["supabase-lib.js<br/>lazy build entry, re-exports createClient"]
-    end
-
-    subgraph i18ngrp["i18n"]
-        i18n["i18n/index.js<br/>t, setText, formatNumber<br/>imported by 21 modules"]
-        de[("src/locales/de.json")]
-        en[("src/locales/en.json")]
-    end
-
-    models["webgpu/models.js<br/>normalizePreference"]
-    nvcat["models/nvidia-catalog.js<br/>normalizeNvidiaModel"]
-
-    subgraph pkgs["npm packages"]
+    subgraph pkgs["npm packages on the main thread"]
         lucide["lucide"]
-        dompurify["dompurify"]
         marked["marked"]
-        sbjs["@supabase/supabase-js<br/>createClient"]
+        purify["dompurify"]
     end
-
-    main -->|"connect, onConnectionChange"| supabase
-    main -->|"getMode"| state
-    chat --> supabase
-    chat -->|"isUserAbort"| signals
-    chat --> state
-    chat -->|"APP_VERSION, LIMITS"| config
-    chatstore --> supabase
-    chatstore --> storage
-    chatstore --> config
-    demo -->|"LIMITS"| config
-    graphview --> supabase
-    ingest --> supabase
-    ingest --> config
-    library --> supabase
-    providers -->|"readSecret"| storage
-    providers -->|"withTimeoutSignal"| signals
-    providers --> config
-    settings -->|"canSyncChats"| supabase
-    settings --> storage
-    settings --> state
-    settings --> config
-    picker -->|"getMode, getModelPreference,<br/>getNvidiaModel, onModeChange"| state
-    engineui --> state
-    voice -->|"getMode"| state
-    ui -->|"SUPABASE_PROJECT_REF"| config
-
+    subgraph lazy["Lazy entries and lazy packages"]
+        sblib["supabase-lib.js: @supabase/supabase-js"]
+        extras["render-extras.js: highlight.js, katex, dompurify"]
+        sdk["ai/adapters/anthropic.js: @anthropic-ai/sdk"]
+        web["webgpu/engine.js: @mlc-ai/web-llm"]
+        pdf["rag/parser.js: pdfjs-dist, in the ingestion worker"]
+    end
+    locales[("src/locales: English in the bundle,<br/>other languages lazy, per root and namespace")]
+    idb["store/idb.js"]
+    icons --> lucide
+    render --> marked
+    render --> purify
+    render -.->|"import() of __STARPI_RENDER_EXTRAS_URL__"| extras
+    kit --> icons
+    kit --> i18n
+    dom --> icons
+    render --> i18n
     state --> config
     state --> storage
-    state -->|"normalizePreference"| models
-    state -->|"normalizeNvidiaModel"| nvcat
-    supabase --> config
-    supabase -->|"withTimeoutSignal"| signals
-    supabase -.->|"import(URL) on first use,<br/>12000 ms deadline, then createClient"| sblib
-    sblib -->|"createClient"| sbjs
-
-    dom -->|"refreshIcons"| icons
-    dialog -->|"setHidden"| dom
-    icons --> lucide
-    render -->|"t"| i18n
-    render --> dompurify
-    render --> marked
-    i18n -->|"JSON import attribute"| de
-    i18n -->|"JSON import attribute"| en
+    schema --> idb
+    i18n --> locales
 ```
 
-<sub>Sources: [`src/js/config.js`](../src/js/config.js), [`src/js/dom.js`](../src/js/dom.js), [`src/js/dialog.js`](../src/js/dialog.js), [`src/js/icons.js`](../src/js/icons.js), [`src/js/render.js`](../src/js/render.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/signals.js`](../src/js/signals.js), [`src/js/state.js`](../src/js/state.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/supabase-lib.js`](../src/js/supabase-lib.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/main.js`](../src/js/main.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/library.js`](../src/js/library.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/voice.js`](../src/js/voice.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`scripts/build.mjs`](../scripts/build.mjs)</sub>
+<sub>Sources: [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/dom.js`](../src/js/dom.js), [`src/js/ui/kit.js`](../src/js/ui/kit.js), [`src/js/icons.js`](../src/js/icons.js), [`src/js/config.js`](../src/js/config.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/store/schema.js`](../src/js/store/schema.js), [`src/js/state.js`](../src/js/state.js), [`src/js/render.js`](../src/js/render.js), [`src/js/render-extras.js`](../src/js/render-extras.js), [`src/js/supabase-lib.js`](../src/js/supabase-lib.js), [`scripts/build.mjs`](../scripts/build.mjs)</sub>
 
 ### Bundle entry points, Web Workers and lazy imports
 
-scripts/build.mjs bundles five JS entry points with esbuild (splitting: true): main.js, rag/ingest.worker.js, webgpu/worker.js, wasm/worker.js and supabase-lib.js, the Supabase library, which supabase.js imports by the URL the build writes into __STARPI_SUPABASE_LIB_URL__ (plus the CSS entry). Nothing imports the workers: rag/workspace.js and webgpu/engine.js start them with new Worker(new URL(...)) using the placeholders __STARPI_INGEST_WORKER_URL__, __STARPI_WEBLLM_WORKER_URL__ and __STARPI_WASM_WORKER_URL__, and wasm/worker.js points ONNX Runtime at its binary through __STARPI_ORT_WASM_URL__. An esbuild onLoad plugin writes the hashed URLs into the sources while they are bundled, and the build bundles again until those URLs match the outputs (the WASM worker holds the ONNX Runtime URL, so this takes three passes); the build fails if a placeholder is in no source file. A second plugin resolves onnxruntime-web/webgpu and onnxruntime-common, which Transformers.js imports, to onnxruntime-web/wasm, so one ONNX Runtime without new Function ships, and build.mjs copies its ort-wasm-simd-threaded.wasm binary to a content-hashed /assets URL. Because the page and the ingestion worker both import core/receipt.js and core/signature.js, and through them core/merkle.js, core/hash.js, core/grounding.js, core/polarity.js, core/binding.js, core/facts.js, core/labels.js, core/sentences.js, rag/bm25.js and rag/chunker.js, esbuild puts these twelve modules in one chunk that both entries import statically; models/wasm-catalog.js is a small chunk shared by the page and the WASM worker, and @mlc-ai/web-llm is one chunk shared by the WebLLM worker and the page. The service worker precaches the page, its CSS, main.js, the chunks main.js imports statically, the ingestion worker, the Latin font and the public files; WebLLM, pdf.js, the WASM worker with Transformers.js, the ONNX Runtime binary and the Supabase library are cached on first use. Solid edges are static imports: main.js's edges go to the modules shown in its bundle (its other imports are in frontend-modules-overview), the edges into rag/workspace.js and webgpu/engine.js are every static import of those two modules, and the edges into the shared chunk show one path from the page and one from the ingestion worker (rag/grounding-view.js, retrieval.js, synthesizer.js and prompts.js also import core/ modules, see frontend-modules-trust and frontend-modules-chat). Dotted edges are the three Worker spawns, the service worker registration, the ONNX Runtime binary that the WASM worker fetches, and the lazy import() calls for @mlc-ai/web-llm (in engine.js), the Supabase library (in supabase.js, by its URL, with a 12000 ms deadline) and pdf.js (in parser.js, inside the ingestion worker). scripts/verify-receipt.mjs and scripts/ground.mjs are not part of the app build; they run the same receipt, source-check, extraction and chunking code in Node, and core/document.js and core/sarif.js, which only scripts/ground.mjs and the package use, are in no app bundle. A separate build, scripts/build-core.mjs, bundles packages/core/src/index.js (which re-exports nine of the shared-chunk modules, reaching core/polarity.js, core/binding.js and core/hash.js through them, plus core/document.js, core/sarif.js and rag/parser.js) into packages/core/dist/index.js, scripts/verify-receipt.mjs into packages/core/dist/verify-receipt.js and scripts/ground.mjs into packages/core/dist/ground.js, the @starpi/core package, with pdfjs-dist left external.
+scripts/build.mjs bundles eight module entries with esbuild (`splitting: true`): main.js, the four workers (webgpu/worker.js, rag/ingest.worker.js, wasm/worker.js, models/integrity.worker.js), the PCM AudioWorklet, the Supabase library (supabase-lib.js) and the rendering extras (render-extras.js), plus the CSS entry. Classic scripts are built apart: theme-boot.js, render-blocking in `<head>` so the theme applies before the first paint; public/render-frame.js and public/grounding-frame.js, one file each because a sandboxed frame has an opaque origin and loads only its own exact-path script (the frame bundle's licences are checked, and mermaid is listed in the SBOM as shipped); and sw.js, written with the build version and the precache list. Nothing imports a worker: the code that needs one starts it from a URL the build writes into a placeholder (`__STARPI_*_URL__`), and the build bundles again until those URLs match the outputs. The processor worker is started for three reasons: a processor (WASM) model (webgpu/engine.js), search by meaning (rag/embed-client.js) and the on-device second opinion (wasm/nli.js). A build plugin maps onnxruntime-web/webgpu and onnxruntime-common to onnxruntime-web/wasm, so one ONNX Runtime without `new Function` ships, and its binary is copied to a hashed `/assets` URL. The service worker precaches the page, the CSS, main.js and its static chunks, the ingestion worker, the Latin font and the public files; the rest is cached on first use. Dashed edges are worker starts, the worklet, lazy `import()` calls (grouped by the area they load) and fetches. scripts/build-core.mjs builds `@starpi/core` (packages/core/src/index.js, scripts/verify-receipt.mjs, scripts/ground.mjs and scripts/gate.mjs) apart from the app.
 
 <!-- diagram: frontend-modules-workers -->
 ```mermaid
 flowchart TD
-    subgraph mainbundle["esbuild entry main (src/js/main.js), main thread"]
-        main["main.js<br/>boot(), registerServiceWorker()"]
-        chat["chat.js"]
-        ingest["ingest.js"]
-        citations["rag/citations.js"]
-        demo["demo.js"]
-        receipts["rag/receipts.js"]
-        engineui["engine-ui.js"]
-        settings["settings.js"]
-        picker["model-picker.js"]
-        benchui["bench/bench-ui.js"]
-        workspace["rag/workspace.js<br/>getWorker() on first request()<br/>error or messageerror: worker_crashed, reset()<br/>clearWorkspace() terminates the worker"]
-        engine["webgpu/engine.js<br/>loadModel(), loadWebLLM()<br/>teardown() calls terminate()"]
-        wasmclient["wasm/client.js<br/>WasmEngineClient"]
-        sbjsmod["supabase.js<br/>client() on first use"]
+    subgraph classic["Classic scripts"]
+        themeboot["theme-boot.js in head:<br/>theme before the first paint"]
+        rframe["public/render-frame.js: mermaid, previews,<br/>sandboxed frame, connect-src none"]
+        gframe["public/grounding-frame.js:<br/>search suggestions, sandboxed frame"]
+        sw["src/sw.js to dist/sw.js:<br/>version, precache list"]
     end
-
-    subgraph sbbundle["esbuild entry supabase, not precached"]
-        sblib["supabase-lib.js<br/>createClient from @supabase/supabase-js"]
+    subgraph mainEntry["entry main: src/js/main.js, 92 modules in the first load"]
+        main["main.js"]
+        engine["webgpu/engine.js"]
+        workspace["rag/workspace.js"]
+        embed["rag/embed-client.js"]
+        nli["wasm/nli.js, lazy"]
+        integrity["models/integrity.js, lazy"]
+        capture["voice/capture.js"]
+        render["render.js"]
+        sbmod["supabase.js"]
+        langs["core/lang/index.js"]
     end
-
-    subgraph shared["Shared chunk, imported statically by main and ingest-worker"]
-        coreReceipt["core/receipt.js, core/merkle.js,<br/>core/signature.js, core/hash.js"]
-        coreCheck["core/grounding.js, core/polarity.js,<br/>core/binding.js, core/facts.js,<br/>core/labels.js, core/sentences.js"]
-        bm25["rag/bm25.js<br/>BM25Index, tokenize, stopword lists"]
-        chunker["rag/chunker.js<br/>chunkText, CHUNKER"]
+    subgraph lazyAreas["Lazy chunks of the main entry"]
+        lzChat["chat/thread.js, runner, store, migrate-v1,<br/>canvas, compare, council, context, tools"]
+        lzAi["ai/router.js, purposes, adapters, search,<br/>@anthropic-ai/sdk"]
+        lzFeat["settings, sync, research, Live, companion,<br/>trust and tools views"]
+        lzLang["core/lang fr, es, it, tr;<br/>locale roots and namespaces"]
+        lzLock["models/model-lock.json"]
     end
-
-    wasmcat["models/wasm-catalog.js<br/>chunk shared by main and wasm-worker"]
-
-    subgraph ingestbundle["esbuild entry ingest-worker, Worker starpi-ingest"]
-        iw["rag/ingest.worker.js<br/>ingest, search, context, head,<br/>text, remove, clear, verify-receipt"]
-        parser["rag/parser.js<br/>extractText, loadPdfjs()"]
-        pdfw["pdfjs-dist<br/>legacy/build/pdf.worker.mjs"]
-        pdf["pdfjs-dist<br/>legacy/build/pdf.mjs"]
+    subgraph ingestEntry["entry ingest-worker: Worker starpi-ingest"]
+        iw["rag/ingest.worker.js, workspace-core.js,<br/>store/schema.js, core/lang/index.js"]
+        parser["rag/parser.js, rag/formats/*"]
+        pdf["pdfjs-dist legacy build"]
     end
-
-    subgraph llmbundle["esbuild entry webllm-worker, Worker starpi-webllm"]
-        ww["webgpu/worker.js<br/>WebWorkerMLCEngineHandler"]
+    subgraph llmEntry["entry webllm-worker: Worker starpi-webllm"]
+        ww["webgpu/worker.js: @mlc-ai/web-llm"]
     end
-
-    subgraph wasmbundle["esbuild entry wasm-worker, Worker starpi-wasm"]
-        wsw["wasm/worker.js<br/>load, generate, unload, interrupt"]
-        tfjs["@huggingface/transformers 4.3.0<br/>with onnxruntime-web/wasm in place of<br/>onnxruntime-web/webgpu and onnxruntime-common"]
+    subgraph wasmEntry["entry wasm-worker: Worker starpi-wasm"]
+        wsw["wasm/worker.js: @huggingface/transformers,<br/>models/wasm-catalog.js, embed-catalog.js"]
     end
+    subgraph intEntry["entry integrity-worker: Worker starpi-integrity"]
+        iwk["models/integrity.worker.js,<br/>integrity-hash.js"]
+    end
+    pcm["entry pcm-worklet: AudioWorklet starpi-pcm"]
+    sblib["entry supabase: supabase-lib.js,<br/>not precached"]
+    extras["entry render-extras: highlight.js, KaTeX,<br/>second sanitizer"]
+    ort[("/assets/ort-wasm-simd-threaded-hash.wasm")]
+    webllmPkg["@mlc-ai/web-llm chunk"]
 
-    ort[("/assets/ort-wasm-simd-threaded-hash.wasm<br/>copied from onnxruntime-web, 14.3 MB")]
-    webllm["@mlc-ai/web-llm<br/>chunk shared by webllm-worker and main"]
-    sw["src/sw.js<br/>written to dist/sw.js by build.mjs<br/>with build version, precache and asset lists"]
-    cli["scripts/verify-receipt.mjs<br/>Node command line, not in the app build,<br/>bundled by scripts/build-core.mjs<br/>as packages/core/dist/verify-receipt.js"]
-    groundcli["scripts/ground.mjs, starpi-ground<br/>Node command line, not in the app build,<br/>bundled by scripts/build-core.mjs<br/>as packages/core/dist/ground.js"]
-    docsarif["core/document.js, core/sarif.js<br/>checkDocument, toSarif, describeReason,<br/>in no app bundle"]
-    corepkg["packages/core/src/index.js<br/>@starpi/core entry, bundled by<br/>scripts/build-core.mjs, not by build.mjs"]
-
-    main --> chat
-    main --> ingest
-    main -->|"initCitations"| citations
-    main -->|"initDemo"| demo
-    main -->|"initReceipts"| receipts
-    main --> engineui
-    main --> settings
-    main -->|"initModelPicker"| picker
-    main --> benchui
-    main -.->|"serviceWorker.register('/sw.js'), scope /"| sw
-    main -->|"connect"| sbjsmod
-    sbjsmod -.->|"import(__STARPI_SUPABASE_LIB_URL__),<br/>?attempt=n after a failed or timed-out load"| sblib
-
-    chat -->|"searchWorkspace, firstChunks,<br/>getDocumentText, addToWorkspace,<br/>listWorkspace"| workspace
-    ingest --> workspace
-    citations -->|"getChunkContext"| workspace
-    demo --> workspace
-    receipts -->|"verifyReceiptFiles"| workspace
-    chat --> engine
-    engineui --> engine
-    settings --> engine
-    picker -->|"getDeviceProbe"| engine
-    benchui --> engine
-    engine -->|"WasmEngineClient, wasmCacheStatus"| wasmclient
-    engine --> wasmcat
-    wasmclient --> wasmcat
-
-    chat -->|"contextCoverage"| coreCheck
-    receipts -->|"buildReceipt"| coreReceipt
-    coreReceipt --> coreCheck
-    coreReceipt -->|"chunkText, CHUNKER"| chunker
-    coreCheck -->|"tokenize, stopword lists"| bm25
-
-    workspace -.->|"new Worker(), type module,<br/>URL written by build.mjs"| iw
-    engine -.->|"new Worker() in loadModel(),<br/>WebGPU preset, after cache check"| ww
-    engine -.->|"new Worker() in loadModel(),<br/>processor model, after cache check"| wsw
-    engine -.->|"import() in loadWebLLM()"| webllm
-    ww --> webllm
-    wsw -->|"AutoTokenizer, AutoModelForCausalLM,<br/>env, TextStreamer"| tfjs
-    wsw -->|"findWasmSource, pinnedWasmUrl,<br/>WASM_CACHE_NAME"| wasmcat
-    tfjs -.->|"wasmPaths, fetched on first load"| ort
-
-    iw -->|"sha256Hex, validateReceipt, verifyReceipt,<br/>importPublicKey from core/signature.js"| coreReceipt
-    iw -->|"BM25Index"| bm25
-    iw -->|"chunkText, CHUNKER,<br/>DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP"| chunker
-    iw -->|"extractText, EXTRACTOR,<br/>MAX_FILE_BYTES, ParseError"| parser
-    parser -.->|"first import()"| pdfw
-    parser -.->|"then import()"| pdf
-    cli -->|"RECEIPT_LIMITS, validateReceipt, verifyReceipt,<br/>importPublicKey from core/signature.js"| coreReceipt
-    cli -->|"extractText, EXTRACTOR"| parser
-    groundcli -->|"checkDocument, describeReason, toSarif"| docsarif
-    groundcli -->|"citationLabel"| coreCheck
-    groundcli -->|"chunkText"| chunker
-    groundcli -->|"extractText, extensionOf,<br/>MAX_FILE_BYTES, SUPPORTED_EXTENSIONS"| parser
-    docsarif -->|"groundAnswer, associate, blocksFromMarkdown,<br/>THRESHOLDS, REASON_CODES, extractFacts, contentTokens"| coreCheck
-    docsarif -->|"sha256Hex from core/hash.js"| coreReceipt
-    corepkg -->|"re-exports nine of the twelve modules,<br/>bundles the other three through them"| shared
-    corepkg -->|"re-exports checkDocument, toSarif,<br/>describeReason and more"| docsarif
-    corepkg -->|"re-exports extractText,<br/>EXTRACTOR, ParseError and more"| parser
+    main -.->|"serviceWorker.register"| sw
+    main --> engine
+    main --> workspace
+    main --> render
+    main --> sbmod
+    main --> langs
+    main -.-> lzChat
+    lzChat -.-> lzAi
+    main -.-> lzFeat
+    langs -.-> lzLang
+    workspace -.->|"new Worker"| iw
+    iw --> parser
+    parser -.->|"import()"| pdf
+    engine -.->|"new Worker: WebGPU preset"| ww
+    engine -.->|"new Worker: processor model"| wsw
+    engine -.->|"import() in loadWebLLM"| webllmPkg
+    ww --> webllmPkg
+    embed -.->|"new Worker: query and file vectors"| wsw
+    nli -.->|"new Worker: second opinion"| wsw
+    wsw -.->|"fetched on first load"| ort
+    engine -.-> integrity
+    embed -.-> integrity
+    nli -.-> integrity
+    integrity -.->|"new Worker"| iwk
+    integrity -.-> lzLock
+    capture -.->|"audioWorklet.addModule"| pcm
+    sbmod -.->|"import() with a 12 s deadline"| sblib
+    render -.->|"import() for highlighting and math"| extras
 ```
 
-<sub>Sources: [`scripts/build.mjs`](../scripts/build.mjs), [`src/js/main.js`](../src/js/main.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/document.js`](../src/js/core/document.js), [`src/js/core/sarif.js`](../src/js/core/sarif.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/supabase-lib.js`](../src/js/supabase-lib.js), [`src/sw.js`](../src/sw.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`scripts/ground.mjs`](../scripts/ground.mjs), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/src/index.js`](../packages/core/src/index.js)</sub>
+<sub>Sources: [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`src/js/main.js`](../src/js/main.js), [`src/js/theme-boot.js`](../src/js/theme-boot.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/embed-client.js`](../src/js/rag/embed-client.js), [`src/js/wasm/nli.js`](../src/js/wasm/nli.js), [`src/js/models/integrity.js`](../src/js/models/integrity.js), [`src/js/voice/capture.js`](../src/js/voice/capture.js), [`src/js/render.js`](../src/js/render.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/core/lang/index.js`](../src/js/core/lang/index.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/integrity.worker.js`](../src/js/models/integrity.worker.js), [`src/js/voice/pcm-worklet.js`](../src/js/voice/pcm-worklet.js), [`public/render-frame.js`](../public/render-frame.js), [`public/grounding-frame.js`](../public/grounding-frame.js), [`src/sw.js`](../src/sw.js)</sub>
 
 ## 2. Boot and settings
 
