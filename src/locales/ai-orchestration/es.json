@@ -1,0 +1,123 @@
+{
+  "tier": {
+    "selected": "Tu modelo",
+    "role": "Otro modelo del proveedor",
+    "provider": "Siguiente proveedor",
+    "device": "Este dispositivo",
+    "cache": "Respuesta guardada",
+    "template": "Sin IA"
+  },
+  "outcome": {
+    "ok": "Respondido",
+    "invalid": "Respuesta rechazada",
+    "truncated": "Respuesta cortada",
+    "refused": "Rechazado",
+    "rate_limited": "Demasiadas solicitudes",
+    "not_found": "Modelo no disponible",
+    "unavailable": "Inaccesible",
+    "timeout": "Sin respuesta a tiempo",
+    "error": "Error",
+    "skipped": "Omitido"
+  },
+  "blocked": {
+    "cooldown": "En espera tras demasiadas solicitudes",
+    "circuit_open": "En pausa tras fallos repetidos",
+    "probing": "Probando de nuevo",
+    "not_found": "No disponible por ahora"
+  },
+  "attempt": {
+    "retry": "Segundo intento",
+    "served": "{model} respondió en su lugar",
+    "latency": "{time}"
+  },
+  "result": {
+    "switched": "{requested} no respondió; {served} respondió en su lugar.",
+    "cached": "Respuesta guardada del {time}",
+    "template": "Ningún modelo respondió; esta respuesta se hizo sin IA.",
+    "unavailable": "Ningún modelo respondió y no hay respuesta sin IA para esto.",
+    "simulated": "Proveedor simulado"
+  },
+  "thinking": {
+    "label": "Razonamiento ampliado",
+    "hint": "Permite que los modelos capaces razonen antes de responder. Es más lento y usa más tokens."
+  },
+  "strength": {
+    "label": "Potencia del modelo",
+    "max": "Máxima",
+    "max_desc": "El modelo más potente del proveedor. Los mejores resultados, pero el más lento y caro.",
+    "super": "Alta",
+    "super_desc": "Un modelo potente un escalón por debajo del máximo: respuestas detalladas, más rápidas y baratas.",
+    "auto": "Automática",
+    "auto_desc": "Starpi elige un modelo gratuito para cada tarea y evita los que están ocupados.",
+    "fast": "Rápida",
+    "fast_desc": "El modelo más rápido. Bueno para preguntas cortas."
+  },
+  "health": {
+    "on": "Disponible",
+    "off": "Sin configurar",
+    "unknown": "Estado desconocido"
+  },
+  "council": {
+    "title": "Consejo",
+    "drafts_label": "Borradores del consejo",
+    "draft": "Borrador {n}",
+    "phase_start": "El consejo está empezando.",
+    "phase_members": "Borradores listos: {done} de {total}.",
+    "phase_judge": "El juez está comparando {valid} borradores.",
+    "phase_done_judge": "El juez eligió un borrador.",
+    "phase_done_merged": "El juez combinó los borradores.",
+    "phase_done_best": "Se mantiene el mejor borrador válido.",
+    "phase_done_none": "No volvió ningún borrador válido.",
+    "phase_aborted": "El consejo se detuvo.",
+    "status": {
+      "pending": "Escribiendo",
+      "ok": "Válido",
+      "invalid": "Rechazado",
+      "error": "Error",
+      "timeout": "Demasiado lento",
+      "skipped": "Omitido"
+    },
+    "latency": "Tardó {time}",
+    "rejected": "Por qué se rechazó",
+    "read_draft": "Leer este borrador",
+    "thinking": "Razonó antes de responder",
+    "chosen": "Elegido por el juez",
+    "used_best": "Usado como el mejor borrador",
+    "judge": "Juez",
+    "judge_pending": "El juez está leyendo los borradores.",
+    "judge_reasons": "Motivos",
+    "judge_chose": "Eligió {draft}",
+    "judge_merged": "Combinó los borradores en una sola respuesta",
+    "judge_failed": "El juez no dio un veredicto utilizable.",
+    "result": "Resultado",
+    "decided": {
+      "judge": "Elegido por el juez",
+      "merged": "Combinado por el juez",
+      "best": "Mejor borrador válido",
+      "none": "Sin resultado"
+    },
+    "valid_count": "{valid} de {total} borradores válidos",
+    "finished_at": "Terminado a las {time}",
+    "reason": {
+      "no_models": "No hay ningún modelo disponible para un consejo.",
+      "no_valid_draft": "No se pudo usar ninguno de los borradores.",
+      "one_valid_draft": "Solo se pudo usar un borrador, así que no hizo falta un juez.",
+      "no_judge": "Ningún otro modelo estaba libre para juzgar, así que se mantiene el mejor borrador válido.",
+      "judge_invalid": "No se pudo usar el veredicto del juez, así que se mantiene el mejor borrador válido.",
+      "judge_error": "El juez falló, así que se mantiene el mejor borrador válido.",
+      "judge_timeout": "El juez tardó demasiado, así que se mantiene el mejor borrador válido.",
+      "judge_skipped": "El juez no estaba disponible, así que se mantiene el mejor borrador válido."
+    },
+    "error": {
+      "empty": "El borrador estaba vacío.",
+      "truncated": "El borrador alcanzó su límite de longitud.",
+      "too_long": "El borrador era demasiado largo.",
+      "refusal": "El modelo se negó.",
+      "no_json": "La respuesta no contenía ningún objeto JSON.",
+      "schema": "La respuesta no tenía la forma esperada ({detail}).",
+      "quote_not_found": "No se encontró una cita en la fuente.",
+      "unknown_source": "La respuesta nombró una fuente que no existe ({detail}).",
+      "other": "Rechazado ({code})."
+    }
+  }
+}

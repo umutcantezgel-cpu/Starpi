@@ -1,0 +1,34 @@
+{
+  "label": {
+    "free": "Serbest sohbet · denetlenmedi",
+    "grounded": "Kaynaklarınızla denetlendi",
+    "mixed": "Kısmen kaynaklardan (denetlenen kısımlar işaretli)",
+    "web": "Web’den · alıntılandı, doğrulanmadı",
+    "checking": "denetleniyor…",
+    "hint_free": "Modelin kendi bilgisiyle yanıtlandı; hiçbir şey kaynaklarla karşılaştırılmadı.",
+    "hint_grounded": "Her ifade kaynaklarınızın alıntılarıyla karşılaştırıldı.",
+    "hint_mixed": "Kaynaklarınızdan alınan ifadeler denetlenip işaretlendi; geri kalanı genel bilgidir.",
+    "hint_web": "Yanıt, bir web aramasının bulduğu sayfalara atıf yapıyor; içerikleri doğrulanmadı."
+  },
+  "mixed": {
+    "title": "Denetlenen kısımlar",
+    "summary": "{total} ifadeden {ok} tanesi kaynaklarınızda bulundu",
+    "none": "Hiçbir ifade kaynaklarınızla karşılaştırılamadı.",
+    "from_sources": "Kaynaklarınızdan",
+    "partly": "Kaynakta kısmen bulundu",
+    "not_in_sources": "Kaynaklarınızda yok",
+    "cited_not_found": "Atıf yapıldı ama kaynakta bulunamadı",
+    "note": "Kaynağı olmayan ifadeler modelin genel bilgisidir ve denetlenmedi."
+  },
+  "web": {
+    "checked": "Alıntılanan metinle denetlendi: {total} ifadeden {ok} tanesi bulundu",
+    "checked_none": "Alıntılanan metinle denetlendi: karşılaştırılacak ifade yok",
+    "segments_ok": "Sayılar denetlendi: hepsi alıntılanan pasajlarda",
+    "segments_flagged": "Sayılar denetlendi: {n} cümlede alıntılanan pasajların dışında sayı var",
+    "cited": "Alıntılandı, denetlenmedi"
+  },
+  "notice": {
+    "web_unavailable_title": "Bu model web’de arama yapamaz",
+    "web_unavailable_body": "Bu model için kurulu bir web araması yok, bu yüzden yanıt web sayfaları olmadan gelir. Arama yapabilen bir model seçin veya biri için anahtar ekleyin."
+  }
+}

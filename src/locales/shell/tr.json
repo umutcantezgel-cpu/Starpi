@@ -1,0 +1,45 @@
+{
+  "sidebar": {
+    "collapse": "Kenar çubuğunu daralt",
+    "expand": "Kenar çubuğunu genişlet",
+    "conversations": "Sohbetler"
+  },
+  "theme": {
+    "title": "Görünüm",
+    "label": "Renk teması",
+    "system": "Sistem",
+    "light": "Açık",
+    "dark": "Koyu",
+    "hint": "“Sistem”, cihazınızın açık veya koyu ayarını izler.",
+    "not_saved": "Renk teması yalnızca bu sayfa için geçerli: tarayıcı seçimi kaydetmedi."
+  },
+  "aside": {
+    "label": "Yan panel",
+    "toggle": "Yan panel",
+    "tabs": "Yan panel bölümleri",
+    "canvas": "Tuval",
+    "sources": "Kaynaklar",
+    "compare": "Karşılaştır",
+    "research": "Araştırma",
+    "close": "Yan paneli kapat",
+    "empty": "Burada henüz gösterilecek bir şey yok."
+  },
+  "mount": {
+    "empty": "Burada henüz gösterilecek bir şey yok."
+  },
+  "live": {
+    "label": "Canlı sohbet"
+  },
+  "toast": {
+    "region": "Bildirimler",
+    "dismiss": "Kapat"
+  },
+  "label": {
+    "checked": "Kaynaklarınızla denetlendi",
+    "mixed": "Kısmen kaynaklarınızdan",
+    "unchecked": "Denetlenmedi",
+    "web": "Web’den · doğrulanmadı",
+    "device": "Bu cihazda",
+    "withheld": "Tutuldu"
+  }
+}

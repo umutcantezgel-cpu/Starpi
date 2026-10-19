@@ -1,0 +1,102 @@
+{
+  "mode": {
+    "auto": "Auto",
+    "free": "Libre",
+    "grounded": "Con fuentes",
+    "auto_hint": "Responde a partir de tus archivos cuando la pregunta trata de ellos; si no, conversación libre.",
+    "placeholder_auto": "Pregunta lo que quieras…"
+  },
+  "toggle": {
+    "thinking": "Razonamiento",
+    "web": "Web",
+    "web_hint": "Los modelos que pueden buscar en la web pueden usarla para esta respuesta."
+  },
+  "tools": {
+    "label": "Herramientas",
+    "empty": "Todavía no hay herramientas configuradas."
+  },
+  "picker": {
+    "auto": "Auto · el mejor disponible",
+    "auto_long": "Auto · el mejor modelo configurado: tus claves, los modelos gratuitos del sitio, tu servidor, este dispositivo",
+    "group_recommended": "Recomendados para este dispositivo",
+    "group_device": "En este dispositivo",
+    "group_pools": "Gratis (a través de Starpi)",
+    "group_server": "Tu servidor",
+    "runtime_pool": "gratis a través de Starpi",
+    "server_first": "Primer modelo de tu servidor",
+    "measured_fast": "medido como rápido aquí",
+    "unverified": "sin verificar",
+    "warn_no_vision": "no puede ver imágenes",
+    "pools_label": "Modelos gratuitos de este sitio:",
+    "strength_hint": "Qué modelo toma Auto de un proveedor cuando no elegiste ninguno de sus modelos.",
+    "served": "Respondido por {model}"
+  },
+  "badge": {
+    "waiting": "Conectando con el modelo…",
+    "provider": "{provider} · {model}",
+    "pool": "{provider} a través de Starpi · {model}",
+    "served": "{provider} · {model} (en lugar de {requested})",
+    "device": "En este dispositivo · {model}",
+    "server": "Tu servidor · {model}"
+  },
+  "meta": {
+    "tokens": "{input} de entrada · {output} de salida",
+    "cached": "{n} desde la caché",
+    "cost": "aprox. {usd} $"
+  },
+  "action": {
+    "copy": "Copiar",
+    "copy_md": "Copiar como Markdown",
+    "regenerate": "Regenerar",
+    "regenerate_same": "Otra vez con el mismo modelo",
+    "edit": "Editar la pregunta",
+    "edit_label": "Pregunta editada",
+    "edit_cancel": "Cancelar",
+    "edit_save": "Enviar la pregunta editada",
+    "branch_prev": "Versión anterior",
+    "branch_next": "Versión siguiente",
+    "continue": "Continuar",
+    "research_no_question": "Esta respuesta no tiene una pregunta que investigar.",
+    "research_failed": "No se pudo iniciar la investigación."
+  },
+  "composer": {
+    "attach": "Adjuntar archivos o imágenes",
+    "image_size": "{name} · {width}×{height}",
+    "too_many": "Como máximo {n} archivos por mensaje.",
+    "pasted_image": "Imagen pegada",
+    "error_unsupported_type": "No se puede adjuntar {name}: este tipo de archivo no es compatible.",
+    "error_too_large": "{name} es demasiado grande para adjuntarlo.",
+    "error_unreadable": "No se pudo leer {name}.",
+    "no_vision": "{model} no puede ver imágenes. Quita la imagen o elige un modelo que pueda, por ejemplo Auto.",
+    "no_vision_auto": "Ninguno de los modelos configurados puede ver imágenes. Añade la clave de un proveedor cuyos modelos lean imágenes, o quita la imagen."
+  },
+  "privacy": {
+    "key": "{provider}, tu clave: tu pregunta va a la búsqueda en la base de conocimiento y, con los extractos correspondientes, a {provider}.",
+    "free_key": "Chat libre con {provider}, tu clave: tu pregunta, los archivos adjuntos y los mensajes anteriores de este chat van a {provider}. No se consulta ninguna fuente.",
+    "pool": "{provider} a través de Starpi: tu pregunta va a la búsqueda en la base de conocimiento; la pregunta, los extractos correspondientes y los mensajes anteriores pasan por el servidor de Starpi hasta {provider}.",
+    "free_pool": "Chat libre con {provider} a través de Starpi: tu pregunta, los archivos adjuntos y los mensajes anteriores de este chat pasan por el servidor de Starpi hasta {provider}. No se consulta ninguna fuente."
+  },
+  "status": {
+    "not_set_up": "Este modelo no está configurado: añade su clave en Ajustes o elige otro"
+  },
+  "notice": {
+    "grounded_failed_title": "El modelo no pudo responder a partir de las fuentes",
+    "error_retry": "{reason} Vuelve a intentarlo en {seconds} s.",
+    "no_model_body": "Añade una clave en Ajustes › Proveedores de modelos y claves, carga un modelo en este dispositivo o conecta tu propio servidor. El modo Con fuentes también responde sin modelo, citando tus fuentes.",
+    "no_vision_model": "Ninguno de los modelos configurados puede ver imágenes. Añade la clave de un proveedor cuyos modelos lean imágenes, o pregunta sin la imagen.",
+    "image_not_source": "{name} no se añadió a tus fuentes: leer el texto de una imagen requiere un modelo que pueda ver, y tu consentimiento.",
+    "rate_limited_wait": "Demasiadas solicitudes al proveedor ahora mismo: espera {seconds} s y vuelve a intentarlo.",
+    "stays_on_device_title": "Esta pregunta se queda en este dispositivo",
+    "stays_on_device_body": "Se hizo en este dispositivo, así que solo la responde el modelo de aquí o tu propio servidor. Elige uno de ellos o vuelve a hacer la pregunta en un mensaje nuevo.",
+    "failed_body": "Algo salió mal al responder. Vuelve a intentarlo.",
+    "store_failed": "No se pudo guardar el chat en este navegador (ventana privada, almacenamiento bloqueado o lleno)."
+  },
+  "continued": "Continuado tras el límite de longitud",
+  "continue_prompt": "Continúa exactamente donde te detuviste.",
+  "describe_images": "Describe {n:la imagen adjunta|las imágenes adjuntas}.",
+  "summarize_files": "Resume los {n} archivos adjuntos.",
+  "web": {
+    "sources": "De la web:",
+    "suggestions": "Sugerencias de búsqueda"
+  }
+}

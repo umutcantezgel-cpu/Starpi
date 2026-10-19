@@ -1,0 +1,34 @@
+{
+  "label": {
+    "free": "Chat libera · non verificata",
+    "grounded": "Verificato sulle tue fonti",
+    "mixed": "In parte dalle fonti (parti verificate segnalate)",
+    "web": "Dal web · citato, non verificato",
+    "checking": "verifica in corso…",
+    "hint_free": "Risposta basata sulle conoscenze proprie del modello; nulla è stato confrontato con le fonti.",
+    "hint_grounded": "Ogni affermazione è stata confrontata con gli estratti delle tue fonti.",
+    "hint_mixed": "Le affermazioni prese dalle tue fonti sono verificate e segnalate; il resto è conoscenza generale.",
+    "hint_web": "La risposta cita pagine trovate da una ricerca web; il loro contenuto non è stato verificato."
+  },
+  "mixed": {
+    "title": "Parti verificate",
+    "summary": "{ok} affermazioni su {total} trovate nelle tue fonti",
+    "none": "Nessuna affermazione ha potuto essere confrontata con le tue fonti.",
+    "from_sources": "Dalle tue fonti",
+    "partly": "Trovato in parte nella fonte",
+    "not_in_sources": "Non presente nelle tue fonti",
+    "cited_not_found": "Citato, ma non trovato nella fonte",
+    "note": "Le affermazioni senza fonte sono conoscenza generale del modello e non sono state verificate."
+  },
+  "web": {
+    "checked": "Verificato sul testo citato: {ok} affermazioni su {total} trovate",
+    "checked_none": "Verificato sul testo citato: nessuna affermazione da confrontare",
+    "segments_ok": "Numeri verificati: si trovano tutti in passaggi citati",
+    "segments_flagged": "Numeri verificati: {n} frase/i con numeri fuori dai passaggi citati",
+    "cited": "Citato, non verificato"
+  },
+  "notice": {
+    "web_unavailable_title": "Questo modello non può cercare sul web",
+    "web_unavailable_body": "Non è configurata alcuna ricerca web per questo modello, quindi la risposta arriva senza pagine web. Scegli un modello che sappia cercare, oppure aggiungi una chiave per uno di essi."
+  }
+}

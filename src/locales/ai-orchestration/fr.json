@@ -1,0 +1,123 @@
+{
+  "tier": {
+    "selected": "Votre modèle",
+    "role": "Un autre modèle du fournisseur",
+    "provider": "Fournisseur suivant",
+    "device": "Cet appareil",
+    "cache": "Réponse enregistrée",
+    "template": "Sans IA"
+  },
+  "outcome": {
+    "ok": "Répondu",
+    "invalid": "Réponse rejetée",
+    "truncated": "Réponse coupée",
+    "refused": "Refusé",
+    "rate_limited": "Trop de requêtes",
+    "not_found": "Modèle non proposé",
+    "unavailable": "Injoignable",
+    "timeout": "Pas de réponse à temps",
+    "error": "Échec",
+    "skipped": "Ignoré"
+  },
+  "blocked": {
+    "cooldown": "En attente après trop de requêtes",
+    "circuit_open": "En pause après des échecs répétés",
+    "probing": "Nouvel essai en cours",
+    "not_found": "Non proposé pour le moment"
+  },
+  "attempt": {
+    "retry": "Deuxième essai",
+    "served": "{model} a répondu à la place",
+    "latency": "{time}"
+  },
+  "result": {
+    "switched": "{requested} n’a pas répondu ; {served} a répondu à la place.",
+    "cached": "Réponse enregistrée le {time}",
+    "template": "Aucun modèle n’a répondu ; cette réponse a été produite sans IA.",
+    "unavailable": "Aucun modèle n’a répondu et il n’existe pas de réponse sans IA pour cela.",
+    "simulated": "Fournisseur simulé"
+  },
+  "thinking": {
+    "label": "Réflexion approfondie",
+    "hint": "Permet aux modèles qui le savent de raisonner avant de répondre. Plus lent, et consomme plus de jetons."
+  },
+  "strength": {
+    "label": "Puissance du modèle",
+    "max": "Maximale",
+    "max_desc": "Le modèle le plus puissant du fournisseur. Les meilleurs résultats, mais le plus lent et le plus cher.",
+    "super": "Puissante",
+    "super_desc": "Un modèle puissant, un cran sous le maximum : des réponses approfondies, plus rapides et moins chères.",
+    "auto": "Automatique",
+    "auto_desc": "Starpi choisit un modèle gratuit pour chaque tâche et contourne ceux qui sont occupés.",
+    "fast": "Rapide",
+    "fast_desc": "Le modèle le plus rapide. Idéal pour les questions courtes."
+  },
+  "health": {
+    "on": "Disponible",
+    "off": "Non configuré",
+    "unknown": "État inconnu"
+  },
+  "council": {
+    "title": "Conseil",
+    "drafts_label": "Brouillons du conseil",
+    "draft": "Brouillon {n}",
+    "phase_start": "Le conseil commence.",
+    "phase_members": "Brouillons prêts : {done} sur {total}.",
+    "phase_judge": "Le juge compare {valid} brouillons.",
+    "phase_done_judge": "Le juge a choisi un brouillon.",
+    "phase_done_merged": "Le juge a fusionné les brouillons.",
+    "phase_done_best": "Le meilleur brouillon valide est retenu.",
+    "phase_done_none": "Aucun brouillon valide n’est revenu.",
+    "phase_aborted": "Le conseil a été arrêté.",
+    "status": {
+      "pending": "En rédaction",
+      "ok": "Valide",
+      "invalid": "Rejeté",
+      "error": "Échec",
+      "timeout": "Trop lent",
+      "skipped": "Ignoré"
+    },
+    "latency": "A pris {time}",
+    "rejected": "Pourquoi il a été rejeté",
+    "read_draft": "Lire ce brouillon",
+    "thinking": "A réfléchi avant de répondre",
+    "chosen": "Choisi par le juge",
+    "used_best": "Retenu comme meilleur brouillon",
+    "judge": "Juge",
+    "judge_pending": "Le juge lit les brouillons.",
+    "judge_reasons": "Motifs",
+    "judge_chose": "A choisi {draft}",
+    "judge_merged": "A fusionné les brouillons en une seule réponse",
+    "judge_failed": "Le juge n’a rendu aucun verdict exploitable.",
+    "result": "Résultat",
+    "decided": {
+      "judge": "Choisi par le juge",
+      "merged": "Fusionné par le juge",
+      "best": "Meilleur brouillon valide",
+      "none": "Aucun résultat"
+    },
+    "valid_count": "{valid} brouillon(s) valide(s) sur {total}",
+    "finished_at": "Terminé à {time}",
+    "reason": {
+      "no_models": "Aucun modèle n’est disponible pour un conseil.",
+      "no_valid_draft": "Aucun des brouillons n’a pu être utilisé.",
+      "one_valid_draft": "Un seul brouillon a pu être utilisé : aucun juge n’était nécessaire.",
+      "no_judge": "Aucun autre modèle n’était libre pour juger : le meilleur brouillon valide est retenu.",
+      "judge_invalid": "Le verdict du juge n’a pas pu être utilisé : le meilleur brouillon valide est retenu.",
+      "judge_error": "Le juge a échoué : le meilleur brouillon valide est retenu.",
+      "judge_timeout": "Le juge a mis trop de temps : le meilleur brouillon valide est retenu.",
+      "judge_skipped": "Le juge n’était pas disponible : le meilleur brouillon valide est retenu."
+    },
+    "error": {
+      "empty": "Le brouillon était vide.",
+      "truncated": "Le brouillon a atteint sa longueur maximale.",
+      "too_long": "Le brouillon était trop long.",
+      "refusal": "Le modèle a refusé.",
+      "no_json": "La réponse ne contenait aucun objet JSON.",
+      "schema": "La réponse n’avait pas la forme attendue ({detail}).",
+      "quote_not_found": "Une citation n’a pas été trouvée dans la source.",
+      "unknown_source": "La réponse citait une source qui n’existe pas ({detail}).",
+      "other": "Rejeté ({code})."
+    }
+  }
+}

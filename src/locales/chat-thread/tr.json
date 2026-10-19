@@ -1,0 +1,102 @@
+{
+  "mode": {
+    "auto": "Otomatik",
+    "free": "Serbest",
+    "grounded": "Kaynaklı",
+    "auto_hint": "Soru dosyalarınızla ilgiliyse onlardan yanıtlar, değilse serbest sohbet eder.",
+    "placeholder_auto": "İstediğinizi sorun…"
+  },
+  "toggle": {
+    "thinking": "Düşünme",
+    "web": "Web",
+    "web_hint": "Web’de arama yapabilen modeller bu yanıt için web’i kullanabilir."
+  },
+  "tools": {
+    "label": "Araçlar",
+    "empty": "Henüz kurulu araç yok."
+  },
+  "picker": {
+    "auto": "Otomatik · mevcut en iyisi",
+    "auto_long": "Otomatik · kurulu en iyi model: anahtarlarınız, sitenin ücretsiz modelleri, sunucunuz, bu cihaz",
+    "group_recommended": "Bu cihaz için önerilenler",
+    "group_device": "Bu cihazda",
+    "group_pools": "Ücretsiz (Starpi üzerinden)",
+    "group_server": "Sunucunuz",
+    "runtime_pool": "Starpi üzerinden ücretsiz",
+    "server_first": "Sunucunuzun ilk modeli",
+    "measured_fast": "burada hızlı ölçüldü",
+    "unverified": "doğrulanmadı",
+    "warn_no_vision": "görselleri göremez",
+    "pools_label": "Bu sitenin ücretsiz modelleri:",
+    "strength_hint": "Bir sağlayıcının hiçbir modelini seçmediğinizde Otomatik’in o sağlayıcıdan aldığı model.",
+    "served": "{model} yanıtladı"
+  },
+  "badge": {
+    "waiting": "Modele bağlanılıyor…",
+    "provider": "{provider} · {model}",
+    "pool": "Starpi üzerinden {provider} · {model}",
+    "served": "{provider} · {model} ({requested} yerine)",
+    "device": "Bu cihazda · {model}",
+    "server": "Sunucunuz · {model}"
+  },
+  "meta": {
+    "tokens": "{input} giriş · {output} çıkış",
+    "cached": "{n} önbellekten",
+    "cost": "yaklaşık {usd} $"
+  },
+  "action": {
+    "copy": "Kopyala",
+    "copy_md": "Markdown olarak kopyala",
+    "regenerate": "Yeniden oluştur",
+    "regenerate_same": "Aynı modelle yeniden",
+    "edit": "Soruyu düzenle",
+    "edit_label": "Düzenlenmiş soru",
+    "edit_cancel": "İptal",
+    "edit_save": "Düzenlenmiş soruyu gönder",
+    "branch_prev": "Önceki sürüm",
+    "branch_next": "Sonraki sürüm",
+    "continue": "Devam et",
+    "research_no_question": "Bu yanıtın araştırılacak bir sorusu yok.",
+    "research_failed": "Araştırma başlatılamadı."
+  },
+  "composer": {
+    "attach": "Dosya veya görsel ekle",
+    "image_size": "{name} · {width}×{height}",
+    "too_many": "Mesaj başına en fazla {n} dosya.",
+    "pasted_image": "Yapıştırılan görsel",
+    "error_unsupported_type": "{name} eklenemiyor: bu dosya türü desteklenmiyor.",
+    "error_too_large": "{name} eklemek için çok büyük.",
+    "error_unreadable": "{name} okunamadı.",
+    "no_vision": "{model} görselleri göremez. Görseli kaldırın veya görebilen bir model seçin, örneğin Otomatik.",
+    "no_vision_auto": "Kurulu modellerin hiçbiri görselleri göremiyor. Modelleri görsel okuyabilen bir sağlayıcının anahtarını ekleyin veya görseli kaldırın."
+  },
+  "privacy": {
+    "key": "{provider}, sizin anahtarınız: sorunuz bilgi tabanı aramasına, eşleşen alıntılarla birlikte de {provider} sağlayıcısına gider.",
+    "free_key": "{provider} ile serbest sohbet, sizin anahtarınız: sorunuz, ekli dosyalar ve bu sohbetin önceki mesajları {provider} sağlayıcısına gider. Hiçbir kaynakta arama yapılmaz.",
+    "pool": "Starpi üzerinden {provider}: sorunuz bilgi tabanı aramasına gider; soru, eşleşen alıntılar ve önceki mesajlar Starpi’nin sunucusu üzerinden {provider} sağlayıcısına gider.",
+    "free_pool": "Starpi üzerinden {provider} ile serbest sohbet: sorunuz, ekli dosyalar ve bu sohbetin önceki mesajları Starpi’nin sunucusu üzerinden {provider} sağlayıcısına gider. Hiçbir kaynakta arama yapılmaz."
+  },
+  "status": {
+    "not_set_up": "Bu model kurulu değil: anahtarını Ayarlar’a ekleyin veya başka bir model seçin"
+  },
+  "notice": {
+    "grounded_failed_title": "Model kaynaklardan yanıt veremedi",
+    "error_retry": "{reason} {seconds} sn sonra yeniden deneyin.",
+    "no_model_body": "Ayarlar › Model sağlayıcıları ve anahtarlar bölümünden bir anahtar ekleyin, bu cihaza bir model yükleyin veya kendi sunucunuzu bağlayın. Kaynaklı mod, kaynaklarınızdan alıntı yaparak modelsiz de yanıt verir.",
+    "no_vision_model": "Kurulu modellerin hiçbiri görselleri göremiyor. Modelleri görsel okuyabilen bir sağlayıcının anahtarını ekleyin veya görsel olmadan sorun.",
+    "image_not_source": "{name} kaynaklarınıza eklenmedi: görsellerdeki metni okumak, görebilen bir model ve izninizi gerektirir.",
+    "rate_limited_wait": "Sağlayıcıda şu anda çok fazla istek var: lütfen {seconds} sn bekleyip yeniden deneyin.",
+    "stays_on_device_title": "Bu soru bu cihazda kalır",
+    "stays_on_device_body": "Bu cihazda soruldu; bu yüzden yalnızca buradaki model veya kendi sunucunuz yanıtlar. Bunlardan birini seçin ya da soruyu yeni bir mesaj olarak yeniden sorun.",
+    "failed_body": "Yanıtlanırken bir sorun oluştu. Lütfen yeniden deneyin.",
+    "store_failed": "Sohbet bu tarayıcıya kaydedilemedi (gizli pencere, engellenmiş veya dolu depolama)."
+  },
+  "continued": "Uzunluk sınırından sonra devam edildi",
+  "continue_prompt": "Tam olarak kaldığın yerden devam et.",
+  "describe_images": "{n:Ekteki görseli|Ekteki görselleri} betimle.",
+  "summarize_files": "Ekteki {n} dosyayı özetle.",
+  "web": {
+    "sources": "Web’den:",
+    "suggestions": "Arama önerileri"
+  }
+}
