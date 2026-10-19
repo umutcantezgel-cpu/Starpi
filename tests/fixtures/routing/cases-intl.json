@@ -1,0 +1,152 @@
+{
+  "description": "Auto routing cases in French, Spanish, Italian and Turkish over workspace.json plus workspace-intl.json, labelled like cases.json. The probe does not stem, so a question routes to the sources by the probe only when it shares word forms with a chunk; reference phrases count with or without accents (and, in Turkish, with either i).",
+  "cases": [
+    {
+      "lang": "fr",
+      "q": "La médiathèque est ouverte quels jours ?",
+      "route": "grounded"
+    },
+    {
+      "lang": "fr",
+      "q": "Combien de livres un lecteur peut-il emprunter ?",
+      "route": "grounded"
+    },
+    {
+      "lang": "fr",
+      "q": "D’après mes notes, combien de temps dure la suspension du prêt ?",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "lang": "fr",
+      "q": "Résume mes documents, s’il te plaît.",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "lang": "fr",
+      "q": "Quelle est la capitale du Japon ?",
+      "route": "free"
+    },
+    {
+      "lang": "fr",
+      "q": "Écris un court poème sur la mer.",
+      "route": "free"
+    },
+    {
+      "lang": "fr",
+      "q": "Comment chercher un mot dans mes fichiers avec grep ?",
+      "route": "free"
+    },
+    {
+      "lang": "fr",
+      "q": "Quels livres conseiller à un lecteur débutant ?",
+      "route": "mixed"
+    },
+    {
+      "lang": "es",
+      "q": "¿Con cuánta antelación se reservan las plazas del aparcamiento?",
+      "route": "grounded"
+    },
+    {
+      "lang": "es",
+      "q": "¿A qué hora cierra el aparcamiento?",
+      "route": "grounded"
+    },
+    {
+      "lang": "es",
+      "q": "Según mis notas, ¿dónde se guardan las bicicletas?",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "lang": "es",
+      "q": "segun mis documentos, ¿cuántos días se puede reservar?",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "lang": "es",
+      "q": "Explícame qué es la fotosíntesis.",
+      "route": "free"
+    },
+    {
+      "lang": "es",
+      "q": "¿Cómo puedo buscar texto en mis archivos desde la terminal?",
+      "route": "free"
+    },
+    {
+      "lang": "es",
+      "q": "¿Es buena idea ir en bicicleta al trabajo?",
+      "route": "free"
+    },
+    {
+      "lang": "it",
+      "q": "Con quanto anticipo si prenotano le sale riunioni?",
+      "route": "grounded"
+    },
+    {
+      "lang": "it",
+      "q": "Quanto dura al massimo una prenotazione?",
+      "route": "grounded"
+    },
+    {
+      "lang": "it",
+      "q": "Secondo i miei documenti, cosa va spento dopo una riunione?",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "lang": "it",
+      "q": "Qual è la montagna più alta d’Europa?",
+      "route": "free"
+    },
+    {
+      "lang": "it",
+      "q": "Come posso cercare una parola nei miei file con grep?",
+      "route": "free"
+    },
+    {
+      "lang": "it",
+      "q": "Come si organizza una videoconferenza con clienti esteri?",
+      "route": "free"
+    },
+    {
+      "lang": "tr",
+      "q": "Bir parola en az kaç karakterden oluşmalı?",
+      "route": "grounded"
+    },
+    {
+      "lang": "tr",
+      "q": "Hesap kaç hatalı girişten sonra kilitlenir?",
+      "route": "grounded"
+    },
+    {
+      "lang": "tr",
+      "q": "Belgelerime göre kilitli hesaplar için nereye başvurulur?",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "lang": "tr",
+      "q": "NOTLARIMA GÖRE parola kaç günde bir değişir?",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "lang": "tr",
+      "q": "Türkiye’nin en uzun nehri hangisidir?",
+      "route": "free"
+    },
+    {
+      "lang": "tr",
+      "q": "Dosyalarımda nasıl arama yapabilirim?",
+      "route": "free"
+    },
+    {
+      "lang": "tr",
+      "q": "Güçlü bir parola nasıl oluşturulur?",
+      "route": "free"
+    }
+  ]
+}

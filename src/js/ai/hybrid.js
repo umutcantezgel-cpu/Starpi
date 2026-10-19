@@ -13,7 +13,8 @@
 //         image is read by a model that sees, not searched). Without a file in the workspace or a
 //         document in the knowledge base there is nothing a question's words could point at: it
 //         stays free, whatever it names ("How do I search in my files?").
-//      c. With sources: phrases that point at them ("according to my notes", "laut Quelle", a
+//      c. With sources: phrases that point at them ("according to my notes", "laut Quelle",
+//         "selon mes notes", "según mis notas", "secondo i miei documenti", "notlarıma göre", a
 //         file name of the workspace) route to grounded, and so does a question that names the
 //         subject of a document in the knowledge base (two words of its title in a row: the library
 //         is not probed, its titles are known).
@@ -138,6 +139,147 @@ export const REFERENCE_PHRASES = Object.freeze({
     'fasse meine notizen',
     'fasse meine unterlagen',
   ]),
+  fr: Object.freeze([
+    'selon le document',
+    'selon les documents',
+    'selon le fichier',
+    'selon les fichiers',
+    'selon la source',
+    'selon les sources',
+    'selon mes documents',
+    'selon mes fichiers',
+    'selon mes notes',
+    'selon mes sources',
+    'd après le document',
+    'd après les documents',
+    'd après les sources',
+    'd après mes documents',
+    'd après mes fichiers',
+    'd après mes notes',
+    'd après mes sources',
+    'sur la base de mes documents',
+    'sur la base de mes fichiers',
+    'sur la base de mes notes',
+    'sur la base des sources',
+    'dans mes sources',
+    'à partir de mes sources',
+    'mes documents téléversés',
+    'mes fichiers téléversés',
+    'mes documents importés',
+    'mes fichiers importés',
+    'que dit le document',
+    'que disent les documents',
+    'que dit le fichier',
+    'que disent mes documents',
+    'que disent mes fichiers',
+    'que disent mes notes',
+    'résume mes documents',
+    'résume mes fichiers',
+    'résume mes notes',
+    'résumez mes documents',
+    'résumez mes fichiers',
+    'résumez mes notes',
+  ]),
+  es: Object.freeze([
+    'según el documento',
+    'según los documentos',
+    'según el archivo',
+    'según los archivos',
+    'según la fuente',
+    'según las fuentes',
+    'según mis documentos',
+    'según mis archivos',
+    'según mis notas',
+    'según mis fuentes',
+    'de acuerdo con el documento',
+    'de acuerdo con mis documentos',
+    'de acuerdo con mis notas',
+    'basándote en mis documentos',
+    'basándote en mis archivos',
+    'basándote en mis notas',
+    'basándote en mis fuentes',
+    'basándote en las fuentes',
+    'en mis fuentes',
+    'de mis fuentes',
+    'mis documentos subidos',
+    'mis archivos subidos',
+    'qué dice el documento',
+    'qué dicen los documentos',
+    'qué dice el archivo',
+    'qué dicen mis documentos',
+    'qué dicen mis archivos',
+    'qué dicen mis notas',
+    'resume mis documentos',
+    'resume mis archivos',
+    'resume mis notas',
+    'resúmeme mis documentos',
+    'resúmeme mis notas',
+  ]),
+  it: Object.freeze([
+    'secondo il documento',
+    'secondo i documenti',
+    'secondo il file',
+    'secondo la fonte',
+    'secondo le fonti',
+    'secondo i miei documenti',
+    'secondo i miei file',
+    'secondo le mie note',
+    'secondo le mie fonti',
+    'in base al documento',
+    'in base ai miei documenti',
+    'in base ai miei file',
+    'in base alle mie note',
+    'in base alle mie fonti',
+    'in base alle fonti',
+    'nelle mie fonti',
+    'dalle mie fonti',
+    'i miei documenti caricati',
+    'i miei file caricati',
+    'cosa dice il documento',
+    'cosa dicono i documenti',
+    'cosa dice il file',
+    'cosa dicono i miei documenti',
+    'cosa dicono i miei file',
+    'cosa dicono le mie note',
+    'riassumi i miei documenti',
+    'riassumi i miei file',
+    'riassumi le mie note',
+  ]),
+  tr: Object.freeze([
+    'belgeye göre',
+    'belgelere göre',
+    'dosyaya göre',
+    'dosyalara göre',
+    'kaynağa göre',
+    'kaynaklara göre',
+    'belgelerime göre',
+    'dosyalarıma göre',
+    'notlarıma göre',
+    'kaynaklarıma göre',
+    'belgelerime dayanarak',
+    'dosyalarıma dayanarak',
+    'notlarıma dayanarak',
+    'kaynaklarıma dayanarak',
+    'kaynaklara dayanarak',
+    'belgelerimden yola çıkarak',
+    'notlarımdan yola çıkarak',
+    'kaynaklarımda',
+    'kaynaklarımdan',
+    'yüklediğim belgeler',
+    'yüklediğim dosyalar',
+    'belgede ne yazıyor',
+    'belgelerde ne yazıyor',
+    'dosyada ne yazıyor',
+    'belgelerimde ne yazıyor',
+    'dosyalarımda ne yazıyor',
+    'notlarımda ne yazıyor',
+    'belge ne diyor',
+    'belgelerim ne diyor',
+    'notlarım ne diyor',
+    'belgelerimi özetle',
+    'dosyalarımı özetle',
+    'notlarımı özetle',
+  ]),
 });
 
 /**
@@ -148,13 +290,53 @@ export const REFERENCE_PHRASES = Object.freeze({
 export const PLACE_PHRASES = Object.freeze({
   en: Object.freeze(['in my documents', 'in my files', 'in my notes', 'from my documents', 'from my files', 'from my notes', 'in the sources', 'from the sources']),
   de: Object.freeze(['in meinen dokumenten', 'in meinen dateien', 'in meinen notizen', 'aus meinen dokumenten', 'aus meinen dateien', 'aus meinen notizen', 'in den quellen', 'aus den quellen']),
+  fr: Object.freeze(['dans mes documents', 'dans mes fichiers', 'dans mes notes', 'à partir de mes documents', 'à partir de mes fichiers', 'à partir de mes notes', 'dans les sources']),
+  es: Object.freeze(['en mis documentos', 'en mis archivos', 'en mis notas', 'de mis documentos', 'de mis archivos', 'de mis notas', 'en las fuentes', 'de las fuentes']),
+  it: Object.freeze(['nei miei documenti', 'nei miei file', 'nelle mie note', 'dai miei documenti', 'dai miei file', 'dalle mie note', 'nelle fonti', 'dalle fonti']),
+  tr: Object.freeze(['belgelerimde', 'dosyalarımda', 'notlarımda', 'belgelerimden', 'dosyalarımdan', 'notlarımdan', 'kaynaklarda', 'kaynaklardan']),
 });
 
-/** The start of a how-to question, on the output of `words` ("how do i …", "wie speichere ich …"). */
-const HOW_TO = /^ (?:how (?:do|can|could|should|would|to) |is there a way |wie (?:\p{L}+ )?(?:ich|man) |gibt es eine möglichkeit )/u;
+/**
+ * A how-to question, on the output of `words` ("how do i …", "wie speichere ich …", "comment puis-je
+ * …", "comment installer …", "¿cómo puedo …?", "come cercare …", "… nasıl yapabilirim?"). Most
+ * languages open one with their question word and a modal or an infinitive; Turkish puts "nasıl"
+ * before a verb in the first person or the passive, anywhere.
+ */
+const HOW_TO = /^ (?:how (?:do|can|could|should|would|to) |is there a way |wie (?:\p{L}+ )?(?:ich|man) |gibt es eine möglichkeit |comment (?:je |j |on |puis je |peut on |pourrais je |faut il |est ce que |est ce qu |(?!(?:votre|notre|leur) )\p{L}+(?:er|ir|re) )|y a t il un moyen |existe t il un moyen |c[oó]mo (?:puedo |se |hago |debo |podr[ií]a |\p{L}+(?:ar|er|ir) )|hay (?:alguna|una) (?:forma|manera) |come (?:posso |si |faccio |devo |potrei |\p{L}+(?:are|ere|ire) )|c è un modo |esiste un modo )| nas[ıi]l (?:\p{L}+ )?\p{L}+(?:abilirim|ebilirim|abiliriz|ebiliriz|[ıiuü]r[ıiuü]m|[ae]r[ıi]m|[ıiuü]l[ıiuü]r|[ıiuü]n[ıiuü]r) | bir yolu var m[ıi] /u;
+
+/** Languages whose phrases also match a question written without accents ("segun mis notas", "belgelerime gore"). */
+const ACCENT_FREE = new Set(['fr', 'es', 'it', 'tr']);
 
 /** @param {string} text  lower-cased words between single spaces, with a space at both ends */
 const words = (text) => ` ${text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
+
+/** @param {string} text  `words` with Turkish capitals ("İ" → "i", "I" → "ı") */
+const turkishWords = (text) => words(text.normalize('NFKC').replace(/İ/g, 'i').replace(/I/g, 'ı'));
+
+/** @param {string} text  without accents and with the dotless i read as "i", for ACCENT_FREE languages */
+const unaccented = (text) => text.normalize('NFD').replace(/\p{M}+/gu, '').replace(/ı/g, 'i');
+
+/**
+ * Whether a question holds one of the phrases of a list, per language: English and German as
+ * written, the others also without accents, Turkish lowercased with its own dotted and dotless i.
+ * @param {string} question
+ * @param {Readonly<Record<string, readonly string[]>>} lists
+ */
+function holdsPhrase(question, lists) {
+  const q = words(question);
+  const tq = turkishWords(question);
+  const plain = unaccented(q);
+  const tplain = unaccented(tq);
+  for (const [lang, list] of Object.entries(lists)) {
+    const text = lang === 'tr' ? tq : q;
+    const loose = ACCENT_FREE.has(lang) ? (lang === 'tr' ? tplain : plain) : null;
+    for (const phrase of list) {
+      if (text.includes(` ${phrase} `)) return true;
+      if (loose !== null && loose.includes(` ${unaccented(phrase)} `)) return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Whether a question points at the user's files: one of the reference phrases, a place phrase in a
@@ -166,9 +348,8 @@ const words = (text) => ` ${text.normalize('NFKC').toLowerCase().replace(/[^\p{L
  */
 export function namesSources(question, names = []) {
   const q = words(question);
-  const has = (/** @type {Readonly<Record<string, readonly string[]>>} */ lists) => Object.values(lists).some((list) => list.some((phrase) => q.includes(` ${phrase} `)));
-  if (has(REFERENCE_PHRASES)) return true;
-  if (!HOW_TO.test(q) && has(PLACE_PHRASES)) return true;
+  if (holdsPhrase(question, REFERENCE_PHRASES)) return true;
+  if (!HOW_TO.test(q) && !HOW_TO.test(unaccented(turkishWords(question))) && holdsPhrase(question, PLACE_PHRASES)) return true;
   for (const name of names) {
     const raw = String(name);
     const full = words(raw).trim();

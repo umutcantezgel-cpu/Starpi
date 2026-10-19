@@ -1,30 +1,37 @@
 // Auto routing (src/js/ai/hybrid.js): explicit modes win, a classifier can only tighten a route,
 // attachments and references route to the sources, the workspace probe picks grounded, mixed or
-// free on the routing cases (tests/fixtures/routing), nothing but an attachment routes to the
+// free on the routing cases (tests/fixtures/routing, English and German, then French, Spanish,
+// Italian and Turkish over a workspace with files in all six languages), nothing but an attachment routes to the
 // sources while there are none, and the Web toggle with a model that cannot search goes through a
 // search API into a grounded answer, never for a question kept on this device.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { decideRoute, namesSources, namesTitle, PROBE_THRESHOLDS, probeRoute, searchWebHits, stricter, webHits } from '../../src/js/ai/hybrid.js';
+import { loadShippedLanguages } from '../../src/js/core/lang/index.js';
 import { BM25Index } from '../../src/js/rag/bm25.js';
 import { probeIndex } from '../../src/js/rag/hybrid.js';
 
 const fixture = (/** @type {string} */ name) => JSON.parse(readFileSync(new URL(`../fixtures/routing/${name}`, import.meta.url), 'utf8'));
 
-/** The routing workspace as a BM25 index, and a probe over it. */
-function workspace() {
+/**
+ * The routing workspace as a BM25 index, and a probe over it.
+ * @param {string[]} [files]  fixture files whose chunks it holds
+ */
+function workspace(files = ['workspace.json']) {
   const index = new BM25Index();
   /** @type {Map<string, number>} */
   const per = new Map();
+  /** @type {Array<{ docId: string, docName: string, text: string }>} */
+  const chunks = files.flatMap((f) => fixture(f).chunks);
   index.add(
-    fixture('workspace.json').chunks.map((/** @type {{ docId: string, docName: string, text: string }} */ c) => {
+    chunks.map((c) => {
       const i = per.get(c.docId) ?? 0;
       per.set(c.docId, i + 1);
       return { ...c, chunkIndex: i, start: 0, end: c.text.length };
     }),
   );
-  const names = [...new Set(fixture('workspace.json').chunks.map((/** @type {{ docName: string }} */ c) => c.docName))];
+  const names = [...new Set(chunks.map((c) => c.docName))];
   return { probe: (/** @type {string} */ q) => probeIndex(index, q), names };
 }
 
@@ -59,6 +66,26 @@ describe('decideRoute', () => {
       if (c.reference) assert.ok(d.reasons.includes('reference'), `${c.q} names the files`);
     }
     assert.ok(hits / cases.length >= 0.95, `accuracy ${hits}/${cases.length}:\n${misses.join('\n')}`);
+  });
+
+  it('routes the cases in French, Spanish, Italian and Turkish as labelled, with the same thresholds', async () => {
+    await loadShippedLanguages();
+    const { probe, names } = workspace(['workspace.json', 'workspace-intl.json']);
+    const cases = fixture('cases-intl.json').cases;
+    for (const lang of ['fr', 'es', 'it', 'tr']) {
+      const own = cases.filter((/** @type {{ lang: string }} */ c) => c.lang === lang);
+      assert.ok(own.length >= 5, lang);
+      for (const route of ['grounded', 'free']) assert.ok(own.some((/** @type {{ route: string }} */ c) => c.route === route), `${lang}: a ${route} case`);
+      assert.ok(own.some((/** @type {{ reference?: boolean }} */ c) => c.reference), `${lang}: a reference case`);
+    }
+    /** @type {string[]} */
+    const misses = [];
+    for (const c of cases) {
+      const d = await decideRoute({ question: c.q, mode: 'auto', workspaceProbe: probe, names, documents: names.length });
+      if (d.route !== c.route) misses.push(`${c.lang}: ${c.q} -> ${d.route} (expected ${c.route}; ${d.reasons.join(', ')})`);
+      if (c.reference) assert.ok(d.reasons.includes('reference'), `${c.q} names the files`);
+    }
+    assert.deepEqual(misses, []);
   });
 
   it('stays free without a file in the workspace or a document in the library, whatever the question names', async () => {
@@ -168,6 +195,43 @@ describe('references', () => {
     assert.ok(!namesSources('Tell me about cats', ['a.md', 'cat']), 'names under four characters do not count');
     assert.ok(!namesSources('Take notes for me', ['notes.md']), 'a single common word without its extension does not count');
     assert.ok(namesSources('Was sagt notes.md dazu?', ['notes.md']));
+  });
+
+  it('knows the phrases of French, Spanish, Italian and Turkish, with or without accents', () => {
+    for (const q of [
+      'Que dit le document sur les congés ?',
+      'Selon mes notes, quand a lieu la revue ?',
+      'Quelles dates figurent dans mes notes ?',
+      'D’après les sources, qui valide le budget ?',
+      '¿Qué dice el documento sobre las vacaciones?',
+      'Según mis notas, ¿cuándo es la revisión?',
+      'segun mis notas, ¿cuando es la revision?',
+      '¿Qué fechas hay en mis notas?',
+      'Cosa dice il documento sulle ferie?',
+      'Secondo le mie note, quando è la revisione?',
+      'Quali date ci sono nelle mie note?',
+      'Belgede ne yazıyor?',
+      'Notlarıma göre toplantı ne zaman?',
+      'notlarima gore toplanti ne zaman?',
+      'NOTLARIMA GÖRE toplantı ne zaman?',
+      'Notlarımda hangi tarihler var?',
+    ])
+      assert.ok(namesSources(q), q);
+    for (const q of [
+      'Comment chercher un mot dans mes fichiers avec grep ?',
+      'Comment puis-je sauvegarder mes documents dans le cloud ?',
+      '¿Cómo puedo buscar en mis archivos desde el móvil?',
+      'Cómo guardar mis documentos en la nube',
+      'Come posso cercare nei miei file sul portatile?',
+      'Come salvare i miei documenti nel cloud?',
+      'Dosyalarımda nasıl arama yapabilirim?',
+      'Belgelerimden nasıl yedek alınır?',
+      'Quelle est la capitale du Japon ?',
+      '¿Qué es un sistema de archivos?',
+      'Cos’è un file system?',
+      'Dosya sistemi nedir?',
+    ])
+      assert.ok(!namesSources(q), q);
   });
 
   it('leaves how-to questions and pasted text alone', () => {
