@@ -9,8 +9,9 @@ In the app it is shown as **Starpi Core (local companion)**. The command is `sta
 
 - Node.js 22.13 or newer (it uses the built-in `node:sqlite`); tested on 22 and 24.
 - One runtime dependency, `@anthropic-ai/sdk`, loaded only when an Anthropic model is configured.
-- Linux and macOS. Packaging (offline tarball, systemd user unit, launchd agent) is shipped
-  separately.
+- Linux and macOS. An offline bundle (`node scripts/companion-offline-pack.mjs`) installs it as
+  a systemd user unit, a system unit with an egress splice, or a launchd agent: see
+  [deploy/linux/README.md](deploy/linux/README.md) and [deploy/macos/README.md](deploy/macos/README.md).
 
 ## Quick start
 
@@ -20,7 +21,9 @@ npx starpi-companion pair           # prints a one-time code (valid 10 minutes)
 ```
 
 Open Starpi, go to Settings > Companion and enter the code. Or, with an app build for the
-companion profile in `appDir`, open `http://127.0.0.1:47821/` directly.
+companion profile in `appDir`, open `http://127.0.0.1:47821/` directly. That build is made from the
+repository root with `STARPI_HEADER_PROFILE=companion STARPI_DIST_DIR=dist-companion npm run build`
+and served with `starpi-companion start --app-dir dist-companion`.
 
 ## Folders
 
@@ -150,7 +153,7 @@ those keys with a **key-encryption key** (KEK) that never lies in the data folde
 | Provider | Where the KEK lives |
 | --- | --- |
 | `file` (default) | a 0600 file outside the data folder (`<config>/kek.key`) |
-| `systemd-creds` | an encrypted systemd credential (host key, TPM2 where present), loaded by the user unit with `LoadCredentialEncrypted=starpi-companion-kek` |
+| `systemd-creds` | an encrypted systemd credential (host key, TPM2 where present), loaded by the unit's drop-in with `LoadCredentialEncrypted=starpi-companion-kek` |
 | `keychain-macos` | a generic password item in the login keychain |
 
 **Crypto-erase** destroys a namespace's key first, then its rows and blobs, and appends a line to
@@ -195,9 +198,10 @@ starts them. Shell tools for models are not part of this release.
 
 Limits of an in-process guard: references to the original functions and sockets made before it is
 installed, Node's internal handle objects reached through a live socket, native add-ons and
-WebAssembly with host imports. On Linux the user unit therefore adds a boundary
+WebAssembly with host imports. On Linux the system install therefore adds a boundary
 outside the process: `IPAddressDeny=any` for the companion, and a second, tiny unit running
-`starpi-companion egress-splice` on a Unix socket only the companion may open. With
+`starpi-companion egress-splice` on a Unix socket only the companion may open (a systemd user
+manager does not enforce IP address rules, so the per-user unit relies on the guard). With
 `STARPI_COMPANION_EGRESS_SOCKET` set, capabilities connect through that socket (`CONNECT host:443`);
 the splice checks the host and its addresses again and only ever sees ciphertext.
 
@@ -272,6 +276,63 @@ Features plug in as modules passed to `startCompanion({ modules })`:
 `audit.append` (kinds starting with the module id), `brains` (the router), `scheduler`, `egress`
 (its capability or null), `clock`, `timeZone`, `log`, `config` (`modules.<id>` of the
 configuration) and the companion's public `identity`.
+
+A route may also name `maxBody` (bytes, at most 64 MiB), `lane` (for the breaker) and `raw`: a
+list of media types whose bodies it takes as bytes (a file upload, a recorded form) instead of
+JSON. A handler answers with `{ body }` (JSON), `{ stream }` (server-sent events) or
+`{ raw: { type, data, filename? } }` (bytes; with a file name as an attachment).
+
+## Standard modules
+
+`starpi-companion start` runs these modules (`standardModules()` for embedding). Each is
+configured under `modules.<id>` of `config.json`; a module with nothing configured stays quiet.
+Text people write (notes, documents, conversations, reminders, the inbox) is sealed in its own
+vault namespace; the audit chain records ids, classes and counts, never the text.
+
+| Module | Routes (below `/v1`) | What it does |
+| --- | --- | --- |
+| `retrieval` | `POST /retrieval/search`, `GET /retrieval/status` | the search index over notes and documents: BM25, plus vectors from an embedding server on this machine (`embeddings: { baseUrl: "http://127.0.0.1:11434/v1", model }`), fused with reciprocal rank fusion (chunking, BM25 and fusion of `@starpi/core`) |
+| `memory` | `GET/POST /memory/notes`, `GET/PUT/DELETE /memory/notes/:id`, `POST /memory/recall` | notes added on purpose; recall ranks by match, use, spread over days and freshness (halving every `halfLifeDays`, 30); a pinned note does not fade |
+| `docs` | `POST /docs?name=&class=` (raw file), `GET /docs`, `GET /docs/:id`, `GET /docs/:id/passages/:n`, `GET /docs/:id/file`, `PUT /docs/:id/class`, `DELETE /docs/:id` | PDF text layer (needs the optional peer `pdfjs-dist`), Word, Excel, PowerPoint, HTML, Markdown, CSV, JSON and text, read by `@starpi/core` in the background lane; original and text are sealed blobs |
+| `ask` | `POST /ask` | one question, one JSON answer |
+| `chat` | `POST /chat` (server-sent events), `GET /chat/conversations`, `GET/PUT/DELETE /chat/conversations/:id` | conversations with history; a conversation's data class only rises; turns of one conversation run one after the other (a turn sent while another runs waits for it, more than `waitingTurns` (4) waiting get 409 `conversation_busy`) |
+| `mcp` | `POST /mcp`, `GET/POST /mcp/clients`, `DELETE /mcp/clients/:id` | an MCP server (2025-06-18) with the read-only tools `search_documents`, `read_excerpt`, `recall_notes`, `list_agenda`; MCP client tokens only (no cookie, no browser session, no Origin) |
+| `connectors` | `GET /connectors`, `POST /connectors/:server/{refresh,approve,revoke}`, `GET /connectors/approvals`, `POST /connectors/approvals/:id` | tools of MCP servers on this machine for the chat: each tool description is pinned by SHA-256 and offered only with the pin the owner approved; a changed description needs a new approval; the list is read again before every call, and a call runs only when that fresh list carries the approved pin |
+| `agenda` | `GET/POST /agenda`, `GET /agenda/upcoming`, `GET/PUT/DELETE /agenda/:id` | reminders (once, daily, weekly, monthly) in the item's, the module's or the companion's time zone, computed with `Intl` |
+| `notify` | `GET /notify`, `GET /notify/stream`, `POST /notify/:id/read`, `POST /notify/read-all`, `DELETE /notify/:id` | the inbox; the app reads it over server-sent events while it is open (no push service); numbers only rise and are never handed out twice, so an app catching up with `?after=` misses nothing |
+| `voice` | `GET /voice/v1/audio/voices`, `POST /voice/v1/audio/speech`, `POST /voice/v1/audio/transcriptions` | relays speech to the voice server on this machine (`url: "http://127.0.0.1:8000"`) |
+| `feeds` | `GET /feeds`, `GET /feeds/latest`, `POST /feeds/import?source=` (CSV) | experimental and read-only: CSV imports and MQTT subscriptions to a broker on this machine (3.1.1 or 5; the client never publishes) as `feed.sample` / `feed.health` events; a subscription that hears nothing for `staleAfterS` after its last message or its (re)connection is `stale` |
+| `setup` | `GET /setup`, `GET /setup/models` | first-start checks of the local model, embedding and voice servers, and model sizes the machine's memory holds |
+
+**Answers through the gate.** `/v1/ask` and `/v1/chat` take `mode: "sources"` (default) or
+`"free"`. In source mode the model gets the matching passages of documents, notes and the latest
+feed readings as labelled sources (`[S1]`, `[S2]`, ...), and every answer runs through the sentence
+gate of `@starpi/core`: a sentence whose number is not in the source it cites is withheld, so a feed
+reading can be cited exactly as the feed reported it. A reading's source also gives its time in the
+companion's time zone (24-hour time and the dates `2026-10-18` and `18.10.2026`), so a sentence may
+name when it was measured in those forms; a bare day or year is not citable. Free mode keeps the gate's character and link
+rules. Released units stream as `unit` events; the answer lists what was withheld and why, and the
+sources each sentence cites. A turn's data class is the strictest of the request, the conversation
+and its sources, and decides where the router may send it; secret content never reaches a prompt.
+
+**Tools in the chat.** With `tools: true` the chat offers the approved connector tools. A model
+calls one by replying `CALL {"tool": "<server>.<tool>", "arguments": {...}}`; the call is never
+shown, its result becomes the source `[T1]`, and the model is asked again (at most four calls). A
+tool approved with `calls: "ask"` waits for a person at every call; a call written after a tool
+result always waits.
+
+**Desktop MCP clients.** Create a client token as the owner (`POST /v1/mcp/clients`), save it in a
+file only you can read (`chmod 600`) and let the client start the bridge:
+
+```json
+{ "mcpServers": { "starpi": { "command": "starpi-companion-mcp", "args": ["--token-file", "<absolute path>/mcp.token"] } } }
+```
+
+The bridge (`bin/mcp-stdio.mjs`) connects to `127.0.0.1` only; `--port` or `STARPI_COMPANION_PORT`
+names the companion's port.
+
+**Development.** The companion imports the built `@starpi/core`; run `npm run test:companion`
+(and `npm run typecheck:companion`) from the repository root, which builds the core first.
 
 ## License
 

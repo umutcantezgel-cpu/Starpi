@@ -1,0 +1,86 @@
+# Starpi Core (the local companion) as a system service under its own account, for a machine you
+# administer. Unlike the user unit, systemd enforces the network rules here: the companion reaches
+# loopback and nothing else (IPAddressDeny=any); hosts you listed under egress.allow are reached
+# only through the egress splice (starpi-companion-egress.service), whose socket this unit alone
+# can open. install.sh --system writes this file to /etc/systemd/system/ with @NODE@ and @APP@
+# replaced, creates the accounts (starpi-companion.sysusers) and does not enable anything:
+#   sudo systemctl enable --now starpi-companion-egress.service starpi-companion.service
+#   sudo starpi-companion pair                 (the launcher runs commands as the service account)
+#   journalctl -u starpi-companion.service
+
+[Unit]
+Description=Starpi Core (local companion)
+Documentation=https://github.com/umutcantezgel-cpu/Starpi/tree/main/packages/companion#readme
+Wants=starpi-companion-egress.service
+After=starpi-companion-egress.service
+# A refused start (audit rollback, a tampered chain, a missing anchor folder) fails again at once;
+# after five tries in five minutes systemd stops trying until someone has looked.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=notify
+# Readiness and watchdog pings come from /usr/bin/systemd-notify, a child process of the companion.
+NotifyAccess=all
+WatchdogSec=30
+TimeoutStartSec=90
+TimeoutStopSec=30
+User=starpi-companion
+Group=starpi-companion
+# The group of the egress socket. It has no members (see starpi-companion.sysusers); this unit is
+# the only process that holds it, so no other program on the machine can use the splice.
+SupplementaryGroups=starpi-egress-client
+ExecStart=@NODE@ @APP@/bin/starpi-companion.mjs start --config /etc/starpi-companion/config.json
+Environment=NODE_ENV=production STARPI_COMPANION_EGRESS_SOCKET=/run/starpi-companion-egress/splice.sock
+Restart=on-failure
+RestartSec=3
+RestartPreventExitStatus=2
+
+# Folders: data, anchors (keep them apart; to put the anchors on another disk, add a drop-in that
+# sets ReadWritePaths= and RequiresMountsFor= for that place and set the top-level "anchorDir" key
+# of config.json to it), and the key file of the default KEK provider, outside the data folder.
+StateDirectory=starpi-companion starpi-companion-anchors starpi-companion-key
+StateDirectoryMode=0700
+# /etc/starpi-companion (root:starpi-companion 0750, config.json 0640) is made by install.sh; the
+# companion reads it and never writes it.
+
+# Resources (the language models run in their own processes, not here).
+MemoryHigh=768M
+MemoryMax=1G
+TasksMax=256
+
+# Hardening, in alphabetical order: no capabilities or new privileges, a read-only system with
+# private /tmp and /dev, kernel, clock, host name and control groups out of reach, no namespaces,
+# realtime or set-id files, a system call filter (refused calls fail with EPERM).
+AmbientCapabilities=
+CapabilityBoundingSet=
+LockPersonality=yes
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+ProtectSystem=strict
+RemoveIPC=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+SystemCallErrorNumber=EPERM
+SystemCallFilter=@system-service
+UMask=0077
+
+# Network: loopback only (the API on 127.0.0.1, local models such as Ollama). Everything else goes
+# through the splice as `CONNECT host:443` on a Unix socket; TLS stays end to end in the companion.
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

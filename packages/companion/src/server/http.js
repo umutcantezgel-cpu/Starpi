@@ -10,7 +10,8 @@
 //  3. the route's access level: a cookie session (with its X-Companion-CSRF value, same origin only)
 //     or a bearer token (bound to the origin it was paired from), and the role the route needs;
 //  4. the breaker: the route's lane must be allowed at the current level;
-//  5. the body: JSON only, within the route's limit.
+//  5. the body: JSON, within the route's limit; a route that declares `raw` media types takes a
+//     body of one of them as bytes instead (an upload, a recording).
 // Every answer carries the signed audit head, in the X-Companion-Audit-Head header
 // (`<seq>.<hash>.<sig>`) and as `auditHead` in JSON bodies; a stream ends with an `audit` event.
 import { createServer } from 'node:http';
@@ -32,7 +33,7 @@ const LOOPBACK_BINDS = Object.freeze(new Set(['127.0.0.1', '::1', 'localhost']))
  * @property {Record<string, string>} params
  * @property {URLSearchParams} query
  * @property {import('node:http').IncomingHttpHeaders} headers
- * @property {any} body
+ * @property {any} body       parsed JSON, or a Buffer for a route with `raw` media types
  * @property {import('../auth/sessions.js').Session | null} session
  * @property {string | null} origin
  * @property {boolean} sameOrigin
@@ -46,6 +47,7 @@ const LOOPBACK_BINDS = Object.freeze(new Set(['127.0.0.1', '::1', 'localhost']))
  * @property {Record<string, string>} [headers]
  * @property {Array<{ name: string, value: string, maxAge: number }>} [cookies]
  * @property {AsyncIterable<{ event: string, data: unknown }>} [stream]
+ * @property {{ type: string, data: Uint8Array, filename?: string }} [raw]  bytes instead of JSON (a file, audio)
  */
 
 /**
@@ -55,6 +57,7 @@ const LOOPBACK_BINDS = Object.freeze(new Set(['127.0.0.1', '::1', 'localhost']))
  * @property {import('../contracts/roles.js').Access} access
  * @property {'status' | 'interactive' | 'events' | 'background'} [lane]
  * @property {number} [maxBody]
+ * @property {readonly string[]} [raw]  media types taken as a raw body (bytes) instead of JSON
  * @property {(req: RouteRequest) => Promise<RouteResult> | RouteResult} handler
  */
 
@@ -208,11 +211,38 @@ export function createHttpServer({ host = '127.0.0.1', port, routes, origins, se
   }
 
   /**
+   * @param {import('node:http').ServerResponse} res
+   * @param {number} status
+   * @param {{ type: string, data: Uint8Array, filename?: string }} raw
+   * @param {Record<string, string>} headers
+   */
+  function sendRaw(res, status, raw, headers) {
+    const data = Buffer.from(raw.data.buffer, raw.data.byteOffset, raw.data.byteLength);
+    /** @type {Record<string, string>} */
+    const extra = {};
+    if (raw.filename) extra['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(raw.filename)}`;
+    res.writeHead(status, {
+      ...headers,
+      ...extra,
+      'Content-Type': raw.type,
+      'Content-Length': String(data.length),
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; sandbox",
+      'Cross-Origin-Resource-Policy': 'same-origin',
+      'Referrer-Policy': 'no-referrer',
+      'X-Companion-Audit-Head': headerValue(),
+    });
+    res.end(data);
+  }
+
+  /**
    * @param {import('node:http').IncomingMessage} req
    * @param {number} limit
+   * @param {readonly string[] | undefined} raw  media types taken as bytes
    * @returns {Promise<any>}
    */
-  function readBody(req, limit) {
+  function readBody(req, limit, raw) {
     return new Promise((resolve, reject) => {
       const type = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
       const declared = Number(req.headers['content-length'] ?? '0');
@@ -220,8 +250,8 @@ export function createHttpServer({ host = '127.0.0.1', port, routes, origins, se
         resolve(null);
         return;
       }
-      if (type !== 'application/json') {
-        reject(new CompanionError('unsupported_media_type', 'bodies are JSON', { status: 415 }));
+      if (raw ? !raw.includes(type) : type !== 'application/json') {
+        reject(new CompanionError('unsupported_media_type', raw ? `bodies are ${raw.join(' or ')}` : 'bodies are JSON', { status: 415 }));
         return;
       }
       if (declared > limit) {
@@ -241,6 +271,10 @@ export function createHttpServer({ host = '127.0.0.1', port, routes, origins, se
         parts.push(chunk);
       });
       req.on('end', () => {
+        if (raw) {
+          resolve(Buffer.concat(parts));
+          return;
+        }
         try {
           resolve(JSON.parse(Buffer.concat(parts).toString('utf8')));
         } catch {
@@ -362,13 +396,17 @@ export function createHttpServer({ host = '127.0.0.1', port, routes, origins, se
       if (!res.writableFinished) abort.abort(new CompanionError('client_closed', 'the client went away'));
     });
     try {
-      const body = req.method === 'POST' || req.method === 'PUT' ? await readBody(req, route.maxBody ?? DEFAULT_BODY_LIMIT) : null;
+      const body = req.method === 'POST' || req.method === 'PUT' ? await readBody(req, route.maxBody ?? DEFAULT_BODY_LIMIT, route.raw) : null;
       const result = await route.handler({ method: /** @type {string} */ (req.method), path: url.pathname, params, query: url.searchParams, headers: req.headers, body, session, origin, sameOrigin, signal: abort.signal });
       /** @type {Record<string, string | string[]>} */
       const headers = { ...cors, ...(result.headers ?? {}) };
       if (result.cookies?.length) headers['Set-Cookie'] = result.cookies.map((c) => serializeCookie(c.name, c.value, c.maxAge));
       if (result.stream) {
         await sendStream(res, result.stream, /** @type {Record<string, string>} */ (headers), abort);
+        return;
+      }
+      if (result.raw) {
+        sendRaw(res, result.status ?? 200, result.raw, /** @type {Record<string, string>} */ (headers));
         return;
       }
       sendJson(res, result.status ?? 200, result.body ?? {}, /** @type {Record<string, string>} */ (headers));

@@ -34,6 +34,8 @@
     "verify:receipt": "node scripts/verify-receipt.mjs",
     "build:core": "node scripts/build-core.mjs",
     "pack:core": "npm pack --workspace=@starpi/core --dry-run",
+    "test:companion": "npm run build:core && npm test --workspace @starpi/companion",
+    "typecheck:companion": "npm run build:core && npm run typecheck --workspace @starpi/companion",
     "sbom": "node scripts/sbom.mjs",
     "eval:source-check": "node scripts/eval-source-check.mjs",
     "eval:answers": "node scripts/eval-answers.mjs",

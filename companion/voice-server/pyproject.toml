@@ -1,0 +1,15 @@
+# Tooling configuration of the local voice server (ruff). The server is a single file run with
+# `python3 -I server.py`; it is not packaged, so there is no [project] table.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S"]
+# S603: Piper is started with an argument list from this server's own configuration, never a shell.
+ignore = ["S603"]
+
+[tool.ruff.lint.per-file-ignores]
+# The tests use plain asserts through unittest and run fake programs from temporary folders.
+"test_server.py" = ["S101", "S105", "S108", "E501"]

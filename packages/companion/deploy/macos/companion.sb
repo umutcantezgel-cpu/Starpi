@@ -1,0 +1,43 @@
+;; Sandbox profile for Starpi Core under launchd on macOS (install.sh --sandbox runs node through
+;; /usr/bin/sandbox-exec with this file). PREVIEW: written against Apple's sandbox profile language
+;; and not yet verified on hardware; install without --sandbox if the companion does not start.
+;;
+;; macOS has no per-service IP firewall like systemd's IPAddressDeny=, so this is the boundary
+;; outside the process there: it starts from the system defaults and takes away what the companion
+;; never needs. It may write only below its own folders and the temporary folders, start only node
+;; itself and the keychain tool (KEK provider keychain-macos), listen only on loopback, and connect
+;; only to loopback (local models), the system resolver and port 443 (the hosts you listed under
+;; egress.allow; which hosts is still decided by the companion's egress guard, because a sandbox
+;; profile cannot name host names).
+;;
+;; Parameters (sandbox-exec -D NAME=value): NODE, HOME, SUPPORT (Application Support folder of the
+;; companion), LOGS.
+(version 1)
+(allow default)
+
+(deny file-write*)
+(allow file-write*
+  (subpath (param "SUPPORT"))
+  (subpath (param "LOGS"))
+  (subpath (string-append (param "HOME") "/Library/Keychains"))
+  (subpath "/private/var/folders")
+  (subpath "/private/tmp")
+  (literal "/dev/null")
+  (literal "/dev/dtracehelper"))
+
+(deny process-exec)
+(allow process-exec
+  (literal (param "NODE"))
+  (literal "/usr/bin/security"))
+
+(deny network-bind)
+(allow network-bind (local ip "localhost:*"))
+
+(deny network-inbound)
+(allow network-inbound (local ip "localhost:*"))
+
+(deny network-outbound)
+(allow network-outbound
+  (remote ip "localhost:*")
+  (remote tcp "*:443")
+  (literal "/private/var/run/mDNSResponder"))
