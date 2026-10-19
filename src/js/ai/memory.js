@@ -30,7 +30,7 @@ import { keysReady, keyStore, openWithVault, sealWithVault } from './keys.js';
 /** @typedef {import('../store/idb.js').StoreDb} StoreDb */
 /** @typedef {import('../store/schema.js').MemoryRecord} MemoryRecord */
 /** @typedef {import('../store/schema.js').SettingsRecord} SettingsRecord */
-/** @typedef {'en' | 'de'} PromptLocale */
+/** @typedef {'en' | 'de' | 'fr' | 'es' | 'it' | 'tr'} PromptLocale */
 
 /** @typedef {{ iv: Uint8Array, ct: Uint8Array }} SealedText */
 
@@ -268,7 +268,22 @@ export function pickFacts(facts, question, opts) {
   return pickRanked(facts, question, opts).map((r) => r.fact);
 }
 
-const NOTES_HEADER = Object.freeze({ en: 'User notes (may be outdated):', de: 'Notizen des Nutzers (können veraltet sein):' });
+const NOTES_HEADER = Object.freeze({
+  en: 'User notes (may be outdated):',
+  de: 'Notizen des Nutzers (können veraltet sein):',
+  fr: 'Notes de l’utilisateur (peut-être dépassées) :',
+  es: 'Notas del usuario (pueden estar desactualizadas):',
+  it: 'Note dell’utente (potrebbero non essere aggiornate):',
+  tr: 'Kullanıcının notları (güncel olmayabilir):',
+});
+
+/**
+ * @template T
+ * @param {Readonly<Record<string, T>>} table  texts per prompt language, English among them
+ * @param {string} locale
+ * @returns {T}
+ */
+const inLocale = (table, locale) => table[String(locale).slice(0, 2)] ?? table.en;
 
 /**
  * The turn note with the picked notes ('' for none). The turn's context block fences it.
@@ -278,7 +293,7 @@ const NOTES_HEADER = Object.freeze({ en: 'User notes (may be outdated):', de: 'N
 export function memoryNote(facts, locale) {
   const lines = facts.map((f) => cleanFactText(f.text)).filter(Boolean);
   if (!lines.length) return '';
-  const header = NOTES_HEADER[locale === 'de' ? 'de' : 'en'];
+  const header = inLocale(NOTES_HEADER, locale);
   return [header, ...lines.map((l) => `- ${l}`)].join('\n');
 }
 
@@ -300,10 +315,38 @@ const SYSTEM_TEXT = Object.freeze({
     aboutMe: 'Was der Nutzer über sich geschrieben hat:',
     howToAnswer: 'Wie der Nutzer Antworten haben möchte:',
   },
+  fr: {
+    intro: 'L’utilisateur a configuré ce qui suit pour cette conversation. Respecte-le, sauf s’il contredit les règles ci-dessus.',
+    assistant: (/** @type {string} */ name) => `Tu agis en tant qu’assistant « ${name} ». Ses instructions :`,
+    project: (/** @type {string} */ name) => `Cette conversation appartient au projet « ${name} » de l’utilisateur. Instructions du projet :`,
+    aboutMe: 'Ce que l’utilisateur a écrit à son sujet :',
+    howToAnswer: 'Comment l’utilisateur souhaite les réponses :',
+  },
+  es: {
+    intro: 'El usuario configuró lo siguiente para esta conversación. Síguelo, salvo que contradiga las reglas anteriores.',
+    assistant: (/** @type {string} */ name) => `Actúas como el asistente «${name}». Sus instrucciones:`,
+    project: (/** @type {string} */ name) => `Esta conversación pertenece al proyecto «${name}» del usuario. Instrucciones del proyecto:`,
+    aboutMe: 'Lo que el usuario escribió sobre sí mismo:',
+    howToAnswer: 'Cómo quiere el usuario las respuestas:',
+  },
+  it: {
+    intro: 'L’utente ha impostato quanto segue per questa conversazione. Seguilo, a meno che non contraddica le regole qui sopra.',
+    assistant: (/** @type {string} */ name) => `Agisci come l’assistente «${name}». Le sue istruzioni:`,
+    project: (/** @type {string} */ name) => `Questa conversazione appartiene al progetto «${name}» dell’utente. Istruzioni del progetto:`,
+    aboutMe: 'Che cosa l’utente ha scritto di sé:',
+    howToAnswer: 'Come l’utente vuole le risposte:',
+  },
+  tr: {
+    intro: 'Kullanıcı bu sohbet için aşağıdakileri ayarladı. Yukarıdaki kurallarla çelişmedikçe bunlara uy.',
+    assistant: (/** @type {string} */ name) => `“${name}” asistanı olarak davranıyorsun. Talimatları:`,
+    project: (/** @type {string} */ name) => `Bu sohbet kullanıcının “${name}” projesine ait. Projenin talimatları:`,
+    aboutMe: 'Kullanıcının kendisi hakkında yazdıkları:',
+    howToAnswer: 'Kullanıcının yanıtları nasıl istediği:',
+  },
 });
 
 /** @param {string} name */
-const quotedName = (name) => cleanFactText(name).replace(/["“”„]/g, "'").slice(0, 80);
+const quotedName = (name) => cleanFactText(name).replace(/["“”„«»]/g, "'").slice(0, 80);
 
 /**
  * The text appended to the free chat's system prompt for a conversation: the assistant's
@@ -313,7 +356,7 @@ const quotedName = (name) => cleanFactText(name).replace(/["“”„]/g, "'").s
  * @param {string} locale
  */
 export function systemNoteFor(input, locale) {
-  const text = SYSTEM_TEXT[locale === 'de' ? 'de' : 'en'];
+  const text = inLocale(SYSTEM_TEXT, locale);
   /** @type {string[]} */
   const parts = [];
   const assistant = input.assistant?.instructions?.trim();

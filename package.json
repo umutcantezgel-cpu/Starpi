@@ -38,6 +38,7 @@
     "typecheck:companion": "npm run build:core && npm run typecheck --workspace @starpi/companion",
     "sbom": "node scripts/sbom.mjs",
     "eval:source-check": "node scripts/eval-source-check.mjs",
+    "eval:answers": "node scripts/eval-answers.mjs",
     "docs:sync": "node scripts/sync-diagrams.mjs",
     "nvidia:ping": "node scripts/nvidia-ping.mjs",
     "headers:gen": "node scripts/gen-headers.mjs",

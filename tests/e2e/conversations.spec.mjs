@@ -4,7 +4,7 @@
 // which closes when a chat is chosen. Accessibility is checked with the list and a row menu open.
 import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, mockSupabase, storedChatNodes, test } from './fixtures.mjs';
+import { chooseLanguage, expect, mockSupabase, storedChatNodes, test } from './fixtures.mjs';
 
 const LEGACY_ID = 'starpi_legacy-tides-0001';
 const DAY_MS = 86_400_000;
@@ -156,13 +156,13 @@ test.describe('conversation list', () => {
 
     // Both languages.
     await hideList(page);
-    await page.click('[data-action="set-locale"][data-arg="de"]');
+    await chooseLanguage(page, 'de');
     await showList(page);
     await expect(page.locator('#chat-sidebar [data-action="new-chat"]')).toHaveText('Neuer Chat');
     await expect(group(page, 'Angeheftet')).toContainText('Tides explained');
     await expect(page.locator('#chatListSearch')).toHaveAttribute('placeholder', 'Chats durchsuchen');
     await hideList(page);
-    await page.click('[data-action="set-locale"][data-arg="en"]');
+    await chooseLanguage(page, 'en');
     await expect(page.locator('#chat-sidebar [data-action="new-chat"]')).toHaveText('New chat');
 
     // After a reload the list and the open chat are the same.

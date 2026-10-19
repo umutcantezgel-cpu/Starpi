@@ -19,7 +19,7 @@
 //
 // WebCrypto only (HKDF, HMAC), so it runs on any runtime with Web globals.
 import { canonicalJson, fromBase64url, sha256Hex, toBase64url } from '../../../src/js/core/hash.js';
-import { FOCUS_CHARS, HINT_CHARS, MAX_CALLS_PER_ROUND, MAX_PLAN_QUERIES, MAX_TOOL_ROUNDS, QUESTION_CHARS, isSourceTool, sourcesPrompt, toolDeclarations, webPrompt } from '../../../src/js/research/prompts.js';
+import { FOCUS_CHARS, HINT_CHARS, MAX_CALLS_PER_ROUND, MAX_PLAN_QUERIES, MAX_TOOL_ROUNDS, QUESTION_CHARS, isResearchLocale, isSourceTool, sourcesPrompt, toolDeclarations, webPrompt } from '../../../src/js/research/prompts.js';
 import { isPoolModel } from '../../../src/js/ai/catalog/pools.js';
 import { scrubSecrets } from '../relay/scrub.js';
 
@@ -32,7 +32,7 @@ import { scrubSecrets } from '../relay/scrub.js';
  * @typedef {object} StepRequest
  * @property {StepPart} part
  * @property {string} question
- * @property {'en' | 'de'} locale
+ * @property {import('../../../src/js/research/prompts.js').ResearchLocale} locale
  * @property {Array<SignedTurn | ResultsItem>} history  alternating: a signed model turn, then the results of its calls
  * @property {readonly string[]} hints  search queries of the plan (sources part)
  * @property {string | null} focus      a document the question is about (sources part)
@@ -204,7 +204,7 @@ export function checkStepRequest(body) {
   if (extra !== undefined) return fail(`unknown field ${extra.slice(0, 40)}`);
   if (body.part !== 'sources' && body.part !== 'web') return fail('part must be "sources" or "web"');
   if (typeof body.question !== 'string' || !body.question.trim() || body.question.length > QUESTION_CHARS) return fail(`question must have 1 to ${QUESTION_CHARS} characters`);
-  if (body.locale !== 'en' && body.locale !== 'de') return fail('locale must be "en" or "de"');
+  if (!isResearchLocale(body.locale)) return fail('locale must be one of "en", "de", "fr", "es", "it", "tr"');
   const history = body.history ?? [];
   if (!Array.isArray(history)) return fail('history must be a list');
   if (body.part === 'web' && history.length > 0) return fail('the web part is a single step');

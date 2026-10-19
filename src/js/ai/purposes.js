@@ -18,7 +18,11 @@ import { isModelRole } from './roles.js';
 /** @typedef {import('./contract.js').ImageMime} ImageMime */
 /** @typedef {import('./json.js').JsonSchema} JsonSchema */
 /** @typedef {import('./roles.js').ModelRole} ModelRole */
-/** @typedef {'en' | 'de'} PromptLocale */
+/**
+ * The language a purpose answers in. Its instructions are German for German and English for every
+ * other language, which they name where the answer must be written in it.
+ * @typedef {'en' | 'de' | 'fr' | 'es' | 'it' | 'tr'} PromptLocale
+ */
 /** @typedef {{ locale: PromptLocale }} PurposeContext */
 /** @typedef {{ ok: true, value: unknown, errors?: undefined } | { ok: false, errors: string[], value?: undefined }} PurposeCheck */
 
@@ -82,8 +86,18 @@ export function quotedIn(quote, source) {
   return q.length > 0 && squash(source).includes(q);
 }
 
+/** The answer language as an instruction names it (German instructions for German, English ones otherwise). */
+const LANGUAGE_NAMES = Object.freeze({ en: 'English', de: 'Deutsch', fr: 'French', es: 'Spanish', it: 'Italian', tr: 'Turkish' });
+
 /** @param {PromptLocale} locale */
-const languageName = (locale) => (locale === 'de' ? 'Deutsch' : 'English');
+const languageName = (locale) => LANGUAGE_NAMES[locale] ?? LANGUAGE_NAMES.en;
+
+/**
+ * Whether a value names a language purposes answer in.
+ * @param {unknown} value
+ * @returns {value is PromptLocale}
+ */
+export const isPromptLocale = (value) => typeof value === 'string' && Object.hasOwn(LANGUAGE_NAMES, value);
 
 /**
  * A block of input the model must treat as data, never as instructions.

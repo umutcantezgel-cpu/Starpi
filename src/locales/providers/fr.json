@@ -1,0 +1,130 @@
+{
+  "title": "Fournisseurs de modèles et clés",
+  "subtitle": "Vos propres clés pour les modèles cloud, les modèles gratuits proposés par ce site et votre propre serveur.",
+  "vault": {
+    "title": "Coffre à clés",
+    "state": {
+      "none": "Cet onglet uniquement",
+      "locked": "Coffre verrouillé",
+      "unlocked": "Coffre ouvert",
+      "unavailable": "Pas de coffre ici"
+    },
+    "none_body": "Les clés sont conservées jusqu’à la fermeture de cet onglet. Définissez une phrase secrète pour les garder sur cet appareil, chiffrées avec une clé que seule votre phrase secrète permet d’ouvrir. Les clés de cet onglet sont alors placées dans le coffre.",
+    "locked_body": "Vos clés sont stockées chiffrées sur cet appareil. Saisissez la phrase secrète pour les utiliser dans cet onglet.",
+    "unlocked_body": "Le coffre est ouvert dans cet onglet. Il se verrouille de lui-même après 30 minutes d’inactivité.",
+    "unavailable_body": "Ce navigateur ne peut pas conserver de coffre (par exemple en navigation privée). Les clés sont conservées jusqu’à la fermeture de cet onglet.",
+    "passphrase": "Phrase secrète du coffre",
+    "passphrase_new_hint": "Au moins 8 caractères. Elle ne peut pas être récupérée : si vous l’oubliez, oubliez toutes les clés et ajoutez-les à nouveau.",
+    "create": "Définir la phrase secrète",
+    "unlock": "Déverrouiller",
+    "lock": "Verrouiller maintenant",
+    "forget": "Oublier toutes les clés",
+    "forget_confirm": "Supprimer toutes les clés de cet onglet et du coffre de cet appareil ?",
+    "working": "Traitement…",
+    "suggest": "Les clés que ce navigateur conservait en clair ont été déplacées : elles durent désormais jusqu’à la fermeture de cet onglet. Définissez une phrase secrète du coffre pour les garder chiffrées sur cet appareil.",
+    "suggest_dismiss": "Ignorer",
+    "result": {
+      "created": "Coffre créé. Les clés de cet onglet y sont maintenant stockées.",
+      "unlocked": "Coffre déverrouillé.",
+      "wrong": "Cette phrase secrète n’ouvre pas le coffre.",
+      "too_short": "La phrase secrète doit comporter au moins 8 caractères.",
+      "unavailable": "Ce navigateur ne peut pas conserver de coffre.",
+      "locked": "Coffre verrouillé.",
+      "forgotten": "Toutes les clés ont été supprimées.",
+      "idle": "Le coffre à clés s’est verrouillé après 30 minutes d’inactivité."
+    }
+  },
+  "error": {
+    "invalid_slot": "Fournisseur inconnu.",
+    "invalid_key": "Utilisez uniquement des caractères imprimables (lettres, chiffres, ponctuation) ; une clé ne contient pas d’espaces.",
+    "locked": "Déverrouillez d’abord le coffre, ou définissez une phrase secrète.",
+    "unavailable": "Ce navigateur ne peut pas conserver de coffre.",
+    "storage": "Le navigateur ne l’a pas enregistrée (navigation privée, stockage bloqué ou plein)."
+  },
+  "access": {
+    "title": "Code d’accès",
+    "body": "Ce site demande un code d’accès avant que son relais, ses modèles gratuits, la voix et la recherche ne répondent. Le code n’est envoyé qu’à ce site.",
+    "label": "Code d’accès",
+    "placeholder": "Saisissez le code",
+    "placeholder_saved": "Enregistré ; saisissez un nouveau code pour le remplacer",
+    "save": "Enregistrer le code",
+    "saved": "Code d’accès enregistré.",
+    "removed": "Code d’accès retiré."
+  },
+  "relay": {
+    "label": "Utiliser le relais Starpi pour les fournisseurs qui bloquent les navigateurs",
+    "hint": "Certains fournisseurs refusent les appels venant directement d’une page web. Avec cette option, un tel appel est renvoyé une fois par le relais de ce site, qui le transmet avec votre clé et ne conserve rien. Le chemin qui a fonctionné est mémorisé pour chaque fournisseur.",
+    "reset": "Oublier les chemins mémorisés",
+    "reset_done": "Le prochain appel à chaque fournisseur essaie de nouveau d’abord le chemin direct.",
+    "on": "Repli sur le relais activé.",
+    "off": "Repli sur le relais désactivé : les fournisseurs qui bloquent les navigateurs sont injoignables."
+  },
+  "pool": {
+    "title": "Modèles gratuits via ce site",
+    "loading": "Interrogation du site…",
+    "unreachable": "Ce site ne propose aucun modèle gratuit (il fonctionne sans fonctions serveur).",
+    "on": "{provider} : {count} {count:modèle gratuit|modèles gratuits}",
+    "off": "{provider} : non proposé"
+  },
+  "list": {
+    "title": "Vos propres clés"
+  },
+  "key": {
+    "label": "Clé API {provider}",
+    "placeholder": "Collez une clé",
+    "hint_prefix": "Les clés commencent par {prefix}. Le champ n’affiche jamais une clé enregistrée.",
+    "hint_any": "Collez la clé exactement telle que le fournisseur l’affiche. Le champ n’affiche jamais une clé enregistrée.",
+    "mismatch": "Enregistrée, mais cela ne ressemble pas à une clé de {provider}. Utilisez Tester la clé pour la vérifier.",
+    "remember": "Conserver dans le coffre de cet appareil",
+    "remember_locked": "Ouvrez le coffre (ou définissez une phrase secrète) pour conserver les clés sur cet appareil.",
+    "save": "Enregistrer la clé",
+    "test": "Tester la clé",
+    "remove": "Retirer la clé",
+    "get": "Obtenir une clé",
+    "none": "Aucune clé",
+    "session": "Clé pour cet onglet (••••{last4})",
+    "vault": "Clé dans le coffre (••••{last4})",
+    "saved": "Clé enregistrée pour cet onglet.",
+    "saved_vault": "Clé enregistrée dans le coffre.",
+    "removed": "Clé retirée.",
+    "empty": "Collez d’abord une clé."
+  },
+  "route": {
+    "direct": "Directement depuis le navigateur",
+    "auto": "Direct, relais si bloqué",
+    "relay": "Via le relais",
+    "pool": "Gratuit via ce site",
+    "device": "Sur cet appareil",
+    "reason": {
+      "unknown": "Fournisseur inconnu",
+      "no_key": "Nécessite une clé",
+      "relay_off": "Nécessite le relais",
+      "no_server": "Aucune adresse de serveur",
+      "in_browser": "Sur cet appareil"
+    }
+  },
+  "test": {
+    "running": "Test de la clé…",
+    "ok_direct": "La clé fonctionne (directement depuis le navigateur).",
+    "ok_relay": "La clé fonctionne (via le relais).",
+    "failed": "Le test a échoué ({code}) : {reason}"
+  },
+  "local": {
+    "title": "Votre propre serveur",
+    "presets": "Préréglages :",
+    "url": "Adresse du serveur",
+    "url_hint": "Un point d’accès compatible OpenAI. Autorisés : adresses https://, http://localhost et http://127.0.0.1.",
+    "key": "Clé du serveur (facultative)",
+    "key_hint": "Uniquement si votre serveur en demande une.",
+    "saved": "Adresse du serveur enregistrée.",
+    "cors_title": "Autoriser ce site à appeler votre serveur",
+    "cors": {
+      "ollama": "Ollama : démarrez-le avec {setting} défini sur {origin}.",
+      "lmstudio": "LM Studio : activez « {setting} » dans les paramètres du serveur.",
+      "vllm": "vLLM : démarrez-le avec {setting} incluant {origin}.",
+      "llamacpp": "llama.cpp : son serveur accepte les appels des pages web sans configuration supplémentaire."
+    },
+    "chrome": "Chrome demande si ce site peut accéder aux appareils de votre réseau local. Autorisez-le, sinon le navigateur bloque les appels vers votre serveur.",
+    "relay_never": "Les appels vers votre propre serveur partent toujours directement de ce navigateur ; le relais n’atteint jamais votre réseau."
+  }
+}

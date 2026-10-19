@@ -1,0 +1,100 @@
+{
+  "title": "Confianza · firma de recibos",
+  "subtitle": "Este dispositivo puede firmar los recibos de respuesta que descargas, con una clave que nunca sale del navegador. Comparte su clave pública con quien compruebe tus recibos.",
+  "state": {
+    "on": "Firmando",
+    "off": "Sin firmar",
+    "ready": "Clave con el primer recibo",
+    "unavailable": "No disponible aquí"
+  },
+  "sign": {
+    "label": "Firmar los recibos exportados",
+    "hint": "Cada recibo descargado nombra la clave de este dispositivo como firmante y lleva su firma. Así cualquiera puede comprobar que el recibo no ha cambiado; con tu clave pública también puede comprobar que lo firmó este dispositivo."
+  },
+  "key": {
+    "title": "Clave de firma de este dispositivo",
+    "alg": "Algoritmo",
+    "id": "ID de la clave",
+    "created": "Creada",
+    "retired": "Sustituida",
+    "export_jwk": "Clave pública (JWK)",
+    "export_pem": "Clave pública (PEM)",
+    "rotate": "Nueva clave",
+    "rotate_confirm": "¿Crear una nueva clave de firma? A partir de ahora los recibos se firman con la nueva clave; la antigua no vuelve a firmar nunca y su clave pública sigue disponible para exportarla.",
+    "delete": "Eliminar",
+    "delete_confirm": "¿Eliminar la clave de firma de este dispositivo? Los recibos que firmó se siguen verificando con su clave pública, si la exportaste. Se crea una nueva clave con el siguiente recibo firmado.",
+    "create": "Crear clave de firma",
+    "none": "Todavía no hay clave de firma. Se crea al abrir por primera vez un recibo de respuesta con la firma activada, o ahora.",
+    "unavailable": "Este navegador no puede crear claves de firma aquí (WebCrypto necesita una conexión segura). Los recibos se descargan sin firma.",
+    "not_persistent": "Este navegador no guarda datos de este sitio (por ejemplo, en una ventana privada): la clave solo dura hasta que se cierre la página."
+  },
+  "retired": {
+    "title": "Claves anteriores",
+    "body": "Las claves sustituidas por una nueva ya no firman. Sus claves públicas siguen sirviendo para comprobar los recibos que firmaron.",
+    "delete_confirm": "¿Eliminar esta clave anterior? Su clave pública ya no se podrá exportar desde aquí."
+  },
+  "check": {
+    "title": "Comprobar un recibo firmado",
+    "body": "Entrega el recibo, los archivos originales y tu clave pública a quien lo compruebe. Solo una clave pública recibida de ti muestra quién firmó; la clave incluida en un recibo solo muestra que no ha cambiado."
+  },
+  "result": {
+    "exported": "{file} guardado.",
+    "created": "Clave de firma creada.",
+    "rotated": "Nueva clave de firma creada. Exporta su clave pública para quien compruebe tus recibos.",
+    "deleted": "Clave eliminada.",
+    "sign_on": "Los recibos exportados se firman.",
+    "sign_off": "Los recibos exportados no se firman.",
+    "sign_page": "Guardado solo para esta página: este navegador no guarda datos de este sitio."
+  },
+  "error": {
+    "unavailable": "Este navegador no puede crear ni usar claves de firma aquí.",
+    "not_found": "Esa clave ya no existe.",
+    "storage": "No se pudo guardar la clave en este dispositivo."
+  },
+  "receipt": {
+    "signed_by": "Firmado con la clave {key} de este dispositivo ({alg}).",
+    "unsigned_off": "Sin firmar: la firma está desactivada en Ajustes › Confianza.",
+    "unsigned_unavailable": "Sin firmar: este navegador no puede crear una clave de firma aquí.",
+    "signer": "Firmante indicado en el recibo: clave {key} ({alg}).",
+    "signature_missing": "El recibo indica la clave de firmante {key} ({alg}), pero se eliminó su firma.",
+    "trusted": "De confianza: comprobado con la clave pública que elegiste.",
+    "not_trusted": "No es de confianza: no se eligió ninguna clave pública del firmante, y la clave incluida en un recibo puede ser de cualquiera.",
+    "own_key": "La clave pertenece a este dispositivo.",
+    "gate": "Filtro de frases (modo {mode}, según lo registrado): {released} validada(s), {withheld} retenida(s).",
+    "second_opinions": "Segundas opiniones registradas para {n} {n:afirmación|afirmaciones}, {contradicted} contradicha(s) (orientativo, no recalculado).",
+    "relations": "{n} {n:relación|relaciones} entre afirmaciones {n:registrada|registradas}, {flagged} invertida(s) o sin respaldo (no recalculado).",
+    "check_ocr": "{label}: el archivo coincide; su texto se reconoció mediante OCR y no se puede volver a extraer."
+  },
+  "models": {
+    "title": "Confianza · descargas de modelos",
+    "subtitle": "Antes de que un modelo local responda, cada archivo que descargó se compara con el hash SHA-256 fijado en esta versión de Starpi. Un archivo que no coincide se elimina y el modelo no se carga.",
+    "empty": "Todavía no se ha comprobado ningún modelo en este dispositivo. La comprobación se hace al cargar un modelo.",
+    "state": {
+      "verified": "Verificado",
+      "override": "Cargado sin verificar",
+      "mismatch": "Archivo eliminado",
+      "unverified": "Sin verificar"
+    },
+    "runtime": {
+      "webgpu": "GPU (WebGPU)",
+      "wasm": "Procesador (WASM)",
+      "embed": "Modelo de búsqueda",
+      "nli": "Modelo de segunda opinión"
+    },
+    "checked": "{n} {n:archivo comprobado|archivos comprobados} · {date}",
+    "mismatched": "No coincide con el hash fijado: {files}",
+    "unpinned": "Sin hash fijado: {files}",
+    "allow": "Cargar sin verificar (cambió en el origen)",
+    "allow_confirm": "¿Cargar {model} sin hashes fijados que coincidan? Hazlo solo si confías en que el modelo cambió en su origen después de publicarse esta versión de Starpi. Sus archivos se usarán tal cual, sin protección contra manipulaciones.",
+    "allowed": "Se permite cargar sin verificar: los archivos que no coinciden con un hash fijado se usan tal cual.",
+    "revoke": "Exigir verificación",
+    "note": "Los archivos verificados se recuerdan por dirección y tamaño, así que una carga posterior solo compara tamaños. Eliminar los modelos descargados restablece las comprobaciones.",
+    "result": {
+      "allowed": "{model} se puede cargar sin verificar. Vuelve a cargarlo para usarlo.",
+      "revoked": "{model} vuelve a cargarse solo con archivos verificados."
+    },
+    "error": {
+      "storage": "No se pudo guardar el ajuste en este dispositivo."
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "description": "Chunks in French, Spanish, Italian and Turkish for the Auto routing cases of cases-intl.json. They are searched together with workspace.json, as in a workspace that holds files in several languages; the English and German cases run on workspace.json alone, so their results stay as tuned.",
+  "chunks": [
+    {
+      "docId": "mediatheque",
+      "docName": "mediatheque.md",
+      "text": "Règlement de la médiathèque. La médiathèque est ouverte du mardi au samedi de 9 h à 18 h. Chaque lecteur peut emprunter jusqu’à huit livres pour une durée de trois semaines."
+    },
+    {
+      "docId": "mediatheque",
+      "docName": "mediatheque.md",
+      "text": "Un retard de restitution entraîne une suspension du prêt pendant une semaine. Les postes de la salle multimédia se réservent à l’accueil."
+    },
+    {
+      "docId": "aparcamiento",
+      "docName": "aparcamiento.md",
+      "text": "Normas del aparcamiento. Las plazas del aparcamiento se reservan con un día de antelación en la intranet. Cada empleado puede reservar como máximo tres días por semana."
+    },
+    {
+      "docId": "aparcamiento",
+      "docName": "aparcamiento.md",
+      "text": "Las bicicletas se guardan en el cuarto junto a la entrada norte. El aparcamiento cierra a las 22:00 y permanece cerrado los fines de semana."
+    },
+    {
+      "docId": "sale",
+      "docName": "sale-riunioni.md",
+      "text": "Prenotazione delle sale riunioni. Le sale riunioni si prenotano dal calendario condiviso fino a due settimane prima. Una prenotazione dura al massimo quattro ore."
+    },
+    {
+      "docId": "sale",
+      "docName": "sale-riunioni.md",
+      "text": "Dopo ogni riunione la sala va lasciata in ordine e il proiettore va spento. Le sale del terzo piano hanno la videoconferenza."
+    },
+    {
+      "docId": "parola",
+      "docName": "parola-politikasi.md",
+      "text": "Parola politikası. Tüm çalışanlar parolalarını her doksan günde bir değiştirmelidir. Bir parola en az on iki karakterden oluşmalı ve rakam içermelidir."
+    },
+    {
+      "docId": "parola",
+      "docName": "parola-politikasi.md",
+      "text": "Hesap, art arda beş hatalı girişten sonra otuz dakika kilitlenir. Kilitli hesaplar için bilgi işlem masasına başvurulur."
+    }
+  ]
+}

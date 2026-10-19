@@ -8,7 +8,7 @@
 // therefore always matches, while a changed value does not. The names, number words and units of
 // each language come from the language packs (lang/), read together. Pure: no DOM, runs in Node too.
 import { tokenize } from '../rag/bm25.js';
-import { anyOf, fromPacks, union } from './lang/index.js';
+import { anyOf, fromPacks, lowerCase, union } from './lang/index.js';
 import { LOOSE_LABEL_PATTERN } from './labels.js';
 
 /** @typedef {'number' | 'date' | 'time' | 'weekday' | 'month' | 'code' | 'quote'} FactKind */
@@ -76,6 +76,16 @@ const tables = fromPacks((packs) => {
   for (const [factor, words] of packs.flatMap((p) => p.scales)) scales.set(factor, union([scales.get(factor) ?? [], words]));
   const joiners = anyOf(all((p) => p.numberJoiners));
   const numberWord = [alternation(spelled.keys()), ...all((p) => p.numberParts)].filter(Boolean).join('|') || '(?!)';
+  /** @type {Map<string, Array<{ after: RegExp, before: RegExp }>>} per number word, the parts of its own packs */
+  const ownParts = new Map();
+  for (const p of packs) {
+    if (!p.ownNumberParts.length) continue;
+    const own = p.ownNumberParts.join('|');
+    const join = p.numberJoiners.length ? `(?:${anyOf(p.numberJoiners)}\\s+)?` : '';
+    const joinBefore = p.numberJoiners.length ? `(?:\\s+${anyOf(p.numberJoiners)})?` : '';
+    const parts = { after: new RegExp(`^[\\s-]+${join}(?:${own})(?![\\p{L}])`, 'iu'), before: new RegExp(`(?<![\\p{L}])(?:${own})${joinBefore}[\\s-]+$`, 'iu') };
+    for (const w of Object.keys(p.numberWords)) ownParts.set(w, [...(ownParts.get(w) ?? []), parts]);
+  }
   const positions = all((p) => p.monthPosition);
   const links = all((p) => p.dayMonthLinks);
   const ordinals = all((p) => p.ordinalSuffixes);
@@ -115,20 +125,22 @@ const tables = fromPacks((packs) => {
     spelled,
     spelledAlt: alternation(spelled.keys()) || '(?!)',
     spelledFolded: new Map([...spelled].map(([w, n]) => [fold(w), n])),
+    ownParts,
     // "and" joins two number words ("a hundred and twenty"); between other words it is just "and".
     spelledPartAfter: new RegExp(`^[\\s-]+(?:${joiners}\\s+)?(?:${numberWord})(?![\\p{L}])|^[\\s-]*\\d`, 'iu'),
     spelledPartBefore: new RegExp(`(?<![\\p{L}])(?:${numberWord})(?:\\s+${joiners})?[\\s-]+$|\\d[\\s-]*$`, 'iu'),
     /** words that describe the sources rather than stating something */
     boilerplate: new Set([...all((p) => p.boilerplate), ...LABEL_WORDS]),
-    /** per language, the function words no other pack has, and its own letters */
-    cues: packs.map((p) => ({ code: p.code, words: ownWords(p), letters: letterClass(p.letters) })),
+    /** per language, the function words no other pack has, its own letters and whether it lowercases its own way */
+    cues: packs.map((p) => ({ code: p.code, words: ownWords(p), letters: letterClass(p.letters), ownCase: Object.keys(p.caseFold ?? {}).length > 0 })),
   };
 });
 
 /**
  * Case, Unicode and typography folding shared by claims and sources: NFKC, lowercase, German
- * umlauts and ß spelled out, soft hyphens and PDF line-break hyphenation removed, quotes and dashes
- * unified.
+ * umlauts and ß spelled out, the Turkish dotted and dotless i read as "i" (so "İSTANBUL", "İstanbul"
+ * and "ılık", "ILIK" fold alike), soft hyphens and PDF line-break hyphenation removed, quotes and
+ * dashes unified.
  * @param {string} text
  */
 export function fold(text) {
@@ -136,7 +148,9 @@ export function fold(text) {
     .normalize('NFKC')
     .replace(/­/g, '')
     .replace(/(\p{L})-\n(\p{L})/gu, '$1$2')
+    .replace(/İ/g, 'i')
     .toLowerCase()
+    .replace(/ı/g, 'i')
     .replace(/ä/g, 'ae')
     .replace(/ö/g, 'oe')
     .replace(/ü/g, 'ue')
@@ -586,8 +600,10 @@ function findSpelledNumbers(text) {
   while ((m = re.exec(text)) !== null) {
     const n = t.spelled.get(m[1].toLowerCase());
     const rest = text.slice(m.index + m[0].length);
-    // Part of a larger number ("twenty-five", "two hundred", "ten thousand"): left to the reader.
-    if (!n || n === 100 || t.spelledPartAfter.test(rest) || t.spelledPartBefore.test(text.slice(0, m.index))) continue;
+    // Part of a larger number ("twenty-five", "two hundred", "ten thousand", "dix-sept"): left to the reader.
+    const lead = text.slice(0, m.index);
+    if (!n || n === 100 || t.spelledPartAfter.test(rest) || t.spelledPartBefore.test(lead)) continue;
+    if (t.ownParts.get(m[1].toLowerCase())?.some((o) => o.after.test(rest) || o.before.test(lead))) continue;
     if (n < 10 && !t.unitAfter.test(rest)) continue;
     const before = text.slice(Math.max(0, m.index - 24), m.index);
     out.push({ start: m.index, end: m.index + m[0].length, surface: m[0], claim: [numKey(n)], source: [numKey(n)], nums: [n], approx: t.approxBefore.test(before) });
@@ -608,18 +624,26 @@ export function contentTokens(text) {
 
 /**
  * Guesses the language of a text from function words that only one language pack has, and from
- * letters that only one pack uses (German ä, ö, ü, ß).
+ * letters that a pack uses (German ä, ö, ü, ß; Turkish ğ, ı, ş). A pack that lowercases its own way
+ * (Turkish "I" → "ı") reads the words of the text in its own lowercase.
  * @param {string} text
  * @returns {import('./lang/index.js').LanguageCode | null}
  */
 export function guessLanguage(text) {
   const { cues } = tables();
   const score = cues.map(() => 0);
-  const lower = text.normalize('NFKC').toLowerCase();
+  const normal = text.normalize('NFKC');
+  const lower = normal.toLowerCase();
+  const plain = cues.map((c, i) => (c.ownCase ? -1 : i)).filter((i) => i >= 0);
   for (const w of lower.match(/\p{L}+/gu) ?? []) {
-    const i = cues.findIndex((c) => c.words.has(w));
-    if (i >= 0) score[i] += 1;
+    const i = plain.find((k) => cues[k].words.has(w));
+    if (i !== undefined) score[i] += 1;
   }
+  // Its own lowercase for its words only: a capital "I" read as "ı" is no Turkish letter.
+  cues.forEach((c, i) => {
+    if (!c.ownCase) return;
+    for (const w of lowerCase(normal, c.code).match(/\p{L}+/gu) ?? []) if (c.words.has(w)) score[i] += 1;
+  });
   cues.forEach((c, i) => {
     if (c.letters?.test(lower)) score[i] += 1;
   });

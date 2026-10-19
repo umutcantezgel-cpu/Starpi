@@ -1,0 +1,146 @@
+{
+  "builtin": {
+    "datetime": "Data e ora",
+    "calculator": "Calcolatrice",
+    "workspace_search": "Cerca nei miei file",
+    "memory_lookup": "Memoria",
+    "web_search": "Ricerca web",
+    "generate_image": "Crea immagine"
+  },
+  "effect": {
+    "read": "Solo lettura",
+    "low": "Effetto limitato",
+    "high": "Effetto duraturo",
+    "forbidden": "Non consentito"
+  },
+  "approval": {
+    "title": "Consentire «{tool}»?",
+    "from_server": "Uno strumento del server MCP {server}. Viene eseguito solo se lo consenti.",
+    "builtin": "Uno strumento integrato. Viene eseguito solo se lo consenti.",
+    "args": "Argomenti",
+    "once": "Consenti una volta",
+    "always": "Consenti sempre",
+    "deny": "Nega",
+    "allowed": "Consentito",
+    "allowed_always": "Consentito – questo strumento non chiederà più (annullabile in Impostazioni → Strumenti e connessioni)",
+    "denied": "Non consentito"
+  },
+  "activity": {
+    "running": "Uso di {tool}…",
+    "done": "{tool} ha risposto",
+    "failed": "{tool} non è riuscito",
+    "denied": "{tool} non è stato consentito",
+    "forbidden": "{tool} non può essere usato",
+    "round_limit": "La risposta ha raggiunto il limite di {n} giri di strumenti e usa ciò che è stato trovato finora."
+  },
+  "image": {
+    "alt": "Immagine generata",
+    "download": "Scarica l’immagine"
+  },
+  "menu": {
+    "basics_on": "Data e calcolatrice: attive",
+    "basics_off": "Data e calcolatrice: disattivate",
+    "files_on": "Cerca nei miei file: attivo",
+    "files_off": "Cerca nei miei file: disattivato",
+    "web_on": "Strumento di ricerca web: attivo",
+    "web_off": "Strumento di ricerca web: disattivato",
+    "images_on": "Crea immagini: attivo",
+    "images_off": "Crea immagini: disattivato",
+    "settings": "Strumenti e server MCP…"
+  },
+  "settings": {
+    "title": "Strumenti e connessioni",
+    "subtitle": "Ciò che i modelli possono usare mentre rispondono: strumenti integrati, un servizio di ricerca web e server MCP. Una chiamata che modifica qualcosa chiede prima il permesso; «Consenti sempre» è offerto solo per effetti limitati e si può annullare in fondo a questa scheda.",
+    "tools_title": "Strumenti per il modello",
+    "tools_hint": "Offerti ai modelli che sanno chiamare strumenti; mai ai modelli su questo dispositivo né ai modelli gratuiti del sito.",
+    "switch": {
+      "datetime": "Data e ora",
+      "calculator": "Calcolatrice",
+      "workspace_search": "Cerca nei miei file (il modello può leggere passaggi dei tuoi file)",
+      "memory_lookup": "Memoria (fatti che hai chiesto all’assistente di ricordare)",
+      "web_search": "Strumento di ricerca web (il modello cerca da solo con il servizio qui sotto)",
+      "generate_image": "Crea immagini (chiede prima di ogni immagine; usa la tua chiave OpenAI, Google o xAI)"
+    },
+    "search_title": "Servizio di ricerca web",
+    "search_hint": "Per i modelli senza una ricerca propria: con Web attivo, Starpi cerca la domanda, il modello risponde dai risultati e la risposta viene verificata su di essi.",
+    "search": {
+      "provider": "Servizio",
+      "off": "Disattivato",
+      "brave": "Brave Search",
+      "tavily": "Tavily",
+      "searxng": "SearXNG (self-hosted)",
+      "key": "Chiave API",
+      "key_set": "È salvata una chiave",
+      "key_none": "Ancora nessuna chiave",
+      "url": "Indirizzo di SearXNG",
+      "url_hint": "L’indirizzo della tua istanza; il suo output JSON deve essere attivo.",
+      "save": "Salva",
+      "test": "Prova la ricerca",
+      "remove_key": "Rimuovi la chiave",
+      "relay_note": "Brave Search non risponde alle chiamate del browser; viene raggiunto tramite il relay di questo sito, che inoltra la richiesta e non conserva nulla.",
+      "saved": "Salvato.",
+      "working": "Ricerca in corso…",
+      "ok": "La ricerca ha trovato {n} {n:risultato|risultati}.",
+      "failed": "La ricerca non è riuscita: {reason}",
+      "bad_url": "Questo indirizzo non è utilizzabile."
+    },
+    "mcp_title": "Server MCP",
+    "mcp_hint": "Server che offrono strumenti tramite MCP (Streamable HTTP). Il browser può raggiungere un server solo se questo consente chiamate da questa pagina. Approvi ogni strumento una volta; dopodiché ogni chiamata chiede il permesso, a meno che tu non abbia scelto «Consenti sempre» per uno strumento che legge soltanto o ha un effetto limitato. Uno strumento la cui definizione cambia deve essere approvato di nuovo e chiede di nuovo.",
+    "remembered_title": "Sempre consentiti",
+    "remembered_hint": "Gli strumenti per cui hai scelto «Consenti sempre» vengono eseguiti senza chiedere. Se dimentichi qui una scelta, lo strumento chiede di nuovo.",
+    "remembered_empty": "Nessuno strumento è sempre consentito.",
+    "remembered_mcp": "{tool} (server MCP {server})",
+    "remembered_forget": "Dimentica",
+    "remembered_forget_all": "Dimentica tutto",
+    "mcp": {
+      "empty": "Ancora nessun server.",
+      "name": "Nome",
+      "url": "Indirizzo (https, oppure http su questo computer)",
+      "token": "Token Bearer (facoltativo)",
+      "remember": "Conserva il token nella cassaforte delle chiavi",
+      "mode": "Connessione",
+      "mode_browser": "Da questo browser",
+      "mode_provider": "Tramite il provider (Anthropic, OpenAI)",
+      "add": "Aggiungi server",
+      "added": "Server aggiunto.",
+      "too_many": "Al massimo {n} server.",
+      "bad_url": "Questo indirizzo non può essere usato.",
+      "bad_url_provider": "Un provider può raggiungere solo un indirizzo https pubblico.",
+      "check": "Controlla gli strumenti",
+      "remove": "Rimuovi",
+      "enabled": "Usa questo server",
+      "approve": "Approva",
+      "revoke": "Revoca l’approvazione",
+      "schema": "Argomenti come li vede il modello",
+      "provider_flag": "Consenti server lato provider",
+      "provider_flag_hint": "Per i server che bloccano le chiamate del browser: Anthropic o OpenAI si collega al server al posto tuo e chiama gli strumenti che elenchi senza chiedere ogni volta. Solo per server https pubblici di cui ti fidi.",
+      "allowed": "Strumenti che il provider può chiamare (separati da virgole)",
+      "save_allowed": "Salva gli strumenti",
+      "provider_note": "Chiamato dal provider; gli strumenti elencati vengono eseguiti senza chiedere.",
+      "status": {
+        "ok": "Connesso",
+        "off": "Disattivato",
+        "error": "Non raggiungibile: {reason}",
+        "unknown": "Non ancora controllato"
+      },
+      "error": {
+        "cors": "il server non consente chiamate da questa pagina",
+        "auth": "il token è stato rifiutato",
+        "session": "la sessione è terminata",
+        "http": "il server ha risposto con un errore",
+        "protocol": "la risposta non era MCP",
+        "rpc": "il server ha segnalato un errore",
+        "timeout": "nessuna risposta in tempo",
+        "aborted": "interrotto",
+        "bad_url": "l’indirizzo non è utilizzabile"
+      },
+      "tool": {
+        "approved": "Approvato",
+        "new": "Non approvato",
+        "changed": "Modificato – da approvare di nuovo",
+        "removed": "Non più offerto",
+        "invalid": "Definizione non valida"
+      }
+    }
+  }
+}

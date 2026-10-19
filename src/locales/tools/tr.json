@@ -1,0 +1,146 @@
+{
+  "builtin": {
+    "datetime": "Tarih ve saat",
+    "calculator": "Hesap makinesi",
+    "workspace_search": "Dosyalarımda ara",
+    "memory_lookup": "Bellek",
+    "web_search": "Web araması",
+    "generate_image": "Görsel oluştur"
+  },
+  "effect": {
+    "read": "Yalnızca okur",
+    "low": "Küçük etki",
+    "high": "Kalıcı etki",
+    "forbidden": "İzin verilmiyor"
+  },
+  "approval": {
+    "title": "“{tool}” için izin verilsin mi?",
+    "from_server": "{server} MCP sunucusunun bir aracı. Yalnızca siz izin verirseniz çalışır.",
+    "builtin": "Yerleşik bir araç. Yalnızca siz izin verirseniz çalışır.",
+    "args": "Bağımsız değişkenler",
+    "once": "Bir kez izin ver",
+    "always": "Her zaman izin ver",
+    "deny": "Reddet",
+    "allowed": "İzin verildi",
+    "allowed_always": "İzin verildi – bu araç bir daha sormayacak (Ayarlar → Araçlar ve bağlantılar bölümünden geri alınabilir)",
+    "denied": "İzin verilmedi"
+  },
+  "activity": {
+    "running": "{tool} kullanılıyor…",
+    "done": "{tool} yanıt verdi",
+    "failed": "{tool} başarısız oldu",
+    "denied": "{tool} için izin verilmedi",
+    "forbidden": "{tool} kullanılamaz",
+    "round_limit": "Yanıt {n} araç turu sınırına ulaştı ve şimdiye kadar bulunanları kullanıyor."
+  },
+  "image": {
+    "alt": "Oluşturulan görsel",
+    "download": "Görseli indir"
+  },
+  "menu": {
+    "basics_on": "Tarih ve hesap makinesi: açık",
+    "basics_off": "Tarih ve hesap makinesi: kapalı",
+    "files_on": "Dosyalarımda ara: açık",
+    "files_off": "Dosyalarımda ara: kapalı",
+    "web_on": "Web araması aracı: açık",
+    "web_off": "Web araması aracı: kapalı",
+    "images_on": "Görsel oluşturma: açık",
+    "images_off": "Görsel oluşturma: kapalı",
+    "settings": "Araçlar ve MCP sunucuları…"
+  },
+  "settings": {
+    "title": "Araçlar ve bağlantılar",
+    "subtitle": "Modellerin yanıt verirken kullanabilecekleri: yerleşik araçlar, bir web araması hizmeti ve MCP sunucuları. Bir şeyi değiştiren çağrı önce izin ister; “Her zaman izin ver” yalnızca küçük etkiler için sunulur ve bu kartın sonunda geri alınabilir.",
+    "tools_title": "Model için araçlar",
+    "tools_hint": "Araç çağırabilen modellere sunulur; bu cihazdaki modellere veya sitenin ücretsiz modellerine asla sunulmaz.",
+    "switch": {
+      "datetime": "Tarih ve saat",
+      "calculator": "Hesap makinesi",
+      "workspace_search": "Dosyalarımda ara (model dosyalarınızdan pasajlar okuyabilir)",
+      "memory_lookup": "Bellek (asistandan hatırlamasını istediğiniz bilgiler)",
+      "web_search": "Web araması aracı (model aşağıdaki hizmetle kendi başına arama yapar)",
+      "generate_image": "Görsel oluştur (her görselden önce sorar; OpenAI, Google veya xAI anahtarınızı kullanır)"
+    },
+    "search_title": "Web araması hizmeti",
+    "search_hint": "Kendi araması olmayan modeller için: Web açıkken Starpi soruyu arar, model sonuçlardan yanıt verir ve yanıt bu sonuçlarla karşılaştırılarak denetlenir.",
+    "search": {
+      "provider": "Hizmet",
+      "off": "Kapalı",
+      "brave": "Brave Search",
+      "tavily": "Tavily",
+      "searxng": "SearXNG (kendi barındırdığınız)",
+      "key": "API anahtarı",
+      "key_set": "Bir anahtar kayıtlı",
+      "key_none": "Henüz anahtar yok",
+      "url": "SearXNG adresi",
+      "url_hint": "Örneğinizin adresi; JSON çıktısının açık olması gerekir.",
+      "save": "Kaydet",
+      "test": "Aramayı test et",
+      "remove_key": "Anahtarı kaldır",
+      "relay_note": "Brave Search tarayıcı çağrılarına yanıt vermez; ona bu sitenin aktarıcısı üzerinden ulaşılır, aktarıcı isteği iletir ve hiçbir şey saklamaz.",
+      "saved": "Kaydedildi.",
+      "working": "Aranıyor…",
+      "ok": "Arama {n} {n:sonuç|sonuç} buldu.",
+      "failed": "Arama başarısız oldu: {reason}",
+      "bad_url": "Bu adres kullanılamaz."
+    },
+    "mcp_title": "MCP sunucuları",
+    "mcp_hint": "MCP (Streamable HTTP) üzerinden araç sunan sunucular. Tarayıcı bir sunucuya yalnızca sunucu bu sayfadan gelen çağrılara izin veriyorsa ulaşabilir. Her aracı bir kez onaylarsınız; sonrasında her çağrı izin ister, yalnızca okuyan veya küçük etkisi olan bir araç için “Her zaman izin ver” seçmediyseniz. Tanımı değişen bir araç yeniden onaylanmalıdır ve yeniden izin ister.",
+    "remembered_title": "Her zaman izin verilenler",
+    "remembered_hint": "“Her zaman izin ver” seçtiğiniz araçlar sormadan çalışır. Burada bir seçimi unutursanız araç yeniden sorar.",
+    "remembered_empty": "Her zaman izin verilen araç yok.",
+    "remembered_mcp": "{tool} ({server} MCP sunucusu)",
+    "remembered_forget": "Unut",
+    "remembered_forget_all": "Tümünü unut",
+    "mcp": {
+      "empty": "Henüz sunucu yok.",
+      "name": "Ad",
+      "url": "Adres (https veya bu bilgisayarda http)",
+      "token": "Bearer belirteci (isteğe bağlı)",
+      "remember": "Belirteci anahtar kasasında tut",
+      "mode": "Bağlantı",
+      "mode_browser": "Bu tarayıcıdan",
+      "mode_provider": "Sağlayıcı üzerinden (Anthropic, OpenAI)",
+      "add": "Sunucu ekle",
+      "added": "Sunucu eklendi.",
+      "too_many": "En fazla {n} sunucu.",
+      "bad_url": "Bu adres kullanılamaz.",
+      "bad_url_provider": "Bir sağlayıcı yalnızca herkese açık bir https adresine ulaşabilir.",
+      "check": "Araçları denetle",
+      "remove": "Kaldır",
+      "enabled": "Bu sunucuyu kullan",
+      "approve": "Onayla",
+      "revoke": "Onayı geri çek",
+      "schema": "Modelin gördüğü şekliyle bağımsız değişkenler",
+      "provider_flag": "Sağlayıcı tarafındaki sunuculara izin ver",
+      "provider_flag_hint": "Tarayıcı çağrılarını engelleyen sunucular için: bunun yerine Anthropic veya OpenAI sunucuya bağlanır ve listelediğiniz araçları her seferinde sormadan çağırır. Yalnızca güvendiğiniz, herkese açık https sunucuları için.",
+      "allowed": "Sağlayıcının çağırabileceği araçlar (virgülle ayrılmış)",
+      "save_allowed": "Araçları kaydet",
+      "provider_note": "Sağlayıcı tarafından çağrılır; listelenen araçlar sormadan çalışır.",
+      "status": {
+        "ok": "Bağlı",
+        "off": "Kapalı",
+        "error": "Ulaşılamıyor: {reason}",
+        "unknown": "Henüz denetlenmedi"
+      },
+      "error": {
+        "cors": "sunucu bu sayfadan gelen çağrılara izin vermiyor",
+        "auth": "belirteç reddedildi",
+        "session": "oturum sona erdi",
+        "http": "sunucu bir hatayla yanıt verdi",
+        "protocol": "yanıt MCP değildi",
+        "rpc": "sunucu bir hata bildirdi",
+        "timeout": "zamanında yanıt yok",
+        "aborted": "durduruldu",
+        "bad_url": "adres kullanılamaz"
+      },
+      "tool": {
+        "approved": "Onaylandı",
+        "new": "Onaylanmadı",
+        "changed": "Değişti – yeniden onaylayın",
+        "removed": "Artık sunulmuyor",
+        "invalid": "Geçersiz tanım"
+      }
+    }
+  }
+}

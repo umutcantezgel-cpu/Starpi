@@ -1,0 +1,65 @@
+{
+  "spoken": {
+    "free": "Serbest konuşma, yanıtlar denetlenmez.",
+    "withheld": "{count} {count:cümle|cümle} tutuldu.",
+    "ended": "Canlı konuşma sona erdi."
+  },
+  "title": "Canlı konuşma",
+  "close": "Canlı konuşmayı kapat",
+  "open": "Canlı",
+  "open_hint": "Canlı sesli konuşma başlat",
+  "mode": {
+    "label": "Konuşma modu",
+    "free": "Serbest konuşma",
+    "sources": "Kaynaklarınızdan",
+    "free_hint": "Açık bir konuşma. Yanıtlar belgelerinizle karşılaştırılarak denetlenmez.",
+    "sources_hint": "Her konuşma sırası belgelerinizde arama yapar. Yalnızca denetimin onayladığı cümleler seslendirilir; ardından tutulan cümle sayısı söylenir."
+  },
+  "state": {
+    "idle": "Başlamaya hazır",
+    "connecting": "Bağlanıyor…",
+    "ready": "Konuşmak için mikrofona basın",
+    "listening": "Dinliyor",
+    "thinking": "Düşünüyor…",
+    "speaking": "Konuşuyor",
+    "ended": "Konuşma sona erdi"
+  },
+  "ended": {
+    "limit": "15 dakika sonra sona erdi.",
+    "silence": "3 dakikalık sessizlikten sonra sona erdi.",
+    "hidden": "Sekmeden ayrıldığınız için sona erdi.",
+    "error": "Bağlantı beklenmedik şekilde sona erdi.",
+    "no_model": "Kullanılabilir model yok. Ayarlar → Sağlayıcılar bölümünden bir anahtar ekleyin.",
+    "microphone": "Mikrofon başlatılamadı."
+  },
+  "hint": {
+    "no_source": "Buradaki hiçbir ses girişi bir kaydı metne dönüştüremiyor. Mesajınızı aşağıya yazın veya Ayarlar → Ses bölümünden bir anahtar ya da yerel bir ses sunucusu ekleyin.",
+    "not_heard": "Hiçbir şey anlaşılmadı. Konuşmak için basıp yeniden deneyin veya mesajınızı aşağıya yazın."
+  },
+  "engine": {
+    "live": "Gemini Live",
+    "turns": "Bas ve konuş"
+  },
+  "start": "Başlat",
+  "talk": "Konuşmak için basın",
+  "talk_send": "Göndermek için basın",
+  "talk_interrupt": "Kesmek için basın",
+  "camera": "Kamera fotoğrafı gönder",
+  "stop": "Konuşmayı bitir",
+  "say_label": "Bunun yerine mesaj yaz",
+  "say_placeholder": "Veya buraya yazın…",
+  "say": "Gönder",
+  "limits": "Bir konuşma 15 dakika sonra, 3 dakikalık sessizlikten sonra veya bu sekmeden ayrıldığınızda sona erer. Hiçbir şey kaydedilmez.",
+  "transcript": {
+    "empty": "Konuşma burada görünecek.",
+    "thinking": "Yanıtlanıyor…",
+    "nothing": "Bu yanıtın hiçbir kısmı onaylanmadı."
+  },
+  "label": {
+    "free": "Serbest · denetlenmedi",
+    "withheld": "{count} tutuldu"
+  },
+  "on_device": "Canlı konuşma bu cihazın dışında bir model gerektirir. Kullanmak için yerel modu kapatın.",
+  "camera_failed": "Kamera fotoğrafı çekilemedi.",
+  "camera_sent": "Kamera fotoğrafı konuşmayla birlikte gönderildi."
+}

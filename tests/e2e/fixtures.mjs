@@ -242,4 +242,13 @@ export const test = base.extend({
   },
 });
 
+/**
+ * Picks a language in the header's language switch (a select, as more than three languages ship).
+ * @param {import('@playwright/test').Page} page
+ * @param {string} code
+ */
+export async function chooseLanguage(page, code) {
+  await page.selectOption('select[data-change="set-locale"]', code);
+}
+
 export { expect };

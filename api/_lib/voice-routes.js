@@ -183,8 +183,13 @@ export function unknownField(body, fields) {
   return Object.keys(body).find((k) => !fields.includes(k)) ?? null;
 }
 
-/** Interface languages a request may name; anything else counts as English. */
+/** @typedef {'en' | 'de' | 'fr' | 'es' | 'it' | 'tr'} VoiceLocale */
+
+/** The interface languages (src/locales SHIPPED_LOCALES) a speech request may name. */
+export const VOICE_LOCALES = /** @type {readonly VoiceLocale[]} */ (Object.freeze(['en', 'de', 'fr', 'es', 'it', 'tr']));
+
+/** Interface languages a request may name ("fr-FR" is French); anything else counts as English. */
 export function requestLocale(/** @type {unknown} */ value) {
   const lang = typeof value === 'string' ? value.slice(0, 2).toLowerCase() : '';
-  return /** @type {'en' | 'de'} */ (lang === 'de' ? 'de' : 'en');
+  return /** @type {VoiceLocale} */ (VOICE_LOCALES.find((l) => l === lang) ?? 'en');
 }

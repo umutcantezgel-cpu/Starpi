@@ -1,0 +1,123 @@
+{
+  "title": "Recherche",
+  "intro": "Posez une question qui demande plusieurs recherches. Starpi cherche dans vos documents et, si vous le souhaitez, sur le web, vérifie chaque phrase et conserve le rapport sur cet appareil. Les tâches continuent pendant que vous travaillez ailleurs.",
+  "question_label": "Question",
+  "question_placeholder": "Que voulez-vous découvrir ?",
+  "include_web": "Chercher aussi sur le web",
+  "strip_pii": "Retirer de la recherche web les adresses e-mail, numéros de téléphone et informations similaires",
+  "focus": "À propos du document « {doc} »",
+  "focus_clear": "Rechercher dans tous les documents",
+  "start": "Lancer la recherche",
+  "question_required": "Saisissez d’abord une question.",
+  "started": "Recherche lancée. Elle continue en arrière-plan.",
+  "start_failed": "La recherche n’a pas pu être lancée.",
+  "jobs_title": "Tâches de recherche",
+  "empty": "Aucune recherche pour l’instant. Vos tâches et leurs rapports apparaissent ici.",
+  "status": {
+    "queued": "En attente",
+    "running": "En cours",
+    "done": "Terminée",
+    "failed": "Échec",
+    "cancelled": "Annulée",
+    "stale": "Interrompue"
+  },
+  "step": {
+    "plan": "Planification des recherches",
+    "sources": "Recherche dans vos documents",
+    "web": "Recherche sur le web",
+    "check": "Vérification des sources",
+    "report": "Rédaction du rapport"
+  },
+  "progress": "{step} · tour {round} · {n} {n:source|sources}",
+  "progress_short": "{step}",
+  "queued_hint": "Attend que moins de trois tâches soient en cours.",
+  "elsewhere": "S’exécute dans un autre onglet de Starpi.",
+  "stale_hint": "La page a été fermée ou rechargée pendant cette tâche. Réessayer exécute les parties manquantes.",
+  "failed_hint": "La tâche a échoué ({code}). Réessayer exécute les parties manquantes.",
+  "unread": "Nouveau",
+  "meta": "{date} · {origin}",
+  "origin": {
+    "chat": "Depuis une discussion",
+    "library": "Depuis la bibliothèque",
+    "header": "Onglet Recherche"
+  },
+  "actions": {
+    "open": "Ouvrir le rapport",
+    "close": "Fermer le rapport",
+    "cancel": "Annuler",
+    "retry": "Réessayer",
+    "remove": "Retirer",
+    "export_md": "Télécharger en Markdown",
+    "show": "Afficher dans l’onglet Recherche"
+  },
+  "badge": "{n} {n:tâche de recherche en cours|tâches de recherche en cours}",
+  "section": {
+    "summary": "Résumé",
+    "details": "Détails",
+    "sources": "Sources",
+    "open_questions": "Questions ouvertes"
+  },
+  "part": {
+    "sources": "D’après vos documents",
+    "web": "D’après le web"
+  },
+  "via": {
+    "byok": "Rédigé par {model} avec votre clé",
+    "pool": "Rédigé par {model} via ce site",
+    "quote": "Cité depuis vos documents : aucun modèle n’était disponible"
+  },
+  "fallback": "Le modèle a échoué ({code}) : les phrases les plus pertinentes sont citées à la place.",
+  "gate_counts": "{released} {released:phrase conservée|phrases conservées} · {withheld} retenue(s) par la vérification des phrases",
+  "check_counts": "Vérification des sources : {supported} confirmée(s) · {weak} fragile(s) · {unsupported} non confirmée(s)",
+  "no_answer": "Vos documents n’ont apporté aucune réponse à cette question.",
+  "web_query": "Recherche web effectuée : {query}",
+  "web_removed": "Retiré avant la recherche : {kinds}",
+  "pii": {
+    "email": "adresses e-mail",
+    "phone": "numéros de téléphone",
+    "iban": "numéros de compte",
+    "card": "numéros de carte",
+    "ip": "adresses IP"
+  },
+  "web_released": "Vérifiée dans son ensemble : chaque nombre figure dans un passage confirmé par les résultats de recherche.",
+  "web_withheld": "La réponse web est retenue, car elle n’a pas passé la vérification dans son ensemble : {reason}. Seules les pages consultées sont listées.",
+  "web_off": "Pas de recherche web : aucun de vos fournisseurs ne cherche sur le web, et ce site n’en propose pas.",
+  "web_empty": "Une fois les informations personnelles retirées, il ne restait rien de la question pour une recherche web.",
+  "web_failed": "La recherche web a échoué ({code}).",
+  "web_running": "Recherche web en cours…",
+  "web_sources": "Pages consultées (listées, non vérifiées)",
+  "doc_sources": "Documents",
+  "suggestions": "Suggestions de recherche",
+  "web_reason": {
+    "empty": "elle était vide",
+    "no_sources": "elle ne citait aucune page web",
+    "web_ungrounded": "un nombre se trouve en dehors de tout passage confirmé par les résultats",
+    "unsupported_number": "un nombre n’est pas confirmé",
+    "chars": "elle contient des caractères impossibles à vérifier",
+    "link": "elle contient un lien",
+    "joined": "elle contient des chiffres qui pourraient être mal lus",
+    "number_word": "un nombre écrit en toutes lettres n’est pas confirmé",
+    "identifier": "un identifiant n’est pas confirmé",
+    "spoken_mismatch": "la lire à voix haute changerait un nombre",
+    "other": "elle n’a pas passé la vérification"
+  },
+  "report": {
+    "title": "Rapport de recherche",
+    "made_with": "Rédigé par {model}",
+    "quoted": "Cité depuis les documents sans modèle",
+    "no_document_answer": "Les documents n’ont apporté aucune réponse à cette question.",
+    "from_web": "D’après le web",
+    "web_query": "Recherche effectuée : {query}",
+    "web_withheld": "La partie web a été retenue : {reason}.",
+    "web_off": "Aucune recherche web n’était disponible.",
+    "web_failed": "La recherche web a échoué.",
+    "documents": "Documents",
+    "web_sources": "Pages web (listées, non vérifiées par rapport aux pages)",
+    "no_sources": "Aucune source n’a été citée.",
+    "check": "Vérification des sources : {supported} confirmée(s), {weak} fragile(s), {unsupported} non confirmée(s).",
+    "withheld": "La vérification des phrases a retenu {n} {n:phrase|phrases}.",
+    "receipt_note": "Le reçu de réponse couvre la partie issue des documents ; les pages web sont listées mais non vérifiées."
+  },
+  "this": "Approfondir",
+  "prefilled": "La question se trouve dans l’onglet Recherche. Ajustez-la et lancez la recherche."
+}

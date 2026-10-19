@@ -1,0 +1,65 @@
+{
+  "spoken": {
+    "free": "Conversation libre, les réponses ne sont pas vérifiées.",
+    "withheld": "{count} {count:phrase retenue|phrases retenues}.",
+    "ended": "La conversation en direct est terminée."
+  },
+  "title": "Conversation en direct",
+  "close": "Fermer la conversation en direct",
+  "open": "Direct",
+  "open_hint": "Démarrer une conversation vocale en direct",
+  "mode": {
+    "label": "Mode de conversation",
+    "free": "Conversation libre",
+    "sources": "D’après vos sources",
+    "free_hint": "Une conversation ouverte. Les réponses ne sont pas vérifiées par rapport à vos documents.",
+    "sources_hint": "Chaque tour de parole cherche dans vos documents. Seules les phrases validées par la vérification sont prononcées ; le nombre de phrases retenues suit."
+  },
+  "state": {
+    "idle": "Prêt à démarrer",
+    "connecting": "Connexion…",
+    "ready": "Appuyez sur le microphone pour parler",
+    "listening": "À l’écoute",
+    "thinking": "Réflexion…",
+    "speaking": "Parle",
+    "ended": "Conversation terminée"
+  },
+  "ended": {
+    "limit": "Terminée après 15 minutes.",
+    "silence": "Terminée après 3 minutes de silence.",
+    "hidden": "Terminée, car l’onglet a été quitté.",
+    "error": "La connexion s’est interrompue de manière inattendue.",
+    "no_model": "Aucun modèle n’est disponible. Ajoutez une clé dans Paramètres → Fournisseurs.",
+    "microphone": "Le microphone n’a pas pu démarrer."
+  },
+  "hint": {
+    "no_source": "Aucune saisie vocale disponible ici ne peut transformer un enregistrement en texte. Tapez votre message ci-dessous, ou ajoutez une clé ou un serveur vocal local dans Paramètres → Voix.",
+    "not_heard": "Rien n’a été compris. Appuyez pour parler et réessayez, ou tapez votre message ci-dessous."
+  },
+  "engine": {
+    "live": "Gemini Live",
+    "turns": "Appuyer pour parler"
+  },
+  "start": "Démarrer",
+  "talk": "Appuyez pour parler",
+  "talk_send": "Appuyez pour envoyer",
+  "talk_interrupt": "Appuyez pour interrompre",
+  "camera": "Envoyer une photo de la caméra",
+  "stop": "Terminer la conversation",
+  "say_label": "Taper un message à la place",
+  "say_placeholder": "Ou tapez ici…",
+  "say": "Envoyer",
+  "limits": "Une conversation se termine après 15 minutes, après 3 minutes de silence ou lorsque vous quittez cet onglet. Rien n’est enregistré.",
+  "transcript": {
+    "empty": "La conversation apparaîtra ici.",
+    "thinking": "Réponse en cours…",
+    "nothing": "Rien de cette réponse n’a été validé."
+  },
+  "label": {
+    "free": "Libre · non vérifiée",
+    "withheld": "{count} retenue(s)"
+  },
+  "on_device": "Le direct nécessite un modèle extérieur à cet appareil. Désactivez le mode local pour l’utiliser.",
+  "camera_failed": "La photo de la caméra n’a pas pu être prise.",
+  "camera_sent": "Photo de la caméra envoyée avec la conversation."
+}

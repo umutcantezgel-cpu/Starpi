@@ -11,7 +11,11 @@
 // specifications in sources-v2.json, the sources in paraphrases.json and the reports in
 // relations-sources.json.
 //
-// Usage: node scripts/eval-source-check.mjs [--sets dev,v2dev,paraphrases,relations] [--grounding 1|2|3] [--variants] [--json]
+// eval-intl.json holds small sets in French, Spanish, Italian and Turkish (sets fr, es, it, tr, with
+// their own sources): they measure the shipped language packs, which are loaded for them. Loading
+// the packs leaves every English and German report as it is (tests/unit/lang-shipped.test.mjs).
+//
+// Usage: node scripts/eval-source-check.mjs [--sets dev,v2dev,paraphrases,relations,fr] [--grounding 1|2|3] [--variants] [--json]
 //        node scripts/eval-source-check.mjs --unblind [--sets …]   (also the held-out sets)
 //
 // For a faithful answer, a statement marked "unsupported" is a false alarm. For an answer with an
@@ -29,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { blocksFromMarkdown, groundAnswer } from '../src/js/core/grounding.js';
 import { fold } from '../src/js/core/facts.js';
 import { citationLabel } from '../src/js/core/labels.js';
+import { loadShippedLanguages } from '../src/js/core/lang/index.js';
 import { chunkText } from '../src/js/rag/chunker.js';
 import { extractText } from '../src/js/rag/parser.js';
 
@@ -57,7 +62,7 @@ export async function loadCorpora() {
       for (const c of chunkText(text)) corpora[lang].push({ label: citationLabel(name, c.index + 1), doc: name, heading: '', text: c.text, delivered: 'full' });
     }
   }
-  for (const file of ['kb-sample.json', 'sources-v2.json', 'paraphrases.json', 'relations-sources.json']) {
+  for (const file of ['kb-sample.json', 'sources-v2.json', 'paraphrases.json', 'relations-sources.json', 'eval-intl.json']) {
     const json = JSON.parse(await readFile(path.join(ROOT, 'tests/fixtures/grounding', file), 'utf8'));
     for (const [key, sections] of Object.entries(json.corpora ?? json)) {
       corpora[key] = /** @type {Array<{ label: string, doc: string, heading: string, text: string }>} */ (sections).map((s) => ({ ...s, delivered: 'full' }));
@@ -132,6 +137,15 @@ export async function loadItems() {
  */
 export async function loadParaphrases() {
   const { items } = JSON.parse(await readFile(path.join(ROOT, 'tests/fixtures/grounding/paraphrases.json'), 'utf8'));
+  return /** @type {EvalItem[]} */ (items);
+}
+
+/** The sets in French, Spanish, Italian and Turkish (eval-intl.json). */
+export const INTL_SETS = Object.freeze(['fr', 'es', 'it', 'tr']);
+
+/** The items of the sets in French, Spanish, Italian and Turkish. */
+export async function loadIntlItems() {
+  const { items } = JSON.parse(await readFile(path.join(ROOT, 'tests/fixtures/grounding/eval-intl.json'), 'utf8'));
   return /** @type {EvalItem[]} */ (items);
 }
 
@@ -223,7 +237,7 @@ async function main() {
       if (!Number.isInteger(options.version)) usage('--grounding needs a version number');
     } else if (!['--json', '--unblind', '--variants'].includes(name)) usage(`unknown argument ${args[i]}`);
   }
-  const all = ['dev', 'holdout', 'v2dev', 'v2holdout', 'paraphrases', 'relations', 'relholdout'];
+  const all = ['dev', 'holdout', 'v2dev', 'v2holdout', 'paraphrases', 'relations', 'relholdout', ...INTL_SETS];
   const sets = wanted ?? all.filter((s) => unblind || !HELD_OUT.includes(s));
   for (const set of sets) {
     if (!all.includes(set)) usage(`unknown set ${set} (sets: ${all.join(', ')})`);
@@ -232,7 +246,10 @@ async function main() {
   const v2 = sets.some((set) => set.startsWith('v2')) ? await loadV2Items({ unblind: sets.includes('v2holdout') }) : [];
   const paraphrases = sets.includes('paraphrases') ? await loadParaphrases() : [];
   const relations = sets.some((set) => set.startsWith('rel')) ? await loadRelationItems({ unblind: sets.includes('relholdout') }) : [];
-  const items = [...(await loadItems()), ...v2, ...paraphrases, ...relations].filter((i) => sets.includes(i.set));
+  const intl = sets.some((set) => INTL_SETS.includes(set)) ? await loadIntlItems() : [];
+  // The new languages read their dates, numbers and negations with their packs.
+  if (intl.length) await loadShippedLanguages();
+  const items = [...(await loadItems()), ...v2, ...paraphrases, ...relations, ...intl].filter((i) => sets.includes(i.set));
   const corpora = await loadCorpora();
   const results = Object.fromEntries(sets.map((set) => [set, summarize(items.filter((i) => i.set === set), corpora, options)]));
   if (asJson) {

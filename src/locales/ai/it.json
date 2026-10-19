@@ -1,0 +1,27 @@
+{
+  "error": {
+    "auth": "Il provider non ha accettato la chiave. Controllala nelle Impostazioni.",
+    "quota": "L’account del provider non ha più credito o quota.",
+    "rate_limited": "Il provider sta ricevendo troppe richieste in questo momento. Riprova tra poco.",
+    "not_found": "Il provider non offre questo modello.",
+    "bad_request": "Il provider ha rifiutato la richiesta.",
+    "context_length": "La conversazione è troppo lunga per questo modello. Inizia una nuova chat o scegli un modello con un contesto più ampio.",
+    "server": "Il provider ha un problema in questo momento. Riprova più tardi.",
+    "timeout": "Il provider non ha risposto in tempo.",
+    "network": "Il provider non è raggiungibile. Controlla la connessione.",
+    "aborted": "Interrotto.",
+    "bad_response": "Il provider ha inviato una risposta che Starpi non riesce a leggere.",
+    "cors": "Il provider non accetta chiamate dirette dal browser. Attiva il relay nelle Impostazioni.",
+    "stream_cut": "La risposta si è interrotta prima di essere completa.",
+    "refusal": "Il provider si è rifiutato di rispondere a questa richiesta."
+  },
+  "retry_in": "Riprova tra {seconds} s.",
+  "stop": {
+    "max_tokens": "La risposta ha raggiunto il limite di lunghezza.",
+    "refusal": "Il modello si è rifiutato di rispondere.",
+    "pause": "Il provider ha messo in pausa la risposta; riprende automaticamente.",
+    "cancelled": "Interrotto.",
+    "timeout": "La risposta ha richiesto troppo tempo ed è stata interrotta.",
+    "error": "La risposta è terminata con un errore."
+  }
+}

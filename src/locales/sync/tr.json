@@ -1,0 +1,86 @@
+{
+  "card": {
+    "title": "Sohbet eşitleme · uçtan uca şifreli",
+    "subtitle": "Sohbetleriniz bu tarayıcıda yalnızca parolanızın açabildiği bir anahtarla şifrelenir. Sunucu yalnızca şifreli metin saklar. Sağlayıcı anahtarları, imza anahtarları ve bu cihazda kalan konuşma adımları asla eşitlenmez."
+  },
+  "state": {
+    "off": "Kapalı",
+    "on": "Açık",
+    "busy": "Eşitleniyor",
+    "attention": "İlgilenmeniz gerekiyor",
+    "unavailable": "Burada kullanılamıyor"
+  },
+  "form": {
+    "new_hint": "En az {n} karakterlik bir parola seçin. Sohbetlerinizi başka bir tarayıcıda geri yüklemek için buna ihtiyacınız olacak. Kimse sizin için onu kurtaramaz ve o olmadan eşitlenen kopya okunamaz.",
+    "join_hint": "Bu hesap zaten başka bir tarayıcıdan eşitleniyor. Oradaki sohbetleri buraya getirmek için orada seçtiğiniz parolayı girin.",
+    "passphrase": "Eşitleme parolası",
+    "confirm": "Parolayı tekrarlayın",
+    "enable": "Eşitlemeyi aç",
+    "join": "Kilidi aç ve eşitle",
+    "connection": "Eşitleme, oturumlu bir bilgi tabanı bağlantısı gerektirir (Ayarlar › Bilgi tabanı)."
+  },
+  "on": {
+    "summary": "{n} {n:sohbet|sohbet} eşitlendi",
+    "last": "Son eşitleme: {time}",
+    "never": "Henüz eşitlenmedi",
+    "skipped": "{n} {n:sohbet|sohbet} eşitlenmiyor: çok büyük veya bu anahtarla okunamıyor.",
+    "sync_now": "Şimdi eşitle",
+    "off_local": "Bu tarayıcıda kapat",
+    "off_delete": "Kapat ve eşitlenen verileri sil",
+    "off_local_confirm": "Bu tarayıcıda eşitleme kapatılsın mı? Buradaki sohbetler burada kalır; eşitlenen kopya diğer tarayıcılarınız için sunucuda kalır.",
+    "off_delete_confirm": "Eşitleme kapatılsın ve sohbetlerinizin eşitlenen kopyası sunucudan silinsin mi? Her tarayıcı sahip olduğu sohbetleri tutar ama eşitlemeyi bırakır. Bu işlem geri alınamaz.",
+    "purging": "Eşitlenen kopyanın silinmesi tamamlanmadı. Bu tarayıcı her eşitlemede yeniden dener; şimdi denemek için “Kapat ve eşitlenen verileri sil” seçeneğini kullanın."
+  },
+  "notice": {
+    "remote_off": "Eşitleme başka bir tarayıcıda kapatıldı ve eşitlenen kopya silindi. Bu tarayıcıdaki sohbetler korunuyor. Yeniden eşitlemek için bir parola seçin veya burada eşitlemeyi kapatın.",
+    "rekeyed": "Eşitleme başka bir tarayıcıda yeni bir parolayla yeniden kuruldu. Devam etmek için o parolayı girin.",
+    "other_account": "Bu tarayıcıda, eşitleme yaptığı hesaptan farklı bir hesapla oturum açılmış. Burada eşitlemeyi kapatın, ardından bu hesap için açın.",
+    "unavailable": "Bu tarayıcı bu site için eşitleme anahtarını saklayamıyor (örneğin gizli pencerede veya site verileri kapalıyken)."
+  },
+  "account": {
+    "title": "Eşitlemeyi başka bir tarayıcıda kullan",
+    "body": "Diğer tarayıcının aynı hesabı kullanması gerekir. Bu tarayıcının hesabına bir e-posta adresi ekleyin, diğer tarayıcıda bu adresle oturum açın ve parolanızı orada girin.",
+    "anonymous": "Bu tarayıcı: anonim hesap (yalnızca bu tarayıcı)",
+    "signed_in": "Oturum açan: {email}",
+    "email": "E-posta adresi",
+    "link": "Bu hesaba ekle",
+    "sign_in": "Hesabımda oturum aç",
+    "sign_in_hint": "Oturum açmak bu tarayıcının anonim hesabının yerini alır; o hesaptan eklediğiniz belgeler o hesapta kalır.",
+    "code": "E-postadaki kod",
+    "verify": "Kodu onayla",
+    "sign_out": "Oturumu kapat"
+  },
+  "line": {
+    "on": "Uçtan uca şifreli · {n} {n:sohbet|sohbet}",
+    "waiting": "Uçtan uca şifreli · bağlantı bekleniyor",
+    "attention": "Eşitlemeyle ilgilenmeniz gerekiyor (Sohbet eşitleme bölümüne bakın)"
+  },
+  "result": {
+    "enabled": "Eşitleme açık. Sohbetleriniz şifrelendi ve eşitlendi.",
+    "joined": "Kilit açıldı. Bu hesabın sohbetleri bu tarayıcıya eşitleniyor.",
+    "synced": "Eşitlendi.",
+    "off": "Bu tarayıcıda eşitleme kapalı.",
+    "deleted": "Eşitleme kapatıldı ve eşitlenen kopya silindi.",
+    "code_sent": "{email} adresine bir kod gönderdik. Kodu aşağıya girin.",
+    "linked": "E-posta adresi bu hesaba eklendi.",
+    "signed_in": "Oturum açıldı. Eşitlemek için parolanızı girin.",
+    "signed_out": "Oturum kapatıldı. Bu tarayıcının yeni bir anonim hesabı var."
+  },
+  "error": {
+    "too_short": "Parola en az {n} karakter olmalıdır.",
+    "mismatch": "İki parola birbirinden farklı.",
+    "wrong_passphrase": "Bu parola, bu hesabın eşitlenen sohbetlerinin kilidini açmıyor.",
+    "no_session": "Bilgi tabanıyla oturum yok. Eşitleme için oturum gerekir.",
+    "offline": "Bilgi tabanına şu anda ulaşılamıyor. Daha sonra yeniden deneyin.",
+    "missing_schema": "Veritabanında henüz eşitleme tabloları yok (backend/supabase içindeki chat_sync taşıması).",
+    "unavailable": "Bu tarayıcı eşitleme anahtarını saklayamıyor.",
+    "failed": "Bu işe yaramadı. Lütfen yeniden deneyin.",
+    "delete_failed": "Eşitlenen kopya şu anda tamamen silinemedi. Bu tarayıcı, işlem tamamlanana kadar her eşitlemede yeniden dener.",
+    "invalid_email": "Geçerli bir e-posta adresi girin.",
+    "invalid_code": "Bu kod yanlış veya süresi dolmuş.",
+    "email_taken": "Bu adres başka bir hesaba ait. Bunun yerine “Hesabımda oturum aç” seçeneğini kullanın.",
+    "no_account": "Bu adrese sahip bir hesap yok veya bu sitede e-postayla oturum açma kapalı.",
+    "email_disabled": "Bu sitede e-postayla oturum açma kapalı.",
+    "rate_limited": "Çok fazla deneme. Bir dakika bekleyip yeniden deneyin."
+  }
+}

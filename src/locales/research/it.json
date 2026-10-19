@@ -1,0 +1,123 @@
+{
+  "title": "Ricerca",
+  "intro": "Fai una domanda che richiede più ricerche. Starpi cerca nei tuoi documenti e, se vuoi, sul web, verifica ogni frase e conserva il rapporto su questo dispositivo. Le attività continuano mentre lavori altrove.",
+  "question_label": "Domanda",
+  "question_placeholder": "Che cosa vuoi scoprire?",
+  "include_web": "Cerca anche sul web",
+  "strip_pii": "Rimuovi dalla ricerca web indirizzi email, numeri di telefono e dati simili",
+  "focus": "Sul documento «{doc}»",
+  "focus_clear": "Cerca in tutti i documenti",
+  "start": "Avvia la ricerca",
+  "question_required": "Inserisci prima una domanda.",
+  "started": "Ricerca avviata. Continua in background.",
+  "start_failed": "Non è stato possibile avviare la ricerca.",
+  "jobs_title": "Attività di ricerca",
+  "empty": "Ancora nessuna ricerca. Le tue attività e i loro rapporti compaiono qui.",
+  "status": {
+    "queued": "In attesa",
+    "running": "In corso",
+    "done": "Completata",
+    "failed": "Non riuscita",
+    "cancelled": "Annullata",
+    "stale": "Interrotta"
+  },
+  "step": {
+    "plan": "Pianificazione delle ricerche",
+    "sources": "Ricerca nei tuoi documenti",
+    "web": "Ricerca sul web",
+    "check": "Verifica delle fonti",
+    "report": "Stesura del rapporto"
+  },
+  "progress": "{step} · giro {round} · {n} {n:fonte|fonti}",
+  "progress_short": "{step}",
+  "queued_hint": "Attende finché non ci sono meno di tre attività in corso.",
+  "elsewhere": "In esecuzione in un’altra scheda di Starpi.",
+  "stale_hint": "La pagina è stata chiusa o ricaricata mentre questa attività era in corso. Riprova esegue le parti mancanti.",
+  "failed_hint": "L’attività non è riuscita ({code}). Riprova esegue le parti mancanti.",
+  "unread": "Nuovo",
+  "meta": "{date} · {origin}",
+  "origin": {
+    "chat": "Da una chat",
+    "library": "Dalla libreria",
+    "header": "Scheda Ricerca"
+  },
+  "actions": {
+    "open": "Apri il rapporto",
+    "close": "Chiudi il rapporto",
+    "cancel": "Annulla",
+    "retry": "Riprova",
+    "remove": "Rimuovi",
+    "export_md": "Scarica Markdown",
+    "show": "Mostra nella scheda Ricerca"
+  },
+  "badge": "{n} {n:ricerca in corso|ricerche in corso}",
+  "section": {
+    "summary": "Riepilogo",
+    "details": "Dettagli",
+    "sources": "Fonti",
+    "open_questions": "Domande aperte"
+  },
+  "part": {
+    "sources": "Dai tuoi documenti",
+    "web": "Dal web"
+  },
+  "via": {
+    "byok": "Scritto da {model} con la tua chiave",
+    "pool": "Scritto da {model} tramite questo sito",
+    "quote": "Citato dai tuoi documenti: nessun modello era disponibile"
+  },
+  "fallback": "Il modello non è riuscito ({code}), quindi vengono citate le frasi più pertinenti.",
+  "gate_counts": "{released} {released:frase conservata|frasi conservate} · {withheld} trattenute dalla verifica delle frasi",
+  "check_counts": "Verifica delle fonti: {supported} supportate · {weak} deboli · {unsupported} non supportate",
+  "no_answer": "I tuoi documenti non hanno dato alcuna risposta a questa domanda.",
+  "web_query": "Cercato sul web: {query}",
+  "web_removed": "Rimosso prima della ricerca: {kinds}",
+  "pii": {
+    "email": "indirizzi email",
+    "phone": "numeri di telefono",
+    "iban": "numeri di conto",
+    "card": "numeri di carta",
+    "ip": "indirizzi IP"
+  },
+  "web_released": "Verificata nel suo insieme: ogni numero si trova in un passaggio supportato dai risultati della ricerca.",
+  "web_withheld": "La risposta dal web è trattenuta perché non ha superato la verifica nel suo insieme: {reason}. Vengono elencate solo le pagine consultate.",
+  "web_off": "Nessuna ricerca web: nessuno dei tuoi provider cerca sul web e questo sito non ne offre.",
+  "web_empty": "Dopo aver rimosso i dati personali, della domanda non è rimasto nulla per una ricerca web.",
+  "web_failed": "La ricerca web non è riuscita ({code}).",
+  "web_running": "Ricerca web in corso…",
+  "web_sources": "Pagine consultate (elencate, non verificate)",
+  "doc_sources": "Documenti",
+  "suggestions": "Suggerimenti di ricerca",
+  "web_reason": {
+    "empty": "era vuota",
+    "no_sources": "non citava alcuna pagina web",
+    "web_ungrounded": "un numero si trova fuori da tutti i passaggi supportati dai risultati",
+    "unsupported_number": "un numero non è supportato",
+    "chars": "contiene caratteri che non si possono verificare",
+    "link": "contiene un link",
+    "joined": "contiene cifre che potrebbero essere lette male",
+    "number_word": "un numero scritto in lettere non è supportato",
+    "identifier": "un identificativo non è supportato",
+    "spoken_mismatch": "leggerla ad alta voce cambierebbe un numero",
+    "other": "non ha superato la verifica"
+  },
+  "report": {
+    "title": "Rapporto di ricerca",
+    "made_with": "Scritto da {model}",
+    "quoted": "Citato dai documenti senza modello",
+    "no_document_answer": "I documenti non hanno dato alcuna risposta a questa domanda.",
+    "from_web": "Dal web",
+    "web_query": "Cercato: {query}",
+    "web_withheld": "La parte web è stata trattenuta: {reason}.",
+    "web_off": "Nessuna ricerca web era disponibile.",
+    "web_failed": "La ricerca web non è riuscita.",
+    "documents": "Documenti",
+    "web_sources": "Pagine web (elencate, non verificate rispetto alle pagine)",
+    "no_sources": "Non è stata citata alcuna fonte.",
+    "check": "Verifica delle fonti: {supported} supportate, {weak} deboli, {unsupported} non supportate.",
+    "withheld": "La verifica delle frasi ha trattenuto {n} {n:frase|frasi}.",
+    "receipt_note": "La ricevuta della risposta copre la parte tratta dai documenti; le pagine web sono elencate ma non verificate."
+  },
+  "this": "Approfondisci",
+  "prefilled": "La domanda è nella scheda Ricerca. Modificala e avvia la ricerca."
+}

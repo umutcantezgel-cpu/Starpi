@@ -1,0 +1,100 @@
+{
+  "title": "Confiance · signature des reçus",
+  "subtitle": "Cet appareil peut signer les reçus de réponse que vous téléchargez, avec une clé qui ne quitte jamais le navigateur. Communiquez sa clé publique aux personnes qui vérifient vos reçus.",
+  "state": {
+    "on": "Signature activée",
+    "off": "Signature désactivée",
+    "ready": "Clé au premier reçu",
+    "unavailable": "Non disponible ici"
+  },
+  "sign": {
+    "label": "Signer les reçus exportés",
+    "hint": "Chaque reçu téléchargé désigne la clé de cet appareil comme signataire et porte sa signature. Tout le monde peut alors vérifier que le reçu n’a pas changé ; avec votre clé publique, on peut aussi vérifier que cet appareil l’a signé."
+  },
+  "key": {
+    "title": "Clé de signature de cet appareil",
+    "alg": "Algorithme",
+    "id": "Identifiant de la clé",
+    "created": "Créée",
+    "retired": "Remplacée",
+    "export_jwk": "Clé publique (JWK)",
+    "export_pem": "Clé publique (PEM)",
+    "rotate": "Nouvelle clé",
+    "rotate_confirm": "Créer une nouvelle clé de signature ? Les reçus sont désormais signés avec la nouvelle clé ; l’ancienne ne signe plus jamais, et sa clé publique reste disponible à l’export.",
+    "delete": "Supprimer",
+    "delete_confirm": "Supprimer la clé de signature de cet appareil ? Les reçus qu’elle a signés restent vérifiables avec sa clé publique, si vous l’avez exportée. Une nouvelle clé est créée avec le prochain reçu signé.",
+    "create": "Créer une clé de signature",
+    "none": "Aucune clé de signature pour l’instant. Une clé est créée à la première ouverture d’un reçu de réponse avec la signature activée, ou maintenant.",
+    "unavailable": "Ce navigateur ne peut pas créer de clés de signature ici (WebCrypto nécessite une connexion sécurisée). Les reçus sont téléchargés sans signature.",
+    "not_persistent": "Ce navigateur ne conserve pas de données pour ce site (par exemple en navigation privée) : la clé ne dure que jusqu’à la fermeture de la page."
+  },
+  "retired": {
+    "title": "Clés précédentes",
+    "body": "Les clés remplacées par une nouvelle ne signent plus. Leurs clés publiques permettent toujours de vérifier les reçus qu’elles ont signés.",
+    "delete_confirm": "Supprimer cette clé précédente ? Sa clé publique ne pourra alors plus être exportée ici."
+  },
+  "check": {
+    "title": "Vérifier un reçu signé",
+    "body": "Remettez le reçu, les fichiers d’origine et votre clé publique à la personne qui vérifie. Seule une clé publique reçue de votre part montre qui a signé ; la clé contenue dans un reçu montre seulement qu’il n’a pas changé."
+  },
+  "result": {
+    "exported": "{file} enregistré.",
+    "created": "Clé de signature créée.",
+    "rotated": "Nouvelle clé de signature créée. Exportez sa clé publique pour les personnes qui vérifient vos reçus.",
+    "deleted": "Clé supprimée.",
+    "sign_on": "Les reçus exportés sont signés.",
+    "sign_off": "Les reçus exportés ne sont pas signés.",
+    "sign_page": "Enregistré pour cette page uniquement : ce navigateur ne conserve pas de données pour ce site."
+  },
+  "error": {
+    "unavailable": "Ce navigateur ne peut ni créer ni utiliser de clés de signature ici.",
+    "not_found": "Cette clé n’existe plus.",
+    "storage": "La clé n’a pas pu être enregistrée sur cet appareil."
+  },
+  "receipt": {
+    "signed_by": "Signé avec la clé {key} de cet appareil ({alg}).",
+    "unsigned_off": "Non signé : la signature est désactivée dans Paramètres › Confiance.",
+    "unsigned_unavailable": "Non signé : ce navigateur ne peut pas créer de clé de signature ici.",
+    "signer": "Signataire indiqué dans le reçu : clé {key} ({alg}).",
+    "signature_missing": "Le reçu indique la clé de signataire {key} ({alg}), mais sa signature a été retirée.",
+    "trusted": "Fiable : vérifié avec la clé publique que vous avez choisie.",
+    "not_trusted": "Non fiable : aucune clé publique du signataire n’a été choisie, et la clé contenue dans un reçu peut appartenir à n’importe qui.",
+    "own_key": "La clé appartient à cet appareil.",
+    "gate": "Filtre des phrases (mode {mode}, tel qu’enregistré) : {released} validée(s), {withheld} retenue(s).",
+    "second_opinions": "Seconds avis enregistrés pour {n} {n:affirmation|affirmations}, dont {contradicted} contredite(s) (indicatif, non recalculé).",
+    "relations": "{n} {n:relation|relations} entre affirmations {n:enregistrée|enregistrées}, dont {flagged} inversée(s) ou non confirmée(s) (non recalculé).",
+    "check_ocr": "{label} : le fichier correspond ; son texte a été reconnu par OCR et ne peut pas être extrait à nouveau."
+  },
+  "models": {
+    "title": "Confiance · téléchargements de modèles",
+    "subtitle": "Avant qu’un modèle local ne réponde, chaque fichier qu’il a téléchargé est comparé à l’empreinte SHA-256 fixée dans cette version de Starpi. Un fichier qui ne correspond pas est supprimé, et le modèle n’est pas chargé.",
+    "empty": "Aucun modèle n’a encore été vérifié sur cet appareil. La vérification a lieu au chargement d’un modèle.",
+    "state": {
+      "verified": "Vérifié",
+      "override": "Chargé sans vérification",
+      "mismatch": "Fichier supprimé",
+      "unverified": "Non vérifié"
+    },
+    "runtime": {
+      "webgpu": "GPU (WebGPU)",
+      "wasm": "Processeur (WASM)",
+      "embed": "Modèle de recherche",
+      "nli": "Modèle de second avis"
+    },
+    "checked": "{n} {n:fichier vérifié|fichiers vérifiés} · {date}",
+    "mismatched": "Ne correspond pas à l’empreinte fixée : {files}",
+    "unpinned": "Aucune empreinte fixée : {files}",
+    "allow": "Charger sans vérification (modifié à la source)",
+    "allow_confirm": "Charger {model} sans empreintes fixées correspondantes ? Ne le faites que si vous êtes sûr que le modèle a changé à sa source après la publication de cette version de Starpi. Ses fichiers seront alors utilisés tels quels, sans protection contre une falsification.",
+    "allowed": "Chargement sans vérification autorisé : les fichiers qui ne correspondent pas à une empreinte fixée sont utilisés tels quels.",
+    "revoke": "Exiger la vérification",
+    "note": "Les fichiers vérifiés sont mémorisés par adresse et par taille : un chargement ultérieur ne compare que les tailles. Supprimer les modèles téléchargés réinitialise les vérifications.",
+    "result": {
+      "allowed": "{model} peut être chargé sans vérification. Chargez-le à nouveau pour l’utiliser.",
+      "revoked": "{model} ne se charge à nouveau qu’avec des fichiers vérifiés."
+    },
+    "error": {
+      "storage": "Le réglage n’a pas pu être enregistré sur cet appareil."
+    }
+  }
+}

@@ -27,7 +27,7 @@
 //
 // Pure: no DOM, runs in the browser, in workers and in Node.
 import { parseNumber } from './facts.js';
-import { anyOf, fromPacks, languagePack } from './lang/index.js';
+import { anyOf, fromPacks, languagePack, lowerCase } from './lang/index.js';
 
 /** @typedef {import('./lang/index.js').LanguagePack} LanguagePack */
 /** @typedef {'cardinal' | 'fraction' | 'multiplier' | 'ordinal' | 'adverb'} NumberWordKind */
@@ -151,6 +151,11 @@ export function valueKey(n) {
  * @property {Set<string>} fractionLeads
  * @property {Set<string>} negative
  * @property {RegExp} unitWord           a whole word that is a unit, percent or currency word of the pack
+ * @property {Array<[number, number, number]>} additions  a cardinal that takes a following one ("dix-sept")
+ * @property {Array<[number, number]>} products  two cardinals that multiply ("quatre-vingts")
+ * @property {Set<string>} tenJoiners    words between a ten and its unit ("treinta y cinco")
+ * @property {boolean} elision           a ten drops its last vowel inside a compound ("ventuno")
+ * @property {boolean} ownCase           the pack lowercases its own way (Turkish "I" → "ı")
  */
 
 /**
@@ -207,6 +212,11 @@ function compile(pack) {
     fractionLeads: new Set(n.fractionLeads),
     negative: new Set(n.negative),
     unitWord: new RegExp(`^(?:${anyOf([...pack.unitWords, ...pack.percentWords, ...pack.currencyWords])})$`, 'iu'),
+    additions: n.additions ?? [],
+    products: n.products ?? [],
+    tenJoiners: new Set(n.tenJoiners ?? []),
+    elision: n.elision ?? false,
+    ownCase: Object.keys(pack.caseFold ?? {}).length > 0,
   };
 }
 
@@ -245,6 +255,10 @@ function tablesFor(locale) {
   return one ? [one] : t.all;
 }
 
+/** A ten that can drop its last vowel, and the start of the unit it then stands before. */
+const ELIDABLE = /[aeiou]$/;
+const VOWEL_START = /^[aeiouàèéìòóù]/;
+
 /**
  * Splits a word of a compound language into cardinals, scales and joiners
  * ("dreihundertfünfundzwanzig": drei hundert fünf und zwanzig), or null.
@@ -262,12 +276,17 @@ function split(word, t) {
     if (i === word.length) return true;
     if (dead.has(i)) return false;
     for (const m of t.morphemes) {
-      if (!word.startsWith(m.w, i)) continue;
-      // A joiner stands only between two numbers.
-      if (m.role === 'joiner' && (parts.length === 0 || parts[parts.length - 1].role === 'joiner' || i + m.w.length === word.length)) continue;
-      parts.push(m);
-      if (go(i + m.w.length)) return true;
-      parts.pop();
+      // An elided ten ("vent" in "ventuno") stands only before a unit that starts with a vowel.
+      const elided = t.elision && m.role === 'unit' && m.v >= 20 && m.v < 100 && ELIDABLE.test(m.w) ? m.w.slice(0, -1) : null;
+      for (const w of elided ? [m.w, elided] : [m.w]) {
+        if (!word.startsWith(w, i)) continue;
+        if (w !== m.w && !VOWEL_START.test(word.slice(i + w.length))) continue;
+        // A joiner stands only between two numbers.
+        if (m.role === 'joiner' && (parts.length === 0 || parts[parts.length - 1].role === 'joiner' || i + w.length === word.length)) continue;
+        parts.push(m);
+        if (go(i + w.length)) return true;
+        parts.pop();
+      }
     }
     dead.add(i);
     return false;
@@ -321,7 +340,9 @@ function tagIn(word, t) {
   if (word.length > 80) return null;
   for (const { s, kind } of t.suffixes) {
     if (word.length <= s.length || !word.endsWith(s)) continue;
-    const stem = cardinalOf(word.slice(0, -s.length), t);
+    const bare = word.slice(0, -s.length);
+    // With elision the stem lost its last vowel to the ending ("ventesimo": "venti" + "esimo").
+    const stem = cardinalOf(bare, t) ?? (t.elision ? ['a', 'e', 'i', 'o'].map((v) => cardinalOf(bare + v, t)).find(Boolean) ?? null : null);
     if (stem && stem.value > 0) {
       return { kind, value: kind === 'fraction' ? 1 / stem.value : stem.value, shape: 'unit', scale: false, alone: false, contextual: false };
     }
@@ -339,9 +360,9 @@ function tagIn(word, t) {
  * @returns {{ kind: NumberWordKind, value: number } | null}
  */
 export function numberWordTag(word, locale = null) {
-  const w = String(word ?? '').toLowerCase();
+  const raw = String(word ?? '');
   for (const t of tablesFor(locale)) {
-    const tag = tagIn(w, t);
+    const tag = tagIn(t.ownCase ? lowerCase(raw, t.code) : raw.toLowerCase(), t);
     if (tag) return { kind: tag.kind, value: tag.value };
   }
   return null;
@@ -349,12 +370,15 @@ export function numberWordTag(word, locale = null) {
 
 /**
  * Whether `next` continues the number that ends with `last` ("twenty" "five", "two" "hundred",
- * "hundred" "five", "zwei" "Millionen") rather than starting another one.
+ * "hundred" "five", "zwei" "Millionen", and the pack's additions: "dix" "sept") rather than
+ * starting another one.
  * @param {WordTag} last
  * @param {WordTag} next
+ * @param {PackTable} pack
  */
-function continues(last, next) {
+function continues(last, next, pack) {
   if (last.kind !== 'cardinal' || next.kind !== 'cardinal') return false;
+  if (!next.scale && pack.additions.some(([a, from, to]) => last.value === a && next.value >= from && next.value <= to)) return true;
   if (next.scale) return last.shape !== 'group' || next.value > last.value;
   if (last.shape === 'hundred' || last.shape === 'group') return next.value < 100;
   if (last.shape === 'ten') return next.value > 0 && next.value < 10;
@@ -362,10 +386,21 @@ function continues(last, next) {
 }
 
 /**
+ * Whether two cardinals multiply in the pack ("quatre" "vingts" is 80).
+ * @param {WordTag} last
+ * @param {WordTag} next
+ * @param {PackTable} pack
+ */
+function isProduct(last, next, pack) {
+  return last.kind === 'cardinal' && next.kind === 'cardinal' && !last.scale && !next.scale && pack.products.some(([a, b]) => last.value === a && next.value === b);
+}
+
+/**
  * One token, or one hyphenated part of a word, in text order.
  * @typedef {object} Element
  * @property {'word' | 'digits' | 'mixed' | 'custom' | 'used'} t
  * @property {string} text      lowercase for words
+ * @property {string} raw       as written
  * @property {number} start
  * @property {number} end
  * @property {boolean} tight    only white space (or the hyphen of the same word) since the previous element
@@ -414,7 +449,7 @@ function elementsOf(text, patterns) {
     return true;
   };
   const push = (/** @type {Element['t']} */ t, /** @type {string} */ s, /** @type {number} */ start, /** @type {boolean} */ tight) => {
-    out.push({ t, text: t === 'word' ? s.toLowerCase() : s, start, end: start + s.length, tight });
+    out.push({ t, text: t === 'word' ? s.toLowerCase() : s, raw: s, start, end: start + s.length, tight });
   };
   let c = 0;
   TOKEN.lastIndex = 0;
@@ -753,6 +788,8 @@ function applyScale(item, text, t) {
  * @param {boolean} lenient
  */
 function readWords(elements, items, packs, lenient) {
+  /** An element's word as the pack lowercases it. @param {Element} el @param {PackTable} pack */
+  const wordIn = (el, pack) => (pack.ownCase ? lowerCase(el.raw, pack.code) : el.text);
   /** @param {number} last index of the number's last element @param {PackTable} pack */
   const unitAfter = (last, pack) => {
     for (let k = last + 1; k <= last + 2 && k < elements.length; k += 1) {
@@ -768,7 +805,7 @@ function readWords(elements, items, packs, lenient) {
     /** @type {{ tag: WordTag, pack: PackTable } | null} */
     let first = null;
     for (const pack of packs) {
-      const tag = tagIn(el.text, pack);
+      const tag = tagIn(wordIn(el, pack), pack);
       if (tag) {
         first = { tag, pack };
         break;
@@ -783,11 +820,22 @@ function readWords(elements, items, packs, lenient) {
       for (let k = i + 1; k < elements.length && elements[k].t === 'word' && elements[k].tight; k += 1) {
         const prev = run[run.length - 1];
         let at = k;
-        // "hundred and five": a joiner between a scale and a smaller number.
-        if (pack.joiners.has(elements[at].text) && (prev.shape === 'hundred' || prev.shape === 'group') && elements[at + 1]?.t === 'word' && elements[at + 1].tight) at += 1;
-        const tag = tagIn(elements[at].text, pack);
+        // "hundred and five": a joiner between a scale and a smaller number; "treinta y cinco": a
+        // ten joiner between a ten and its unit.
+        const joiner = wordIn(elements[at], pack);
+        const joins = (pack.joiners.has(joiner) && (prev.shape === 'hundred' || prev.shape === 'group')) || (pack.tenJoiners.has(joiner) && prev.shape === 'ten');
+        if (joins && elements[at + 1]?.t === 'word' && elements[at + 1].tight) at += 1;
+        const tag = tagIn(wordIn(elements[at], pack), pack);
         if (!tag) break;
-        if (continues(prev, tag)) {
+        // "quatre-vingts": a product stands for its two words, at the start or after a hundred
+        // ("cent quatre-vingts"), and the number goes on from it ("quatre-vingt-dix-sept").
+        if (at === k && isProduct(prev, tag, pack) && (run.length === 1 || ['hundred', 'group'].includes(run[run.length - 2].shape))) {
+          const value = prev.value * tag.value;
+          run[run.length - 1] = { ...tag, value, shape: shapeOf(value, false), scale: false, alone: false, contextual: false };
+          last = at;
+          continue;
+        }
+        if (continues(prev, tag, pack)) {
           run.push(tag);
           last = at;
           k = at;

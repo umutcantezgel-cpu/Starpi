@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { NVIDIA_MODELS } from '../../src/js/models/nvidia-catalog.js';
-import { expect, mockNvidia, mockSupabase, test, useNvidia } from './fixtures.mjs';
+import { chooseLanguage, expect, mockNvidia, mockSupabase, test, useNvidia } from './fixtures.mjs';
 
 const BUDGET_MD = '# Budget\n\nThe approved budget for Project Nebula is 480,000 EUR. The steering group meets every Tuesday at 10:00.';
 
@@ -84,7 +84,7 @@ test.describe('chat mode toggle', () => {
     await expect(modeButton(page, 'free')).toHaveAttribute('aria-pressed', 'true');
     await expect(input).toHaveAttribute('placeholder', 'Message Starpi…');
 
-    await page.click('[data-action="set-locale"][data-arg="de"]');
+    await chooseLanguage(page, 'de');
     await expect(input).toHaveAttribute('placeholder', 'Nachricht an Starpi…');
     await expect(modeButton(page, 'auto')).toContainText('Auto');
     await expect(modeButton(page, 'free')).toContainText('Frei');

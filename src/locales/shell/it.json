@@ -1,0 +1,45 @@
+{
+  "sidebar": {
+    "collapse": "Comprimi la barra laterale",
+    "expand": "Espandi la barra laterale",
+    "conversations": "Conversazioni"
+  },
+  "theme": {
+    "title": "Aspetto",
+    "label": "Tema colore",
+    "system": "Sistema",
+    "light": "Chiaro",
+    "dark": "Scuro",
+    "hint": "«Sistema» segue l’impostazione chiara o scura del tuo dispositivo.",
+    "not_saved": "Il tema colore vale solo per questa pagina: il browser non ha salvato la scelta."
+  },
+  "aside": {
+    "label": "Pannello laterale",
+    "toggle": "Pannello laterale",
+    "tabs": "Sezioni del pannello laterale",
+    "canvas": "Canvas",
+    "sources": "Fonti",
+    "compare": "Confronta",
+    "research": "Ricerca",
+    "close": "Chiudi il pannello laterale",
+    "empty": "Ancora niente da mostrare."
+  },
+  "mount": {
+    "empty": "Ancora niente da mostrare."
+  },
+  "live": {
+    "label": "Conversazione dal vivo"
+  },
+  "toast": {
+    "region": "Notifiche",
+    "dismiss": "Chiudi"
+  },
+  "label": {
+    "checked": "Verificato sulle tue fonti",
+    "mixed": "In parte dalle tue fonti",
+    "unchecked": "Non verificato",
+    "web": "Dal web · non verificato",
+    "device": "Su questo dispositivo",
+    "withheld": "Trattenuto"
+  }
+}

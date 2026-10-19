@@ -214,7 +214,7 @@ function createRuntime(opts = {}) {
     // A question that stays on this device is offered only the tools that keep it here.
     const specs = registry.specs((d) => offered(d, webTurn) && (!ctx.localOnly || (d.origin !== 'mcp' && ON_DEVICE_TOOLS.has(d.name)))).filter((s) => !(req.tools ?? []).some((own) => own.name === s.name));
     if (!specs.length) return req;
-    const rule = TOOL_RESULT_RULE[getLocale() === 'de' ? 'de' : 'en'];
+    const rule = TOOL_RESULT_RULE[getLocale()] ?? TOOL_RESULT_RULE.en;
     return { ...req, tools: [...(req.tools ?? []), ...specs].slice(0, 128), system: [req.system, rule].filter(Boolean).join('\n\n') };
   });
 
@@ -241,7 +241,7 @@ function createRuntime(opts = {}) {
       return [];
     }
     if (!results.length) return [];
-    const pack = webPack(ctx.question, results, { locale: ctx.locale === 'de' ? 'de' : 'en', maxChars: caps.contextTokens < 8192 ? 2500 : 6000 });
+    const pack = webPack(ctx.question, results, { locale: ctx.locale, maxChars: caps.contextTokens < 8192 ? 2500 : 6000 });
     packs.set(packKey(ctx), pack);
     while (packs.size > MAX_PACKS) packs.delete(/** @type {string} */ (packs.keys().next().value));
     return [pack.text];

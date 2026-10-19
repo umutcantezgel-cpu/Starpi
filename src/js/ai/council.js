@@ -13,7 +13,7 @@
 // conversation's messages; a draft is valid when it is a complete, non-empty answer).
 import { messageText, textPart, withoutForeignOpaque } from './contract.js';
 import { getPinnedModel } from './model-selection.js';
-import { getPurpose } from './purposes.js';
+import { getPurpose, isPromptLocale } from './purposes.js';
 import { routerDeps, runPurpose } from './router.js';
 import { rolePool } from './roles.js';
 import { applyThinking, isThinkingOn, thinkingFor } from './thinking.js';
@@ -220,7 +220,7 @@ export async function runCouncil(options) {
   const def = options.purpose ? getPurpose(options.purpose) : null;
   if (options.purpose && !def) throw new TypeError(`unknown purpose: ${String(options.purpose).slice(0, 40)}`);
   if (!def && !Array.isArray(options.messages)) throw new TypeError('a council needs a purpose or messages');
-  const locale = options.locale === 'de' || options.locale === 'en' ? options.locale : deps.locale();
+  const locale = isPromptLocale(options.locale) ? options.locale : deps.locale();
   const thinking = options.thinking ?? isThinkingOn();
   const signal = options.signal;
   const json = Boolean(def?.jsonSchema);

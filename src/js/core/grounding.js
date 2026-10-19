@@ -299,7 +299,7 @@ export function associate(blocks, version = GROUNDING.version) {
  * @property {Array<import('./facts.js').SourceIndex | null>} indexes  null for omitted excerpts
  * @property {import('./facts.js').SourceIndex | null} given  the question and recent turns
  * @property {boolean} citedOnly  only statements with their own marker count (extractive answers)
- * @property {'en' | 'de' | null} [lang]  language of the whole answer, for statements too short to tell
+ * @property {import('./lang/index.js').LanguageCode | null} [lang]  language of the whole answer, for statements too short to tell
  * @property {Array<Passage[] | undefined>} [passages]  per excerpt, filled on first use
  * @property {number} [version]  version of the rules (GROUNDING_VERSIONS); default GROUNDING.version
  * @property {Array<import('./polarity.js').SourceClause[] | undefined>} [clauses]  version 2: per excerpt, its clauses

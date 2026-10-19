@@ -1,0 +1,130 @@
+{
+  "title": "Proveedores de modelos y claves",
+  "subtitle": "Tus propias claves para modelos en la nube, los modelos gratuitos que ofrece este sitio y tu propio servidor.",
+  "vault": {
+    "title": "Bóveda de claves",
+    "state": {
+      "none": "Solo esta pestaña",
+      "locked": "Bóveda bloqueada",
+      "unlocked": "Bóveda abierta",
+      "unavailable": "Sin bóveda aquí"
+    },
+    "none_body": "Las claves se conservan hasta que se cierre esta pestaña. Define una frase de contraseña para guardarlas en este dispositivo, cifradas con una clave que solo abre tu frase de contraseña. Las claves de esta pestaña pasan a la bóveda.",
+    "locked_body": "Tus claves están guardadas y cifradas en este dispositivo. Introduce la frase de contraseña para usarlas en esta pestaña.",
+    "unlocked_body": "La bóveda está abierta en esta pestaña. Se bloquea sola tras 30 minutos sin actividad.",
+    "unavailable_body": "Este navegador no puede mantener una bóveda (por ejemplo, en una ventana privada). Las claves se conservan hasta que se cierre esta pestaña.",
+    "passphrase": "Frase de contraseña de la bóveda",
+    "passphrase_new_hint": "Al menos 8 caracteres. No se puede recuperar: si la olvidas, olvida todas las claves y vuelve a añadirlas.",
+    "create": "Definir la frase de contraseña",
+    "unlock": "Desbloquear",
+    "lock": "Bloquear ahora",
+    "forget": "Olvidar todas las claves",
+    "forget_confirm": "¿Eliminar todas las claves de esta pestaña y de la bóveda de este dispositivo?",
+    "working": "Procesando…",
+    "suggest": "Las claves que este navegador guardaba en texto sin cifrar se han movido: ahora duran hasta que se cierre esta pestaña. Define una frase de contraseña de la bóveda para guardarlas cifradas en este dispositivo.",
+    "suggest_dismiss": "Descartar",
+    "result": {
+      "created": "Bóveda creada. Las claves de esta pestaña ya están guardadas en ella.",
+      "unlocked": "Bóveda desbloqueada.",
+      "wrong": "Esa frase de contraseña no abre la bóveda.",
+      "too_short": "La frase de contraseña necesita al menos 8 caracteres.",
+      "unavailable": "Este navegador no puede mantener una bóveda.",
+      "locked": "Bóveda bloqueada.",
+      "forgotten": "Se eliminaron todas las claves.",
+      "idle": "La bóveda de claves se bloqueó sola tras 30 minutos sin actividad."
+    }
+  },
+  "error": {
+    "invalid_slot": "Proveedor desconocido.",
+    "invalid_key": "Usa solo caracteres imprimibles (letras, números, signos de puntuación); una clave no tiene espacios.",
+    "locked": "Desbloquea primero la bóveda o define una frase de contraseña.",
+    "unavailable": "Este navegador no puede mantener una bóveda.",
+    "storage": "El navegador no la guardó (ventana privada, almacenamiento bloqueado o lleno)."
+  },
+  "access": {
+    "title": "Código de acceso",
+    "body": "Este sitio pide un código de acceso antes de que respondan su relé, sus modelos gratuitos, la voz y la investigación. El código solo va a este sitio.",
+    "label": "Código de acceso",
+    "placeholder": "Introduce el código",
+    "placeholder_saved": "Guardado; introduce un código nuevo para sustituirlo",
+    "save": "Guardar el código",
+    "saved": "Código de acceso guardado.",
+    "removed": "Código de acceso eliminado."
+  },
+  "relay": {
+    "label": "Usar el relé de Starpi para proveedores que bloquean los navegadores",
+    "hint": "Algunos proveedores rechazan las llamadas hechas directamente desde una página web. Con esta opción, esa llamada se reenvía una vez a través del relé de este sitio, que la transmite con tu clave y no guarda nada. Se recuerda por proveedor la vía que funcionó.",
+    "reset": "Olvidar las vías recordadas",
+    "reset_done": "La próxima llamada a cada proveedor vuelve a probar primero la vía directa.",
+    "on": "Recurso al relé activado.",
+    "off": "Recurso al relé desactivado: no se puede llegar a los proveedores que bloquean los navegadores."
+  },
+  "pool": {
+    "title": "Modelos gratuitos a través de este sitio",
+    "loading": "Consultando al sitio…",
+    "unreachable": "Este sitio no ofrece modelos gratuitos (funciona sin funciones de servidor).",
+    "on": "{provider}: {count} {count:modelo gratuito|modelos gratuitos}",
+    "off": "{provider}: no disponible"
+  },
+  "list": {
+    "title": "Tus propias claves"
+  },
+  "key": {
+    "label": "Clave de API de {provider}",
+    "placeholder": "Pega una clave",
+    "hint_prefix": "Las claves empiezan por {prefix}. El campo nunca muestra una clave guardada.",
+    "hint_any": "Pega la clave exactamente como la muestra el proveedor. El campo nunca muestra una clave guardada.",
+    "mismatch": "Guardada, pero no parece una clave de {provider}. Usa Probar la clave para comprobarla.",
+    "remember": "Guardar en la bóveda de este dispositivo",
+    "remember_locked": "Abre la bóveda (o define una frase de contraseña) para guardar claves en este dispositivo.",
+    "save": "Guardar la clave",
+    "test": "Probar la clave",
+    "remove": "Quitar la clave",
+    "get": "Conseguir una clave",
+    "none": "Sin clave",
+    "session": "Clave para esta pestaña (••••{last4})",
+    "vault": "Clave en la bóveda (••••{last4})",
+    "saved": "Clave guardada para esta pestaña.",
+    "saved_vault": "Clave guardada en la bóveda.",
+    "removed": "Clave eliminada.",
+    "empty": "Pega primero una clave."
+  },
+  "route": {
+    "direct": "Directo desde el navegador",
+    "auto": "Directo, relé si se bloquea",
+    "relay": "A través del relé",
+    "pool": "Gratis a través de este sitio",
+    "device": "En este dispositivo",
+    "reason": {
+      "unknown": "Proveedor desconocido",
+      "no_key": "Necesita una clave",
+      "relay_off": "Necesita el relé",
+      "no_server": "Sin dirección de servidor",
+      "in_browser": "En este dispositivo"
+    }
+  },
+  "test": {
+    "running": "Probando la clave…",
+    "ok_direct": "La clave funciona (directo desde el navegador).",
+    "ok_relay": "La clave funciona (a través del relé).",
+    "failed": "La prueba falló ({code}): {reason}"
+  },
+  "local": {
+    "title": "Tu propio servidor",
+    "presets": "Valores predefinidos:",
+    "url": "Dirección del servidor",
+    "url_hint": "Un endpoint compatible con OpenAI. Permitidas: direcciones https://, http://localhost y http://127.0.0.1.",
+    "key": "Clave del servidor (opcional)",
+    "key_hint": "Solo si tu servidor la pide.",
+    "saved": "Dirección del servidor guardada.",
+    "cors_title": "Permitir que este sitio llame a tu servidor",
+    "cors": {
+      "ollama": "Ollama: inícialo con {setting} establecido en {origin}.",
+      "lmstudio": "LM Studio: activa «{setting}» en los ajustes del servidor.",
+      "vllm": "vLLM: inícialo con {setting} incluyendo {origin}.",
+      "llamacpp": "llama.cpp: su servidor acepta llamadas de páginas web sin configuración adicional."
+    },
+    "chrome": "Chrome pregunta si este sitio puede acceder a dispositivos de tu red local. Permítelo o el navegador bloqueará las llamadas a tu servidor.",
+    "relay_never": "Las llamadas a tu propio servidor siempre salen directamente de este navegador; el relé nunca llega a tu red."
+  }
+}

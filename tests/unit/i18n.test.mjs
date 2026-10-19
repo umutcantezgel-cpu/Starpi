@@ -1,13 +1,14 @@
-// Dictionaries must match 1:1 (root files and namespace files), every key the UI uses must resolve
-// in both languages without falling back, the namespace registry must match the files on disk, and
-// the runtime translation helpers must interpolate and fall back to English correctly.
+// Dictionaries must match 1:1 (root files and namespace files) in every shipped language, every key
+// the UI uses must resolve in each of them without falling back, the namespace registry must match
+// the files on disk, and the runtime translation helpers must interpolate and fall back to English
+// correctly.
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { REASON_CODES } from '../../src/js/core/grounding.js';
-import { buildDictionary, DEFAULT_LOCALE, hasKey, isLocaleLoaded, LANGUAGES, loadLocale, LOCALES, setLocale, t } from '../../src/js/i18n/index.js';
+import { buildDictionary, DEFAULT_LOCALE, hasKey, LANGUAGES, LOCALES, setLocale, t } from '../../src/js/i18n/index.js';
 import { ENGLISH, NAMESPACES, SHIPPED_LOCALES } from '../../src/locales/index.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -19,15 +20,19 @@ const namespaceDirs = readdirSync(LOCALES_DIR, { withFileTypes: true })
   .filter((d) => d.isDirectory())
   .map((d) => d.name)
   .sort();
-/** @param {string} lang root file plus every namespace file, as the app merges them */
+/** @param {string} rel */
+const exists = (rel) => existsSync(path.join(LOCALES_DIR, rel));
+/** @param {string} lang root file plus every namespace file, as the app merges them (a missing namespace file is {}) */
 function merged(lang) {
   /** @type {string[]} */
   const conflicts = [];
-  const namespaces = Object.fromEntries(namespaceDirs.map((ns) => [ns, readJson(`${ns}/${lang}.json`)]));
+  const namespaces = Object.fromEntries(namespaceDirs.map((ns) => [ns, exists(`${ns}/${lang}.json`) ? readJson(`${ns}/${lang}.json`) : {}]));
   return { dict: buildDictionary(readJson(`${lang}.json`), namespaces, conflicts), conflicts };
 }
 const en = merged('en').dict;
 const de = merged('de').dict;
+/** The shipped languages besides English. */
+const TRANSLATIONS = SHIPPED_LOCALES.filter((code) => code !== 'en');
 
 /**
  * @param {Record<string, unknown>} obj
@@ -45,8 +50,14 @@ function flatten(obj, prefix = '', out = new Map()) {
 
 const enFlat = flatten(en);
 const deFlat = flatten(de);
+/** @type {Map<string, Map<string, string>>} every shipped translation, flattened */
+const flats = new Map(TRANSLATIONS.map((code) => [code, flatten(merged(code).dict)]));
 /** @param {string} s */
 const placeholders = (s) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+/** @param {string} s  the counts a text picks plural words for ("{n:file|files}" → n) */
+const plurals = (s) => [...new Set([...s.matchAll(/\{(\w+):[^|{}]*\|[^{}]*\}/g)].map((m) => m[1]))].sort();
+/** @param {string} s  every name a text reads, from placeholders and plural forms */
+const names = (s) => [...new Set([...s.matchAll(/\{(\w+)(?::[^{}]*)?\}/g)].map((m) => m[1]))].sort();
 
 /** Every key literally referenced by markup or code. */
 function usedKeys() {
@@ -97,10 +108,15 @@ function usedKeys() {
 }
 
 describe('locale files', () => {
-  it('register every namespace directory, in both languages, with its English file bundled', () => {
+  it('register every namespace directory, in every shipped language, with its English file bundled', () => {
     assert.deepEqual([...NAMESPACES].sort(), namespaceDirs);
     for (const ns of namespaceDirs) {
       for (const lang of ['en', 'de']) assert.doesNotThrow(() => readJson(`${ns}/${lang}.json`), `${ns}/${lang}.json`);
+      // A namespace without English keys yet needs no file in the other languages; one with keys does.
+      const hasKeys = flatten(readJson(`${ns}/en.json`)).size > 0;
+      for (const lang of TRANSLATIONS) {
+        if (hasKeys || exists(`${ns}/${lang}.json`)) assert.doesNotThrow(() => readJson(`${ns}/${lang}.json`), `${ns}/${lang}.json`);
+      }
       assert.deepEqual(ENGLISH.namespaces[ns], readJson(`${ns}/en.json`), `${ns}: bundled English differs from the file`);
     }
   });
@@ -113,7 +129,7 @@ describe('locale files', () => {
   });
 
   it('define every key once: namespaces never redefine a root key', () => {
-    for (const lang of ['en', 'de']) assert.deepEqual(merged(lang).conflicts, [], lang);
+    for (const lang of SHIPPED_LOCALES) assert.deepEqual(merged(lang).conflicts, [], lang);
   });
 
   it('keep namespace keys under their namespace', () => {
@@ -141,6 +157,37 @@ describe('dictionaries', () => {
     const same = [...enFlat].filter(([key, value]) => deFlat.get(key) === value);
     assert.ok(same.length / enFlat.size < 0.15, `${same.length} identical entries: ${same.map(([k]) => k).join(', ')}`);
   });
+
+  for (const code of TRANSLATIONS.filter((c) => c !== 'de')) {
+    describe(`${code}`, () => {
+      const flat = /** @type {Map<string, string>} */ (flats.get(code));
+
+      it('has exactly the keys of English (root and namespaces)', () => {
+        assert.deepEqual([...enFlat.keys()].filter((k) => !flat.has(k)), [], `missing in ${code}`);
+        assert.deepEqual([...flat.keys()].filter((k) => !enFlat.has(k)), [], `not in English`);
+      });
+
+      it('reads the same placeholders and keeps every plural form', () => {
+        for (const [key, value] of enFlat) {
+          const text = flat.get(key) ?? '';
+          assert.deepEqual(names(text), names(value), key);
+          assert.deepEqual(plurals(value).filter((n) => !plurals(text).includes(n)), [], `${key}: plural form lost`);
+        }
+      });
+
+      it('keeps plural forms flat (a form never holds another placeholder) and every value filled', () => {
+        for (const [key, value] of flat) {
+          assert.ok(value.trim(), `empty value at ${key}`);
+          assert.doesNotMatch(value, /\{\w+:[^}]*\{/, key);
+        }
+      });
+
+      it('actually translates: most entries differ from English', () => {
+        const same = [...enFlat].filter(([key, value]) => flat.get(key) === value);
+        assert.ok(same.length / enFlat.size < 0.15, `${same.length} identical entries: ${same.map(([k]) => k).join(', ')}`);
+      });
+    });
+  }
 });
 
 describe('keys used by the UI', () => {
@@ -179,45 +226,93 @@ describe('t()', () => {
 });
 
 describe('plural forms', () => {
-  it('picks the singular for a count of 1 and the plural otherwise, in both languages', () => {
+  it('picks the singular for a count of 1 and the plural otherwise, in every language', () => {
     assert.equal(t('workspace.meta', { chunks: '1', chars: '66' }), '1 chunk · 66 characters');
     assert.equal(t('workspace.meta', { chunks: '12', chars: '6,600' }), '12 chunks · 6,600 characters');
     assert.equal(t('library.meta', { date: 'x', sections: 1 }, 'de'), 'Erstellt am x · 1 Abschnitt');
     assert.equal(t('trace.matches_value', { hits: 1, docs: 2, titles: 't' }, 'de'), '1 Auszug aus 2 Dokumenten (t)');
+    assert.equal(t('workspace.meta', { chunks: 1, chars: '66' }, 'fr'), '1 segment · 66 caractères');
+    assert.equal(t('workspace.meta', { chunks: 3, chars: '1 200' }, 'fr'), '3 segments · 1 200 caractères');
+    assert.equal(t('library.meta', { date: 'x', sections: 2 }, 'es'), 'Creado el x · 2 secciones');
+    assert.equal(t('trace.matches_value', { hits: 1, docs: 1, titles: 't' }, 'it'), '1 estratto da 1 documento (t)');
+    // Turkish keeps the noun singular after a number, whatever the count.
+    assert.equal(t('workspace.meta', { chunks: 1, chars: '66' }, 'tr'), '1 parça · 66 karakter');
+    assert.equal(t('workspace.meta', { chunks: 4, chars: '66' }, 'tr'), '4 parça · 66 karakter');
   });
 });
 
-describe('languages without a full dictionary', () => {
-  it('fall back to English key by key', async () => {
-    const partial = { root: { nav: { settings: 'Paramètres' } }, namespaces: { shell: { theme: { dark: 'Sombre' } } } };
-    assert.equal(await loadLocale('fr', async () => partial), true);
-    assert.equal(isLocaleLoaded('fr'), true);
+describe('the new languages', () => {
+  it('use their own terms, and Turkish its own letters', () => {
     assert.equal(t('nav.settings', undefined, 'fr'), 'Paramètres');
-    assert.equal(t('shell.theme.dark', undefined, 'fr'), 'Sombre');
-    // Missing in the new language: the English text, never the key.
-    assert.equal(t('nav.chat', undefined, 'fr'), 'Chat');
-    assert.equal(t('shell.theme.light', undefined, 'fr'), 'Light');
-    assert.equal(t('workspace.meta', { chunks: 2, chars: '10' }, 'fr'), '2 chunks · 10 characters');
-    assert.equal(hasKey('nav.chat', 'fr'), false);
-    assert.equal(hasKey('nav.settings', 'fr'), true);
+    assert.equal(t('nav.settings', undefined, 'es'), 'Ajustes');
+    assert.equal(t('nav.settings', undefined, 'it'), 'Impostazioni');
+    assert.equal(t('nav.settings', undefined, 'tr'), 'Ayarlar');
+    assert.equal(t('nav.ingest', undefined, 'tr'), 'Bilgi ekle');
+    assert.equal(t('app.skip_to_content', undefined, 'tr'), 'İçeriğe geç');
+    assert.match(t('shell.sidebar.collapse', undefined, 'tr'), /çubuğunu/);
+    // No Turkish entry spells a dotted capital I as a plain "I" before a lower-case vowel that
+    // needs the dot ("Içerik"), a common slip when Turkish is typed without its keyboard.
+    for (const [key, value] of /** @type {Map<string, string>} */ (flats.get('tr'))) assert.doesNotMatch(value, /\bI(?:çer|ptal|ndir|leri|kinci|lk)/, key);
   });
 
-  it('are not selectable until they ship', async () => {
-    assert.equal(LOCALES.includes(/** @type {any} */ ('fr')), false);
-    assert.equal(await setLocale('fr'), 'en');
+  it('name every shipped language in itself for the language switch', () => {
+    assert.deepEqual(
+      SHIPPED_LOCALES.map((code) => LANGUAGES[code].name),
+      ['English', 'Deutsch', 'Français', 'Español', 'Italiano', 'Türkçe'],
+    );
+  });
+});
+
+/**
+ * A fresh copy of the i18n module as a browser starts it: only English is loaded (Node would load
+ * every shipped language at once), so loading a language can be watched.
+ * @returns {Promise<typeof import('../../src/js/i18n/index.js')>}
+ */
+async function browserLikeI18n() {
+  const node = Object.getOwnPropertyDescriptor(process.versions, 'node');
+  Object.defineProperty(process.versions, 'node', { value: undefined, configurable: true });
+  try {
+    return await import(`../../src/js/i18n/index.js?browser=${Math.random()}`);
+  } finally {
+    Object.defineProperty(process.versions, 'node', /** @type {PropertyDescriptor} */ (node));
+  }
+}
+
+describe('languages without a full dictionary', () => {
+  it('fall back to English key by key', async () => {
+    const i18n = await browserLikeI18n();
+    assert.equal(i18n.isLocaleLoaded('fr'), false);
+    const partial = { root: { nav: { settings: 'Paramètres' } }, namespaces: { shell: { theme: { dark: 'Sombre' } } } };
+    assert.equal(await i18n.loadLocale('fr', async () => partial), true);
+    assert.equal(i18n.isLocaleLoaded('fr'), true);
+    assert.equal(i18n.t('nav.settings', undefined, 'fr'), 'Paramètres');
+    assert.equal(i18n.t('shell.theme.dark', undefined, 'fr'), 'Sombre');
+    // Missing in the language: the English text, never the key.
+    assert.equal(i18n.t('nav.chat', undefined, 'fr'), 'Chat');
+    assert.equal(i18n.t('shell.theme.light', undefined, 'fr'), 'Light');
+    assert.equal(i18n.t('workspace.meta', { chunks: 2, chars: '10' }, 'fr'), '2 chunks · 10 characters');
+    assert.equal(i18n.hasKey('nav.chat', 'fr'), false);
+    assert.equal(i18n.hasKey('nav.settings', 'fr'), true);
+  });
+
+  it('are not selectable unless they ship', async () => {
+    assert.equal(LOCALES.includes(/** @type {any} */ ('pt')), false);
+    assert.equal(await setLocale('pt'), 'en');
+    assert.equal(await setLocale('xx'), 'en');
     await setLocale('en');
   });
 
   it('load to false, not an error, when their files are missing or unknown', async () => {
+    const i18n = await browserLikeI18n();
     const warn = console.warn;
     /** @type {unknown[][]} */
     const warnings = [];
     console.warn = (...args) => warnings.push(args);
     try {
-      assert.equal(await loadLocale('es'), false);
-      assert.equal(isLocaleLoaded('es'), false);
-      assert.equal(t('nav.settings', undefined, 'es'), 'Settings');
-      assert.equal(await loadLocale('xx'), false);
+      assert.equal(await i18n.loadLocale('es', () => Promise.reject(new Error('offline'))), false);
+      assert.equal(i18n.isLocaleLoaded('es'), false);
+      assert.equal(i18n.t('nav.settings', undefined, 'es'), 'Settings');
+      assert.equal(await i18n.loadLocale('xx'), false);
     } finally {
       console.warn = warn;
     }
@@ -225,13 +320,23 @@ describe('languages without a full dictionary', () => {
   });
 
   it('share one request between concurrent loads', async () => {
+    const i18n = await browserLikeI18n();
     let calls = 0;
     const load = async () => {
       calls += 1;
       return { root: {}, namespaces: {} };
     };
-    const [a, b] = await Promise.all([loadLocale('it', load), loadLocale('it', load)]);
+    const [a, b] = await Promise.all([i18n.loadLocale('it', load), i18n.loadLocale('it', load)]);
     assert.deepEqual([a, b, calls], [true, true, 1]);
+  });
+
+  it('load the real files of a shipped language on demand', async () => {
+    const i18n = await browserLikeI18n();
+    assert.equal(i18n.isLocaleLoaded('tr'), false);
+    assert.equal(await i18n.setLocale('tr'), 'tr');
+    assert.equal(i18n.t('nav.settings'), 'Ayarlar');
+    assert.equal(i18n.t('shell.theme.dark'), 'Koyu');
+    assert.equal(i18n.getIntlLocale(), 'tr-TR');
   });
 });
 

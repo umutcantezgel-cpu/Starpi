@@ -32,6 +32,7 @@
 //   the user agreed to have read; it answers { type: 'ocr-reply', seq, text, provider?, model? } or
 //   { type: 'ocr-reply', seq, error }. Provider and model go into the document's extractor (receipts
 //   mark text recognised this way as not reproducible).
+import { loadShippedLanguages } from '../core/lang/index.js';
 import { appDb, configureStore } from '../store/schema.js';
 import { ParseError } from './parser.js';
 import { createWorkspace, WorkspaceCoreError } from './workspace-core.js';
@@ -69,6 +70,8 @@ async function handle(type, payload, id) {
   switch (type) {
     case 'init':
       if (typeof payload.dbName === 'string' && payload.dbName) configureStore({ name: payload.dbName });
+      // The stop words of every shipped language, before the index is rebuilt from the stored chunks.
+      await loadShippedLanguages();
       return workspace.init({ model: payload.model ?? null });
     case 'ingest':
       return workspace.ingest(payload.file, {

@@ -1,0 +1,34 @@
+{
+  "label": {
+    "free": "Chat libre · sin comprobar",
+    "grounded": "Comprobado con tus fuentes",
+    "mixed": "En parte de las fuentes (partes comprobadas marcadas)",
+    "web": "De la web · citado, sin verificar",
+    "checking": "comprobando…",
+    "hint_free": "Respondido con el conocimiento propio del modelo; no se comparó nada con fuentes.",
+    "hint_grounded": "Cada afirmación se comparó con los extractos de tus fuentes.",
+    "hint_mixed": "Las afirmaciones tomadas de tus fuentes se comprueban y se marcan; el resto es conocimiento general.",
+    "hint_web": "La respuesta cita páginas encontradas por una búsqueda web; su contenido no se verificó."
+  },
+  "mixed": {
+    "title": "Partes comprobadas",
+    "summary": "{ok} de {total} afirmaciones encontradas en tus fuentes",
+    "none": "Ninguna afirmación pudo compararse con tus fuentes.",
+    "from_sources": "De tus fuentes",
+    "partly": "Encontrado en parte en la fuente",
+    "not_in_sources": "No está en tus fuentes",
+    "cited_not_found": "Citado, pero no encontrado en la fuente",
+    "note": "Las afirmaciones sin fuente son conocimiento general del modelo y no se comprobaron."
+  },
+  "web": {
+    "checked": "Comprobado con el texto citado: {ok} de {total} afirmaciones encontradas",
+    "checked_none": "Comprobado con el texto citado: ninguna afirmación que comparar",
+    "segments_ok": "Números comprobados: todos están en pasajes citados",
+    "segments_flagged": "Números comprobados: {n} frase(s) con números fuera de los pasajes citados",
+    "cited": "Citado, sin comprobar"
+  },
+  "notice": {
+    "web_unavailable_title": "Este modelo no puede buscar en la web",
+    "web_unavailable_body": "No hay ninguna búsqueda web configurada para él, así que la respuesta llega sin páginas web. Elige un modelo que pueda buscar o añade una clave para uno."
+  }
+}

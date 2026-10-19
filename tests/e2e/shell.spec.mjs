@@ -3,7 +3,7 @@
 // in both themes.
 import AxeBuilder from '@axe-core/playwright';
 import { MOUNT_POINTS } from '../../src/js/features/registry.js';
-import { expect, mockSupabase, test } from './fixtures.mjs';
+import { chooseLanguage, expect, mockSupabase, test } from './fixtures.mjs';
 
 const TABS = ['chat', 'research', 'library', 'ingest', 'graph', 'bench', 'settings'];
 /** Mount points whose feature renders content. */
@@ -190,7 +190,7 @@ test.describe('chat side panel', () => {
   test('speaks German after a language switch (namespace strings load with the language)', async ({ page, diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await page.goto('/');
-    await page.click('[data-action="set-locale"][data-arg="de"]');
+    await chooseLanguage(page, 'de');
     await expect(page.locator('html')).toHaveAttribute('lang', 'de');
     await openAside(page, 'canvas');
     await expect(page.locator('#chat-aside-tab-sources')).toHaveText('Quellen');

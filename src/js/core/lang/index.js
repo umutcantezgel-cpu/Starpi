@@ -5,6 +5,10 @@
 // read every registered pack together, so an answer in one language is checked against excerpts in
 // another. English and German are built in; registerLanguage() adds more.
 //
+// French, Spanish, Italian and Turkish ship as packs of their own (fr.js, es.js, it.js, tr.js) that
+// loadShippedLanguages() registers on demand, so the app loads them after its first paint, not with
+// it. The app calls it at start (main thread and ingest worker); Node callers call it themselves.
+//
 // Most entries are plain words. Some are fragments of regular expressions (marked "pattern" below)
 // because a word needs a condition ("bis" except in "bis zu"); they are joined with "|" into the
 // patterns of the modules, so they must not contain capturing groups. Every pattern runs on text
@@ -15,9 +19,9 @@ import { de } from './de.js';
 import { en } from './en.js';
 
 /**
- * Language codes of the built-in packs. guessLanguage() and the source check report these; a pack
- * added with registerLanguage() may report its own code.
- * @typedef {'en' | 'de'} LanguageCode
+ * Language codes of the built-in and shipped packs. guessLanguage() and the source check report
+ * these; a pack added with registerLanguage() may report its own code.
+ * @typedef {'en' | 'de' | 'fr' | 'es' | 'it' | 'tr'} LanguageCode
  */
 
 /**
@@ -75,11 +79,18 @@ import { en } from './en.js';
  * @property {string[]} versionWords     words before a dotted triple that make it a version ("firmware 10.4.12")
  * @property {Record<string, number>} numberWords  numbers written as words, read as values
  * @property {string[]} numberParts      patterns: number words that only form part of a larger number
+ * @property {string[]} ownNumberParts   patterns: number words that make a number word of this pack next to them part
+ *   of a larger number, but only this pack's: other languages write them as common words (French "sept" in
+ *   "dix-sept" and English "Sept", Turkish "on" in "on beş" and English "on")
  * @property {string[]} numberJoiners    the word that joins two number words ("a hundred and twenty")
  * @property {string[]} boilerplate      folded words that describe the sources rather than state something
  * @property {string[]} stopwords        function words that carry no retrieval signal
  * @property {string[]} abbreviations    tokens that end with a dot without ending a sentence
  * @property {string} letters            lowercase letters that mark the language among the packs
+ * @property {Record<string, string>} [caseFold]  letters this language lowercases differently from
+ *   toLowerCase(), applied first by lowerCase() (Turkish: "I" → "ı", "İ" → "i"); empty for most
+ * @property {boolean} [capitalisesNouns]  every noun starts with a capital (German), so a capital
+ *   inside a sentence does not mark a name
  * @property {PolarityRules} polarity
  * @property {GateRules} gate
  */
@@ -102,6 +113,15 @@ import { en } from './en.js';
  * @property {string[]} fractionLeads   words before an ordinal from three on that make it a fraction ("a third")
  * @property {string[]} negative        words before a number that make it negative ("minus")
  * @property {boolean} compound         numbers are written as one word ("einundzwanzig") and read by splitting the word into the words above
+ * @property {Array<[number, number, number]>} [additions]  [a, from, to]: a cardinal of value `a` followed by one from `from`
+ *   to `to` adds up to one number where the general rules would read two (French "dix-sept" [10, 1, 9] and
+ *   "soixante-dix" [60, 10, 19], Turkish "on beş" [10, 1, 9], Spanish "mil doscientos" [1000, 1, 999])
+ * @property {Array<[number, number]>} [products]  [a, b]: a cardinal of value `a` followed by one of value `b` is
+ *   their product, a number of its own that the rules above go on from (French "quatre-vingts" [4, 20], so
+ *   "quatre-vingt-cinq" is 85 and "quatre-vingt-dix-sept" 97 with the addition [80, 10, 19])
+ * @property {string[]} [tenJoiners]     words between a ten and the unit it takes ("treinta y cinco", "vingt et un")
+ * @property {boolean} [elision]         in a compound word a ten drops its last vowel before a unit that starts
+ *   with a vowel (Italian "ventuno", "trentotto")
  * @property {{ ordinal: string[], fraction: string[], multiplier: string[] }} suffixes
  *   endings that turn a cardinal into another kind ("zwanzig" + "ste", "vier" + "tel", "drei" + "fach", "ten" + "fold")
  */
@@ -158,7 +178,7 @@ function deepFreeze(value) {
 
 const LIST_FIELDS = /** @type {const} */ ([
   'ambiguousMonths', 'monthContext', 'monthPosition', 'dayMonthLinks', 'ordinalSuffixes', 'numericDateContext', 'clockWords',
-  'scales', 'percentWords', 'currencyWords', 'unitWords', 'approxWords', 'versionWords', 'numberParts', 'numberJoiners',
+  'scales', 'percentWords', 'currencyWords', 'unitWords', 'approxWords', 'versionWords', 'numberParts', 'ownNumberParts', 'numberJoiners',
   'boilerplate', 'stopwords', 'abbreviations',
 ]);
 const MAP_FIELDS = /** @type {const} */ (['months', 'monthAbbreviations', 'weekdays', 'numberWords']);
@@ -189,13 +209,15 @@ function complete(pack) {
     meridiem: pack.meridiem ?? null,
     numberFormat: pack.numberFormat ?? { decimal: '.', group: ',' },
     letters: pack.letters ?? '',
+    caseFold: pack.caseFold ?? {},
+    capitalisesNouns: pack.capitalisesNouns ?? false,
     polarity,
     gate: completeGate(pack.gate),
   });
 }
 
 const NUMBER_WORD_MAPS = /** @type {const} */ (['cardinals', 'scales', 'fractions', 'multipliers', 'ordinals']);
-const NUMBER_WORD_LISTS = /** @type {const} */ (['parts', 'joiners', 'adverbs', 'contextual', 'countNouns', 'fractionLeads', 'negative']);
+const NUMBER_WORD_LISTS = /** @type {const} */ (['parts', 'joiners', 'adverbs', 'contextual', 'countNouns', 'fractionLeads', 'negative', 'tenJoiners']);
 const SUFFIX_KINDS = /** @type {const} */ (['ordinal', 'fraction', 'multiplier']);
 
 /**
@@ -212,6 +234,9 @@ function completeGate(gate) {
       ...Object.fromEntries(NUMBER_WORD_MAPS.map((k) => [k, words[k] ?? {}])),
       ...Object.fromEntries(NUMBER_WORD_LISTS.map((k) => [k, words[k] ?? []])),
       compound: words.compound ?? false,
+      additions: words.additions ?? [],
+      products: words.products ?? [],
+      elision: words.elision ?? false,
       suffixes: { ordinal: [], fraction: [], multiplier: [], ...words.suffixes },
     }),
     spoken: { abbreviations: spoken.abbreviations ?? {}, units: spoken.units ?? {}, approx: spoken.approx ?? '' },
@@ -246,6 +271,15 @@ function validateGate(gate) {
     if (!Array.isArray(words[key]) || !words[key].every((w) => typeof w === 'string' && GATE_WORD.test(w))) fail(`numberWords.${key}" must list lowercase words`);
   }
   if (typeof words.compound !== 'boolean') fail('numberWords.compound" must be true or false');
+  if (typeof words.elision !== 'boolean') fail('numberWords.elision" must be true or false');
+  const additions = /** @type {unknown} */ (words.additions);
+  if (!Array.isArray(additions) || !additions.every((a) => Array.isArray(a) && a.length === 3 && a.every((n) => Number.isFinite(n) && n >= 0) && a[1] <= a[2])) {
+    fail('numberWords.additions" must list [value, from, to] triples');
+  }
+  const products = /** @type {unknown} */ (words.products);
+  if (!Array.isArray(products) || !products.every((a) => Array.isArray(a) && a.length === 2 && a.every((n) => Number.isFinite(n) && n > 0))) {
+    fail('numberWords.products" must list [value, factor] pairs');
+  }
   for (const kind of SUFFIX_KINDS) {
     const list = words.suffixes?.[kind];
     if (!Array.isArray(list) || !list.every((w) => typeof w === 'string' && GATE_WORD.test(w))) fail(`numberWords.suffixes.${kind}" must list lowercase endings`);
@@ -325,6 +359,10 @@ function validate(pack) {
       throw new TypeError(`registerLanguage: "${key}" must map words to whole numbers`);
     }
     for (const w of Object.keys(map)) checkFragment(w, key);
+  }
+  const fold = /** @type {unknown} */ (pack.caseFold);
+  if (!fold || typeof fold !== 'object' || Array.isArray(fold) || !Object.entries(fold).every(([from, to]) => [...from].length === 1 && /^\p{Lu}$/u.test(from) && typeof to === 'string' && /^\p{Ll}+$/u.test(to))) {
+    throw new TypeError('registerLanguage: "caseFold" maps single capital letters to lowercase letters');
   }
   if (pack.meridiem !== null && !(/^\p{L}+$/u.test(pack.meridiem?.am ?? '') && /^\p{L}+$/u.test(pack.meridiem?.pm ?? ''))) {
     throw new TypeError('registerLanguage: "meridiem" is null or { am, pm } in letters');
@@ -431,5 +469,69 @@ export function union(lists) {
   return [...new Set(lists.flat())];
 }
 
+/**
+ * A text in lowercase as the language writes it: the pack's own capitals first (Turkish "I" → "ı",
+ * "İ" → "i"), then toLowerCase(). Without a pack for the code, toLowerCase() alone.
+ * @param {string} text
+ * @param {string | null} [code]
+ */
+export function lowerCase(text, code = null) {
+  const fold = code ? languagePack(code)?.caseFold : undefined;
+  if (!fold || !Object.keys(fold).length) return text.toLowerCase();
+  let out = '';
+  for (const ch of text) out += fold[ch] ?? ch;
+  return out.toLowerCase();
+}
+
 registerLanguage(en);
 registerLanguage(de);
+
+/**
+ * The packs that ship with Starpi beyond the built-in ones. Each is a module of its own, so a
+ * bundler puts it in a chunk of its own that loads only when asked for.
+ * @type {Readonly<Record<string, () => Promise<PackInput>>>}
+ */
+const SHIPPED = Object.freeze({
+  fr: () => import('./fr.js').then((m) => m.fr),
+  es: () => import('./es.js').then((m) => m.es),
+  it: () => import('./it.js').then((m) => m.it),
+  tr: () => import('./tr.js').then((m) => m.tr),
+});
+
+/** Codes of every language Starpi ships a pack for: the built-in ones first. */
+export const SHIPPED_LANGUAGES = Object.freeze(/** @type {LanguageCode[]} */ (['en', 'de', ...Object.keys(SHIPPED)]));
+
+/** @type {Map<string, Promise<LanguagePack | null>>} */
+const loadingPacks = new Map();
+
+/**
+ * Loads and registers shipped packs (all of them by default), each once; concurrent calls share the
+ * work. A pack that cannot be loaded (offline before its chunk was cached) is left out with a
+ * warning, and a later call tries again. Measured with the source-check eval: the shipped packs
+ * leave every English and German verdict unchanged (tests/unit/lang-shipped.test.mjs).
+ * @param {readonly string[]} [codes]
+ * @returns {Promise<LanguagePack[]>} the packs of those codes that are registered afterwards
+ */
+export async function loadShippedLanguages(codes = Object.keys(SHIPPED)) {
+  const packs = await Promise.all(
+    codes.map((code) => {
+      const known = PACKS.get(code);
+      if (known) return Promise.resolve(known);
+      const load = SHIPPED[code];
+      if (!load) return Promise.resolve(null);
+      let pending = loadingPacks.get(code);
+      if (!pending) {
+        pending = load()
+          .then((pack) => PACKS.get(code) ?? registerLanguage(pack))
+          .catch((err) => {
+            console.warn(`[starpi] the ${code} language pack could not be loaded`, err);
+            return null;
+          })
+          .finally(() => loadingPacks.delete(code));
+        loadingPacks.set(code, pending);
+      }
+      return pending;
+    }),
+  );
+  return packs.filter((p) => p !== null);
+}

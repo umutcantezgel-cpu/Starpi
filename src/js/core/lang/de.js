@@ -49,6 +49,7 @@ export const de = {
   },
   // "ein" and "eins" only take part in a larger number ("einhundert", "eins komma fünf").
   numberParts: ['eins?', 'tausend', 'millionen', 'mio', 'milliarden?', 'mrd', 'dutzend'],
+  ownNumberParts: [],
   numberJoiners: ['und'],
 
   boilerplate: [
@@ -77,6 +78,7 @@ export const de = {
     'prof', 'abs', 'tel',
   ],
   letters: 'äöüß',
+  capitalisesNouns: true,
 
   polarity: {
     negators: ['nicht', 'kein', 'keine', 'keinen', 'keinem', 'keiner', 'keines', 'nie', 'niemals', 'nichts', 'niemand', 'weder', 'ohne'],

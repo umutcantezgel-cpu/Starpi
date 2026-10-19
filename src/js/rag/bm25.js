@@ -1,5 +1,6 @@
 // @ts-check
-// In-memory Okapi BM25 index over document chunks (every registered language; English + German built in).
+// In-memory Okapi BM25 index over document chunks (every registered language; English + German built in,
+// French, Spanish, Italian and Turkish once loaded).
 //
 //   score(q, d) = Σ_t idf(t) · tf(t,d)·(k1 + 1) / (tf(t,d) + k1·(1 − b + b·|d|/avgdl))
 //   idf(t)      = ln(1 + (N − df(t) + 0.5) / (df(t) + 0.5))      (non-negative variant)
@@ -23,17 +24,27 @@ export const STOPWORDS_DE = new Set(languagePack('de')?.stopwords);
  */
 export const STOPWORDS = new Set([...STOPWORDS_EN, ...STOPWORDS_DE]);
 
-/** Function words of every registered language pack. */
-const stopwords = fromPacks((packs) => new Set(packs.flatMap((p) => p.stopwords)));
+/**
+ * Both Turkish i forms read as "i" in lowercase text, as fold() in core/facts.js reads them. Text in
+ * capitals ("KILAVUZ", "ISITMA") lowercases to the dotted i, the same words typed in lowercase keep
+ * the dotless one; neither form can be told from the text alone, so both meet at "i".
+ * @param {string} text
+ */
+const foldI = (text) => text.replace(/ı/g, 'i');
+
+/** Function words of every registered language pack, with the Turkish i forms folded as tokenize() folds them. */
+const stopwords = fromPacks((packs) => new Set(packs.flatMap((p) => p.stopwords.map(foldI))));
 
 /**
  * Lowercases, applies Unicode NFKC, strips punctuation and drops stopwords and single characters.
+ * The Turkish capital "İ" becomes "i" (toLowerCase() would add a combining dot to it) and the
+ * dotless "ı" becomes "i" too, so a Turkish word matches in capitals and in lowercase alike.
  * @param {string} text
  * @returns {string[]}
  */
 export function tokenize(text) {
   if (typeof text !== 'string' || !text) return [];
-  const words = text.normalize('NFKC').toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{M}\p{N}]*/gu) ?? [];
+  const words = foldI(text.normalize('NFKC').replace(/İ/g, 'i').toLowerCase()).match(/[\p{L}\p{N}][\p{L}\p{M}\p{N}]*/gu) ?? [];
   const skip = stopwords();
   return words.filter((w) => w.length >= 2 && !skip.has(w));
 }
