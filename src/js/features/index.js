@@ -11,6 +11,7 @@ import './providers.js';
 import './research.js';
 import './sources.js';
 import './sync.js';
+import './tools.js';
 import './trust.js';
 import './voice.js';
 import './workspace.js';

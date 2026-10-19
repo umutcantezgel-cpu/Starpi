@@ -317,6 +317,7 @@
     "open": "Quelle öffnen: {doc}, Abschnitt {chunk}",
     "source_workspace": "Lokaler Arbeitsbereich",
     "source_knowledge": "Wissensdatenbank",
+    "source_web": "Webseite",
     "chunk": "Abschnitt",
     "score_bm25": "BM25-Score",
     "score_rank": "Suchrang",
@@ -325,6 +326,8 @@
     "loading_context": "Umgebender Text wird geladen…",
     "note_workspace": "Markiert: der zitierte Abschnitt im aus der Datei extrahierten Text ({length} Zeichen).",
     "note_knowledge": "Der Auszug aus der Wissensdatenbank, so wie er zitiert wurde.",
+    "note_web": "Was die Websuche über diese Seite sagte, so wie es zitiert wurde, nicht die Seite selbst.",
+    "open_page": "Seite öffnen ({host})",
     "note_missing": "Die Datei ist nicht mehr im Arbeitsbereich; angezeigt wird der zitierte Auszug."
   },
   "grounding": {

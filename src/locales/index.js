@@ -15,6 +15,8 @@
 //   SHIPPED_LOCALES. Untranslated keys show the English text.
 import aiEn from './ai/en.json' with { type: 'json' };
 import aiOrchestrationEn from './ai-orchestration/en.json' with { type: 'json' };
+import answersEn from './answers/en.json' with { type: 'json' };
+import canvasEn from './canvas/en.json' with { type: 'json' };
 import chatEn from './chat/en.json' with { type: 'json' };
 import chatThreadEn from './chat-thread/en.json' with { type: 'json' };
 import companionEn from './companion/en.json' with { type: 'json' };
@@ -26,6 +28,7 @@ import providersEn from './providers/en.json' with { type: 'json' };
 import researchEn from './research/en.json' with { type: 'json' };
 import shellEn from './shell/en.json' with { type: 'json' };
 import syncEn from './sync/en.json' with { type: 'json' };
+import toolsEn from './tools/en.json' with { type: 'json' };
 import trustEn from './trust/en.json' with { type: 'json' };
 import voiceEn from './voice/en.json' with { type: 'json' };
 import workspaceEn from './workspace/en.json' with { type: 'json' };
@@ -34,7 +37,7 @@ import workspaceEn from './workspace/en.json' with { type: 'json' };
 /** @typedef {{ root: Dictionary, namespaces: Record<string, Dictionary> }} LocaleFiles */
 
 /** Namespaces, in merge order. */
-export const NAMESPACES = Object.freeze(['shell', 'chat', 'chat-thread', 'ai', 'ai-orchestration', 'providers', 'research', 'voice', 'live', 'trust', 'memory', 'companion', 'workspace', 'graph', 'sync']);
+export const NAMESPACES = Object.freeze(['shell', 'chat', 'chat-thread', 'ai', 'ai-orchestration', 'providers', 'research', 'voice', 'live', 'trust', 'memory', 'companion', 'workspace', 'graph', 'sync', 'answers', 'tools', 'canvas']);
 
 /** Languages with a root dictionary; the language switch offers exactly these. */
 export const SHIPPED_LOCALES = Object.freeze(['en', 'de']);
@@ -58,6 +61,9 @@ export const ENGLISH = Object.freeze({
     workspace: workspaceEn,
     graph: graphEn,
     sync: syncEn,
+    answers: answersEn,
+    tools: toolsEn,
+    canvas: canvasEn,
   },
 });
 

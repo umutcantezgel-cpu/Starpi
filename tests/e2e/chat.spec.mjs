@@ -131,7 +131,7 @@ test.describe('chat thread', () => {
     await expect(answer.locator('.message-content')).toContainText(ANSWER);
     await settled(page);
     await expect(answer.locator('.engine-badge-label')).toHaveText('Your server · fake-local:8b');
-    await expect(answer.locator('.free-note')).toContainText('Free chat · not checked against sources');
+    await expect(answer.locator('[data-answer-label="free"]')).toContainText('Free chat · not checked');
     await expect(answer.locator('.grounding-bar')).toHaveCount(0);
     await expect(answer.locator('.message-meta')).toContainText(/in · \d+ out/);
 
@@ -152,7 +152,7 @@ test.describe('chat thread', () => {
     await expect(answers(page)).toHaveCount(1);
     await expect(answers(page).last().locator('.message-content')).toContainText(ANSWER);
     await expect(questions(page).first()).toContainText('Hello there, how are you today?');
-    await expect(answers(page).last().locator('.free-note')).toBeVisible();
+    await expect(answers(page).last().locator('[data-answer-label="free"]')).toBeVisible();
   });
 
   test('stops a stalled answer and keeps what arrived', async ({ page, diagnostics: _diagnostics }) => {
@@ -394,7 +394,7 @@ test.describe('grounded thread', () => {
     await ask(page, 'What is a budget?');
     await settled(page);
     const free = answers(page).last();
-    await expect(free.locator('.free-note')).toBeVisible();
+    await expect(free.locator('[data-answer-label="free"]')).toBeVisible();
     await expect(free.locator('.grounding-bar')).toHaveCount(0);
     await expect(free.locator('[data-action="open-receipt"]')).toHaveCount(0);
 

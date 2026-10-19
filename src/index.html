@@ -254,7 +254,7 @@
                   <span data-i18n="chat-thread.mode.grounded">Grounded</span>
                 </button>
               </div>
-              <span id="chatModeHint" class="hidden md:inline text-[11px] text-slate-500 truncate min-w-0 flex-1" data-i18n="chat-thread.mode.auto_hint">Answers from your files when you have some, otherwise a free conversation.</span>
+              <span id="chatModeHint" class="hidden md:inline text-[11px] text-slate-500 truncate min-w-0 flex-1" data-i18n="chat-thread.mode.auto_hint">Answers from your files when the question is about them, otherwise a free conversation.</span>
               <div class="ml-auto flex items-center gap-1 flex-shrink-0">
                 <button type="button" id="thinkingToggle" data-action="toggle-thinking" class="composer-toggle btn btn-ghost px-2 py-1 text-[11px]" aria-pressed="false" data-i18n-title="ai-orchestration.thinking.hint" title="Lets capable models reason before they answer. Slower, and it uses more tokens.">
                   <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i>
@@ -695,6 +695,7 @@
 
         <!-- Mount points: one settings section per feature (hidden while empty). -->
         <div id="providerSettings" class="empty:hidden" data-mount></div>
+        <div id="toolSettings" class="empty:hidden" data-mount></div>
 
         <div class="card p-4 sm:p-5 space-y-4">
           <div class="card-header">

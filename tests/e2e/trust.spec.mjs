@@ -39,7 +39,10 @@ async function mockGemini(page, text) {
     const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' };
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
     prompts.push(route.request().postData() ?? '');
-    return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }) });
+    const answer = { candidates: [{ content: { role: 'model', parts: [{ text }] }, finishReason: 'STOP' }] };
+    // Streaming calls get server-sent events as Gemini sends them, the others one JSON body.
+    if (route.request().url().includes('alt=sse')) return route.fulfill({ status: 200, contentType: 'text/event-stream', headers, body: `data: ${JSON.stringify(answer)}\n\n` });
+    return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify(answer) });
   });
   return prompts;
 }

@@ -275,6 +275,61 @@ Features plug in as modules passed to `startCompanion({ modules })`:
 (its capability or null), `clock`, `timeZone`, `log`, `config` (`modules.<id>` of the
 configuration) and the companion's public `identity`.
 
+A route may also name `maxBody` (bytes, at most 64 MiB), `lane` (for the breaker) and `raw`: a
+list of media types whose bodies it takes as bytes (a file upload, a recorded form) instead of
+JSON. A handler answers with `{ body }` (JSON), `{ stream }` (server-sent events) or
+`{ raw: { type, data, filename? } }` (bytes; with a file name as an attachment).
+
+## Standard modules
+
+`starpi-companion start` runs these modules (`standardModules()` for embedding). Each is
+configured under `modules.<id>` of `config.json`; a module with nothing configured stays quiet.
+Text people write (notes, documents, conversations, reminders, the inbox) is sealed in its own
+vault namespace; the audit chain records ids, classes and counts, never the text.
+
+| Module | Routes (below `/v1`) | What it does |
+| --- | --- | --- |
+| `retrieval` | `POST /retrieval/search`, `GET /retrieval/status` | the search index over notes and documents: BM25, plus vectors from an embedding server on this machine (`embeddings: { baseUrl: "http://127.0.0.1:11434/v1", model }`), fused with reciprocal rank fusion (chunking, BM25 and fusion of `@starpi/core`) |
+| `memory` | `GET/POST /memory/notes`, `GET/PUT/DELETE /memory/notes/:id`, `POST /memory/recall` | notes added on purpose; recall ranks by match, use, spread over days and freshness (halving every `halfLifeDays`, 30); a pinned note does not fade |
+| `docs` | `POST /docs?name=&class=` (raw file), `GET /docs`, `GET /docs/:id`, `GET /docs/:id/passages/:n`, `GET /docs/:id/file`, `PUT /docs/:id/class`, `DELETE /docs/:id` | PDF text layer (needs the optional peer `pdfjs-dist`), Word, Excel, PowerPoint, HTML, Markdown, CSV, JSON and text, read by `@starpi/core` in the background lane; original and text are sealed blobs |
+| `ask` | `POST /ask` | one question, one JSON answer |
+| `chat` | `POST /chat` (server-sent events), `GET /chat/conversations`, `GET/PUT/DELETE /chat/conversations/:id` | conversations with history; a conversation's data class only rises |
+| `mcp` | `POST /mcp`, `GET/POST /mcp/clients`, `DELETE /mcp/clients/:id` | an MCP server (2025-06-18) with the read-only tools `search_documents`, `read_excerpt`, `recall_notes`, `list_agenda`; MCP client tokens only (no cookie, no browser session, no Origin) |
+| `connectors` | `GET /connectors`, `POST /connectors/:server/{refresh,approve,revoke}`, `GET /connectors/approvals`, `POST /connectors/approvals/:id` | tools of MCP servers on this machine for the chat: each tool description is pinned by SHA-256 and offered only with the pin the owner approved; a changed description needs a new approval |
+| `agenda` | `GET/POST /agenda`, `GET /agenda/upcoming`, `GET/PUT/DELETE /agenda/:id` | reminders (once, daily, weekly, monthly) in the item's, the module's or the companion's time zone, computed with `Intl` |
+| `notify` | `GET /notify`, `GET /notify/stream`, `POST /notify/:id/read`, `POST /notify/read-all`, `DELETE /notify/:id` | the inbox; the app reads it over server-sent events while it is open (no push service) |
+| `voice` | `GET /voice/v1/audio/voices`, `POST /voice/v1/audio/speech`, `POST /voice/v1/audio/transcriptions` | relays speech to the voice server on this machine (`url: "http://127.0.0.1:8000"`) |
+| `feeds` | `GET /feeds`, `GET /feeds/latest`, `POST /feeds/import?source=` (CSV) | experimental and read-only: CSV imports and MQTT subscriptions to a broker on this machine (3.1.1 or 5; the client never publishes) as `feed.sample` / `feed.health` events |
+| `setup` | `GET /setup`, `GET /setup/models` | first-start checks of the local model, embedding and voice servers, and model sizes the machine's memory holds |
+
+**Answers through the gate.** `/v1/ask` and `/v1/chat` take `mode: "sources"` (default) or
+`"free"`. In source mode the model gets the matching passages of documents, notes and the latest
+feed readings as labelled sources (`[S1]`, `[S2]`, ...), and every answer runs through the sentence
+gate of `@starpi/core`: a sentence whose number is not in the source it cites is withheld, so a feed
+reading can be cited exactly as the feed reported it. Free mode keeps the gate's character and link
+rules. Released units stream as `unit` events; the answer lists what was withheld and why, and the
+sources each sentence cites. A turn's data class is the strictest of the request, the conversation
+and its sources, and decides where the router may send it; secret content never reaches a prompt.
+
+**Tools in the chat.** With `tools: true` the chat offers the approved connector tools. A model
+calls one by replying `CALL {"tool": "<server>.<tool>", "arguments": {...}}`; the call is never
+shown, its result becomes the source `[T1]`, and the model is asked again (at most four calls). A
+tool approved with `calls: "ask"` waits for a person at every call; a call written after a tool
+result always waits.
+
+**Desktop MCP clients.** Create a client token as the owner (`POST /v1/mcp/clients`), save it in a
+file only you can read (`chmod 600`) and let the client start the bridge:
+
+```json
+{ "mcpServers": { "starpi": { "command": "starpi-companion-mcp", "args": ["--token-file", "<absolute path>/mcp.token"] } } }
+```
+
+The bridge (`bin/mcp-stdio.mjs`) connects to `127.0.0.1` only; `--port` or `STARPI_COMPANION_PORT`
+names the companion's port.
+
+**Development.** The companion imports the built `@starpi/core`; run `npm run test:companion`
+(and `npm run typecheck:companion`) from the repository root, which builds the core first.
+
 ## License
 
 MIT, see `LICENSE`. Attributions of ideas from other open-source projects: `NOTICE` and `LICENSES/`.

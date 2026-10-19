@@ -2,12 +2,11 @@
 // The composer's mode row: the segmented control Auto · Free · Grounded, the Thinking and Web
 // toggles, and the hint and placeholder that say what the chosen mode does.
 //
-// Auto picks per question until the routing package brings its own decision (hooks.js
-// setRouteDecider), as source mode did before whenever there are files to answer from: Grounded
-// when the question carries a document, or carries no images and the on-device workspace or the
-// knowledge base holds documents, or no model is set up at all (then the sources are quoted);
-// Free otherwise. Free never searches sources; Grounded always does, and every answer gets the
-// source check and a receipt.
+// The thread decides Auto per question with ai/hybrid.js (what the question carries and names,
+// the workspace probe; a decider set with hooks.js setRouteDecider runs first and can only tighten
+// the route). builtInRoute below is the earlier coarse rule, kept for callers that have no probe.
+// Free never searches sources; Grounded always does, and every answer gets the source check and a
+// receipt.
 import { byId, onAction } from '../dom.js';
 import { setText, t } from '../i18n/index.js';
 import { getChatMode, getWebSearch, onChatModeChange, onWebSearchChange, setChatMode, setWebSearch } from '../state.js';

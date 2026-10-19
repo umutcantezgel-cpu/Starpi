@@ -102,7 +102,7 @@ describe('chat thread', () => {
     assert.ok(answer);
     assert.match(answer.querySelector('.message-content')?.textContent ?? '', /simulated answer from the local test provider/);
     assert.equal(answer.querySelector('.engine-badge-label')?.textContent, 'Your server · fake-local:8b');
-    assert.ok(answer.querySelector('.free-note'), 'free answers are labelled not checked');
+    assert.ok(answer.querySelector('[data-answer-label="free"]'), 'free answers are labelled not checked');
     const path = await storedPath();
     assert.deepEqual(path.map((n) => n.role), ['user', 'assistant']);
     assert.equal(path[1].provider, 'local');

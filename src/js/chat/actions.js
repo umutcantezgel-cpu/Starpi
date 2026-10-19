@@ -65,7 +65,7 @@ export function renderActions(el, state) {
   parts.push(button({ action: 'msg-copy', nodeId: id, icon: 'copy', labelKey: 'chat-thread.action.copy' }));
   if (answer) {
     parts.push(button({ action: 'msg-copy-md', nodeId: id, icon: 'braces', labelKey: 'chat-thread.action.copy_md' }));
-    parts.push(speakerButton(id, { className: 'msg-action' }).value);
+    parts.push(speakerButton(id, { className: 'msg-action', compact: true }).value);
     parts.push(
       `<details class="regen-menu relative inline-block" data-node="${escapeHtml(id)}"><summary class="msg-action btn btn-ghost px-1.5 py-1 text-[11px] list-none cursor-pointer" data-i18n-aria="chat-thread.action.regenerate" aria-label="${escapeHtml(t('chat-thread.action.regenerate'))}" data-i18n-title="chat-thread.action.regenerate" title="${escapeHtml(t('chat-thread.action.regenerate'))}"${busy ? ' aria-disabled="true"' : ''}><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i><i data-lucide="chevron-down" class="w-3 h-3"></i></summary><div class="regen-list absolute left-0 bottom-full z-30 mb-1 w-64 max-h-72 overflow-y-auto card p-1 flex flex-col" role="menu"></div></details>`,
     );
@@ -90,14 +90,15 @@ export function renderActions(el, state) {
 
 /**
  * Whether an answer's question was asked to stay on this device (a free question asked on this
- * device): then only the model here or the own server answers it again.
+ * device, or a grounded one asked with the model of this device): then only the model here or the
+ * own server answers it again.
  * @param {string} nodeId  the answer
  */
 function staysOnDevice(nodeId) {
   const node = handlers?.node(nodeId) ?? null;
   const question = node?.parentId ? (handlers?.node(node.parentId) ?? null) : null;
   const route = /** @type {Record<string, unknown>} */ (node?.meta ?? {}).chat_mode ?? node?.label;
-  return Boolean(question?.localOnly) && route !== 'grounded';
+  return Boolean(question?.localOnly) && (route !== 'grounded' || /** @type {Record<string, unknown>} */ (question?.meta ?? {}).device_only === true);
 }
 
 /**

@@ -28,7 +28,8 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "starpi-companion": "bin/starpi-companion.mjs"
+    "starpi-companion": "bin/starpi-companion.mjs",
+    "starpi-companion-mcp": "bin/mcp-stdio.mjs"
   },
   "files": [
     "bin",
@@ -47,7 +48,16 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "0.133.0"
+    "@anthropic-ai/sdk": "0.133.0",
+    "@starpi/core": "2.1.0"
+  },
+  "peerDependencies": {
+    "pdfjs-dist": "^6.3.289"
+  },
+  "peerDependenciesMeta": {
+    "pdfjs-dist": {
+      "optional": true
+    }
   },
   "publishConfig": {
     "access": "public",

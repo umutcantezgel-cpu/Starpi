@@ -9,9 +9,10 @@
 //   ingest    { file: File, chunkSize?, chunkOverlap?, ocr? } -> DocumentInfo (progress events on the way;
 //             the same file again returns the existing document with duplicate: true; with ocr: true an
 //             image is read through the main thread, see "OCR" below)
-//   search    { query, topK? }                           -> SearchResult[]   (BM25)
-//   searchHybrid { query, vector?, topK? }               -> SearchResult[]   (BM25 top 50 + cosine top 50, RRF k=60;
+//   search    { query, topK?, docIds? }                  -> SearchResult[]   (BM25)
+//   searchHybrid { query, vector?, topK?, docIds? }      -> SearchResult[]   (BM25 top 50 + cosine top 50, RRF k=60;
 //             BM25 alone without a vector or without vectors of the active model)
+//             docIds: only chunks of these documents
 //   probe     { question, k? }                           -> WorkspaceProbe
 //   context   { docId, start, end, pad? }                -> { before, match, after, start, end, length }
 //   head      { docId, count? }                          -> SearchResult[] (first chunks, score 0)
@@ -78,10 +79,10 @@ async function handle(type, payload, id) {
       });
     case 'search':
       await workspace.init();
-      return workspace.search(payload.query, payload.topK);
+      return workspace.search(payload.query, payload.topK, payload.docIds ?? null);
     case 'searchHybrid':
       await workspace.init();
-      return workspace.searchHybrid(payload.query, payload.vector ?? null, payload.topK);
+      return workspace.searchHybrid(payload.query, payload.vector ?? null, payload.topK, payload.docIds ?? null);
     case 'probe':
       await workspace.init();
       return workspace.probe(payload.question, payload.k);

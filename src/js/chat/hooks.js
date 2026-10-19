@@ -40,6 +40,21 @@
  */
 
 /**
+ * The workspace documents a conversation's grounded questions search (null: all of them; files
+ * attached to the question are searched as well).
+ * @typedef {(conversationId: string) => readonly string[] | null | Promise<readonly string[] | null>} WorkspaceScope
+ */
+
+/**
+ * What a sidebar section gets from the conversation list.
+ * @typedef {object} SidebarSectionContext
+ * @property {typeof import('../dom.js').onAction} onAction
+ * @property {typeof import('../dom.js').onChange} onChange
+ * @property {(tab: string) => void} switchTab
+ * @property {typeof import('../ui/kit.js').toast} toast
+ */
+
+/**
  * An entry of the composer's tools menu.
  * @typedef {object} ComposerTool
  * @property {string} id
@@ -61,7 +76,9 @@ function add(set, value) {
 
 /** @type {Set<(ctx: TurnContext) => readonly string[] | Promise<readonly string[]>>} */
 export const turnNoteHooks = new Set();
-/** @type {Set<(ctx: TurnContext) => string>} */
+/** @type {Set<(ctx: TurnContext) => readonly string[] | Promise<readonly string[]>>} */
+export const requestNoteHooks = new Set();
+/** @type {Set<(ctx: TurnContext) => string | Promise<string>>} */
 export const systemNoteHooks = new Set();
 /** @type {Set<(req: AiRequest, ctx: TurnContext) => AiRequest>} */
 export const requestHooks = new Set();
@@ -73,13 +90,30 @@ export const messageActions = new Map();
 export const composerTools = new Map();
 /** @type {Map<string, (slot: HTMLElement) => void | (() => void)>} */
 export const composerSlots = new Map();
+/** @type {Map<string, (host: HTMLElement, ctx: SidebarSectionContext) => void | (() => void)>} */
+export const sidebarSections = new Map();
+/** @type {Set<() => void>} */
+const sidebarListeners = new Set();
+/** @type {Set<(el: HTMLElement, node: NodeRecord) => void>} */
+export const answerDecorators = new Set();
 /** @type {Set<() => void>} */
 const slotListeners = new Set();
 /** @type {Set<() => void>} */
 const toolListeners = new Set();
 
-/** @type {{ route: RouteDecider | null, tools: ((input: { result: CompletionResult, request: AiRequest, ctx: TurnContext, signal: AbortSignal }) => Promise<CompletionResult | null>) | null, label: ((node: NodeRecord) => { kind: import('../ui/kit.js').Provenance, labelKey?: string } | null) | null }} */
-export const single = { route: null, tools: null, label: null };
+/**
+ * What the tool runner gets for a free answer: the answer, the request it was asked with (built on
+ * demand), the turn, Stop, and the answer's bubble (for approval cards and the text after tool calls).
+ * @typedef {{ result: CompletionResult, request: () => Promise<AiRequest>, ctx: TurnContext, signal: AbortSignal, view?: { element: HTMLElement, update: (text: string) => void } }} ToolRunInput
+ */
+
+/**
+ * Another adapter for one call of a free answer (provider-side tools); undefined keeps the default.
+ * @typedef {(target: { provider: string, model: string, route: string }, req: AiRequest) => import('../ai/stream.js').Adapter | undefined} AdapterChooser
+ */
+
+/** @type {{ scope: WorkspaceScope | null, route: RouteDecider | null, tools: ((input: ToolRunInput) => Promise<CompletionResult | null>) | null, label: ((node: NodeRecord) => { kind: import('../ui/kit.js').Provenance, labelKey?: string } | null) | null, adapter: AdapterChooser | null }} */
+export const single = { scope: null, route: null, tools: null, label: null, adapter: null };
 
 /**
  * Notes for the current user turn of a free-chat question (memory facts, context packs). They go
@@ -91,9 +125,20 @@ export function registerTurnNotes(fn) {
 }
 
 /**
+ * Notes for the request of the free question being answered only (saved notes about the user). They
+ * go into a context block of that request and are never stored with the question, so later turns
+ * do not send them again: what the feature holds back later (switched off, deleted, encrypted)
+ * stays held back. Asked again for a regenerated answer; not asked for "Continue".
+ * @param {(ctx: TurnContext) => readonly string[] | Promise<readonly string[]>} fn
+ */
+export function registerRequestNotes(fn) {
+  return add(requestNoteHooks, fn);
+}
+
+/**
  * Text appended to the free chat's system prompt (custom instructions). It must stay the same from
  * turn to turn of a conversation, or the provider's prompt cache is lost.
- * @param {(ctx: TurnContext) => string} fn
+ * @param {(ctx: TurnContext) => string | Promise<string>} fn
  */
 export function registerSystemNote(fn) {
   return add(systemNoteHooks, fn);
@@ -116,6 +161,18 @@ export function registerReceiptHook(fn) {
 }
 
 /**
+ * Limits the workspace search of a conversation's grounded questions (one scope; a later one
+ * replaces it).
+ * @param {WorkspaceScope | null} fn
+ */
+export function setWorkspaceScope(fn) {
+  single.scope = fn;
+  return () => {
+    if (single.scope === fn) single.scope = null;
+  };
+}
+
+/**
  * Decides Free or Grounded for Auto (one decider; a later one replaces it). Returning null keeps the
  * built-in rule.
  * @param {RouteDecider | null} fn
@@ -128,13 +185,25 @@ export function setRouteDecider(fn) {
 }
 
 /**
- * Runs the tool calls an answer stopped for and returns the answer after them (null: leave it).
+ * Sees every free answer once it is in: runs the tool calls an answer stopped for (and may complete
+ * it otherwise, such as linking its web results) and returns the answer after that (null: leave it).
  * @param {typeof single.tools} fn
  */
 export function setToolRunner(fn) {
   single.tools = fn;
   return () => {
     if (single.tools === fn) single.tools = null;
+  };
+}
+
+/**
+ * Picks another adapter for a call of a free answer (one chooser; a later one replaces it).
+ * @param {AdapterChooser | null} fn
+ */
+export function setAdapterChooser(fn) {
+  single.adapter = fn;
+  return () => {
+    if (single.adapter === fn) single.adapter = null;
   };
 }
 
@@ -160,6 +229,15 @@ export function registerMessageAction(action) {
   return () => {
     if (messageActions.get(action.id) === action) messageActions.delete(action.id);
   };
+}
+
+/**
+ * Adds to how an answer shows (a note under it, such as how it was chosen): fn gets the answer's
+ * element and its stored message every time the thread shows that answer.
+ * @param {(el: HTMLElement, node: NodeRecord) => void} fn
+ */
+export function registerAnswerDecorator(fn) {
+  return add(answerDecorators, fn);
 }
 
 /**
@@ -192,6 +270,29 @@ export function registerComposerTool(tool) {
       for (const fn of toolListeners) fn();
     }
   };
+}
+
+/**
+ * Adds a section to the sidebar, between the search box and the conversation list (projects,
+ * assistants). The render function gets its own host element and may return a cleanup function;
+ * sections show in registration order, and a later registration of the same id replaces it.
+ * @param {string} id
+ * @param {(host: HTMLElement, ctx: SidebarSectionContext) => void | (() => void)} render
+ */
+export function registerSidebarSection(id, render) {
+  sidebarSections.set(id, render);
+  for (const fn of sidebarListeners) fn();
+  return () => {
+    if (sidebarSections.get(id) === render) {
+      sidebarSections.delete(id);
+      for (const fn of sidebarListeners) fn();
+    }
+  };
+}
+
+/** @param {() => void} fn  the conversation list renders its sections again */
+export function onSidebarSections(fn) {
+  return add(sidebarListeners, fn);
 }
 
 /** @param {() => void} fn  the composer re-renders its slots */

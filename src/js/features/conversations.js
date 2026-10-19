@@ -23,6 +23,7 @@ const feature = {
       },
       remove: deleteSession,
       isBusy: () => getChatView()?.isBusy() ?? false,
+      answering: () => getChatView()?.answering?.() ?? null,
       afterRemoveCurrent: () => getChatView()?.reset(),
       settle: waitForWrites,
       version: APP_VERSION,

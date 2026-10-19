@@ -481,12 +481,24 @@ export function createWorkspace(options = {}) {
   const clampK = (topK) => Math.min(Math.max(Number(topK) || 5, 1), 50);
 
   /**
+   * The document filter of a search: none without a list, else only the listed documents.
+   * @param {unknown} docIds
+   * @returns {((docId: string) => boolean) | undefined}
+   */
+  function acceptOf(docIds) {
+    if (!Array.isArray(docIds)) return undefined;
+    const allowed = new Set(docIds.filter((d) => typeof d === 'string'));
+    return (docId) => allowed.has(docId);
+  }
+
+  /**
    * @param {string} query
    * @param {number} [topK]
+   * @param {readonly string[] | null} [docIds]  search only these documents
    * @returns {SearchResult[]}
    */
-  function search(query, topK) {
-    return index.search(String(query ?? ''), clampK(topK)).map(toResult);
+  function search(query, topK, docIds) {
+    return index.search(String(query ?? ''), clampK(topK), acceptOf(docIds)).map(toResult);
   }
 
   /**
@@ -495,11 +507,13 @@ export function createWorkspace(options = {}) {
    * @param {string} query
    * @param {ArrayLike<number> | null | undefined} vector
    * @param {number} [topK]
+   * @param {readonly string[] | null} [docIds]  search only these documents
    * @returns {SearchResult[]}
    */
-  function searchHybrid(query, vector, topK) {
-    if (!vector || !vectors || vectors.size === 0 || vector.length !== vectors.dim) return search(query, topK);
-    return hybridSearch(index, vectors, String(query ?? ''), vector, clampK(topK), { lookup: entryOf }).map(toResult);
+  function searchHybrid(query, vector, topK, docIds) {
+    if (!vector || !vectors || vectors.size === 0 || vector.length !== vectors.dim) return search(query, topK, docIds);
+    const accept = acceptOf(docIds);
+    return hybridSearch(index, vectors, String(query ?? ''), vector, clampK(topK), { lookup: entryOf, ...(accept ? { accept } : {}) }).map(toResult);
   }
 
   /**
