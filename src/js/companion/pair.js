@@ -433,25 +433,35 @@ export function createPairing(options = {}) {
     /** Whether the app is served by the companion (Mode A). */
     selfServed: () => selfOrigin !== null,
     /**
-     * Loads the stored link (no network). A link whose secret does not open is dropped.
+     * Loads the stored link (no network). A link that is gone, has expired or whose secret does not
+     * open is dropped, flag and all. Whenever the flag said "linked" and no pairing came of it, the
+     * listeners hear the unpaired state, so the pickers (which offered the companion on the flag
+     * alone) stop offering it; a link that only could not be read keeps its flag for the next page.
      * @returns {Promise<PairingState>}
      */
     restore() {
       restoring ??= (async () => {
         if (!marker.get()) return state;
+        /** @param {boolean} forget */
+        const unusable = async (forget) => {
+          if (forget) {
+            marker.set(false);
+            await store.clear().catch(() => {});
+          }
+          update({});
+          return state;
+        };
         let stored = null;
         try {
           stored = await store.load();
         } catch (err) {
           console.warn('[starpi] the companion link could not be read', err);
+          return unusable(false);
         }
-        if (!stored || (selfOrigin && stored.origin !== selfOrigin)) return state;
+        if (!stored) return unusable(true);
+        if (selfOrigin && stored.origin !== selfOrigin) return unusable(false);
         const secret = await openSecret(await store.sealKey(), stored.secret, stored).catch(() => null);
-        if (!secret || Date.parse(stored.expiresAt) <= now()) {
-          marker.set(false);
-          await store.clear().catch(() => {});
-          return state;
-        }
+        if (!secret || !(Date.parse(stored.expiresAt) > now())) return unusable(true);
         await connect(stored, secret);
         return state;
       })();

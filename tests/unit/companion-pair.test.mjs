@@ -72,6 +72,58 @@ describe('pairing', () => {
     assert.equal(fresh.pairing.state().phase, 'unpaired');
   });
 
+  it('drops an expired or unopenable link and tells its listeners, so the pickers stop offering the companion', async () => {
+    const { assistantGroups, COMPANION_VALUE } = await import('../../src/js/models/choices.js');
+    const providers = await import('../../src/js/providers.js');
+    const base = { hw: null, pools: null, keyed: [], models: {}, server: false, serverModels: [] };
+    /** @param {string} [current] */
+    const offered = (current) => assistantGroups({ ...base, companion: providers.providerState().companion, current }).find((g) => g.id === 'companion')?.items[0] ?? null;
+    for (const spoil of [(/** @type {any} */ link) => ({ ...link, expiresAt: '2001-01-01T00:00:00.000Z' }), (/** @type {any} */ link) => ({ ...link, secret: { ...link.secret, data: link.secret.data.replace(/^./, (c) => (c === 'A' ? 'B' : 'A')) } })]) {
+      const { companion, store, marker, make, pairing } = setup();
+      await pairing.pair({ code: 'ABCDEFGH', origin: companion.origin });
+      await store.save(spoil(store.peek().link));
+      // A new page: the flag alone made the pickers offer the companion.
+      providers.setCompanionPaired(true);
+      assert.equal(offered()?.value, COMPANION_VALUE);
+      const page = make();
+      /** @type {string[]} */
+      const heard = [];
+      page.subscribe((s) => {
+        heard.push(s.phase);
+        providers.setCompanionPaired(s.phase === 'paired');
+      });
+      const state = await page.restore();
+      assert.equal(state.phase, 'unpaired');
+      assert.deepEqual(heard, ['unpaired'], 'the listeners heard it');
+      assert.equal(marker.get(), false);
+      assert.equal(store.peek().link, null);
+      assert.equal(providers.routeOf('companion'), 'none');
+      assert.equal(offered(), null, 'the picker entry is gone');
+      assert.equal(offered(COMPANION_VALUE)?.disabled, true, 'a stored choice of it stays visible, disabled');
+    }
+  });
+
+  it('keeps the flag of a link that only could not be read, and still says it is not paired now', async () => {
+    const { marker, store, make } = setup();
+    marker.set(true);
+    store.load = async () => {
+      throw new Error('blocked');
+    };
+    const page = make();
+    /** @type {string[]} */
+    const heard = [];
+    page.subscribe((s) => heard.push(s.phase));
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      await page.restore();
+    } finally {
+      console.warn = warn;
+    }
+    assert.deepEqual(heard, ['unpaired']);
+    assert.equal(marker.get(), true, 'the next page tries again');
+  });
+
   it('uses the CSRF value in Mode A and gives the voice input a cookie link with it', async () => {
     const companion = fakeCompanion();
     companion.handlers.set('POST /v1/session/pair', () => ({ body: { mode: 'cookie', session: 'sess-a', role: 'member', expiresAt: '2099-01-01T00:00:00Z', publicKey: companion.identity.publicKey, keyId: companion.identity.keyId, csrf: 'csrf_0123456789abcdefghijklmnop' } }));
