@@ -181,7 +181,7 @@ flowchart TD
     end
     subgraph act["tests/unit/actions.test.mjs"]
         emoji["no emoji in src"]
-        aria["static aria-label needs data-i18n-aria,<br/>except the lang-tagged EN/DE pre-boot buttons"]
+        aria["static aria-label needs data-i18n-aria,<br/>the pre-boot language select included"]
     end
     subgraph e2e["end-to-end"]
         e1["app.spec: English default, German without a reload, kept on reload"]

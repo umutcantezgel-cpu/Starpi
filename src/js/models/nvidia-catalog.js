@@ -11,7 +11,7 @@
  * @property {string} label Name shown in the model picker (a proper name, never translated).
  * @property {string} vendor
  * @property {boolean} reasoning Streams `reasoning_content` before the answer.
- * @property {boolean} vision Accepts images upstream (Starpi sends text only).
+ * @property {boolean} vision Accepts images: the site's pool takes a question's images only for these models.
  * @property {number} maxOutputTokens Upper bound for `max_tokens` (the server clamps to it).
  * @property {number} defaultMaxTokens `max_tokens` the app sends.
  * @property {Readonly<Record<string, unknown>>} [upstream] Fixed extra fields for the upstream request.

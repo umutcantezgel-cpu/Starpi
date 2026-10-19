@@ -52,6 +52,12 @@ of your own are needed. In English, German, French, Spanish, Italian and Turkish
 - **On your device:** conversations in IndexedDB, workspace files kept across reloads, Word, Excel,
   PowerPoint and HTML files, opt-in search by meaning, model files checked against SHA-256 pins, and
   a benchmark history that informs the model recommendation.
+- **A knowledge graph from your files.** **Find in my files** names the people, organizations and
+  things in the files on this device and how they relate. A model's relation stays only when the
+  passage it cites names both ends; without a model, names that appear in the same sentence are
+  linked. A long file is continued where the last run stopped, and the results stay on the device
+  with their files and go when a file is removed. What was found is drawn dashed next to the entries
+  added by hand, with the passages it comes from.
 - **End-to-end encrypted sync**, off until you turn it on.
 - **Starpi Core, the local companion** (`@starpi/companion`): a sealed vault, a signed audit chain and
   zero network egress by default on your own machine; paired with the app it is a source and a model
@@ -121,7 +127,8 @@ next to it says what the source says. Starpi makes that visible and checkable:
   in the workspace), to a free conversation otherwise, or mixed, where the answer marks which parts
   the sources hold. Grounded always retrieves, cites and checks. Free sends the conversation to the
   model without retrieval, citations, source check or receipt and marks every answer as not checked.
-  Suggested questions and questions about a graph entity always run grounded.
+  Suggested questions and questions about a graph entity always run grounded; an entity found in
+  your files is looked up in those files.
 - **A model for every situation.** The model menu groups the choices: recommended for this device,
   on this device (WebGPU, or WebAssembly on the processor), the local companion, the free models of
   the site's pools, the providers you have a key for and your own server, each with a status from
@@ -486,13 +493,16 @@ conversations, documents and API keys, sealed at rest.
   and notes" for grounded questions (a question that stays on this device may take passages up to
   the class sensitive, other questions up to the ceiling you choose, secret passages never); and
   **Starpi Core (local companion)** in the model menu. It gets the bare question, never the app's
-  prompt, in sources mode for Grounded and in free mode for Free and Auto, with the question's data
-  class. Its answers arrive already gated and are shown as released, with their label, notice and
-  withheld count; they and the questions asked there stay on this device and never enter the
-  encrypted sync. Each branch of a thread is its own conversation on the companion: asking again,
-  changing a question or going on in another branch continues in a copy of the turns up to there.
-  A stopped answer is not kept, on either side. A Compare column asks it like the thread does, without
-  the app's tools; the council never seats it; Live asks it in free conversations only.
+  prompt, in sources mode for Grounded and in free mode for Free and Auto, marked sensitive when the
+  question was asked to stay on this device; a question with images is not sent to it. Its answers
+  arrive already gated and are shown as released, with their label, notice and withheld count; they
+  and the questions asked there stay on this device and never enter the encrypted sync (with sync
+  on, the line under the composer says so). Each branch of a thread is its own conversation on the
+  companion: asking again, changing a question or going on in another branch continues in a copy of
+  the turns up to there. A stopped answer is not kept, on either side. A Compare column asks it the
+  same way (sources mode for a grounded question, free otherwise), without the app's tools; the
+  council never seats it; Live asks it in free conversations only, and a conversation from your
+  sources with it picked ends at once, before anything is retrieved.
 - **Packaging:** systemd user and system units with readiness and a watchdog, a launchd agent,
   install scripts, and an offline bundle with `SHA256SUMS` that each release signs
   ([Linux](packages/companion/deploy/linux/README.md), [macOS](packages/companion/deploy/macos/README.md));

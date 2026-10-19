@@ -215,8 +215,9 @@ on your own machine. What to change when you come from 2.x is in
   encrypted sync). Each branch of a thread is its own conversation on the companion (`after` on
   `POST /v1/chat`): asking again, changing a question or going on in another branch continues in a
   copy of the turns up to there. A Compare column asks it like the thread, without the app's tools;
-  the council never seats it; Live asks it in free conversations only; Auto asks it in free mode; a
-  stopped companion answer is not kept, on either side.
+  the council never seats it; Live asks it in free conversations only (a conversation from your
+  sources with it picked ends before anything is retrieved); Auto asks it in free mode; a stopped
+  companion answer is not kept, on either side.
 - **Packaging**: systemd user and system units with readiness and a watchdog, the egress splice
   unit and a credential drop-in, a launchd agent, install and uninstall scripts, an offline bundle
   with `SHA256SUMS` (and an Ed25519 signature on request), and a local voice server (Whisper-class

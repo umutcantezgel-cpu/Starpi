@@ -30,8 +30,9 @@
 //
 // Limits: references to the original functions and sockets made before install (the kernel makes
 // none), Node's internal handle objects reached through a live socket, native add-ons and
-// WebAssembly with host imports. On Linux the user unit adds a boundary outside the process
-// (IPAddressDeny=any with an egress splice unit, see splice.js).
+// WebAssembly with host imports. On Linux the system unit adds a boundary outside the process
+// (IPAddressDeny=any with an egress splice unit, see splice.js); a user unit has none, because a
+// user manager ignores IPAddressDeny, so there this guard is the only boundary (deploy/linux/README.md).
 import childProcess from 'node:child_process';
 import cluster from 'node:cluster';
 import dgram from 'node:dgram';

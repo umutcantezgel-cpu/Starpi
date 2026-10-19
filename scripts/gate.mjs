@@ -7,11 +7,12 @@
 //                    [--format json|sarif] [--output <file>] [--fail-on withheld|never]
 //        node scripts/gate.mjs …   (the same code, unbundled)
 //
-// Sources: --source reads files like the app does (Markdown, text, CSV, logs, JSON; PDF with the
-// optional pdfjs-dist), chunks them with the app's chunker and labels the chunks "[Doc: <file name>,
-// Chunk: <n>]" (files that share a name are labelled with their path); a directory adds every
-// supported file below it, except hidden ones and node_modules. --sources reads a JSON list of
-// { label, text, kind? } as the gate takes them. --grounding is the JSON grounding of a web answer:
+// Sources: --source reads files like the app does (Markdown, text, CSV, logs, JSON, Word, Excel and
+// PowerPoint files (DOCX, XLSX, PPTX) and HTML pages; PDF with the optional pdfjs-dist), chunks them
+// with the app's chunker and labels the chunks "[Doc: <file name>, Chunk: <n>]" (files that share a
+// name are labelled with their path); a directory adds every supported file below it, except hidden
+// ones and node_modules. --sources reads a JSON list of { label, text, kind? } as the gate takes
+// them. --grounding is the JSON grounding of a web answer:
 // { segments: [{ start, end, sources }], sources: [{ uri, title }] }, with UTF-16 offsets into the text.
 //
 // Exit codes: 0 nothing withheld (or --fail-on never), 1 at least one unit withheld, 2 usage error

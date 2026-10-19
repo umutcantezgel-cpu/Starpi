@@ -7,12 +7,13 @@
 //                      [--grounding 1|2|3]
 //        node scripts/ground.mjs …   (the same code, unbundled)
 //
-// Sources are read like the app reads them (Markdown, text, CSV, logs, JSON; PDF when the optional
-// pdfjs-dist is installed), chunked with the app's chunker and labelled "[Doc: <file name>, Chunk:
-// <n>]"; files that share a name are labelled with their path instead. A directory adds every
-// supported file below it, except hidden ones and node_modules. With --cite labels the document's
-// citation labels decide which excerpts a statement is compared with; with --cite all every
-// statement is compared with every excerpt; auto (the default) uses labels when the document has any.
+// Sources are read like the app reads them (Markdown, text, CSV, logs, JSON, Word, Excel and
+// PowerPoint files (DOCX, XLSX, PPTX) and HTML pages; PDF when the optional pdfjs-dist is installed),
+// chunked with the app's chunker and labelled "[Doc: <file name>, Chunk: <n>]"; files that share a
+// name are labelled with their path instead. A directory adds every supported file below it, except
+// hidden ones and node_modules. With --cite labels the document's citation labels decide which
+// excerpts a statement is compared with; with --cite all every statement is compared with every
+// excerpt; auto (the default) uses labels when the document has any.
 // --grounding runs an earlier version of the source-check rules (default: the current one, which
 // also checks relations between values and events); the output of a version is the same as the
 // output of the release that introduced it.

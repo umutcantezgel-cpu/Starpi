@@ -99,7 +99,6 @@ describe('design system', () => {
   it('labels every static aria-label for translation', () => {
     for (const m of html.matchAll(/<[a-z]+\b([^>]*\saria-label="[^"]+"[^>]*)>/g)) {
       const attrs = m[1];
-      if (/lang="(en|de)"/.test(attrs)) continue; // the EN/DE buttons are named in their own language
       assert.match(attrs, /data-i18n-aria="[\w.-]+"/, `untranslated aria-label: ${attrs.trim().slice(0, 120)}`);
     }
   });

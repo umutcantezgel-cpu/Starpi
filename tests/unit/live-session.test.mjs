@@ -521,6 +521,62 @@ describe('Live source mode with the default ask and retrieval', () => {
     assert.equal(controller.state(), 'ended');
     assert.equal(controller.reason(), 'companion_sources');
   });
+
+  it('does not start a source conversation with the companion picked, and retrieves nothing', async () => {
+    let retrieved = 0;
+    let asked = 0;
+    const { controller, spoken } = controllerWith({
+      canUseLive: () => false,
+      refused: (mode) => (mode === 'sources' ? 'companion_sources' : null),
+      ask: async function* () {
+        asked += 1;
+        yield 'Nothing.';
+      },
+      retrieve: async () => {
+        retrieved += 1;
+        return SOURCES;
+      },
+    });
+    await controller.start('sources');
+    assert.equal(controller.state(), 'ended');
+    assert.equal(controller.reason(), 'companion_sources');
+    await controller.say('What do my files say?');
+    assert.equal(retrieved, 0, 'no retrieval for a conversation that cannot be answered');
+    assert.equal(asked, 0);
+    assert.deepEqual(spoken, []);
+    // A free conversation with the same choice runs as turns through it.
+    await controller.start('free');
+    await controller.say('Hello?');
+    assert.equal(controller.reason(), null);
+    assert.equal(asked, 1);
+    assert.equal(retrieved, 0);
+    controller.stop();
+  });
+
+  it('ends a source conversation before retrieving when the companion is picked mid-way', async () => {
+    let picked = false;
+    /** @type {string[]} */
+    const retrieved = [];
+    const { controller } = controllerWith({
+      canUseLive: () => false,
+      refused: (mode) => (mode === 'sources' && picked ? 'companion_sources' : null),
+      retrieve: async (query) => {
+        retrieved.push(query);
+        return SOURCES;
+      },
+    });
+    await controller.start('sources');
+    await controller.say('What is the budget?');
+    assert.deepEqual(retrieved, ['What is the budget?']);
+    await until(() => controller.state() === 'ready');
+    picked = true;
+    await controller.say('And the review date?');
+    assert.equal(controller.state(), 'ended');
+    assert.equal(controller.reason(), 'companion_sources');
+    assert.deepEqual(retrieved, ['What is the budget?'], 'the refused turn retrieved nothing');
+    const last = controller.transcript.entries().at(-1);
+    assert.deepEqual([last?.role, last?.text], ['user', 'And the review date?'], 'what was said stays; no answer follows it');
+  });
 });
 
 describe('Live session limits', () => {
