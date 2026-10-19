@@ -46,21 +46,20 @@ idealised design. When the code changes, change the diagram in the same pull req
    - [deleteHistory: deleting the chat history](#deletehistory-deleting-the-chat-history)
    - [Testing a key](#testing-a-key)
 3. [Answering a question](#3-answering-a-question)
-   - [submitChat: from input to persisted answer](#submitchat-from-input-to-persisted-answer)
-   - [retrieve(): knowledge-base decision tree per mode](#retrieve-knowledge-base-decision-tree-per-mode)
-   - [Workspace hits and mergeHits: slots per source and the pinned file](#workspace-hits-and-mergehits-slots-per-source-and-the-pinned-file)
-   - [Answer dispatch, synthesizer fallback, rendering and persistence](#answer-dispatch-synthesizer-fallback-rendering-and-persistence)
-   - [Free chat and verified source mode: one turn in each chat mode](#free-chat-and-verified-source-mode-one-turn-in-each-chat-mode)
-   - [NVIDIA cloud in the browser: catalog, streamed request and errors](#nvidia-cloud-in-the-browser-catalog-streamed-request-and-errors)
-   - [After rendering: source check, receipt draft and conversation turns](#after-rendering-source-check-receipt-draft-and-conversation-turns)
+   - [A question in the thread](#a-question-in-the-thread)
+   - [retrieve(): where the excerpts come from](#retrieve-where-the-excerpts-come-from)
+   - [Workspace hits and mergeHits: slots per source and the pinned files](#workspace-hits-and-mergehits-slots-per-source-and-the-pinned-files)
+   - [The runner: candidates, failover before the first text, and the quoted fallback](#the-runner-candidates-failover-before-the-first-text-and-the-quoted-fallback)
+   - [Auto, Free and Grounded: how each route builds its request](#auto-free-and-grounded-how-each-route-builds-its-request)
+   - [After rendering: source check, receipt draft and the stored turn](#after-rendering-source-check-receipt-draft-and-the-stored-turn)
    - [synthesizeAnswer: the extractive fallback](#synthesizeanswer-the-extractive-fallback)
    - [Answer modes: what leaves the device](#answer-modes-what-leaves-the-device)
-   - [Council mode: Gemini then OpenRouter failover](#council-mode-gemini-then-openrouter-failover)
-   - [Settings: server URL rules and key storage](#settings-server-url-rules-and-key-storage)
+   - [Compare and the council](#compare-and-the-council)
+   - [Settings: what the model choice stores](#settings-what-the-model-choice-stores)
    - [Privacy notice under the chat input](#privacy-notice-under-the-chat-input)
    - [On-device model selection](#on-device-model-selection)
    - [Device tiers and the model pickers](#device-tiers-and-the-model-pickers)
-   - [On-device prompt budgeting](#on-device-prompt-budgeting)
+   - [Context packs and the output budget of models on this device](#context-packs-and-the-output-budget-of-models-on-this-device)
 4. [On-device workspace and citations](#4-on-device-workspace-and-citations)
    - [Keeping files on this device and searching by meaning](#keeping-files-on-this-device-and-searching-by-meaning)
    - [On-device workspace: from file drop to the document list](#on-device-workspace-from-file-drop-to-the-document-list)
@@ -1416,491 +1415,238 @@ sequenceDiagram
 
 ## 3. Answering a question
 
-One chat turn from submit to persisted answer: the chat mode (verified source mode or free chat), retrieval and how workspace and knowledge-base hits share the slots, citation assignment, the answer path chosen by the mode, including the browser client of Starpi's NVIDIA proxy, the fallbacks when a path fails, the source check and receipt draft after rendering, and exactly which data leaves the device in each mode, followed by the settings, the privacy notice, the on-device model selection with its device tiers, and the prompt budget that shape a turn.
+What happens from Send to a stored answer: the route a question takes (Auto, Free, Grounded), where its excerpts come from, how the runner picks and streams a model, how the source check and the receipt follow, what leaves the device per model, compare and the council, and how models on this device are chosen and sized.
 
-### submitChat: from input to persisted answer
+### A question in the thread
 
-submitChat returns early with status.busy while a request runs. If an attached file is still being read, it marks itself busy, shows status.reading_file and waits for the read, so a question is not sent before its file is ready (if the read fails, the question goes without it); it then returns when there is neither text nor an attachment. Next it fixes the chat mode: a quick prompt, a sample question or a graph entity question passes chatMode grounded, which also switches the composer toggle, and any other question follows getChatMode(). Free chat continues in answerFree (chat-dual-mode) without retrieval, citations, source check or receipt. In verified source mode it shows the user turn at once but stores it only after retrieval with storeQuestion(usesWorkspace), so the question stays on the device in client mode, with an attached file or when a used hit comes from the workspace; if the turn throws before that, the catch stores it with usesWorkspace false. Retrieval merges on-device BM25 workspace chunks with Supabase knowledge hits, a greeting-only message uses none of them, and citations are assigned and registered. The mode captured at submit picks council (Gemini then OpenRouter), client (the on-device WebGPU or WASM model, streamed), local (own server) or nvidia (Starpi's NVIDIA proxy, streamed); a model that fails shows a chat.provider_failed notice, and a null or empty answer falls back to the extractive synthesizer. Only while the chat session is unchanged is the answer rendered, source-checked, given a receipt button and added to the conversation; a finished answer is persisted under the original session id whether or not the session changed, and it stays in localStorage when the mode is client, a workspace excerpt was used, an extractive answer contains the name of a workspace file (a greeting or document list, for example), sync is unavailable or the insert fails. When the turn ends, setBusy(false) puts the focus back in the input if the Stop button or nothing had it.
+sendQuestion() (chat/thread.js) takes the composer's draft (text and attachments, read by the ingestion worker for files) or a question from elsewhere (a suggested question, a graph entity, the canvas) and the picker value. A turn runs inside withTurn(): one at a time, with Stop and the busy state around it; a failure becomes a notice from i18n only. The route comes first (Auto's decision, the explicit mode, or the companion's rule; see what-leaves-the-device in section 1). The free route stores the question at once, with a context block of the date, time and time zone and the notes of registered hooks, then answerFree() asks chatCandidates() and streams the answer through the runner; the registered tool runner may run the calls the model stopped for (with approval cards in the bubble) and the answer goes on after them. The grounded and mixed routes go to answerGrounded(), which retrieves first and stores the question only after retrieval shows whether it stays on this device. A turn writes to the conversation it started in (turnConversation()), also when the user opens another chat meanwhile; the answer node records the provider, model, route, usage, stop reason, label, attempts and, for a grounded answer, the source-check counts. The first answer of a conversation may give it a title, asked only of the provider that answered (never for an answer that stays on this device).
 
 <!-- diagram: chat-request-lifecycle -->
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant Chat as chat.js submitChat
-    participant Msg as messages.js
-    participant Store as chat-store.js
-    participant WS as rag/workspace.js worker
-    participant SB as supabase.js
-    participant Ret as retrieval.js
-    participant Cit as rag/citations.js
-    participant Eng as providers.js or on-device engine
-    participant Syn as synthesizer.js
-    participant Chk as core/grounding.js, grounding-view.js and receipts.js
-
-    User->>Chat: chatForm submit, Enter without Shift outside IME composition,<br/>quick-prompt or graph ask-entity
-    opt busy is true
-        Chat-->>User: setAssistantStatus status.busy, return
-    end
-    Note over Chat: userText = trimmed input, first 8000 chars
-    opt attaching: a file is still being read
-        Chat->>Chat: busy = true, status.reading_file, await the read,<br/>then busy = false, status.ready
-    end
-    opt no text and no attachment
-        Chat-->>User: return without a message
-    end
-    Note over Chat: clear and autosize the input, removeAttachment.<br/>Captures sid, history, mode and localOnly = mode is client.<br/>A file without text asks chat.summarize_file
-    Note over Chat: chatMode = options.chatMode, grounded for quick prompts,<br/>sample and entity questions, which switch the toggle,<br/>else getChatMode() from starpi_chat_mode
-    Chat->>Msg: appendMessage user shownText
-    Note over Chat,Store: storeQuestion is prepared, the question is not stored yet
-    Note over Chat: new AbortController, setBusy(true): Stop shown, Send disabled,<br/>aria-busy on chatMessages, status.generating
-    Chat->>Msg: appendLoading(chat.thinking, or chat.thinking_free in free chat)
-    opt chat mode is free
-        Chat->>Chat: answerFree: no retrieval, question stored at once,<br/>answer marked as not checked, see chat-dual-mode
-    end
-    Note over Chat: the rest of this diagram is verified source mode, answerGrounded
-    Chat->>WS: retrieveWorkspace: searchWorkspace(prompt, 6),<br/>an attached file pins up to 3 chunks, any error gives no hits
-    alt workspaceOnly sample question or connection offline
-        Note over Chat,SB: no Supabase request, workspace hits only
-    else mode council, local or nvidia
-        Chat->>SB: searchKnowledge(prompt), rpc search_knowledge
-        opt RPC error or zero rows
-            Chat->>SB: recentKnowledge(30), ranked with rankHitsLocally,<br/>on failure workspace hits only and kbUnavailable
-        end
-    else mode client
-        Chat->>SB: recentKnowledge(30), question is not sent,<br/>ranked with rankHitsLocally
-    end
-    Chat->>Ret: mergeHits(workspace, knowledge, limit 6 or 9, pinned),<br/>a sample question takes the first 6 or 9 workspace hits instead
-    Note over Chat: used is empty when there is no file and isGreeting(userText),<br/>else used = all hits. Retrieval has already run either way
-    Chat->>Store: storeQuestion(usesWorkspace), void persistMessage user
-    Note over Chat,Store: localOnly = mode client, a file attached or a used hit from the workspace.<br/>If retrieve() throws first, the catch calls storeQuestion(false)
-    Chat->>Ret: assignCitations(used, excerptChars 1600)
-    Chat->>Cit: registerCitations gives a scope id, or null without citations
-    Chat->>Ret: distinctSources and buildContext(maxChars 9000)
-    alt mode council
-        Chat->>Eng: answerWithCloud, Gemini then OpenRouter
-    else mode client
-        Chat->>Eng: answerWithLocalModel, removes loading, streams its own bubble
-    else mode local
-        Chat->>Eng: answerWithOwnServer, callLocalServer(getLlmUrl())
-    else mode nvidia
-        Chat->>Eng: answerWithNvidia, getNvidiaCatalog then callNvidia,<br/>removes loading, streams its own bubble
-    end
-    Eng-->>Chat: Answer, empty text with note, or null
-    opt the answer carries a note
-        Chat->>Msg: appendNotice chat.provider_failed_title with the note
-    end
-    opt answer is null or its text is empty
-        Chat->>SB: knownTitles(): listDocuments unless offline or cached under 60 s
-        Chat->>Syn: synthesizeAnswer with workspace file names and known titles,<br/>modelAvailable, kbUnavailable, focusName
-    end
-    alt signal aborted and answer not rendered
-        Note over Chat,Msg: throw AbortError, the catch (storeQuestion(false) is a no-op)<br/>removes loading, isUserAbort so no notice
-    else a call threw, e.g. a council, local or NVIDIA error rethrown after abort
-        Note over Chat: the catch calls storeQuestion(false), a no-op here<br/>because the question was stored after retrieval
-        Chat->>Msg: removeLoading, appendNotice chat.error_title unless isUserAbort
-    else answer ready
-        Note over Chat: namesWorkspace = synthesizer answer whose text<br/>contains a workspace file name
-        Chat->>Syn: describeTrace(prompt, method, used, engine label, note)
-        opt sid is still currentSessionId()
-            Chat->>Msg: removeLoading, appendMessage assistant unless already streamed
-            Msg->>Cit: linkifyCitations and citationSources row
-            opt message element and a citation scope
-                Chat->>Chk: contextCoverage, applyGrounding,<br/>storeReceiptDraft and receiptButton
-            end
-            Chat->>Chat: conversation.push user and assistant turns with localOnly
-        end
-        Chat->>Store: void persistMessage assistant,<br/>localOnly = mode client, usesWorkspace or namesWorkspace
-        alt localOnly or not canSyncChats()
-            Store->>Store: appendLocal to localStorage with metadata.local_only
-        else chat sync available
-            Store->>SB: insertChatMessage into chat_history
-            Note over Store,SB: on error console.warn and appendLocal without the flag,<br/>on success refreshSyncStatus
-        end
-    end
-    Note over Chat: finally removeLoading, setBusy(false), activeAbort = null.<br/>setBusy(false) focuses the input when Stop or nothing had focus
+flowchart TD
+    send(["sendQuestion(options): composer draft<br/>or a question from elsewhere"])
+    busyQ{"a turn running?"}
+    busyOut(["status.busy, nothing sent"])
+    draft["takeDraft(): text up to 8,000 chars,<br/>attachments read for the request"]
+    route["route: explicit mode, Auto's decideRoute(),<br/>companion by the mode control,<br/>held content: free"]
+    turn["withTurn(): AbortController, busy state,<br/>turn bound to this conversation"]
+    freeQ{"route free?"}
+    storeF["storeQuestion: parts with attachment blobs,<br/>context block (date, time, zone, hook notes),<br/>localOnly when device, held or companion"]
+    answerF["answerFree(): chatCandidates(value, vision),<br/>held: only models here, else notice"]
+    stream["streamAnswer(): runAnswer along the candidates,<br/>read-aloud through the gate while it streams"]
+    tools["tool runner (setToolRunner): calls the model<br/>stopped for, approvals in the bubble"]
+    grounded["answerGrounded(): retrieve, store the question,<br/>request, stream, source check, receipt draft"]
+    node[("appendNode: answer with provider, model, route,<br/>usage, label, attempts, localOnly, meta")]
+    title["first answer: title_chat purpose,<br/>only the provider that answered"]
+    notice(["failure: notice from i18n, the reason in the console"])
+    send --> busyQ
+    busyQ -->|"yes"| busyOut
+    busyQ -->|"no"| draft --> route --> turn --> freeQ
+    freeQ -->|"yes"| storeF --> answerF --> stream --> tools --> node
+    freeQ -->|"mixed or grounded"| grounded --> node
+    node -.-> title
+    turn -.->|"throws, not aborted"| notice
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/signals.js`](../src/js/signals.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/config.js`](../src/js/config.js), [`src/js/state.js`](../src/js/state.js)</sub>
+<sub>Sources: [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/chat/composer.js`](../src/js/chat/composer.js), [`src/js/chat/attachments.js`](../src/js/chat/attachments.js), [`src/js/chat/runner.js`](../src/js/chat/runner.js), [`src/js/chat/hooks.js`](../src/js/chat/hooks.js), [`src/js/chat/store.js`](../src/js/chat/store.js), [`src/js/ai/hybrid.js`](../src/js/ai/hybrid.js), [`src/js/ai/router.js`](../src/js/ai/router.js)</sub>
 
-### retrieve(): knowledge-base decision tree per mode
+### retrieve(): where the excerpts come from
 
-retrieve() first collects the workspace hits (next diagram) and sets the limit to 6 hits, or 9 with an attached file. A demo sample question (quick-prompt with data-scope workspace, workspaceOnly) takes the first hits of the workspace without a Supabase search; while the connection status is offline, retrieve() also skips Supabase and returns the workspace hits with the method "knowledge base not reachable, skipped" and kbUnavailable true. retrieve() runs only in verified source mode. Council, local and NVIDIA modes send the question to the search_knowledge RPC. Since migration 20260924120000 the RPC returns the rows that contain every search term and, when no visible row does, the rows that share at least two terms (or the only one), ranked by the number of shared terms. On zero rows or any error, PGRST202 (missing_function) included, the browser ranks the 30 newest documents from recentKnowledge; if that fetch fails too, only workspace hits remain and kbUnavailable is set. Client mode never sends the question: it always ranks recentKnowledge(30) locally. Every result goes through mergeHits, and the method line counts the workspace hits that survived the merge ("BM25 in the on-device workspace (n)") and joins the remote label with " + ". A network or timeout error from any Supabase request while the connection is ready switches it to offline and schedules a reconnect, so later turns skip Supabase until it answers again.
+retrieve() runs the workspace search and the registered retrieval sources (registerRetrievalSource: the companion's documents and notes, each source with a 5 s deadline) at the same time. The workspace search covers the conversation's scope (setWorkspaceScope, a project's files) plus the files attached to the question, or only the files a question names (docIds: an entity found in some files, which also leaves the library and the sources out). A workspace-only question (a suggested question about the sample files) stops there. While the connection is offline the library is skipped. A question that may leave the device sends the question to search_knowledge (the first 1,000 characters, 6 rows) and falls back to the 30 newest documents ranked in the browser when that finds nothing or fails. A device-only question (the model of this device, or a question held here) ranks the library by a query vector made on this device (libraryHitsByMeaning, when search by meaning is on and the optional vector migration is installed); without one, the 30 newest documents are fetched without the question and ranked in the browser. mergeHits() then joins the workspace hits with the sources' and the library's (next section); the limit is 6 plus 3 per attached file, at most 15. The method line names the parts that answered (workspace, library by full text, by meaning or by keyword, offline).
 
 <!-- diagram: chat-request-retrieve -->
 ```mermaid
 flowchart TD
-    Start(["retrieve(query, mode, focusDocId, workspaceOnly)"]) --> Ws["retrieveWorkspace(query, focusDocId)<br/>workspace hits and pinned count, see the next diagram"]
-    Ws --> Limit["limit = 6, plus 3 with focusDocId<br/>merge(remote) = mergeHits(local, remote, limit, pinned)"]
-    Limit --> Only{"workspaceOnly?<br/>demo sample question"}
-    Only -->|"yes"| OnlyHits["local.slice(0, limit), no Supabase request<br/>method: the workspace part only, kbUnavailable false"]
-    Only -->|"no"| Off{"getConnection().status<br/>is offline?"}
-    Off -->|"yes"| OffHits["merge([]), no Supabase request<br/>method retrieval.offline, kbUnavailable true"]
-    Off -->|"no, pending or ready"| ModeChk{"mode is client?"}
-
-    ModeChk -->|"no, council, local or nvidia"| Fts["searchKnowledge(query), question sent to Supabase<br/>rpc search_knowledge, query_text max 1000 chars, match_count 6"]
-    Fts --> Rpc["RPC, german text search, RLS decides what is visible:<br/>rows with every term, else rows sharing at least 2 terms<br/>or the only one, ranked by shared terms,<br/>blank query gives no rows"]
-    Rpc --> FtsOk{"search.ok and<br/>rows returned?"}
-    FtsOk -->|"yes"| FtsHits["merge(rows)<br/>method retrieval.fts, Postgres full-text search"]
-    FtsOk -->|"no"| Why{"why?"}
-    Why -->|"ok but zero rows"| WhyNo["retrieval.why_no_match<br/>no full-text match"]
-    Why -->|"PGRST202, kind missing_function"| WhyMissing["retrieval.why_missing<br/>search function not installed"]
-    Why -->|"any other error kind,<br/>e.g. timeout, network, forbidden"| WhyUnavail["retrieval.why_unavailable<br/>full-text search unavailable"]
-    WhyNo --> Recent["recentKnowledge(30)<br/>knowledge_documents with knowledge_sections,<br/>newest first, one hit per section, or one from the summary<br/>or raw text without sections, no user text sent"]
-    WhyMissing --> Recent
-    WhyUnavail --> Recent
-    Recent --> RecentOk{"recent.ok?"}
-    RecentOk -->|"no"| Unreach["merge([]), workspace hits only<br/>method retrieval.offline, kbUnavailable true"]
-    RecentOk -->|"yes"| RankFb["rankHitsLocally(query, rows, 6)"]
-    RankFb --> KwHits["merge(ranked)<br/>method retrieval.keyword with the why text"]
-
-    ModeChk -->|"yes, client"| RecentC["recentKnowledge(30)<br/>question never leaves the device"]
-    RecentC --> RecentCOk{"recent.ok?"}
-    RecentCOk -->|"yes"| RankC["rankHitsLocally(query, rows, 6)"]
-    RankC --> LocalHits["merge(ranked)<br/>method retrieval.local, kbUnavailable false"]
-    RecentCOk -->|"no"| NoRank["merge([])<br/>method retrieval.offline, kbUnavailable true"]
-
-    Net["run(): a network or timeout error while ready<br/>sets status offline and calls scheduleReconnect"]
-    Fts -.-> Net
-    Recent -.-> Net
-    RecentC -.-> Net
-
-    subgraph rank["rankHitsLocally scoring"]
-        Tok["tokenize: lowercase, NFKC,<br/>words over 2 chars, no stopwords"]
-        Score["per term: title match +2, heading or body match +1<br/>score / (terms x 3), drop score 0, top 6<br/>no terms left gives no hits"]
-        Tok --> Score
-    end
-    RankFb -.-> Tok
-    RankC -.-> Tok
+    start(["retrieve(query, focus, workspaceOnly, deviceOnly, docIds)"])
+    ws["retrieveWorkspace(query, focus, docIds):<br/>scope = docIds, else setWorkspaceScope of the<br/>conversation, plus the attached files"]
+    src{"workspaceOnly or docIds?"}
+    sources["sourceHits(query, deviceOnly): registered sources,<br/>5 s each, failures dropped"]
+    none["no sources, no library"]
+    wsOnly{"workspaceOnly?"}
+    wsOut(["workspace hits only, up to the limit"])
+    off{"connection offline?"}
+    offOut(["mergeHits(workspace, sources), method retrieval.offline"])
+    dev{"deviceOnly?"}
+    fts["searchKnowledge(query): search_knowledge,<br/>first 1,000 chars, 6 rows"]
+    ftsQ{"rows found?"}
+    ftsOut(["mergeHits(workspace, sources + rows), retrieval.fts"])
+    recent["recentKnowledge(30), rankHitsLocally(query, 6)<br/>method retrieval.keyword with the reason"]
+    vec["libraryHitsByMeaning(query, 6): query embedding<br/>on this device, match_knowledge_vector_384"]
+    vecQ{"hits?"}
+    vecOut(["mergeHits(..., vector hits), workspace.retrieval_vector"])
+    local["recentKnowledge(30) without the question,<br/>ranked in the browser, retrieval.local"]
+    start --> ws
+    start --> src
+    src -->|"no"| sources
+    src -->|"yes"| none
+    ws --> wsOnly
+    wsOnly -->|"yes"| wsOut
+    wsOnly -->|"no"| off
+    off -->|"yes"| offOut
+    off -->|"no"| dev
+    dev -->|"no"| fts --> ftsQ
+    ftsQ -->|"yes"| ftsOut
+    ftsQ -->|"no rows or error"| recent
+    dev -->|"yes"| vec --> vecQ
+    vecQ -->|"yes"| vecOut
+    vecQ -->|"no"| local
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/supabase.js`](../src/js/supabase.js), [`backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql`](../backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql), [`src/js/demo.js`](../src/js/demo.js), [`src/js/config.js`](../src/js/config.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/chat/hooks.js`](../src/js/chat/hooks.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/embed-client.js`](../src/js/rag/embed-client.js), [`src/js/companion/tier.js`](../src/js/companion/tier.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/config.js`](../src/js/config.js)</sub>
 
-### Workspace hits and mergeHits: slots per source and the pinned file
+### Workspace hits and mergeHits: slots per source and the pinned files
 
-searchWorkspace resolves empty without contacting the ingest worker when the workspace has no documents or the query is blank; otherwise the worker returns the BM25 top 6 chunks with a score above 0. Without an attached file every hit is kept in rank order. With one, up to 3 of its matching chunks, or its first 3 chunks (score 0) when none matched, are pinned in front of the hits from other files, and any further chunks of that file are dropped; any worker error drops all workspace hits. mergeHits keeps the pinned hits, then gives the knowledge base the larger of half the remaining slots (rounded up) and the slots the other workspace hits cannot fill, but never more than it has hits, and fills the rest with workspace hits. The order is pinned hits, other workspace hits, knowledge-base hits, so neither source crowds out the other.
+searchWorkspace resolves empty without asking the ingestion worker when the workspace has no documents or the query is blank. Otherwise the worker ranks with BM25, or, when search by meaning is on and the files have vectors, with BM25 and the cosine similarity of a query vector fused by reciprocal rank fusion (k 60, 50 candidates per ranking), and returns the top 6 chunks. Without an attached file every hit is kept in rank order. Each attached file pins up to 3 of its matching chunks, or its first 3 chunks (score 0) when none matched, in front of the hits from other files; any worker error drops all workspace hits. mergeHits keeps the pinned hits, then gives the other side (registered sources and the library) the larger of half the remaining slots (rounded up) and the slots the other workspace hits cannot fill, but never more than it has hits, and fills the rest with workspace hits. The order is pinned hits, other workspace hits, then the other side, so neither crowds out the other.
 
 <!-- diagram: chat-request-workspace-merge -->
 ```mermaid
 flowchart TD
-    Start(["retrieveWorkspace(query, focusDocId)"]) --> Empty{"searchWorkspace(query, 6):<br/>workspace has documents and query not blank?"}
-    Empty -->|"no"| None["resolves empty on the main thread<br/>worker not asked"]
-    Empty -->|"yes"| Bm25["ingest worker search<br/>BM25 top 6 chunks with score above 0"]
-    None --> Focus{"focusDocId set?<br/>a file attached to this question"}
+    Start(["retrieveWorkspace(query, focus, docIds)"]) --> Empty{"searchWorkspace(query, 6):<br/>documents in scope and query not blank?"}
+    Empty -->|"no"| None["resolves empty on the main thread,<br/>worker not asked"]
+    Empty -->|"yes"| Rank{"vectors stored and<br/>a query vector made here?"}
+    Rank -->|"no"| Bm25["worker search: BM25 top 6 with score above 0"]
+    Rank -->|"yes"| Hybrid["worker searchHybrid: BM25 and cosine,<br/>reciprocal rank fusion k 60, top 6"]
+    None --> Focus{"files attached to this question?"}
     Bm25 --> Focus
-    Focus -->|"no"| Plain["hits = found chunks via workspaceHit<br/>pinned = 0"]
-    Focus -->|"yes"| InFile{"any found chunk<br/>from that file?"}
-    InFile -->|"yes"| Best["focus = its first 3 found chunks"]
-    InFile -->|"no"| Head["focus = firstChunks(focusDocId, 3)<br/>worker head request, score 0"]
-    Best --> Pin["hits = focus, then found chunks of other files<br/>pinned = number of focus chunks, at most 3<br/>further chunks of the file are dropped"]
+    Hybrid --> Focus
+    Focus -->|"no"| Plain["hits = found chunks via workspaceHit,<br/>pinned = 0"]
+    Focus -->|"yes, per file"| InFile{"found chunks<br/>from that file?"}
+    InFile -->|"yes"| Best["its first 3 found chunks"]
+    InFile -->|"no"| Head["firstChunks(docId, 3), score 0"]
+    Best --> Pin["hits = pinned chunks of every attached file,<br/>then found chunks of other files"]
     Head --> Pin
-    Bm25 -.->|"worker rejects or crashes"| Fail["console.warn workspace search failed<br/>hits empty, pinned 0"]
-    Head -.->|"worker rejects or crashes"| Fail
-
+    Bm25 -.->|"worker rejects or crashes"| Fail["hits empty, pinned 0"]
+    Hybrid -.->|"worker rejects or crashes"| Fail
     Plain --> Merge
     Pin --> Merge
     Fail --> Merge
-    Merge(["mergeHits(workspace, knowledge, limit, pinned)"]) --> Kept["kept = first min(pinned, limit) workspace hits<br/>rest = the other workspace hits<br/>room = limit - kept"]
-    Kept --> FromKb["fromKnowledge = min(knowledge hits,<br/>max(room - rest, ceil(room / 2)))"]
-    FromKb --> FromWs["fromWorkspace = min(rest, room - fromKnowledge)"]
-    FromWs --> Out["kept, then the first fromWorkspace of rest,<br/>then the first fromKnowledge knowledge hits"]
-    Out --> Ex1["no file, limit 6: 6 workspace and 6 knowledge hits give 3 + 3,<br/>2 workspace hits give 2 + 4,<br/>no knowledge hits give up to 6 workspace hits"]
-    Out --> Ex2["attached file, limit 9: 3 pinned, room 6,<br/>3 hits from other files and 6 knowledge hits give 3 + 3 + 3,<br/>no hits from other files give 3 + 6"]
+    Merge(["mergeHits(workspace, sources + library, limit, pinned)<br/>limit = 6 + min(3 per attached file, 9)"]) --> Kept["kept = first min(pinned, limit) workspace hits,<br/>rest = the other workspace hits, room = limit - kept"]
+    Kept --> FromKb["fromOther = min(other hits,<br/>max(room - rest, ceil(room / 2)))"]
+    FromKb --> FromWs["fromWorkspace = min(rest, room - fromOther)"]
+    FromWs --> Out["kept, then the first fromWorkspace of rest,<br/>then the first fromOther of the other side"]
+    Out --> Ex1["no file, limit 6: 6 workspace and 6 library hits give 3 + 3,<br/>2 workspace hits give 2 + 4"]
+    Out --> Ex2["one file, limit 9: 3 pinned, room 6,<br/>3 hits from other files and 6 library hits give 3 + 3 + 3"]
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/config.js`](../src/js/config.js)</sub>
+<sub>Sources: [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/hybrid.js`](../src/js/rag/hybrid.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/config.js`](../src/js/config.js)</sub>
 
-### Answer dispatch, synthesizer fallback, rendering and persistence
+### The runner: candidates, failover before the first text, and the quoted fallback
 
-In verified source mode the mode captured at submit selects the path: council sends Gemini one prompt without history and falls back to OpenRouter when there is no Gemini key or the Gemini call fails, client loads the on-device model interactively (a WebGPU preset or a processor model; it may ask to download) and streams into its own bubble marked rendered, local calls the own server at getLlmUrl(), and nvidia asks Starpi's NVIDIA proxy, which also streams into its own bubble. OpenRouter, the own server and NVIDIA get shareableHistory: the last 4 turns that are not marked localOnly, so turns from on-device mode, with workspace excerpts or with an attached file are never sent as history; the NVIDIA messages are then fitted to the proxy's limits with fitNvidiaMessages, and when that cuts the system message the cut context becomes deliveredContext for the source check. Council, local and NVIDIA failures become an empty-text answer with a note unless the request was aborted, in which case the error is rethrown to the submitChat catch (an NVIDIA answer that was partly streamed before Stop is kept instead, marked as cut off in its trace); in client mode a generation error always becomes a note, while a model that is not loaded, a blank answer or an abort before generating returns null. An NVIDIA proxy without keys or without the route gives a note too, and refreshes the cached catalog when a request found it gone. A note is shown at once as a chat.provider_failed notice, and a null or empty answer is replaced by synthesizeAnswer with modelAvailable false after a note. The answer is shown, source-checked and added to the conversation only if the session id is unchanged; the stored metadata records the engine (cloud, client, wasm, local, nvidia or synthesizer), the model id when known, the chat mode, the trace and the duration. persistMessage keeps it in localStorage with metadata.local_only when localOnly is set (client mode, any used hit from the workspace, the same usesWorkspace that storeQuestion applied to the question right after retrieval, or an extractive answer whose text contains a workspace file name, which does not change how the question was stored) or when canSyncChats() is false; a failed chat_history insert also falls back to localStorage, without the flag, and such rows are read back as on-device turns.
+chatCandidates() turns the picker value into the models a question may go to: an explicit pick is that one model on its route; Auto is the user's keys first (the model the chosen strength names, else the provider's balanced model), then the site's pools that have keys, then the own server, then the model already loaded on this device (never a download). A question with images goes only to models that see; the companion answers only when it is picked. runAnswer() asks them in order: a call that fails before any text or reasoning arrived (auth, quota, rate limit, a model gone, a bad request, context length, server, timeout, network, a bad response, CORS, a cut stream) moves on to the next candidate; once text arrived the answer belongs to that model, and Stop keeps what arrived. Every call is recorded in attempts and the model wheel hears every outcome (a cooldown after 429, a circuit after repeated failures). An answer paused by the server (Anthropic pause_turn) is sent again with its content, at most five times, and merged. The adapter streams over one transport: direct, auto (direct, retried through the relay once when the browser blocks the call, and remembered per provider), relay, pool (the site's keys) or device (the workers, the own server, the companion). In the grounded route, no candidate, a failure without text or an empty answer ends in synthesizeAnswer(), which quotes the excerpts; the free route ends in a notice instead.
 
 <!-- diagram: chat-request-answer-dispatch -->
 ```mermaid
 flowchart TD
-    Entry(["answerGrounded after retrieve, storeQuestion(usesWorkspace)<br/>and buildContext: prompt, context, history, signal"]) --> Mode{"mode captured<br/>at submit"}
-
-    subgraph cloud["council: answerWithCloud"]
-        GemKey{"hasGeminiKey()?"}
-        Gem["callGemini, one prompt without history<br/>buildSystemPrompt target cloud + question"]
-        OrKey{"hasOpenRouterKey()?"}
-        Or["callOpenRouter<br/>system + shareableHistory + prompt<br/>up to 3 free models, stops on 401 or 403"]
-        GemFailed{"Gemini failed<br/>before?"}
-        CloudFail["text empty, engine synthesizer<br/>note chat.note_cloud_failed"]
-    end
-
-    subgraph client["client: answerWithLocalModel"]
-        Ready{"engine.isReady() or<br/>startLocalEngine interactive true?<br/>may confirm a download"}
-        Gen["budgetPrompt, removeLoading, createStreamingMessage<br/>engine.generate in the WebGPU or WASM worker,<br/>model maxOutputTokens: 512 WebGPU, 384 WASM,<br/>temperature 0.2, abort calls engine.interrupt"]
-        Fin["stream.finalize with citations and trace<br/>engine client or wasm, model id, rendered,<br/>element, deliveredContext = budgeted context"]
-        LocalFail["stream.remove, text empty, engine synthesizer<br/>note chat.note_local_failed, also after abort"]
-    end
-
-    subgraph server["local: answerWithOwnServer"]
-        Srv["callLocalServer(getLlmUrl())<br/>system target server + shareableHistory + prompt"]
-        SrvFail["text empty, engine synthesizer<br/>note chat.note_server_failed"]
-    end
-
-    subgraph nv["nvidia: answerWithNvidia"]
-        NvCat{"getNvidiaCatalog(): proxy configured<br/>and resolveNvidiaModel finds a model?<br/>the stored one, else the default or the first"}
-        NvNo["text empty, engine synthesizer, notConfigured<br/>note provider.nvidia_not_configured,<br/>nvidia_not_available or nvidia_no_models"]
-        NvCall["fitNvidiaMessages(system + shareableHistory + prompt),<br/>removeLoading, createStreamingMessage with<br/>engine.label_nvidia and the model name,<br/>callNvidia: max_tokens = model defaultMaxTokens,<br/>temperature 0.2, deltas into the bubble"]
-        NvFin["stream.finalize, trace notes chat.note_truncated<br/>and chat.note_model_replaced when they apply,<br/>engine nvidia, model id, rendered, element,<br/>deliveredContext = the system message if it was cut"]
-        NvFail["stream.remove, text empty, engine synthesizer<br/>note = the i18n text of the error code, notConfigured<br/>refreshes the catalog, never server text"]
-    end
-
-    Share["shareableHistory: turns without localOnly,<br/>last 4, role and content only"]
-    Notice["appendNotice chat.provider_failed_title,<br/>body chat.provider_failed_body with the note"]
-    Check{"answer null or<br/>answer.text empty?"}
-
-    Mode -->|"council"| GemKey
-    GemKey -->|"yes"| Gem
-    GemKey -->|"no"| OrKey
-    Gem -->|"throws, not aborted, console.warn"| OrKey
-    OrKey -->|"yes"| Or
-    OrKey -->|"no"| GemFailed
-    GemFailed -->|"yes, Gemini reason"| CloudFail
-    Or -->|"throws, not aborted"| CloudFail
-    Mode -->|"client"| Ready
-    Ready -->|"yes"| Gen
-    Gen -->|"non-blank text"| Fin
-    Gen -->|"throws"| LocalFail
-    Mode -->|"local"| Srv
-    Srv -->|"throws, not aborted"| SrvFail
-    Mode -->|"nvidia"| NvCat
-    NvCat -->|"no"| NvNo
-    NvCat -->|"yes"| NvCall
-    NvCall -->|"answer text, also a partial one<br/>after Stop, a timeout or an interruption"| NvFin
-    NvCall -->|"error code, timeout, nothing usable,<br/>not aborted"| NvFail
-    Share -.-> Or
-    Share -.-> Srv
-    Share -.-> NvCall
-
-    Gem -->|"text, engine cloud"| Check
-    Or -->|"text, engine cloud"| Check
-    Srv -->|"text, engine local"| Check
-    Fin --> Check
-    NvFin --> Check
-    GemFailed -->|"no key at all, null"| Check
-    Ready -->|"not ready, no model or aborted, null"| Check
-    Gen -->|"blank text, stream.remove, null"| Check
-    CloudFail --> Notice
-    LocalFail --> Notice
-    SrvFail --> Notice
-    NvNo --> Notice
-    NvFail --> Notice
-    Notice --> Check
-
-    Check -->|"yes"| Synth["synthesizeAnswer, engine synthesizer<br/>known titles: workspace file names + knownTitles()<br/>modelAvailable = no note and, in council mode,<br/>a Gemini or OpenRouter key stored"]
-    Check -->|"no"| AbortChk{"signal aborted and<br/>not answer.rendered?"}
-    Synth --> AbortChk
-    AbortChk -->|"yes, throw AbortError"| Catch["catch in submitChat, no answer persisted<br/>storeQuestion(false) is a no-op, question already stored<br/>removeLoading, chat.error_title notice unless<br/>isUserAbort: the error is a DOMException AbortError"]
-    Gem -.->|"throws while aborted"| Catch
-    Or -.->|"throws while aborted"| Catch
-    Srv -.->|"throws while aborted"| Catch
-    NvCall -.->|"Stop before any answer text"| Catch
-    AbortChk -->|"no"| Trace["splitReasoning, describeTrace with the note or trace note<br/>metadata engine, model, chat_mode grounded,<br/>thoughts, duration_ms"]
-    Trace --> Names["namesWorkspace: engine synthesizer and the<br/>answer text contains a workspace file name"]
-    Names --> SidChk{"sid equals<br/>currentSessionId()?"}
-    SidChk -->|"yes, not rendered"| Render["removeLoading, appendMessage assistant<br/>linkifyCitations only for registered labels<br/>citationSources row, code copy buttons, engine badge"]
-    SidChk -->|"yes, already rendered"| After
-    Render --> After["source check, receipt button and<br/>conversation.push, see chat-request-source-check"]
-    SidChk -->|"no, user switched chat"| Persist
-    After --> Persist["void persistMessage under the original sid<br/>localOnly = mode client, a used hit has workspace,<br/>or a synthesizer answer names a workspace file"]
-    Persist --> EmptyChk{"content empty?"}
-    EmptyChk -->|"yes"| Skip["nothing stored"]
-    EmptyChk -->|"no"| LocalChk{"localOnly or<br/>not canSyncChats()?"}
-    LocalChk -->|"yes"| AppendLocal["appendLocal to localStorage starpi_local_chats_v1<br/>metadata.local_only = localOnly, created_at stamped<br/>last 200 messages, newest 10 sessions"]
-    LocalChk -->|"no, signedIn and hardened"| Insert["insertChatMessage into chat_history<br/>session_id, role, content, sources, metadata"]
-    Insert -->|"error, console.warn"| AppendFail["appendLocal without local_only,<br/>read back later as an on-device turn"]
-    Insert -->|"ok"| Status["refreshSyncStatus"]
+    value(["picker value"])
+    cands["chatCandidates(value, vision)"]
+    pickQ{"Auto?"}
+    one["the picked model on its route<br/>(device only once loaded or loadable)"]
+    auto["keys: strength model, else balanced<br/>then site pools with keys, then own server,<br/>then the model loaded on this device"]
+    vis["images: only models that see"]
+    run["runAnswer(candidates, build per model)"]
+    next{"next candidate?"}
+    callStream["adapter.stream over the transport:<br/>direct, auto with relay retry, relay, pool, device"]
+    first{"text or reasoning arrived?"}
+    fail["error code in NEXT_CANDIDATE:<br/>attempt recorded, wheel.failed"]
+    owns["the answer belongs to this model,<br/>Stop keeps what arrived"]
+    pause{"stop reason pause_turn?"}
+    again["send again with the content, at most 5 times,<br/>parts merged"]
+    done(["result, target, attempts"])
+    noneLeft(["no answer: error of the last attempt"])
+    gq{"grounded route?"}
+    synth(["synthesizeAnswer(): quotes the excerpts,<br/>engine synthesizer"])
+    noticeF(["free route: notice, nothing stored"])
+    value --> cands --> pickQ
+    pickQ -->|"no"| one --> vis
+    pickQ -->|"yes"| auto --> vis
+    vis --> run --> next
+    next -->|"yes"| callStream --> first
+    first -->|"no, failed"| fail --> next
+    first -->|"yes"| owns --> pause
+    pause -->|"yes"| again --> pause
+    pause -->|"no"| done
+    next -->|"no"| noneLeft --> gq
+    gq -->|"yes"| synth
+    gq -->|"no"| noticeF
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/code-blocks.js`](../src/js/code-blocks.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/signals.js`](../src/js/signals.js), [`src/js/render.js`](../src/js/render.js), [`src/js/config.js`](../src/js/config.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/chat/runner.js`](../src/js/chat/runner.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/ai/index.js`](../src/js/ai/index.js), [`src/js/ai/transport-select.js`](../src/js/ai/transport-select.js), [`src/js/ai/transport.js`](../src/js/ai/transport.js), [`src/js/ai/wheel.js`](../src/js/ai/wheel.js), [`src/js/ai/errors.js`](../src/js/ai/errors.js), [`src/js/ai/model-selection.js`](../src/js/ai/model-selection.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js)</sub>
 
-### Free chat and verified source mode: one turn in each chat mode
+### Auto, Free and Grounded: how each route builds its request
 
-The composer toggle (data-action set-chat-mode, Free chat or Verified source mode) stores the chat mode in starpi_chat_mode; a missing or unknown value counts as grounded, and the toggle, its hint, the placeholder and the privacy notice follow every change. Quick prompts, sample questions and graph entity questions pass chatMode grounded to submitChat, which switches the toggle before the turn starts. answerGrounded retrieves, cites and builds the fenced context, asks the model of the mode and then, for every engine (cloud, own server, NVIDIA, the WebGPU or WASM model on the device, or the extractive synthesizer), runs the source check and keeps a receipt draft whose answer.engine names that engine. answerFree retrieves nothing: it stores the question at once, reads an attached file through attachmentForChat (the whole text up to 12,000 characters, else its first two chunks and its passages among the top 12 workspace matches, joined by excerptForChat) and gives the model the free-chat system prompt (buildChatPrompt, with the file fenced as data whose instructions must not be followed) and the conversation. Remote models get the turns not marked localOnly, at most 16 turns and 24,000 characters with each turn cut to 4,000, and Gemini gets them too, while the on-device model gets the last 16 turns, local-only ones included, each budgeted to 2,000 characters. The on-device model and NVIDIA answer at temperature 0.7 in free chat (0.2 in source mode), and on the device a free answer may run longer: up to a third of the context window and at most 768 tokens on WebGPU, while WASM models keep their 384. A free answer gets no citations, no source check and no receipt, carries the note "Free chat · not checked against sources", and its trace names the engine, the duration and the attached file. Without a model, or when the model fails, the free chat shows a notice instead of quoting the sources, because it has none. A question with an attached file stays on the device with its answer in both modes, and client mode keeps every turn on the device.
+A free request (freeRequest) has the stable free system prompt plus the notes of registered system hooks, the history the model may see (shareable(): models not on this device never get the local-only turns or their questions), and the question with its attachments and the notes for this request (registerRequestNotes: saved memory notes, at most 8, never stored with the question). For Anthropic the history goes whole (the server compacts it past 100,000 tokens); for others it is trimmed to the model's context minus the answer. The answer may use half the model's context, at most 4,096 tokens on the site's pools, 4,096 on the own server and 16,000 in the cloud; on this device the adapter applies the device's output budget. With the Web toggle on, a model that can search searches by itself (not on the pools). A grounded request has the last 4 shareable turns. Models with a large window (32,768 tokens and more, in the cloud or on a pool) get the fenced excerpts in the system prompt (buildContext, at most 9,000 characters, each excerpt at most 1,600). Models on this device, the own server, models with a smaller window and every mixed answer get a context pack (ai/context-pack.js) sized by the window: small (up to 4k tokens) 3 passages of 600 characters, mid (up to 16k) 6 of 1,600, large up to 12 passages and 24,000 characters. The pack keeps a stable order for a server's KV cache (the fixed instruction as the system prompt, the earlier turns, then the `<<<SOURCES>>>` block with the question), labels passages [S1] and facts [F1], and expandLabels() rewrites those to the canonical labels before the source check, the receipt and storage. A mixed answer takes at most 3 passages and may add general knowledge; its checked parts are marked. On the site's pools every request is fitted to the pool's limits. What reached the model of each excerpt (full, partial or omitted) comes from the pack's coverage or from the fenced context parsed back, and the source check reads it.
 
-<!-- diagram: chat-dual-mode -->
+<!-- diagram: chat-routes-requests -->
 ```mermaid
 flowchart TD
-    Toggle(["composer toggle set-chat-mode: setChatMode,<br/>starpi_chat_mode grounded or free, default grounded"])
-    Q(["submitChat(text, options)"])
-    CM{"options.chatMode is grounded?<br/>quick prompt, sample or entity question"}
-    Sw["setChatMode(grounded) when the toggle shows free:<br/>toggle, hint, placeholder and privacy notice follow"]
-    Get{"getChatMode()"}
-    Toggle -.->|"onChatModeChange"| Get
-    Q --> CM
-    CM -->|"yes"| Sw --> G
-    CM -->|"no"| Get
-    Get -->|"grounded"| G
-    Get -->|"free"| F
-
-    G["answerGrounded: retrieve, assignCitations,<br/>buildContext max 9000 chars,<br/>storeQuestion(usesWorkspace) after retrieval"]
-    F["answerFree: storeQuestion(false) at once,<br/>nothing retrieved, no citations"]
-    Att{"file attached<br/>to this question?"}
-    AttFile["attachmentForChat: text RPC in starpi-ingest,<br/>whole up to 12000 chars, else its first 2 chunks<br/>and its passages among the top 12 matches,<br/>joined by excerptForChat"]
-    F --> Att
-    Att -->|"yes"| AttFile --> FGen
-    Att -->|"no"| FGen
-
-    GGen["generateAnswer(mode) with plan grounded:<br/>buildSystemPrompt or buildInstructions, answer only<br/>from the fenced excerpts and cite their labels,<br/>history: last 4 shareable turns, on the device<br/>the last 4 turns, temperature 0.2"]
-    FGen["generateAnswer(mode) with plan free:<br/>buildChatPrompt or chatInstructions, file fenced as data,<br/>history: up to 16 shareable turns, 24000 chars, 4000 each,<br/>Gemini included, on the device the last 16 turns, 2000 each,<br/>temperature 0.7 on the device and on NVIDIA"]
-    G --> GGen
-
-    subgraph engines["Engines of both modes"]
-        ECloud["council: Gemini, then OpenRouter"]
-        EDev["client: WebGPU preset in starpi-webllm<br/>or WASM model in starpi-wasm"]
-        ESrv["local: own server"]
-        ENv["nvidia: Starpi's proxy, streamed"]
+    q(["question on its route"])
+    r{"route"}
+    subgraph free["Free: freeRequest"]
+        fsys["system: free prompt + system hook notes"]
+        fhist["history: shareable(path) for the model;<br/>Anthropic whole, others trimmed to the window"]
+        fq["question + attachments + request notes<br/>(memory, at most 8, not stored)"]
+        fout["maxOutputTokens: half the window, at most<br/>4,096 pool, 4,096 own server, 16,000 cloud;<br/>device: the output budget in the adapter"]
+        fweb["Web toggle: the model's own search,<br/>not on the site's pools"]
     end
-    GGen --> engines
-    FGen --> engines
-
-    GChk{"source mode:<br/>answer text?"}
-    FChk{"free chat:<br/>answer text?"}
-    engines -->|"source mode"| GChk
-    engines -->|"free chat"| FChk
-
-    GSyn["synthesizeAnswer: quotes from the excerpts,<br/>after a chat.provider_failed notice for a note"]
-    GCheck["source check and receipt draft for every engine:<br/>contextCoverage, applyGrounding, storeReceiptDraft,<br/>answer.engine cloud, client, wasm, local,<br/>nvidia or synthesizer"]
-    GChk -->|"no"| GSyn --> GCheck
-    GChk -->|"yes"| GCheck
-
-    FNote(["notice and no answer: chat.free_no_model_title<br/>with free_no_model_body without a model or<br/>free_not_configured_body when it is not set up,<br/>chat.provider_failed_title with free_failed_body on a failure"])
-    FMark["markFreeAnswer: chat.free_note under the answer,<br/>no citations, source check or receipt,<br/>describeChatTrace: engine, duration, attached file"]
-    FChk -->|"no"| FNote
-    FChk -->|"yes"| FMark
-
-    Push["pushTurns while the session is current:<br/>role, content, localOnly, engine, model,<br/>chat mode, created time"]
-    GCheck --> Push
-    FMark --> Push
-    Persist["persistMessage, metadata engine, model,<br/>chat_mode, thoughts, duration_ms"]
-    Push --> Persist
-    Rule{"localOnly?<br/>source mode: client mode, a file or a used workspace hit,<br/>the answer also when it is extractive and names a workspace file<br/>free chat: client mode or a file, question and answer alike"}
-    Persist --> Rule
-    Rule -->|"yes"| LS[("localStorage starpi_local_chats_v1,<br/>never sent as history to a remote model")]
-    Rule -->|"no"| Sync["chat_history when canSyncChats(),<br/>else localStorage"]
+    subgraph gr["Grounded and mixed: groundedRequest"]
+        ghist["history: last 4 shareable turns"]
+        packQ{"mixed, on this device, own server,<br/>or window under 32,768 tokens?"}
+        fenced["system prompt with the fenced excerpts:<br/>buildContext, 9,000 chars, 1,600 per excerpt"]
+        pack["context pack: small 3 x 600, mid 6 x 1,600,<br/>large 12 passages, 24,000 chars;<br/>instruction, turns, then the SOURCES block + question;<br/>labels S1 and F1"]
+        expand["expandLabels(): canonical labels before<br/>the check, the receipt and storage"]
+        cov["coverage per excerpt: full, partial, omitted"]
+    end
+    fit["site pool: fitPoolRequest to the pool's limits"]
+    q --> r
+    r -->|"free"| fsys --> fhist --> fq --> fout
+    fq -.-> fweb
+    r -->|"grounded or mixed"| ghist --> packQ
+    packQ -->|"no"| fenced --> cov
+    packQ -->|"yes"| pack --> expand --> cov
+    fout --> fit
+    cov --> fit
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
+<sub>Sources: [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/ai/context-pack.js`](../src/js/ai/context-pack.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/ai/thinking.js`](../src/js/ai/thinking.js), [`src/js/ai/adapters/on-device.js`](../src/js/ai/adapters/on-device.js), [`src/js/ai/catalog/pools.js`](../src/js/ai/catalog/pools.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js)</sub>
 
-### NVIDIA cloud in the browser: catalog, streamed request and errors
+### After rendering: source check, receipt draft and the stored turn
 
-The browser side of NVIDIA mode lives in providers.js and holds no NVIDIA key. getNvidiaCatalog asks GET /api/models/nvidia on the app's own origin (no-store, 6 s), caches the answer for five minutes when the proxy has keys and for 30 seconds otherwise, shares one request between concurrent callers and tells its listeners, so the model pickers show what the proxy offers; a 404, a page that is not JSON, a network error or a timeout means there is no proxy, and the NVIDIA group stays hidden. answerWithNvidia asks for the stored model when the proxy offers it, else for the proxy's default or its first model (the trace then says the model was replaced), fits the messages to the proxy's limits with fitNvidiaMessages and calls callNvidia, which posts only model, messages, max_tokens (the model's defaultMaxTokens) and temperature, without an Authorization header. Its first-byte (35 s), idle (40 s) and total (255 s) timers are each longer than the proxy's own limits, so the proxy's error normally arrives first. A refused request maps the flat error code, or else the status, to a provider.nvidia_* text with the Retry-After seconds where they help; text from the server or from NVIDIA is never shown. The event stream is parsed incrementally by createSseParser and folded by createChatStreamAssembler: content deltas form the answer, reasoning_content (or reasoning) deltas form a leading think block that the bubble shows as a reasoning line while it streams and keeps in its details, and an error event keeps only its code. On Stop, a timeout, an interrupted stream or the 200,000-character limit, the text that already arrived is kept and marked as cut off; without any answer text Stop ends the turn silently and the other cases give an error note. A complete stream counts as cut off when its finish reason is length, or when it ended without [DONE] and without a finish reason.
-
-<!-- diagram: nvidia-browser-client -->
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Pick as model-picker.js and settings.js
-    participant Chat as chat.js answerWithNvidia
-    participant Prov as providers.js
-    participant Fit as prompts.js fitNvidiaMessages
-    participant SSE as chat-stream.js
-    participant Msg as messages.js streaming bubble
-    participant Proxy as same-origin /api/models/nvidia and /api/chat/nvidia
-
-    Pick->>Prov: getNvidiaCatalog() when the page is idle, refresh true when NVIDIA mode is picked
-    Note over Prov: cached 5 min when configured, 30 s otherwise,<br/>concurrent callers share one request
-    Prov->>Proxy: fetchNvidiaModels: GET /api/models/nvidia, Accept JSON, no-store, 6 s
-    alt 404, a reply that is not JSON, network error or timeout
-        Proxy-->>Prov: no proxy at this address
-        Prov-->>Pick: reachable false: NVIDIA group hidden, a stored NVIDIA model shown as not set up
-    else JSON
-        Proxy-->>Prov: configured, version, defaultModel, limits, models
-        Prov->>Prov: parseNvidiaCatalog drops unknown fields, invalid and repeated ids, keeps at most 64 models
-        Prov-->>Pick: listeners: the offered models, disabled and marked not set up without keys
-    end
-
-    Chat->>Prov: getNvidiaCatalog() and resolveNvidiaModel with the stored model
-    Note over Chat,Prov: not configured or no model: a note, the turn falls back,<br/>see chat-request-answer-dispatch
-    Chat->>Fit: system, shareable history and question, NVIDIA_LIMITS, 4000 chars per earlier turn
-    Note over Fit: oldest pairs go first, then the system context is cut without breaking a fence,<br/>never the question: at most 40 messages, 24000 chars each,<br/>64000 in all, JSON body below 256 KiB minus 2 KiB
-    Fit-->>Chat: fitted messages
-    Chat->>Msg: createStreamingMessage, engine.label_nvidia with the model name
-    Chat->>Prov: callNvidia with model, defaultMaxTokens, temperature, signal, onDelta
-    Prov->>Proxy: POST /api/chat/nvidia, JSON model, messages, max_tokens, temperature,<br/>Accept text/event-stream, no Authorization header, no-store
-    Note over Prov: timers: first byte 35 s, idle 40 s per read, total 255 s
-    alt response not ok
-        Proxy-->>Prov: flat JSON error code, Retry-After on 429 and 503
-        Prov->>Prov: nvidiaHttpError: code to a provider.nvidia_* key, else by status:<br/>429 rate limited, 503 busy, 504 timeout, 404 or not JSON not available
-        Note over Prov: the body is read only as JSON for its code, server text is never shown,<br/>Retry-After seconds clamped to 1 s up to 1 h
-        Prov-->>Chat: ProviderError with the translated text,<br/>notConfigured for not configured or not available
-    else application/json, a reply that was not streamed
-        Prov->>Prov: nvidiaJsonAnswer: one chat.completion, reasoning as a leading think block
-        Prov-->>Chat: text, truncated when finish_reason is length
-    else text/event-stream
-        loop each read until DONE, an error event, the size limit, Stop or a timer
-            Proxy-->>Prov: bytes, decoded by TextDecoderStream
-            Prov->>SSE: createSseParser push: LF, CRLF or CR line ends, a blank line dispatches,<br/>more than 1000000 pending chars throws
-            SSE->>SSE: assembler push: delta.content to the answer, reasoning_content or reasoning<br/>to the reasoning, finish_reason, DONE, an error event keeps its code only
-            SSE-->>Prov: the text so far, reasoning first as a think block, reasoning tags stripped
-            Prov->>Msg: onDelta: render once per animation frame,<br/>a reasoning line while no answer text has arrived
-        end
-        alt Stop pressed
-            Prov->>Proxy: reader cancelled, the proxy then cancels its upstream request
-            Prov-->>Chat: the partial answer marked truncated, or AbortError without answer text
-        else a timer fired
-            Prov-->>Chat: the partial answer marked truncated, or provider.nvidia_timeout
-        else read error, error event or more than 200000 chars
-            Prov-->>Chat: the partial answer marked truncated, or provider.nvidia_timeout<br/>for stream_timeout and provider.nvidia_interrupted otherwise
-        else only reasoning or nothing arrived
-            Prov-->>Chat: provider.nvidia_only_reasoning or provider.empty_answer
-        else complete
-            Prov-->>Chat: text, truncated when finish_reason is length<br/>or neither DONE nor a finish reason arrived
-        end
-    end
-    Chat->>Msg: finalize: the answer, the reasoning in the details,<br/>chat.note_truncated in the trace when cut off
-```
-
-<sub>Sources: [`src/js/providers.js`](../src/js/providers.js), [`src/js/chat-stream.js`](../src/js/chat-stream.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
-
-### After rendering: source check, receipt draft and conversation turns
-
-In verified source mode, while the session is unchanged, answerGrounded takes the rendered message element (the appended bubble, or the streamed bubble of an on-device or NVIDIA answer) and, when the answer has a citation scope, runs the source check and adds a receipt button. The check first needs the part of each excerpt that reached the model: extractive answers count every excerpt as delivered in full, and for model answers contextCoverage parses the context that was actually sent (the budgeted context for the on-device model, the system message as fitNvidiaMessages cut it for NVIDIA when it had to, otherwise the buildContext string) back into its excerpt blocks and marks each excerpt full, partial or omitted. applyGrounding compares the numbers, dates, times, weekdays, codes, quotations and wording of each statement in the rendered answer with the excerpts it cites and, with the current rules (starpi-grounding 2), whether in the excerpts' language it keeps their negations and puts names and values where they do; it shows the result under the answer, and a match does not prove a statement correct. A value or name that the check does not find in the excerpts but finds in the question or one of the last user turns is marked from_conversation, a weak verdict; the model's own earlier answers do not count as given. When nothing was compared (the answer is too long, or answer and excerpts are in different languages and no statement was counted), the bar is neutral (grounding-none, a plain shield icon) instead of green. The receipt draft stays in memory, records for a partly delivered excerpt how many of its first characters reached the model (deliveredChars), and becomes a starpi.receipt/v2 JSON file, with a Merkle tree over its citations but without a signature (the app signs nothing), only when the user exports it from the receipt dialog: it shows that cited workspace excerpts can be reproduced from the same files, not that the receipt is authentic, what a model saw, or that its reasoning is right. Finally both turns are pushed to the in-memory conversation with localOnly set for client mode, workspace excerpts, an attached file or an extractive answer that names a workspace file.
+When a grounded answer has a citation scope, the label under it says "checking" while the source check runs after the stream. Its sources are the excerpts with the part that reached the model (the pack's coverage, the fenced context parsed back, or every excerpt in full for a quoted answer), and "given" is the question plus the user's last 4 turns (what the user said may be repeated without a source, the model's own earlier answers may not). A mixed answer gets its checked statements marked (applyMixedMarks); every other grounded answer gets applyGrounding with the current rules (version 3: values, negations, bindings and relations), whose AI-judge second opinion is offered only for answers that may leave the device. An answer that rests on web passages is checked and labelled but gets no receipt, because a web passage is what the search said about a page and the receipt format has no place for it. For the others a receipt draft is built in memory: the answer, engine and language, the question, the source-check report, every citation with its document fingerprint and chunk span, the sentence gate's counts in sources mode, the relations the check found, and whatever registered receipt hooks add; it becomes a signed `starpi.receipt/v3` file only when the user exports it (section 12). A free answer that searched the web is checked as far as its citations allow (rag/web-check.js: checked against quoted page text, segments checked by the gate in web mode, cited, or none). The answer node stores the label (grounded, mixed, web, free), the counts and localOnly (device-only, a workspace passage used, or a quoted answer naming a workspace file).
 
 <!-- diagram: chat-request-source-check -->
 ```mermaid
 flowchart TD
-    In(["sid equals currentSessionId()"]) --> El["messageEl = answer.element of a streamed answer,<br/>else the bubble appendMessage returned"]
-    El --> Has{"messageEl and a<br/>citation scope?"}
-    Has -->|"no, e.g. no used hits"| Push
-    Has -->|"yes"| EngChk{"answer.engine is<br/>synthesizer?"}
-    EngChk -->|"yes"| Full["every excerpt delivered full,<br/>text = the excerpt as given"]
-    EngChk -->|"no, a model answered"| Cov["contextCoverage(citationList,<br/>deliveredContext or context):<br/>finds the EXCERPT n blocks that were sent"]
-    Cov --> Blk{"block n found<br/>with text?"}
-    Blk -->|"no"| Om["omitted, empty text"]
-    Blk -->|"closing fence, text not cut"| Fu["full"]
-    Blk -->|"closing fence missing, or text shortened by<br/>buildContext, budgetPrompt or fitNvidiaMessages,<br/>ending in an ellipsis"| Pa["partial, ellipsis removed"]
-    Full --> Apply
-    Om --> Apply
-    Fu --> Apply
-    Pa --> Apply
-    Apply["applyGrounding(messageEl): scope, sources with label,<br/>doc, heading, delivered text and state,<br/>given = prompt + the user turns among the last 4<br/>history messages, citedOnly for a synthesizer answer"]
-    Apply --> Slot{".message-content and .message-provenance<br/>present and sources not empty?"}
-    Slot -->|"no"| NoRep["report null, nothing shown"]
-    Slot -->|"yes"| Ground["groundAnswer on the rendered blocks, rules version 2: numbers,<br/>dates, times, weekdays, codes, quotations and wording<br/>of each statement against its cited excerpts, and negations,<br/>names and values in another place in the excerpts' language,<br/>over 20000 chars or 300 statements: skipped, too_long"]
-    Ground --> Show{"any statement counted,<br/>unchecked or skipped?"}
-    Show -->|"no"| Quiet["report returned, no bar"]
-    Show -->|"yes"| Bar["details bar replaces the content of .message-provenance:<br/>review, partial or ok color and shield icon, neutral<br/>grounding-none with a plain shield when nothing was compared,<br/>grounding.title with grounding.summary ok of total,<br/>grounding.too_long or grounding.only_unchecked,<br/>badges to review and partly, flagged statements,<br/>grounding.disclaimer, opened when one is unsupported,<br/>unsupported statements highlighted"]
-    NoRep --> Draft
-    Quiet --> Draft
-    Bar --> Draft
-    Draft["storeReceiptDraft: createdAt, APP_VERSION, answer text,<br/>engine cloud, client, wasm, local, nvidia or synthesizer, locale, question, grounding report,<br/>citations with delivered state, deliveredChars<br/>for a partly delivered excerpt, workspace file<br/>and text SHA-256 and chunk offsets"]
-    Draft --> Mem[("in-memory Map, ids r1, r2 and so on<br/>at most 50 drafts, never stored")]
-    Draft --> Btn["receiptButton(id) appended to .message-provenance<br/>data-action open-receipt, then refreshIcons"]
-    Btn -.->|"export in the receipt dialog"| Json["buildReceipt: JSON starpi.receipt/v2,<br/>Merkle root over the citations, not signed by the app,<br/>id from a hash of its body,<br/>at most 20 reasons per statement"]
-    Btn --> Push
-    Push["conversation.push user turn, first 4000 chars,<br/>and assistant turn, both with localOnly =<br/>mode client, usesWorkspace, namesWorkspace<br/>or a file attached"]
-    Push --> Out(["persistMessage follows, see chat-request-answer-dispatch"])
+    ans(["answer text after expandLabels(), message element, scope"])
+    scopeQ{"citation scope?"}
+    noCheck(["no check, stored as is"])
+    label["renderAnswerLabel(checking)"]
+    cov["sources: excerpt label, doc, heading, the delivered text<br/>and state (full, partial, omitted)"]
+    given["given: the question and the user's last 4 turns"]
+    mixedQ{"mixed answer with a model?"}
+    mixed["applyMixedMarks: checked statements marked"]
+    check["applyGrounding: rules version 3,<br/>second opinion only when not localOnly"]
+    webQ{"any web passage?"}
+    noRcpt["no receipt: checked and labelled only"]
+    draft["receipt draft: answer, engine, locale, question,<br/>report, citations with fingerprints and spans"]
+    gate["gateCounts: sentence gate in sources mode,<br/>released and withheld"]
+    rel["receiptAdvisory(report): relations"]
+    hooks["registerReceiptHook additions"]
+    btn["receipt button; export signs a v3 file"]
+    store[("appendNode: label, grounding counts,<br/>sources, localOnly, meta")]
+    ans --> scopeQ
+    scopeQ -->|"no"| noCheck
+    scopeQ -->|"yes"| label --> cov --> given --> mixedQ
+    mixedQ -->|"yes"| mixed --> webQ
+    mixedQ -->|"no"| check --> webQ
+    webQ -->|"yes"| noRcpt --> store
+    webQ -->|"no"| draft --> gate --> rel --> hooks --> btn --> store
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/messages.js`](../src/js/messages.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/chat/answer-labels.js`](../src/js/chat/answer-labels.js), [`src/js/rag/web-check.js`](../src/js/rag/web-check.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/gate.js`](../src/js/core/gate.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/chat/hooks.js`](../src/js/chat/hooks.js)</sub>
 
 ### synthesizeAnswer: the extractive fallback
 
-synthesizeAnswer never generates text: it builds Markdown from the used hits and their citations, and only verified source mode uses it (free chat has no excerpts to quote). Its document list joins the titles of the used hits with the known titles (workspace file names plus knownTitles(), which calls listDocuments unless the connection is offline and caches the titles for 60 s only after a successful read) and shows up to 8 of them followed by "and n more". A greeting-only message gets synth.greeting with that list, and a request for the list itself (DOC_LIST_REQUEST, such as "Which documents are available?") gets the list, or the unreachable text when the knowledge base could not be searched and no title is known. Otherwise it quotes up to 4 sentences that share a search term with the question, each with the label of its excerpt; the last sentence of an excerpt cut at 1600 chars is left out. When no sentence shares a term (for example "Summarize the attached file"), it quotes the first 2 quotable sentences of each passage, at most 4, the attached file first. Only when nothing is quotable does it answer with the unreachable or the no-hits text. When modelAvailable is false, every answer ends with synth.footer_no_model.
+synthesizeAnswer never generates text: it builds Markdown from the used hits and their citations, and only the grounded route uses it (a free answer has no excerpts to quote): when no model is set up, every candidate failed before the first text, or the answer came back empty. Its document list joins the titles of the used hits with the known titles (workspace file names plus knownTitles(), which calls listDocuments unless the connection is offline and caches the titles for 60 s only after a successful read) and shows up to 8 of them followed by "and n more". A greeting-only message gets synth.greeting with that list, and a request for the list itself (DOC_LIST_REQUEST, such as "Which documents are available?") gets the list, or the unreachable text when the knowledge base could not be searched and no title is known. Otherwise it quotes up to 4 sentences that share a search term with the question, each with the label of its excerpt; the last sentence of an excerpt cut at 1600 chars is left out. When no sentence shares a term (for example "Summarize the attached file"), it quotes the first 2 quotable sentences of each passage, at most 4, the attached file first. Only when nothing is quotable does it answer with the unreachable or the no-hits text. When modelAvailable is false, every answer ends with synth.footer_no_model.
 
 <!-- diagram: chat-request-synthesizer -->
 ```mermaid
@@ -1933,327 +1679,222 @@ flowchart TD
     NoHits --> Done
 ```
 
-<sub>Sources: [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/core/sentences.js`](../src/js/core/sentences.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/core/sentences.js`](../src/js/core/sentences.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
 
 ### Answer modes: what leaves the device
 
-In verified source mode every mode first runs BM25 over the on-device workspace in the ingest worker when it holds files. Unless the question is a demo sample question or the connection is offline, council, own-server and NVIDIA mode then send the question (first 1000 chars) to the Supabase search_knowledge RPC and fall back to recentKnowledge(30) on zero rows or an error, while client mode only fetches the 30 newest documents without the question and ranks them in the browser; a greeting-only message goes through the same retrieval before its excerpts are dropped. The excerpts, workspace excerpts included, go to Gemini (no history) or OpenRouter in council mode, to the own server (no key) in own-server mode, and through Starpi's NVIDIA proxy to NVIDIA in NVIDIA mode, where the browser sends no key and the proxy adds one from its pool; OpenRouter, the own server and NVIDIA also get the last 4 history turns not marked localOnly. Free chat searches nothing: the question, up to 16 earlier turns not marked localOnly (24,000 characters in all, Gemini included) and the text of a file attached to that question go to the model of the mode. Client mode keeps everything in the WebLLM or WASM worker and only downloads model files: WebGPU weights from Hugging Face and the model library from GitHub, or the pinned files of a WASM model from Hugging Face and the ONNX Runtime binary from the app's own /assets. In source mode every failure except a user abort falls back to the extractive synthesizer, which may read document titles with listDocuments; in free chat it ends in a notice. The question is stored once retrieval shows whether workspace excerpts are used (in free chat at once) and stays in localStorage in client mode, with an attached file or when a used excerpt came from the workspace (a turn that fails before that uses the first two rules only); the answer stays local in client mode, with an attached file in free chat, when a used excerpt came from the workspace or when an extractive answer contains a workspace file name (a greeting or document list, whose question may still be synced), so a workspace turn never reaches chat_history. Everything else goes to chat_history only when canSyncChats() is true and the insert succeeds, otherwise to localStorage. Source-check results and receipt drafts stay in memory.
+What leaves the device depends on the model that answers, not only on the mode. A model on this device (WebLLM on WebGPU or Transformers.js on the processor) gets everything in its worker: nothing of the question leaves, the library is ranked by a query vector made here or by candidates fetched without the question, and there is no web search and no cloud tool. A provider with the user's key gets the request direct from the browser, or through the relay for providers that refuse browser calls (the relay forwards once and keeps nothing); the site's pools get the same request with a site key from the allowlist (text and images, no tools); the own server gets it direct, never through the site; the paired companion gets the bare question with its mode and data class over the loopback interface. In the grounded route the request carries the excerpts and the last 4 shareable turns, and the question goes to the library search (full text) unless it stays on this device; in the free route it carries the shareable history, the question and its attachments. With no model (or after a failure) the excerpts are quoted, and only the question went to the library search. Local-only turns (device, workspace passages, quoted answers naming a workspace file, the companion's turns) are never part of another model's history and never enter the encrypted sync.
 
 <!-- diagram: modes-privacy-data-egress -->
 ```mermaid
 flowchart TD
-    Ask(["submitChat: question trimmed to 8000 chars<br/>mode = getMode(), stored in starpi_compute_mode<br/>chat mode: grounded for quick prompts and sample<br/>questions, else starpi_chat_mode"])
-    CMode{"chat mode?"}
-    UserTurn{"storeQuestion, question localOnly?<br/>client mode, a file attached,<br/>or any used excerpt from the workspace"}
-    Skip{"demo sample question,<br/>or connection offline?"}
-    RetMode{"retrieve(): mode is client?"}
-    Ctx["mergeHits + assignCitations + buildContext<br/>at most 6 hits, 9 with an attachment, both sources keep slots<br/>excerpt max 1600 chars, context max 9000 chars<br/>a greeting-only message uses no excerpts"]
-    Dispatch{"answer path by mode"}
-    CKeys{"hasGeminiKey()?<br/>else hasOpenRouterKey()?"}
-    Abort(["Stop pressed before a rendered answer:<br/>error to the submitChat catch,<br/>answer not shown or persisted"])
-    Persist{"answer localOnly?<br/>client mode, a file in free chat,<br/>any used excerpt from the workspace,<br/>or a synthesizer answer naming a workspace file"}
-    Sync{"not localOnly: canSyncChats()?<br/>signed in and hardened schema"}
-
+    ask(["question with the picked model and the composer's mode"])
+    who{"who answers?"}
     subgraph dev["Stays in this browser"]
-        WsSearch["retrieveWorkspace: BM25 in the ingest worker, source mode<br/>an attached file pins up to 3 chunks<br/>worker error: no workspace hits"]
-        FreeCtx["free chat: no search, the attached file's text<br/>from the ingest worker, up to 12000 chars"]
-        Keys[("provider keys<br/>ai/keys.js: sessionStorage,<br/>or the unlocked key vault")]
-        Hist["shareableHistory: turns not marked localOnly,<br/>last 4 in source mode,<br/>16 turns and 24000 chars in free chat"]
-        LGen["client: WebLLM worker on WebGPU or WASM worker<br/>on the processor, budgeted excerpts or file text,<br/>history and question stay in the browser"]
-        Synth["source mode: synthesizeAnswer, extractive quotes<br/>with citation labels, no model<br/>free chat: a notice, no answer"]
-        Check["source check and receipt draft, source mode only,<br/>for every engine, in memory only"]
-        LS[("localStorage<br/>starpi_local_chats_v1")]
+        dWorker["starpi-webllm or starpi-wasm: system, excerpts<br/>or attachments, history and question in the worker"]
+        dLib["library: query vector made here,<br/>else 30 newest documents without the question"]
+        dNo["no web search, no cloud tools, no title request"]
+        quote["synthesizeAnswer: quotes the excerpts,<br/>no model"]
     end
-
     subgraph net["Sent over the network"]
-        FTS["Supabase rpc search_knowledge<br/>question as query_text, first 1000 chars<br/>match_count 6"]
-        Recent["Supabase recentKnowledge(30)<br/>30 newest documents, question not sent<br/>rankHitsLocally in the browser"]
-        Gem["council: Gemini gemini-2.5-flash generateContent<br/>source mode: one user part, system + excerpts incl. workspace<br/>+ question, no chat history<br/>free chat: system with the attached file, history, question"]
-        OR["council: OpenRouter chat/completions<br/>system + excerpts incl. workspace or the attached file<br/>+ shareable history + question"]
-        Srv["local: own server getLlmUrl()/chat/completions<br/>system + excerpts incl. workspace or the attached file<br/>+ shareable history + question, no key<br/>GET /models first while no model id is known"]
-        NvCat["nvidia: GET /api/models/nvidia on the app's origin,<br/>the offered models, no user text"]
-        NV["nvidia: POST /api/chat/nvidia on the app's origin, no key,<br/>system + excerpts incl. workspace or the attached file<br/>+ shareable history + question, fitted to the proxy limits,<br/>Starpi's proxy forwards it with a pooled key to NVIDIA"]
-        HF["model files only when not cached, after a confirm, no user text:<br/>huggingface.co WebGPU weights and pinned WASM files,<br/>raw.githubusercontent.com model library,<br/>ONNX Runtime binary from the app's /assets"]
-        Titles["Supabase listDocuments, no question sent<br/>skipped while offline, titles cached 60 s"]
-        CH[("Supabase chat_history insert")]
+        prov["provider with the user's key: direct (Anthropic,<br/>OpenAI, Gemini, OpenRouter) or through the relay<br/>(xAI, Groq, Mistral, DeepSeek, NVIDIA key)"]
+        pool["site pool: text and images, no tools,<br/>allowlisted model, site key"]
+        srv["own server: direct, https or loopback http"]
+        comp["companion: bare question, mode, data class,<br/>loopback; answer arrives gated"]
+        lib["Supabase search_knowledge: the question,<br/>first 1,000 chars"]
+        web["search API or the provider's web search:<br/>the query, not for device-only questions"]
+        hf["model files after a confirmation: Hugging Face,<br/>raw.githubusercontent.com, ONNX Runtime from /assets"]
     end
+    grounded{"grounded or mixed route?"}
+    gPayload["excerpts + last 4 shareable turns + question"]
+    fPayload["shareable history + question + attachments"]
+    hist["shareable(): local-only turns and their questions<br/>never go to a model not on this device"]
+    saved[("IndexedDB: localOnly turns stay;<br/>encrypted sync takes the others only")]
 
-    Ask --> CMode
-    CMode -->|"grounded"| WsSearch --> Skip
-    CMode -->|"free"| FreeCtx
-    Skip -->|"yes: no Supabase search"| Ctx
-    Skip -->|"no"| RetMode
-    RetMode -->|"no, council, local or nvidia"| FTS
-    RetMode -->|"yes"| Recent
-    FTS -->|"rows found"| Ctx
-    FTS -.->|"zero rows or error"| Recent
-    Recent -->|"ranked hits, none if it fails"| Ctx
-    WsSearch -->|"workspace excerpts"| Ctx
-    Ctx -->|"after retrieval and the greeting check,<br/>before assignCitations"| UserTurn
-    FreeCtx -->|"at once"| UserTurn
-    Ask -.->|"turn throws before that:<br/>catch runs storeQuestion(false)"| UserTurn
-    UserTurn -->|"yes"| LS
-    UserTurn -->|"no"| Sync
-    Ctx --> Dispatch
-    FreeCtx --> Dispatch
-    Dispatch -->|"council"| CKeys
-    Dispatch -->|"client"| LGen
-    Dispatch -->|"local"| Srv
-    Dispatch -->|"nvidia"| NvCat
-    NvCat -->|"proxy with keys"| NV
-    NvCat -.->|"no proxy or no keys"| Synth
-    CKeys -->|"Gemini key"| Gem
-    CKeys -->|"only OpenRouter key"| OR
-    CKeys -->|"no key"| Synth
-    Gem -.->|"fails, OpenRouter key set"| OR
-    Gem -.->|"fails, no OpenRouter key"| Synth
-    OR -.->|"all attempts fail,<br/>or HTTP 401 or 403"| Synth
-    NV -.->|"error code or timeout<br/>without answer text"| Synth
-    Hist -.->|"history"| OR
-    Hist -.->|"history"| Srv
-    Hist -.->|"history"| NV
-    Hist -.->|"free chat only"| Gem
-    HF -.->|"only when not cached"| LGen
-    LGen -.->|"not loaded, declined,<br/>empty or throws"| Synth
-    Srv -.->|"throws, not aborted"| Synth
-    Keys -.->|"Gemini key only,<br/>x-goog-api-key header"| Gem
-    Keys -.->|"OpenRouter key only,<br/>Authorization Bearer"| OR
-    Synth -.->|"known titles, source mode"| Titles
-    Dispatch -.->|"user abort"| Abort
-    Dispatch -.->|"answer with citations,<br/>same session"| Check
-    Gem --> Persist
-    OR --> Persist
-    LGen --> Persist
-    Srv --> Persist
-    NV --> Persist
-    Synth --> Persist
-    Persist -->|"yes"| LS
-    Persist -->|"no"| Sync
-    Sync -->|"yes"| CH
-    Sync -->|"no"| LS
-    CH -.->|"insert fails"| LS
+    ask --> who
+    who -->|"model on this device"| dWorker
+    dWorker -.-> dLib
+    dWorker -.-> dNo
+    dWorker -.->|"not cached, after a confirmation"| hf
+    who -->|"provider with a key"| grounded
+    who -->|"site pool"| grounded
+    who -->|"own server"| grounded
+    who -->|"companion"| comp
+    who -->|"no model or a failure, grounded"| quote
+    grounded -->|"yes"| gPayload --> lib
+    grounded -->|"no"| fPayload
+    gPayload --> hist
+    fPayload --> hist
+    hist --> prov
+    hist --> pool
+    hist --> srv
+    fPayload -.->|"Web toggle"| web
+    quote -.->|"question to the library search"| lib
+    dWorker --> saved
+    prov --> saved
+    pool --> saved
+    srv --> saved
+    comp --> saved
+    quote --> saved
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/config.js`](../src/js/config.js), [`src/js/state.js`](../src/js/state.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/demo.js`](../src/js/demo.js), [`api/chat/nvidia.js`](../api/chat/nvidia.js)</sub>
+<sub>Sources: [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/chat/runner.js`](../src/js/chat/runner.js), [`src/js/ai/catalog/providers.js`](../src/js/ai/catalog/providers.js), [`src/js/ai/transport-select.js`](../src/js/ai/transport-select.js), [`src/js/ai/catalog/pools.js`](../src/js/ai/catalog/pools.js), [`src/js/ai/adapters/companion.js`](../src/js/ai/adapters/companion.js), [`src/js/companion/tier.js`](../src/js/companion/tier.js), [`src/js/rag/embed-client.js`](../src/js/rag/embed-client.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/sync/payload.js`](../src/js/sync/payload.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js)</sub>
 
-### Council mode: Gemini then OpenRouter failover
+### Compare and the council
 
-answerWithCloud tries Gemini 2.5 Flash first when a Gemini key exists, in source mode with one user part that holds the system prompt, the excerpts and the question, and in free chat with the free-chat system prompt as systemInstruction and up to 16 shareable turns before the question; on any failure that is not a user abort (HTTP error, empty answer, 20 s timeout, network) it keeps the reason, with provider and model names replaced by sanitizeModelNames and cut to 160 chars, and continues with OpenRouter if an OpenRouter key is set. callOpenRouter tries up to 3 free models in a fixed order, moves on after empty answers and most errors, and stops early on HTTP 401 or 403; when every attempt fails the answer is empty with the note chat.note_cloud_failed and the OpenRouter reason. Without an OpenRouter key a failed Gemini call gives the same note with the Gemini reason, so only a council turn with no key at all returns null. A note appears in a chat.provider_failed notice above the answer and in the answer trace. In all these cases verified source mode falls back to synthesizeAnswer with modelAvailable false, so the answer ends with synth.footer_no_model, while free chat shows a notice and no answer. After Stop the error is rethrown and no answer is persisted; the submitChat catch stays silent only for a DOMException AbortError, so Stop pressed during retrieval with only an OpenRouter key, where the model loop never starts, shows chat.error_title with provider.cloud_unreachable.
+Both run in the chat side panel and ask several models the same question at once, always in the free route. thread.js prepareQuestion() builds the question once: a stored one (Compare or Council on a message takes the answer's question) or a new one typed there or taken from the composer, with the context block and the notes for this request; for each model it builds the request the thread's free route would send, with the history that model may see. A question that stays on this device builds no request for other models (the code stays_on_device). Compare asks 2 to 4 models, each in its own column through runAnswer with that one model and no fallback, with its own Stop, time, tokens and a cost hint; the tool runner runs each column's tool calls with their approval cards there. A new question for models here and the own server only is marked as staying on this device: it is offered only the tools that keep it here and goes to no search service (a thread question to the own server is not marked so: the decision keeps the privacy-first default for Compare). A compare column asks the paired companion the way the thread does (the bare question, sources or free mode, the question's data class, no app tools; a stopped answer is not kept). Each finished column is labelled like a free answer (presentAnswer on the fields of freeAnswerInput), and "Continue with this" makes it the newest branch under the question (adoptAnswer). The council (ai/council.js) seats up to three members from different providers, each pinned without fallback and limited to 120 s per draft, and a judge, the strongest model that is not a member, chooses a draft or merges them; with fewer than two valid drafts the best draft stands. The model on this device and the companion take no part, and a question that stays on this device is not sent to a council. The result becomes an answer under the question, labelled with how it was decided, and keeps a bounded copy of the drafts and the judge's reasons.
 
-<!-- diagram: modes-privacy-cloud-failover -->
+<!-- diagram: chat-compare-council -->
 ```mermaid
 flowchart TD
-    Start(["answerWithCloud: source mode buildSystemPrompt<br/>target cloud, excerpts in the context block,<br/>free chat buildChatPrompt with the attached file<br/>geminiFailure = null"])
-    GK{"hasGeminiKey()?"}
-    GCall["callGemini: POST v1beta/models/gemini-2.5-flash:generateContent<br/>source mode: one user part, system + question, no history<br/>free chat: systemInstruction, up to 16 shareable turns<br/>as user and model contents, then the question<br/>x-goog-api-key header, timeout 20 s"]
-    GOk{"res.ok and<br/>candidate text?"}
-    GAb{"req.signal.aborted?"}
-    GWarn["geminiFailure = sanitizeModelNames(message),<br/>first 160 chars, console.warn:<br/>Gemini failed, trying the next provider"]
-    OK{"hasOpenRouterKey()?"}
-    GF{"geminiFailure set?"}
-    Null(["return null, no note<br/>no key at all"])
-    Loop["callOpenRouter: OPENROUTER_MODELS,<br/>at most 3 attempts in order<br/>liquid/lfm-2.5-2.6b:free, openrouter/free,<br/>nvidia/nemotron-3.5-lightning:free"]
-    LAb{"signal aborted<br/>before the attempt?"}
-    Post["POST openrouter.ai/api/v1/chat/completions<br/>Authorization Bearer key, HTTP-Referer, X-Title<br/>system + shareableHistory + question<br/>temperature 0.5, max_tokens 1024, timeout 20 s"]
-    ROk{"res.ok?"}
-    HttpErr["httpError: ProviderError<br/>HTTP status [model]: message"]
-    Txt{"choices[0].message.content<br/>not empty?"}
-    Empty["lastErr = empty answer [model]"]
-    CatchAb{"signal aborted?"}
-    Auth{"ProviderError with<br/>status 401 or 403?"}
-    Warn["lastErr = err, console.warn,<br/>try the next model"]
-    Next{"another model left?"}
-    Throw["throw lastErr, or<br/>provider.cloud_unreachable"]
-    OAb{"req.signal.aborted?"}
-    Cloud(["answer engine cloud"])
-    Note(["text empty, engine synthesizer<br/>note chat.note_cloud_failed with the OpenRouter<br/>or Gemini reason, sanitized, max 160 chars"])
-    Rethrow(["rethrow to the submitChat catch, no answer persisted<br/>a DOMException AbortError shows no notice,<br/>any other error chat.error_title, e.g. Stop during<br/>retrieval with only an OpenRouter key:<br/>provider.cloud_unreachable"])
-    Synth(["source mode: appendNotice chat.provider_failed_title<br/>when there is a note, then synthesizeAnswer<br/>modelAvailable false: synth.footer_no_model<br/>free chat: a notice why, no answer"])
-
-    Start --> GK
-    GK -->|"yes"| GCall
-    GK -->|"no"| OK
-    GCall --> GOk
-    GOk -->|"yes"| Cloud
-    GOk -->|"no: HTTP error, empty,<br/>timeout or network"| GAb
-    GAb -->|"yes"| Rethrow
-    GAb -->|"no"| GWarn --> OK
-    OK -->|"no"| GF
-    GF -->|"yes"| Note
-    GF -->|"no"| Null
-    OK -->|"yes"| Loop --> LAb
-    LAb -->|"no"| Post
-    LAb -->|"yes"| Throw
-    Post --> ROk
-    ROk -->|"no"| HttpErr
-    ROk -->|"yes"| Txt
-    Txt -->|"yes"| Cloud
-    Txt -->|"no"| Empty --> Next
-    HttpErr --> CatchAb
-    Post -.->|"fetch or res.json throws,<br/>timeout or network"| CatchAb
-    CatchAb -->|"yes"| Rethrow
-    CatchAb -->|"no"| Auth
-    Auth -->|"yes, stop early"| Throw
-    Auth -->|"no"| Warn --> Next
-    Next -->|"yes"| LAb
-    Next -->|"no"| Throw
-    Throw --> OAb
-    OAb -->|"yes"| Rethrow
-    OAb -->|"no"| Note
-    Note --> Synth
-    Null --> Synth
+    start(["Compare or Council: a stored question,<br/>or a new one from the panel or the composer"])
+    prep["thread.js prepareQuestion(): the question node,<br/>context block, request notes once,<br/>build(target) = the free route's request"]
+    stays{"question stays on this device?"}
+    which{"panel"}
+    subgraph cmp["Compare: 2 to 4 columns"]
+        models["models from the picker's choices,<br/>different providers first;<br/>device models only when loaded"]
+        col["per column: runAnswer(one model, no fallback),<br/>own Stop, time, tokens, cost hint"]
+        compCol["companion column: bare question, sources or free,<br/>data class, no app tools, stopped answer not kept"]
+        heldCol["new question for models here and the own server only:<br/>stays on this device, no search service,<br/>only tools that keep it here"]
+        toolsC["tool runner per column, approvals in the column"]
+        present["presentAnswer(freeAnswerInput): not checked,<br/>stop note, cited pages and their web check"]
+        adopt(["Continue with this: adoptAnswer, newest branch"])
+    end
+    subgraph cou["Council: ai/council.js"]
+        seat["up to 3 members from different providers, pinned,<br/>120 s per draft; no device model, no companion"]
+        judge["judge: strongest model that is not a member,<br/>council_judge purpose: chosen, reasons, merged"]
+        few{"fewer than 2 valid drafts,<br/>or the judge fails?"}
+        best["best valid draft stands, the result says why"]
+        result(["answer under the question: judge's choice, merged,<br/>or best draft; bounded copy of drafts and reasons"])
+    end
+    refuse(["notice: stays_on_device"])
+    start --> prep --> stays
+    stays -->|"yes, council"| refuse
+    stays -->|"yes, compare"| heldCol --> col
+    stays -->|"no"| which
+    which -->|"compare"| models --> col
+    models -.-> compCol --> present
+    col --> toolsC --> present --> adopt
+    which -->|"council"| seat --> judge --> few
+    few -->|"yes"| best --> result
+    few -->|"no"| result
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/config.js`](../src/js/config.js), [`src/js/signals.js`](../src/js/signals.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/render.js`](../src/js/render.js), [`src/locales/en.json`](../src/locales/en.json), [`src/js/prompts.js`](../src/js/prompts.js)</sub>
+<sub>Sources: [`src/js/chat/compare.js`](../src/js/chat/compare.js), [`src/js/chat/council-view.js`](../src/js/chat/council-view.js), [`src/js/ai/council.js`](../src/js/ai/council.js), [`src/js/ui/council-panel.js`](../src/js/ui/council-panel.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/chat/runner.js`](../src/js/chat/runner.js), [`src/js/features/canvas.js`](../src/js/features/canvas.js)</sub>
 
-### Settings: server URL rules and key storage
+### Settings: what the model choice stores
 
-saveSettings first validates the own-server URL with normalizeServerUrl: it must parse, use https unless it is http on localhost or 127.0.0.1 (exactly the plain-http hosts the vercel.json CSP connect-src allows, so http://[::1] is rejected), and carry no credentials; hash and query are removed and trailing slashes stripped, and any violation shows an alert and saves nothing. The remember toggle (starpi_remember_keys) decides where keys go: writeSecret deletes a key from both stores and writes it to localStorage when remembered, otherwise to sessionStorage for this tab only, flipping the toggle moves already stored keys, readSecret checks sessionStorage first and clear-keys removes both keys from both stores. The connection tests use a key typed into the field as typed, without storing it. The assistant pickers store a pick when it is made; Save applies the settings picker again only when it shows another value than the stored choice (a pick whose arrow keys have not settled), and the saved toast appears only when every storage write, that pick included, returned true, otherwise settings.save_failed. NVIDIA keys never reach the browser, so there is nothing to store for them. A stored URL is validated again on every own-server request, and probeLocalServer remembers the first model id the server lists, which callLocalServer then sends as model.
+The picker value is the only model choice the app stores (`starpi_assistant_v1`); a preset picked on this device stores `device` plus the preset in `starpi_webgpu_model`, and an NVIDIA pick also remembers its model. The strength and a pinned model go to `starpi_model_strength_v1` and `starpi_model_pinned_v1`. The own server's address (`starpi_llm_url`) passes normalizeServerUrl first: `https` anywhere, `http` only for `localhost` and `127.0.0.1`, no user name or password, query and fragment dropped; the browser shows its local-network prompt for loopback addresses from the hosted app. The relay switch is `starpi_relay_fallback` (on unless switched off), and the route a provider with transport auto took last is remembered per provider (`starpi_transport_<id>`), so a provider that needs the relay goes there at once. Keys are not settings: they live in the tab or in the vault (section 2). Every write goes through storage.js, which never throws: a browser that refuses storage keeps the choice for the page and the save reports it.
 
 <!-- diagram: modes-privacy-settings-storage -->
 ```mermaid
 flowchart TD
-    Save(["save-settings: saveSettings()"])
-    Parse{"normalizeServerUrl(cfgLlmUrl)<br/>new URL(value.trim()) parses?"}
-    Proto{"protocol https:, or http: with hostname<br/>localhost or 127.0.0.1?<br/>the plain-http hosts of the CSP connect-src"}
-    Cred{"username or password<br/>in the URL?"}
-    Clean["clear hash and search,<br/>strip trailing slashes"]
-    Bad["window.alert provider.invalid_url,<br/>provider.insecure_url or provider.credentials_in_url<br/>focus the field, nothing is saved"]
-    SetUrl["setLlmUrl(url): localStorage starpi_llm_url<br/>value used when never saved: http://localhost:8000/v1<br/>returns whether it was stored"]
-    Remember["remember = cfgRememberKeys checked<br/>writeLocal starpi_remember_keys 1 or 0"]
-    Each["for starpi_gemini_key and starpi_openrouter_key"]
-    Typed{"key typed<br/>in the field?"}
-    Flip{"key already stored and<br/>remember toggle changed?"}
-    Keep["stored key, if any, unchanged"]
-    Write["writeSecret(key, value, remember)<br/>removeSecret from both stores first<br/>false when the store is missing or refuses"]
-    RemChk{"remember?"}
-    LSk[("localStorage<br/>kept across browser restarts")]
-    SSk[("sessionStorage<br/>this tab only")]
-    Hints["after both keys: fields cleared,<br/>renderKeyHints shows only the last 4 characters"]
-    Pref{"cfgComputeMode shows another value<br/>than currentPickerValue()?<br/>a pick not applied yet"}
-    Engine["await changeEngine(value, interactive true)<br/>stores mode and on-device or NVIDIA model,<br/>local mode: probeLocalServer GET url/models, 4 s,<br/>remembers the first listed model id,<br/>status.server_unreachable when it fails<br/>client mode: may load the model first<br/>resolves with whether its writes were stored"]
-    AllOk{"every write returned true?<br/>URL, remember flag, keys,<br/>and a pending pick"}
-    Saved(["alert settings.saved_toast"])
-    SaveFail(["alert settings.save_failed<br/>storage missing, blocked or full"])
-    Read["readSecret: sessionStorage first,<br/>then localStorage"]
-    Use["hasGeminiKey, hasOpenRouterKey,<br/>callGemini, callOpenRouter<br/>connection tests: a typed key is used as typed"]
-    Clear(["clear-keys: removeSecret for both keys in both stores<br/>renderKeyHints, renderPrivacyNotice,<br/>alert settings.keys_cleared"])
-    PerCall["stored URL is not validated at load, so<br/>callLocalServer and probeLocalServer run<br/>normalizeServerUrl again on every request<br/>invalid: note chat.note_server_failed and<br/>the synthesizer answers, probe is false"]
+    pick(["picker value"])
+    setA["state.js setAssistant()"]
+    devQ{"webgpu:key or wasm:key?"}
+    pref[("starpi_webgpu_model: the preset,<br/>assistant stored as device")]
+    nvQ{"nvidia:model?"}
+    nv[("starpi_nvidia_model")]
+    asst[("starpi_assistant_v1, and the 2.x<br/>starpi_compute_mode kept in step")]
+    pick --> setA --> devQ
+    devQ -->|"yes"| pref --> asst
+    devQ -->|"no"| nvQ
+    nvQ -->|"yes"| nv --> asst
+    nvQ -->|"no"| asst
 
-    Save --> Parse
-    Parse -->|"no"| Bad
-    Parse -->|"yes"| Proto
-    Proto -->|"no"| Bad
-    Proto -->|"yes"| Cred
-    Cred -->|"yes"| Bad
-    Cred -->|"no"| Clean --> SetUrl --> Remember --> Each --> Typed
-    Typed -->|"yes"| Write
-    Typed -->|"no"| Flip
-    Flip -->|"yes, move it"| Write
-    Flip -->|"no"| Keep
-    Write --> RemChk
-    RemChk -->|"yes"| LSk
-    RemChk -->|"no"| SSk
-    Keep --> Hints
-    LSk --> Hints
-    SSk --> Hints
-    Hints --> Pref
-    Pref -->|"yes"| Engine --> AllOk
-    Pref -->|"no"| AllOk
-    AllOk -->|"yes"| Saved
-    AllOk -->|"no"| SaveFail
-    SetUrl -.-> PerCall
-    LSk -.-> Read
-    SSk -.-> Read
-    Read --> Use
-    Clear -.->|"removes"| LSk
-    Clear -.->|"removes"| SSk
+    strength(["strength or pinned model"]) --> sel[("starpi_model_strength_v1,<br/>starpi_model_pinned_v1")]
+
+    url(["own server address"])
+    norm{"normalizeServerUrl: https, or http on<br/>localhost or 127.0.0.1; no credentials"}
+    llm[("starpi_llm_url without query and fragment")]
+    bad(["provider.invalid_url, insecure_url<br/>or credentials_in_url"])
+    url --> norm
+    norm -->|"ok"| llm
+    norm -->|"no"| bad
+
+    relay(["relay switch"]) --> rs[("starpi_relay_fallback: absent = on, 0 = off")]
+    auto(["auto provider answered"]) --> tr[("starpi_transport_id: direct or relay")]
+    keys(["provider keys"]) -.->|"not settings: tab or vault"| vault[("sessionStorage or IndexedDB keyvault")]
 ```
 
-<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`src/js/chat.js`](../src/js/chat.js), [`vercel.json`](../vercel.json), [`src/js/model-picker.js`](../src/js/model-picker.js)</sub>
+<sub>Sources: [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`src/js/ai/model-selection.js`](../src/js/ai/model-selection.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/ai/transport-select.js`](../src/js/ai/transport-select.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/ai/keys.js`](../src/js/ai/keys.js), [`src/js/settings/providers-view.js`](../src/js/settings/providers-view.js)</sub>
 
 ### Privacy notice under the chat input
 
-renderPrivacyNotice chooses the footer from the mode and the chat mode, plus in council mode whether any provider key is stored, and re-renders on settings init, every changeEngine, every change of the chat mode toggle, clear-keys and every Supabase connection update: each connect attempt, the automatic reconnects after an offline result and the switch to offline after a failed request. In verified source mode every notice says where the question goes: nowhere in on-device mode, and to the knowledge-base search in the other three modes, plus the own server, the cloud provider or, through Starpi's server, NVIDIA together with the matching excerpts and earlier messages of the chat. In free chat each notice says that no sources are searched and what goes to the model: the question, an attached file and earlier messages of this chat, or nothing at all when council mode has no key. NVIDIA mode shows its notice before the proxy has answered; without a proxy nothing goes to NVIDIA, and the status line says status.nvidia_unavailable. Outside on-device mode, a second line, privacy.history_synced, says that questions and answers are saved to the private chat history whenever canSyncChats() is true. The texts do not mention the exceptions: a demo sample question or an offline connection skips the knowledge-base search, and turns that use workspace excerpts or an attached file, like extractive answers that name workspace files, stay in the browser. When chats stay in the browser no line says so; privacy.history_local exists in the dictionaries but no code renders it.
+renderPrivacyNotice() (settings.js) writes one line under the composer for the picked model and the composer's mode, and re-renders when the mode, the assistant, the providers or the sync change. destinationOf() resolves the picker value: `device` (or Auto with only the loaded model), the own server, the companion, a provider with a key, a site pool, or none. Free mode says what goes where without sources; Auto and Grounded say what source mode sends. The companion's line follows the mode control alone (Grounded answers from its documents and notes, Free and Auto from general knowledge). When the encrypted sync is on and the question may leave the browser, a second line says the conversation is also kept in the synced copy; with the companion it says instead that questions to the companion and its answers stay on this device and are not part of the synced copy.
 
 <!-- diagram: modes-privacy-notice -->
 ```mermaid
 flowchart TD
-    Trig(["renderPrivacyNotice() fills the privacyNotice footer<br/>on initSettings, every changeEngine, onChatModeChange,<br/>clear-keys and every Supabase connection update,<br/>reconnect attempts and the switch to offline included"])
-    Mode{"getMode()"}
-    NLocal["client: lock icon<br/>source mode privacy.local: your question<br/>and the model stay on this device<br/>free chat privacy.free_local: the same,<br/>no sources are searched"]
-    NServer["local: server icon, host = new URL(getLlmUrl()).host,<br/>a dash if unparsable<br/>source mode privacy.server: your question goes<br/>to host and to the knowledge-base search<br/>free chat privacy.free_server: question,<br/>attached file and earlier messages go to host"]
-    NNv["nvidia: cloud icon<br/>source mode privacy.nvidia: knowledge-base search,<br/>then question, matching excerpts and earlier messages<br/>through Starpi's server to NVIDIA<br/>free chat privacy.free_nvidia: question, attached file<br/>and earlier messages through Starpi's server to NVIDIA"]
-    Keys{"council: hasGeminiKey()<br/>or hasOpenRouterKey()?"}
-    NCloud["cloud icon<br/>source mode privacy.cloud: knowledge-base search,<br/>and with matching excerpts to your provider<br/>free chat privacy.free_cloud: question, attached file<br/>and earlier messages go to your provider"]
-    NExt["source mode: library icon, privacy.extractive<br/>question goes to the knowledge-base search,<br/>answers quote it directly<br/>free chat: info icon, privacy.free_no_model:<br/>no model is set up, nothing is sent"]
-    SyncChk{"canSyncChats()?<br/>signed in and hardened schema"}
-    Hist["second line privacy.history_synced:<br/>questions and answers are saved to your<br/>private chat history, delete it in Settings"]
-    NoHist["no history line,<br/>privacy.history_local is never rendered"]
-    RLocal["requests: in source mode recentKnowledge(30) unless<br/>offline or a sample question, listDocuments for the<br/>synthesizer, model files when not cached,<br/>none carries the question, chats stay local"]
-    RServer["requests: search_knowledge with the question in source mode<br/>unless offline or a sample question, GET /models<br/>while no model id is known, own server with<br/>question, excerpts or file and shareable history,<br/>chat_history except turns with workspace excerpts,<br/>attached files and extractive answers naming workspace files"]
-    RNv["requests: GET /api/models/nvidia, search_knowledge with<br/>the question in source mode unless offline or a sample question,<br/>POST /api/chat/nvidia with question, excerpts or file<br/>and shareable history when the proxy has keys,<br/>chat_history with the same exceptions"]
-    RCloud["requests: search_knowledge with the question in source mode<br/>unless offline or a sample question, Gemini or OpenRouter<br/>with question and excerpts or file, OpenRouter also history,<br/>Gemini history only in free chat,<br/>chat_history with the same exceptions"]
-    RExt["requests: in source mode search_knowledge with the question<br/>unless offline or a sample question, listDocuments,<br/>chat_history with the same exceptions"]
-
-    Trig --> Mode
-    Mode -->|"client"| NLocal
-    Mode -->|"local"| NServer
-    Mode -->|"nvidia"| NNv
-    Mode -->|"council"| Keys
-    Keys -->|"yes"| NCloud
-    Keys -->|"no"| NExt
-    NLocal --> NoHist
-    NServer --> SyncChk
-    NNv --> SyncChk
-    NCloud --> SyncChk
-    NExt --> SyncChk
-    SyncChk -->|"yes"| Hist
-    SyncChk -->|"no"| NoHist
-    NLocal -.->|"actual requests"| RLocal
-    NServer -.->|"actual requests"| RServer
-    NNv -.->|"actual requests"| RNv
-    NCloud -.->|"actual requests"| RCloud
-    NExt -.->|"actual requests"| RExt
+    render(["renderPrivacyNotice(): on mode, assistant,<br/>providers and sync changes"])
+    dest{"destinationOf(getAssistant())"}
+    free{"mode Free?"}
+    devK["lock: privacy.local / privacy.free_local"]
+    srvK["server: privacy.server / privacy.free_server,<br/>host of the own server"]
+    cmpK["plug: Grounded privacy.companion,<br/>Free and Auto privacy.free_companion"]
+    poolK["cloud: chat-thread.privacy.pool / free_pool,<br/>provider name"]
+    keyK["cloud: chat-thread.privacy.key / free_key,<br/>provider name"]
+    noneK["library: privacy.extractive / privacy.free_no_model"]
+    syncQ{"destination not device and<br/>encrypted sync on?"}
+    synced["second line: chat-thread.privacy.history_synced"]
+    unsynced["companion: chat-thread.privacy.companion_unsynced,<br/>its questions and answers are not synced"]
+    out(["icon and text set with setText, re-translated on a language switch"])
+    render --> dest
+    dest -->|"device"| devK
+    dest -->|"local"| srvK
+    dest -->|"companion"| cmpK
+    dest -->|"pool"| poolK
+    dest -->|"key"| keyK
+    dest -->|"none"| noneK
+    free -.->|"picks the free_ key"| devK
+    devK --> syncQ
+    srvK --> syncQ
+    cmpK --> syncQ
+    poolK --> syncQ
+    keyK --> syncQ
+    noneK --> syncQ
+    syncQ -->|"yes, not companion"| synced --> out
+    syncQ -->|"yes, companion"| unsynced --> out
+    syncQ -->|"no"| out
 ```
 
-<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/locales/en.json`](../src/locales/en.json), [`src/js/main.js`](../src/js/main.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/state.js`](../src/js/state.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/demo.js`](../src/js/demo.js)</sub>
+<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/state.js`](../src/js/state.js), [`src/locales/en.json`](../src/locales/en.json), [`src/locales/chat-thread/en.json`](../src/locales/chat-thread/en.json)</sub>
 
 ### On-device model selection
 
-Both assistant pickers, engineSelector in the header and cfgComputeMode in the settings, offer the on-device presets as values webgpu:key and wasm:key; picking one runs changeEngine, which stores the ref in starpi_webgpu_model (the value auto stays until the user picks a model) and loads the model interactively. normalizePreference keeps auto and known refs, turns a bare 2.0 key such as qwen-3b into webgpu:qwen-3b and any other value into auto. loadModel probes the device with the high-performance adapter and a 10 s deadline and chooseModel resolves the preference: a manual ref always wins, and auto follows recommendModels (device-tier-selector), which picks a processor (WASM) model when there is no WebGPU and never a T3 preset. A WebGPU preset with no WebGPU is not swapped for a processor model: the load fails with the probe's error (unsupported or no-adapter). WebGPU presets load the q4f16_1 build when the adapter has shader-f16, else the q4f32_1 build; T1 presets use a 2,048-token context window, T2 and T3 presets 4,096, phones at most 2,048, and the prefill chunk is 128 on phones, else 512 at 4,096 tokens and 256 below; each answers with up to 512 tokens. WASM models run with a 2,048-token window, a prefill chunk of 256 and up to 384 tokens, need no GPU memory and report none. The approximate download (300 MB to 5.3 GB for the 13 WebGPU presets, 140 to 520 MB for the 3 WASM models, plus 15 MB of ONNX Runtime counted for every WASM download) drives the confirm dialog and the 1.2x quota check, and the WebGPU badge shows WebLLM vram_required_MB for the chosen build (values from the pinned @mlc-ai/web-llm 0.2.85). The same runtime and model id reuse the loaded engine. A model that is certainly not cached is settled before anything is torn down, the WebLLM library is imported or a worker starts: a start-up load resolves false, an interactive one checks the quota, asks (a T3 preset first warns that it needs several GB of GPU memory), and requests persistent storage; a WASM model counts as missing unless its config, tokenizer and weights are all in transformers-cache, and a partly cached WebGPU model gets the same consent after the import. A declined download resolves false, and every error ends in status error with a notice from startLocalEngine unless the load was cancelled.
+Both assistant pickers, engineSelector in the header and cfgComputeMode in the settings, offer the on-device presets as values webgpu:key and wasm:key; picking one runs changeEngine, which stores the ref in starpi_webgpu_model with the picker value `device` (the value auto stays until the user picks a model) and loads the model interactively. normalizePreference keeps auto and known refs, turns a bare 2.0 key such as qwen-3b into webgpu:qwen-3b and any other value into auto. loadModel probes the device with the high-performance adapter and a 10 s deadline and chooseModel resolves the preference: a manual ref always wins, and auto follows recommendModels (device-tier-selector) with the benchmark history, which picks a processor (WASM) model when there is no WebGPU, never a T3 preset, and steps down a rung when the pick measured slow on this device class. A WebGPU preset with no WebGPU is not swapped for a processor model: the load fails with the probe's error (unsupported or no-adapter). WebGPU presets load the q4f16_1 build when the adapter has shader-f16, else the q4f32_1 build; T1 presets use a 2,048-token context window, T2 and T3 presets 4,096, phones at most 2,048, and the prefill chunk is 128 on phones, else 512 at 4,096 tokens and 256 below; a grounded answer keeps the preset's 512 tokens within the device's output budget, and a free answer may use the whole budget (see the last part of this section). WASM models run with a 2,048-token window and a prefill chunk of 256, answer with 384 tokens unless the benchmark measured them faster, need no GPU memory and report none. The approximate download (300 MB to 5.3 GB for the 13 WebGPU presets, 140 to 520 MB for the 3 WASM models, plus 15 MB of ONNX Runtime counted for every WASM download) drives the confirm dialog and the 1.2x quota check, and the WebGPU badge shows WebLLM vram_required_MB for the chosen build (values from the pinned @mlc-ai/web-llm 0.2.85). The same runtime and model id reuse the loaded engine. A cached model's stored files are checked against model-lock.json before a runtime reads them, and new downloads before the model answers (section 5). A model that is certainly not cached is settled before anything is torn down, the WebLLM library is imported or a worker starts: a start-up load resolves false, an interactive one checks the quota, asks (a T3 preset first warns that it needs several GB of GPU memory), and requests persistent storage; a WASM model counts as missing unless its config, tokenizer and weights are all in transformers-cache, and a partly cached WebGPU model gets the same consent after the import. A declined download resolves false, and every error ends in status error with a notice from startLocalEngine unless the load was cancelled.
 
 <!-- diagram: model-selection-choose-model -->
 ```mermaid
 flowchart TD
     Pick["model picker: engineSelector or cfgComputeMode<br/>value webgpu:key or wasm:key,<br/>applied at once, arrow keys after 700 ms of rest<br/>changeEngine: setModelPreference, starpi_webgpu_model,<br/>another model loaded or loading: unloadModel()"]
     Pref["preference = normalizePreference(starpi_webgpu_model)<br/>auto, webgpu:key or wasm:key, a bare 2.0 key<br/>becomes webgpu:key, unknown values become auto"]
-    Start(["startLocalEngine: loadModel with getModelPreference()<br/>mode restore at boot: onlyIfCached, no download<br/>chat answer, benchmark, a pick: interactive"])
+    Start(["startLocalEngine: loadModel with getModelPreference()<br/>and the benchmark history; boot: onlyIfCached, no download;<br/>chat answer, benchmark, a pick: interactive"])
     Probe["probeDevice with the high-performance adapter, 10 s deadline<br/>hw: isMobile, deviceMemoryGB, maxBufferSize, hasF16,<br/>webgpu, maxStorageBufferBindingSize, vendor, architecture<br/>no adapter or no answer: webgpu false, maxBufferSize 0"]
     PrefQ{"chooseModel: preference is auto?"}
-    Auto["ref = recommendModels(hw).local, reason auto<br/>never a T3 preset, a WASM model without WebGPU,<br/>see device-tier-selector"]
+    Auto["ref = recommendModels(hw, history).local, reason auto<br/>never a T3 preset, a WASM model without WebGPU,<br/>a rung lower when measured slow, see device-tier-selector"]
     Manual["ref = preference, reason manual<br/>no hardware check for the ref"]
     Runtime{"ref is wasm:key?"}
-    Wasm["WASM choice: modelId = the Hugging Face repo,<br/>pinned revision, dtype q8, tier t1, f16 false,<br/>vramMB null, context 2048, prefill 256,<br/>maxOutputTokens 384, approxDownloadMB 140 to 520"]
+    Wasm["WASM choice: modelId = the Hugging Face repo,<br/>pinned revision, dtype q8, tier t1, f16 false,<br/>vramMB null, context 2048, prefill 256,<br/>384 tokens unless measured faster, 140 to 520 MB"]
     NoGpu{"WebGPU preset and<br/>the probe found no WebGPU?"}
     Unsup["EngineError from the probe:<br/>unsupported or no-adapter"]
     F16{"hasF16 and webgpu?"}
     Id16["modelId = spec.f16, a q4f16_1 build<br/>e.g. Qwen2.5-3B-Instruct-q4f16_1-MLC"]
     Id32["modelId = spec.f32, a q4f32_1 build<br/>e.g. Qwen2.5-3B-Instruct-q4f32_1-MLC"]
-    Ctx["chatOptions: context_window_size = 2048 for T1,<br/>4096 for T2 and T3, at most 2048 on phones<br/>prefill_chunk_size 128 on phones, else 512<br/>at 4096 and 256 below, maxOutputTokens 512"]
+    Ctx["chatOptions: context_window_size = 2048 for T1,<br/>4096 for T2 and T3, at most 2048 on phones<br/>prefill_chunk_size 128 on phones, else 512<br/>at 4096 and 256 below, preset answers 512 tokens"]
     Same{"engine loaded with the same<br/>runtime and modelId?"}
     Reuse(["reuse it, resolve true"])
     Missing{"WASM: wasmCacheStatus is not full<br/>WebGPU: certainlyNotCached, no tensor-cache.json<br/>for the model in webllm/model"}
     Silent(["resolve false, state unchanged,<br/>no import, no worker"])
     Agree["agreeToDownload: checkQuota needs 1.2 x<br/>approxDownloadMB, plus 15 MB of ONNX Runtime<br/>for WASM, free when the quota is known,<br/>confirmDownload: engine.confirm_large for T3,<br/>engine.confirm_download or confirm_download_wasm,<br/>engine.confirm_save_data with Save-Data,<br/>then navigator.storage.persist, best effort"]
-    LoadW["teardown, status loading, new Worker starpi-wasm,<br/>WasmEngineClient.load, see wasm-runtime-load"]
-    Load["teardown, status loading, import web-llm<br/>modelId not in prebuiltAppConfig: EngineError unknown"]
+    LoadW["teardown, status loading, stored files checked,<br/>new Worker starpi-wasm, WasmEngineClient.load,<br/>new files checked, see wasm-runtime-load"]
+    Load["teardown, status loading, import web-llm<br/>modelId not in prebuiltAppConfig: EngineError unknown,<br/>stored files checked against model-lock.json"]
     Partial{"not certainly missing, but<br/>hasModelInCache false?<br/>index cached, shards missing"}
     Declined(["status idle, resolve false"])
     Create["CreateWebWorkerMLCEngine(worker, modelId,<br/>initProgressCallback, chatOptions)"]
     ReadyW(["status ready, badge engine.ram_ready<br/>with the model label, memory not reported"])
     Ready(["status ready, vramMB = round(record.vram_required_MB)<br/>badge engine.vram_ready: label, f16 or f32,<br/>about vramMB / 1024 GB VRAM<br/>engine.vram_ready_no_size without a size"])
-    Fail(["loadModel catch: teardown, status error, rethrow<br/>startLocalEngine: notice engine.error.kind<br/>unless cancelled, resolves false"])
+    Fail(["loadModel catch: teardown, status error, rethrow<br/>startLocalEngine: notice engine.error.kind<br/>unless cancelled, resolves false;<br/>integrity or unverified: file deleted or refused"])
 
     Pick --> Pref --> Start --> Probe --> PrefQ
     PrefQ -->|"yes"| Auto
@@ -2290,126 +1931,107 @@ flowchart TD
     Create -.->|"network, quota, device-lost,<br/>out-of-memory or other error"| Fail
 ```
 
-<sub>Sources: [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/models/device.js`](../src/js/models/device.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/state.js`](../src/js/state.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/config.js`](../src/js/config.js), [`src/locales/en.json`](../src/locales/en.json), [`package.json`](../package.json)</sub>
+<sub>Sources: [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/models/device.js`](../src/js/models/device.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/state.js`](../src/js/state.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/models/integrity.js`](../src/js/models/integrity.js), [`src/js/models/bench-history.js`](../src/js/models/bench-history.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/config.js`](../src/js/config.js), [`src/locales/en.json`](../src/locales/en.json), [`package.json`](../package.json)</sub>
 
 ### Device tiers and the model pickers
 
-Until the device is known, both pickers show static options: the bare modes council, client (the automatic on-device model), nvidia and local. When the page is idle, model-picker.js calls getDeviceProbe once: it asks for the browser's default adapter, because filling a menu should not wake a discrete GPU, and counts the device as having no WebGPU when no adapter answers within 2.5 s. classifyDevice sorts the device into one of six classes, and recommendModels maps the class to the preset auto resolves to and, on a desktop-pro device, to a larger suggestion that is never picked automatically. auto never picks a T3 preset, because browsers report no GPU memory and navigator.deviceMemory is capped at 8 GB and hidden by Safari and Firefox; without WebGPU it picks a processor (WASM) model by memory. assistantGroups lists every value once, in four groups: Recommended for your device (the auto pick, the pro suggestion and, when the proxy has keys, the NVIDIA default model), In this browser (WebGPU/WASM) with the other WebGPU presets by tier and the WASM models, NVIDIA NIM cloud (fast & free) with the allowlisted models the proxy offers, and Other assistants (the cloud assistant with your own keys, the own server). WebGPU presets are marked needs WebGPU on a device without it and T3 presets needs a strong GPU unless the device is desktop-pro; NVIDIA models are disabled and marked not set up on this server when the proxy has no keys, and without a proxy the group is left out unless a stored NVIDIA model has to stay visible. Each option reads model name, where it runs, download size, recommended or more quality, and a warning; only model names come from the catalogs, everything else is translated. Both pickers are rebuilt with data-ready true and select the stored choice, auto shown as the model it resolves to, and the settings show badges for GPU support, memory and device class; a language switch or a new proxy answer rebuilds them. A pick applies at once through changeEngine, a change made with the arrow keys once they rest for 700 ms, and a switch while an answer is being written is refused. Nothing is downloaded without consent: the first-run mode stays council, and every model download waits for confirmDownload when the model loads.
+Until the device is known, both pickers show the static options of index.html: Auto, On-device (automatic) and Own server. When the page is idle, model-picker.js calls getDeviceProbe once (the browser's default adapter, because filling a menu should not wake a discrete GPU; no adapter within 2.5 s counts as no WebGPU) and reads the benchmark history (a short timeout). classifyDevice sorts the device into one of six classes, and recommendModels maps the class to the preset auto resolves to, stepped down a rung when that preset measured below 8 tokens per second on this device class, and to a larger suggestion: a preset that measured above 20 tokens per second, or the 7B preset on a desktop-pro device. Auto never picks a T3 preset, because browsers report no GPU memory and cap `navigator.deviceMemory` at 8 GB; without WebGPU it picks a processor (WASM) model by memory. assistantGroups lists every value once: Recommended (Auto, the device's pick, the suggestion, and the site's default free model: NVIDIA first, then the other pools), On this device (the WebGPU presets by tier and the processor models), the paired companion (only while paired; a stored choice of an unpaired one stays visible, disabled), Free through the site's pools (only pools with keys, for providers the user has no key for), one group per provider the user has a key for (the snapshot merged with the provider's live model list), and the own server (its first model, then the models it listed). WebGPU presets are marked needs WebGPU on a device without it and T3 presets needs a strong GPU unless the device is desktop-pro. A stored value no group offers stays visible in its group, a pool model the site no longer serves disabled and marked not set up. Both pickers are rebuilt on a language switch, a provider or pool change and a new model list, and a pick applies through changeEngine (after 700 ms of rest for arrow keys; refused while an answer is being written). Nothing is downloaded without consent: a new installation starts with Auto.
 
 <!-- diagram: device-tier-selector -->
 ```mermaid
 flowchart TD
-    Static(["index.html: static options council, client,<br/>nvidia, local, selected by initSettings"])
-    Idle["initModelPicker: requestIdleCallback, at most 2 s"]
-    Probe["getDeviceProbe(): probeDevice with the default adapter,<br/>probed once, no adapter within 2.5 s counts as no WebGPU<br/>hw: isMobile, deviceMemoryGB or null, maxBufferSize, hasF16,<br/>webgpu, maxStorageBufferBindingSize, vendor"]
-    Cat["getNvidiaCatalog(): pending until the proxy answers,<br/>then absent, unconfigured or configured"]
+    Static(["index.html: static options auto, device, local:*"])
+    Idle["initModelPicker: when the page is idle"]
+    Probe["getDeviceProbe(): default adapter, once,<br/>no adapter within 2.5 s counts as no WebGPU"]
+    Hist["benchmark history, short timeout:<br/>median tok/s per preset and device class"]
+    State["providerState(): keys, site pools and their models,<br/>own server and its models, companion paired"]
     Static --> Idle
     Idle --> Probe
-    Idle --> Cat
+    Idle --> Hist
+    Idle --> State
 
     Cls{"classifyDevice(hw)"}
     CPU["cpu-only: no WebGPU"]
-    MOB["mobile: phone or tablet"]
-    LOW["low: maxBufferSize under 1 GiB<br/>or deviceMemory under 8 GB"]
-    PRO["desktop-pro: shader-f16,<br/>maxStorageBufferBindingSize at least 1 GiB,<br/>vendor apple, nvidia or amd"]
+    MOB["mobile"]
+    LOW["low: buffer under 1 GiB<br/>or memory under 8 GB"]
+    PRO["desktop-pro: strong GPU"]
     LAP["laptop: memory hidden"]
-    DESK["desktop: memory reported, 8 GB or more"]
+    DESK["desktop: memory 8 GB or more"]
     Probe --> Cls
-    Cls -->|"webgpu false"| CPU
-    Cls -->|"isMobile"| MOB
-    Cls -->|"small buffer or memory"| LOW
-    Cls -->|"strong GPU"| PRO
-    Cls -->|"deviceMemory null"| LAP
-    Cls -->|"otherwise"| DESK
+    Cls --> CPU
+    Cls --> MOB
+    Cls --> LOW
+    Cls --> PRO
+    Cls --> LAP
+    Cls --> DESK
 
-    Rec["recommendModels: local = what auto picks, never T3<br/>cpu-only: wasm:smollm2-135m under 2 GB,<br/>wasm:smollm2-360m on phones or under 4 GB, else wasm:qwen-0.5b<br/>mobile and low: webgpu:llama-1b<br/>laptop, desktop, desktop-pro: webgpu:qwen-1.5b with memory<br/>hidden, else webgpu:qwen-3b<br/>pro = webgpu:qwen-7b on desktop-pro only, a suggestion"]
+    Rec["recommendModels(hw, history): local = auto pick, never T3<br/>cpu-only: wasm smollm2-135m, smollm2-360m or qwen-0.5b by memory<br/>mobile and low: webgpu llama-1b<br/>others: qwen-1.5b with memory hidden, else qwen-3b<br/>measured under 8 tok/s: one rung lower, again while slow<br/>suggestion: largest preset above 20 tok/s, or qwen-7b on desktop-pro"]
     CPU --> Rec
     MOB --> Rec
     LOW --> Rec
     PRO --> Rec
     LAP --> Rec
     DESK --> Rec
+    Hist --> Rec
 
-    Groups["assistantGroups(hw, nvidiaStatus): every value once<br/>1 Recommended for your device: auto pick marked recommended,<br/>pro pick marked more quality, NVIDIA default when configured<br/>2 In this browser (WebGPU/WASM): the 13 WebGPU presets<br/>T1 to T3 and the 3 WASM models, the promoted ones removed<br/>3 NVIDIA NIM cloud (fast and free): offered models in catalog order<br/>4 Other assistants: cloud assistant, own server"]
-    Warn["warnings: needs WebGPU on cpu-only,<br/>needs a strong GPU for T3 unless desktop-pro,<br/>not set up on this server: NVIDIA model disabled"]
-    NvState{"NVIDIA status"}
-    NvHide["absent, no proxy: group left out,<br/>only a stored NVIDIA model stays, disabled"]
-    NvOff["unconfigured: offered models disabled"]
-    NvOn["configured: offered models enabled,<br/>default promoted to Recommended"]
+    Groups["assistantGroups(state): every value once<br/>1 Recommended: Auto, the pick, the suggestion, the site's default free model<br/>2 On this device: WebGPU presets T1 to T3, processor models<br/>3 Companion: only while paired, a stored unpaired choice disabled<br/>4 Free (via Starpi): pools with keys, providers without a user key<br/>5 one group per provider with a key: snapshot plus live list<br/>6 Own server: first model, then its listed models"]
+    Warn["warnings: needs WebGPU on cpu-only,<br/>needs a strong GPU for T3 unless desktop-pro,<br/>a stored pool model no longer served: not set up"]
     Rec --> Groups
-    Cat --> NvState
-    NvState -->|"pending"| NvPend["pending: only a stored NVIDIA model, enabled"] --> Groups
-    NvState -->|"absent"| NvHide --> Groups
-    NvState -->|"unconfigured"| NvOff --> Groups
-    NvState -->|"configured"| NvOn --> Groups
+    State --> Groups
     Warn -.- Groups
 
-    Render["renderModelPickers: engineSelector and cfgComputeMode<br/>rebuilt as optgroups, data-ready true,<br/>option text: name, where it runs, download size,<br/>recommendation, warning, joined by middle dots<br/>value = choiceValue: auto shown as its recommendation<br/>settings badges: GPU support, memory, device class"]
+    Render["renderModelPickers: engineSelector and cfgComputeMode,<br/>optgroups, auto shown as its pick,<br/>settings badges: GPU support, memory, device class"]
     Groups --> Render
-    Again["rebuilt on a language switch and on every new<br/>catalog, a mode change only moves the selection"]
+    Again["rebuilt on a language switch, provider, pool<br/>or model list changes"]
     Again -.-> Render
-
     PickQ{"user picks a value"}
     Render --> PickQ
     PickQ -->|"mouse or touch"| CE
-    PickQ -->|"arrow keys"| Settle["applied after 700 ms of rest,<br/>on Enter or on blur"] --> CE
-    CE["changeEngine(value, interactive true)<br/>refused with models.switch_busy while<br/>an answer is being written"]
-    CE --> Load{"on-device model and<br/>not cached?"}
-    Load -->|"yes"| Consent(["confirmDownload before any download,<br/>declined: nothing downloaded"])
-    Load -->|"no"| Use(["model loaded from the cache,<br/>or NVIDIA, cloud or own server used"])
-    First["first run: mode council, no model loaded<br/>or downloaded until the user picks one"]
-    First -.-> Static
+    PickQ -->|"arrow keys"| Settle["after 700 ms of rest, on Enter or on blur"] --> CE
+    CE["changeEngine(value, interactive true),<br/>refused while an answer is being written"]
+    CE --> Load{"on-device model, not cached?"}
+    Load -->|"yes"| Consent(["confirmDownload before any download"])
+    Load -->|"no"| Use(["loaded from the cache, or a provider,<br/>pool, own server or companion used"])
 ```
 
-<sub>Sources: [`src/js/models/device.js`](../src/js/models/device.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/state.js`](../src/js/state.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/models/device.js`](../src/js/models/device.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/models/bench-history.js`](../src/js/models/bench-history.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/ai/catalog/pools.js`](../src/js/ai/catalog/pools.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/settings.js`](../src/js/settings.js), [`src/index.html`](../src/index.html)</sub>
 
-### On-device prompt budgeting
+### Context packs and the output budget of models on this device
 
-budgetPrompt reserves the answer's output tokens (in source mode the model's maxOutputTokens: 512 for a WebGPU preset, 384 for a WASM model) plus 128 tokens of chat-template overhead and converts the rest of the context window to characters at 3 chars per token (for a WebGPU preset 4224 chars in a 2048 window, 10368 in 4096). It trims in a fixed order: system instructions up to 15% (594 en or 623 de chars, never cut), the question up to 35% of what is left, the retrieved context up to 80% of what is left, then history from the newest message backwards, each capped at 600 chars, until one no longer fits. The on-device model gets the last 4 history messages, on-device turns included. The budgeted instructions plus contextSection, whose header is not counted, form one system message, followed by the kept history and the question, generated with the reserved max tokens at temperature 0.2. Free chat uses the same budget with chatInstructions, the attached file's text in place of the excerpts (fenced with attachmentSection after budgeting), the last 16 history messages at up to 2,000 chars each and temperature 0.7; on WebGPU it reserves a third of the context window for the answer, at most 768 tokens, while WASM models keep 384. Cutting the context can remove closing excerpt fences; the budgeted context is returned as deliveredContext, so the source check marks cut excerpts partial and dropped ones omitted. A model that is not ready or an empty answer falls back to the extractive synthesizer, and an error does too after a chat.provider_failed notice.
+A model on this device answers within an output budget per device class (models/device.js OUTPUT_BUDGETS): 512 tokens without WebGPU and on phones, 768 on small GPUs (class low), 1,024 on laptops, 2,048 on desktops and strong GPUs, always at most half the model's context window, so the conversation keeps the other half. A processor (WASM) model keeps 384 tokens unless the benchmark measured it faster on this device: then it may fill a minute of decoding, in steps of 64 tokens, up to the class's budget. answerTokens() gives a free answer the whole budget and a grounded answer the preset's 512 tokens within it (localAnswerTokens reads the measured rate first, with a 300 ms limit). A smaller budget of 1,024 tokens for free answers on strong GPUs was considered for 3.0 and not adopted: the half-window cap already keeps half the context for the conversation. A grounded or mixed question to a model on this device always gets a context pack (ai/context-pack.js usesPack): the pack's size follows the model's window (a T1 preset's 2,048 tokens gives the small pack: 3 passages of 600 characters; 4,096 still counts as small), the instruction is fixed per mode and language, and packMessages() keeps the earlier turns from the newest backwards while they fit, each cut to 600 characters in a small pack (2,400 otherwise), dropping a leading answer. The pack's coverage tells the source check which passages reached the model in full, cut or not at all. A free question goes as the thread builds it: the history trimmed to the window, and the adapter caps the answer at the budget. The engine streams in its worker; Stop interrupts it, and an answer that is not ready, empty or fails falls back like any other model (the grounded route quotes the sources).
 
 <!-- diagram: model-selection-prompt-budget -->
 ```mermaid
 flowchart TD
-    In(["answerWithLocalModel"])
-    Ready{"engine.isReady(), or startLocalEngine<br/>interactive resolves true,<br/>model set and not aborted?"}
-    Null(["return null: submitChat uses synthesizeAnswer"])
-    Inputs["budgetPrompt input, source mode<br/>contextWindow = model.chatOptions.context_window_size<br/>maxOutputTokens = model maxOutputTokens: 512 WebGPU, 384 WASM<br/>system = buildInstructions(locale, local): identity + 4 rules<br/>context = buildContext excerpts, max 9000 chars<br/>history = last 4 history messages, user = the question"]
-    FreeIn["free chat instead: system = chatInstructions,<br/>context = the attached file text, history = last 16 messages,<br/>turnChars 2000, maxOutputTokens min(768, window / 3)<br/>on WebGPU, 384 on WASM, temperature 0.7"]
-    Reserve["reserveTokens = maxOutputTokens + 128 chat template overhead,<br/>640 for a WebGPU preset in source mode"]
-    Budget["remaining = max(256, contextWindow - 640) x 3 chars per token<br/>2048 window: 4224 chars, 4096 window: 10368 chars"]
-    Take["take(text, max): allowed = min(max, remaining)<br/>longer text keeps allowed - 1 chars + ellipsis<br/>remaining shrinks by the kept length"]
-    S1["Step 1 system: at most 15% of remaining, 633 or 1555<br/>594 en or 623 de chars, never cut"]
-    S2["Step 2 user question: at most 35% of what is left<br/>en: 1270 chars in a 2048 window, 3420 in a 4096 window"]
-    S3["Step 3 context: at most 80% of what is left<br/>en after a question of that length: 1888 or 5083 chars<br/>keeps the start: attached file and workspace excerpts<br/>come first, later excerpts and closing fences are cut"]
-    S4["Step 4 history, newest message first<br/>each capped at 600 chars, 599 + ellipsis<br/>en, 2048 window, long question and context: 472 chars left"]
-    Fits{"message fits in remaining?"}
-    Keep["unshift the message,<br/>remaining shrinks by its length"]
-    More{"older message left?"}
-    Drop["stop: this message and all<br/>older ones are dropped"]
-    Sys["system message = budget.system + blank line +<br/>contextSection(locale, budget.context):<br/>header line + context, or the no matching excerpts line,<br/>in free chat attachmentSection with the file name<br/>header and blank line are not counted in the budget"]
-    Msgs["messages: system, then budget.history<br/>in chronological order, then user budget.user"]
-    Gen["engine.generate: the reserved maxTokens,<br/>temperature 0.2, 0.7 in free chat, stream<br/>in starpi-webllm or starpi-wasm<br/>deltas go to createStreamingMessage<br/>Stop calls engine.interrupt()"]
-    Out{"non-empty text?"}
-    Done(["finalize the bubble with citations and trace<br/>answer engine client or wasm, model id, rendered,<br/>element, deliveredContext = budget.context<br/>for the source check"])
-    Fallback(["empty: stream.remove, null<br/>throws: stream.remove, note chat.note_local_failed,<br/>chat.provider_failed notice<br/>submitChat uses synthesizeAnswer"])
-
-    In --> Ready
-    Ready -->|"no"| Null
-    Ready -->|"yes"| Inputs --> Reserve --> Budget
-    FreeIn -.->|"replaces in free chat"| Inputs --> S1 --> S2 --> S3 --> S4 --> Fits
-    Take -.->|"applies to"| S1
-    Take -.->|"applies to"| S2
-    Take -.->|"applies to"| S3
-    Fits -->|"yes"| Keep --> More
-    More -->|"yes"| Fits
-    More -->|"no"| Sys
-    Fits -->|"no"| Drop --> Sys
-    Sys --> Msgs --> Gen --> Out
-    Out -->|"yes"| Done
-    Out -->|"no, or generate throws"| Fallback
+    q(["question to a model on this device"])
+    cls["device class of the loaded model"]
+    table["OUTPUT_BUDGETS: cpu-only 512, mobile 512, low 768,<br/>laptop 1,024, desktop 2,048, desktop-pro 2,048"]
+    rt{"runtime?"}
+    wasmQ{"processor model measured?"}
+    w384["384 tokens"]
+    wFast["measured tok/s x 60 s, in steps of 64,<br/>at least 384, at most the class budget"]
+    webgpu["the class budget"]
+    half["at most half the context window"]
+    route{"route?"}
+    freeB["free: the whole budget<br/>(the adapter caps the answer)"]
+    groundB["grounded: min(preset 512, budget)"]
+    pack["context pack: size by the window (2,048 and 4,096: small,<br/>3 passages of 600 chars), fixed instruction,<br/>SOURCES block with the question"]
+    turns["packMessages: earlier turns newest first while they fit,<br/>600 chars each in a small pack, 2,400 otherwise"]
+    hist["free: thread's history trimmed to the window"]
+    gen["engine.generate in starpi-webllm or starpi-wasm,<br/>Stop: interrupt()"]
+    cov["coverage per passage for the source check"]
+    q --> cls --> table --> rt
+    rt -->|"wasm"| wasmQ
+    wasmQ -->|"no"| w384 --> half
+    wasmQ -->|"yes"| wFast --> half
+    rt -->|"webgpu"| webgpu --> half
+    half --> route
+    route -->|"free"| freeB --> hist --> gen
+    route -->|"grounded or mixed"| groundB --> pack --> turns --> gen
+    pack -.-> cov
 ```
 
-<sub>Sources: [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/config.js`](../src/js/config.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/messages.js`](../src/js/messages.js)</sub>
+<sub>Sources: [`src/js/models/device.js`](../src/js/models/device.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/models/bench-rates.js`](../src/js/models/bench-rates.js), [`src/js/ai/adapters/on-device.js`](../src/js/ai/adapters/on-device.js), [`src/js/ai/context-pack.js`](../src/js/ai/context-pack.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js)</sub>
 
 ## 4. On-device workspace and citations
 

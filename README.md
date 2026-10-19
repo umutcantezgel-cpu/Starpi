@@ -396,96 +396,54 @@ optional sync encrypts them in the browser before anything is stored
 <!-- diagram: modes-privacy-data-egress -->
 ```mermaid
 flowchart TD
-    Ask(["submitChat: question trimmed to 8000 chars<br/>mode = getMode(), stored in starpi_compute_mode<br/>chat mode: grounded for quick prompts and sample<br/>questions, else starpi_chat_mode"])
-    CMode{"chat mode?"}
-    UserTurn{"storeQuestion, question localOnly?<br/>client mode, a file attached,<br/>or any used excerpt from the workspace"}
-    Skip{"demo sample question,<br/>or connection offline?"}
-    RetMode{"retrieve(): mode is client?"}
-    Ctx["mergeHits + assignCitations + buildContext<br/>at most 6 hits, 9 with an attachment, both sources keep slots<br/>excerpt max 1600 chars, context max 9000 chars<br/>a greeting-only message uses no excerpts"]
-    Dispatch{"answer path by mode"}
-    CKeys{"hasGeminiKey()?<br/>else hasOpenRouterKey()?"}
-    Abort(["Stop pressed before a rendered answer:<br/>error to the submitChat catch,<br/>answer not shown or persisted"])
-    Persist{"answer localOnly?<br/>client mode, a file in free chat,<br/>any used excerpt from the workspace,<br/>or a synthesizer answer naming a workspace file"}
-    Sync{"not localOnly: canSyncChats()?<br/>signed in and hardened schema"}
-
+    ask(["question with the picked model and the composer's mode"])
+    who{"who answers?"}
     subgraph dev["Stays in this browser"]
-        WsSearch["retrieveWorkspace: BM25 in the ingest worker, source mode<br/>an attached file pins up to 3 chunks<br/>worker error: no workspace hits"]
-        FreeCtx["free chat: no search, the attached file's text<br/>from the ingest worker, up to 12000 chars"]
-        Keys[("provider keys<br/>ai/keys.js: sessionStorage,<br/>or the unlocked key vault")]
-        Hist["shareableHistory: turns not marked localOnly,<br/>last 4 in source mode,<br/>16 turns and 24000 chars in free chat"]
-        LGen["client: WebLLM worker on WebGPU or WASM worker<br/>on the processor, budgeted excerpts or file text,<br/>history and question stay in the browser"]
-        Synth["source mode: synthesizeAnswer, extractive quotes<br/>with citation labels, no model<br/>free chat: a notice, no answer"]
-        Check["source check and receipt draft, source mode only,<br/>for every engine, in memory only"]
-        LS[("localStorage<br/>starpi_local_chats_v1")]
+        dWorker["starpi-webllm or starpi-wasm: system, excerpts<br/>or attachments, history and question in the worker"]
+        dLib["library: query vector made here,<br/>else 30 newest documents without the question"]
+        dNo["no web search, no cloud tools, no title request"]
+        quote["synthesizeAnswer: quotes the excerpts,<br/>no model"]
     end
-
     subgraph net["Sent over the network"]
-        FTS["Supabase rpc search_knowledge<br/>question as query_text, first 1000 chars<br/>match_count 6"]
-        Recent["Supabase recentKnowledge(30)<br/>30 newest documents, question not sent<br/>rankHitsLocally in the browser"]
-        Gem["council: Gemini gemini-2.5-flash generateContent<br/>source mode: one user part, system + excerpts incl. workspace<br/>+ question, no chat history<br/>free chat: system with the attached file, history, question"]
-        OR["council: OpenRouter chat/completions<br/>system + excerpts incl. workspace or the attached file<br/>+ shareable history + question"]
-        Srv["local: own server getLlmUrl()/chat/completions<br/>system + excerpts incl. workspace or the attached file<br/>+ shareable history + question, no key<br/>GET /models first while no model id is known"]
-        NvCat["nvidia: GET /api/models/nvidia on the app's origin,<br/>the offered models, no user text"]
-        NV["nvidia: POST /api/chat/nvidia on the app's origin, no key,<br/>system + excerpts incl. workspace or the attached file<br/>+ shareable history + question, fitted to the proxy limits,<br/>Starpi's proxy forwards it with a pooled key to NVIDIA"]
-        HF["model files only when not cached, after a confirm, no user text:<br/>huggingface.co WebGPU weights and pinned WASM files,<br/>raw.githubusercontent.com model library,<br/>ONNX Runtime binary from the app's /assets"]
-        Titles["Supabase listDocuments, no question sent<br/>skipped while offline, titles cached 60 s"]
-        CH[("Supabase chat_history insert")]
+        prov["provider with the user's key: direct (Anthropic,<br/>OpenAI, Gemini, OpenRouter) or through the relay<br/>(xAI, Groq, Mistral, DeepSeek, NVIDIA key)"]
+        pool["site pool: text and images, no tools,<br/>allowlisted model, site key"]
+        srv["own server: direct, https or loopback http"]
+        comp["companion: bare question, mode, data class,<br/>loopback; answer arrives gated"]
+        lib["Supabase search_knowledge: the question,<br/>first 1,000 chars"]
+        web["search API or the provider's web search:<br/>the query, not for device-only questions"]
+        hf["model files after a confirmation: Hugging Face,<br/>raw.githubusercontent.com, ONNX Runtime from /assets"]
     end
+    grounded{"grounded or mixed route?"}
+    gPayload["excerpts + last 4 shareable turns + question"]
+    fPayload["shareable history + question + attachments"]
+    hist["shareable(): local-only turns and their questions<br/>never go to a model not on this device"]
+    saved[("IndexedDB: localOnly turns stay;<br/>encrypted sync takes the others only")]
 
-    Ask --> CMode
-    CMode -->|"grounded"| WsSearch --> Skip
-    CMode -->|"free"| FreeCtx
-    Skip -->|"yes: no Supabase search"| Ctx
-    Skip -->|"no"| RetMode
-    RetMode -->|"no, council, local or nvidia"| FTS
-    RetMode -->|"yes"| Recent
-    FTS -->|"rows found"| Ctx
-    FTS -.->|"zero rows or error"| Recent
-    Recent -->|"ranked hits, none if it fails"| Ctx
-    WsSearch -->|"workspace excerpts"| Ctx
-    Ctx -->|"after retrieval and the greeting check,<br/>before assignCitations"| UserTurn
-    FreeCtx -->|"at once"| UserTurn
-    Ask -.->|"turn throws before that:<br/>catch runs storeQuestion(false)"| UserTurn
-    UserTurn -->|"yes"| LS
-    UserTurn -->|"no"| Sync
-    Ctx --> Dispatch
-    FreeCtx --> Dispatch
-    Dispatch -->|"council"| CKeys
-    Dispatch -->|"client"| LGen
-    Dispatch -->|"local"| Srv
-    Dispatch -->|"nvidia"| NvCat
-    NvCat -->|"proxy with keys"| NV
-    NvCat -.->|"no proxy or no keys"| Synth
-    CKeys -->|"Gemini key"| Gem
-    CKeys -->|"only OpenRouter key"| OR
-    CKeys -->|"no key"| Synth
-    Gem -.->|"fails, OpenRouter key set"| OR
-    Gem -.->|"fails, no OpenRouter key"| Synth
-    OR -.->|"all attempts fail,<br/>or HTTP 401 or 403"| Synth
-    NV -.->|"error code or timeout<br/>without answer text"| Synth
-    Hist -.->|"history"| OR
-    Hist -.->|"history"| Srv
-    Hist -.->|"history"| NV
-    Hist -.->|"free chat only"| Gem
-    HF -.->|"only when not cached"| LGen
-    LGen -.->|"not loaded, declined,<br/>empty or throws"| Synth
-    Srv -.->|"throws, not aborted"| Synth
-    Keys -.->|"Gemini key only,<br/>x-goog-api-key header"| Gem
-    Keys -.->|"OpenRouter key only,<br/>Authorization Bearer"| OR
-    Synth -.->|"known titles, source mode"| Titles
-    Dispatch -.->|"user abort"| Abort
-    Dispatch -.->|"answer with citations,<br/>same session"| Check
-    Gem --> Persist
-    OR --> Persist
-    LGen --> Persist
-    Srv --> Persist
-    NV --> Persist
-    Synth --> Persist
-    Persist -->|"yes"| LS
-    Persist -->|"no"| Sync
-    Sync -->|"yes"| CH
-    Sync -->|"no"| LS
-    CH -.->|"insert fails"| LS
+    ask --> who
+    who -->|"model on this device"| dWorker
+    dWorker -.-> dLib
+    dWorker -.-> dNo
+    dWorker -.->|"not cached, after a confirmation"| hf
+    who -->|"provider with a key"| grounded
+    who -->|"site pool"| grounded
+    who -->|"own server"| grounded
+    who -->|"companion"| comp
+    who -->|"no model or a failure, grounded"| quote
+    grounded -->|"yes"| gPayload --> lib
+    grounded -->|"no"| fPayload
+    gPayload --> hist
+    fPayload --> hist
+    hist --> prov
+    hist --> pool
+    hist --> srv
+    fPayload -.->|"Web toggle"| web
+    quote -.->|"question to the library search"| lib
+    dWorker --> saved
+    prov --> saved
+    pool --> saved
+    srv --> saved
+    comp --> saved
+    quote --> saved
 ```
 
 </details>
