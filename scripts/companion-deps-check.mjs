@@ -145,11 +145,12 @@ export function specifiersOf(src) {
   const lineAt = (/** @type {number} */ index) => code.slice(0, index).split('\n').length;
   /** @type {Array<{ spec: string, line: number }>} */
   const specifiers = [];
+  // A member call such as `ObjC.import("…")` (inside an automation script string) is not a module import.
   const patterns = [
-    /\bimport\s*(?:[\w$*{}\s,]+?\s*from\s*)?(['"])([^'"\n]+)\1/g,
-    /\bexport\s*(?:\*(?:\s+as\s+[\w$]+)?|\{[^}]*\})\s*from\s*(['"])([^'"\n]+)\1/g,
-    /\bimport\s*\(\s*(['"])([^'"\n]+)\1\s*[,)]/g,
-    /\brequire\s*\(\s*(['"])([^'"\n]+)\1\s*\)/g,
+    /(?<![.$])\bimport\s*(?:[\w$*{}\s,]+?\s*from\s*)?(['"])([^'"\n]+)\1/g,
+    /(?<![.$])\bexport\s*(?:\*(?:\s+as\s+[\w$]+)?|\{[^}]*\})\s*from\s*(['"])([^'"\n]+)\1/g,
+    /(?<![.$])\bimport\s*\(\s*(['"])([^'"\n]+)\1\s*[,)]/g,
+    /(?<![.$])\brequire\s*\(\s*(['"])([^'"\n]+)\1\s*\)/g,
   ];
   const seen = new Set();
   for (const pattern of patterns) {
@@ -173,7 +174,7 @@ export function specifiersOf(src) {
   }
   /** @type {number[]} */
   const computed = [];
-  for (const match of code.matchAll(/\b(?:import|require)\s*\(\s*(?!['"])/g)) computed.push(lineAt(match.index ?? 0));
+  for (const match of code.matchAll(/(?<![.$])\b(?:import|require)\s*\(\s*(?!['"])/g)) computed.push(lineAt(match.index ?? 0));
   for (const match of code.matchAll(/\bgetBuiltinModule\b/g)) {
     const at = match.index ?? 0;
     if (!calls.some(([start, end]) => at >= start && at < end)) computed.push(lineAt(at));

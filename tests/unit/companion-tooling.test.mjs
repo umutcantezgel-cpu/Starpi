@@ -89,6 +89,17 @@ describe('companion dependency check', () => {
     assert.deepEqual(computed, [1, 2, 3, 4]);
   });
 
+  it('does not read a member call named import or require as a module import', () => {
+    const src = [
+      "const script = 'function run() { ObjC.import(\"Cocoa\"); }';",
+      "loader.require('left-pad');",
+      'obj.import(dynamicName);',
+    ].join('\n');
+    const { specifiers, computed } = specifiersOf(src);
+    assert.deepEqual(specifiers, []);
+    assert.deepEqual(computed, []);
+  });
+
   it('reports every rule', () => {
     const root = fakePackage('bad', {
       'src/a.js': "import fs from 'fs';\nimport x from 'left-pad';\nimport y from '../../outside.js';\nimport cp from 'node:child_process';\nimport z from 'node:nothing';\nconst m = import(dynamicName);\n",
