@@ -2539,7 +2539,10 @@ export async function exportData() {
  * code is 'stays_on_device'). The companion is asked as the thread asks it: the bare question in its
  * conversation, in sources mode for a grounded question and free otherwise, as `sensitive` when the
  * question was asked to stay here for what it holds (see answerCompanion).
- * @param {{ conversationId: string, questionId?: string, text?: string, parentId?: string | null, localOnly?: boolean }} input
+ * A new question that stays here only because the companion and the own server answer it (no
+ * model of this device) is marked kept_for_companion (`forCompanion`), so the companion gets it
+ * with its own class, as in the thread.
+ * @param {{ conversationId: string, questionId?: string, text?: string, parentId?: string | null, localOnly?: boolean, forCompanion?: boolean }} input
  * @returns {Promise<PreparedQuestion>}
  */
 export async function prepareQuestion(input) {
@@ -2574,7 +2577,7 @@ export async function prepareQuestion(input) {
       usage: null,
       localOnly: input.localOnly === true,
       createdAt: Date.now(),
-      meta: { chat_mode: 'free', context },
+      meta: { chat_mode: 'free', context, ...(input.localOnly === true && input.forCompanion === true ? { kept_for_companion: true } : {}) },
     };
     path = [...(parentId ? pathTo(tree, parentId) : []), question];
   }

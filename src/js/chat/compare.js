@@ -419,8 +419,9 @@ export async function runCompare() {
     state.prepared = await thread.prepareQuestion(
       state.questionId
         ? { conversationId: state.conversationId, questionId: state.questionId }
-        : // A new question stays on this device when only models here answer it.
-          { conversationId: state.conversationId, text: state.text, localOnly: targets.every(onDevice) },
+        : // A new question stays on this device when only models here answer it (asked of the
+          // companion and the own server only, the companion gets it with its own class).
+          { conversationId: state.conversationId, text: state.text, localOnly: targets.every(onDevice), forCompanion: targets.some((tg) => tg?.route === 'companion') && !targets.some((tg) => tg?.route === 'device') },
     );
   } catch (err) {
     console.warn('[starpi] the comparison could not start', err);
