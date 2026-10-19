@@ -4,7 +4,8 @@
 // to the file's citation before the source check, which passes), and a question it matches weakly
 // gets a mixed answer with its checked parts marked. Every answer carries its label. Without a file
 // or a library document, a question that names files stays free; with one, a how-to question about
-// files stays free and a reference to the user's notes goes to the sources.
+// files stays free and a reference to the user's notes goes to the sources. A library that could
+// not be listed (while the connection is up) is not taken for an empty one.
 import { expect, mockSupabase, sseBody, storedChatNodes, test } from './fixtures.mjs';
 
 const FAKES = Number(process.env.STARPI_FAKES_PORT || 4610);
@@ -118,6 +119,37 @@ test.describe('Auto routing', () => {
     const nodes = (await storedChatNodes(page)).filter((/** @type {any} */ n) => n.role === 'assistant');
     expect(nodes.map((/** @type {any} */ n) => n.label)).toEqual(['free', 'free', 'free', 'grounded']);
     expect(nodes[3].meta.route_reasons).toEqual(['reference']);
+  });
+
+  test('does not take a library that could not be listed for an empty one', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    // The connection is up, but listing the documents fails.
+    await page.route(/^https:\/\/[a-z0-9]+\.supabase\.co\/rest\/v1\/knowledge_documents/, (route) => {
+      const req = route.request();
+      if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { ...CORS, 'access-control-allow-methods': '*' } });
+      if ((new URL(req.url()).searchParams.get('select') ?? '').includes('is_public')) return route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: '[]' });
+      return route.fulfill({ status: 500, contentType: 'application/json', headers: CORS, body: '{"code":"XX000","message":"listing failed"}' });
+    });
+    await page.addInitScript(
+      ([url]) => {
+        if (sessionStorage.getItem('e2e_seeded')) return;
+        sessionStorage.setItem('e2e_seeded', '1');
+        localStorage.setItem('starpi_llm_url', url);
+        localStorage.setItem('starpi_assistant_v1', 'local:*');
+        localStorage.setItem('starpi_chat_mode', 'auto');
+      },
+      [SERVER],
+    );
+    await page.goto('/');
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
+    // No file here and no listed document: a reference to the user's documents still goes to the
+    // sources, as the library may hold them.
+    await ask(page, 'Summarize my notes, please.');
+    await settled(page);
+    const answer = /** @type {any} */ ((await storedChatNodes(page)).filter((n) => n.role === 'assistant').at(-1));
+    expect(answer.meta.chat_mode).toBe('grounded');
+    expect(answer.meta.route_reasons).toContain('reference');
+    diagnostics.splice(0, diagnostics.length, ...diagnostics.filter((d) => !/status of 500/.test(d)));
   });
 
   test('answers freely without a match, from the workspace file through a context pack on a strong match, and mixed on a weak one', async ({ page, diagnostics: _diagnostics }) => {

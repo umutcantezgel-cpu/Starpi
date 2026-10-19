@@ -9,7 +9,7 @@
 // on the chat tools it names. No page error, the sidebar passes axe.
 import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, mockSupabase, test } from './fixtures.mjs';
+import { expect, mockSupabase, storedChatNodes, test } from './fixtures.mjs';
 
 const FAKES = Number(process.env.STARPI_FAKES_PORT || 4610);
 const ANTHROPIC_FAKE = `http://127.0.0.1:${FAKES + 2}`;
@@ -170,6 +170,19 @@ test.describe('projects, memory and assistants', () => {
     await ask(page, 'Which risks are rated high?');
     await settled(page);
     expect(systemOf(chats.at(-1))).toContain('[Doc: nebula-risks.csv');
+
+    // Auto in the project: a file outside it is no reference (only the project's files are named
+    // and probed); in a chat outside the project it is.
+    const newest = async () => /** @type {any} */ ((await storedChatNodes(page)).filter((n) => n.role === 'assistant').at(-1));
+    await page.click('[data-action="set-chat-mode"][data-arg="auto"]');
+    await ask(page, 'What does nebula-plan.md say about the launch?');
+    await settled(page);
+    expect((await newest()).meta.route_reasons ?? []).not.toContain('reference');
+    expect(systemOf(chats.at(-1))).not.toContain('nebula-plan.md');
+    await page.click('#chat-sidebar [data-action="new-chat"]');
+    await ask(page, 'What does nebula-plan.md say about the launch?');
+    await settled(page);
+    expect((await newest()).meta.route_reasons).toContain('reference');
   });
 
   test('memory stays off until switched on; then saved notes go along in the turn', async ({ page, diagnostics: _diagnostics }) => {
