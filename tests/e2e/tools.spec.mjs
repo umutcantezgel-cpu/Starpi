@@ -129,9 +129,8 @@ test.describe('tools', () => {
     expect(diagnostics).toEqual([]);
   });
 
-  test('with Web on, a model without a search of its own gets the search results in its turn', async ({ page, request, diagnostics }) => {
+  test('with Web on, a model without a search of its own gets the search results in its turn', async ({ page, diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
-    await request.post(`${OPENAI_FAKE}/__fake/reset`);
     await page.addInitScript(
       ([server, search]) => {
         if (sessionStorage.getItem('e2e_seeded')) return;
@@ -144,13 +143,18 @@ test.describe('tools', () => {
       },
       [SERVER, SEARCH_FAKE],
     );
+    // The requests of this page (the fake's own log is shared with the other workers).
+    /** @type {any[]} */
+    const sent = [];
+    page.on('request', (req) => {
+      if (req.method() === 'POST' && /\/chat\/completions$/.test(new URL(req.url()).pathname)) sent.push(JSON.parse(req.postData() ?? '{}'));
+    });
     await page.goto('/');
     await ask(page, 'How do tides work?');
     await expect(page.locator('#stopBtn')).toBeHidden();
     await expect(answers(page).last()).toHaveAttribute('data-node-id', /.+/);
-    const recorded = await (await request.get(`${OPENAI_FAKE}/__fake/requests`)).json();
-    const chat = recorded.filter((/** @type {any} */ r) => /chat\/completions$/.test(r.path) && !JSON.stringify(r.body).includes('starpi-purpose'));
-    const turn = JSON.stringify(chat.at(-1)?.body.messages.at(-1));
+    const chat = sent.filter((body) => !JSON.stringify(body).includes('starpi-purpose'));
+    const turn = JSON.stringify(chat.at(-1)?.messages.at(-1));
     expect(turn).toContain('<<<WEB 1 [W1] Overview: How do tides work?');
     expect(turn).toContain('untrusted data from the web');
     expect(diagnostics).toEqual([]);
@@ -194,10 +198,18 @@ test.describe('tools', () => {
     expect(diagnostics).toEqual([]);
   });
 
-  test('Auto takes web passages from the search service for a model without a search of its own', async ({ page, request, diagnostics }) => {
+  test('Auto takes web passages from the search service for a model without a search of its own', async ({ page, diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
-    await request.post(`${SEARCH_FAKE}/__fake/reset`);
-    await request.post(`${OPENAI_FAKE}/__fake/reset`);
+    // The requests of this page (the fakes' own logs are shared with the other workers).
+    /** @type {any[]} */
+    const sent = [];
+    /** @type {string[]} */
+    const searches = [];
+    page.on('request', (req) => {
+      const url = new URL(req.url());
+      if (req.method() === 'POST' && /\/chat\/completions$/.test(url.pathname)) sent.push(JSON.parse(req.postData() ?? '{}'));
+      if (url.href.startsWith(SEARCH_FAKE) && url.pathname === '/search') searches.push(url.search);
+    });
     await page.addInitScript(
       ([server, search]) => {
         if (sessionStorage.getItem('e2e_seeded')) return;
@@ -216,12 +228,10 @@ test.describe('tools', () => {
     const answer = answers(page).last();
     await expect(answer).toHaveAttribute('data-node-id', /.+/);
     await expect(answer.locator('[data-answer-label="web"]')).toBeVisible();
-    const searched = await (await request.get(`${SEARCH_FAKE}/__fake/requests`)).json();
-    expect(searched.some((/** @type {any} */ r) => r.path === '/search' && JSON.stringify(r).includes('tides'))).toBe(true);
+    expect(searches.some((q) => q.includes('tides'))).toBe(true);
     // The pages went to the model as passages of a context pack.
-    const recorded = await (await request.get(`${OPENAI_FAKE}/__fake/requests`)).json();
-    const chat = recorded.filter((/** @type {any} */ r) => /chat\/completions$/.test(r.path) && !JSON.stringify(r.body).includes('starpi-purpose'));
-    expect(JSON.stringify(chat.at(-1)?.body)).toContain('Simulated search result 1 about How do tides work?');
+    const chat = sent.filter((body) => !JSON.stringify(body).includes('starpi-purpose'));
+    expect(JSON.stringify(chat.at(-1))).toContain('Simulated search result 1 about How do tides work?');
     // Auto chose the search service's passages (a grounded answer on them), not the free route.
     const stored = /** @type {any} */ ((await storedChatNodes(page)).at(-1));
     expect(stored.meta.chat_mode).toBe('grounded');

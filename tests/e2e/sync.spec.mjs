@@ -216,11 +216,10 @@ test.describe('encrypted chat sync', () => {
     expect(diagnostics).toEqual([]);
   });
 
-  test('with sync on: the privacy line, attachments left on their device, delete texts and a deletion followed elsewhere', async ({ page, browser, request, diagnostics }) => {
+  test('with sync on: the privacy line, attachments left on their device, delete texts and a deletion followed elsewhere', async ({ page, browser, diagnostics }) => {
     test.skip((page.viewportSize()?.width ?? 1280) < 768, 'desktop layout');
     test.setTimeout(150_000);
     const supabase = project();
-    await request.post(`${OPENAI_FAKE}/__fake/reset`);
     /** @param {import('@playwright/test').Page} p */
     const useServer = (p) =>
       p.addInitScript((url) => {
@@ -280,6 +279,12 @@ test.describe('encrypted chat sync', () => {
     await supabase.attach(page2);
     await useServer(page2);
     page2.on('dialog', (dialog) => void dialog.accept());
+    // The chat requests of the second browser (the fake's own log is shared with the other workers).
+    /** @type {any[]} */
+    const sent2 = [];
+    page2.on('request', (req) => {
+      if (req.method() === 'POST' && /\/chat\/completions$/.test(new URL(req.url()).pathname)) sent2.push(JSON.parse(req.postData() ?? '{}'));
+    });
     await page2.goto('/');
     const card2 = await openSettings(page2);
     await card2.locator('[data-sv="account"] summary').click();
@@ -303,9 +308,8 @@ test.describe('encrypted chat sync', () => {
     await ask(page2, 'And how often do they need water?');
     await expect(page2.locator('#chatMessages')).toContainText('An attachment is only on the device it was added on');
     await expect(page2.locator('#chatMessages')).toContainText('roses.txt was left out of this request');
-    const recorded = await (await request.get(`${OPENAI_FAKE}/__fake/requests`)).json();
-    const turn = recorded.filter((/** @type {any} */ r) => /chat\/completions$/.test(r.path) && JSON.stringify(r.body).includes('how often do they need water')).at(-1);
-    const firstQuestion = JSON.stringify(turn.body.messages.find((/** @type {any} */ m) => m.role === 'user'));
+    const turn = sent2.filter((body) => JSON.stringify(body).includes('how often do they need water')).at(-1);
+    const firstQuestion = JSON.stringify(turn.messages.find((/** @type {any} */ m) => m.role === 'user'));
     expect(firstQuestion).toContain('[roses.txt]');
     expect(firstQuestion).not.toContain('need water every second day');
 
