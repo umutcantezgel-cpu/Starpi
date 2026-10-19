@@ -72,14 +72,14 @@ describe('pairing', () => {
     assert.equal(fresh.pairing.state().phase, 'unpaired');
   });
 
-  it('uses the CSRF value in Mode A and offers no voice link there', async () => {
+  it('uses the CSRF value in Mode A and gives the voice input a cookie link with it', async () => {
     const companion = fakeCompanion();
     companion.handlers.set('POST /v1/session/pair', () => ({ body: { mode: 'cookie', session: 'sess-a', role: 'member', expiresAt: '2099-01-01T00:00:00Z', publicKey: companion.identity.publicKey, keyId: companion.identity.keyId, csrf: 'csrf_0123456789abcdefghijklmnop' } }));
     companion.handlers.set('GET /v1/docs', () => ({ body: { documents: [] } }));
     const { voice, pairing } = setup(companion);
     await pairing.pair({ code: 'ABCDEFGH', origin: companion.origin });
     assert.equal(pairing.state().mode, 'cookie');
-    assert.equal(voice.at(-1), null);
+    assert.deepEqual(voice.at(-1), { origin: companion.origin, csrf: 'csrf_0123456789abcdefghijklmnop' });
     await pairing.call('GET', '/v1/docs');
     const [req] = companion.calls('GET', '/v1/docs');
     assert.equal(req.headers['x-companion-csrf'], 'csrf_0123456789abcdefghijklmnop');

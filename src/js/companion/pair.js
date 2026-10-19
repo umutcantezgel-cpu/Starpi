@@ -11,8 +11,9 @@
 // never leave WebCrypto, and kept with the rest of the link in the IndexedDB database
 // `starpi-companion`; nothing about the companion is synced or sent anywhere else.
 //
-// The voice input reaches the companion's voice relay with the token (Mode B). In Mode A it is
-// not offered: the voice input sends no cookies and no CSRF value, so it gets no link there.
+// The voice input reaches the companion's voice relay the same way: with the token (Mode B), or
+// with the session cookie and the CSRF value (Mode A, where the page and the companion share an
+// origin).
 //
 // No network at boot: restore() only reads what is stored. The app talks to the companion when the
 // user opens its card or tab, asks a question that searches it, or pairs.
@@ -197,7 +198,7 @@ export function compareHeads(head, stored) {
  * @param {FetchLike} [options.fetch]
  * @param {string | null} [options.selfOrigin]  the page's own origin when the companion serves the app (Mode A)
  * @param {() => number} [options.now]
- * @param {(link: { origin: string, token: string } | null) => unknown} [options.voiceLink]
+ * @param {(link: import('../voice/sources/shared.js').CompanionLink | null) => unknown} [options.voiceLink]
  * @param {{ get(): boolean, set(on: boolean): void }} [options.marker]  whether a link is stored
  */
 export function createPairing(options = {}) {
@@ -365,7 +366,7 @@ export function createPairing(options = {}) {
     } catch {
       identity = null;
     }
-    voiceLink(stored.mode === 'bearer' ? { origin: stored.origin, token: secret } : null);
+    voiceLink(stored.mode === 'bearer' ? { origin: stored.origin, token: secret } : { origin: stored.origin, csrf: secret });
     const storedHead = await store.head(stored.keyId).catch(() => null);
     update({
       phase: 'paired',

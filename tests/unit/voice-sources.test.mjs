@@ -5,7 +5,7 @@
 // enforced), and the speech output engines of each source.
 import './setup.mjs';
 import assert from 'node:assert/strict';
-import { after, before, describe, it } from 'node:test';
+import { after, afterEach, before, describe, it } from 'node:test';
 import { buildVoiceDeps } from '../../api/_lib/voice-routes.js';
 import { handleSpeak } from '../../api/voice/speak.js';
 import { handleTranscribe } from '../../api/voice/transcribe.js';
@@ -212,6 +212,48 @@ describe('speech input sources', () => {
     assert.equal(fakes.companion.requests.at(-1)?.path, '/v1/voice/v1/audio/transcriptions');
     const wrong = context({ companion: { origin: urls.companion, token: 'wrong-token-for-tests' } });
     await assert.rejects(companionStt.transcribe?.(WAV, run, wrong) ?? Promise.resolve(), (err) => err instanceof SttError && err.code === 'auth');
+  });
+});
+
+describe('the companion voice link in Mode A', () => {
+  const ORIGIN = 'http://127.0.0.1:47821';
+  const CSRF = 'csrf_0123456789abcdefghijklmnop';
+  /** @param {string | null} origin */
+  const pageAt = (origin) => {
+    if (origin) Object.defineProperty(globalThis, 'location', { value: { origin }, configurable: true, writable: true });
+    else delete (/** @type {any} */ (globalThis)).location;
+  };
+  afterEach(() => {
+    pageAt(null);
+    setCompanionVoiceLink(null);
+  });
+
+  it('takes a cookie link only for the companion that serves this page', () => {
+    pageAt('https://www.starpi.app');
+    assert.equal(setCompanionVoiceLink({ origin: ORIGIN, csrf: CSRF }), false, 'a cookie goes nowhere else');
+    pageAt(ORIGIN);
+    assert.equal(setCompanionVoiceLink({ origin: ORIGIN, csrf: 'short' }), false);
+    assert.equal(setCompanionVoiceLink({ origin: 'http://192.168.1.4:47821', csrf: CSRF }), false);
+    assert.equal(setCompanionVoiceLink({ origin: ORIGIN, csrf: CSRF }), true);
+  });
+
+  it('sends the cookie and the CSRF value, and no Bearer token', async () => {
+    pageAt(ORIGIN);
+    /** @type {Array<{ url: string, init: RequestInit }>} */
+    const sent = [];
+    const fetchStub = /** @type {typeof fetch} */ (async (input, init = {}) => {
+      sent.push({ url: String(input), init });
+      return new Response(JSON.stringify({ text: 'Hello from the relay.' }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    const ctx = context({ companion: { origin: ORIGIN, csrf: CSRF }, fetch: fetchStub });
+    assert.equal(companionStt.available(ctx), true);
+    assert.equal(await companionStt.transcribe?.(WAV, run, ctx), 'Hello from the relay.');
+    const [req] = sent;
+    assert.equal(req.url, `${ORIGIN}/v1/voice/v1/audio/transcriptions`);
+    assert.equal(req.init.credentials, 'same-origin');
+    const headers = /** @type {Record<string, string>} */ (req.init.headers);
+    assert.equal(headers['X-Companion-CSRF'], CSRF);
+    assert.equal(headers.authorization, undefined);
   });
 });
 

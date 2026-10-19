@@ -20,9 +20,10 @@ import { decodeWav } from '../wav.js';
  */
 
 /**
- * @typedef {object} CompanionLink
- * @property {string} origin   the companion's loopback origin
- * @property {string} token    the pairing token, sent as a Bearer token
+ * How the paired companion's voice relay is reached: with the pairing token as a Bearer token
+ * (Mode B, the app on another origin, no cookie sent), or with the session cookie plus the
+ * pairing's CSRF value (Mode A, the app served by the companion itself on the same origin).
+ * @typedef {{ origin: string, token: string, csrf?: undefined } | { origin: string, csrf: string, token?: undefined }} CompanionLink
  */
 
 /**
