@@ -77,13 +77,13 @@ package tarball, built and tested by CI, with its SHA-256 in `SHA256SUMS`. The n
 same file. To install from the release instead of the registry:
 
 ```bash
-curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.1.0/starpi-core-2.1.0.tgz
-curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.1.0/SHA256SUMS
+curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/v3.0.0/starpi-core-3.0.0.tgz
+curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/v3.0.0/SHA256SUMS
 sha256sum -c --ignore-missing SHA256SUMS
-npm install ./starpi-core-2.1.0.tgz
+npm install ./starpi-core-3.0.0.tgz
 ```
 
-`npm install https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.1.0/starpi-core-2.1.0.tgz`
+`npm install https://github.com/umutcantezgel-cpu/Starpi/releases/download/v3.0.0/starpi-core-3.0.0.tgz`
 works too, without the checksum step.
 
 ## Check an answer against its sources
@@ -444,13 +444,18 @@ Type declarations are included.
 - **No dependencies.** The package installs nothing else; `pdfjs-dist` is an optional peer that
   you add only for PDFs. Its CycloneDX SBOM (`starpi-core-<version>.cdx.json` on each release) lists
   no component besides the package.
-- **Built by CI, from the tagged commit.** The release workflow packs the tarball in a job without
+- **Built by CI, from the tested commit.** The release workflow packs the tarball in a job without
   write access, installs it offline into an empty project, imports it and runs the command line,
-  then attaches it with `SHA256SUMS` and the SBOMs. The npm package is that tarball, so
-  `npm view @starpi/core@<version> dist.integrity` matches the SHA-512 of the release asset.
-- Checksums are not signatures, and the package has no npm provenance attestation yet. See the
+  then attaches it with `SHA256SUMS` and the SBOMs. The npm package is that tarball, published by
+  the same workflow, so `npm view @starpi/core@<version> dist.integrity` matches the SHA-512 of the
+  release asset.
+- **Provenance and signatures (from 3.0.0).** The package is published with npm provenance
+  (`npm audit signatures` checks it), every release asset has a build provenance attestation
+  (`gh attestation verify starpi-core-<version>.tgz --repo umutcantezgel-cpu/Starpi`), and
+  `SHA256SUMS` is signed keyless with Sigstore (`SHA256SUMS.sigstore.json`) and, when the project's
+  release key is set up, with Ed25519 (`SHA256SUMS.sig`). The
   [security policy](https://github.com/umutcantezgel-cpu/Starpi/blob/main/SECURITY.md#supply-chain)
-  for how to report a vulnerability and what CI checks.
+  shows the commands, how to report a vulnerability and what CI checks.
 
 ## Versioning
 
@@ -458,23 +463,19 @@ Type declarations are included.
 to a check that can change a verdict bumps the rule version recorded in receipts (`GROUNDING`,
 `EXTRACTOR`, `CHUNKER`), so a receipt says which rules produced it, and `verifyReceipt` recomputes
 the source check with the version a receipt records. The receipt format has its own version
-(`starpi.receipt/v2` since 2.0.0; v1 receipts are still read and can still be written). The
-`pdfjs-dist` peer range follows the major version the app ships.
+(`starpi.receipt/v3` since 3.0.0; v1 and v2 receipts are still read and can still be written). The
+`pdfjs-dist` peer range follows the major version the app ships. What changed for code that
+used 2.x is listed in the
+[migration guide](https://github.com/umutcantezgel-cpu/Starpi/blob/main/docs/MIGRATION-3.md).
 Changes are listed in the
 [changelog](https://github.com/umutcantezgel-cpu/Starpi/blob/main/CHANGELOG.md).
 
 ## Ecosystem and downstream use
 
 Starpi itself is the first user of this package's code: the app runs the same modules in the
-browser and in its ingestion worker. The first downstream project is **Fluid Systems**, a local AI
-assistant for production management and shift supervisors in plastics processing (injection
-moulding and extrusion), by the same maintainer. It is built on Starpi 1.2.0 and takes over the
-source check, answer receipts, text extraction, chunking and BM25: answers about the user's own
-documents are checked by the source check and can be exported as `starpi.receipt/v1` receipts.
-The sentence gate in development for its next version, which lets a sentence about machine or
-shift figures through only when every number comes from its deterministic engine or from a cited
-excerpt, builds on Starpi's citation-label and sentence rules. Fluid Systems is at demo stage (v0.1.0, simulated operating
-data) and not public yet.
+browser and in its ingestion worker, and Starpi's local companion (`@starpi/companion`) gates every
+answer it gives with the same sentence gate and indexes its documents with the same extraction,
+chunking, BM25 and rank fusion.
 
 If you use `@starpi/core`, an [issue](https://github.com/umutcantezgel-cpu/Starpi/issues/new/choose)
 with a link is welcome.

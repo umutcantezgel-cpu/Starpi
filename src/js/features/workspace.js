@@ -120,6 +120,8 @@ function build(root) {
     if (s.phase === 'off') setText(status, 'workspace.semantic_off');
     else if (s.phase === 'loading') setText(status, 'workspace.semantic_loading', { percent: formatNumber(Math.round(s.progress * 100)) });
     else if (s.phase === 'indexing') setText(status, 'workspace.semantic_indexing', { done: formatNumber(s.done), total: formatNumber(s.total) });
+    // A refused download is said in the reader's language, with what to do about it.
+    else if (s.phase === 'error' && s.integrity) setText(status, s.integrity.code === 'mismatch' ? 'engine.error.integrity' : 'engine.error.unverified', { model: s.integrity.model, files: s.integrity.files });
     else if (s.phase === 'error') setText(status, 'workspace.semantic_error', { reason: s.error ?? '' });
     else if (s.phase === 'ready') setText(status, 'workspace.semantic_ready', { count: formatNumber(workspaceStatus().vectors) });
     else setText(status, 'workspace.semantic_idle');

@@ -30,59 +30,31 @@ Before changing a subsystem, read its section in the
 <!-- diagram: build-pipeline-build -->
 ```mermaid
 flowchart TD
-    START(["npm run build: node scripts/build.mjs<br/>also the Vercel buildCommand"]) --> ENV["SUPABASE_URL and SUPABASE_ANON_KEY from<br/>STARPI_SUPABASE_URL and STARPI_SUPABASE_ANON_KEY,<br/>else the public project defaults"]
-    ENV --> APPV["APP_VERSION: the version field of package.json"]
-    APPV --> AK{"assertPublicKey at module load,<br/>scripts/lib/supabase-key.mjs"}
-    AK -->|"blank, or starts with sb_secret_"| FAILTOP(["uncaught Error outside main():<br/>Node prints it with the stack, exit code 1"])
-    AK -->|"JWT payload not readable,<br/>or JWT role is not anon, e.g. service_role"| FAILTOP
-    AK -->|"sb_publishable_ key or anon JWT:<br/>main() calls buildOnce"| TMPD["create .build/"]
-    TMPD --> TW["tailwindcss -c tailwind.config.js<br/>-i src/styles/app.css -o .build/tailwind.css --minify<br/>content: src/index.html and src/js JS files"]
-    TW -->|"exit status not 0"| FAIL
-    TW -->|"ok, pass 1 without URLs"| PASS["remove dist/, clear the placeholders seen"]
-    PASS --> ESB
-    subgraph sg_esb["esbuild.build into dist/assets"]
-      E1["main: src/js/main.js"]
-      E2["webllm-worker: src/js/webgpu/worker.js"]
-      E3["ingest-worker: src/js/rag/ingest.worker.js"]
-      E5["wasm-worker: src/js/wasm/worker.js"]
-      E6["supabase: src/js/supabase-lib.js,<br/>the Supabase library, loaded on first use"]
-      E4["app: src/styles/entry.css<br/>Plus Jakarta Sans font faces + .build/tailwind.css"]
-      ORT["plugin ort-wasm-only: onnxruntime-web/webgpu and<br/>onnxruntime-common resolve to onnxruntime-web/wasm,<br/>one ONNX Runtime without new Function"]
-      URLS["plugin starpi-asset-urls: onLoad of src/js files writes<br/>this pass's URLs over __STARPI_WEBLLM_WORKER_URL__,<br/>__STARPI_INGEST_WORKER_URL__, __STARPI_WASM_WORKER_URL__,<br/>__STARPI_ORT_WASM_URL__ and __STARPI_SUPABASE_LIB_URL__,<br/>none in pass 1"]
-      ESB["bundle, splitting, esm, minify, target es2022,<br/>chrome113, safari17, firefox121, linked sourcemaps<br/>and legal comments, entries name-hash, chunks chunk-hash,<br/>fonts as files, define inlines __STARPI_SUPABASE_URL__,<br/>__STARPI_SUPABASE_ANON_KEY__ and __STARPI_VERSION__"]
-      E1 --> ESB
-      E2 --> ESB
-      E3 --> ESB
-      E5 --> ESB
-      E6 --> ESB
-      E4 --> ESB
-      ORT -.- ESB
-      URLS -.- ESB
-    end
-    ESB -->|"build error"| FAIL
-    ESB --> WARN{"esbuild warnings?"}
-    WARN -->|"yes: warnings are errors"| FAIL
-    WARN -->|"no"| RES["resolveUrls: hashed URLs of the three workers<br/>and the Supabase library, copyOrtWasm: ort-wasm-simd-threaded.wasm from the<br/>onnxruntime-web dist that was bundled, written to<br/>/assets/ort-wasm-simd-threaded-sha256 16 hex.wasm"]
-    RES -->|"no output for an entry,<br/>onnxruntime-web/wasm not bundled"| FAIL
-    RES --> SETTLED{"every URL equals the one<br/>written into this pass?"}
-    SETTLED -->|"no, pass 4"| FAIL
-    SETTLED -->|"no, passes 1 to 3: next pass<br/>with these URLs, settles in pass 3"| PASS
-    SETTLED -->|"yes"| META{"metafile present and all five<br/>entry outputs found, every<br/>placeholder seen in a source file?"}
-    META -->|"no"| FAIL
-    META -->|"yes"| PUB["copyPublic: public/ copied into dist/,<br/>file list kept for the version and the precache"]
-    PUB --> HTML["src/index.html: %STARPI_APP_CSS% and<br/>%STARPI_MAIN_JS% set to the hashed URLs"]
-    HTML --> HCHK{"any %STARPI_ left?"}
-    HCHK -->|"yes"| FAIL
-    HCHK -->|"no"| WHTML["write dist/index.html"]
-    WHTML --> VER["buildVersion, scripts/lib/build-version.mjs:<br/>sha256 over index.html, the sorted asset URLs<br/>without .map and .LEGAL.txt plus the ONNX Runtime binary,<br/>each public file as URL plus bytes, then the src/sw.js<br/>template, first 12 hex chars"]
-    VER --> SHELL["precache shell: /, app CSS, main JS, ingest worker,<br/>the Latin plus-jakarta-sans woff2 when present,<br/>static imports of main, public files,<br/>/index.html, the WASM worker, the binary<br/>and the Supabase library are not listed"]
-    SHELL --> SW["src/sw.js: __STARPI_BUILD_VERSION__ gets the version,<br/>__STARPI_PRECACHE__ the deduplicated shell,<br/>__STARPI_ASSETS__ the sorted asset URLs"]
-    SW --> SCHK{"any __STARPI_ left?"}
-    SCHK -->|"yes"| FAIL
-    SCHK -->|"no"| WSW["write dist/sw.js"]
-    WSW --> MAN["write dist/build-manifest.json: version, entries<br/>mainJs, workerJs, ingestWorkerJs, wasmWorkerJs,<br/>ortWasm, appCss, supabaseJs, then assets,<br/>public, precache"]
-    MAN --> DONE(["log built main JS, app CSS,<br/>version and duration"])
-    FAIL(["main().catch prints the message,<br/>process.exit(1)"])
+    start(["npm run build"])
+    key{"assertPublicKey: publishable key<br/>or a JWT with role anon?"}
+    keyFail(["build fails before anything runs"])
+    prof{"STARPI_HEADER_PROFILE in headers.json:<br/>public, self-host, test or companion?"}
+    profFail(["build fails: unknown profile"])
+    tw["Tailwind: .build/tailwind.css"]
+    es["esbuild, splitting on: main, webllm-worker, ingest-worker,<br/>wasm-worker, integrity-worker, pcm-worklet, supabase,<br/>render-extras, app CSS; URL, key, version, profile inlined"]
+    plug["plugins: onnxruntime-web/wasm only, excluded packages replaced,<br/>hashed URLs into __STARPI_*_URL__ placeholders"]
+    settle{"URLs equal the outputs?"}
+    again["bundle again, at most 4 passes"]
+    classic["classic builds: theme-boot.js for head;<br/>render-frame.js and grounding-frame.js, one file each,<br/>their packages' licences checked"]
+    ort["copy ort-wasm-simd-threaded.wasm to a hashed /assets URL"]
+    html["rewrite index.html: hashed script, CSS and theme script"]
+    sw["sw.js: version = hash of HTML, assets, public files,<br/>template and header digest; precache and asset lists"]
+    man["build-manifest.json: version, entries, profile, header digest;<br/>companion profile: dist/headers.json"]
+    meta["STARPI_META_OUT: esbuild metafile"]
+    out(["dist/ or STARPI_DIST_DIR"])
+    start --> key
+    key -->|"no"| keyFail
+    key -->|"yes"| prof
+    prof -->|"no"| profFail
+    prof -->|"yes"| tw --> es --> plug --> settle
+    settle -->|"no"| again --> es
+    settle -->|"yes"| classic --> ort --> html --> sw --> man --> out
+    es -.-> meta
 ```
 
 ## Checks before opening a pull request
@@ -107,64 +79,34 @@ the README; the unit tests fail until both agree.
 <!-- diagram: test-strategy-ci-gates -->
 ```mermaid
 flowchart LR
-    trig(["CI workflow: push to main, pull_request to main,<br/>workflow_dispatch, permissions contents read,<br/>concurrency cancels the older run"])
-
-    subgraph jobFront["Job frontend: Node 22, npm ci --ignore-scripts"]
-        lint["npm run lint<br/>ESLint, eslint.config.mjs"]
-        tc["npm run typecheck<br/>tsc -p tsconfig.json --noEmit"]
-        unit["npm test<br/>node --test on the 38 tests/unit/*.test.mjs files, 479 tests,<br/>docs.test.mjs, core-package.test.mjs, sbom.test.mjs<br/>and nvidia-proxy.test.mjs included"]
-        pack["npm run pack:core<br/>typed build of @starpi/core, npm pack --dry-run"]
-        build["npm run build<br/>scripts/build.mjs"]
-        verify["npm run verify:dist<br/>scripts/verify-dist.mjs: dist/ is CSP-compatible,<br/>referenced assets exist, sw.js carries the recomputed version"]
-        art[("artifact dist, kept 3 days")]
+    trig(["push or pull request to main, or by hand"])
+    subgraph ciy["ci.yml"]
+        fe["frontend: lint, typecheck, unit tests, pack:core, build,<br/>verify:dist, headers:check, license:check, eol:check, hygiene"]
+        e2e["e2e: Playwright, desktop and mobile Chromium,<br/>production headers, mocked Supabase, provider fakes"]
+        comp["companion, Node 22 and 24: typecheck, tests,<br/>dependency and licence checks, offline bundle install"]
+        sysd["companion-systemd: transient unit, then the user unit"]
+        voice["voice-server, Python 3.11 and 3.13: ruff, compile, tests"]
+        be["backend, Python 3.11 and 3.13: library publisher"]
+        db["database: PostgreSQL 16 + pgvector, run_rls_tests.sh"]
+        aud["audit: npm audit, pip-audit, SBOM artifact"]
+        sec["secrets: gitleaks tree and pull request commits"]
     end
-
-    subgraph jobE2e["Job e2e, needs frontend"]
-        dl["download artifact dist,<br/>npx playwright install --with-deps chromium"]
-        pw["npm run test:e2e<br/>app.spec.mjs 17 tests, trust.spec.mjs 13,<br/>models.spec.mjs 8 and modes.spec.mjs 8,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.1.0,<br/>94 test runs in all"]
-        rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
+    subgraph other["other workflows"]
+        codeql["codeql.yml: every change and weekly"]
+        wl["workflow-lint.yml: actionlint, zizmor"]
+        ml["model-lock.yml: weekly models:lock --check"]
     end
-
-    subgraph jobBack["Job backend, library publisher, matrix Python 3.11 and 3.13"]
-        ruff["ruff check tools/library-publisher backend,<br/>ruff format --check tools/library-publisher backend"]
-        comp["python -m compileall -q tools/library-publisher backend"]
-        ut["python -m unittest discover in tools/library-publisher, 76 tests<br/>chunker, config, structurer, e5 prefixes, mean pooling and<br/>L2 norm with a fake session, pinned model files with a fake hub,<br/>Supabase payloads, shared-row filters and errors,<br/>pipeline and every command against MockTransport<br/>the test against the real model is skipped without<br/>PUBLISHER_TEST_MODEL_DIR"]
-    end
-
-    subgraph jobDb["Job database"]
-        apt["apt-get install postgresql-16,<br/>postgresql-16-pgvector"]
-        rls["bash backend/supabase/tests/run_rls_tests.sh<br/>PG_BIN /usr/lib/postgresql/16/bin<br/>live, fresh, fresh_rerun, legacy_v2, legacy_v1,<br/>guard, guard_order, guard_vectors, schema parity via pg_dump<br/>rls_test.sql: 220 checks, 227 with legacy rows"]
-    end
-
-    subgraph jobAudit["Job audit"]
-        npmRt["npm audit --omit=dev --audit-level=low<br/>any advisory in a runtime dependency fails"]
-        npmAll["npm audit --audit-level=high<br/>development tooling: warning only"]
-        pipAud["pip-audit -r backend/requirements-dev.txt<br/>any advisory fails"]
-        sbom["npm run sbom, also after a failed audit step<br/>CycloneDX 1.5 SBOMs of the app and of @starpi/core<br/>from package-lock.json, artifact sbom, kept 30 days"]
-    end
-
-    subgraph jobSec["Job secrets"]
-        gl["gitleaks 8.30.1 download,<br/>sha256sum -c checksum"]
-        glDir["gitleaks dir . --config .gitleaks.toml<br/>--redact --exit-code 1"]
-        glPr["gitleaks git over BASE_SHA..HEAD_SHA<br/>commits of the pull request"]
-    end
-
-    local["Local gate npm run verify:<br/>lint, typecheck, test, build, verify:dist"]
-
-    trig --> lint
-    trig --> ruff
-    trig --> apt
-    trig --> npmRt
-    trig --> gl
-    lint --> tc --> unit --> pack --> build --> verify --> art
-    art -->|"built once, reused"| dl --> pw
-    pw -.->|"failure"| rep
-    ruff --> comp --> ut
-    apt --> rls
-    npmRt --> npmAll --> pipAud --> sbom
-    gl --> glDir
-    glDir -->|"pull_request only"| glPr
-    local -.->|"same steps as"| lint
+    trig --> fe
+    fe -->|"dist artifact"| e2e
+    trig --> comp
+    trig --> sysd
+    trig --> voice
+    trig --> be
+    trig --> db
+    trig --> aud
+    trig --> sec
+    trig --> codeql
+    trig --> wl
 ```
 
 **Diagrams** live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), the only place they are edited.
@@ -230,48 +172,33 @@ How the tests keep the dictionaries and keys consistent:
 <!-- diagram: i18n-test-guards -->
 ```mermaid
 flowchart TD
-    subgraph sg_i18n_test["tests/unit/i18n.test.mjs (npm test, CI)"]
-        run(["load en.json and de.json"]) --> load["flatten() to dotted keys"]
-        load --> parity{"identical key sets<br/>in both directions?"}
-        load --> ph{"same sorted plain {name} placeholders<br/>for every key? plural forms not compared"}
-        load --> empty{"no empty or blank values?"}
-        load --> diff{"fewer than 15 percent of entries<br/>identical in de and en?"}
-        run --> scan["usedKeys() scans every .js and .html file under src"]
-        scan --> patterns["literal keys from data-i18n attributes, t('..'),<br/>setText(el, '..'), setAssistantStatus, setWorkspaceStatus,<br/>title, body or badge properties, strings after ? or :, data-arg"]
-        scan --> built["keys assembled at runtime: engine.progress.*, engine.error.*,<br/>workspace.progress_*, workspace.error_*, diagnostics.phase_*,<br/>graph.type_*, nav.*, graph.outgoing and incoming, trace.role_*,<br/>grounding.review and partial, grounding.reason_*, chat.voice_error_*,<br/>demo.q_* and their _question keys, demo.flawed_find_*, receipt.check_*"]
-        patterns --> keys["used keys, ns.* examples excluded"]
-        built --> keys
-        keys --> count{"more than 250 keys found?"}
-        keys --> resolveEn{"hasKey(key, en) for all?<br/>(no fallback allowed)"}
-        keys --> resolveDe{"hasKey(key, de) for all?<br/>(no fallback allowed)"}
-        run --> tt["t() behaviour"]
-        tt --> t1["DEFAULT_LOCALE is en,<br/>nav.settings gives Settings"]
-        tt --> t2["locale de gives Einstellungen"]
-        tt --> t3["workspace.meta interpolates chunks and chars,<br/>a missing param leaves {chars} visible"]
-        tt --> t4["unknown key returns the key,<br/>hasKey is false"]
-        tt --> t5["plural forms: 1 chunk and 12 chunks in en,<br/>1 Abschnitt, 1 Auszug and 2 Dokumenten in de"]
+    subgraph unit["tests/unit/i18n.test.mjs"]
+        layout["layout: namespaces registered, English bundled,<br/>root file per shipped language, keys defined once,<br/>namespace keys under their namespace"]
+        parity["every language: the keys of English, same placeholders,<br/>plural forms kept and flat, no empty values,<br/>under 15 percent identical to English"]
+        used["used keys: data-i18n, t(), setText and runtime families;<br/>more than 250; each resolves in every language"]
+        tbeh["t(): default, other language, interpolation, unknown key,<br/>plural forms in every language"]
+        load["loadLocale: English fallback key by key, unshipped not selectable,<br/>missing files load to false, one shared request; buildDictionary"]
     end
-    subgraph sg_actions["tests/unit/actions.test.mjs (npm test, CI)"]
-        emoji{"no emoji or pictographs in src .js, .html<br/>and .json files, locales included?"}
-        aria{"every static aria-label in index.html has<br/>data-i18n-aria, except the lang-tagged EN/DE buttons?"}
+    subgraph act["tests/unit/actions.test.mjs"]
+        emoji["no emoji in src"]
+        aria["static aria-label needs data-i18n-aria,<br/>except the lang-tagged EN/DE pre-boot buttons"]
     end
-    subgraph sg_e2e["tests/e2e/app.spec.mjs internationalization (npm run test:e2e, CI)"]
-        e1["starts with html lang en, English placeholder,<br/>nav and privacy notice, EN button aria-pressed true"]
-        e2["click DE: lang de, German texts and send button aria-label,<br/>DE aria-pressed true, no page navigation"]
-        e3["German quick prompt gets a German answer,<br/>reload keeps de"]
-        e4["click EN: English again, localStorage starpi_locale is en,<br/>diagnostics empty: no CSP violation, page error,<br/>unexpected console error or request to another host"]
-        e1 --> e2 --> e3 --> e4
+    subgraph e2e["end-to-end"]
+        e1["app.spec: English default, German without a reload, kept on reload"]
+        e2["app.spec: six languages, French and Turkish without a reload"]
+        e3["shell.spec: namespace strings load with the language"]
     end
-    parity -->|"no"| fail(["test fails"])
-    ph -->|"no"| fail
-    empty -->|"no"| fail
-    diff -->|"no"| fail
-    count -->|"no"| fail
-    resolveEn -->|"no"| fail
-    resolveDe -->|"no"| fail
-    emoji -->|"no"| fail
-    aria -->|"no"| fail
-    e4 -.->|"any expectation not met"| fail
+    fail(["CI fails"])
+    layout -.-> fail
+    parity -.-> fail
+    used -.-> fail
+    tbeh -.-> fail
+    load -.-> fail
+    emoji -.-> fail
+    aria -.-> fail
+    e1 -.-> fail
+    e2 -.-> fail
+    e3 -.-> fail
 ```
 
 ## WebGPU and WebLLM
@@ -387,7 +314,7 @@ flowchart TD
         fs0["create extension if not exists vector with schema public"]
         fs1{"vector in schema public and<br/>auth.users, auth.uid() present?"}
         fs2{"knowledge_documents, knowledge_entities,<br/>knowledge_relations or chat_history<br/>exists without owner_id?"}
-        fs3["create table if not exists, 16 size CHECKs NOT VALID<br/>only if the name is new, create index if not exists,<br/>drop every policy, create the 19 policies,<br/>drop every RPC overload and recreate SECURITY INVOKER,<br/>search_knowledge as in 20260924120000,<br/>embedding_384, its index and match_knowledge_vector_384<br/>as in 20261101000000, revoke all, then grant per role"]
+        fs3["create table if not exists, 16 size CHECKs NOT VALID<br/>only if the name is new, create index if not exists,<br/>drop every policy, create the 19 policies,<br/>drop every RPC overload and recreate SECURITY INVOKER,<br/>search_knowledge as in 20260924120000,<br/>embedding_384, its index and match_knowledge_vector_384<br/>as in 20261101000000, chat_sync and chat_sync_keys<br/>as in 20261102000000, revoke all, then grant per role"]
     end
     fs0 --> fs1
     fs1 -->|"yes"| fs2
@@ -454,6 +381,16 @@ flowchart TD
     m3b --> m3Done
     m4Done(["notify pgrst, reload schema, then commit"])
     m4b --> m4Done
+
+    subgraph sg_m5["20261102000000_chat_sync.sql, optional, one transaction, lock_timeout 15s"]
+        m5a{"auth.users and auth.uid() present?"}
+        m5b["create chat_sync and chat_sync_keys if not exists with format CHECKs,<br/>chat_sync_guard trigger, RLS on, unexpected policies dropped,<br/>owner-only policies for authenticated,<br/>revoke all, grants to authenticated and service_role"]
+    end
+    m4Done -->|"then the next file in file-name order"| m5a
+    m5a -->|"yes"| m5b
+    m5a -->|"no"| abortVec
+    m5Done(["notify pgrst, reload schema, then commit"])
+    m5b --> m5Done
     rerun["Re-running 20260923000000 alone drops the 20260924000000 policies,<br/>restores brain_settings_select_all with the SELECT grant to anon<br/>and authenticated, and the full-match-only search_knowledge:<br/>always re-run the whole set"]
     rerun -.- m1e
 ```
@@ -472,19 +409,27 @@ follows these conventions, and it passes the checks.
 
 ## Releases
 
-The app and `@starpi/core` are released together and share one version number.
+The app, `@starpi/core` and `@starpi/companion` are released together and share one version
+number.
 
-0. **Set new Vercel environment variables first.** Set any new Vercel environment variable (such
-   as `NVIDIA_API_KEYS`, type Sensitive) for Production and Preview before the release deploys:
-   Vercel reads them when it creates a deployment, so a deployment created earlier does not see
-   them until it is redeployed.
+0. **Set new environment variables and secrets first.** Set any new Vercel environment variable
+   (keys as type Sensitive) for Production and Preview before the release deploys: Vercel reads
+   them when it creates a deployment, so a deployment created earlier does not see them until it
+   is redeployed. For the release workflow: `NPM_TOKEN` (a granular npm token with publish rights
+   on the `@starpi` scope; only needed until trusted publishing is set up for both packages on
+   npmjs.com) as a secret of the environment `npm`, and optionally `STARPI_RELEASE_SIGNING_KEY`
+   (an Ed25519 private key, `node scripts/sign-release.mjs keygen --out <dir>`) as a secret of the
+   environment `release`.
 1. **Prepare the release commit.**
-   - Set the version in `package.json` and in `packages/core/package.json`, then run
-     `npm install --package-lock-only --ignore-scripts` so the lockfile records both.
+   - Set the version in `package.json`, `packages/core/package.json` and
+     `packages/companion/package.json` (and the companion's `@starpi/core` dependency), then run
+     `npm install --package-lock-only --ignore-scripts --no-audit --no-fund` so the lockfile
+     records them.
    - Update `version` and `date-released` in `CITATION.cff`.
    - Move the `[Unreleased]` entries of `CHANGELOG.md` into a section for the version and add its
      compare link.
-   - Write `docs/releases/vX.Y.Z.md`; the release workflow publishes it as the release notes.
+   - Write `docs/releases/vX.Y.Z.md`; the release workflow publishes it as the release notes. Work
+     through its "Before tagging" list.
 2. **Get it onto `main`.** Push the commit with an annotated tag `vX.Y.Z`. The tag must point at
    the commit that ends up on `main`, so fast-forward `main` to it instead of merging with a
    merge or squash commit, and push nothing else to `main` until the release exists: a newer push
@@ -493,22 +438,32 @@ The app and `@starpi/core` are released together and share one version number.
    Or merge the release pull request with **Rebase and merge** and push no tag: `release.yml`
    creates the tag `vX.Y.Z` at the commit CI tested. Here too, push nothing else to `main` until
    the release exists.
-3. **CI and the release workflow.** Once CI has passed on `main`, `release.yml` builds the
-   `@starpi/core` tarball and the SBOMs without write access, smoke-tests the tarball and creates
-   the release with `starpi-core-X.Y.Z.tgz`, `starpi-X.Y.Z.cdx.json`,
-   `starpi-core-X.Y.Z.cdx.json` and `SHA256SUMS`. If an interrupted upload left a draft release,
-   the job stops with an error; delete the draft (`gh release delete vX.Y.Z --yes`) and re-run it.
-4. **Publish `@starpi/core` to npm from the release asset**, not from a local build, so the npm
-   package is the file CI built and checksummed. The account needs publish rights on the npm
-   organisation `starpi` (the `@starpi` scope):
+3. **CI and the release workflow.** Once CI has passed on `main`, `release.yml`:
+   - builds, without write access and without secrets, the tarballs of both packages, the
+     CycloneDX SBOMs, the companion's offline bundle and `SHA256SUMS`, and smoke-tests the
+     `@starpi/core` tarball;
+   - attests every asset (`actions/attest-build-provenance`), signs `SHA256SUMS` and the offline
+     bundle keyless with cosign, and signs `SHA256SUMS` with the Ed25519 release key when that
+     secret exists, in a job that installs nothing;
+   - creates the release with `starpi-core-X.Y.Z.tgz`, `starpi-companion-X.Y.Z.tgz`,
+     `starpi-X.Y.Z.cdx.json`, `starpi-core-X.Y.Z.cdx.json`, `starpi-companion-X.Y.Z.tar.gz`,
+     `SHA256SUMS`, the `.sigstore.json` bundles and `SHA256SUMS.sig`;
+   - publishes the two tarballs of the release to npm with `--provenance`, the core first; a version
+     npm already has is skipped.
+   If an interrupted upload left a draft release, the release job stops with an error; delete the
+   draft (`gh release delete vX.Y.Z --yes`) and re-run it. If publishing fails after the release
+   was created, re-run the failed publish job (its artifacts are kept for 7 days); publishing by
+   hand (`npm publish ./starpi-core-X.Y.Z.tgz --access public` from the release asset, after
+   `sha256sum -c --ignore-missing SHA256SUMS`) works too, but carries no provenance.
+4. **Check what was published.**
 
    ```bash
-   cd "$(mktemp -d)"
-   curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/vX.Y.Z/starpi-core-X.Y.Z.tgz
-   curl -fsSLO https://github.com/umutcantezgel-cpu/Starpi/releases/download/vX.Y.Z/SHA256SUMS
-   sha256sum -c --ignore-missing SHA256SUMS
-   npm publish ./starpi-core-X.Y.Z.tgz --access public
    npm view @starpi/core@X.Y.Z dist.integrity
+   npm view @starpi/companion@X.Y.Z dist.integrity
+   gh attestation verify starpi-core-X.Y.Z.tgz --repo umutcantezgel-cpu/Starpi
+   cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+     --certificate-identity https://github.com/umutcantezgel-cpu/Starpi/.github/workflows/release.yml@refs/heads/main \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
    ```
 
 ## Reporting bugs

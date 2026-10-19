@@ -1,14 +1,20 @@
 // End-to-end check of model downloads in the browser: stored files of a processor model that do not
 // match model-lock.json are hashed in the hashing worker, deleted from Cache Storage and refuse the
 // load with a notice that names them; Settings › Trust › Model downloads shows the result and lets
-// the user allow the model to load unverified after a warning. Nothing is fetched from a model host.
+// the user allow the model to load unverified after a warning. A tampered semantic search model is
+// refused the same way, and the workspace settings say so in the reader's language. Nothing is
+// fetched from a model host.
+import { DEFAULT_EMBED_MODEL, embedFileUrl, embedSource } from '../../src/js/models/embed-catalog.js';
 import { WASM_CATALOG, wasmFileUrl } from '../../src/js/models/wasm-catalog.js';
-import { expect, mockSupabase, test } from './fixtures.mjs';
+import { chooseLanguage, expect, mockSupabase, test } from './fixtures.mjs';
 
 const SRC = WASM_CATALOG['smollm2-135m'];
 const MODEL_ID = `wasm:${SRC.repo}`;
 /** The files whose presence means "stored", with stand-in content no pinned hash matches. */
 const TAMPERED = SRC.cacheProbe.map((file) => [wasmFileUrl(SRC, file), `tampered ${file}`]);
+const EMBED = embedSource(DEFAULT_EMBED_MODEL);
+/** Every file of the semantic search model, stored with content no pinned hash matches. */
+const EMBED_TAMPERED = EMBED.files.map(([file]) => [embedFileUrl(EMBED, file), `tampered ${file}`]);
 
 /**
  * A desktop browser without WebGPU, so the processor model is the one that runs.
@@ -84,5 +90,36 @@ test.describe('model download integrity', () => {
     await expect(page.locator('#trustSettings [data-mi="result"]')).toContainText('SmolLM2 135M may load unverified');
     await item.locator('[data-action="model-integrity-revoke"]').click();
     await expect(item.locator('[data-action="model-integrity-allow"]')).toBeVisible();
+  });
+
+  test('a tampered semantic search model is refused, and the workspace settings say so in the reader\'s language', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem('e2e_locale_seeded')) return;
+      sessionStorage.setItem('e2e_locale_seeded', '1');
+      localStorage.setItem('starpi_locale', 'de');
+    });
+    await page.goto('/');
+    await page.evaluate(async (entries) => {
+      const cache = await caches.open('transformers-cache');
+      for (const [url, body] of entries) await cache.put(url, new Response(body));
+    }, EMBED_TAMPERED);
+
+    // A file in the workspace, so the opt-in starts indexing and needs the model at once.
+    await openTab(page, 'ingest');
+    await page.setInputFiles('#workspaceFileInput', { name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Notes\n\nThe harbour opens at six in the morning.') });
+    await expect(page.locator('#workspaceList li')).toHaveCount(1);
+
+    await openTab(page, 'settings');
+    const card = page.locator('#workspaceSettingsCard');
+    await card.scrollIntoViewIfNeeded();
+    await card.locator('#wsSemantic').check();
+    const status = card.locator('#wsSemanticStatus');
+    await expect(status).toContainText('stimmt nicht mit dem Hash überein', { timeout: 20_000 });
+    await expect(status).toContainText(EMBED.label);
+    // The status is relabelled in place when the language changes.
+    await chooseLanguage(page, 'en');
+    await expect(status).toContainText('does not match the hash this app pinned for it');
+    expect(diagnostics).toEqual([]);
   });
 });

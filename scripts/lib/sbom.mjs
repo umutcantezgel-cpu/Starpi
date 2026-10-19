@@ -7,8 +7,10 @@
 //
 // The app SBOM is also an ML-BOM: withModels adds the on-device models of the model catalogs as
 // components of type machine-learning-model (built by webllmModels and wasmModels from the catalog
-// data, so they change exactly when a catalog does). findSecrets is the last check before a
-// document is written: an SBOM never carries a key or the value of a secret environment variable.
+// data, so they change exactly when a catalog does). markShipped clears the development mark of the
+// packages a browser bundle ships although package.json lists them for development (the sandboxed
+// render frame bundles mermaid and its tree). findSecrets is the last check before a document is
+// written: an SBOM never carries a key or the value of a secret environment variable.
 import { createHash } from 'node:crypto';
 
 export const SPEC_VERSION = '1.5';
@@ -298,6 +300,28 @@ function withSerial(doc) {
   const serialNumber = `urn:uuid:${uuidV5(SERIAL_NAME + JSON.stringify(rest))}`;
   if (!('serialNumber' in doc)) return { ...rest, serialNumber };
   return Object.fromEntries(Object.entries(doc).map(([key, value]) => [key, key === 'serialNumber' ? serialNumber : value]));
+}
+
+/**
+ * Marks the components a browser bundle ships although npm counts them as development packages:
+ * the scripts of the sandboxed frames (public/render-frame.js) bundle mermaid and what it needs at
+ * run time, so these packages reach every user like a dependency. Each listed component loses the
+ * cdx:npm:package:development property and gets scope required; every other component stays as
+ * it is. A ref that names no component is reported, so a stale list cannot pass unnoticed.
+ * @param {Bom} doc
+ * @param {Iterable<string>} refs  bom-refs (name@version) of the shipped packages
+ * @returns {{ doc: Bom, missing: string[] }}
+ */
+export function markShipped(doc, refs) {
+  const wanted = new Set(refs);
+  const seen = new Set();
+  const components = doc.components.map((component) => {
+    if (!wanted.has(component['bom-ref'])) return component;
+    seen.add(component['bom-ref']);
+    const properties = (component.properties ?? []).filter((p) => p.name !== 'cdx:npm:package:development');
+    return { ...component, scope: 'required', properties };
+  });
+  return { doc: withSerial({ ...doc, components }), missing: [...wanted].filter((ref) => !seen.has(ref)).sort() };
 }
 
 /**

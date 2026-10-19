@@ -114,8 +114,14 @@
         <!-- Language switch -->
         <div id="langSwitch" class="lang-toggle flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-[11px] font-semibold" role="group" data-i18n-aria="app.language" aria-label="Language">
           <i data-lucide="languages" class="w-3.5 h-3.5 mx-1 text-slate-500 hidden sm:block"></i>
-          <button type="button" data-action="set-locale" data-arg="en" aria-pressed="true" class="px-2 py-1 rounded-md transition" lang="en" aria-label="English">EN</button>
-          <button type="button" data-action="set-locale" data-arg="de" aria-pressed="false" class="px-2 py-1 rounded-md transition" lang="de" aria-label="Deutsch">DE</button>
+          <select data-change="set-locale" class="bg-transparent text-slate-800 font-semibold text-base sm:text-[11px] py-0.5 pr-1 focus:outline-none cursor-pointer" data-i18n-aria="app.language" aria-label="Language">
+            <option value="en" lang="en" selected>English</option>
+            <option value="de" lang="de">Deutsch</option>
+            <option value="fr" lang="fr">Français</option>
+            <option value="es" lang="es">Español</option>
+            <option value="it" lang="it">Italiano</option>
+            <option value="tr" lang="tr">Türkçe</option>
+          </select>
         </div>
 
         <!-- Assistant mode -->

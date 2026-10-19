@@ -271,15 +271,33 @@ erDiagram
     auth_users {
         uuid id PK "Supabase auth.users"
     }
+    chat_sync {
+        uuid user_id PK "PK 1, FK, default auth.uid(), on delete cascade"
+        text conv_id PK "PK 2, 32 chars base64url, HMAC of the conversation id"
+        bigint rev "not null, above 0, only grows"
+        text iv "16 chars base64"
+        text ciphertext "base64, 24 to 2800000 chars, AES-GCM"
+        timestamptz updated_at "set by chat_sync_guard"
+    }
+    chat_sync_keys {
+        uuid user_id PK "FK, default auth.uid(), on delete cascade"
+        text key_id "22 chars base64url"
+        text kdf "PBKDF2-SHA256"
+        int iterations "600000 to 10000000"
+        text salt "24 chars base64"
+        text iv "16 chars base64"
+        text wrapped_key "64 chars base64"
+        timestamptz created_at "default now()"
+    }
     chat_history {
-        uuid id PK "default gen_random_uuid()"
-        text session_id "not null, 1 to 128 chars"
-        text role "not null, user, assistant or system"
-        text content "not null, max 20000 chars, older validated bound 100000"
-        jsonb sources "not null, default empty array, max 64 KiB"
-        jsonb metadata "not null, default empty object, max 64 KiB"
-        timestamptz created_at "not null, default now()"
-        uuid owner_id FK "not null, default auth.uid(), index with session_id, created_at"
+        uuid id PK "2.x, no longer read or written"
+        text session_id "1 to 128 chars"
+        text role "user, assistant or system"
+        text content "max 20000 chars for new rows"
+        jsonb sources "max 64 KiB"
+        jsonb metadata "max 64 KiB"
+        timestamptz created_at "default now()"
+        uuid owner_id FK "not null, own rows still deleted on delete"
     }
     brain_settings {
         text key PK "seeded llm_config and rag_config"
@@ -287,7 +305,8 @@ erDiagram
         text description
         timestamptz updated_at "not null, default now()"
     }
-
+    auth_users ||--o{ chat_sync : "user_id, on delete cascade"
+    auth_users ||--o| chat_sync_keys : "user_id, on delete cascade"
     auth_users ||--o{ chat_history : "owner_id, on delete cascade"
 ```
 
@@ -382,7 +401,7 @@ flowchart TD
         bRole -->|"anon, authenticated"| bDeny["Error 42501 on read and write, no table grant<br/>(full_schema.sql never grants it, 20260924000000<br/>revokes it), RLS on with no policy"]
     end
 
-    subgraph sg_chat["chat_history, owner only"]
+    subgraph sg_chat["chat_history, 2.x: owner only, the app only deletes own rows"]
         cReq["Chat row request"]
         cRole{"Role?"}
         cReq --> cRole
@@ -418,8 +437,26 @@ flowchart TD
         sChk -->|"yes"| sDone["Section written"]
         sChk -->|"no"| sSize["Error 23514"]
     end
+    subgraph sg_sync["chat_sync and chat_sync_keys, owner only"]
+        yReq["Sync request"]
+        yRole{"Role?"}
+        yReq --> yRole
+        yRole -->|"service_role"| ySvc["RLS bypassed, all rows"]
+        yRole -->|"anon"| yAnon["Error 42501, no grant, no policy"]
+        yRole -->|"authenticated"| yOwn{"user_id = auth.uid()?<br/>user_id defaults to auth.uid()"}
+        yOwn -->|"no: read"| yHide["other users' rows invisible,<br/>update and delete affect 0 rows"]
+        yOwn -->|"no: insert for another user"| yErr["Error 42501"]
+        yOwn -->|"yes"| yOp{"Operation?"}
+        yOp -->|"chat_sync_keys update"| yNoUpd["Error 42501: the key row<br/>is replaced by delete and insert"]
+        yOp -->|"chat_sync insert or update"| yGuard{"chat_sync_guard: owner and id kept,<br/>revision grows; format CHECKs?"}
+        yGuard -->|"yes"| yOk["Row written, updated_at = now()"]
+        yGuard -->|"revision not newer"| y40001["Error 40001"]
+        yGuard -->|"format"| y23514["Error 23514"]
+        yOp -->|"select, delete"| yRw["own rows only"]
+    end
     sg_settings ~~~ sg_chat
-    sg_chat ~~~ sg_sections
+    sg_chat ~~~ sg_sync
+    sg_sync ~~~ sg_sections
 ```
 
 <!-- diagram: rls-access-functions-limits -->
@@ -472,6 +509,8 @@ flowchart TD
         ckNote --- ckRel
         ckNote --- ckChat
     end
+    ckSync["chat_sync and chat_sync_keys format CHECKs, validated:<br/>conv_id 32 base64url, iv 16 base64, ciphertext base64 up to 2800000,<br/>rev above 0; key_id, salt, iv, wrapped_key formats,<br/>kdf PBKDF2-SHA256, iterations 600000 to 10000000"]
+    ckNote --- ckSync
     ckOld["Validated chat_history checks, inline in full_schema.sql<br/>and added by 20260923000000: role user, assistant or system,<br/>session_id 1 to 128 chars, content 100000 chars,<br/>sources and metadata 65536 bytes"]
     ckChat -.- ckOld
     invoker ~~~ sg_checks
@@ -610,8 +649,8 @@ flowchart TD
     scen --> guardVectors
 
     aIdem["Second migrations run succeeds on the upgraded schema:<br/>idempotent on the live shape and both earlier schema versions"]
-    aRls["rls_test.sql: 220 checks, 227 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback<br/>and match_knowledge_vector_384"]
-    aPost["post_rerun_check.sql, 13 checks: a further migrations run keeps<br/>ownership, visibility, chat rows, the published-row lock,<br/>size limits and brain_settings closed to A and anon"]
+    aRls["rls_test.sql: 270 checks, 277 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback,<br/>match_knowledge_vector_384 and the encrypted chat sync"]
+    aPost["post_rerun_check.sql, 14 checks: a further migrations run keeps<br/>ownership, visibility, chat rows, the published-row lock,<br/>size limits and brain_settings closed to A and anon"]
     aGuard["Step passes only when psql exits non-zero:<br/>pre-hardening database refused, order enforced"]
     aFreshRerun["full_schema.sql re-runs cleanly on a database it created"]
     live --> aIdem

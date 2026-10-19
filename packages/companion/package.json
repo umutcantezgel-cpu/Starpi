@@ -1,6 +1,6 @@
 {
   "name": "@starpi/companion",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "Starpi Core, the local companion: a loopback service on your own machine that keeps notes, chats and secrets sealed at rest, signs every answer into a tamper-evident audit chain, talks to language models only through an explicit egress list, and pairs with the Starpi app in the browser.",
   "type": "module",
   "license": "MIT",
@@ -49,7 +49,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.133.0",
-    "@starpi/core": "2.1.0"
+    "@starpi/core": "3.0.0"
   },
   "peerDependencies": {
     "pdfjs-dist": "^6.3.289"

@@ -200,7 +200,7 @@ token and decode speed through [`bench/diagnostics.js`](../src/js/bench/diagnost
   the bundle. [`api/_lib/handlers.js`](../api/_lib/handlers.js) checks the origin, a per-IP rate
   limit, the body size and the request against the model allowlist before any upstream call, then
   rotates keys until a stream starts and relays it; nothing is stored and no content is logged.
-  ([SECURITY.md](../SECURITY.md#nvidia-cloud-models-and-offline-use)).
+  ([SECURITY.md](../SECURITY.md#relay-pools-and-the-other-server-functions)).
 - **Library publisher:** the only component with the service role key. It is a command line tool
   for a machine the operator controls, opens no port and reads only published rows and rows
   without an owner ([backend/README.md](../backend/README.md#library-publisher)).
