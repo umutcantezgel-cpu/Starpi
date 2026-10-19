@@ -146,9 +146,8 @@ function pairForm(prefix, state, selfServed) {
  * Wires the actions both surfaces share (once per page).
  * @param {ShellServices} services
  * @param {ViewDeps} deps
- * @param {{ refreshAll: () => void }} hooks
  */
-function wireShared(services, deps, hooks) {
+function wireShared(services, deps) {
   const { pairing } = deps;
   services.onAction('companion-pair', async (btn) => {
     const form = /** @type {HTMLElement | null} */ (btn.closest('[data-companion-form]'));
@@ -166,7 +165,6 @@ function wireShared(services, deps, hooks) {
     try {
       await pairing.pair({ code, origin: originField?.value });
       services.toast(`${NS}.pair.done`, { tone: 'ok' });
-      hooks.refreshAll();
     } catch (err) {
       show(errorLabel(err), 'warn');
     } finally {
@@ -188,8 +186,6 @@ function wireShared(services, deps, hooks) {
 
 /** @type {WeakSet<object>} */
 const wiredFor = new WeakSet();
-/** @type {Set<() => void>} */
-const refreshers = new Set();
 
 /**
  * @param {ShellServices} services
@@ -198,7 +194,7 @@ const refreshers = new Set();
 function ensureWired(services, deps) {
   if (wiredFor.has(deps.pairing)) return;
   wiredFor.add(deps.pairing);
-  wireShared(services, deps, { refreshAll: () => refreshers.forEach((fn) => fn()) });
+  wireShared(services, deps);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -286,17 +282,23 @@ export function mountCompanionSettings(el, services, deps) {
     el.querySelector('[data-companion-field="origin"]')?.addEventListener('change', () => void probe());
   }
 
+  /** Only the newest probe shows its answer. */
+  let probes = 0;
   async function probe() {
     const out = /** @type {HTMLElement | null} */ (el.querySelector('[data-companion-probe]'));
     const origin = /** @type {HTMLInputElement | null} */ (el.querySelector('[data-companion-field="origin"]'))?.value ?? pairing.state().origin;
     if (!out) return;
+    const mine = ++probes;
     setHtml(out, String(line(`${NS}.probe.looking`, 'neutral')));
+    /** @type {SafeHtml} */
+    let result;
     try {
       const hello = await pairing.probe(origin);
-      setHtml(out, String(line({ key: `${NS}.probe.found`, params: { version: hello.version, origin: loopbackOrigin(origin) ?? origin } }, 'ok')));
+      result = line({ key: `${NS}.probe.found`, params: { version: hello.version, origin: loopbackOrigin(origin) ?? origin } }, 'ok');
     } catch (err) {
-      setHtml(out, String(line(err instanceof CompanionError && (err.code === 'unreachable' || err.code === 'timeout') ? `${NS}.probe.none` : errorLabel(err), 'warn')));
+      result = line(err instanceof CompanionError && (err.code === 'unreachable' || err.code === 'timeout') ? `${NS}.probe.none` : errorLabel(err), 'warn');
     }
+    if (mine === probes && out.isConnected) setHtml(out, String(result));
   }
 
   services.onAction('companion-unpair', async () => {
@@ -314,7 +316,6 @@ export function mountCompanionSettings(el, services, deps) {
   });
 
   pairing.subscribe(render);
-  refreshers.add(render);
   services.onLocaleChange(() => {
     shape = '';
     render();
@@ -338,6 +339,8 @@ export function mountCompanionTab(el, services, deps) {
   ensureWired(services, deps);
   let page = 'status';
   let headShape = '';
+  /** The session and role the page list was built for ('' while the page waits for the tab to open). */
+  let shownPages = '';
   /** Generation of the shown page: a late answer of a page left meanwhile is dropped. */
   let generation = 0;
 
@@ -365,31 +368,50 @@ export function mountCompanionTab(el, services, deps) {
   const owner = () => pairing.state().role === 'owner';
   const pages = () => PAGES.filter((p) => !p.owner || owner());
 
-  function renderChrome() {
+  /**
+   * The banner, the header with its chips and the page list; the page itself loads only while the
+   * tab is shown (a paired companion is not asked anything while the tab stays closed).
+   * @param {{ reload?: boolean }} [opts]  reload: load the page again (the tab was opened)
+   */
+  function renderChrome(opts = {}) {
     const s = pairing.state();
     fill('banner', s.phase === 'paired' ? auditBanner(s.audit) : '');
-    const shape = `${s.phase}|${s.role}|${s.audit.state}`;
-    if (shape === headShape) return;
-    headShape = shape;
-    if (s.phase !== 'paired') {
-      fill('head', html`<div class="flex items-center gap-2">${icon('plug', 'w-5 h-5 text-amber-600')}${label(`${NS}.card.title`, { tag: 'h2', className: 'text-lg font-semibold text-slate-900' })}</div>`);
-      fill('nav', '');
-      stopInbox();
+    const shape = `${s.phase}|${s.role}|${s.mode}|${s.audit.state}|${s.lost}`;
+    const pageShape = `${s.phase}|${s.role}|${s.session}`;
+    const pagesChanged = pageShape !== shownPages;
+    if (shape !== headShape) {
+      headShape = shape;
+      if (s.phase !== 'paired') {
+        fill('head', html`<div class="flex items-center gap-2">${icon('plug', 'w-5 h-5 text-amber-600')}${label(`${NS}.card.title`, { tag: 'h2', className: 'text-lg font-semibold text-slate-900' })}</div>`);
+        fill('nav', '');
+        stopInbox();
+        fill(
+          'page',
+          pairing.selfServed()
+            ? html`<div class="card p-4 sm:p-5 space-y-3">${label(`${NS}.card.subtitle`, { tag: 'p', className: 'text-xs text-slate-600 leading-relaxed' })}${s.lost ? line(`${NS}.pair.lost`, 'warn') : ''}${pairForm('companionTab', s, true)}</div>`
+            : html`${emptyState({ title: `${NS}.tab.unpaired_title`, body: `${NS}.tab.unpaired_body`, icon: 'plug' })}<div class="flex justify-center"><button type="button" class="btn btn-primary" data-action="companion-to-settings">${icon('settings-2', 'w-3.5 h-3.5')}${label(`${NS}.tab.to_settings`)}</button></div>`,
+        );
+        shownPages = pageShape;
+        return;
+      }
       fill(
-        'page',
-        pairing.selfServed()
-          ? html`<div class="card p-4 sm:p-5 space-y-3">${label(`${NS}.card.subtitle`, { tag: 'p', className: 'text-xs text-slate-600 leading-relaxed' })}${s.lost ? line(`${NS}.pair.lost`, 'warn') : ''}${pairForm('companionTab', s, true)}</div>`
-          : html`${emptyState({ title: `${NS}.tab.unpaired_title`, body: `${NS}.tab.unpaired_body`, icon: 'plug' })}<div class="flex justify-center"><button type="button" class="btn btn-primary" data-action="companion-to-settings">${icon('settings-2', 'w-3.5 h-3.5')}${label(`${NS}.tab.to_settings`)}</button></div>`,
+        'head',
+        html`<div class="flex flex-wrap items-center gap-2">${icon('plug', 'w-5 h-5 text-amber-600')}${label(`${NS}.card.title`, { tag: 'h2', className: 'text-lg font-semibold text-slate-900' })}<span class="flex-1"></span>${chip({ label: s.mode === 'cookie' ? `${NS}.state.paired_self` : `${NS}.state.paired_hosted`, tone: 'ok', icon: 'plug' })}${auditChip(s.audit.state)}</div>`,
       );
-      return;
     }
-    fill(
-      'head',
-      html`<div class="flex flex-wrap items-center gap-2">${icon('plug', 'w-5 h-5 text-amber-600')}${label(`${NS}.card.title`, { tag: 'h2', className: 'text-lg font-semibold text-slate-900' })}<span class="flex-1"></span>${chip({ label: s.mode === 'cookie' ? `${NS}.state.paired_self` : `${NS}.state.paired_hosted`, tone: 'ok', icon: 'plug' })}${auditChip(s.audit.state)}</div>`,
-    );
-    if (!pages().some((p) => p.id === page)) page = 'status';
-    fill('nav', segmented({ action: 'companion-page', label: `${NS}.tab.pages`, value: page, options: pages().map((p) => ({ value: p.id, label: `${NS}.page.${p.id}`, icon: p.icon })) }));
-    void showPage();
+    if (s.phase !== 'paired') return;
+    if (pagesChanged || opts.reload) {
+      if (!pages().some((p) => p.id === page)) page = 'status';
+      fill('nav', segmented({ action: 'companion-page', label: `${NS}.tab.pages`, value: page, options: pages().map((p) => ({ value: p.id, label: `${NS}.page.${p.id}`, icon: p.icon })) }));
+    }
+    if ((pagesChanged || opts.reload) && visible()) {
+      shownPages = pageShape;
+      void showPage();
+    } else if (pagesChanged) {
+      // Shown again when the tab opens.
+      fill('page', '');
+      shownPages = '';
+    }
   }
 
   /** @param {string} state */
@@ -1070,17 +1092,13 @@ export function mountCompanionTab(el, services, deps) {
   // Life cycle
 
   pairing.subscribe(() => renderChrome());
-  refreshers.add(() => {
-    headShape = '';
-    renderChrome();
-  });
   services.onTabOpen('companion', () => {
     headShape = '';
-    renderChrome();
+    renderChrome({ reload: true });
   });
   services.onLocaleChange(() => {
     headShape = '';
-    renderChrome();
+    renderChrome({ reload: visible() });
   });
   // Leaving the tab ends the inbox stream; nothing runs while the tab is hidden.
   new MutationObserver(() => {
