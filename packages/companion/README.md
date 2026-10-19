@@ -9,8 +9,9 @@ In the app it is shown as **Starpi Core (local companion)**. The command is `sta
 
 - Node.js 22.13 or newer (it uses the built-in `node:sqlite`); tested on 22 and 24.
 - One runtime dependency, `@anthropic-ai/sdk`, loaded only when an Anthropic model is configured.
-- Linux and macOS. Packaging (offline tarball, systemd user unit, launchd agent) is shipped
-  separately.
+- Linux and macOS. An offline bundle (`node scripts/companion-offline-pack.mjs`) installs it as
+  a systemd user unit, a system unit with an egress splice, or a launchd agent: see
+  [deploy/linux/README.md](deploy/linux/README.md) and [deploy/macos/README.md](deploy/macos/README.md).
 
 ## Quick start
 
@@ -150,7 +151,7 @@ those keys with a **key-encryption key** (KEK) that never lies in the data folde
 | Provider | Where the KEK lives |
 | --- | --- |
 | `file` (default) | a 0600 file outside the data folder (`<config>/kek.key`) |
-| `systemd-creds` | an encrypted systemd credential (host key, TPM2 where present), loaded by the user unit with `LoadCredentialEncrypted=starpi-companion-kek` |
+| `systemd-creds` | an encrypted systemd credential (host key, TPM2 where present), loaded by the unit's drop-in with `LoadCredentialEncrypted=starpi-companion-kek` |
 | `keychain-macos` | a generic password item in the login keychain |
 
 **Crypto-erase** destroys a namespace's key first, then its rows and blobs, and appends a line to
@@ -195,9 +196,10 @@ starts them. Shell tools for models are not part of this release.
 
 Limits of an in-process guard: references to the original functions and sockets made before it is
 installed, Node's internal handle objects reached through a live socket, native add-ons and
-WebAssembly with host imports. On Linux the user unit therefore adds a boundary
+WebAssembly with host imports. On Linux the system install therefore adds a boundary
 outside the process: `IPAddressDeny=any` for the companion, and a second, tiny unit running
-`starpi-companion egress-splice` on a Unix socket only the companion may open. With
+`starpi-companion egress-splice` on a Unix socket only the companion may open (a systemd user
+manager does not enforce IP address rules, so the per-user unit relies on the guard). With
 `STARPI_COMPANION_EGRESS_SOCKET` set, capabilities connect through that socket (`CONNECT host:443`);
 the splice checks the host and its addresses again and only ever sees ciphertext.
 
