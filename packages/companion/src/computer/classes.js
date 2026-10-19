@@ -14,7 +14,7 @@
 //      of the task, keys and apps that carry the high class, opening an app after the screen was read.
 // The stated purpose can only raise a class. Whatever cannot be determined counts against the step.
 import { ACTIONS, CLASSES, KEY_REPEAT_LIMIT, PURPOSE_MAX, SCROLL_LINES_LIMIT, START_CLASS, TYPE_TEXT_MAX } from './limits.js';
-import { APP_ID, SECRET_ROLE, TEXT_ROLES, VAGUE_LABELS, WEB_APP_SHELLS, hostOf } from './lists.js';
+import { ANY_LANGUAGE, APP_ID, LANGUAGES, SECRET_ROLE, TEXT_ROLES, VAGUE_LABELS, WEB_APP_SHELLS, hostOf } from './lists.js';
 
 /** @typedef {import('./limits.js').ActionClass} ActionClass */
 /** @typedef {{ x: number, y: number, w: number, h: number }} Box */
@@ -54,14 +54,33 @@ import { APP_ID, SECRET_ROLE, TEXT_ROLES, VAGUE_LABELS, WEB_APP_SHELLS, hostOf }
 const textOrNull = (v) => (typeof v === 'string' && v.trim() !== '' ? v : null);
 
 /**
- * Text prepared for matching: compatibility-normalised, lower case, typographic quotes made plain,
- * runs of white space folded to one space.
+ * Text prepared for matching: compatibility-normalised, lower case (under the case rules of `lang`
+ * when it is given, the root rules otherwise), typographic quotes made plain, runs of white space
+ * folded to one space.
  * @param {unknown} value
+ * @param {string} [lang]  a language tag such as 'tr'
  */
-export function fold(value) {
+export function fold(value, lang) {
   if (typeof value !== 'string') return '';
-  return value.normalize('NFKC').toLowerCase().replace(/[‘’ʼ`´]/g, "'").replace(/\s+/g, ' ').trim();
+  const text = value.normalize('NFKC');
+  return (lang ? text.toLocaleLowerCase(lang) : text.toLowerCase()).replace(/[‘’ʼ`´]/g, "'").replace(/\s+/g, ' ').trim();
 }
+
+/**
+ * Folded text with accents and other combining marks left out ('é' becomes 'e'). The dotless ı is a
+ * letter of its own and stays.
+ * @param {string} folded
+ */
+export const bare = (folded) => folded.normalize('NFD').replace(/\p{M}/gu, '').normalize('NFC');
+
+/**
+ * The case rules the words of one language are compared under: that language's own; for Turkish
+ * also the root rules, since an interface may write a capital I without its dot; for words of no
+ * stated language both the root and the Turkish rules (the only two the shipped languages differ in).
+ * @param {string} lang
+ * @returns {Array<string | undefined>}
+ */
+const casingsOf = (lang) => (lang === 'tr' ? ['tr', undefined] : LANGUAGES.includes(lang) ? [lang] : [undefined, 'tr']);
 
 /**
  * The strongest of some classes; anything unknown counts as forbidden.
@@ -81,15 +100,73 @@ const LETTER_OR_DIGIT = '[\\p{L}\\p{N}]';
 /** @param {string} text */
 const escapeForRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 
+/** Compiled word lists, per list, case rule and accent handling. @type {WeakMap<readonly string[], Map<string, RegExp>>} */
+const compiled = new WeakMap();
+
 /**
- * True when a word of the list starts a word of the text.
+ * One expression for a word list: every entry as whole words, or as the start of a word when it
+ * ends in `*`.
+ * @param {readonly string[]} list
+ * @param {string | undefined} casing
+ * @param {boolean} plain  accents left out
+ */
+function patternOf(list, casing, plain) {
+  let byRule = compiled.get(list);
+  if (!byRule) compiled.set(list, (byRule = new Map()));
+  const key = `${casing ?? ''}|${plain}`;
+  let pattern = byRule.get(key);
+  if (!pattern) {
+    /** @type {string[]} */
+    const whole = [];
+    /** @type {string[]} */
+    const stems = [];
+    for (const entry of list) {
+      const folded = fold(entry, casing);
+      const word = plain ? bare(folded) : folded;
+      const stem = word.endsWith('*');
+      const body = escapeForRegExp(stem ? word.slice(0, -1).trimEnd() : word);
+      if (body !== '') (stem ? stems : whole).push(body);
+    }
+    const branches = [...(whole.length > 0 ? [`(?:${whole.join('|')})(?!${LETTER_OR_DIGIT})`] : []), ...stems];
+    pattern = branches.length === 0 ? /(?!)/u : new RegExp(`(?<!${LETTER_OR_DIGIT})(?:${branches.join('|')})`, 'u');
+    byRule.set(key, pattern);
+  }
+  return pattern;
+}
+
+/**
+ * True when a risky word stands in the text: as whole words, or at the start of a word for a stem
+ * (an entry ending in `*`). The words of each language are compared under its own case rules, and
+ * once more with accents left out, so a false hit can only raise the class.
  * @param {unknown} text
- * @param {readonly string[]} words
+ * @param {readonly string[] | Readonly<Record<string, readonly string[]>>} words  by language; a plain list counts as words of no stated language
  */
 export function mentionsRiskyWord(text, words) {
-  const folded = fold(text);
-  if (folded === '') return false;
-  return words.some((word) => new RegExp(`(?<!${LETTER_OR_DIGIT})${escapeForRegExp(fold(word))}`, 'u').test(folded));
+  if (typeof text !== 'string' || text.trim() === '') return false;
+  /** @type {Array<[string, readonly string[]]>} */
+  const groups = Array.isArray(words)
+    ? [[ANY_LANGUAGE, /** @type {readonly string[]} */ (words)]]
+    : Object.entries(/** @type {Readonly<Record<string, readonly string[]>>} */ (words));
+  return groups.some(([lang, list]) => list.length > 0 && casingsOf(lang).some((casing) => {
+    const folded = fold(text, casing);
+    return patternOf(list, casing, false).test(folded) || patternOf(list, casing, true).test(bare(folded));
+  }));
+}
+
+/**
+ * True when a label says nothing about what its control does: empty, or as a whole one of the vague
+ * labels of a shipped language (same case and accent rules as the risky words).
+ * @param {unknown} label
+ */
+export function saysNothing(label) {
+  if (fold(label) === '') return true;
+  return Object.entries(VAGUE_LABELS).some(([lang, list]) => casingsOf(lang).some((casing) => {
+    const folded = fold(label, casing);
+    return list.some((entry) => {
+      const word = fold(entry, casing);
+      return word === folded || bare(word) === bare(folded);
+    });
+  }));
 }
 
 /** Code point ranges of the controls a typed text must not hold (the line feed, 0x0a, is left out). */
@@ -246,12 +323,6 @@ export function describeTarget(action, seen) {
     label: textOrNull(seen?.element?.label),
   };
 }
-
-/** @param {string | null} label */
-const saysNothing = (label) => {
-  const folded = fold(label);
-  return folded === '' || VAGUE_LABELS.includes(folded);
-};
 
 /**
  * Decides the class of one step.

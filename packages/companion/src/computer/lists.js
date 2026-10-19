@@ -70,21 +70,88 @@ export const KEYS_DEFAULT = Object.freeze([
   ['mod+v', 'high'], ['mod+s', 'high'],
 ]);
 
-/**
- * Words that mark a control or a stated purpose as consequential. They match at the start of a word
- * of the normalised text, so a false hit only raises the class. Add the words of the interface
- * language through `riskyWords`.
- */
-export const RISKY_WORDS_DEFAULT = Object.freeze([
-  'delete', 'remove', 'erase', 'trash', 'discard', 'overwrite', 'replace', 'empty', 'wipe',
-  'send', 'submit', 'post', 'publish', 'share', 'invite', 'forward', 'reply',
-  'pay', 'buy', 'purchase', 'order', 'checkout', 'transfer', 'donate', 'subscribe',
-  'sign out', 'log out', 'uninstall', 'install', 'format', 'reset', 'restart', 'shut down',
-  'allow', 'grant', 'approve', 'accept', 'confirm', 'authorize', 'authorise', "don't save", 'do not save',
-]);
+/** The interface languages Starpi ships; each brings its own risky words and vague labels. */
+export const LANGUAGES = Object.freeze(['en', 'de', 'fr', 'es', 'it', 'tr']);
+/** The key of words that belong to no one language (the configured ones); they are compared under the case rules of every language. */
+export const ANY_LANGUAGE = '*';
 
-/** Labels that say nothing about what a control does. */
-export const VAGUE_LABELS = Object.freeze(['ok', 'okay', 'yes', 'continue', 'next', 'done', 'go', 'apply', 'proceed', 'got it', '>', '→']);
+/**
+ * Words that mark a control, a dialog or a stated purpose as consequential, per interface language,
+ * in five groups: removing or overwriting, reaching other people, spending money, changing the
+ * system, granting or confirming. An entry matches whole words of the text; an entry that ends in
+ * `*` is a stem and matches every word that starts with it. Each language's words are compared under
+ * that language's case rules (Turkish keeps the dotted and the dotless i apart) and once more with
+ * accents left out. A false hit only raises the class. The configuration adds words through
+ * `riskyWords`.
+ * @type {Readonly<Record<string, readonly string[]>>}
+ */
+export const RISKY_WORDS_DEFAULT = Object.freeze({
+  en: Object.freeze([
+    'delete*', 'remov*', 'erase*', 'erasing', 'trash*', 'discard*', 'overwrit*', 'replac*', 'empty*', 'emptied', 'wipe*', 'wiping',
+    'send*', 'sent', 'submit*', 'post', 'posts', 'posted', 'posting', 'publish*', 'share', 'shares', 'shared', 'sharing', 'invit*',
+    'forward*', 'reply*', 'replied', 'replies',
+    'pay', 'pays', 'paid', 'paying', 'payment*', 'buy', 'buys', 'buying', 'bought', 'purchas*', 'order', 'orders', 'ordered', 'ordering',
+    'checkout', 'check out', 'transfer*', 'donat*', 'subscrib*',
+    'sign out', 'sign off', 'log out', 'log off', 'logout', 'uninstall*', 'install*', 'format*', 'reset*', 'restart*', 'reboot*',
+    'shut down', 'shutdown',
+    'allow*', 'grant*', 'approv*', 'accept*', 'agree*', 'confirm*', 'authoriz*', 'authoris*', "don't save", 'do not save',
+  ]),
+  de: Object.freeze([
+    'lösch*', 'entfern*', 'papierkorb*', 'verwerf*', 'verwirf', 'überschreib*', 'ersetz*', 'leeren', 'entleer*', 'bereinig*',
+    'senden', 'sende', 'absend*', 'abschick*', 'schicken', 'verschick*', 'versend*', 'einreich*', 'posten', 'veröffentlich*', 'teilen',
+    'freigeb*', 'freigabe*', 'einlad*', 'weiterleit*', 'antworten', 'beantworten',
+    'bezahl*', 'zahlen', 'zahlung*', 'kauf', 'kaufen', 'kaufe', 'bestell*', 'zur kasse', 'kasse', 'überweis*', 'spenden', 'spende',
+    'abonnier*', 'buchen', 'kostenpflichtig*',
+    'abmeld*', 'ausloggen', 'deinstallier*', 'installier*', 'formatier*', 'zurücksetz*', 'neu starten', 'neustart*', 'herunterfahr*',
+    'ausschalten',
+    'erlaub*', 'zulassen', 'gestatt*', 'genehmig*', 'akzeptier*', 'annehmen', 'bestätig*', 'autorisier*', 'zustimm*', 'einverstanden',
+    'nicht speichern', 'ohne speichern', 'ohne zu speichern',
+  ]),
+  fr: Object.freeze([
+    'supprim*', 'suppression', 'effac*', 'retir*', 'corbeille', 'jeter', 'abandonner', 'écras*', 'remplac*', 'vider',
+    'envoy*', 'envoi', 'soumettre', 'valider', 'publier', 'publiez', 'publication', 'partag*', 'inviter', 'transférer', 'transfert',
+    'répondre',
+    'payer', 'paiement', 'acheter', 'achat*', 'commander', 'commande', 'virement', 'faire un don', 'abonner', 'abonnement',
+    'déconnect*', 'déconnexion', 'désinstaller', 'installer', 'formater', 'réinitialis*', 'redémarr*', 'éteindre',
+    'autoriser', 'accorder', 'approuver', 'accepter', 'confirmer', 'ne pas enregistrer', 'sans enregistrer',
+  ]),
+  es: Object.freeze([
+    'elimin*', 'borrar', 'borra', 'quitar', 'suprimir', 'papelera', 'descartar', 'sobrescribir', 'reemplazar', 'vaciar',
+    'enviar', 'envía', 'envío', 'publicar', 'compartir', 'invitar', 'reenviar', 'responder',
+    'pagar', 'pago', 'comprar', 'compra', 'pedido', 'transferir', 'transferencia', 'donar', 'suscrib*',
+    'cerrar sesión', 'desinstalar', 'instalar', 'formatear', 'restablecer', 'reiniciar', 'apagar',
+    'permitir', 'conceder', 'aprobar', 'aceptar', 'confirmar', 'autorizar', 'no guardar',
+  ]),
+  it: Object.freeze([
+    'elimin*', 'cancella*', 'rimuov*', 'cestino', 'scarta*', 'sovrascriv*', 'sostituisc*', 'svuota*',
+    'invia*', 'pubblica*', 'condividi*', 'invita*', 'inoltra*', 'rispondi',
+    'paga', 'pagare', 'pagamento', 'acquist*', 'compra', 'comprare', 'ordina', 'ordinare', 'ordine', 'bonifico', 'trasferisci', 'dona',
+    'donazione', 'abbonati', 'abbonamento',
+    'esci', 'disconnetti', 'disinstalla*', 'installa*', 'formatta*', 'reimposta*', 'riavvia*', 'spegni*',
+    'consenti*', 'concedi', 'approva*', 'accetta*', 'conferma*', 'autorizza*', 'non salvare',
+  ]),
+  tr: Object.freeze([
+    'sil', 'silin*', 'silme', 'kaldır*', 'çöp kutusu*', 'çöpe at', 'üzerine yaz*', 'tümünü değiştir', 'boşalt*',
+    'gönder*', 'yayınla*', 'paylaş*', 'davet*', 'ilet', 'yanıtla*', 'cevapla*',
+    'öde', 'ödeme*', 'satın al*', 'sipariş*', 'havale*', 'bağış*', 'abone ol*',
+    'oturumu kapat', 'çıkış yap*', 'yükle', 'biçimlendir*', 'sıfırla*', 'yeniden başlat*',
+    'izin ver*', 'onay*', 'kabul*', 'yetkilendir*', 'kaydetme', 'kaydetmeden',
+  ]),
+});
+
+/**
+ * Labels that say nothing about what a control does, per interface language. A label is vague when
+ * it is one of these as a whole (same case and accent rules as the risky words).
+ * @type {Readonly<Record<string, readonly string[]>>}
+ */
+export const VAGUE_LABELS = Object.freeze({
+  en: Object.freeze(['ok', 'okay', 'yes', 'continue', 'next', 'done', 'go', 'apply', 'proceed', 'got it', '>', '→']),
+  de: Object.freeze(['ja', 'weiter', 'fortfahren', 'fertig', 'los', 'übernehmen', 'anwenden', 'verstanden', 'alles klar']),
+  fr: Object.freeze(['oui', "d'accord", 'continuer', 'suivant', 'terminé', 'appliquer', 'compris']),
+  es: Object.freeze(['sí', 'vale', 'de acuerdo', 'continuar', 'siguiente', 'listo', 'hecho', 'aplicar', 'entendido']),
+  it: Object.freeze(['sì', "d'accordo", 'continua', 'avanti', 'successivo', 'fatto', 'applica', 'procedi', 'ho capito']),
+  tr: Object.freeze(['tamam', 'evet', 'devam', 'devam et', 'ileri', 'sonraki', 'bitti', 'uygula', 'anladım']),
+});
 
 /** Host names that always mean this machine. */
 export const LOOPBACK_HOSTS = Object.freeze(['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0']);
@@ -99,13 +166,15 @@ export const LOOPBACK_HOSTS = Object.freeze(['localhost', '127.0.0.1', '::1', '[
  * @property {ReadonlySet<string>} ownApps    installed apps that show Starpi itself
  * @property {ReadonlySet<string>} ownHosts   host names that serve Starpi itself (loopback always)
  * @property {ReadonlyMap<string, import('./limits.js').ActionClass>} keys
- * @property {readonly string[]} riskyWords
+ * @property {Readonly<Record<string, readonly string[]>>} riskyWords  by language; the configured words under ANY_LANGUAGE
  */
 
 /** @param {unknown} v */
 const appList = (v) => (Array.isArray(v) && v.length <= 200 && v.every((a) => typeof a === 'string' && APP_ID.test(a)) ? null : 'a list of app ids');
+/** A configured word: 2 to 40 characters, a `*` only at its end (a stem). @param {unknown} w */
+const fitsWord = (w) => typeof w === 'string' && w.length <= 40 && /^[^*]*\*?$/.test(w.trim()) && w.trim().replace(/\*$/, '').trim().length >= 2;
 /** @param {unknown} v */
-const wordList = (v) => (Array.isArray(v) && v.length <= 200 && v.every((w) => typeof w === 'string' && w.trim().length >= 2 && w.length <= 40) ? null : 'a list of words (2 to 40 characters)');
+const wordList = (v) => (Array.isArray(v) && v.length <= 200 && v.every(fitsWord) ? null : 'a list of words (2 to 40 characters; a trailing * matches every word that starts with it)');
 /** @param {unknown} v */
 const keyList = (v) => {
   if (!Array.isArray(v) || !v.every((k) => typeof k === 'string')) return 'a list of key names';
@@ -182,6 +251,9 @@ export function buildPolicy(raw = {}, { ownOrigins = [] } = {}) {
     ownApps: new Set(list('ownApps')),
     ownHosts,
     keys: new Map(KEYS_DEFAULT.filter(([name]) => wantedKeys === null || wantedKeys.has(name))),
-    riskyWords: Object.freeze([...new Set([...RISKY_WORDS_DEFAULT, ...list('riskyWords').map((w) => w.trim().toLowerCase())])]),
+    riskyWords: Object.freeze({
+      ...RISKY_WORDS_DEFAULT,
+      [ANY_LANGUAGE]: Object.freeze([...new Set(list('riskyWords').map((w) => w.trim().replace(/\s+/g, ' ')))]),
+    }),
   });
 }

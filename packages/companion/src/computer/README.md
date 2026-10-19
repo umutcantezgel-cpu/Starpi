@@ -25,7 +25,7 @@ Nothing of this module exists unless the configuration says so:
       "browsers": [],
       "ownApps": [],
       "keys": ["enter", "tab", "escape"],
-      "riskyWords": ["archive", "move to"]
+      "riskyWords": ["archive", "move to", "archiv*"]
     }
   }
 }
@@ -36,6 +36,14 @@ Every member of `modules.computer` is optional. Durations can only be shortened 
 browsers, the own apps and the risky words only grow; the key allow list only shrinks; an allow
 list of apps, when set, narrows everything further. `openApps` lists the apps `app.open` may start;
 without it the action is not offered. Blocked apps can be neither allowed nor opened.
+
+Risky words and vague labels come for every language the app ships (English, German, French,
+Spanish, Italian and Turkish), and all of them apply whatever language the screen shows. A risky
+word matches whole words in any letter case, under the case rules of its language (Turkish keeps
+the dotted and the dotless i apart), and also with accents left out; an entry that ends in `*`
+matches every word that starts with it (`archiv*` covers "archived"). A label is vague only when it
+is one of the vague words as a whole ("Weiter", "Continuer", "İleri"). Configured `riskyWords`
+follow the same rules and are compared under the case rules of every shipped language.
 
 ## How a run goes
 
@@ -55,8 +63,8 @@ without it the action is not offered. Blocked apps can be neither allowed nor op
    - `read`: looking at the screen;
    - `low`: local input the task asks for, such as a click on a named control or text taken
      literally from the task;
-   - `high`: runs only after the mandate owner approved this one step (risky words on the control
-     or in the stated purpose, careful apps such as mail or the browser, vague or unknown controls,
+   - `high`: runs only after the mandate owner approved this one step (risky words on the control,
+     in a dialog or in the stated purpose, careful apps such as mail or the browser, vague or unknown controls,
      text not taken from the task, keys such as paste and save, opening an app after the screen was
      read);
    - `forbidden`: never runs (blocked apps, the window showing Starpi or the companion, browser

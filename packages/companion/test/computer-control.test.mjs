@@ -492,9 +492,7 @@ test('a typing step cut short records the characters actually typed', async () =
   ];
   for (const [code, disturb, outcome] of cases) {
     let pieces = 0;
-    /** @type {any} */
-    let r;
-    r = rig({
+    const r = rig({
       model: [plan({ do: 'keyboard.type', text, why: 'write the code' })],
       wrap: (actor) => ({
         ...actor,
