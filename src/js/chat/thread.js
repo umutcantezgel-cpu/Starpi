@@ -505,12 +505,14 @@ export function webGrounding(result) {
 
 /**
  * A web check a tool runner made itself (the verified web answer of a search pack), in the shape of
- * rag/web-check.js, or null.
+ * rag/web-check.js, or null. One that compared no statement says nothing about the answer: its own
+ * citations decide then.
  * @param {CompletionResult} result
  * @returns {import('../rag/web-check.js').WebCheck | null}
  */
 function runnerWebCheck(result) {
-  return readWebCheck(/** @type {{ webCheck?: unknown }} */ (result).webCheck);
+  const check = readWebCheck(/** @type {{ webCheck?: unknown }} */ (result).webCheck);
+  return check && (check.kind !== 'checked' || (check.total ?? 0) > 0) ? check : null;
 }
 
 /**

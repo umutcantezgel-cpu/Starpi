@@ -234,6 +234,27 @@ describe('the verified web answer of the tool runner', () => {
     }
   });
 
+  it("never lets a runner's check that compared nothing hide the check of the answer's own citations", () => {
+    const question = /** @type {any} */ ({ id: 'q', parts: [{ type: 'text', text: 'How do tides work?' }], meta: {}, localOnly: false });
+    const target = /** @type {any} */ ({ provider: 'anthropic', model: 'claude-sonnet-4-5', route: 'key' });
+    const text = 'Tides follow the Moon. The tide rises 900 meters every minute.';
+    const citations = [
+      { url: 'https://example.org/tides', title: 'Tides', citedText: 'Tides follow the Moon.', start: 0, end: 22 },
+      { url: 'https://example.org/rise', title: 'Rise', citedText: 'The tide rises about one meter in six hours.', start: 23, end: text.length },
+    ];
+    const result = (/** @type {any[]} */ cited, /** @type {any} */ webCheck) => /** @type {any} */ ({ text, reasoning: '', toolCalls: [], citations: cited, images: [], opaque: [], stopReason: 'end', provider: 'anthropic', model: 'claude-sonnet-4-5', usage: null, error: null, ...(webCheck ? { webCheck } : {}) });
+    const nothing = { kind: 'checked', pages: 0, supported: 0, flagged: 0, total: 0 };
+    const own = thread.freeAnswerInput({ question, target, result: result(citations, null), durationMs: 10 });
+    assert.equal(own.label, 'web');
+    assert.equal(own.meta.web_check?.flagged, 1, 'its own citations flag the made-up figure');
+    const behind = thread.freeAnswerInput({ question, target, result: result(citations, nothing), durationMs: 10 });
+    assert.deepEqual(behind.meta.web_check, own.meta.web_check);
+    // Without citations of its own, such an answer is a free one, not "checked: nothing to compare".
+    const bare = thread.freeAnswerInput({ question, target, result: result([], nothing), durationMs: 10 });
+    assert.equal(bare.label, 'free');
+    assert.equal(bare.meta.web_check, undefined);
+  });
+
   it('keeps no provider state for an answer that stopped with tool calls left open', () => {
     const input = thread.freeAnswerInput({
       question: /** @type {any} */ ({ id: 'q', parts: [{ type: 'text', text: 'Hi' }], meta: {}, localOnly: false }),

@@ -2,7 +2,8 @@
 // switches, memory waits for the memory feature and for memory to be on, an MCP tool counts only
 // while its approval stands, and a Gemini web turn keeps its own search without declared functions.
 // The tool runner answers memory_lookup with the notes of the turn's conversation, and an answer
-// written from a web pack comes back with its web check in the thread's shape.
+// written from a web pack comes back with its web check in the thread's shape; the pack stays for
+// the turn's later answers, and one that cites nothing from it is left to its own citations.
 import './setup.mjs';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -165,9 +166,69 @@ describe('the verified web answer', () => {
     assert.deepEqual(out.citations.map((c) => c.url), ['https://example.org/tides']);
   });
 
-  it('says there was nothing to compare when the answer cites no result', () => {
-    const out = verifiedWebAnswer(answer('I do not know.'), pack);
-    assert.equal(out.text, 'I do not know.');
-    assert.deepEqual(out.webCheck, { kind: 'checked', pages: 0, supported: 0, flagged: 0, total: 0 });
+  it('leaves an answer that marks no statement with a result as it is, without a web check', () => {
+    assert.equal(verifiedWebAnswer(answer('I do not know.'), pack), null);
+    // Markers beyond the results count as no marker.
+    assert.equal(verifiedWebAnswer(answer('Tides are caused mainly by the gravity of the Moon. [W7]'), pack), null);
+  });
+
+  it('leaves the check of an answer with pages of its own to all its citations together', () => {
+    const own = { url: 'https://example.net/moon', title: 'Moon', citedText: 'The Moon pulls the oceans.', start: 0, end: 10 };
+    const out = verifiedWebAnswer({ ...answer('Tides are caused mainly by the gravity of the Moon. [W1]'), citations: [own] }, pack);
+    assert.ok(out);
+    assert.doesNotMatch(out.text, /\[W\d\]/);
+    assert.equal(out.webCheck, undefined, 'no count of the pack alone stands in for the check of its own pages');
+    assert.deepEqual(out.citations.map((c) => c.url), ['https://example.net/moon', 'https://example.org/tides']);
+  });
+});
+
+describe('the web pack of a question, kept for its later answers', () => {
+  installChatTools();
+  const question = 'How do tides work?';
+  const turn = /** @type {import('../../src/js/chat/hooks.js').TurnContext} */ ({ ...ctx, conversationId: 'c-tides', question });
+  /**
+   * @param {string} provider
+   * @param {string} text
+   * @param {any[]} [citations]
+   */
+  const answer = (provider, text, citations = []) => /** @type {any} */ ({ text, reasoning: '', toolCalls: [], citations, images: [], opaque: [], usage: null, stopReason: 'end', model: 'm', provider, error: null });
+
+  it('checks every answer that cites it and leaves the others to their own citations', async () => {
+    const before = { assistant: getAssistant(), web: getWebSearch() };
+    const kept = new Map();
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: { getItem: (/** @type {string} */ k) => kept.get(k) ?? null, setItem: (/** @type {string} */ k, /** @type {string} */ v) => void kept.set(k, String(v)), removeItem: (/** @type {string} */ k) => void kept.delete(k) },
+    });
+    writeSearchSettings({ provider: 'searxng', searxngUrl: 'https://search.example.org' });
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(JSON.stringify({ results: [{ title: 'Tide basics', url: 'https://example.com/tides', content: 'Tides are caused mainly by the Moon.' }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    const signal = new AbortController().signal;
+    try {
+      // The own server's model cannot search: the question gets a pack.
+      setAssistant('local:fake-model');
+      setWebSearch(true);
+      const notes = [];
+      for (const hook of turnNoteHooks) notes.push(...(await hook(turn)));
+      assert.equal(notes.length, 1);
+      const run = (/** @type {any} */ result) => single.tools?.({ result, request: async () => /** @type {any} */ ({}), ctx: turn, signal });
+      // The thread's answer cites the pack: checked against it.
+      const first = await run(answer('openai-compatible', 'Tides are caused mainly by the Moon. [W1]'));
+      assert.deepEqual(first?.webCheck, { kind: 'checked', pages: 1, supported: 1, flagged: 0, total: 1 });
+      // Written again from the same turn (Regenerate, a Compare column): the pack is still there.
+      const again = await run(answer('openai-compatible', 'The Moon causes most of the tides. [W1]'));
+      assert.equal(again?.webCheck?.total, 1);
+      // An answer that cites nothing from it is left as it is: no check of nothing stands in.
+      assert.equal(await run(answer('openai-compatible', 'Tides are a daily rise and fall of the sea.')), null);
+      // A model that searched the web itself keeps its own citations, untouched.
+      const own = [{ url: 'https://example.org/tides', title: 'Tides', citedText: 'Tides follow the Moon.', start: 0, end: 22 }];
+      assert.equal(await run(answer('anthropic', 'Tides follow the Moon. The tide rises 900 meters every minute.', own)), null);
+    } finally {
+      globalThis.fetch = realFetch;
+      writeSearchSettings({ provider: 'off', searxngUrl: '' });
+      delete (/** @type {any} */ (globalThis)).localStorage;
+      setAssistant(before.assistant);
+      setWebSearch(before.web);
+    }
   });
 });

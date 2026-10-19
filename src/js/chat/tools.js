@@ -115,16 +115,25 @@ const packKey = (ctx) => `${ctx.conversationId}\n${ctx.question}`;
  * cite their pages, and the outcome comes along as the answer's web check (rag/web-check.js shape:
  * `checked`, the pages its markers named, n of m marked statements found), so the thread labels and
  * stores it as its own web check.
+ *
+ * Null when the answer marks no statement with a result: it stays as it is, and its own citations
+ * (a model that searched the web itself) decide its check, as for any other answer. An answer that
+ * cites pages of its own besides the markers carries no web check either: the thread checks all its
+ * citations together (the pack's supported statements among them), so no flagged statement of its
+ * own search goes unseen behind the pack's count.
  * @param {import('../ai/index.js').CompletionResult} base
  * @param {WebPack} pack
- * @returns {import('./hooks.js').ToolRunResult}
+ * @returns {import('./hooks.js').ToolRunResult | null}
  */
 export function verifiedWebAnswer(base, pack) {
   const check = checkWebAnswer(base.text, pack.results);
+  if (!check.statements) return null;
+  const answer = { ...base, text: check.text, citations: [...base.citations, ...check.citations] };
+  if (base.citations.some((c) => /^https?:\/\//i.test(c.url))) return answer;
   const cited = new Set([...base.text.matchAll(/\[W(\d{1,2})\]/g)].map((m) => Number(m[1])).filter((n) => n >= 1 && n <= pack.results.length));
   /** @type {import('../rag/web-check.js').WebCheck} */
   const webCheck = { kind: 'checked', pages: cited.size, supported: check.supported, flagged: check.statements - check.supported, total: check.statements };
-  return check.statements ? { ...base, text: check.text, citations: [...base.citations, ...check.citations], webCheck } : { ...base, webCheck };
+  return { ...answer, webCheck };
 }
 
 /**
@@ -291,9 +300,10 @@ function createRuntime(opts = {}) {
       out = loop.result;
     }
     // The pack stays for answers written again from this turn (regenerate, compare columns); the
-    // next question with the same words replaces it.
+    // next question with the same words replaces it. An answer that marks nothing from it stays as
+    // it is.
     const pack = packs.get(packKey(ctx));
-    if (pack) out = verifiedWebAnswer(out ?? result, pack);
+    if (pack) out = verifiedWebAnswer(out ?? result, pack) ?? out;
     return out;
   });
 
