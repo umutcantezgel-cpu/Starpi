@@ -28,6 +28,12 @@ const EPOCH = 1_790_000_000;
 /** @type {ReturnType<typeof packOffline>} */
 let packed;
 before(() => {
+  // The bundle carries the built @starpi/core; a fresh checkout (npm test before any build) has
+  // no packages/core/dist yet, so it is built here as npm run build:core would.
+  if (!existsSync(path.join(ROOT, 'packages/core/dist/index.js'))) {
+    const built = spawnSync(process.execPath, [path.join(ROOT, 'scripts/build-core.mjs')], { encoding: 'utf8', timeout: 120_000 });
+    assert.equal(built.status, 0, built.stderr);
+  }
   packed = packOffline({ outDir: path.join(scratch, 'out'), signKey: PRIVATE, now: EPOCH });
 });
 after(() => rmSync(scratch, { recursive: true, force: true }));
