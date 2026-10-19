@@ -168,291 +168,260 @@ Where each part of Starpi runs, which trust boundary it sits behind, and how the
 
 ### System context and trust boundaries
 
-The browser tab is the trusted zone: the main thread, the three Web Workers (starpi-webllm for WebLLM inference on WebGPU, starpi-wasm for Transformers.js on the processor, started only for a processor model, and starpi-ingest for parsing, hashing and BM25), the service worker and per-origin storage all live there. Vercel serves the static files with the vercel.json headers (CSP, HSTS, COOP, X-Frame-Options, Permissions-Policy) and runs two Node.js functions, api/models/nvidia.js and api/chat/nvidia.js, which keep the NVIDIA_API_KEYS pool in the server environment: the browser calls them on its own origin without any key, and they forward a validated request to NVIDIA's API with a key from the pool. Supabase is reached only with the public key (a publishable sb_publishable_ key or a JWT with role anon; scripts/lib/supabase-key.mjs makes the build refuse an empty key, sb_secret_ keys, JWTs with any other role and anything that is neither) plus an anonymous session JWT, so role grants and RLS decide what each caller can read or write, and the RPC functions are SECURITY INVOKER. The optional library publisher, a command line tool on a machine the operator controls, is the only component that holds the service_role key; the browser never talks to it, and because the key bypasses RLS, the publisher limits its own reads to rows that are public or have no owner (rows written with the service role), so private rows of browser sessions do not leave through it. The source check and the answer receipts are computed in the tab, a receipt loaded for verification is checked in the ingestion worker, and neither is sent anywhere; a receipt leaves the tab only as a JSON file the user downloads. Dashed nodes are third-party services outside Starpi control, including the browser's speech recognition, which in client mode voice.js uses only where the browser offers on-device recognition (processLocally). Because cross-origin requests bypass sw.js, model files are cached only in the Cache API buckets of WebLLM and of Transformers.js (transformers-cache); the self-hosted ONNX Runtime binary is a hashed /assets file. A new sw.js version takes over at install only when no window of the app is open; otherwise it waits until those windows close or a page posts a SKIP_WAITING message (the app itself sends none), and a navigation answered with the cached shell after the 3.5 s deadline does not store the late network response as the new shell.
+The browser tab is the trusted zone. Its main thread runs the shell (main.js boot(), the feature registry and the views), the chat thread and its runner, the AI layer (contract, adapters, transports, router), the workspace client, the source check and the sentence gate, receipts and device signing, voice, Live, research jobs, the encrypted sync and the companion client. Web Workers do the heavy or untrusted work: starpi-ingest parses, chunks, indexes and keeps workspace files (IndexedDB and OPFS), starpi-webllm runs WebLLM on WebGPU, starpi-wasm runs Transformers.js with ONNX Runtime on the processor (up to four threads, as the page is cross-origin isolated), starpi-integrity hashes downloaded model files against `model-lock.json`, and an AudioWorklet (starpi-pcm) turns microphone audio into PCM for Live. Diagrams and HTML or SVG previews render in a sandboxed frame with an opaque origin (render-frame), and a provider's search suggestions in a second one (grounding-frame); neither can read the app's storage. Everything the app keeps lives in per-origin storage: the IndexedDB database `starpi` (conversations, files, vectors, receipts, signing keys, research jobs, benchmarks, model integrity, settings and the key vault), OPFS for large originals, the IndexedDB database `starpi-companion` for the sealed pairing secret, localStorage for preferences, sessionStorage for provider keys of the tab, and the Cache API buckets of WebLLM, Transformers.js and the service worker.
+
+Vercel serves `dist/` with the header set of `scripts/headers.json` (profile `public`): a CSP without inline code, COOP `same-origin`, COEP `require-corp`, CORP, `Origin-Agent-Cluster`, HSTS and a Permissions-Policy. Its stateless functions hold the site's keys and nothing else: the relay forwards a request with the user's own key to a fixed table of provider hosts, the pools answer with a site key from an allowlist of models, the speech routes speak and transcribe with site keys and mint single-use Live tokens, the research step signs the model's tool turns, and health reports booleans. Supabase is reached with the public key plus an anonymous session JWT, so grants and RLS decide what each caller can read or write; it serves the shared library and the encrypted sync rows, and the 2.x plaintext `chat_history` table is only ever deleted from. Provider calls with a key of the user's go straight to the provider (Anthropic, OpenAI, Gemini, OpenRouter) or, for providers that refuse browser calls, through the relay. The paired companion and the user's own server run on the user's machine and are reached over loopback or the LAN, never through the site. The optional library publisher, a command line tool on a machine the operator controls, is the only component that holds the service_role key. Dashed nodes are services outside Starpi's control.
 
 <!-- diagram: system-context-overview -->
 ```mermaid
 flowchart LR
-    subgraph device["User device: browser tab on www.starpi.app, CSP enforced"]
+    subgraph device["User device: browser tab on www.starpi.app, cross-origin isolated, CSP enforced"]
         subgraph mainThread["Main thread, src/js"]
-            boot["main.js boot()<br/>chat.js, settings.js, model-picker.js,<br/>demo.js, UI modules"]
-            sbClient["supabase.js createClient<br/>public key compiled in: publishable or anon JWT,<br/>build refuses sb_secret_ keys, non-anon JWTs<br/>and any other key, fetchWithTimeout 12 s, db retry off"]
-            provJs["providers.js<br/>callGemini, callOpenRouter,<br/>callLocalServer, probeLocalServer,<br/>getNvidiaCatalog, callNvidia"]
-            engineJs["webgpu/engine.js<br/>loadModel, generate, unloadModel,<br/>getDeviceProbe, WebGPU or WASM runtime"]
-            wsJs["rag/workspace.js<br/>request(type, payload)"]
-            trustJs["rag/grounding-view.js, rag/receipts.js<br/>source check and receipt drafts,<br/>computed and kept in memory"]
-            voiceJs["voice.js<br/>Web Speech API, processLocally<br/>required in client mode"]
+            boot["main.js boot(), features/registry.js,<br/>ui/sidebar.js, ui/theme.js, views"]
+            thread["chat/thread.js + chat/runner.js<br/>Auto, Free, Grounded, branches,<br/>compare, council, canvas"]
+            ai["ai/: contract, adapters, transports,<br/>router, purposes, keys and vault"]
+            trust["core/: source check, sentence gate,<br/>receipts; trust/signing.js device key"]
+            ws["rag/workspace.js client,<br/>rag/embed-client.js search by meaning"]
+            voice["voice/, live/, research/<br/>speech queue takes released units only"]
+            sync["sync/: encrypted sync engine,<br/>runs only when switched on"]
+            comp["companion/client.js, pair.js<br/>audit head check"]
+            sb["supabase.js, lazy supabase-lib.js<br/>public key and anonymous session"]
         end
-        subgraph llmWorker["Web Worker starpi-webllm"]
-            mlc["webgpu/worker.js<br/>WebWorkerMLCEngineHandler<br/>inference on WebGPU"]
+        subgraph workers["Web Workers and worklet"]
+            ingest["starpi-ingest: parse, chunk, BM25,<br/>vectors, files kept in IndexedDB and OPFS"]
+            webllm["starpi-webllm: WebLLM on WebGPU"]
+            wasm["starpi-wasm: Transformers.js, ONNX Runtime,<br/>up to 4 threads when crossOriginIsolated"]
+            integ["starpi-integrity: SHA-256 of model files<br/>against model-lock.json"]
+            pcm["starpi-pcm AudioWorklet"]
         end
-        subgraph wasmWorker["Web Worker starpi-wasm"]
-            wasmw["wasm/worker.js<br/>Transformers.js 4.3.0, ONNX Runtime WASM,<br/>one thread, catalog models only,<br/>env.fetch pinned to the model revision"]
-        end
-        subgraph ingestWorker["Web Worker starpi-ingest"]
-            ingest["rag/ingest.worker.js, rag/workspace-core.js<br/>extractText with pdf.js, chunkText,<br/>BM25Index rebuilt from stored chunks,<br/>hybrid search, SHA-256 of file and text, verify-receipt"]
-        end
-        sw["sw.js service worker<br/>same-origin GET only,<br/>cross-origin requests bypass it,<br/>a new version skips waiting only<br/>when no window is open"]
-        subgraph browserStores["Per-origin browser storage"]
-            ls[("localStorage<br/>starpi_local_chats_v1, starpi_chat_session_id,<br/>starpi_compute_mode, starpi_webgpu_model,<br/>starpi_nvidia_model, starpi_chat_mode,<br/>starpi_llm_url, starpi_relay_fallback,<br/>starpi_transport_*, starpi_locale,<br/>starpi-auth session")]
-            ss[("sessionStorage<br/>provider keys for this tab;<br/>kept longer only in the encrypted<br/>key vault (IndexedDB keyvault)")]
-            swCache[("CacheStorage<br/>starpi-shell-VERSION, starpi-assets")]
-            modelCache[("Cache API owned by WebLLM<br/>webllm/model, webllm/config, webllm/wasm")]
-            tfCache[("Cache API owned by Transformers.js<br/>transformers-cache")]
-        end
-    end
-
-    subgraph vercel["Vercel: static hosting and two functions"]
-        host["dist/: index.html, hashed /assets/*, sw.js,<br/>build-manifest.json, public files such as /samples/*<br/>vercel.json headers on every path:<br/>CSP script-src self and wasm-unsafe-eval,<br/>connect-src self, data:, https:, wss://*.supabase.co,<br/>http://localhost:* and http://127.0.0.1:*<br/>HSTS, COOP same-origin, X-Frame-Options DENY,<br/>nosniff, Referrer-Policy,<br/>Permissions-Policy microphone self only"]
-        fn["api/models/nvidia.js, api/chat/nvidia.js<br/>Node.js functions, NVIDIA_API_KEYS only in<br/>the server environment, same-origin check,<br/>rate limit, model allowlist, size caps"]
-    end
-
-    subgraph supabase["Supabase project: access decided by roles and RLS"]
-        auth["Auth<br/>anonymous sign-in, session JWT"]
-        rest["PostgREST<br/>/rest/v1 tables and /rest/v1/rpc"]
-        subgraph pg["Postgres, RLS enabled on every table"]
-            tables[("knowledge_documents, knowledge_entities,<br/>knowledge_relations: read is_public or owner_id = auth.uid(),<br/>knowledge_sections: visible with their document,<br/>writes only to own private rows<br/>chat_history: owner only, no anon grant<br/>brain_settings: no policy, service_role only")]
-            rpcFns["SECURITY INVOKER functions<br/>search_knowledge: anon, authenticated, service_role<br/>match_knowledge_vector_384, optional migration:<br/>anon, authenticated, service_role<br/>match_knowledge_sections, match_knowledge_hybrid:<br/>authenticated, service_role<br/>ingest_document_atomic: service_role only"]
+        frames["render-frame and grounding-frame:<br/>sandboxed, opaque origin, no storage"]
+        sw["sw.js: same-origin GET only"]
+        subgraph stores["Per-origin storage"]
+            idb[("IndexedDB starpi: conversations, nodes, blobs,<br/>docs, chunks, vectors, receipts, signingKeys,<br/>research, bench, modelIntegrity, settings, keyvault")]
+            opfs[("OPFS: original files")]
+            pairDb[("IndexedDB starpi-companion:<br/>sealed pairing secret")]
+            web[("localStorage: preferences, picker value,<br/>2.x keys read once by the migration;<br/>sessionStorage: provider keys of the tab")]
+            caches[("Cache API: WebLLM, transformers-cache,<br/>service worker shell and assets")]
         end
     end
 
-    subgraph backendHost["Optional library publisher, operator machine"]
-        brain["tools/library-publisher<br/>python -m publisher, no listener:<br/>publish, backfill, list, test-query"]
+    subgraph vercel["Vercel: dist/ with headers.json headers, stateless functions"]
+        host["static files: COOP, COEP require-corp, CORP,<br/>CSP script-src self wasm-unsafe-eval"]
+        relay["api/relay.js: user's key forwarded once<br/>to a fixed upstream table"]
+        pool["api/pool.js, api/models/pool.js:<br/>site keys, model allowlists"]
+        speech["api/voice/*: speak, transcribe,<br/>voices, single-use Live token"]
+        research["api/research/step.js:<br/>signed tool turns"]
+        health["api/health.js: booleans only;<br/>api/chat/nvidia.js for 2.x clients"]
     end
 
-    subgraph thirdParty["Third-party services outside Starpi control"]
-        gemini["Google Gemini<br/>gemini-2.5-flash:generateContent"]
-        openrouter["OpenRouter<br/>/api/v1/chat/completions"]
-        ownServer["Own Chat Completions server<br/>https anywhere, http only on<br/>localhost or 127.0.0.1"]
-        nvidia["NVIDIA API<br/>integrate.api.nvidia.com/v1/chat/completions"]
-        hf["Hugging Face<br/>huggingface.co/mlc-ai weights,<br/>WASM model repositories at pinned revisions"]
-        ghLibs["raw.githubusercontent.com<br/>binary-mlc-llm-libs wasm"]
-        speech["Browser speech recognition<br/>vendor servers in most browsers"]
-        backendApis["Publisher upstreams<br/>Hugging Face model files at a pinned revision,<br/>LLM_BASE_URL only for publish --structure"]
+    subgraph supabase["Supabase: grants and RLS decide"]
+        auth["Auth: anonymous session,<br/>email one-time code for sync"]
+        rest["PostgREST: knowledge tables and RPCs,<br/>chat_sync, chat_sync_keys,<br/>legacy chat_history delete only"]
     end
 
-    host -->|"app shell, hashed assets and<br/>public files with security headers"| sw
-    sw -->|"navigations network-first, cached shell<br/>after 3.5 s or on failure,<br/>/assets/* and precache cache-first"| boot
-    sw -->|"precache at install, / with cache reload,<br/>navigations store / again only as<br/>non-redirected HTML and not after the<br/>cached shell was served, /assets/* put if cacheable()"| swCache
-    boot -->|"register /sw.js, scope /"| sw
-    boot -->|"GET /build-manifest.json no-store<br/>after controllerchange, update banner"| host
-    boot -->|"settings, locale, chat fallback"| ls
-    provJs -->|"readSecret"| ss
-    sbClient -->|"persistSession, storageKey starpi-auth"| ls
-    engineJs -->|"CreateWebWorkerMLCEngine,<br/>messages in, stream deltas out"| mlc
-    engineJs -->|"certainlyNotCached, hasModelInCache,<br/>deleteModelAllInfoInCache"| modelCache
-    engineJs -->|"WasmEngineClient: load, generate,<br/>interrupt, unload messages"| wasmw
-    engineJs -->|"wasmCacheStatus,<br/>delete on Delete downloaded model data"| tfCache
-    mlc -->|"read and write shards"| modelCache
-    mlc -->|"GET weights if not cached,<br/>interactive loads only, after confirmDownload"| hf
-    mlc -->|"GET model_lib wasm"| ghLibs
-    wasmw -->|"read and write model files"| tfCache
-    wasmw -->|"GET pinned files if not cached,<br/>interactive loads only, after confirmDownload"| hf
-    wasmw -->|"GET /assets/ort-wasm-simd-threaded-hash.wasm,<br/>same origin"| host
-    wsJs -->|"postMessage ingest, search, head,<br/>context, text, remove, verify-receipt,<br/>File structured-cloned"| ingest
-    trustJs -->|"verifyReceiptFiles"| wsJs
-    sbClient -->|"getSession, GET /auth/v1/settings,<br/>signInAnonymously unless<br/>anonymous sign-ins are off"| auth
-    sbClient -->|"apikey public key, Bearer session JWT:<br/>select, insert, delete, rpc search_knowledge"| rest
-    rest -->|"SQL as anon or authenticated"| tables
-    rest -->|"rpc"| rpcFns
-    rpcFns -->|"run as the caller role"| tables
-    provJs -->|"x-goog-api-key header,<br/>prompt with retrieved excerpts<br/>or the free-chat conversation"| gemini
-    provJs -->|"Bearer key, messages,<br/>failover over free models"| openrouter
-    provJs -->|"messages, no key sent,<br/>GET /models probe"| ownServer
-    provJs -->|"same-origin GET /api/models/nvidia,<br/>POST /api/chat/nvidia without a key,<br/>answer streamed back as SSE"| fn
-    fn -->|"Bearer key from the pool,<br/>failover before the first byte"| nvidia
-    voiceJs -->|"microphone audio, handled by the browser"| speech
-    brain -->|"service_role key bypasses RLS:<br/>rpc ingest_document_atomic, PATCH is_public<br/>and embedding_384, reads kept to is_public or no owner"| rest
-    brain -->|"fetch-model, chat/completions"| backendApis
+    subgraph machine["User's machine"]
+        companion["starpi-companion on 127.0.0.1:47821:<br/>paired browsers only, sealed vault,<br/>signed audit heads, zero egress by default"]
+        ownServer["own Chat Completions server,<br/>local voice server"]
+    end
+
+    publisher["library publisher, operator machine:<br/>service_role key, no listener"]
+
+    subgraph third["Third parties outside Starpi control"]
+        providers["Anthropic, OpenAI, Gemini, OpenRouter"]
+        blocked["xAI, Groq, Mistral, DeepSeek, NVIDIA,<br/>ElevenLabs, Brave, Tavily"]
+        live["Gemini Live socket"]
+        hosts["Hugging Face, raw.githubusercontent.com"]
+        searx["SearXNG, MCP servers the user adds"]
+        bspeech["browser speech services"]
+    end
+
+    host --> sw --> boot
+    boot --> thread --> ai
+    thread --> trust
+    thread --> ws --> ingest
+    ws -.->|"vectors on request"| wasm
+    ai -->|"model on this device"| webllm
+    ai -->|"processor model"| wasm
+    webllm -.-> integ
+    wasm -.-> integ
+    trust --> frames
+    voice --> pcm
+    ingest --> idb
+    ingest --> opfs
+    ai -->|"keys"| web
+    ai -->|"vault"| idb
+    thread --> idb
+    comp --> pairDb
+    webllm --> caches
+    wasm --> caches
+    ai -->|"key in the provider header"| providers
+    ai -->|"blocked call, user's key"| relay --> blocked
+    ai -->|"no key: site pool"| pool --> blocked
+    pool --> providers
+    voice -->|"site speech"| speech --> providers
+    voice -->|"Live token"| speech
+    voice -.->|"WebSocket with the token"| live
+    voice -->|"research step"| research --> providers
+    ai --> health
+    sb --> auth
+    sb --> rest
+    sync --> sb
+    thread -->|"library search"| sb
+    comp -->|"loopback, Mode A cookie or Mode B token"| companion
+    ai -->|"direct, never through the site"| ownServer
+    webllm -.->|"model files after a confirmation"| hosts
+    wasm -.->|"pinned revisions"| hosts
+    ai -.-> searx
+    voice -.-> bspeech
+    publisher -->|"service_role, reads public or ownerless rows"| rest
 
     classDef external stroke-dasharray: 5 5
-    class gemini,openrouter,ownServer,nvidia,hf,ghLibs,speech,backendApis external
+    class providers,blocked,live,hosts,searx,bspeech external
 ```
 
-<sub>Sources: [`README.md`](../README.md), [`src/js/main.js`](../src/js/main.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/voice.js`](../src/js/voice.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/sw.js`](../src/sw.js), [`vercel.json`](../vercel.json), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`api/models/nvidia.js`](../api/models/nvidia.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`tools/library-publisher/publisher/cli_supabase.py`](../tools/library-publisher/publisher/cli_supabase.py), [`tools/library-publisher/publisher/supabase_service.py`](../tools/library-publisher/publisher/supabase_service.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
+<sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/features/registry.js`](../src/js/features/registry.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/chat/runner.js`](../src/js/chat/runner.js), [`src/js/ai/catalog/providers.js`](../src/js/ai/catalog/providers.js), [`src/js/ai/transport-select.js`](../src/js/ai/transport-select.js), [`src/js/ai/keys.js`](../src/js/ai/keys.js), [`src/js/store/schema.js`](../src/js/store/schema.js), [`src/js/store/opfs.js`](../src/js/store/opfs.js), [`src/js/companion/pair.js`](../src/js/companion/pair.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/integrity.worker.js`](../src/js/models/integrity.worker.js), [`src/js/voice/pcm-worklet.js`](../src/js/voice/pcm-worklet.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/sync/service.js`](../src/js/sync/service.js), [`src/sw.js`](../src/sw.js), [`scripts/headers.json`](../scripts/headers.json), [`scripts/build.mjs`](../scripts/build.mjs), [`api/relay.js`](../api/relay.js), [`api/_lib/relay/upstreams.js`](../api/_lib/relay/upstreams.js), [`api/pool.js`](../api/pool.js), [`api/voice/live-token.js`](../api/voice/live-token.js), [`api/research/step.js`](../api/research/step.js), [`api/health.js`](../api/health.js), [`packages/companion/src/server/http.js`](../packages/companion/src/server/http.js), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
 
 ### What leaves the device: connection state
 
-boot() awaits connect(), which is safe to call repeatedly because concurrent callers share one attempt. When navigator.onLine is false, connect() marks the connection offline without sending a request. Otherwise ensureSession() reuses a stored session; without one it first reads the public auth settings (GET /auth/v1/settings with the public key) and, when they say anonymous sign-ins are off, returns auth_disabled without sending a sign-in request; when that settings request times out (12 s), it returns the timeout error and skips the sign-in as well, so the attempt does not wait a second time for a project that does not answer; otherwise, also when the settings say nothing about anonymous sign-ins or the request fails in another way, it calls signInAnonymously(). A probe then reads knowledge_documents for the is_public column. The result sets status, signedIn (no authError) and hardened (probe ok), a result that is not offline resets the back-off, and every change reaches the onConnectionChange listeners that main.js registers. Every Supabase request goes through fetchWithTimeout (12 s) with postgrest retries switched off, and run() switches a ready connection to offline as soon as any request fails with a network error or a timeout; it changes only the status, so signedIn and hardened keep their values. scheduleReconnect() repeats connect() on the window online event or after 30 s, doubling up to 5 min. While the status is offline, chat retrieval and knownTitles() send no Supabase request, and chat_history is written and read only when canSyncChats() sees both signedIn and hardened; after run() went offline that can still be true, and a failed insert then keeps the message in localStorage. Deleting chats is the exception: deleteChatHistory() in the settings and deleteSession() behind the chat menu's Delete this chat first wait for message writes still under way, clear the local chats (all of them, or the one session) and skip the remote delete only when the status is ready and canSyncChats() is false; while the status is offline or pending they still call deleteOwnChats() or deleteChatSession(sid), which send the delete when a stored session exists, and a failure is reported as a partial delete instead of a success.
+boot() awaits connect(), which loads the Supabase library on first use (a lazy entry of its own, with the same 12 s deadline as a request) and is safe to call repeatedly: concurrent callers share one attempt. A build the companion serves (profile `companion`) never loads the library and ends offline at once. When navigator.onLine is false, or the library does not load, connect() marks the connection offline without a request. Otherwise ensureSession() reuses a stored session; without one it reads the public auth settings and returns auth_disabled without a sign-in request when anonymous sign-ins are off, returns the timeout error when the settings request timed out, and otherwise calls signInAnonymously(). A probe then reads knowledge_documents for the is_public column; the result sets status, signedIn and hardened, and every change reaches the onConnectionChange listeners of main.js. run() switches a ready connection to offline when a later request fails with a network error or a timeout, and scheduleReconnect() repeats connect() on the online event or after 30 s, doubling up to 5 min. What a state allows: while offline, grounded questions answer from the workspace and registered sources only and knownTitles() returns none. Conversations are never written to Supabase in plaintext (chat-store.js CHAT_SYNC_ENABLED is false); the encrypted sync runs only after the user switched it on with a passphrase, and then it syncs once the connection is ready, a few seconds after a local change, every two minutes while the page is visible, when the browser is online again and when the tab comes back into view. Deleting chats waits for message writes still under way, clears the conversations on the device, deletes the rows a 2.x version may have stored in `chat_history` (skipped only when the connection is ready and canSyncChats() says nothing could have been stored) and, with sync on, writes deletion markers so other browsers delete the chats too.
 
 <!-- diagram: system-context-egress-connection -->
 ```mermaid
 flowchart TD
     boot["main.js boot(): await connect()<br/>concurrent callers share one attempt"]
-    onlineQ{"navigator.onLine<br/>is false?"}
-    noReq["status offline, signedIn false,<br/>hardened false, no request sent"]
-    sess{"ensureSession(): getSession<br/>returns a stored session?"}
-    settingsQ{"GET /auth/v1/settings:<br/>anonymous_users is false?"}
+    prof{"build profile companion?"}
+    offLib["status offline at once,<br/>library never loaded, no retry"]
+    onlineQ{"navigator.onLine false,<br/>or supabase-lib.js does not load in 12 s?"}
+    noReq["status offline, signedIn false,<br/>hardened false"]
+    sess{"ensureSession(): stored session?"}
+    settingsQ{"GET /auth/v1/settings:<br/>anonymous_users false?"}
     authOff["authError auth_disabled,<br/>no sign-in request"]
     authTimeout["authError timeout,<br/>no sign-in request"]
-    signIn["signInAnonymously()<br/>also when the settings say nothing<br/>or fail without a timeout"]
-    probe{"probe: select id, is_public<br/>from knowledge_documents limit 1<br/>signedIn = no authError"}
-    offline["status offline, hardened false"]
-    legacy["status ready, hardened false<br/>e.g. missing_schema on a legacy schema"]
+    signIn["signInAnonymously()"]
+    probe{"probe: select id, is_public<br/>from knowledge_documents limit 1"}
+    offline["status offline"]
+    legacy["status ready, hardened false"]
     hardened["status ready, hardened true"]
-    retry["scheduleReconnect(): window online event<br/>or 30 s, doubling up to 5 min"]
-    boot --> onlineQ
-    onlineQ -->|"yes"| noReq
+    retry["scheduleReconnect(): online event<br/>or 30 s, doubling up to 5 min"]
+    boot --> prof
+    prof -->|"yes"| offLib
+    prof -->|"no"| onlineQ
+    onlineQ -->|"yes"| noReq --> retry
     onlineQ -->|"no"| sess
     sess -->|"yes, or getSession fails"| probe
     sess -->|"no"| settingsQ
-    settingsQ -->|"yes"| authOff
-    settingsQ -->|"request timed out"| authTimeout
-    settingsQ -->|"no, not stated or other failure"| signIn
-    authOff --> probe
-    authTimeout --> probe
-    signIn --> probe
-    probe -->|"network or timeout"| offline
+    settingsQ -->|"yes"| authOff --> probe
+    settingsQ -->|"timed out"| authTimeout --> probe
+    settingsQ -->|"no, not stated, other failure"| signIn --> probe
+    probe -->|"network or timeout"| offline --> retry
     probe -->|"other error"| legacy
     probe -->|"ok"| hardened
-    noReq --> retry
-    offline --> retry
     retry -.->|"connect() again"| onlineQ
-
-    runQ{"run(): a later request fails<br/>with network or timeout<br/>while status is ready?"}
+    runQ{"run(): a later request fails<br/>with network or timeout?"}
     legacy --> runQ
     hardened --> runQ
-    runQ -->|"yes: status offline,<br/>signedIn and hardened unchanged"| retry
+    runQ -->|"yes: status offline"| retry
 
-    listeners["onConnectionChange listeners of main.js:<br/>renderConnection, renderPrivacyNotice,<br/>refreshSyncStatus"]
-    noReq -.->|"updateConnection"| listeners
-    offline -.->|"updateConnection"| listeners
-    legacy -.->|"updateConnection"| listeners
-    hardened -.->|"updateConnection"| listeners
+    listeners["onConnectionChange listeners of main.js:<br/>renderConnection, renderPrivacyNotice,<br/>refreshSyncStatus; sync/service.js kicks a sync"]
+    offline -.-> listeners
+    legacy -.-> listeners
+    hardened -.-> listeners
 
-    offUse["while offline: retrieve() uses workspace hits only,<br/>knownTitles() returns no titles,<br/>refreshSyncStatus shows sync.device_offline"]
-    noReq -.-> offUse
+    offUse["while offline: grounded questions use the workspace<br/>and registered sources, knownTitles() returns none"]
     offline -.-> offUse
+    noReq -.-> offUse
 
-    syncQ{"canSyncChats():<br/>signedIn and hardened?"}
-    chatSb["chat_history insert, select and delete<br/>RLS: owner_id = auth.uid()<br/>countChatMessages for the sync text"]
-    chatLs[("localStorage<br/>starpi_local_chats_v1")]
-    legacy -.->|"sets"| syncQ
-    hardened -.->|"sets"| syncQ
-    syncQ -->|"yes"| chatSb
-    syncQ -->|"no"| chatLs
+    plain["chat-store.js: CHAT_SYNC_ENABLED false,<br/>conversations never written in plaintext"]
+    syncOn{"Settings › Chat sync on,<br/>passphrase opened the sync key?"}
+    rows["chat_sync and chat_sync_keys:<br/>ciphertext, opaque row ids, revisions,<br/>owner-only RLS; localOnly turns never included"]
+    devOnly[("IndexedDB starpi only")]
+    hardened -.-> syncOn
+    syncOn -->|"yes, status ready"| rows
+    syncOn -->|"no"| devOnly
+    plain -.-> devOnly
 
-    delQ{"settings deleteChatHistory() or chat menu<br/>deleteSession(sid): pending writes awaited,<br/>local chats or that session cleared first;<br/>status ready and canSyncChats() false?"}
-    delQ -->|"yes: no remote delete,<br/>reported as done"| chatLs
-    delQ -->|"no, also while offline or pending:<br/>deleteOwnChats() or deleteChatSession(sid)<br/>with a stored session,<br/>failure reported as a partial delete"| chatSb
+    del["deleteChatHistory() or deleteSession(sid):<br/>settleWrites, conversations cleared on the device"]
+    legacyQ{"status ready and<br/>canSyncChats() false?"}
+    legacyDel["deleteOwnChats() or deleteChatSession(sid):<br/>own 2.x chat_history rows, RLS owner only;<br/>a failure is reported as a partial delete"]
+    marks["sync on: flush deletion markers,<br/>other browsers delete the chats"]
+    del --> legacyQ
+    legacyQ -->|"yes: nothing could be stored"| marks
+    legacyQ -->|"no, also offline or pending"| legacyDel --> marks
 ```
 
-<sub>Sources: [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/main.js`](../src/js/main.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/config.js`](../src/js/config.js), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
+<sub>Sources: [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/supabase-lib.js`](../src/js/supabase-lib.js), [`src/js/main.js`](../src/js/main.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/sync/service.js`](../src/js/sync/service.js), [`src/js/sync/sync.js`](../src/js/sync/sync.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`backend/supabase/migrations/20261102000000_chat_sync.sql`](../backend/supabase/migrations/20261102000000_chat_sync.sql)</sub>
 
 ### What leaves the device: one chat turn
 
-submitChat first fixes the chat mode: quick prompts, sample questions and graph entity questions always run in verified source mode and switch the composer toggle to it, and every other question follows the toggle (starpi_chat_mode, grounded by default). In source mode, workspace search always stays in the ingestion worker. A sample question offered by demo.js (data-scope workspace, so submitChat gets workspaceOnly) and any question while the connection is offline use workspace hits only. Otherwise, in client mode Supabase receives only question-free reads (recentKnowledge(30), ranked in the browser), while council, own-server and NVIDIA modes also send the question, cut to 1000 characters, to the search_knowledge RPC and fall back to recentKnowledge(30) when it returns no rows or fails. These three modes then send the question with the retrieved excerpts, workspace excerpts included, to the provider, the own server or Starpi's NVIDIA proxy; OpenRouter, the own server and NVIDIA also get shareableHistory(), the last 4 conversation turns not marked localOnly, and Gemini gets no history. In free chat nothing is retrieved and the question goes to no knowledge-base search: the model receives the conversation instead, up to 16 turns and 24,000 characters of turns not marked localOnly, each cut to 4,000 characters (Gemini gets them too), plus a file attached to that question as fenced data, whole up to 12,000 characters, otherwise its beginning and the passages that match the question, picked in the ingestion worker. NVIDIA requests go to the app's own origin without any key, fitted to the proxy's limits by fitNvidiaMessages. Each answer path has its own guards (provider keys, OpenRouter stopping early on 401 or 403, the NVIDIA catalog reporting a proxy with keys, the device probe and the cache checks before the quota check and the download confirmation, normalizeServerUrl). In source mode every failure or empty answer ends in the extractive synthesizeAnswer, whose knownTitles() reads document titles only, and when excerpts were used the source check and the receipt draft are computed on the device for every engine; in free chat a failure ends in a notice, and an answer is marked as not checked against sources. Both turns are marked localOnly in the conversation for client mode, a used workspace hit, an attached file, or an extractive synthesizer answer that contains the name of a file in the workspace (for example a greeting or document list that names the on-device files); that last case also keeps the stored answer local-only, while its question has already been stored by the retrieval rule. In source mode the question is stored only after retrieval (or by the catch if the turn throws first), in free chat at once. A message stays in localStorage with metadata.local_only set to its local-only flag when it is local-only or when sync is not possible, and without the flag when the chat_history insert fails; loadCurrentSession() reads local rows without the flag back as local-only, and restoreHistory() carries the flag into the conversation.
+sendQuestion() takes the composer's draft and the picker value, then fixes the route. An explicit mode wins (Free stays free, Grounded stays grounded); a question that must stay on this device (an AI edit of a canvas document from such an answer) goes the free route and is refused with a notice when no model here can answer it; the paired companion follows the mode control alone (Grounded asks it in sources mode, Free and Auto in free mode). Auto asks decideRoute() in ai/hybrid.js, without a model call: a registered classifier can only tighten the route, attached documents mean grounded, images alone stay free, no source at all keeps it free, a phrase or a file name that points at the sources or two words of a library title in a row mean grounded, and otherwise the workspace probe decides (score at least 0.45 with half the terms covered: grounded; at least 0.30: mixed; at least two matched terms either way; anything else free). Without a model the sources are quoted (grounded); with the Web toggle on and a model without its own search, a search API turns the question into web passages unless the question stays on this device. A grounded or mixed turn retrieves (workspace and registered sources always; the library with the question through search_knowledge, else 30 recent documents ranked here; a question asked with the model of this device ranks the library by a query vector made here, else by candidates fetched without the question), stores the question as local-only when it is device-only or used a workspace passage, and builds a fenced context. The runner asks the candidates in order (an explicit pick is one model; Auto takes the user's keys, the site's pools, the own server, then the model loaded here) and moves on only before the first text. Every model that is not on this device gets the history without the local-only turns and their questions. The answer is stored in IndexedDB as local-only when the question was device-only, used the workspace, or was quoted without a model naming a workspace file; questions to and answers of the companion are always local-only. The encrypted sync never takes a local-only turn.
 
 <!-- diagram: system-context-egress-guards -->
 ```mermaid
 flowchart TD
-    submit["submitChat(): input cut to 8000 chars,<br/>waits for a file still being read,<br/>mode = getMode()"]
-    cm{"chat mode: grounded for quick prompts,<br/>sample and entity questions,<br/>else getChatMode()"}
-    wsSearch["retrieveWorkspace: searchWorkspace<br/>in starpi-ingest, an attached file's<br/>chunks first, stays on the device"]
-    scopeQ{"workspaceOnly:<br/>a demo sample question?"}
-    offQ{"getConnection().status<br/>is offline?"}
-    wsOnly["workspace hits only,<br/>no Supabase request"]
-    modeR{"mode is client?"}
-    recent["recentKnowledge(30)<br/>no user text sent,<br/>rankHitsLocally in the browser"]
-    fts["rpc search_knowledge<br/>query_text sliced to 1000 chars,<br/>match_count 6"]
-    ftsQ{"rows returned?"}
-    submit --> cm
-    cm -->|"grounded"| wsSearch --> scopeQ
-    scopeQ -->|"yes"| wsOnly
-    scopeQ -->|"no"| offQ
-    offQ -->|"yes"| wsOnly
-    offQ -->|"no"| modeR
-    modeR -->|"yes"| recent
-    modeR -->|"no: council, local or nvidia"| fts
-    fts --> ftsQ
-    ftsQ -->|"no rows or error"| recent
-    qStore["no hits used for a greeting without a file<br/>storeQuestion(usesWorkspace),<br/>usesWorkspace = a used workspace hit"]
-    ftsQ -->|"yes"| qStore
-    recent -->|"ranked hits, or workspace<br/>hits only on error"| qStore
-    wsOnly --> qStore
-    qStore --> modeA
+    ask(["sendQuestion(): draft, picker value,<br/>mode Auto, Free or Grounded"])
+    held{"options.localOnly:<br/>content that stays here?"}
+    refuse(["notice stays_on_device<br/>when no model here answers"])
+    compQ{"picker value companion:*?"}
+    compRoute["Grounded: sources mode,<br/>Free and Auto: free mode"]
+    modeQ{"mode explicit?"}
+    decide["decideRoute(), ai/hybrid.js:<br/>classifier only tightens; attachment: grounded;<br/>images only or no sources: free;<br/>phrase, file name, library title: grounded;<br/>probe 0.45 and coverage 0.5: grounded,<br/>0.30: mixed, else free; no model: grounded;<br/>Web toggle + search API: web passages,<br/>not for a device-only question"]
+    route{"route?"}
+    retrieve["retrieve(): workspace + registered sources<br/>(companion passages by data class)"]
+    offlineQ{"connection offline?"}
+    devQ{"picker value device<br/>or question held here?"}
+    fts["search_knowledge with the question,<br/>first 1,000 chars; no rows: recentKnowledge(30)"]
+    vec["libraryHitsByMeaning: query vector made here,<br/>else recentKnowledge(30) without the question"]
+    storeQ["storeQuestion: localOnly =<br/>deviceOnly or a workspace passage used"]
+    storeF["storeQuestion, free: localOnly = device,<br/>held, or asked of the companion"]
+    cands["chatCandidates: explicit pick, or Auto:<br/>user keys, site pools, own server,<br/>loaded device model; held: only models here"]
+    hist["shareable(): models not on this device get<br/>the path without localOnly turns and their questions"]
+    run["runAnswer: next candidate only<br/>before the first text"]
+    subgraph out["Leaves the device"]
+        prov["provider direct, or relay with the user's key"]
+        pools["site pool, text and images, no tools"]
+        srv["own server, direct"]
+        cmp["companion on loopback: bare question,<br/>mode and data class"]
+        lib["Supabase: question or only a vector"]
+        webs["search API: the query"]
+    end
+    dev["model on this device: nothing leaves"]
+    saved[("IndexedDB starpi: answer localOnly when the question<br/>was, a workspace passage was used, or a quote names<br/>a workspace file; companion turns always")]
+    syncQ{"encrypted sync on?"}
+    synced["record without localOnly turns"]
 
-    fStore["free chat: storeQuestion(false) at once,<br/>no retrieval, no knowledge-base search"]
-    fFile{"file attached<br/>to this question?"}
-    fAtt["attachmentForChat in starpi-ingest:<br/>the text up to 12000 chars, else its first<br/>chunks and the passages matching the question"]
-    cm -->|"free"| fStore --> fFile
-    fFile -->|"yes"| fAtt --> modeA
-    fFile -->|"no"| modeA
-
-    modeA{"answer mode"}
-    gemQ{"hasGeminiKey?"}
-    gemCall["callGemini to Google, 20 s<br/>key in x-goog-api-key header<br/>source mode: system prompt with excerpts<br/>and the question, no history<br/>free chat: system, history, question"]
-    orQ{"hasOpenRouterKey?"}
-    orCall["callOpenRouter, Bearer key, 20 s per model<br/>system prompt with excerpts or the attached file,<br/>shareableHistory, question,<br/>up to 3 free models, stops early on 401 or 403"]
-    modeA -->|"council"| gemQ
-    gemQ -->|"yes"| gemCall
-    gemQ -->|"no"| orQ
-    gemCall -->|"HTTP error, timeout or empty answer"| orQ
-    orQ -->|"yes"| orCall
-
-    readyQ{"engine.isReady()?"}
-    loadQ{"startLocalEngine interactive, loadModel:<br/>WebGPU preset with an adapter, or a WASM model,<br/>model files already cached?"}
-    dl["checkQuota, confirmDownload dialog,<br/>storage.persist, then WebGPU weights from<br/>Hugging Face and wasm from GitHub, or pinned<br/>WASM files from Hugging Face and the<br/>ONNX Runtime binary from /assets"]
-    gen["engine.generate in starpi-webllm or starpi-wasm<br/>prompt and history never leave the device"]
-    modeA -->|"client"| readyQ
-    readyQ -->|"yes"| gen
-    readyQ -->|"no"| loadQ
-    loadQ -->|"cached"| gen
-    loadQ -->|"not or partly cached"| dl
-    dl -->|"accepted"| gen
-
-    urlQ{"normalizeServerUrl:<br/>https, or http on localhost or<br/>127.0.0.1, no credentials in URL?"}
-    srv["callLocalServer, no key, 90 s<br/>GET base/models, 4 s, until a model id is known,<br/>POST base/chat/completions: system prompt with<br/>excerpts or the attached file, shareableHistory, question"]
-    modeA -->|"local"| urlQ
-    urlQ -->|"valid"| srv
-
-    nvCat{"getNvidiaCatalog: same-origin<br/>GET /api/models/nvidia, cached,<br/>proxy has keys and offers a model?"}
-    nvCall["callNvidia: same-origin POST /api/chat/nvidia,<br/>no Authorization header, fitNvidiaMessages:<br/>system with excerpts or the attached file,<br/>shareableHistory, question, max_tokens<br/>= the model's defaultMaxTokens"]
-    nvProxy["Starpi proxy, Vercel function or backend:<br/>a pooled key, NVIDIA API, the stream relayed back"]
-    modeA -->|"nvidia"| nvCat
-    nvCat -->|"yes"| nvCall --> nvProxy
-
-    noAns["no model answer: in source mode knownTitles():<br/>listDocuments select, no question text, cached 60 s,<br/>none while offline, then synthesizeAnswer, extractive quotes<br/>in free chat: a notice says why, nothing more is sent"]
-    orQ -->|"no key"| noAns
-    orCall -->|"all attempts failed"| noAns
-    loadQ -->|"unsupported, no-adapter<br/>or other load error"| noAns
-    dl -->|"declined, quota, code-download<br/>or network error"| noAns
-    gen -->|"error or empty text"| noAns
-    urlQ -->|"ProviderError"| noAns
-    srv -->|"HTTP error, timeout or empty"| noAns
-    nvCat -->|"no proxy, no keys or no model"| noAns
-    nvProxy -->|"error code, timeout or a stream<br/>that ended without answer text"| noAns
-
-    check["source mode, when excerpts were used: applyGrounding<br/>source check and storeReceiptDraft for every<br/>engine on this device, receipt JSON saved<br/>only when the user downloads it<br/>free chat: markFreeAnswer, no check, no receipt"]
-    gemCall -->|"answer"| check
-    orCall -->|"answer"| check
-    gen -->|"answer"| check
-    srv -->|"answer"| check
-    nvProxy -->|"answer, a partial one after Stop"| check
-    noAns -->|"source-mode answer"| check
-    turns["conversation.push: both turns localOnly<br/>for client mode, a used workspace hit, a file<br/>or a synthesizer answer naming a workspace file,<br/>question cut to 4000 chars"]
-    check --> turns
-    turns -.->|"shareableHistory drops localOnly turns,<br/>keeps the last 4 in source mode,<br/>16 turns and 24000 chars in free chat"| orCall
-    turns -.->|"shareableHistory"| srv
-    turns -.->|"shareableHistory"| nvCall
-    turns -.->|"free chat only"| gemCall
-
-    persistQ{"persistMessage localOnly?<br/>question: client mode, a file<br/>or a used workspace hit<br/>answer: client mode, a file in free chat,<br/>a used workspace hit or a synthesizer<br/>answer naming a workspace file"}
-    syncQ{"canSyncChats():<br/>signedIn and hardened?"}
-    lsStore[("localStorage starpi_local_chats_v1<br/>last 200 messages of 10 sessions")]
-    insert["insert into chat_history<br/>RLS: owner_id = auth.uid()<br/>then refreshSyncStatus counts<br/>chat_history rows for the sync text"]
-    qStore -->|"question"| persistQ
-    fStore -->|"question"| persistQ
-    submit -.->|"question via storeQuestion(false)<br/>in the catch if the turn throws first"| persistQ
-    turns -->|"answer"| persistQ
-    persistQ -->|"yes: local_only true"| lsStore
-    persistQ -->|"no"| syncQ
-    syncQ -->|"no: local_only false"| lsStore
-    syncQ -->|"yes"| insert
-    insert -->|"error: kept without the flag,<br/>read back as local-only"| lsStore
+    ask --> held
+    held -->|"yes, no model here"| refuse
+    held -->|"yes"| storeF
+    held -->|"no"| compQ
+    compQ -->|"yes"| compRoute --> cmp
+    compQ -->|"no"| modeQ
+    modeQ -->|"Free"| storeF
+    modeQ -->|"Grounded"| retrieve
+    modeQ -->|"Auto"| decide --> route
+    route -->|"free"| storeF
+    route -->|"mixed or grounded"| retrieve
+    decide -.->|"web passages"| webs
+    retrieve --> offlineQ
+    offlineQ -->|"yes: workspace only"| storeQ
+    offlineQ -->|"no"| devQ
+    devQ -->|"no"| fts --> lib
+    devQ -->|"yes"| vec --> lib
+    fts --> storeQ
+    vec --> storeQ
+    storeQ --> cands
+    storeF --> cands
+    cands --> hist --> run
+    run --> prov
+    run --> pools
+    run --> srv
+    run --> dev
+    run --> saved
+    cmp --> saved
+    saved --> syncQ
+    syncQ -->|"yes"| synced
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
+<sub>Sources: [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/chat/runner.js`](../src/js/chat/runner.js), [`src/js/chat/hooks.js`](../src/js/chat/hooks.js), [`src/js/ai/hybrid.js`](../src/js/ai/hybrid.js), [`src/js/rag/hybrid.js`](../src/js/rag/hybrid.js), [`src/js/rag/embed-client.js`](../src/js/rag/embed-client.js), [`src/js/companion/tier.js`](../src/js/companion/tier.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/sync/payload.js`](../src/js/sync/payload.js)</sub>
 
 ### Library publisher trust boundary
 

@@ -647,100 +647,108 @@ behind row level security), and every excerpt is labelled `[Doc: <name>, Chunk: 
 <!-- diagram: system-context-overview -->
 ```mermaid
 flowchart LR
-    subgraph device["User device: browser tab on www.starpi.app, CSP enforced"]
+    subgraph device["User device: browser tab on www.starpi.app, cross-origin isolated, CSP enforced"]
         subgraph mainThread["Main thread, src/js"]
-            boot["main.js boot()<br/>chat.js, settings.js, model-picker.js,<br/>demo.js, UI modules"]
-            sbClient["supabase.js createClient<br/>public key compiled in: publishable or anon JWT,<br/>build refuses sb_secret_ keys, non-anon JWTs<br/>and any other key, fetchWithTimeout 12 s, db retry off"]
-            provJs["providers.js<br/>callGemini, callOpenRouter,<br/>callLocalServer, probeLocalServer,<br/>getNvidiaCatalog, callNvidia"]
-            engineJs["webgpu/engine.js<br/>loadModel, generate, unloadModel,<br/>getDeviceProbe, WebGPU or WASM runtime"]
-            wsJs["rag/workspace.js<br/>request(type, payload)"]
-            trustJs["rag/grounding-view.js, rag/receipts.js<br/>source check and receipt drafts,<br/>computed and kept in memory"]
-            voiceJs["voice.js<br/>Web Speech API, processLocally<br/>required in client mode"]
+            boot["main.js boot(), features/registry.js,<br/>ui/sidebar.js, ui/theme.js, views"]
+            thread["chat/thread.js + chat/runner.js<br/>Auto, Free, Grounded, branches,<br/>compare, council, canvas"]
+            ai["ai/: contract, adapters, transports,<br/>router, purposes, keys and vault"]
+            trust["core/: source check, sentence gate,<br/>receipts; trust/signing.js device key"]
+            ws["rag/workspace.js client,<br/>rag/embed-client.js search by meaning"]
+            voice["voice/, live/, research/<br/>speech queue takes released units only"]
+            sync["sync/: encrypted sync engine,<br/>runs only when switched on"]
+            comp["companion/client.js, pair.js<br/>audit head check"]
+            sb["supabase.js, lazy supabase-lib.js<br/>public key and anonymous session"]
         end
-        subgraph llmWorker["Web Worker starpi-webllm"]
-            mlc["webgpu/worker.js<br/>WebWorkerMLCEngineHandler<br/>inference on WebGPU"]
+        subgraph workers["Web Workers and worklet"]
+            ingest["starpi-ingest: parse, chunk, BM25,<br/>vectors, files kept in IndexedDB and OPFS"]
+            webllm["starpi-webllm: WebLLM on WebGPU"]
+            wasm["starpi-wasm: Transformers.js, ONNX Runtime,<br/>up to 4 threads when crossOriginIsolated"]
+            integ["starpi-integrity: SHA-256 of model files<br/>against model-lock.json"]
+            pcm["starpi-pcm AudioWorklet"]
         end
-        subgraph wasmWorker["Web Worker starpi-wasm"]
-            wasmw["wasm/worker.js<br/>Transformers.js 4.3.0, ONNX Runtime WASM,<br/>one thread, catalog models only,<br/>env.fetch pinned to the model revision"]
-        end
-        subgraph ingestWorker["Web Worker starpi-ingest"]
-            ingest["rag/ingest.worker.js, rag/workspace-core.js<br/>extractText with pdf.js, chunkText,<br/>BM25Index rebuilt from stored chunks,<br/>hybrid search, SHA-256 of file and text, verify-receipt"]
-        end
-        sw["sw.js service worker<br/>same-origin GET only,<br/>cross-origin requests bypass it,<br/>a new version skips waiting only<br/>when no window is open"]
-        subgraph browserStores["Per-origin browser storage"]
-            ls[("localStorage<br/>starpi_local_chats_v1, starpi_chat_session_id,<br/>starpi_compute_mode, starpi_webgpu_model,<br/>starpi_nvidia_model, starpi_chat_mode,<br/>starpi_llm_url, starpi_relay_fallback,<br/>starpi_transport_*, starpi_locale,<br/>starpi-auth session")]
-            ss[("sessionStorage<br/>provider keys for this tab;<br/>kept longer only in the encrypted<br/>key vault (IndexedDB keyvault)")]
-            swCache[("CacheStorage<br/>starpi-shell-VERSION, starpi-assets")]
-            modelCache[("Cache API owned by WebLLM<br/>webllm/model, webllm/config, webllm/wasm")]
-            tfCache[("Cache API owned by Transformers.js<br/>transformers-cache")]
-        end
-    end
-
-    subgraph vercel["Vercel: static hosting and two functions"]
-        host["dist/: index.html, hashed /assets/*, sw.js,<br/>build-manifest.json, public files such as /samples/*<br/>vercel.json headers on every path:<br/>CSP script-src self and wasm-unsafe-eval,<br/>connect-src self, data:, https:, wss://*.supabase.co,<br/>http://localhost:* and http://127.0.0.1:*<br/>HSTS, COOP same-origin, X-Frame-Options DENY,<br/>nosniff, Referrer-Policy,<br/>Permissions-Policy microphone self only"]
-        fn["api/models/nvidia.js, api/chat/nvidia.js<br/>Node.js functions, NVIDIA_API_KEYS only in<br/>the server environment, same-origin check,<br/>rate limit, model allowlist, size caps"]
-    end
-
-    subgraph supabase["Supabase project: access decided by roles and RLS"]
-        auth["Auth<br/>anonymous sign-in, session JWT"]
-        rest["PostgREST<br/>/rest/v1 tables and /rest/v1/rpc"]
-        subgraph pg["Postgres, RLS enabled on every table"]
-            tables[("knowledge_documents, knowledge_entities,<br/>knowledge_relations: read is_public or owner_id = auth.uid(),<br/>knowledge_sections: visible with their document,<br/>writes only to own private rows<br/>chat_history: owner only, no anon grant<br/>brain_settings: no policy, service_role only")]
-            rpcFns["SECURITY INVOKER functions<br/>search_knowledge: anon, authenticated, service_role<br/>match_knowledge_vector_384, optional migration:<br/>anon, authenticated, service_role<br/>match_knowledge_sections, match_knowledge_hybrid:<br/>authenticated, service_role<br/>ingest_document_atomic: service_role only"]
+        frames["render-frame and grounding-frame:<br/>sandboxed, opaque origin, no storage"]
+        sw["sw.js: same-origin GET only"]
+        subgraph stores["Per-origin storage"]
+            idb[("IndexedDB starpi: conversations, nodes, blobs,<br/>docs, chunks, vectors, receipts, signingKeys,<br/>research, bench, modelIntegrity, settings, keyvault")]
+            opfs[("OPFS: original files")]
+            pairDb[("IndexedDB starpi-companion:<br/>sealed pairing secret")]
+            web[("localStorage: preferences, picker value,<br/>2.x keys read once by the migration;<br/>sessionStorage: provider keys of the tab")]
+            caches[("Cache API: WebLLM, transformers-cache,<br/>service worker shell and assets")]
         end
     end
 
-    subgraph backendHost["Optional library publisher, operator machine"]
-        brain["tools/library-publisher<br/>python -m publisher, no listener:<br/>publish, backfill, list, test-query"]
+    subgraph vercel["Vercel: dist/ with headers.json headers, stateless functions"]
+        host["static files: COOP, COEP require-corp, CORP,<br/>CSP script-src self wasm-unsafe-eval"]
+        relay["api/relay.js: user's key forwarded once<br/>to a fixed upstream table"]
+        pool["api/pool.js, api/models/pool.js:<br/>site keys, model allowlists"]
+        speech["api/voice/*: speak, transcribe,<br/>voices, single-use Live token"]
+        research["api/research/step.js:<br/>signed tool turns"]
+        health["api/health.js: booleans only;<br/>api/chat/nvidia.js for 2.x clients"]
     end
 
-    subgraph thirdParty["Third-party services outside Starpi control"]
-        gemini["Google Gemini<br/>gemini-2.5-flash:generateContent"]
-        openrouter["OpenRouter<br/>/api/v1/chat/completions"]
-        ownServer["Own Chat Completions server<br/>https anywhere, http only on<br/>localhost or 127.0.0.1"]
-        nvidia["NVIDIA API<br/>integrate.api.nvidia.com/v1/chat/completions"]
-        hf["Hugging Face<br/>huggingface.co/mlc-ai weights,<br/>WASM model repositories at pinned revisions"]
-        ghLibs["raw.githubusercontent.com<br/>binary-mlc-llm-libs wasm"]
-        speech["Browser speech recognition<br/>vendor servers in most browsers"]
-        backendApis["Publisher upstreams<br/>Hugging Face model files at a pinned revision,<br/>LLM_BASE_URL only for publish --structure"]
+    subgraph supabase["Supabase: grants and RLS decide"]
+        auth["Auth: anonymous session,<br/>email one-time code for sync"]
+        rest["PostgREST: knowledge tables and RPCs,<br/>chat_sync, chat_sync_keys,<br/>legacy chat_history delete only"]
     end
 
-    host -->|"app shell, hashed assets and<br/>public files with security headers"| sw
-    sw -->|"navigations network-first, cached shell<br/>after 3.5 s or on failure,<br/>/assets/* and precache cache-first"| boot
-    sw -->|"precache at install, / with cache reload,<br/>navigations store / again only as<br/>non-redirected HTML and not after the<br/>cached shell was served, /assets/* put if cacheable()"| swCache
-    boot -->|"register /sw.js, scope /"| sw
-    boot -->|"GET /build-manifest.json no-store<br/>after controllerchange, update banner"| host
-    boot -->|"settings, locale, chat fallback"| ls
-    provJs -->|"readSecret"| ss
-    sbClient -->|"persistSession, storageKey starpi-auth"| ls
-    engineJs -->|"CreateWebWorkerMLCEngine,<br/>messages in, stream deltas out"| mlc
-    engineJs -->|"certainlyNotCached, hasModelInCache,<br/>deleteModelAllInfoInCache"| modelCache
-    engineJs -->|"WasmEngineClient: load, generate,<br/>interrupt, unload messages"| wasmw
-    engineJs -->|"wasmCacheStatus,<br/>delete on Delete downloaded model data"| tfCache
-    mlc -->|"read and write shards"| modelCache
-    mlc -->|"GET weights if not cached,<br/>interactive loads only, after confirmDownload"| hf
-    mlc -->|"GET model_lib wasm"| ghLibs
-    wasmw -->|"read and write model files"| tfCache
-    wasmw -->|"GET pinned files if not cached,<br/>interactive loads only, after confirmDownload"| hf
-    wasmw -->|"GET /assets/ort-wasm-simd-threaded-hash.wasm,<br/>same origin"| host
-    wsJs -->|"postMessage ingest, search, head,<br/>context, text, remove, verify-receipt,<br/>File structured-cloned"| ingest
-    trustJs -->|"verifyReceiptFiles"| wsJs
-    sbClient -->|"getSession, GET /auth/v1/settings,<br/>signInAnonymously unless<br/>anonymous sign-ins are off"| auth
-    sbClient -->|"apikey public key, Bearer session JWT:<br/>select, insert, delete, rpc search_knowledge"| rest
-    rest -->|"SQL as anon or authenticated"| tables
-    rest -->|"rpc"| rpcFns
-    rpcFns -->|"run as the caller role"| tables
-    provJs -->|"x-goog-api-key header,<br/>prompt with retrieved excerpts<br/>or the free-chat conversation"| gemini
-    provJs -->|"Bearer key, messages,<br/>failover over free models"| openrouter
-    provJs -->|"messages, no key sent,<br/>GET /models probe"| ownServer
-    provJs -->|"same-origin GET /api/models/nvidia,<br/>POST /api/chat/nvidia without a key,<br/>answer streamed back as SSE"| fn
-    fn -->|"Bearer key from the pool,<br/>failover before the first byte"| nvidia
-    voiceJs -->|"microphone audio, handled by the browser"| speech
-    brain -->|"service_role key bypasses RLS:<br/>rpc ingest_document_atomic, PATCH is_public<br/>and embedding_384, reads kept to is_public or no owner"| rest
-    brain -->|"fetch-model, chat/completions"| backendApis
+    subgraph machine["User's machine"]
+        companion["starpi-companion on 127.0.0.1:47821:<br/>paired browsers only, sealed vault,<br/>signed audit heads, zero egress by default"]
+        ownServer["own Chat Completions server,<br/>local voice server"]
+    end
+
+    publisher["library publisher, operator machine:<br/>service_role key, no listener"]
+
+    subgraph third["Third parties outside Starpi control"]
+        providers["Anthropic, OpenAI, Gemini, OpenRouter"]
+        blocked["xAI, Groq, Mistral, DeepSeek, NVIDIA,<br/>ElevenLabs, Brave, Tavily"]
+        live["Gemini Live socket"]
+        hosts["Hugging Face, raw.githubusercontent.com"]
+        searx["SearXNG, MCP servers the user adds"]
+        bspeech["browser speech services"]
+    end
+
+    host --> sw --> boot
+    boot --> thread --> ai
+    thread --> trust
+    thread --> ws --> ingest
+    ws -.->|"vectors on request"| wasm
+    ai -->|"model on this device"| webllm
+    ai -->|"processor model"| wasm
+    webllm -.-> integ
+    wasm -.-> integ
+    trust --> frames
+    voice --> pcm
+    ingest --> idb
+    ingest --> opfs
+    ai -->|"keys"| web
+    ai -->|"vault"| idb
+    thread --> idb
+    comp --> pairDb
+    webllm --> caches
+    wasm --> caches
+    ai -->|"key in the provider header"| providers
+    ai -->|"blocked call, user's key"| relay --> blocked
+    ai -->|"no key: site pool"| pool --> blocked
+    pool --> providers
+    voice -->|"site speech"| speech --> providers
+    voice -->|"Live token"| speech
+    voice -.->|"WebSocket with the token"| live
+    voice -->|"research step"| research --> providers
+    ai --> health
+    sb --> auth
+    sb --> rest
+    sync --> sb
+    thread -->|"library search"| sb
+    comp -->|"loopback, Mode A cookie or Mode B token"| companion
+    ai -->|"direct, never through the site"| ownServer
+    webllm -.->|"model files after a confirmation"| hosts
+    wasm -.->|"pinned revisions"| hosts
+    ai -.-> searx
+    voice -.-> bspeech
+    publisher -->|"service_role, reads public or ownerless rows"| rest
 
     classDef external stroke-dasharray: 5 5
-    class gemini,openrouter,ownServer,nvidia,hf,ghLibs,speech,backendApis external
+    class providers,blocked,live,hosts,searx,bspeech external
 ```
 
 </details>
