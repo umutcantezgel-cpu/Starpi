@@ -4950,336 +4950,255 @@ flowchart TD
 
 ## 9. Security layers
 
-The defences a hostile document, model answer, receipt file or network response has to get through, from the HTTP headers to DOMPurify, the citation registry, the source-check panel and the database policies, and the guards of the server-side NVIDIA proxy (section 13 shows them in detail).
+The defences a hostile document, model answer, tool result, receipt file, web page or network response has to get through: the generated response headers with cross-origin isolation, DOMPurify and the second sanitizer of the rendering extras, the sandboxed frames, the citation registry, the source-check panel and the receipt verifier, the key vault, the database policies, the guards of the server functions (section 13) and the release pipeline.
 
 ### Untrusted content on its way to the DOM
 
-Every untrusted input reaches the page through one of a few controls. Values inside HTML templates are escaped with escapeHtml, values inside generated Markdown with escapeMarkdown, and Markdown itself goes through renderMarkdown, where DOMPurify strips data-*, aria-*, style, class and id attributes and forbids images, media, forms, buttons and frames. A link hook keeps only http:, https: and mailto: links and opens them with rel noopener noreferrer nofollow. Other values are written as textContent (the citation drawer, the document title in the modal, workspace search snippets, graph entity buttons and the graph status line, connection-test replies and errors) or drawn on the graph canvas with fillText, and localized UI and notices go through setText. Citation buttons are built with DOM APIs only for labels registered from real excerpts, never inside a link, code, pre or another button, and the copy buttons of code blocks are added after sanitizing with createElement; the source check skips pre and every button that is not a citation. Errors of the NVIDIA proxy reach the page only as i18n texts chosen by their error code, never as text from the server or from NVIDIA, and a model's streamed reasoning is rendered through the same renderMarkdown. Clicks and changes go through one delegated listener each (data-action and data-change), and the few other handlers (such as form submit, keys, drag and drop, the graph canvas) are attached with addEventListener, so no inline handlers are needed. Prompt fencing in buildContext only mitigates prompt injection.
+Every untrusted input reaches the page through one of a few controls. Markdown from a model, the library, tool results or stored conversations goes through renderMarkdown: marked, then DOMPurify with the html profile, data-* and aria-* attributes off, style, class (except `language-*` on code in pre and the math placeholders), id and srcset forbidden, and images, media, forms, buttons and frames forbidden; a link hook keeps only http:, https: and mailto: links, never a protocol-relative one, and opens them with rel noopener noreferrer nofollow. Highlighting and math come from the lazy chunk render-extras.js and run on the sanitized output: highlight.js reads the code's textContent and its output passes a second DOMPurify instance that keeps only `<span class="hljs-…">`; KaTeX writes MathML that passes a third instance (html and MathML profiles, no style, class, id, href or src). Diagrams and HTML or SVG previews never render in the app's DOM: they go by postMessage to the render frame, sandboxed with allow-scripts only (an opaque origin with `connect-src 'none'`, user scripts only after a click), and a provider's search suggestions go to the grounding frame (an opaque origin, no app script). Values inside HTML templates of the UI kit are escaped, values inside generated Markdown with escapeMarkdown; other values are set as textContent, and localized texts with setText. Citation buttons are created only for labels registered from real excerpts, never inside a link, code, pre or another button; code-block tools (copy, download, open in canvas, preview) are added after sanitizing with DOM APIs, and the source check skips pre and every button that is not a citation. Provider and server errors reach the page only as i18n texts chosen by their error code. Excerpts, tool results, web passages and the companion's passages reach models fenced as data, which mitigates prompt injection without preventing it.
 
 <!-- diagram: security-layers-render -->
 ```mermaid
 flowchart LR
     subgraph sg_in["Untrusted input"]
-        inDb["Database rows<br/>listDocuments, getDocument, searchKnowledge,<br/>recentKnowledge, listEntities, listRelations"]
-        inModel["Model output<br/>streamed tokens, final answer,<br/>think, thought or denkprozess reasoning"]
-        inWs["Workspace files<br/>file names and extracted text"]
-        inUser["User input<br/>chat textarea, ingest form"]
-        inHist["Stored chat history<br/>chat_history rows or<br/>starpi_local_chats_v1"]
-        inErr["Error text from providers,<br/>servers and parsers"]
-        inUrl["Links inside Markdown"]
+        inModel["Model output: streamed and final answers,<br/>reasoning, tool results, web passages"]
+        inDb["Library rows, search results, graph entities"]
+        inStore["Stored conversations and synced records"]
+        inWs["Workspace files: names and extracted text"]
+        inPrev["Code blocks: HTML, SVG, mermaid"]
+        inSugg["A provider's search suggestions HTML"]
+        inErr["Provider, server and parser errors"]
     end
-
     subgraph sg_ctl["Controls in the browser"]
-        cEsc["escapeHtml<br/>escapes ampersand, angle brackets and quotes<br/>user bubbles, library cards, tags, graph entity details,<br/>workspace rows, title-only source badges, thought step titles"]
-        cEscMd["escapeMarkdown<br/>collapses line breaks, backslash-escapes<br/>Markdown and HTML control characters<br/>synthesizer.js titles, sentences, labels, file name,<br/>trace query, method, engine and note, demo.js labels"]
-        cRender["renderMarkdown: marked, then DOMPurify.sanitize<br/>USE_PROFILES html, ALLOW_DATA_ATTR false, ALLOW_ARIA_ATTR false<br/>FORBID_TAGS style, img, picture, video, audio, source, form, input,<br/>button, textarea, select, iframe, object, embed<br/>FORBID_ATTR style, class, id, srcset"]
-        cLink["afterSanitizeAttributes hook on links<br/>href kept only for http:, https:, mailto:,<br/>never for a protocol-relative double slash<br/>then target _blank, rel noopener noreferrer nofollow"]
-        cCite["linkifyCitations and citationButton<br/>only labels registered by registerCitations become buttons,<br/>built with createElement and textContent,<br/>text inside a, code, pre and button is skipped"]
-        cText["textContent and canvas text<br/>citation drawer renderHighlighted: excerpt and context,<br/>document modal title, workspace search snippets,<br/>graph entity buttons, status line and canvas fillText,<br/>connection-test reply and error after sanitizeModelNames"]
-        cI18n["i18n setText, applyTranslations, appendNotice<br/>writes textContent and attributes only, never HTML<br/>notice params, workspace status lines"]
-        cDeleg["dom.js installDelegation<br/>one click and one change listener,<br/>data-action / data-change registry,<br/>no inline on* handlers anywhere"]
-        cFence["retrieval.js buildContext<br/>excerpts fenced in EXCERPT markers,<br/>system prompt: data, not instructions"]
+        cRender["render.js renderMarkdown: marked, then DOMPurify<br/>html profile, no data-* or aria-*, FORBID style, class, id, srcset,<br/>img, media, form, input, button, textarea, select, iframe, object, embed;<br/>class kept only for language-* on code in pre and math placeholders"]
+        cLink["afterSanitizeAttributes on links: http, https, mailto only,<br/>never protocol-relative, target _blank, rel noopener noreferrer nofollow"]
+        cExtras["render-extras.js, lazy: highlight.js output through a second<br/>DOMPurify (span with hljs-* classes only); KaTeX MathML through<br/>a third (no style, class, id, href, src)"]
+        cFrame["render-frame: sandbox allow-scripts, opaque origin,<br/>connect-src none, content by postMessage,<br/>user scripts only after a click"]
+        cGFrame["grounding-frame: opaque origin, own script only,<br/>no remote resources"]
+        cCite["citations.js: buttons only for registered labels,<br/>built with DOM APIs, skipped inside a, code, pre, button"]
+        cTools["code-blocks.js: tools added after sanitizing with DOM APIs;<br/>the source check skips pre and non-citation buttons"]
+        cText["textContent, setText and kit templates with escaping"]
+        cCodes["errors shown only as i18n texts by error code"]
+        cFence["excerpts, tool results, web and companion passages<br/>fenced as data in prompts"]
+        cDeleg["dom.js: one delegated click and change listener,<br/>no inline handlers"]
     end
-
     subgraph sg_thr["Threat stopped"]
-        tXss["Script execution: script tags,<br/>on* attributes, javascript: or data: links"]
-        tAction["Stored content triggering UI actions<br/>via data-action or data-i18n attributes"]
-        tTrack["Tracking beacons and UI spoofing<br/>via images, media, styles, forms, buttons"]
+        tXss["Script execution: script tags, on* attributes,<br/>javascript: or data: links"]
+        tAction["Stored content triggering UI actions via data-action"]
+        tTrack["Beacons and UI spoofing via images, media,<br/>styles, forms and buttons"]
         tTab["Reverse tabnabbing and referrer leaks"]
-        tFake["Fabricated clickable citations,<br/>a real citation inside a model-written link"]
-        tMdInj["Markdown injection in generated answers:<br/>links, images, headings, HTML from titles"]
-        tPrompt["Prompt injection from document text<br/>mitigated, not prevented"]
+        tFrame["A preview reading app storage or the network"]
+        tFake["Fabricated clickable citations"]
+        tProvider["Provider text with markup or secrets on the page"]
+        tPrompt["Prompt injection from documents and pages:<br/>mitigated, not prevented"]
     end
-
-    inDb -->|"library cards, graph details"| cEsc
-    inDb -->|"document modal body"| cRender
-    inDb -->|"modal title, entity names,<br/>cited excerpt"| cText
-    inDb -->|"offline answers"| cEscMd
+    inModel --> cRender
+    inDb --> cRender
+    inStore --> cRender
+    inModel --> cCite
+    inWs --> cText
+    inDb --> cText
+    inPrev --> cFrame
+    inSugg --> cGFrame
+    inErr --> cCodes
     inDb --> cFence
-    inModel -->|"answer, trace body"| cRender
-    inModel -->|"trace step titles"| cEsc
-    inModel -->|"citation labels"| cCite
-    inModel -->|"connection-test reply"| cText
-    inWs -->|"file names"| cEsc
     inWs --> cFence
-    inWs -->|"offline answers"| cEscMd
-    inWs -->|"getChunkContext, search snippets"| cText
-    inWs -->|"status line file names"| cI18n
-    inUser -->|"chat bubble"| cEsc
-    inUser -->|"ingest preview"| cRender
-    inUser -->|"offline trace"| cEscMd
-    inHist -->|"user rows, source titles"| cEsc
-    inHist -->|"assistant rows"| cRender
-    inErr -->|"notice params"| cI18n
-    inErr -->|"connection-test error"| cText
-    inUrl --> cLink
-
-    cEsc --> tXss
+    inModel --> cFence
+    cRender --> cLink
+    cRender --> cExtras
+    cRender --> cTools
     cRender --> tXss
     cRender --> tAction
     cRender --> tTrack
-    cLink --> tXss
     cLink --> tTab
+    cExtras --> tXss
+    cFrame --> tFrame
+    cGFrame --> tFrame
     cCite --> tFake
+    cTools --> tFake
     cText --> tXss
-    cI18n --> tXss
-    cDeleg -->|"lets the CSP forbid inline handlers"| tXss
-    cEscMd --> tMdInj
+    cCodes --> tProvider
+    cDeleg --> tXss
     cFence -.-> tPrompt
 ```
 
-<sub>Sources: [`src/js/render.js`](../src/js/render.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/dom.js`](../src/js/dom.js), [`src/js/library.js`](../src/js/library.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/code-blocks.js`](../src/js/code-blocks.js), [`src/js/providers.js`](../src/js/providers.js)</sub>
+<sub>Sources: [`src/js/render.js`](../src/js/render.js), [`src/js/render-extras.js`](../src/js/render-extras.js), [`src/js/code-blocks.js`](../src/js/code-blocks.js), [`public/render-frame.js`](../public/render-frame.js), [`public/grounding-frame.js`](../public/grounding-frame.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/ui/kit.js`](../src/js/ui/kit.js), [`src/js/dom.js`](../src/js/dom.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/ai/context-pack.js`](../src/js/ai/context-pack.js), [`scripts/headers.json`](../scripts/headers.json)</sub>
 
 ### Source-check panel and answer receipts
 
-The source-check panel and the receipt dialog show text taken from answers, excerpts and receipt files, so both are built with DOM APIs, setText and textContent, never with HTML strings. applyGrounding reads the answer after renderMarkdown and linkifyCitations: a button counts as a citation only when it carries data-action open-citation and an index in this answer's scope, and since DOMPurify forbids button tags and data-* attributes, only citationButton can create one. Any other label-like text is not a citation: a label that names no given excerpt is reported as unknown_citation (level unsupported), and one that resolveLabel matches to a given excerpt is reported as label_mismatch (level weak) while the statement is compared with that excerpt. Such text on a line that states nothing itself, such as a Sources: line, is reported on the checked statements that have no citation of their own, of their block or of a list lead-in, the ones that inherit answer-wide citations. The bar never shows the green check when nothing was compared: it is then neutral (grounding-none, shield icon). Statements that need review are marked with Range objects in the CSS Custom Highlight API, which changes no DOM and needs no inline style; the flagged list is the accessible channel, and the citation buttons of those statements point to it with aria-describedby. A receipt is JSON from anywhere: the dialog refuses files over 2,000,000 bytes and text that JSON.parse rejects, and the ingest worker runs validateReceipt, which refuses members the format does not define (a v1 receipt with a Merkle tree, proof or signature included), reason codes outside the list of its format, malformed Merkle records and proofs, and signatures whose algorithm, key id, value or public key do not have the defined form, before it reads at most 20 of the chosen files (files over 25 MiB are skipped) and verifyReceipt matches them by SHA-256 on the device. A signer's public key chosen in the dialog is refused above 16,384 bytes and is read only by importPublicKey, which accepts an Ed25519 or P-256 public key as a JWK or PEM and refuses a JWK with a private member. scripts/verify-receipt.mjs applies the same byte limit, JSON.parse, validateReceipt and importPublicKey for --public-key, reads every file it is given, and escapes control and bidirectional characters from the receipt in its text report. A receipt exported without excerpt texts also drops found from fact_context, approximate, fact_elsewhere, negation_inversion and name_context reasons, where it quotes the excerpt. The source check compares the numbers, dates, times, weekdays, codes, quotations and wording of each statement, names in English statements and, with rules version 2, in the excerpts' language negations and names and values in another place, with the excerpts it cites; a match does not prove a statement correct. The app does not sign receipts: they show that cited excerpts can be reproduced from the same files, not that the receipt is authentic, what a model saw, or that its reasoning is right. A signed receipt (signed outside the app with signReceipt) counts as unchanged since signing only while its id and Merkle root still match its contents, and as signed by someone only when the verifier supplies that signer's public key.
+The source-check panel and the receipt dialog show text taken from answers, excerpts and receipt files, so both are built with DOM APIs, setText and textContent, never with HTML strings. applyGrounding reads the answer after renderMarkdown and linkifyCitations: a button counts as a citation only when it carries data-action open-citation and an index in this answer's scope, and since DOMPurify forbids buttons and data-* attributes, only citationButton can make one; other label-like text is reported (unknown_citation when it names no given excerpt, label_mismatch when it resolves to one). Nothing compared gives a neutral bar, never the green check, and statements that need review are marked with the CSS Custom Highlight API, which changes no DOM. The AI judge of the second opinion sends statements and excerpts to a provider only for an answer explicitly allowed to leave the device (fail closed); the entailment model on the device is the other choice. Both are advisory: recorded in the receipt, never releasing or upgrading anything. The app writes `starpi.receipt/v3`: with "Sign exported receipts" (on by default) the receipt names the device key as its signer inside its id and is signed with it (Ed25519, or ECDSA P-256 where WebCrypto lacks Ed25519); the key is non-extractable and only its handle is in IndexedDB, it is never synced or exported, and Settings › Trust exports its public key as a JWK or PEM, rotates or deletes it. A receipt is JSON from anywhere: the dialog refuses files over 2,000,000 bytes and text that JSON.parse rejects, and validateReceipt refuses members its format does not define, reason codes outside its version's list, malformed Merkle records and proofs, signatures and signers of the wrong form, and v3 members beyond their limits, before at most 20 chosen files (25 MiB each at most) are matched by SHA-256 on the device. A public key chosen in the dialog is refused above 16,384 bytes and read only as a public JWK or PEM (a private member is refused). verifyReceipt recomputes the Merkle root and every inclusion proof; a signature counts for the signer only when the verifier supplies that signer's public key, and a v3 receipt whose signer is named but whose signature was removed or swapped fails. `starpi-verify-receipt` applies the same limits, can require a signature, and escapes control and bidirectional characters in its report. Receipts of v1 and v2 still verify.
 
 <!-- diagram: security-layers-check-receipts -->
 ```mermaid
 flowchart LR
     subgraph sg_in["Untrusted input"]
-        iAns["Rendered answer<br/>.message-content after renderMarkdown<br/>and linkifyCitations"]
-        iExc["Cited excerpts and document names<br/>the delivered text of each excerpt"]
-        iRcpt["Receipt file chosen in the dialog<br/>receiptFile, JSON from anywhere"]
-        iFiles["Original files for verification<br/>receiptSources, any number"]
-        iKey["Signer's public key chosen in the dialog,<br/>receiptPublicKey, or given with --public-key"]
-        iCli["Receipt and files passed to<br/>scripts/verify-receipt.mjs"]
+        iAns["Rendered answer after renderMarkdown<br/>and linkifyCitations"]
+        iExc["Cited excerpts and document names"]
+        iRcpt["Receipt file chosen in the dialog"]
+        iFiles["Original files for verification"]
+        iKey["Signer's public key, in the dialog or --public-key"]
+        iCli["Receipt and files for starpi-verify-receipt"]
     end
-
     subgraph sg_ctl["Controls"]
-        cBlocks["grounding-view.js blocksFromElement<br/>reads text nodes, skips pre,<br/>a button counts only with data-action open-citation<br/>and data-arg of this answer's scope,<br/>other label-like text becomes badcite"]
-        cBad["core/grounding.js checkSentence on badcite:<br/>resolveLabel finds no given excerpt: unknown_citation, level unsupported,<br/>it finds one: label_mismatch, level weak,<br/>and the statement is compared with that excerpt,<br/>badcite on a line that states nothing, such as Sources:,<br/>reported as inheritedBad on statements that inherit<br/>answer-wide citations"]
-        cPanel["applyGrounding panel: details, summary and list<br/>built with createElement, text via setText params,<br/>statements cut to 160 chars, references via citationButton,<br/>grounding.disclaimer in every panel, no innerHTML,<br/>nothing compared: neutral grounding-none bar<br/>with the shield icon, never shield-check"]
-        cHl["CSS Custom Highlight API<br/>Range objects in CSS.highlights starpi-review<br/>for unsupported statements, no DOM change,<br/>no inline style, skipped without Highlight"]
-        cSize["receipts.js verify: file over RECEIPT_LIMITS.bytes 2000000<br/>or rejected by JSON.parse: receipt.verify_invalid,<br/>reason size or JSON"]
-        cValid["ingest worker verify-receipt: validateReceipt<br/>schema starpi.receipt/v2 or v1, field types, lowercase SHA-256 hex,<br/>members the format does not define refused, so a v1 receipt<br/>with merkle, proof or signature is refused,<br/>reason codes only from REASON_CODES, for v1 REASON_CODES_V1,<br/>deliveredChars only with delivered partial,<br/>at most 64 citations, 500 sentences, 20 reasons,<br/>answer 200000, question 10000, excerpt 20000,<br/>statement 20000, labels and names 600 chars,<br/>other strings 1000 or fewer, citation indexes in range,<br/>v2: merkle alg sha256-rfc6962, size = citations, at most<br/>6 proof hashes, signature alg Ed25519 or ES256, value<br/>86 base64url chars, publicKey with its public members only<br/>failure: invalid error and path, nothing verified"]
-        cKey["receipts.js: key file over MAX_KEY_BYTES 16384 refused,<br/>receipt.verify_bad_key; worker and verify-receipt.mjs:<br/>importPublicKey, a public JWK or PEM SPKI for Ed25519<br/>or P-256, a JWK with a private member d refused,<br/>failure: invalidKey in the app, exit 2 on the command line"]
-        cSig["verifyReceipt: Merkle root and every inclusion proof<br/>recomputed; verifyReceiptSignature: the signature covers alg,<br/>id, keyId and merkle, invalid once the id or root no longer<br/>match the contents, key_mismatch for another key than<br/>the one supplied, trusted only for a supplied key"]
-        cRead["ingest worker reads the files, then verifyReceipt<br/>first MAX_VERIFY_FILES 20 files, larger than<br/>MAX_FILE_BYTES 25 MiB skipped, matched by SHA-256,<br/>re-read with extractText, nothing uploaded"]
-        cReport["verify and renderReport: invalid reasons as<br/>receipt.verify_invalid params, summary and lines via setText,<br/>warnings via textContent, replaceChildren"]
-        cDraft["receipts.js drafts: main-thread memory only,<br/>MAX_DRAFTS 50, never stored,<br/>downloaded only on request, question and excerpt<br/>texts optional, without excerpts buildReceipt drops found<br/>from fact_context, approximate, fact_elsewhere,<br/>negation_inversion and name_context reasons,<br/>receipt.privacy: leaves the device only if shared,<br/>export dialog shows receipt.proves and receipt.not_proves"]
-        cCliChk["verify-receipt.mjs: same RECEIPT_LIMITS.bytes check,<br/>JSON.parse and validateReceipt, exit 2 when invalid,<br/>control and bidirectional characters from the receipt<br/>escaped in the text report"]
+        cBlocks["blocksFromElement: a button counts only with data-action<br/>open-citation and this scope; other labels become badcite:<br/>unknown_citation or label_mismatch"]
+        cPanel["panel built with createElement and setText,<br/>neutral bar when nothing was compared, disclaimer in every panel"]
+        cHl["CSS highlight starpi-review: Range objects, no DOM change"]
+        cSecond["second opinion: AI judge only for answers allowed to leave<br/>the device (fail closed), else the entailment model here;<br/>advisory, recorded, never releases or upgrades"]
+        cSign["trust/signing.js: device key Ed25519 or ES256, non-extractable,<br/>handle in IndexedDB, never synced; signer inside the v3 id;<br/>public key exported as JWK or PEM"]
+        cSize["dialog: over 2,000,000 bytes or invalid JSON refused"]
+        cValid["validateReceipt (worker): v1, v2 or v3 schema, unknown members<br/>refused, reason codes of the version, Merkle and proof forms,<br/>signature and signer forms, v3 limits: 500 second opinions,<br/>500 relations, gate counts; failure: nothing verified"]
+        cKey["public key over 16,384 bytes refused; importPublicKey:<br/>public JWK or PEM for Ed25519 or P-256, private member refused"]
+        cSig["verifyReceipt: Merkle root and proofs recomputed;<br/>signature checked against the supplied key; a named signer<br/>without its signature fails"]
+        cRead["worker: at most 20 files, 25 MiB each,<br/>matched by SHA-256, re-extracted, nothing uploaded"]
+        cDraft["drafts in memory only (50), exported on request,<br/>question and excerpts optional"]
+        cCli["verify-receipt CLI: same limits, --require-signature,<br/>control and bidi characters escaped"]
     end
-
     subgraph sg_thr["Threat stopped"]
-        tXss["Script or markup from answers,<br/>excerpts or receipt fields"]
-        tFake["A label or button the answer was not given<br/>counted as a source"]
-        tDom["Rewriting the sanitized answer DOM,<br/>inline styles the CSP would have to allow"]
-        tDos["Oversized or malformed receipts<br/>exhausting the page or the worker"]
-        tLeak["Receipts, excerpts or files<br/>leaving the device unasked"]
-        tTerm["Receipt strings that rewrite or hide<br/>lines of the terminal report"]
-        tForge["A receipt edited after signing, or signed<br/>with another key, passing as the signer's"]
-        tPriv["A private key handed to the verifier<br/>as the public key"]
-        tClaim["A match or a receipt read as proof:<br/>the check can miss or flag wrongly,<br/>the app does not sign receipts, an embedded<br/>key does not show who signed<br/>stated, not prevented"]
+        tXss["Markup from answers, excerpts or receipt fields"]
+        tFake["A label the answer was not given counted as a source"]
+        tDom["Rewriting the sanitized DOM, inline styles"]
+        tLeak["Statements or excerpts sent to a judge<br/>for an answer that stays on the device"]
+        tDos["Oversized or malformed receipts"]
+        tForge["A receipt changed after signing, a removed or swapped<br/>signature, or a signature by another key passing"]
+        tPriv["A private key handed in as the public key"]
+        tKeyLeak["The signing key leaving the device"]
+        tTerm["Receipt strings rewriting the terminal report"]
+        tClaim["A match or a receipt read as proof of truth:<br/>stated, not prevented"]
     end
-
-    iAns --> cBlocks
+    iAns --> cBlocks --> cPanel
     iExc --> cPanel
-    cBlocks --> cBad
-    cBlocks --> cPanel
     cBlocks --> cHl
-    cBad --> tFake
     cBlocks --> tFake
     cPanel --> tXss
     cHl --> tDom
-    iRcpt --> cSize
-    iRcpt --> cValid
-    iFiles --> cRead
-    cSize --> tDos
-    cValid --> tDos
+    cPanel --> cSecond --> tLeak
+    cDraft --> cSign --> tKeyLeak
+    iRcpt --> cSize --> tDos
+    iRcpt --> cValid --> tDos
     cValid --> cSig
-    iKey --> cKey
-    cKey --> tDos
-    cKey --> tPriv
-    cKey --> cSig
-    cSig --> tForge
-    cSig --> cReport
-    cRead --> cReport
-    cReport --> tXss
-    cRead --> tLeak
-    cDraft --> tLeak
-    iCli --> cCliChk
-    cCliChk --> tDos
-    cCliChk --> tTerm
+    iKey --> cKey --> tPriv
+    cKey --> cSig --> tForge
+    iFiles --> cRead --> cSig
+    iCli --> cCli --> tTerm
+    cCli --> tDos
     cPanel -.-> tClaim
     cDraft -.-> tClaim
 ```
 
-<sub>Sources: [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/labels.js`](../src/js/core/labels.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/render.js`](../src/js/render.js), [`src/styles/app.css`](../src/styles/app.css), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs)</sub>
+<sub>Sources: [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/entail.js`](../src/js/core/entail.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/trust/signing.js`](../src/js/trust/signing.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
 
 ### Worker isolation, RLS, key handling, CSP and the build gate
 
-Workspace files are parsed only inside the starpi-ingest Web Worker, with an extension allowlist, byte, character and page limits, and pdf.js without font loading; the app never uploads or syncs them (a file reaches the knowledge base only if the user copies it into the ingest form and saves it), and only matching excerpts, or in free chat the text of a file attached to the question, go to the cloud provider, own server or NVIDIA model that writes an answer. The question and answer of a turn that uses them, like any question with an attached file, its answer in free chat, and any answer written without a model that names a workspace file, stay in localStorage with metadata local_only true, and turns marked local_only are never sent to OpenRouter, an own server or NVIDIA as chat history (Gemini gets history only in free chat, and never these turns). Supabase access uses the public key (a publishable key or a legacy anon JWT; build.mjs refuses sb_secret_ keys and other JWT roles) plus an anonymous session, so RLS, grants and CHECK size limits decide what a browser can read or write, and chats sync only when canSyncChats() confirms a session and the hardened schema. Provider keys stay in sessionStorage unless the user opts to remember them and travel only in headers; NVIDIA keys exist only in the server environment of the Vercel functions (or of scripts/serve.mjs --functions on an own host), the browser calls their same-origin routes without any key, and those routes accept only same-origin pages, limit requests per client address and pass only allowlisted models and fields within fixed sizes (section 13). Own-server URLs must be https (plain http only on localhost or 127.0.0.1, the http hosts connect-src allows) without credentials, the processor (WASM) worker downloads only files of its catalog repositories at their pinned revisions, the vercel.json CSP and headers block script injection, remote image beacons, plugins and framing while connect-src still allows any https host, and sw.js caches only same-origin GET responses. In CI, verify-dist.mjs runs after npm run build (it is not part of the build command Vercel runs) and fails the job if dist/ would break or weaken that policy, if its build version does not match its contents, if the precache list lacks the ingest worker or includes /index.html, the WASM worker, the ONNX Runtime binary or the Supabase library, or if any bundle, index.html, sw.js or the build manifest contains an NVIDIA key.
+Every response carries one header set generated from `scripts/headers.json` per build profile (public on Vercel, self-host, test, and the companion's build): a CSP without `unsafe-inline` or `unsafe-eval` (only `wasm-unsafe-eval` for the WebAssembly runtimes), COOP `same-origin` and COEP `require-corp` (cross-origin isolation, which gives the processor runtime its threads), CORP `same-origin`, Origin-Agent-Cluster, X-Frame-Options DENY, `frame-ancestors 'none'`, Referrer-Policy no-referrer, HSTS and a Permissions-Policy (microphone and camera for this origin; the companion's build without the camera). The companion's build talks to its own origin only. `npm run headers:check` keeps vercel.json equal to the source, and verify-dist fails a build that breaks the CSP, references missing files, ships a key, exceeds its first-load budget or is served with other headers. Untrusted files are parsed in the ingestion worker within size limits, with pdf.js without eval or font loading and Office files through a ZIP reader with limits against ZIP bombs. Provider keys stay in the tab or in the AES-GCM vault and go only to their provider or through the relay; site keys exist only in the server environment, and the server functions check the origin, a per-IP rate limit, optional budgets and an access code before anything else. The relay reaches only its fixed upstream table and returns error identifiers, never upstream text. Model files are hashed against the lock before they run, and the processor worker fetches only catalog repositories at their pinned revisions. Turns that stayed on the device never enter another model's history or the encrypted sync; RLS limits sync rows to their owner and private knowledge rows to their creator, and the build refuses a secret or service-role key. The service worker caches only same-origin GET responses that are cacheable.
 
 <!-- diagram: security-layers-platform -->
 ```mermaid
 flowchart LR
     subgraph sg_in["Untrusted input"]
-        iFile["Workspace files<br/>drop zone, file input, chat attachment"]
-        iDb["Supabase access<br/>public key built into the bundle,<br/>anonymous session JWT, reads and writes"]
-        iKey["Provider keys: Gemini and OpenRouter in the tab,<br/>NVIDIA keys only in the server environment"]
-        iUrl["Own server URL cfgLlmUrl,<br/>stored as starpi_llm_url"]
-        iNet["Responses from Supabase,<br/>providers and model downloads"]
-        iProxy["Requests to the NVIDIA routes<br/>from other sites, scripts and floods"]
-        iSlip["Markup that slips past<br/>escaping and sanitizing"]
-        iDist["dist/ build output<br/>index.html, bundles, app CSS,<br/>sw.js, build-manifest.json"]
-        iOrigin["Other sites and networks<br/>framing pages, opener windows,<br/>network attackers"]
+        iFile["Workspace files and attachments"]
+        iKeys["Provider keys typed by the user;<br/>site keys of the operator"]
+        iReq["Requests to the server functions<br/>from other sites, scripts and floods"]
+        iUrl["Own server address"]
+        iNet["Responses from providers, model hosts, Supabase"]
+        iDb["Supabase access with the public key"]
+        iSlip["Markup that slips past sanitizing"]
+        iDist["dist/ build output"]
+        iOrigin["Other sites: framing, opener windows, network attackers"]
     end
-
     subgraph sg_ctl["Controls"]
-        cWorker["ingest.worker.js, Web Worker starpi-ingest<br/>parse, chunk and BM25 off the main thread,<br/>full text kept in worker memory, never uploaded or synced by the app,<br/>failures return ParseError codes, ok false"]
-        cParse["parser.js extractText<br/>extension allowlist txt, md, markdown, csv, log, json, pdf<br/>MAX_FILE_BYTES 25 MiB, MAX_TEXT_CHARS 5000000,<br/>at most MAX_PDF_PAGES 2000 read, normalizeText drops NUL and control chars"]
-        cPdf["pdf.js legacy build inside the worker<br/>disableFontFace, useSystemFonts false,<br/>isOffscreenCanvasSupported false,<br/>PasswordException becomes encrypted_pdf,<br/>other document errors invalid_pdf,<br/>pdf.js failing to load becomes pdf_reader"]
-        cLocal["chat.js and chat-store.js persistMessage localOnly:<br/>on-device mode, question and answer of a turn<br/>using workspace excerpts, question stored after retrieval,<br/>questions with an attached file, their answers in free chat,<br/>and answers without a model that name a workspace file<br/>stay in localStorage with metadata local_only true,<br/>rows without the flag count as local"]
-        cHist["chat.js shareableHistory: turns marked localOnly<br/>are never sent as history; source mode: the last 4 others<br/>to OpenRouter, the own server and NVIDIA, none to Gemini;<br/>free chat: up to 16 within 24000 chars, Gemini included;<br/>matching excerpts or the attached file still reach the model"]
-        cRls["Postgres RLS and grants<br/>visible = is_public or owner_id = auth.uid()<br/>published rows read-only for browser roles,<br/>chat_history: own rows, select, insert and delete,<br/>brain_settings service role only, RPCs SECURITY INVOKER"]
-        cCheck["CHECK size limits on browser-writable columns<br/>violations fail with SQLSTATE 23514"]
-        cSync["canSyncChats: signedIn and hardened,<br/>otherwise chats stay in localStorage"]
-        cBuildKey["build.mjs assertPublicKey, lib/supabase-key.mjs<br/>sb_publishable_ key or a JWT with role anon,<br/>empty, sb_secret_, not a JWT or another role:<br/>the build fails"]
-        cSecret["ai/keys.js and storage.js writeSecret<br/>sessionStorage for this tab, or the<br/>key vault: AES-GCM under a PBKDF2 key<br/>held in memory, auto-lock after 30 min"]
-        cHeader["providers.js: Gemini key in x-goog-api-key header,<br/>OpenRouter key as Authorization Bearer, never in a URL,<br/>NVIDIA requests carry no key, same origin only"]
-        cProxy["api/_lib guards on the NVIDIA routes:<br/>same-origin check, per-IP rate limit, keys configured,<br/>JSON body at most 256 KiB, model and field allowlist,<br/>no-store, keys by index and bodies never logged"]
-        cNorm["providers.js normalizeServerUrl<br/>https anywhere, http only for localhost and 127.0.0.1,<br/>the plain-http hosts in connect-src, no user or password,<br/>query and hash dropped"]
-        cPin["wasm/worker.js env.fetch: only catalog repositories<br/>at the pinned revision, plain path segments,<br/>everything else refused before any request"]
-        cSw["sw.js fetch handler<br/>only same-origin GET requests handled,<br/>cross-origin requests bypass the worker,<br/>cached only when 200, basic and not no-store"]
-        cCsp["vercel.json Content-Security-Policy<br/>default-src self, script-src self wasm-unsafe-eval, style-src self,<br/>font-src self, img-src self data: blob:, worker-src self,<br/>manifest-src self, media-src none,<br/>connect-src self data: https: wss://*.supabase.co<br/>http://localhost:* http://127.0.0.1:*<br/>object-src, frame-src, base-uri, form-action, frame-ancestors none"]
-        cHdr["vercel.json headers: X-Frame-Options DENY, nosniff,<br/>COOP same-origin, HSTS max-age 63072000,<br/>Referrer-Policy strict-origin-when-cross-origin,<br/>Permissions-Policy microphone self only,<br/>camera, geolocation, payment, usb, serial, hid off"]
-        cVerify["scripts/verify-dist.mjs in CI after npm run build:<br/>CSP compatibility, no inline script, style block, style attribute,<br/>on* handler or javascript: URL, scripts and stylesheets<br/>only from /assets/, referenced and precached files exist,<br/>no __STARPI_ placeholder in sw.js or the bundles,<br/>no eval or new Function, CSP without unsafe-inline or unsafe-eval,<br/>no nvapi- key in bundles, index.html, sw.js or the manifest"]
-        cVerify2["scripts/verify-dist.mjs: version and offline shell<br/>buildVersion over index.html, asset URLs, public files<br/>and the sw.js template equals the manifest version,<br/>sw.js carries it, public files listed, ingest worker<br/>precached, /index.html not precached,<br/>WASM worker and ONNX Runtime binary present, not precached,<br/>app CSS contains ::highlight(starpi-review)"]
+        cWorker["starpi-ingest worker: parse, chunk, index off the main thread,<br/>25 MiB and 5,000,000 chars, pdf.js without eval or fonts,<br/>ZIP limits and XML without entity expansion"]
+        cLocal["localOnly turns: never another model's history,<br/>never in the encrypted sync"]
+        cVault["ai/keys.js: session storage or the vault (AES-GCM-256,<br/>PBKDF2-SHA-256 600,000, lock after 30 min), keys only in<br/>the provider's auth header, never in URLs, logs or receipts"]
+        cGuards["api/_lib guards: origin check, per-IP limit, access code<br/>after the limit, daily budgets; relay: fixed upstreams, 4 MB,<br/>header allowlist, no redirects, error identifiers only;<br/>pools: allowlisted models, text and images, no tools"]
+        cNorm["normalizeServerUrl: https, or http on localhost or 127.0.0.1,<br/>no credentials"]
+        cPin["model-lock.json: SHA-256 before a model runs;<br/>processor worker fetches pinned revisions only"]
+        cRls["RLS: chat_sync and chat_sync_keys owner only,<br/>private knowledge rows for their creator, published rows read-only,<br/>build refuses sb_secret_ and non-anon JWTs"]
+        cSw["sw.js: same-origin GET only, cacheable responses only"]
+        cCsp["headers.json per profile: script-src self wasm-unsafe-eval,<br/>style-src self, frame-src self, media-src none,<br/>object-src, base-uri, form-action, frame-ancestors none,<br/>connect-src per profile (companion: self only)"]
+        cIso["COOP same-origin, COEP require-corp, CORP same-origin,<br/>Origin-Agent-Cluster, X-Frame-Options DENY, HSTS,<br/>Referrer-Policy no-referrer, Permissions-Policy"]
+        cVerify["verify-dist: CSP compatibility, no inline code or eval,<br/>assets present, no key in bundles, first-load budget,<br/>headers of the profile identical on every file except the frames;<br/>headers:check keeps vercel.json equal to the source"]
     end
-
     subgraph sg_thr["Threat stopped"]
-        tFreeze["Frozen UI or exhausted memory<br/>from large or hostile files"]
-        tPdf["Hostile PDF: font loading,<br/>parser failure in the page"]
-        tLeak["Workspace content uploaded, synced<br/>or sent as chat history"]
-        tTenant["Reading or changing other users' chats<br/>and private rows, editing published rows"]
-        tSize["Oversized writes into the database"]
-        tSecretKey["A key that bypasses RLS<br/>shipped to every browser"]
-        tKey["Keys persisted on shared devices,<br/>exposed in URLs and logs or shipped in a bundle"]
-        tQuota["Quota abuse of the shared NVIDIA key pool<br/>and use as an open proxy"]
-        tUrl["Cleartext http to remote hosts,<br/>credentials in URLs, non-http schemes"]
-        tModel["Model files from another repository<br/>or a moved branch"]
-        tCache["Private API responses<br/>kept in CacheStorage"]
-        tXss["Injected or inline script, eval"]
-        tExfil["Image beacons and plugins: remote images,<br/>object, embed, frames, form posts"]
+        tFreeze["Frozen UI, exhausted memory, ZIP bombs"]
+        tLeak["Device-only content sent or synced"]
+        tKey["Keys persisted in plaintext, in URLs or bundles"]
+        tAbuse["Quota abuse of the site's keys, an open proxy, SSRF"]
+        tUrl["Cleartext to remote hosts, credentials in URLs"]
+        tModel["Changed or foreign model files"]
+        tTenant["Reading other users' rows, editing published rows"]
+        tCache["Private responses in CacheStorage"]
+        tXss["Injected or inline script, exfiltration"]
         tFrame["Clickjacking, cross-window access, downgrade"]
-        tRegress["A build that breaks under or weakens the CSP,<br/>serves stale code or has no offline workspace"]
+        tRegress["A build that weakens the policy or ships a key"]
     end
-
-    iFile --> cWorker
-    iFile --> cParse
-    iFile -->|"pdf"| cPdf
-    cWorker --> tFreeze
-    cWorker --> tLeak
-    cParse --> tFreeze
-    cPdf --> tPdf
-    iFile -->|"attached-file questions and free-chat answers,<br/>workspace turns: question and answer,<br/>answers without a model naming<br/>a workspace file"| cLocal
-    iFile -->|"workspace and attached-file turns,<br/>turns whose answer without a model<br/>names a workspace file"| cHist
-    cLocal --> tLeak
-    cHist --> tLeak
-    iDb --> cBuildKey
-    iDb --> cRls
-    iDb --> cCheck
-    iDb --> cSync
-    cBuildKey --> tSecretKey
-    cRls --> tTenant
-    cSync -->|"no chat rows without owner RLS"| tTenant
-    cCheck --> tSize
-    iKey --> cSecret
-    iKey --> cHeader
-    iKey -->|"NVIDIA keys"| cVerify
-    cSecret --> tKey
-    cHeader --> tKey
-    cVerify -->|"nvapi- check"| tKey
-    iProxy --> cProxy
-    cProxy --> tQuota
-    iUrl --> cNorm
-    cNorm --> tUrl
-    iNet --> cPin
-    cPin --> tModel
-    iNet --> cSw
-    cSw --> tCache
-    iSlip --> cCsp
-    iOrigin --> cHdr
-    cCsp --> tXss
-    cCsp --> tExfil
-    cHdr --> tFrame
-    iDist --> cVerify
-    iDist --> cVerify2
-    cVerify --> tRegress
-    cVerify2 --> tRegress
+    iFile --> cWorker --> tFreeze
+    iFile --> cLocal --> tLeak
+    iKeys --> cVault --> tKey
+    iKeys --> cVerify
+    iReq --> cGuards --> tAbuse
+    iUrl --> cNorm --> tUrl
+    iNet --> cPin --> tModel
+    iNet --> cSw --> tCache
+    iDb --> cRls --> tTenant
+    iSlip --> cCsp --> tXss
+    iOrigin --> cIso --> tFrame
+    iDist --> cVerify --> tRegress
+    cVerify --> tKey
 ```
 
-<sub>Sources: [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/config.js`](../src/js/config.js), [`src/js/state.js`](../src/js/state.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`api/_lib/guards.js`](../api/_lib/guards.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`api/_lib/nvidia-request.js`](../api/_lib/nvidia-request.js), [`src/sw.js`](../src/sw.js), [`vercel.json`](../vercel.json), [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`scripts/lib/build-version.mjs`](../scripts/lib/build-version.mjs), [`src/locales/en.json`](../src/locales/en.json), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql), [`backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql`](../backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`package.json`](../package.json), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)</sub>
+<sub>Sources: [`scripts/headers.json`](../scripts/headers.json), [`scripts/lib/headers.mjs`](../scripts/lib/headers.mjs), [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`scripts/gen-headers.mjs`](../scripts/gen-headers.mjs), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/formats/zip.js`](../src/js/rag/formats/zip.js), [`src/js/ai/keys.js`](../src/js/ai/keys.js), [`api/_lib/guards.js`](../api/_lib/guards.js), [`api/_lib/relay/handler.js`](../api/_lib/relay/handler.js), [`api/_lib/pool/handler.js`](../api/_lib/pool/handler.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/models/integrity.js`](../src/js/models/integrity.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/sync/payload.js`](../src/js/sync/payload.js), [`src/sw.js`](../src/sw.js), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql)</sub>
 
 ### Publisher secrets, service role reads and CI supply chain
 
-The library publisher is the only component that holds the service role key, and it is a command line tool on a machine the operator controls: it opens no port and takes no requests. publisher/config.py reads the key only from SUPABASE_SERVICE_ROLE_KEY, never the anon key, from the process environment or tools/library-publisher/.env (the environment wins, and within the file the last assignment wins), and keeps it out of repr. Because the service role bypasses RLS, every read of the publisher is limited to the shared library, published rows and rows without an owner (SHARED_ROWS): list_documents, the sections that backfill embeds and the matches that test-query prints; private rows of browser sessions never leave the database through it. Errors name the HTTP status and the PostgREST code, never the key or a URL with its query. The model files are pinned by revision, size and SHA-256 and checked before every load, so a replaced file never writes vectors into the shared library. CI scans the tree and pull-request commits with a checksum-verified gitleaks, whose custom rule starpi-nvidia-api-key also finds NVIDIA keys pasted with Markdown escapes (a unit test scans every tracked file with the same pattern), and audits the dependencies (npm audit fails on any advisory in a runtime dependency, pip-audit on any advisory in the publisher's requirements, which backend/requirements-dev.txt includes) and writes CycloneDX SBOMs of the app and of @starpi/core from the lockfile while running with read-only permissions, SHA-pinned actions and npm ci --ignore-scripts. In release.yml the prepare job, which installs dependencies and packs @starpi/core, runs with read-only permissions too; only the release job, which installs and runs nothing from the repository and checks SHA256SUMS before it attaches the assets, gets contents write, and it runs after CI has passed on a push to main or when started by hand on main, always for the version in package.json (a manual run takes no inputs).
+The library publisher is a command line tool on a machine the operator controls: it holds the service_role key, opens no port, reads only `.md` and `.txt` files within limits, keeps its own reads to public or ownerless rows (the service role bypasses RLS) and pins its embedding model files by revision, size and SHA-256. CI runs with read-only permissions, actions pinned to commit SHAs, `persist-credentials: false` and `npm ci --ignore-scripts`; gitleaks scans the tree and every pull request, `npm audit` fails on runtime advisories and `pip-audit` on the publisher's, the licence gate checks every shipped package (and the companion's tree its own), the end-of-life register warns a year ahead, the public hygiene check keeps private paths and internal identifiers out, CodeQL and a workflow lint (actionlint, zizmor) run on every change, and a weekly workflow checks the model lock. The release workflow runs after CI succeeded on a push to main: a job without write access or secrets packs `@starpi/core` and `@starpi/companion`, builds the companion's offline bundle, smoke-tests the core tarball and writes the SBOMs and `SHA256SUMS`; a signing job, which installs nothing, attests every asset (actions/attest-build-provenance), signs `SHA256SUMS` and the offline bundle keyless with Sigstore and, when the release key is configured, signs `SHA256SUMS` with Ed25519; the release job is the only one with `contents: write`; and the publish job releases both packages to npm from the very tarballs of the release, with provenance.
 
 <!-- diagram: security-layers-backend-ci -->
 ```mermaid
 flowchart LR
     subgraph sg_in["Untrusted input"]
-        iFiles["Files handed to the publisher,<br/>replies of an optional chat model"]
+        iFiles["Files handed to the publisher"]
         iModel["Model files from Hugging Face"]
-        iSecret["Publisher secrets<br/>SUPABASE_SERVICE_ROLE_KEY, LLM_API_KEY"]
-        iRepo["Commits, pull requests,<br/>npm and pip dependencies"]
+        iSecret["Publisher secrets: service role key"]
+        iRepo["Commits, pull requests, npm and pip dependencies,<br/>workflow files"]
+        iAssets["Release assets on their way to users"]
     end
-
     subgraph sg_ctl["Controls"]
-        cCli["Command line only: no listener,<br/>run on a machine the operator controls"]
-        cSource["read_source: .md or .txt, UTF-8, not empty,<br/>at most 200000 characters, file name only<br/>as source_name, fields clipped to the CHECK limits"]
-        cStruct["--structure is opt-in: without it the text is stored<br/>as written; a reply without Markdown or JSON<br/>falls back to the original text"]
-        cPins["model_files.py: revision, size and SHA-256 pinned,<br/>download to a .part file, renamed only after<br/>both match, every load_embedder checks again"]
-        cShared["supabase_service.py SHARED_ROWS<br/>is_public true or owner_id null:<br/>list, backfill and test-query never read<br/>private rows of browser sessions"]
-        cAtomic["ingest_document_atomic: document and sections<br/>in one transaction, new documents private<br/>until publish --public"]
-        cCfg["publisher/config.py PublisherConfig: the process environment<br/>wins over tools/library-publisher/.env,<br/>service role key only from SUPABASE_SERVICE_ROLE_KEY,<br/>never the anon key, secret fields excluded from repr,<br/>errors carry status and code, never the key"]
-        cLeaks["CI job secrets: gitleaks 8.30.1, sha256 verified,<br/>scans the working tree and the commits of a pull request,<br/>custom rule starpi-nvidia-api-key, escaped keys too,<br/>nvidia-catalog.test.mjs scans tracked files with it"]
-        cAudit["CI job audit: npm audit --omit=dev fails on any advisory<br/>in a runtime dependency, pip-audit on<br/>backend/requirements-dev.txt, which includes the<br/>publisher requirements, fails on any advisory,<br/>development tooling: warning at high severity only,<br/>npm run sbom: CycloneDX SBOMs, artifact sbom"]
-        cSupply["CI and Vercel: permissions contents read,<br/>actions pinned to commit SHAs, persist-credentials false,<br/>npm ci --ignore-scripts"]
-        cRelease["release.yml: the prepare job packs @starpi/core and writes<br/>the SBOMs with contents read, smoke-tests the tarball,<br/>contents write for the release job only, which installs<br/>nothing, checks SHA256SUMS and runs gh release create,<br/>after CI succeeded on a push to main or by hand on main,<br/>version always from package.json, no dispatch inputs,<br/>SHA-pinned checkout, persist-credentials false"]
+        cCli["publisher: command line only, no listener"]
+        cSource["read_source: md or txt, UTF-8, 200,000 chars,<br/>fields clipped to the CHECK limits"]
+        cShared["service role reads limited to public or ownerless rows"]
+        cPins["model_files.py: revision, size and SHA-256 pinned,<br/>checked on every load"]
+        cLeaks["gitleaks on the tree and every pull request"]
+        cAudit["npm audit (runtime), pip-audit, licence gate,<br/>companion dependency and licence checks, eol register,<br/>public hygiene"]
+        cLint["CodeQL, actionlint and zizmor on every change;<br/>model-lock.yml weekly"]
+        cSupply["permissions contents read, SHA-pinned actions,<br/>persist-credentials false, npm ci --ignore-scripts"]
+        cPrep["release prepare: no write, no secrets: pack core and companion,<br/>offline bundle, core smoke test, SBOMs, SHA256SUMS"]
+        cSign["release sign: installs nothing; attest-build-provenance,<br/>cosign keyless for SHA256SUMS and the bundle,<br/>Ed25519 SHA256SUMS.sig when the key exists"]
+        cRel["release: the only contents write job, checks SHA256SUMS,<br/>creates the release from package.json's version"]
+        cPub["publish: npm --provenance from the release tarballs,<br/>core then companion, published versions skipped"]
     end
-
     subgraph sg_thr["Threat stopped"]
         tRemote["Remote use of the service role key"]
-        tAbuse["Oversized or malformed documents<br/>failing inserts half way"]
-        tRewrite["A model silently rewriting<br/>the facts of a source"]
-        tModel["Vectors from a replaced or truncated model<br/>in the shared library"]
-        tPrivate["Private rows of browser sessions<br/>read through the service role,<br/>which bypasses RLS"]
-        tKeys["Service role or provider keys<br/>in logs or in git history"]
-        tSupply["Install scripts, moved action tags,<br/>a persisted token or write access<br/>in jobs that run dependency code"]
-        tVuln["Dependencies with a published advisory<br/>shipped in dist/ or installed for the publisher"]
-        tAsset["A release asset changed after the build,<br/>or dependencies nobody can list"]
+        tPrivate["Private browser rows read through the service role"]
+        tModel["Vectors from a replaced model"]
+        tKeys["Secrets in git history or logs"]
+        tVuln["Dependencies with advisories or unknown licences"]
+        tSupply["Install scripts, moved tags, a persisted token,<br/>write access where dependency code runs"]
+        tAsset["An asset changed after the build, or packages that<br/>do not match the release"]
     end
-
-    iSecret --> cCli
-    cCli --> tRemote
+    iSecret --> cCli --> tRemote
     iFiles --> cSource
-    iFiles --> cStruct
-    cSource --> tAbuse
-    cAtomic --> tAbuse
-    cStruct --> tRewrite
-    iModel --> cPins
-    cPins --> tModel
-    iFiles --> cAtomic
     cShared --> tPrivate
-    iSecret --> cCfg
-    iSecret --> cLeaks
-    iRepo --> cLeaks
-    iRepo --> cSupply
-    iRepo --> cAudit
-    cAudit --> tVuln
-    cCfg --> tKeys
-    cLeaks --> tKeys
-    cSupply --> tSupply
-    iRepo --> cRelease
-    cRelease --> tSupply
-    cRelease --> tAsset
-    cAudit --> tAsset
-    cCfg -.-> cShared
+    iModel --> cPins --> tModel
+    iRepo --> cLeaks --> tKeys
+    iRepo --> cAudit --> tVuln
+    iRepo --> cLint --> tSupply
+    iRepo --> cSupply --> tSupply
+    iRepo --> cPrep --> cSign --> cRel --> cPub
+    iAssets --> cSign
+    cSign --> tAsset
+    cPub --> tAsset
 ```
 
-<sub>Sources: [`tools/library-publisher/publisher/config.py`](../tools/library-publisher/publisher/config.py), [`tools/library-publisher/publisher/pipeline.py`](../tools/library-publisher/publisher/pipeline.py), [`tools/library-publisher/publisher/structurer.py`](../tools/library-publisher/publisher/structurer.py), [`tools/library-publisher/publisher/model_files.py`](../tools/library-publisher/publisher/model_files.py), [`tools/library-publisher/publisher/supabase_service.py`](../tools/library-publisher/publisher/supabase_service.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`backend/requirements-dev.txt`](../backend/requirements-dev.txt), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`vercel.json`](../vercel.json), [`SECURITY.md`](../SECURITY.md), [`.gitleaks.toml`](../.gitleaks.toml), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>
+<sub>Sources: [`tools/library-publisher/publisher/cli_supabase.py`](../tools/library-publisher/publisher/cli_supabase.py), [`tools/library-publisher/publisher/supabase_service.py`](../tools/library-publisher/publisher/supabase_service.py), [`tools/library-publisher/publisher/model_files.py`](../tools/library-publisher/publisher/model_files.py), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`.github/workflows/codeql.yml`](../.github/workflows/codeql.yml), [`.github/workflows/workflow-lint.yml`](../.github/workflows/workflow-lint.yml), [`.github/workflows/model-lock.yml`](../.github/workflows/model-lock.yml), [`scripts/sign-release.mjs`](../scripts/sign-release.mjs), [`scripts/license-gate.mjs`](../scripts/license-gate.mjs), [`scripts/public-hygiene.mjs`](../scripts/public-hygiene.mjs)</sub>
 
 ## 10. Library publisher
 

@@ -370,71 +370,64 @@ The layers in detail (all diagrams are also in the
 ```mermaid
 flowchart LR
     subgraph sg_in["Untrusted input"]
-        inDb["Database rows<br/>listDocuments, getDocument, searchKnowledge,<br/>recentKnowledge, listEntities, listRelations"]
-        inModel["Model output<br/>streamed tokens, final answer,<br/>think, thought or denkprozess reasoning"]
-        inWs["Workspace files<br/>file names and extracted text"]
-        inUser["User input<br/>chat textarea, ingest form"]
-        inHist["Stored chat history<br/>chat_history rows or<br/>starpi_local_chats_v1"]
-        inErr["Error text from providers,<br/>servers and parsers"]
-        inUrl["Links inside Markdown"]
+        inModel["Model output: streamed and final answers,<br/>reasoning, tool results, web passages"]
+        inDb["Library rows, search results, graph entities"]
+        inStore["Stored conversations and synced records"]
+        inWs["Workspace files: names and extracted text"]
+        inPrev["Code blocks: HTML, SVG, mermaid"]
+        inSugg["A provider's search suggestions HTML"]
+        inErr["Provider, server and parser errors"]
     end
-
     subgraph sg_ctl["Controls in the browser"]
-        cEsc["escapeHtml<br/>escapes ampersand, angle brackets and quotes<br/>user bubbles, library cards, tags, graph entity details,<br/>workspace rows, title-only source badges, thought step titles"]
-        cEscMd["escapeMarkdown<br/>collapses line breaks, backslash-escapes<br/>Markdown and HTML control characters<br/>synthesizer.js titles, sentences, labels, file name,<br/>trace query, method, engine and note, demo.js labels"]
-        cRender["renderMarkdown: marked, then DOMPurify.sanitize<br/>USE_PROFILES html, ALLOW_DATA_ATTR false, ALLOW_ARIA_ATTR false<br/>FORBID_TAGS style, img, picture, video, audio, source, form, input,<br/>button, textarea, select, iframe, object, embed<br/>FORBID_ATTR style, class, id, srcset"]
-        cLink["afterSanitizeAttributes hook on links<br/>href kept only for http:, https:, mailto:,<br/>never for a protocol-relative double slash<br/>then target _blank, rel noopener noreferrer nofollow"]
-        cCite["linkifyCitations and citationButton<br/>only labels registered by registerCitations become buttons,<br/>built with createElement and textContent,<br/>text inside a, code, pre and button is skipped"]
-        cText["textContent and canvas text<br/>citation drawer renderHighlighted: excerpt and context,<br/>document modal title, workspace search snippets,<br/>graph entity buttons, status line and canvas fillText,<br/>connection-test reply and error after sanitizeModelNames"]
-        cI18n["i18n setText, applyTranslations, appendNotice<br/>writes textContent and attributes only, never HTML<br/>notice params, workspace status lines"]
-        cDeleg["dom.js installDelegation<br/>one click and one change listener,<br/>data-action / data-change registry,<br/>no inline on* handlers anywhere"]
-        cFence["retrieval.js buildContext<br/>excerpts fenced in EXCERPT markers,<br/>system prompt: data, not instructions"]
+        cRender["render.js renderMarkdown: marked, then DOMPurify<br/>html profile, no data-* or aria-*, FORBID style, class, id, srcset,<br/>img, media, form, input, button, textarea, select, iframe, object, embed;<br/>class kept only for language-* on code in pre and math placeholders"]
+        cLink["afterSanitizeAttributes on links: http, https, mailto only,<br/>never protocol-relative, target _blank, rel noopener noreferrer nofollow"]
+        cExtras["render-extras.js, lazy: highlight.js output through a second<br/>DOMPurify (span with hljs-* classes only); KaTeX MathML through<br/>a third (no style, class, id, href, src)"]
+        cFrame["render-frame: sandbox allow-scripts, opaque origin,<br/>connect-src none, content by postMessage,<br/>user scripts only after a click"]
+        cGFrame["grounding-frame: opaque origin, own script only,<br/>no remote resources"]
+        cCite["citations.js: buttons only for registered labels,<br/>built with DOM APIs, skipped inside a, code, pre, button"]
+        cTools["code-blocks.js: tools added after sanitizing with DOM APIs;<br/>the source check skips pre and non-citation buttons"]
+        cText["textContent, setText and kit templates with escaping"]
+        cCodes["errors shown only as i18n texts by error code"]
+        cFence["excerpts, tool results, web and companion passages<br/>fenced as data in prompts"]
+        cDeleg["dom.js: one delegated click and change listener,<br/>no inline handlers"]
     end
-
     subgraph sg_thr["Threat stopped"]
-        tXss["Script execution: script tags,<br/>on* attributes, javascript: or data: links"]
-        tAction["Stored content triggering UI actions<br/>via data-action or data-i18n attributes"]
-        tTrack["Tracking beacons and UI spoofing<br/>via images, media, styles, forms, buttons"]
+        tXss["Script execution: script tags, on* attributes,<br/>javascript: or data: links"]
+        tAction["Stored content triggering UI actions via data-action"]
+        tTrack["Beacons and UI spoofing via images, media,<br/>styles, forms and buttons"]
         tTab["Reverse tabnabbing and referrer leaks"]
-        tFake["Fabricated clickable citations,<br/>a real citation inside a model-written link"]
-        tMdInj["Markdown injection in generated answers:<br/>links, images, headings, HTML from titles"]
-        tPrompt["Prompt injection from document text<br/>mitigated, not prevented"]
+        tFrame["A preview reading app storage or the network"]
+        tFake["Fabricated clickable citations"]
+        tProvider["Provider text with markup or secrets on the page"]
+        tPrompt["Prompt injection from documents and pages:<br/>mitigated, not prevented"]
     end
-
-    inDb -->|"library cards, graph details"| cEsc
-    inDb -->|"document modal body"| cRender
-    inDb -->|"modal title, entity names,<br/>cited excerpt"| cText
-    inDb -->|"offline answers"| cEscMd
+    inModel --> cRender
+    inDb --> cRender
+    inStore --> cRender
+    inModel --> cCite
+    inWs --> cText
+    inDb --> cText
+    inPrev --> cFrame
+    inSugg --> cGFrame
+    inErr --> cCodes
     inDb --> cFence
-    inModel -->|"answer, trace body"| cRender
-    inModel -->|"trace step titles"| cEsc
-    inModel -->|"citation labels"| cCite
-    inModel -->|"connection-test reply"| cText
-    inWs -->|"file names"| cEsc
     inWs --> cFence
-    inWs -->|"offline answers"| cEscMd
-    inWs -->|"getChunkContext, search snippets"| cText
-    inWs -->|"status line file names"| cI18n
-    inUser -->|"chat bubble"| cEsc
-    inUser -->|"ingest preview"| cRender
-    inUser -->|"offline trace"| cEscMd
-    inHist -->|"user rows, source titles"| cEsc
-    inHist -->|"assistant rows"| cRender
-    inErr -->|"notice params"| cI18n
-    inErr -->|"connection-test error"| cText
-    inUrl --> cLink
-
-    cEsc --> tXss
+    inModel --> cFence
+    cRender --> cLink
+    cRender --> cExtras
+    cRender --> cTools
     cRender --> tXss
     cRender --> tAction
     cRender --> tTrack
-    cLink --> tXss
     cLink --> tTab
+    cExtras --> tXss
+    cFrame --> tFrame
+    cGFrame --> tFrame
     cCite --> tFake
+    cTools --> tFake
     cText --> tXss
-    cI18n --> tXss
-    cDeleg -->|"lets the CSP forbid inline handlers"| tXss
-    cEscMd --> tMdInj
+    cCodes --> tProvider
+    cDeleg --> tXss
     cFence -.-> tPrompt
 ```
 
@@ -444,99 +437,55 @@ flowchart LR
 ```mermaid
 flowchart LR
     subgraph sg_in["Untrusted input"]
-        iFile["Workspace files<br/>drop zone, file input, chat attachment"]
-        iDb["Supabase access<br/>public key built into the bundle,<br/>anonymous session JWT, reads and writes"]
-        iKey["Provider keys: Gemini and OpenRouter in the tab,<br/>NVIDIA keys only in the server environment"]
-        iUrl["Own server URL cfgLlmUrl,<br/>stored as starpi_llm_url"]
-        iNet["Responses from Supabase,<br/>providers and model downloads"]
-        iProxy["Requests to the NVIDIA routes<br/>from other sites, scripts and floods"]
-        iSlip["Markup that slips past<br/>escaping and sanitizing"]
-        iDist["dist/ build output<br/>index.html, bundles, app CSS,<br/>sw.js, build-manifest.json"]
-        iOrigin["Other sites and networks<br/>framing pages, opener windows,<br/>network attackers"]
+        iFile["Workspace files and attachments"]
+        iKeys["Provider keys typed by the user;<br/>site keys of the operator"]
+        iReq["Requests to the server functions<br/>from other sites, scripts and floods"]
+        iUrl["Own server address"]
+        iNet["Responses from providers, model hosts, Supabase"]
+        iDb["Supabase access with the public key"]
+        iSlip["Markup that slips past sanitizing"]
+        iDist["dist/ build output"]
+        iOrigin["Other sites: framing, opener windows, network attackers"]
     end
-
     subgraph sg_ctl["Controls"]
-        cWorker["ingest.worker.js, Web Worker starpi-ingest<br/>parse, chunk and BM25 off the main thread,<br/>full text kept in worker memory, never uploaded or synced by the app,<br/>failures return ParseError codes, ok false"]
-        cParse["parser.js extractText<br/>extension allowlist txt, md, markdown, csv, log, json, pdf<br/>MAX_FILE_BYTES 25 MiB, MAX_TEXT_CHARS 5000000,<br/>at most MAX_PDF_PAGES 2000 read, normalizeText drops NUL and control chars"]
-        cPdf["pdf.js legacy build inside the worker<br/>disableFontFace, useSystemFonts false,<br/>isOffscreenCanvasSupported false,<br/>PasswordException becomes encrypted_pdf,<br/>other document errors invalid_pdf,<br/>pdf.js failing to load becomes pdf_reader"]
-        cLocal["chat.js and chat-store.js persistMessage localOnly:<br/>on-device mode, question and answer of a turn<br/>using workspace excerpts, question stored after retrieval,<br/>questions with an attached file, their answers in free chat,<br/>and answers without a model that name a workspace file<br/>stay in localStorage with metadata local_only true,<br/>rows without the flag count as local"]
-        cHist["chat.js shareableHistory: turns marked localOnly<br/>are never sent as history; source mode: the last 4 others<br/>to OpenRouter, the own server and NVIDIA, none to Gemini;<br/>free chat: up to 16 within 24000 chars, Gemini included;<br/>matching excerpts or the attached file still reach the model"]
-        cRls["Postgres RLS and grants<br/>visible = is_public or owner_id = auth.uid()<br/>published rows read-only for browser roles,<br/>chat_history: own rows, select, insert and delete,<br/>brain_settings service role only, RPCs SECURITY INVOKER"]
-        cCheck["CHECK size limits on browser-writable columns<br/>violations fail with SQLSTATE 23514"]
-        cSync["canSyncChats: signedIn and hardened,<br/>otherwise chats stay in localStorage"]
-        cBuildKey["build.mjs assertPublicKey, lib/supabase-key.mjs<br/>sb_publishable_ key or a JWT with role anon,<br/>empty, sb_secret_, not a JWT or another role:<br/>the build fails"]
-        cSecret["ai/keys.js and storage.js writeSecret<br/>sessionStorage for this tab, or the<br/>key vault: AES-GCM under a PBKDF2 key<br/>held in memory, auto-lock after 30 min"]
-        cHeader["providers.js: Gemini key in x-goog-api-key header,<br/>OpenRouter key as Authorization Bearer, never in a URL,<br/>NVIDIA requests carry no key, same origin only"]
-        cProxy["api/_lib guards on the NVIDIA routes:<br/>same-origin check, per-IP rate limit, keys configured,<br/>JSON body at most 256 KiB, model and field allowlist,<br/>no-store, keys by index and bodies never logged"]
-        cNorm["providers.js normalizeServerUrl<br/>https anywhere, http only for localhost and 127.0.0.1,<br/>the plain-http hosts in connect-src, no user or password,<br/>query and hash dropped"]
-        cPin["wasm/worker.js env.fetch: only catalog repositories<br/>at the pinned revision, plain path segments,<br/>everything else refused before any request"]
-        cSw["sw.js fetch handler<br/>only same-origin GET requests handled,<br/>cross-origin requests bypass the worker,<br/>cached only when 200, basic and not no-store"]
-        cCsp["vercel.json Content-Security-Policy<br/>default-src self, script-src self wasm-unsafe-eval, style-src self,<br/>font-src self, img-src self data: blob:, worker-src self,<br/>manifest-src self, media-src none,<br/>connect-src self data: https: wss://*.supabase.co<br/>http://localhost:* http://127.0.0.1:*<br/>object-src, frame-src, base-uri, form-action, frame-ancestors none"]
-        cHdr["vercel.json headers: X-Frame-Options DENY, nosniff,<br/>COOP same-origin, HSTS max-age 63072000,<br/>Referrer-Policy strict-origin-when-cross-origin,<br/>Permissions-Policy microphone self only,<br/>camera, geolocation, payment, usb, serial, hid off"]
-        cVerify["scripts/verify-dist.mjs in CI after npm run build:<br/>CSP compatibility, no inline script, style block, style attribute,<br/>on* handler or javascript: URL, scripts and stylesheets<br/>only from /assets/, referenced and precached files exist,<br/>no __STARPI_ placeholder in sw.js or the bundles,<br/>no eval or new Function, CSP without unsafe-inline or unsafe-eval,<br/>no nvapi- key in bundles, index.html, sw.js or the manifest"]
-        cVerify2["scripts/verify-dist.mjs: version and offline shell<br/>buildVersion over index.html, asset URLs, public files<br/>and the sw.js template equals the manifest version,<br/>sw.js carries it, public files listed, ingest worker<br/>precached, /index.html not precached,<br/>WASM worker and ONNX Runtime binary present, not precached,<br/>app CSS contains ::highlight(starpi-review)"]
+        cWorker["starpi-ingest worker: parse, chunk, index off the main thread,<br/>25 MiB and 5,000,000 chars, pdf.js without eval or fonts,<br/>ZIP limits and XML without entity expansion"]
+        cLocal["localOnly turns: never another model's history,<br/>never in the encrypted sync"]
+        cVault["ai/keys.js: session storage or the vault (AES-GCM-256,<br/>PBKDF2-SHA-256 600,000, lock after 30 min), keys only in<br/>the provider's auth header, never in URLs, logs or receipts"]
+        cGuards["api/_lib guards: origin check, per-IP limit, access code<br/>after the limit, daily budgets; relay: fixed upstreams, 4 MB,<br/>header allowlist, no redirects, error identifiers only;<br/>pools: allowlisted models, text and images, no tools"]
+        cNorm["normalizeServerUrl: https, or http on localhost or 127.0.0.1,<br/>no credentials"]
+        cPin["model-lock.json: SHA-256 before a model runs;<br/>processor worker fetches pinned revisions only"]
+        cRls["RLS: chat_sync and chat_sync_keys owner only,<br/>private knowledge rows for their creator, published rows read-only,<br/>build refuses sb_secret_ and non-anon JWTs"]
+        cSw["sw.js: same-origin GET only, cacheable responses only"]
+        cCsp["headers.json per profile: script-src self wasm-unsafe-eval,<br/>style-src self, frame-src self, media-src none,<br/>object-src, base-uri, form-action, frame-ancestors none,<br/>connect-src per profile (companion: self only)"]
+        cIso["COOP same-origin, COEP require-corp, CORP same-origin,<br/>Origin-Agent-Cluster, X-Frame-Options DENY, HSTS,<br/>Referrer-Policy no-referrer, Permissions-Policy"]
+        cVerify["verify-dist: CSP compatibility, no inline code or eval,<br/>assets present, no key in bundles, first-load budget,<br/>headers of the profile identical on every file except the frames;<br/>headers:check keeps vercel.json equal to the source"]
     end
-
     subgraph sg_thr["Threat stopped"]
-        tFreeze["Frozen UI or exhausted memory<br/>from large or hostile files"]
-        tPdf["Hostile PDF: font loading,<br/>parser failure in the page"]
-        tLeak["Workspace content uploaded, synced<br/>or sent as chat history"]
-        tTenant["Reading or changing other users' chats<br/>and private rows, editing published rows"]
-        tSize["Oversized writes into the database"]
-        tSecretKey["A key that bypasses RLS<br/>shipped to every browser"]
-        tKey["Keys persisted on shared devices,<br/>exposed in URLs and logs or shipped in a bundle"]
-        tQuota["Quota abuse of the shared NVIDIA key pool<br/>and use as an open proxy"]
-        tUrl["Cleartext http to remote hosts,<br/>credentials in URLs, non-http schemes"]
-        tModel["Model files from another repository<br/>or a moved branch"]
-        tCache["Private API responses<br/>kept in CacheStorage"]
-        tXss["Injected or inline script, eval"]
-        tExfil["Image beacons and plugins: remote images,<br/>object, embed, frames, form posts"]
+        tFreeze["Frozen UI, exhausted memory, ZIP bombs"]
+        tLeak["Device-only content sent or synced"]
+        tKey["Keys persisted in plaintext, in URLs or bundles"]
+        tAbuse["Quota abuse of the site's keys, an open proxy, SSRF"]
+        tUrl["Cleartext to remote hosts, credentials in URLs"]
+        tModel["Changed or foreign model files"]
+        tTenant["Reading other users' rows, editing published rows"]
+        tCache["Private responses in CacheStorage"]
+        tXss["Injected or inline script, exfiltration"]
         tFrame["Clickjacking, cross-window access, downgrade"]
-        tRegress["A build that breaks under or weakens the CSP,<br/>serves stale code or has no offline workspace"]
+        tRegress["A build that weakens the policy or ships a key"]
     end
-
-    iFile --> cWorker
-    iFile --> cParse
-    iFile -->|"pdf"| cPdf
-    cWorker --> tFreeze
-    cWorker --> tLeak
-    cParse --> tFreeze
-    cPdf --> tPdf
-    iFile -->|"attached-file questions and free-chat answers,<br/>workspace turns: question and answer,<br/>answers without a model naming<br/>a workspace file"| cLocal
-    iFile -->|"workspace and attached-file turns,<br/>turns whose answer without a model<br/>names a workspace file"| cHist
-    cLocal --> tLeak
-    cHist --> tLeak
-    iDb --> cBuildKey
-    iDb --> cRls
-    iDb --> cCheck
-    iDb --> cSync
-    cBuildKey --> tSecretKey
-    cRls --> tTenant
-    cSync -->|"no chat rows without owner RLS"| tTenant
-    cCheck --> tSize
-    iKey --> cSecret
-    iKey --> cHeader
-    iKey -->|"NVIDIA keys"| cVerify
-    cSecret --> tKey
-    cHeader --> tKey
-    cVerify -->|"nvapi- check"| tKey
-    iProxy --> cProxy
-    cProxy --> tQuota
-    iUrl --> cNorm
-    cNorm --> tUrl
-    iNet --> cPin
-    cPin --> tModel
-    iNet --> cSw
-    cSw --> tCache
-    iSlip --> cCsp
-    iOrigin --> cHdr
-    cCsp --> tXss
-    cCsp --> tExfil
-    cHdr --> tFrame
-    iDist --> cVerify
-    iDist --> cVerify2
-    cVerify --> tRegress
-    cVerify2 --> tRegress
+    iFile --> cWorker --> tFreeze
+    iFile --> cLocal --> tLeak
+    iKeys --> cVault --> tKey
+    iKeys --> cVerify
+    iReq --> cGuards --> tAbuse
+    iUrl --> cNorm --> tUrl
+    iNet --> cPin --> tModel
+    iNet --> cSw --> tCache
+    iDb --> cRls --> tTenant
+    iSlip --> cCsp --> tXss
+    iOrigin --> cIso --> tFrame
+    iDist --> cVerify --> tRegress
+    cVerify --> tKey
 ```
 
 **Publisher secrets, service role reads and CI supply chain**
@@ -545,61 +494,45 @@ flowchart LR
 ```mermaid
 flowchart LR
     subgraph sg_in["Untrusted input"]
-        iFiles["Files handed to the publisher,<br/>replies of an optional chat model"]
+        iFiles["Files handed to the publisher"]
         iModel["Model files from Hugging Face"]
-        iSecret["Publisher secrets<br/>SUPABASE_SERVICE_ROLE_KEY, LLM_API_KEY"]
-        iRepo["Commits, pull requests,<br/>npm and pip dependencies"]
+        iSecret["Publisher secrets: service role key"]
+        iRepo["Commits, pull requests, npm and pip dependencies,<br/>workflow files"]
+        iAssets["Release assets on their way to users"]
     end
-
     subgraph sg_ctl["Controls"]
-        cCli["Command line only: no listener,<br/>run on a machine the operator controls"]
-        cSource["read_source: .md or .txt, UTF-8, not empty,<br/>at most 200000 characters, file name only<br/>as source_name, fields clipped to the CHECK limits"]
-        cStruct["--structure is opt-in: without it the text is stored<br/>as written; a reply without Markdown or JSON<br/>falls back to the original text"]
-        cPins["model_files.py: revision, size and SHA-256 pinned,<br/>download to a .part file, renamed only after<br/>both match, every load_embedder checks again"]
-        cShared["supabase_service.py SHARED_ROWS<br/>is_public true or owner_id null:<br/>list, backfill and test-query never read<br/>private rows of browser sessions"]
-        cAtomic["ingest_document_atomic: document and sections<br/>in one transaction, new documents private<br/>until publish --public"]
-        cCfg["publisher/config.py PublisherConfig: the process environment<br/>wins over tools/library-publisher/.env,<br/>service role key only from SUPABASE_SERVICE_ROLE_KEY,<br/>never the anon key, secret fields excluded from repr,<br/>errors carry status and code, never the key"]
-        cLeaks["CI job secrets: gitleaks 8.30.1, sha256 verified,<br/>scans the working tree and the commits of a pull request,<br/>custom rule starpi-nvidia-api-key, escaped keys too,<br/>nvidia-catalog.test.mjs scans tracked files with it"]
-        cAudit["CI job audit: npm audit --omit=dev fails on any advisory<br/>in a runtime dependency, pip-audit on<br/>backend/requirements-dev.txt, which includes the<br/>publisher requirements, fails on any advisory,<br/>development tooling: warning at high severity only,<br/>npm run sbom: CycloneDX SBOMs, artifact sbom"]
-        cSupply["CI and Vercel: permissions contents read,<br/>actions pinned to commit SHAs, persist-credentials false,<br/>npm ci --ignore-scripts"]
-        cRelease["release.yml: the prepare job packs @starpi/core and writes<br/>the SBOMs with contents read, smoke-tests the tarball,<br/>contents write for the release job only, which installs<br/>nothing, checks SHA256SUMS and runs gh release create,<br/>after CI succeeded on a push to main or by hand on main,<br/>version always from package.json, no dispatch inputs,<br/>SHA-pinned checkout, persist-credentials false"]
+        cCli["publisher: command line only, no listener"]
+        cSource["read_source: md or txt, UTF-8, 200,000 chars,<br/>fields clipped to the CHECK limits"]
+        cShared["service role reads limited to public or ownerless rows"]
+        cPins["model_files.py: revision, size and SHA-256 pinned,<br/>checked on every load"]
+        cLeaks["gitleaks on the tree and every pull request"]
+        cAudit["npm audit (runtime), pip-audit, licence gate,<br/>companion dependency and licence checks, eol register,<br/>public hygiene"]
+        cLint["CodeQL, actionlint and zizmor on every change;<br/>model-lock.yml weekly"]
+        cSupply["permissions contents read, SHA-pinned actions,<br/>persist-credentials false, npm ci --ignore-scripts"]
+        cPrep["release prepare: no write, no secrets: pack core and companion,<br/>offline bundle, core smoke test, SBOMs, SHA256SUMS"]
+        cSign["release sign: installs nothing; attest-build-provenance,<br/>cosign keyless for SHA256SUMS and the bundle,<br/>Ed25519 SHA256SUMS.sig when the key exists"]
+        cRel["release: the only contents write job, checks SHA256SUMS,<br/>creates the release from package.json's version"]
+        cPub["publish: npm --provenance from the release tarballs,<br/>core then companion, published versions skipped"]
     end
-
     subgraph sg_thr["Threat stopped"]
         tRemote["Remote use of the service role key"]
-        tAbuse["Oversized or malformed documents<br/>failing inserts half way"]
-        tRewrite["A model silently rewriting<br/>the facts of a source"]
-        tModel["Vectors from a replaced or truncated model<br/>in the shared library"]
-        tPrivate["Private rows of browser sessions<br/>read through the service role,<br/>which bypasses RLS"]
-        tKeys["Service role or provider keys<br/>in logs or in git history"]
-        tSupply["Install scripts, moved action tags,<br/>a persisted token or write access<br/>in jobs that run dependency code"]
-        tVuln["Dependencies with a published advisory<br/>shipped in dist/ or installed for the publisher"]
-        tAsset["A release asset changed after the build,<br/>or dependencies nobody can list"]
+        tPrivate["Private browser rows read through the service role"]
+        tModel["Vectors from a replaced model"]
+        tKeys["Secrets in git history or logs"]
+        tVuln["Dependencies with advisories or unknown licences"]
+        tSupply["Install scripts, moved tags, a persisted token,<br/>write access where dependency code runs"]
+        tAsset["An asset changed after the build, or packages that<br/>do not match the release"]
     end
-
-    iSecret --> cCli
-    cCli --> tRemote
+    iSecret --> cCli --> tRemote
     iFiles --> cSource
-    iFiles --> cStruct
-    cSource --> tAbuse
-    cAtomic --> tAbuse
-    cStruct --> tRewrite
-    iModel --> cPins
-    cPins --> tModel
-    iFiles --> cAtomic
     cShared --> tPrivate
-    iSecret --> cCfg
-    iSecret --> cLeaks
-    iRepo --> cLeaks
-    iRepo --> cSupply
-    iRepo --> cAudit
-    cAudit --> tVuln
-    cCfg --> tKeys
-    cLeaks --> tKeys
-    cSupply --> tSupply
-    iRepo --> cRelease
-    cRelease --> tSupply
-    cRelease --> tAsset
-    cAudit --> tAsset
-    cCfg -.-> cShared
+    iModel --> cPins --> tModel
+    iRepo --> cLeaks --> tKeys
+    iRepo --> cAudit --> tVuln
+    iRepo --> cLint --> tSupply
+    iRepo --> cSupply --> tSupply
+    iRepo --> cPrep --> cSign --> cRel --> cPub
+    iAssets --> cSign
+    cSign --> tAsset
+    cPub --> tAsset
 ```
