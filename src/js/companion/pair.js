@@ -218,8 +218,9 @@ export function createPairing(options = {}) {
   let nextHead = null;
   /** @type {Promise<void> | null} */
   let checking = null;
+  /** The head checked last, whatever the verdict: the check's own requests carry it again. */
   /** @type {SignedHead | null} */
-  let lastVerified = null;
+  let lastChecked = null;
   /** @type {Promise<PairingState> | null} */
   let restoring = null;
 
@@ -269,7 +270,8 @@ export function createPairing(options = {}) {
   async function check(head) {
     const own = identity;
     if (!own || !link) return;
-    if (lastVerified && lastVerified.seq === head.seq && lastVerified.hash === head.hash && state.audit.state === 'ok') return;
+    if (lastChecked && lastChecked.seq === head.seq && lastChecked.hash === head.hash) return;
+    lastChecked = head;
     if (!(await verifyHead(head, own))) {
       setAudit({ state: 'invalid', reported: head });
       return;
@@ -296,7 +298,6 @@ export function createPairing(options = {}) {
     /** @type {StoredHead} */
     const next = verdict === 'same' && stored ? stored : { keyId: own.keyId, seq: head.seq, hash: head.hash, sig: head.sig, at: new Date(now()).toISOString() };
     if (verdict !== 'same') await store.saveHead(next);
-    lastVerified = head;
     setAudit({ state: 'ok', stored: next, reported: head });
   }
 
@@ -307,7 +308,7 @@ export function createPairing(options = {}) {
    */
   async function connect(stored, secret) {
     link = stored;
-    lastVerified = null;
+    lastChecked = null;
     client = createCompanionClient({
       origin: stored.origin,
       auth: stored.mode === 'bearer' ? { kind: 'bearer', token: secret } : { kind: 'cookie', csrf: secret },
@@ -339,7 +340,7 @@ export function createPairing(options = {}) {
     client = null;
     identity = null;
     nextHead = null;
-    lastVerified = null;
+    lastChecked = null;
     voiceLink(null);
   }
 
@@ -488,6 +489,8 @@ export function createPairing(options = {}) {
     /** Checks the companion's current head now (GET /v1/audit/head) and waits for the verdict. */
     async checkAudit() {
       if (!client) return state.audit;
+      // Asked for: the current head is checked again even when it was checked before.
+      lastChecked = null;
       const answer = await call('GET', '/v1/audit/head');
       const head = asHead(answer?.head);
       if (head) observe(head);
@@ -505,7 +508,6 @@ export function createPairing(options = {}) {
       /** @type {StoredHead} */
       const next = { keyId: own.keyId, seq: head.seq, hash: head.hash, sig: head.sig, at: new Date(now()).toISOString() };
       await store.saveHead(next);
-      lastVerified = head;
       setAudit({ state: 'ok', stored: next, reported: head });
       return true;
     },

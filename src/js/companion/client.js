@@ -232,6 +232,7 @@ export function createCompanionClient({ origin, auth = null, fetch: fetchImpl, o
    * @param {boolean} [stream]
    */
   async function send(method, path, opts = {}, stream = false) {
+    const url = urlOf(path, opts.query);
     const headers = authHeaders(Boolean(opts.anonymous));
     /** @type {BodyInit | undefined} */
     let body;
@@ -254,7 +255,7 @@ export function createCompanionClient({ origin, auth = null, fetch: fetchImpl, o
     /** @type {Response} */
     let res;
     try {
-      res = await doFetch(urlOf(path, opts.query), {
+      res = await doFetch(url, {
         method,
         headers,
         body,
