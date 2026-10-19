@@ -13,7 +13,9 @@
  *   that stays on this device is not sent to a council.
  * - Members and judge come from the models that are set up: the providers' role models and the own
  *   server's first model. The model on this device takes no part: it writes one answer at a time,
- *   so the drafts and the judge would queue behind each other.
+ *   so the drafts and the judge would queue behind each other. Nor does the paired companion: it
+ *   answers the bare question in its own conversation through its own gate, while a draft gets the
+ *   thread's prompt and the judge reads every draft, so a council cannot ask it as the thread does.
  * - The stored answer keeps a bounded copy of the council (members, drafts, the judge's reasons), so
  *   the thread shows how it was decided under the answer (an answer decorator) after a reload too.
  */
@@ -38,6 +40,9 @@ import { capsOf } from './runner.js';
 /** @typedef {import('../store/schema.js').NodeRecord} NodeRecord */
 /** @typedef {import('./runner.js').Target} Target */
 
+/** Providers that never sit in a council (see the file comment). */
+const NO_COUNCIL = new Set(['companion']);
+
 /** Characters of a draft the stored answer keeps. */
 export const KEPT_DRAFT_CHARS = 4000;
 /** Reasons of the judge the stored answer keeps, and their length. */
@@ -50,7 +55,7 @@ const REASON_CHARS = 300;
 
 /**
  * The council's pool: the providers' role models and the extra models (the own server), each model
- * once.
+ * once, never the paired companion.
  * @param {readonly PoolEntry[]} base
  * @param {readonly PoolEntry[]} extras
  * @returns {PoolEntry[]}
@@ -58,7 +63,7 @@ const REASON_CHARS = 300;
 export function councilPool(base, extras) {
   /** @type {PoolEntry[]} */
   const out = [];
-  for (const e of [...base, ...extras]) if (!out.some((o) => o.provider === e.provider && o.model === e.model)) out.push(e);
+  for (const e of [...base, ...extras]) if (!NO_COUNCIL.has(e.provider) && !out.some((o) => o.provider === e.provider && o.model === e.model)) out.push(e);
   return out;
 }
 

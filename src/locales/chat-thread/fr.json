@@ -76,7 +76,8 @@
     "free_key": "Discussion libre avec {provider}, votre clé : votre question, les fichiers joints et les messages précédents de cette discussion vont à {provider}. Aucune source n’est consultée.",
     "pool": "{provider} via Starpi : votre question va à la recherche dans la base de connaissances ; la question, les extraits correspondants et les messages précédents passent par le serveur de Starpi jusqu’à {provider}.",
     "free_pool": "Discussion libre avec {provider} via Starpi : votre question, les fichiers joints et les messages précédents de cette discussion passent par le serveur de Starpi jusqu’à {provider}. Aucune source n’est consultée.",
-    "history_synced": "La synchronisation est activée : cette discussion est conservée, chiffrée de bout en bout, dans votre copie synchronisée et arrive dans vos autres navigateurs."
+    "history_synced": "La synchronisation est activée : cette discussion est conservée, chiffrée de bout en bout, dans votre copie synchronisée et arrive dans vos autres navigateurs.",
+    "companion_unsynced": "La synchronisation est activée, mais les questions au compagnon et ses réponses restent sur cet appareil : elles ne font pas partie de votre copie synchronisée."
   },
   "status": {
     "not_set_up": "Ce modèle n’est pas configuré : ajoutez sa clé dans les Paramètres ou choisissez-en un autre"
@@ -90,6 +91,7 @@
     "rate_limited_wait": "Trop de requêtes chez le fournisseur en ce moment : patientez {seconds} s puis réessayez.",
     "stays_on_device_title": "Cette question reste sur cet appareil",
     "stays_on_device_body": "Elle a été posée sur cet appareil : seul le modèle d’ici, votre propre serveur ou votre compagnon associé y répond. Choisissez l’un d’eux, ou reposez la question dans un nouveau message.",
+    "stays_on_device_companion_body": "Elle a été posée à votre compagnon et reste sur cet appareil comme sa réponse (aucune des deux n’est synchronisée) : seul le modèle d’ici, votre propre serveur ou le compagnon y répond à nouveau. Choisissez l’un d’eux, ou reposez la question dans un nouveau message.",
     "failed_body": "Un problème est survenu pendant la réponse. Veuillez réessayer.",
     "store_failed": "La discussion n’a pas pu être enregistrée dans ce navigateur (fenêtre privée, stockage bloqué ou plein).",
     "attachment_missing_title": "Une pièce jointe ne se trouve que sur l’appareil où elle a été ajoutée",

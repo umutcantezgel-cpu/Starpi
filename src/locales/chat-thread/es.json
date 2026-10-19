@@ -76,7 +76,8 @@
     "free_key": "Chat libre con {provider}, tu clave: tu pregunta, los archivos adjuntos y los mensajes anteriores de este chat van a {provider}. No se consulta ninguna fuente.",
     "pool": "{provider} a través de Starpi: tu pregunta va a la búsqueda en la base de conocimiento; la pregunta, los extractos correspondientes y los mensajes anteriores pasan por el servidor de Starpi hasta {provider}.",
     "free_pool": "Chat libre con {provider} a través de Starpi: tu pregunta, los archivos adjuntos y los mensajes anteriores de este chat pasan por el servidor de Starpi hasta {provider}. No se consulta ninguna fuente.",
-    "history_synced": "La sincronización está activada: este chat se guarda cifrado de extremo a extremo en tu copia sincronizada y llega a tus otros navegadores."
+    "history_synced": "La sincronización está activada: este chat se guarda cifrado de extremo a extremo en tu copia sincronizada y llega a tus otros navegadores.",
+    "companion_unsynced": "La sincronización está activada, pero las preguntas al acompañante y sus respuestas se quedan en este dispositivo: no forman parte de tu copia sincronizada."
   },
   "status": {
     "not_set_up": "Este modelo no está configurado: añade su clave en Ajustes o elige otro"
@@ -90,6 +91,7 @@
     "rate_limited_wait": "Demasiadas solicitudes al proveedor ahora mismo: espera {seconds} s y vuelve a intentarlo.",
     "stays_on_device_title": "Esta pregunta se queda en este dispositivo",
     "stays_on_device_body": "Se hizo en este dispositivo, así que solo la responde el modelo de aquí, tu propio servidor o tu acompañante vinculado. Elige uno de ellos o vuelve a hacer la pregunta en un mensaje nuevo.",
+    "stays_on_device_companion_body": "Se le hizo a tu acompañante y se queda en este dispositivo como su respuesta (ninguna de las dos se sincroniza), así que solo vuelve a responderla el modelo de aquí, tu propio servidor o el acompañante. Elige uno de ellos o vuelve a hacer la pregunta en un mensaje nuevo.",
     "failed_body": "Algo salió mal al responder. Vuelve a intentarlo.",
     "store_failed": "No se pudo guardar el chat en este navegador (ventana privada, almacenamiento bloqueado o lleno).",
     "attachment_missing_title": "Un archivo adjunto solo está en el dispositivo donde se añadió",

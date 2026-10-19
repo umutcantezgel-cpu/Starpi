@@ -44,8 +44,13 @@
  * The paired companion (provider `companion`, picked like any model) answers in a conversation it
  * keeps and through its own sentence gate (answerCompanion): its answer is shown and stored as it
  * was released, with its own label, notice and withheld count, and nothing here retrieves for it or
- * checks it again. It stays on this device (localOnly), so no other model is given what the
- * companion answered from its sealed content, and it is never cached by the router.
+ * checks it again. The question and the answer stay on this device (localOnly; the question is
+ * marked kept_for_companion when nothing else keeps it here), so neither is synced, no other model
+ * is given what the companion answered from its sealed content, and the router never caches it.
+ * The companion gets the bare question (never the context block), in its sources mode for a
+ * grounded turn and free otherwise, as `sensitive` when the question was asked to stay on this
+ * device for what it holds. The compare columns ask it the same way (prepareQuestion builds that
+ * request); the council and source Live turns cannot, so they never ask it.
  */
 import { chatData, currentSessionId, loadSessionThread, startNewSession } from '../chat-store.js';
 import { splitStreamingText } from '../chat-stream.js';
@@ -980,16 +985,44 @@ function shareable(path, target) {
 
 /** The notice for a question that stays on this device when another model was asked to answer it. */
 const STAYS_ON_DEVICE = Object.freeze({ icon: 'lock', tone: /** @type {const} */ ('info'), title: 'chat-thread.notice.stays_on_device_title', body: 'chat-thread.notice.stays_on_device_body' });
+/** The same notice for a question asked of the companion. */
+const STAYS_WITH_COMPANION = Object.freeze({ ...STAYS_ON_DEVICE, body: 'chat-thread.notice.stays_on_device_companion_body' });
 
 /**
- * Whether a question was asked to stay on this device (a free one asked there, or a grounded one
- * asked with the model of this device): then only the model here or the own server answers it
- * (again), never a provider or the site's pools.
+ * Whether a question was asked to stay on this device (a free one asked there, a grounded one
+ * asked with the model of this device, or one asked of the companion): then only the model here,
+ * the own server or the companion answers it (again), never a provider or the site's pools.
  * @param {NodeRecord} question
  */
 function staysOnDevice(question) {
   const meta = metaOf(question);
-  return question.role === 'user' && question.localOnly && (meta.chat_mode !== 'grounded' || meta.device_only === true);
+  return question.role === 'user' && question.localOnly && (meta.chat_mode !== 'grounded' || meta.device_only === true || meta.kept_for_companion === true);
+}
+
+/**
+ * Whether a question stays on this device only because it was asked of the companion (nothing it
+ * holds keeps it here).
+ * @param {NodeRecord} question
+ */
+function keptForCompanion(question) {
+  return metaOf(question).kept_for_companion === true;
+}
+
+/**
+ * Whether a question was asked to stay on this device for what it holds (the model here, content
+ * that stays here): the companion gets it with the data class `sensitive`.
+ * @param {NodeRecord} question
+ */
+function heldHere(question) {
+  return staysOnDevice(question) && !keptForCompanion(question);
+}
+
+/**
+ * The notice for a question that stays on this device.
+ * @param {NodeRecord | null | undefined} question
+ */
+function stayNotice(question) {
+  return question && keptForCompanion(question) ? STAYS_WITH_COMPANION : STAYS_ON_DEVICE;
 }
 
 /**
@@ -1245,8 +1278,9 @@ async function ensureConversation(db, route) {
 
 /**
  * Stores a question with its attachments (as blobs owned by it).
- * @param {{ text: string, attachments: PreparedAttachment[], parentId: string | null, route: 'free' | 'grounded', localOnly: boolean, deviceOnly?: boolean, context?: string, continueOf?: boolean, reuseParts?: StoredPart[] }} q
- *   deviceOnly: a grounded question asked with the model of this device (it stays here, see staysOnDevice)
+ * @param {{ text: string, attachments: PreparedAttachment[], parentId: string | null, route: 'free' | 'grounded', localOnly: boolean, deviceOnly?: boolean, keptForCompanion?: boolean, context?: string, continueOf?: boolean, reuseParts?: StoredPart[] }} q
+ *   deviceOnly: a grounded question asked with the model of this device (it stays here, see staysOnDevice);
+ *   keptForCompanion: it stays here only because it was asked of the companion (see heldHere)
  * @returns {Promise<NodeRecord>}
  */
 async function storeQuestion(q) {
@@ -1276,6 +1310,7 @@ async function storeQuestion(q) {
   if (q.context) meta.context = q.context;
   if (q.continueOf) meta.continue = true;
   if (q.deviceOnly) meta.device_only = true;
+  if (q.keptForCompanion && q.localOnly) meta.kept_for_companion = true;
   const node = await db.appendNode(turnConversation(), { id, parentId: q.parentId, role: 'user', parts, localOnly: q.localOnly, meta });
   await reload();
   return node;
@@ -1335,7 +1370,7 @@ async function answerFree(question, value, signal, placement = {}) {
   if (staysOnDevice(question)) {
     const here = candidates.filter(onThisDevice);
     if (candidates.length && !here.length) {
-      turnNotice(STAYS_ON_DEVICE);
+      turnNotice(stayNotice(question));
       return null;
     }
     candidates = here;
@@ -1488,7 +1523,8 @@ function companionAnswerFields(answer, target) {
 /**
  * Answers the question at the end of the active path with the paired companion. `mode`: `sources`
  * (from its documents and notes, every number checked by its gate) or `free` (general knowledge).
- * A question that stays on this device goes with the data class `sensitive`. The live view shows
+ * A question asked to stay on this device for what it holds goes with the data class `sensitive`
+ * (one that stays here only because it was asked of the companion does not). The live view shows
  * exactly the units released so far (a withdrawal takes them away again); the stored answer is the
  * companion's own text. A stopped answer is not kept: the companion drops an abandoned turn from its
  * conversation too, so both histories stay alike.
@@ -1509,7 +1545,7 @@ async function answerCompanion(question, signal, placement, mode) {
     turnNotice({ icon: 'info', tone: 'info', title: 'chat.free_no_model_title', body: 'chat-thread.notice.no_vision_model' });
     return null;
   }
-  const held = staysOnDevice(question);
+  const held = heldHere(question);
   const path = turnThread()?.path ?? [question];
   const badge = answerBadge({ provider: 'companion', model: COMPANION_MODEL });
   const stream = createStreamingMessage(badge.badge, badge.badgeParams, placement);
@@ -1887,9 +1923,10 @@ async function gateCounts(answer, sources) {
  * the source check and a receipt draft, for every model. A mixed question (Auto, a weaker match in
  * the workspace) takes fewer excerpts, may add general knowledge, and gets its checked parts marked;
  * with `web`, pages of a web search join the excerpts.
- * @param {{ text: string, attachments: PreparedAttachment[], reuseParts?: StoredPart[], parentId: string | null, value: AssistantValue, workspaceOnly: boolean, question?: NodeRecord, mode?: 'grounded' | 'mixed', web?: boolean, reasons?: string[], held?: boolean, docIds?: readonly string[] }} q
+ * @param {{ text: string, attachments: PreparedAttachment[], reuseParts?: StoredPart[], parentId: string | null, value: AssistantValue, workspaceOnly: boolean, question?: NodeRecord, mode?: 'grounded' | 'mixed', web?: boolean, reasons?: string[], held?: boolean, kept?: boolean, docIds?: readonly string[] }} q
  *   reuseParts: the stored files an edited question keeps (they are searched first, as attached files are);
  *   held: the question stays on this device (an edited one that replaces such a question);
+ *   kept: it stays there only because it was asked of the companion;
  *   docIds: the workspace documents to search (an entity found only in some files)
  * @param {AbortSignal} signal
  * @param {{ before?: Element | null }} [placement]
@@ -1897,9 +1934,12 @@ async function gateCounts(answer, sources) {
 async function answerGrounded(q, signal, placement = {}) {
   if (isCompanionValue(q.value)) {
     // The companion answers from its own documents and notes: nothing is retrieved here.
+    // The question stays on this device like the answer; asked to stay here for what it holds, it
+    // goes as sensitive (see heldHere).
     const held = q.held ?? (q.question ? staysOnDevice(q.question) : false);
-    const kept = (q.reuseParts ?? []).filter((p) => p.type === 'image' || p.type === 'file');
-    const question = q.question ?? (await storeQuestion({ text: q.text, attachments: q.attachments, reuseParts: kept, parentId: q.parentId, route: 'grounded', localOnly: held, deviceOnly: held }));
+    const forCompanion = !held || q.kept === true;
+    const files = (q.reuseParts ?? []).filter((p) => p.type === 'image' || p.type === 'file');
+    const question = q.question ?? (await storeQuestion({ text: q.text, attachments: q.attachments, reuseParts: files, parentId: q.parentId, route: 'grounded', localOnly: true, deviceOnly: !forCompanion, keptForCompanion: forCompanion }));
     if (!q.question && onScreen()) renderNode(question);
     return answerCompanion(question, signal, placement, 'sources');
   }
@@ -1921,7 +1961,7 @@ async function answerGrounded(q, signal, placement = {}) {
     const used = greeting ? [] : [...(mixed ? hits.slice(0, ROUTE_TOP_K.mixed) : hits), ...webFound];
     const usesWorkspace = used.some((h) => h.workspace);
     // The question follows its answer's storage rule: about the workspace (or on this device), it stays here.
-    const question = q.question ?? (await storeQuestion({ text: q.text, attachments: q.attachments, reuseParts: kept, parentId: q.parentId, route: 'grounded', localOnly: deviceOnly || usesWorkspace, deviceOnly }));
+    const question = q.question ?? (await storeQuestion({ text: q.text, attachments: q.attachments, reuseParts: kept, parentId: q.parentId, route: 'grounded', localOnly: deviceOnly || usesWorkspace, deviceOnly, keptForCompanion: q.kept === true && q.value !== 'device' }));
     if (pending) {
       pending.dataset.nodeId = question.id;
       renderActions(pending, barState(question));
@@ -1939,7 +1979,7 @@ async function answerGrounded(q, signal, placement = {}) {
     if (!candidates.length && q.value === 'device' && !signal.aborted && (await startLocalEngine({ interactive: true }))) candidates = await chatCandidates(q.value);
     if (held) {
       const here = candidates.filter(onThisDevice);
-      if (candidates.length && !here.length) turnNotice(STAYS_ON_DEVICE);
+      if (candidates.length && !here.length) turnNotice(stayNotice(question));
       candidates = here;
     }
     let text = '';
@@ -2308,9 +2348,11 @@ export async function sendQuestion(options = {}) {
       await answerGrounded({ text, attachments: draft.attachments, parentId: leafId(), value, workspaceOnly: options.workspaceOnly === true, mode: route, web, reasons: decision?.reasons, ...(docIds?.length ? { docIds } : {}) }, signal);
       return;
     }
+    // A question to the companion stays on this device like its answer (it is not synced).
+    const local = value === 'device' || deviceOnly || companion;
     /** @type {TurnContext} */
-    const ctx = { conversationId: turnConversation(), question: text, mode, route: 'free', target: null, locale: getLocale(), attachments: kinds, localOnly: value === 'device' || deviceOnly };
-    const question = await storeQuestion({ text, attachments: draft.attachments, parentId: leafId(), route: 'free', localOnly: value === 'device' || deviceOnly, context: await contextFor(ctx) });
+    const ctx = { conversationId: turnConversation(), question: text, mode, route: 'free', target: null, locale: getLocale(), attachments: kinds, localOnly: local };
+    const question = await storeQuestion({ text, attachments: draft.attachments, parentId: leafId(), route: 'free', localOnly: local, keptForCompanion: companion && !deviceOnly, context: await contextFor(ctx) });
     if (onScreen()) renderNode(question);
     const answer = await answerFree(question, value, signal);
     if (answer && turnThread()?.path.length === 2) void nameConversation(turnConversation(), text, answer);
@@ -2343,9 +2385,9 @@ export async function regenerate(nodeId, value) {
   const picked = value ? parsePickerValue(value) : null;
   const target = picked?.assistant ?? sameModel(node);
   const route = (metaOf(node).chat_mode ?? node.label) === 'grounded' ? 'grounded' : 'free';
-  // A question asked to stay on this device is answered again here or by the own server only.
+  // A question asked to stay on this device is answered again here, by the own server or the companion only.
   if (staysOnDevice(question) && !(await answersHere(target))) {
-    appendNotice(STAYS_ON_DEVICE);
+    appendNotice(stayNotice(question));
     return;
   }
   await withTurn(async (signal) => {
@@ -2384,21 +2426,26 @@ export async function editQuestion(nodeId, text) {
   if (!node || node.role !== 'user') return;
   const route = metaOf(node).chat_mode === 'grounded' ? 'grounded' : 'free';
   const value = getAssistant();
-  // An edited question that stays on this device (like the one it replaces) is answered here or by
-  // the own server only.
+  // An edited question that stays on this device (like the one it replaces) is answered here, by
+  // the own server or the companion only.
   if (staysOnDevice(node) && !(await answersHere(value))) {
-    appendNotice(STAYS_ON_DEVICE);
+    appendNotice(stayNotice(node));
     return;
   }
   const reuse = node.parts.filter((p) => p.type !== 'text');
+  // Kept here only for the companion (asked of it now, or as the question it replaces) unless the
+  // model of this device is asked: then it stays here as a question of this device.
+  const companion = isCompanionValue(value);
+  const kept = value !== 'device' && (keptForCompanion(node) || (companion && !node.localOnly));
   await withTurn(async (signal) => {
     removeFrom(nodeId);
     if (route === 'grounded') {
-      await answerGrounded({ text, attachments: [], reuseParts: reuse, parentId: node.parentId, value, workspaceOnly: false, held: staysOnDevice(node) }, signal);
+      await answerGrounded({ text, attachments: [], reuseParts: reuse, parentId: node.parentId, value, workspaceOnly: false, held: staysOnDevice(node), kept }, signal);
     } else {
+      const local = node.localOnly || companion;
       /** @type {TurnContext} */
-      const ctx = { conversationId: turnConversation(), question: text, mode: getChatMode(), route: 'free', target: null, locale: getLocale(), attachments: chipsOf(node), localOnly: node.localOnly };
-      const question = await storeQuestion({ text, attachments: [], reuseParts: reuse, parentId: node.parentId, route: 'free', localOnly: node.localOnly, context: await contextFor(ctx) });
+      const ctx = { conversationId: turnConversation(), question: text, mode: getChatMode(), route: 'free', target: null, locale: getLocale(), attachments: chipsOf(node), localOnly: local };
+      const question = await storeQuestion({ text, attachments: [], reuseParts: reuse, parentId: node.parentId, route: 'free', localOnly: local, keptForCompanion: kept, context: await contextFor(ctx) });
       if (onScreen()) renderNode(question);
       await answerFree(question, value, signal);
     }
@@ -2472,8 +2519,11 @@ export async function exportData() {
  * @typedef {object} PreparedQuestion
  * @property {NodeRecord} question  the stored question, or a new one that is not stored yet
  * @property {boolean} stored
- * @property {boolean} staysOnDevice  only the model here or the own server may answer it
+ * @property {boolean} staysOnDevice  only the model here, the own server or the companion may answer it
  * @property {(target: Target) => Promise<AiRequest>} build  the request for one model, as the thread's free route sends it
+ * @property {(target: Target, view?: { onText?: (text: string) => void }) => import('../ai/stream.js').Adapter | undefined} adapterFor
+ *   the adapter for one model when it is not the registered one: the companion's, asked as the thread asks it
+ *   (onText hears its visible text after every released unit and every withdrawal)
  * @property {TurnContext} ctx  the question as the hooks see it (the tool runner of an answer reads it)
  */
 
@@ -2486,7 +2536,9 @@ export async function exportData() {
  * keeps what went out. The notes for the request (registerRequestNotes: saved notes while memory is
  * on; none for "Continue") are asked once and go to every model, as the thread sends them with its
  * own answer. A question that stays on this device builds no request for other models (the error's
- * code is 'stays_on_device').
+ * code is 'stays_on_device'). The companion is asked as the thread asks it: the bare question in its
+ * conversation, in sources mode for a grounded question and free otherwise, as `sensitive` when the
+ * question was asked to stay here for what it holds (see answerCompanion).
  * @param {{ conversationId: string, questionId?: string, text?: string, parentId?: string | null, localOnly?: boolean }} input
  * @returns {Promise<PreparedQuestion>}
  */
@@ -2539,10 +2591,32 @@ export async function prepareQuestion(input) {
     build: async (target) => {
       // Grounded questions about the workspace stay on this device as well, whatever route asks them.
       if (asked.localOnly && !onThisDevice(target)) throw Object.assign(new Error('The question stays on this device'), { code: 'stays_on_device' });
+      if (target.provider === 'companion') return companionRequest(target, path);
       notes ??= requestNotesFor(asked, turnCtx);
       return freeRequest(target, path, { ...turnCtx, target }, await notes);
     },
+    adapterFor: (target, view = {}) => (target.provider === 'companion' ? companionAdapterFor(asked, view.onText) : undefined),
   };
+}
+
+/**
+ * The companion's adapter for a question, as the thread asks it: sources mode for a grounded
+ * question, free otherwise; `sensitive` when the question was asked to stay here for what it holds.
+ * @param {NodeRecord} question
+ * @param {(text: string) => void} [onText]
+ */
+function companionAdapterFor(question, onText) {
+  const mode = metaOf(question).chat_mode === 'grounded' ? 'sources' : 'free';
+  return createCompanionAdapter({ mode, ...(heldHere(question) ? { dataClass: /** @type {const} */ ('sensitive') } : {}), ...(onText ? { onText } : {}) });
+}
+
+/**
+ * The companion's finished answer as its gate released it (the streamed deltas may still hold
+ * units it withdrew); null when the result holds none (a failed or stopped answer).
+ * @param {CompletionResult} result
+ */
+export function companionTextOf(result) {
+  return companionTurn(result)?.text ?? null;
 }
 
 /**
@@ -2588,8 +2662,9 @@ export function freeAnswerInput(input) {
 
 /**
  * Stores an answer written outside the thread as the newest branch under its question (a question
- * that is not stored yet is stored first, in a conversation created when it is new) and shows it
- * when its chat is on screen. Refused (null) while the thread writes an answer.
+ * that is not stored yet is stored first, in a conversation created when it is new; under an
+ * answer of the companion it stays on this device like that answer) and shows it when its chat is
+ * on screen. Refused (null) while the thread writes an answer.
  * @param {{ conversationId: string, question: NodeRecord, stored: boolean, answer: Omit<import('./store.js').NodeInput, 'parentId'> }} input
  * @returns {Promise<NodeRecord | null>}
  */
@@ -2602,7 +2677,9 @@ export async function adoptAnswer(input) {
     const q = input.question;
     questionId = crypto.randomUUID();
     ownNode(questionId);
-    await db.appendNode(input.conversationId, { id: questionId, parentId: q.parentId, role: 'user', parts: q.parts, localOnly: q.localOnly, ...(q.meta ? { meta: q.meta } : {}) });
+    const forCompanion = input.answer.provider === 'companion' && !q.localOnly;
+    const meta = forCompanion ? { ...(q.meta ?? {}), kept_for_companion: true } : q.meta;
+    await db.appendNode(input.conversationId, { id: questionId, parentId: q.parentId, role: 'user', parts: q.parts, localOnly: q.localOnly || forCompanion, ...(meta ? { meta } : {}) });
   }
   const answerId = input.answer.id ?? crypto.randomUUID();
   ownNode(answerId);
@@ -2664,15 +2741,45 @@ export function liveRequest(target, turn) {
 }
 
 /**
+ * The companion conversation of the running Live session (its latest answer's provider state), so
+ * the next spoken turn goes on in it.
+ * @type {{ text: string, state: Part[] } | null}
+ */
+let liveCompanion = null;
+
+/**
+ * A spoken turn for the companion, as the thread asks it: the bare words in the session's
+ * companion conversation (free mode; nothing of the app's spoken prompt or context goes along).
+ * @param {Target} target
+ * @param {LiveTurn} turn
+ * @returns {AiRequest}
+ */
+function liveCompanionRequest(target, turn) {
+  /** @type {Message[]} */
+  const messages = [];
+  if (liveCompanion) messages.push({ role: 'assistant', content: [{ type: 'text', text: liveCompanion.text || '-' }, ...liveCompanion.state] });
+  messages.push({ role: 'user', content: [{ type: 'text', text: turn.text }] });
+  return { provider: 'companion', model: target.model, messages };
+}
+
+/**
  * A Live turn through the chat's model choice (the picker's value, the same order and fallbacks as
  * a typed question); yields the answer's text deltas. Without a model it fails with the code
  * 'no_model', after a failed call with the call's error code.
+ * The companion answers free turns only, as the thread asks it, and its answer comes in one piece
+ * once its gate released it (a spoken unit cannot be withdrawn again). A source turn checks the
+ * answer against the excerpts found here, which are not what the companion answers from, so it is
+ * not asked: such a turn fails with the code 'companion_sources'.
  * @param {LiveTurn} turn
  * @returns {AsyncGenerator<string>}
  */
 export async function* liveAnswer(turn) {
   const candidates = await chatCandidates(getAssistant(), { vision: Boolean(turn.image) });
   if (!candidates.length) throw Object.assign(new Error('no model'), { code: 'no_model' });
+  if (candidates[0].provider === 'companion') {
+    yield* liveCompanionAnswer(candidates[0], turn);
+    return;
+  }
   /** @type {string[]} */
   const queue = [];
   /** @type {(() => void) | null} */
@@ -2718,6 +2825,28 @@ export async function* liveAnswer(turn) {
     });
   }
   if (failure) throw Object.assign(new Error(failure), { code: failure });
+}
+
+/**
+ * A Live turn of the companion (see liveAnswer).
+ * @param {Target} target
+ * @param {LiveTurn} turn
+ * @returns {AsyncGenerator<string>}
+ */
+async function* liveCompanionAnswer(target, turn) {
+  if (turn.mode === 'grounded') throw Object.assign(new Error('the companion answers free turns only'), { code: 'companion_sources' });
+  // A new session (nothing answered in it yet) starts a new companion conversation.
+  if (!turn.history.some((h) => h.role === 'assistant')) liveCompanion = null;
+  const adapter = createCompanionAdapter({ mode: 'free' });
+  const run = await runAnswer({ candidates: [target], signal: turn.signal, build: (tg) => liveCompanionRequest(tg, turn), adapterFor: () => adapter });
+  const answer = companionTurn(run.result);
+  if (turn.signal.aborted) return;
+  if (!answer) {
+    const code = run.result.error?.code ?? 'bad_response';
+    throw Object.assign(new Error(code), { code });
+  }
+  liveCompanion = { text: answer.text, state: run.result.opaque.filter((o) => o.provider === 'companion') };
+  if (answer.text) yield answer.text;
 }
 
 /**

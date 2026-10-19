@@ -108,7 +108,7 @@
     "busy": "Wait until the answer in the chat is finished.",
     "no_model": "This model is not available right now.",
     "no_question": "This answer has no question to ask again.",
-    "stays_on_device": "This question stays on this device: only the model here or your own server may answer it.",
+    "stays_on_device": "This question stays on this device: only the model here, your own server or your paired companion may answer it.",
     "failed": "The comparison could not start."
   },
   "council": {

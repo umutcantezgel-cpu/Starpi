@@ -30,6 +30,7 @@
     "hidden": "Terminata perché hai lasciato la scheda.",
     "error": "La connessione si è interrotta inaspettatamente.",
     "no_model": "Nessun modello disponibile. Aggiungi una chiave in Impostazioni → Provider.",
+    "companion_sources": "Starpi Core risponde alle domande parlate solo in una conversazione libera: risponde in base ai propri documenti, non alle fonti trovate qui. Avvia una conversazione libera oppure scegli un altro modello.",
     "microphone": "Non è stato possibile avviare il microfono."
   },
   "hint": {

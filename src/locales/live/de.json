@@ -30,6 +30,7 @@
     "hidden": "Beendet, weil der Tab verlassen wurde.",
     "error": "Die Verbindung wurde unerwartet beendet.",
     "no_model": "Kein Modell verfügbar. Fügen Sie unter Einstellungen → Anbieter einen Schlüssel hinzu.",
+    "companion_sources": "Starpi Core beantwortet gesprochene Fragen nur in einem freien Gespräch: Es antwortet aus seinen eigenen Dokumenten, nicht aus den hier gefundenen Quellen. Starten Sie ein freies Gespräch oder wählen Sie ein anderes Modell.",
     "microphone": "Das Mikrofon konnte nicht starten."
   },
   "hint": {

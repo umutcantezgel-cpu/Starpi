@@ -30,6 +30,7 @@
     "hidden": "Sekmeden ayrıldığınız için sona erdi.",
     "error": "Bağlantı beklenmedik şekilde sona erdi.",
     "no_model": "Kullanılabilir model yok. Ayarlar → Sağlayıcılar bölümünden bir anahtar ekleyin.",
+    "companion_sources": "Starpi Core sesli soruları yalnızca serbest bir sohbette yanıtlar: burada bulunan kaynaklardan değil, kendi belgelerinden yanıt verir. Serbest bir sohbet başlatın ya da başka bir model seçin.",
     "microphone": "Mikrofon başlatılamadı."
   },
   "hint": {

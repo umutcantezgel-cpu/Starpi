@@ -21,8 +21,14 @@
  *   a search pack is checked. Stop in the column stops its tool calls too. A question that stays
  *   on this device (a new one for models here and the own server only, or a stored one that
  *   stays) is offered only the tools that keep it here, and goes to no search service.
- * - A column whose answer stays on this device (the model here, or a question that stays) is
- *   marked so (data-stays-on-device); the canvas keeps a block taken from it on this device too.
+ * - A column whose answer stays on this device (the model here, the companion, or a question that
+ *   stays) is marked so (data-stays-on-device); the canvas keeps a block taken from it on this
+ *   device too.
+ * - The paired companion is asked as the thread asks it (prepareQuestion builds that request and
+ *   gives its adapter): the bare question in its own conversation, sources mode for a grounded
+ *   question, free otherwise. Its column shows exactly the units its gate released so far (a
+ *   withdrawal takes them away again), offers no tools, and keeps no stopped answer (the companion
+ *   drops an abandoned turn too). Continued, its answer and a new question stay on this device.
  * - Models: the header picker's choices (models of this device that are not loaded stay out, as a
  *   download would start), different providers first.
  */
@@ -66,6 +72,8 @@ import { capsOf, chatCandidates, deviceModel, runAnswer } from './runner.js';
 
 export const MIN_COLUMNS = 2;
 export const MAX_COLUMNS = 4;
+/** Routes that keep a question on this device: the model here, the own server, the paired companion. */
+const ON_DEVICE_ROUTES = new Set(['device', 'local', 'companion']);
 
 // ---------------------------------------------------------------------------------------------
 // Models and numbers (no DOM state)
@@ -294,7 +302,7 @@ function paintColumn(i) {
   if (!col || !el) return;
   el.dataset.status = col.status;
   // An answer that stays on this device says so to whoever takes its content (the canvas).
-  el.toggleAttribute('data-stays-on-device', col.target?.route === 'device' || state.prepared?.question.localOnly === true);
+  el.toggleAttribute('data-stays-on-device', col.target?.route === 'device' || col.target?.route === 'companion' || state.prepared?.question.localOnly === true);
   const model = /** @type {HTMLElement} */ (el.querySelector('[data-column-model]'));
   model.textContent = servedLabel(col);
   const chip = STATUS[col.status];
@@ -322,7 +330,7 @@ function paintColumn(i) {
     setHtml(actions, html`<button type="button" class="btn btn-secondary px-2 py-1 text-xs" data-action="compare-stop" data-arg="${String(i)}" aria-label="${t('canvas.compare.stop_aria', { model: name })}">${icon('square', 'w-3.5 h-3.5')}${label('canvas.compare.stop')}</button>`.value);
   } else if (col.adopted) {
     setHtml(actions, html`<p class="text-[11px] text-emerald-800 flex items-center gap-1">${icon('check', 'w-3.5 h-3.5')}${label('canvas.compare.continued')}</p>`.value);
-  } else if ((col.status === 'done' || col.status === 'stopped') && col.result?.text.trim()) {
+  } else if ((col.status === 'done' || col.status === 'stopped') && col.result && col.text.trim()) {
     setHtml(actions, html`<button type="button" class="btn btn-primary px-2 py-1 text-xs" data-action="compare-continue" data-arg="${String(i)}" aria-label="${t('canvas.compare.continue_aria', { model: name })}">${icon('git-fork', 'w-3.5 h-3.5')}${label('canvas.compare.continue')}</button>`.value);
   } else actions.replaceChildren();
 }
@@ -406,7 +414,7 @@ export async function runCompare() {
     }),
   );
   const thread = await threadModule();
-  const onDevice = (/** @type {Target | null} */ tg) => tg !== null && (tg.route === 'device' || tg.route === 'local');
+  const onDevice = (/** @type {Target | null} */ tg) => tg !== null && ON_DEVICE_ROUTES.has(tg.route);
   try {
     state.prepared = await thread.prepareQuestion(
       state.questionId
@@ -442,15 +450,27 @@ async function runColumn(i) {
       finish(i, 'failed', 'canvas.compare.no_model');
       return;
     }
-    if (prepared.staysOnDevice && col.target.route !== 'device' && col.target.route !== 'local') {
+    if (prepared.staysOnDevice && !ON_DEVICE_ROUTES.has(col.target.route)) {
       finish(i, 'failed', 'canvas.compare.stays_on_device');
       return;
     }
+    const companion = col.target.provider === 'companion';
+    const repaint = () => {
+      if (!frame) frame = requestAnimationFrame(() => ((frame = 0), paintBody(i, false)));
+    };
     try {
       const run = await (state.deps.runAnswer ?? runAnswer)({
         candidates: [col.target],
         signal,
         build: prepared.build,
+        // The companion's column shows what its gate released so far, withdrawals included.
+        adapterFor: (tg) =>
+          prepared.adapterFor?.(tg, {
+            onText: (text) => {
+              col.text = text;
+              repaint();
+            },
+          }),
         onStart: () => {
           col.status = 'streaming';
           paintColumn(i);
@@ -458,14 +478,16 @@ async function runColumn(i) {
         onEvent: (ev) => {
           if (ev.type !== 'text') return;
           if (col.firstMs === null) col.firstMs = Math.round(performance.now() - col.startedAt);
+          if (companion) return;
           col.text += ev.delta;
-          if (!frame) frame = requestAnimationFrame(() => ((frame = 0), paintBody(i, false)));
+          repaint();
         },
       });
       let result = run.result;
       // The tool runner sees the column's answer as it sees the thread's: tool calls it stopped for
-      // run here (approval cards in the column) and the answer goes on after them.
-      if (single.tools && run.target && !signal.aborted && col.el) {
+      // run here (approval cards in the column) and the answer goes on after them. The companion
+      // answers without the app's tools.
+      if (single.tools && run.target && !signal.aborted && col.el && !companion) {
         const asked = run.target;
         const element = col.el;
         const after = await single
@@ -491,9 +513,10 @@ async function runColumn(i) {
       if (frame) cancelAnimationFrame(frame);
       frame = 0;
       col.result = result;
-      col.text = result.text;
+      // The companion's answer is the text its gate released; a stopped one is not kept.
+      col.text = companion ? (signal.aborted ? '' : ((await threadModule()).companionTextOf(result) ?? '')) : result.text;
       col.durationMs = Math.round(performance.now() - col.startedAt);
-      if (!result.text.trim()) {
+      if (!col.text.trim()) {
         const code = result.error?.code ?? (result.stopReason === 'refusal' ? 'refusal' : 'bad_response');
         finish(i, signal.aborted ? 'stopped' : 'failed', signal.aborted ? null : `ai.error.${code}`);
         return;
@@ -570,7 +593,7 @@ function provisionalNode(col, prepared, thread) {
 async function continueWith(i) {
   const col = state.columns[i];
   const prepared = state.prepared;
-  if (!col?.result || !col.target || !prepared || col.adopted) return;
+  if (!col?.result || !col.target || !prepared || col.adopted || !col.text.trim()) return;
   const thread = await threadModule();
   if (thread.isThreadBusy()) {
     say('canvas.compare.busy');
@@ -592,10 +615,12 @@ async function continueWith(i) {
     return;
   }
   col.adopted = node;
-  // The question is stored now: another column continues under the same one.
+  // The question is stored now: another column continues under the same one, as it was stored
+  // (under the companion's answer it stays on this device, and so do the answers taken after it).
   if (!prepared.stored && node.parentId) {
-    state.prepared = { ...prepared, stored: true, question: { ...prepared.question, id: node.parentId } };
-    state.questionId = node.parentId;
+    const questionId = node.parentId;
+    state.prepared = await thread.prepareQuestion({ conversationId: state.conversationId, questionId }).catch(() => ({ ...prepared, stored: true, question: { ...prepared.question, id: questionId } }));
+    state.questionId = questionId;
   }
   paintColumn(i);
   say('canvas.compare.continued_status', { model: servedLabel(col) });

@@ -30,6 +30,7 @@
     "hidden": "Terminó porque se salió de la pestaña.",
     "error": "La conexión terminó de forma inesperada.",
     "no_model": "No hay ningún modelo disponible. Añade una clave en Ajustes → Proveedores.",
+    "companion_sources": "Starpi Core solo responde preguntas habladas en una conversación libre: responde a partir de sus propios documentos, no de las fuentes encontradas aquí. Inicia una conversación libre o elige otro modelo.",
     "microphone": "No se pudo iniciar el micrófono."
   },
   "hint": {

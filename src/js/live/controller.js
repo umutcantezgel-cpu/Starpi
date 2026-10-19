@@ -39,7 +39,9 @@ import { createTranscript } from './transcript.js';
  * speaking: the answer is being spoken; ended: over (see `reason`).
  * @typedef {'idle' | 'connecting' | 'ready' | 'listening' | 'thinking' | 'speaking' | 'ended'} LiveState
  */
-/** @typedef {'stopped' | 'limit' | 'silence' | 'hidden' | 'error' | 'no_model' | 'microphone'} EndReason */
+/** @typedef {'stopped' | 'limit' | 'silence' | 'hidden' | 'error' | 'no_model' | 'companion_sources' | 'microphone'} EndReason */
+/** Codes of a failed turn that end the conversation, with that reason (the ask can never answer). */
+const ENDING_CODES = Object.freeze(new Set(/** @type {const} */ (['no_model', 'companion_sources'])));
 /**
  * Why push-to-talk did not lead to a turn. no_source: no speech input can transcribe a recording;
  * not_heard: the recording was transcribed as nothing, or every source failed.
@@ -334,7 +336,8 @@ export function createLiveController(deps) {
     } catch (err) {
       if (!signal.aborted) {
         transcript.close('assistant');
-        if (/** @type {{ code?: string }} */ (err)?.code === 'no_model') stop('no_model');
+        const code = /** @type {{ code?: string }} */ (err)?.code;
+        if (code && ENDING_CODES.has(/** @type {any} */ (code))) stop(/** @type {EndReason} */ (code));
       }
     } finally {
       turn = null;

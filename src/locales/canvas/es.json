@@ -108,7 +108,7 @@
     "busy": "Espera a que termine la respuesta del chat.",
     "no_model": "Este modelo no está disponible ahora mismo.",
     "no_question": "Esta respuesta no tiene ninguna pregunta que volver a hacer.",
-    "stays_on_device": "Esta pregunta se queda en este dispositivo: solo puede responderla el modelo local o tu propio servidor.",
+    "stays_on_device": "Esta pregunta se queda en este dispositivo: solo puede responderla el modelo local, tu propio servidor o tu acompañante vinculado.",
     "failed": "No se pudo iniciar la comparación."
   },
   "council": {
