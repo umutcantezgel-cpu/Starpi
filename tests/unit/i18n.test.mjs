@@ -8,7 +8,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { REASON_CODES } from '../../src/js/core/grounding.js';
-import { buildDictionary, DEFAULT_LOCALE, hasKey, isLocaleLoaded, LANGUAGES, loadLocale, LOCALES, setLocale, t } from '../../src/js/i18n/index.js';
+import { buildDictionary, DEFAULT_LOCALE, hasKey, LANGUAGES, LOCALES, setLocale, t } from '../../src/js/i18n/index.js';
 import { ENGLISH, NAMESPACES, SHIPPED_LOCALES } from '../../src/locales/index.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
