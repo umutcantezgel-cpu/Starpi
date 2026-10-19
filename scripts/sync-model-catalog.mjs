@@ -30,8 +30,8 @@ export const SNAPSHOT_FILE = 'src/js/ai/catalog/snapshot.json';
 
 /** Providers whose live list can refresh the snapshot, with the environment names of their keys. */
 export const LIVE_PROVIDERS = Object.freeze(['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter']);
-/** Providers that have a snapshot section (the on-device engines are described by their own catalogs). */
-const SECTION_PROVIDERS = PROVIDER_ORDER.filter((id) => id !== 'webgpu' && id !== 'wasm');
+/** Providers that have a snapshot section (the on-device engines and the paired companion are described elsewhere). */
+const SECTION_PROVIDERS = PROVIDER_ORDER.filter((id) => id !== 'webgpu' && id !== 'wasm' && id !== 'companion');
 
 const CAPS_ORDER = ['text', 'vision', 'pdf', 'tools', 'parallelTools', 'reasoning', 'reasoningVisible', 'search', 'imageOut', 'audioIn', 'live', 'json', 'contextTokens', 'maxOutput', 'priceIn', 'priceOut', 'latency', 'free', 'local', 'verified'];
 const MODEL_ORDER = ['id', 'label', 'vendor', 'listed', 'caps'];

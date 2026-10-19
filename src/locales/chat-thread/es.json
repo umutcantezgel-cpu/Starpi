@@ -37,7 +37,8 @@
     "pool": "{provider} a través de Starpi · {model}",
     "served": "{provider} · {model} (en lugar de {requested})",
     "device": "En este dispositivo · {model}",
-    "server": "Tu servidor · {model}"
+    "server": "Tu servidor · {model}",
+    "companion": "Acompañante local · {model}"
   },
   "meta": {
     "tokens": "{input} de entrada · {output} de salida",
@@ -88,13 +89,16 @@
     "image_not_source": "{name} no se añadió a tus fuentes: leer el texto de una imagen requiere un modelo que pueda ver, y tu consentimiento.",
     "rate_limited_wait": "Demasiadas solicitudes al proveedor ahora mismo: espera {seconds} s y vuelve a intentarlo.",
     "stays_on_device_title": "Esta pregunta se queda en este dispositivo",
-    "stays_on_device_body": "Se hizo en este dispositivo, así que solo la responde el modelo de aquí o tu propio servidor. Elige uno de ellos o vuelve a hacer la pregunta en un mensaje nuevo.",
+    "stays_on_device_body": "Se hizo en este dispositivo, así que solo la responde el modelo de aquí, tu propio servidor o tu acompañante vinculado. Elige uno de ellos o vuelve a hacer la pregunta en un mensaje nuevo.",
     "failed_body": "Algo salió mal al responder. Vuelve a intentarlo.",
     "store_failed": "No se pudo guardar el chat en este navegador (ventana privada, almacenamiento bloqueado o lleno).",
     "attachment_missing_title": "Un archivo adjunto solo está en el dispositivo donde se añadió",
     "attachment_missing_body": "Los archivos adjuntos no se sincronizan, así que {names} {n:se ha dejado|se han dejado} fuera de esta solicitud.",
     "deleted_elsewhere_title": "Este chat se eliminó en otra pestaña u otro navegador",
-    "deleted_elsewhere_body": "Aquí ha empezado un chat nuevo."
+    "deleted_elsewhere_body": "Aquí ha empezado un chat nuevo.",
+    "companion_unpaired_title": "Ningún acompañante vinculado",
+    "companion_unpaired_body": "Vincula Starpi Core en este ordenador desde Ajustes o elige otro modelo.",
+    "companion_failed_title": "El acompañante no pudo responder"
   },
   "continued": "Continuado tras el límite de longitud",
   "continue_prompt": "Continúa exactamente donde te detuviste.",

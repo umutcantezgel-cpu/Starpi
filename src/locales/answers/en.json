@@ -8,7 +8,10 @@
     "hint_free": "Answered from the model's own knowledge; nothing was compared with sources.",
     "hint_grounded": "Every statement was compared with the excerpts of your sources.",
     "hint_mixed": "Statements taken from your sources are checked and marked; the rest is general knowledge.",
-    "hint_web": "The answer cites pages a web search found; their content was not verified."
+    "hint_web": "The answer cites pages a web search found; their content was not verified.",
+    "hint_companion": "The companion on this computer answered from its documents and notes, and its gate checked every number against the source a sentence cites before it was shown.",
+    "hint_companion_free": "The companion on this computer answered from general knowledge; its gate removed links, but nothing was compared with sources.",
+    "hint_companion_template": "No model wrote this: the companion answered with a fixed text, and its note says why."
   },
   "mixed": {
     "title": "Checked parts",

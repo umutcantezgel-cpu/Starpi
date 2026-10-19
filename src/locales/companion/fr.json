@@ -243,7 +243,10 @@
     "calls_ask": "demande à chaque fois",
     "calls_allow": "s’exécute sans demander",
     "approve_tool_allow": "Approuver et exécuter sans demander",
-    "approve_allow_confirm": "Approuver {tool} avec la description que le serveur affiche maintenant, et le laisser s’exécuter sans demander ? Un appel rédigé après le résultat d’un outil vous sera tout de même soumis."
+    "approve_allow_confirm": "Approuver {tool} avec la description que le serveur affiche maintenant, et le laisser s’exécuter sans demander ? Un appel rédigé après le résultat d’un outil vous sera tout de même soumis.",
+    "state_up": "joignable",
+    "state_down": "injoignable",
+    "state_unknown": "pas encore vérifié"
   },
   "audit": {
     "title": "Audit",
@@ -351,6 +354,8 @@
     "mcp_clients_full": "Le nombre maximal de clients MCP est atteint.",
     "notify_streams": "Trop de connexions à la boîte de réception sont ouvertes ; fermez d’autres onglets.",
     "session_unknown": "Cette session est déjà terminée.",
-    "audit_seq_unknown": "Le compagnon n’a pas d’entrée avec ce numéro."
+    "audit_seq_unknown": "Le compagnon n’a pas d’entrée avec ce numéro.",
+    "conversation_busy": "Le compagnon traite encore des questions précédentes de cette conversation. Attendez qu’il ait terminé, puis posez à nouveau votre question.",
+    "connector_down": "Le serveur MCP ne répond pas ; le compagnon ne l’appelle donc pas pour le moment."
   }
 }

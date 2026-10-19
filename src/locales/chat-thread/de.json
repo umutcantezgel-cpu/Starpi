@@ -37,7 +37,8 @@
     "pool": "{provider} über Starpi · {model}",
     "served": "{provider} · {model} (statt {requested})",
     "device": "Auf diesem Gerät · {model}",
-    "server": "Ihr Server · {model}"
+    "server": "Ihr Server · {model}",
+    "companion": "Lokaler Begleiter · {model}"
   },
   "meta": {
     "tokens": "{input} rein · {output} raus",
@@ -88,13 +89,16 @@
     "image_not_source": "{name} wurde nicht zu Ihren Quellen hinzugefügt: Text in Bildern zu lesen braucht ein Modell, das Bilder sieht, und Ihre Zustimmung.",
     "rate_limited_wait": "Der Anbieter erhält gerade zu viele Anfragen: Bitte warten Sie {seconds} s und versuchen Sie es dann erneut.",
     "stays_on_device_title": "Diese Frage bleibt auf diesem Gerät",
-    "stays_on_device_body": "Sie wurde auf diesem Gerät gestellt, deshalb beantwortet sie nur das Modell hier oder Ihr eigener Server. Wählen Sie eines davon oder stellen Sie die Frage als neue Nachricht.",
+    "stays_on_device_body": "Sie wurde auf diesem Gerät gestellt, deshalb beantwortet sie nur das Modell hier, Ihr eigener Server oder Ihr gekoppelter Begleiter. Wählen Sie eines davon oder stellen Sie die Frage als neue Nachricht.",
     "failed_body": "Beim Antworten ist etwas schiefgegangen. Bitte versuchen Sie es noch einmal.",
     "store_failed": "Der Chat konnte in diesem Browser nicht gespeichert werden (privates Fenster, blockierter oder voller Speicher).",
     "attachment_missing_title": "Ein Anhang ist nur auf dem Gerät, auf dem er hinzugefügt wurde",
     "attachment_missing_body": "Anhänge werden nicht synchronisiert, deshalb {n:wurde|wurden} {names} bei dieser Anfrage weggelassen.",
     "deleted_elsewhere_title": "Dieser Chat wurde in einem anderen Tab oder Browser gelöscht",
-    "deleted_elsewhere_body": "Hier hat ein neuer Chat begonnen."
+    "deleted_elsewhere_body": "Hier hat ein neuer Chat begonnen.",
+    "companion_unpaired_title": "Kein Begleiter gekoppelt",
+    "companion_unpaired_body": "Koppeln Sie Starpi Core auf diesem Computer in den Einstellungen, oder wählen Sie ein anderes Modell.",
+    "companion_failed_title": "Der Begleiter konnte nicht antworten"
   },
   "continued": "Fortgesetzt nach der Längengrenze",
   "continue_prompt": "Mach genau dort weiter, wo du aufgehört hast.",

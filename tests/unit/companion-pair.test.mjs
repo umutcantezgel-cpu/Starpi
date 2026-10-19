@@ -1,8 +1,8 @@
 // Pairing with the companion (src/js/companion/pair.js): the code, the sealed secret, the voice
 // link, a restore without any request, unpairing, a session the companion no longer knows, and the
-// audit check: the first head is stored, an older head is a rollback, another hash at a known
-// number or a chain that lost the stored record is a fork, a wrong signature is invalid, and the
-// user can accept the companion's current state.
+// audit check: the first head is stored, an older current head is a rollback (an older head that
+// only arrives late is not), another hash at a known number or a chain that lost the stored record
+// is a fork, a wrong signature is invalid, and the user can accept the companion's current state.
 import './setup.mjs';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -72,14 +72,14 @@ describe('pairing', () => {
     assert.equal(fresh.pairing.state().phase, 'unpaired');
   });
 
-  it('uses the CSRF value in Mode A and offers no voice link there', async () => {
+  it('uses the CSRF value in Mode A and gives the voice input a cookie link with it', async () => {
     const companion = fakeCompanion();
     companion.handlers.set('POST /v1/session/pair', () => ({ body: { mode: 'cookie', session: 'sess-a', role: 'member', expiresAt: '2099-01-01T00:00:00Z', publicKey: companion.identity.publicKey, keyId: companion.identity.keyId, csrf: 'csrf_0123456789abcdefghijklmnop' } }));
     companion.handlers.set('GET /v1/docs', () => ({ body: { documents: [] } }));
     const { voice, pairing } = setup(companion);
     await pairing.pair({ code: 'ABCDEFGH', origin: companion.origin });
     assert.equal(pairing.state().mode, 'cookie');
-    assert.equal(voice.at(-1), null);
+    assert.deepEqual(voice.at(-1), { origin: companion.origin, csrf: 'csrf_0123456789abcdefghijklmnop' });
     await pairing.call('GET', '/v1/docs');
     const [req] = companion.calls('GET', '/v1/docs');
     assert.equal(req.headers['x-companion-csrf'], 'csrf_0123456789abcdefghijklmnop');
@@ -119,9 +119,11 @@ describe('pairing', () => {
     assert.equal(await openSecret(key, { iv: 'bad', data: sealed.data }, link), null);
   });
 
-  it('keeps its stored-link flag under the name the feature module reads', async () => {
+  it('keeps its stored-link flag under the name the feature module and the pickers read', async () => {
     const feature = await import('../../src/js/features/companion.js');
     assert.equal(feature.LINK_MARKER, LINK_MARKER);
+    const providers = await import('../../src/js/providers.js');
+    assert.equal(providers.COMPANION_LINK_MARKER, LINK_MARKER);
   });
 
   it('normalizes what the user typed', () => {
@@ -190,6 +192,61 @@ describe('audit check', () => {
     assert.equal(await pairing.acceptCurrent(), true);
     assert.equal(pairing.state().audit.state, 'ok');
     assert.equal(store.peek().heads.get(companion.identity.keyId).seq, 2);
+  });
+
+  /**
+   * Lets an answer arrive late: its body carries an older head than the companion's current one.
+   * @param {ReturnType<typeof fakeCompanion>} companion
+   * @param {{ seq: number, hash: string, sig: string }} head
+   */
+  function lateAnswer(companion, head) {
+    companion.handlers.set('GET /v1/notes', () => ({ noHead: true, body: { notes: [], auditHead: head } }));
+  }
+
+  it('takes an older head that arrives late for no rollback when the chain holds it', async () => {
+    const { store, pairing, companion } = await paired();
+    companion.setSeq(7);
+    await pairing.checkAudit();
+    assert.equal(store.peek().heads.get(companion.identity.keyId).seq, 7);
+    lateAnswer(companion, companion.identity.head(6));
+    await pairing.call('GET', '/v1/notes');
+    await settle();
+    assert.equal(pairing.state().audit.state, 'ok', 'no false rollback banner');
+    assert.equal(store.peek().heads.get(companion.identity.keyId).seq, 7, 'the highest head stays');
+    const asked = companion.calls('GET', '/v1/audit/head').slice(-2).map((r) => r.query.get('seq'));
+    assert.deepEqual(asked, [null, '6'], 'the current head first, then the record of the late one');
+  });
+
+  it('moves on to the current head when an old answer arrives after newer records', async () => {
+    const { store, pairing, companion } = await paired();
+    companion.setSeq(9);
+    lateAnswer(companion, companion.identity.head(4));
+    await pairing.call('GET', '/v1/notes');
+    await settle();
+    assert.equal(pairing.state().audit.state, 'ok');
+    assert.equal(store.peek().heads.get(companion.identity.keyId).seq, 9);
+    assert.equal(companion.calls('GET', '/v1/audit/head').some((r) => r.query.get('seq') === '5'), true, 'the stored record is still checked');
+  });
+
+  it('still calls a late head of another history a fork', async () => {
+    const { pairing, companion } = await paired();
+    lateAnswer(companion, companion.identity.head(4, { variant: 'other' }));
+    await pairing.call('GET', '/v1/notes');
+    await settle();
+    assert.equal(pairing.state().audit.state, 'fork');
+  });
+
+  it('still calls it a rollback when the current head is lower too', async () => {
+    const { pairing, companion } = await paired();
+    companion.setSeq(3);
+    lateAnswer(companion, companion.identity.head(3));
+    await pairing.call('GET', '/v1/notes');
+    await settle();
+    const audit = pairing.state().audit;
+    assert.equal(audit.state, 'rollback');
+    assert.equal(audit.reported?.seq, 3);
+    assert.equal(await pairing.acceptCurrent(), true);
+    assert.equal(pairing.state().audit.state, 'ok');
   });
 
   it('compares heads by number and hash', () => {

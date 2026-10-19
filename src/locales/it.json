@@ -75,8 +75,9 @@
     "free_cloud": "Chat libera: la tua domanda, un file allegato e i messaggi precedenti di questa chat vanno al tuo provider. Nessuna fonte viene consultata.",
     "free_nvidia": "Chat libera: la tua domanda, un file allegato e i messaggi precedenti di questa chat passano dal server di Starpi fino a NVIDIA. Nessuna fonte viene consultata.",
     "free_no_model": "Chat libera: nessun modello è configurato, quindi non viene inviato nulla. Aggiungi una chiave nelle Impostazioni o usa la modalità fonti verificate.",
-    "history_synced": "Domande e risposte vengono salvate nella tua cronologia chat privata; puoi eliminarla nelle Impostazioni.",
-    "history_local": "Le chat vengono salvate in questo browser; puoi eliminarle nelle Impostazioni."
+    "history_local": "Le chat vengono salvate in questo browser; puoi eliminarle nelle Impostazioni.",
+    "companion": "Companion: la tua domanda va a Starpi Core su questo computer, che risponde dai propri documenti e note con i modelli configurati. Decide in base alla classe di dati se un modello cloud può vedere la domanda.",
+    "free_companion": "Chat libera con il companion: la tua domanda va a Starpi Core su questo computer, che risponde con i modelli configurati. Decide in base alla classe di dati se un modello cloud può vedere la domanda. Nessuna fonte viene consultata."
   },
   "engine": {
     "mode_cloud": "Assistente cloud",
@@ -214,7 +215,6 @@
     "mode_grounded": "Modalità fonti verificate",
     "mode_free_hint": "Parla direttamente con il modello. Le risposte non vengono verificate sulle fonti.",
     "mode_grounded_hint": "Le risposte provengono dalle tue fonti e vengono verificate frase per frase.",
-    "free_note": "Chat libera · non verificata sulle fonti",
     "free_no_model_title": "La chat libera richiede un modello",
     "free_no_model_body": "Aggiungi una chiave Gemini o OpenRouter nelle Impostazioni, carica il modello locale o collega il tuo server personale. Anche la modalità fonti verificate risponde senza modello, citando le tue fonti.",
     "free_failed_body": "{reason}. Riprova oppure passa alla modalità fonti verificate per una risposta citata dalle tue fonti.",

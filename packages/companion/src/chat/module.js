@@ -124,6 +124,8 @@ export function createChatModule({ hub }) {
   /**
    * A place in the conversation's lane: `ready` settles when every turn before it has ended, and
    * `leave` ends this one (also when it gave up while waiting; the next still waits for the rest).
+   * `wait(signal)` waits for `ready` and gives the place back at once when the client goes away
+   * first, so a turn nobody listens to any more does not count against `waitingTurns`.
    * @param {string} id
    */
   const enterLane = (id) => {
@@ -137,14 +139,33 @@ export function createChatModule({ hub }) {
     const ready = lane.tail;
     lane.tail = ready.then(() => ended);
     let left = false;
+    const leave = () => {
+      if (left) return;
+      left = true;
+      end();
+      lane.size -= 1;
+      if (lane.size === 0 && lanes.get(id) === lane) lanes.delete(id);
+    };
     return {
       ready,
-      leave() {
-        if (left) return;
-        left = true;
-        end();
-        lane.size -= 1;
-        if (lane.size === 0 && lanes.get(id) === lane) lanes.delete(id);
+      leave,
+      /** @param {AbortSignal} signal */
+      wait(signal) {
+        return new Promise((resolve, reject) => {
+          const gone = () => {
+            leave();
+            reject(signal.reason ?? new Error('aborted'));
+          };
+          if (signal.aborted) {
+            gone();
+            return;
+          }
+          signal.addEventListener('abort', gone, { once: true });
+          ready.then(() => {
+            signal.removeEventListener('abort', gone);
+            resolve(undefined);
+          });
+        });
       },
     };
   };
@@ -177,8 +198,7 @@ export function createChatModule({ hub }) {
           (async () => {
             let answered = false;
             try {
-              await lane.ready;
-              req.signal.throwIfAborted();
+              await lane.wait(req.signal);
               // The turns before this one changed the conversation, or deleted it.
               const current = st.get(conversation.id);
               if (!current) throw notFound('conversation_unknown', 'conversation');

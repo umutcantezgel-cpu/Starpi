@@ -40,6 +40,12 @@
  * Answers written outside the thread (the side-by-side compare, the council) ask through
  * prepareQuestion() as a free question would go out, are stored with freeAnswerInput() and
  * adoptAnswer() as the newest branch under their question, and are labelled with presentAnswer().
+ *
+ * The paired companion (provider `companion`, picked like any model) answers in a conversation it
+ * keeps and through its own sentence gate (answerCompanion): its answer is shown and stored as it
+ * was released, with its own label, notice and withheld count, and nothing here retrieves for it or
+ * checks it again. It stays on this device (localOnly), so no other model is given what the
+ * companion answered from its sealed content, and it is never cached by the router.
  */
 import { chatData, currentSessionId, loadSessionThread, startNewSession } from '../chat-store.js';
 import { splitStreamingText } from '../chat-stream.js';
@@ -49,7 +55,7 @@ import { startLocalEngine } from '../engine-ui.js';
 import { formatNumber, getLocale, hasKey, LOCALES, setText, t } from '../i18n/index.js';
 import { refreshIcons } from '../icons.js';
 import { appendLoading, appendMessage, appendNotice, createStreamingMessage, resetMessages } from '../messages.js';
-import { modelLabel, providerLabel } from '../providers.js';
+import { modelLabel, providerLabel, routeOf } from '../providers.js';
 import {
   attachmentSection,
   buildInstructions,
@@ -87,7 +93,8 @@ import { browserWebSearch, decideRoute, ROUTE_TOP_K, searchWebHits } from '../ai
 import { getKey } from '../ai/keys.js';
 import { readAloudStream } from '../features/voice.js';
 import { renderActions } from './actions.js';
-import { answerLabelOf, applyMixedMarks, nextPaint, renderAnswerLabel, renderWebCheck } from './answer-labels.js';
+import { COMPANION_MODEL, companionTurnOf, createCompanionAdapter } from '../ai/adapters/companion.js';
+import { answerLabelOf, applyMixedMarks, companionLabel, nextPaint, renderAnswerLabel, renderCompanionNotes, renderWebCheck } from './answer-labels.js';
 import { attachmentText, blobToBase64, MAX_NATIVE_PDF_BYTES, needsVision, textBudget } from './attachments.js';
 import { clearComposer, setComposerBusy, takeDraft } from './composer.js';
 import { showGeneratedImages, storeGeneratedImages } from './image-view.js';
@@ -261,7 +268,8 @@ export function readableAnswer(id) {
   const route = meta.chat_mode ?? node.label;
   return {
     text: nodeText(node),
-    label: kept?.label ?? (route === 'grounded' ? 'grounded' : storedGrounding ? 'web' : 'free'),
+    // A companion answer passed the companion's own gate already: it is read as released.
+    label: kept?.label ?? (meta.engine === 'companion' ? 'free' : route === 'grounded' ? 'grounded' : storedGrounding ? 'web' : 'free'),
     sources: kept?.sources ?? [],
     grounding: kept?.grounding ?? storedGrounding,
     question: question && !metaOf(question).continue ? nodeText(question) : '',
@@ -370,6 +378,7 @@ export function answerBadge(node) {
   const params = { provider: providerLabel(provider), model: modelLabel(provider, model) };
   if (provider === 'webgpu' || provider === 'wasm') return { badge: 'chat-thread.badge.device', badgeParams: params };
   if (provider === 'local') return { badge: 'chat-thread.badge.server', badgeParams: params };
+  if (provider === 'companion') return { badge: 'chat-thread.badge.companion', badgeParams: params };
   const requested = typeof meta.requested === 'string' && meta.requested && meta.requested !== model ? modelLabel(provider, meta.requested) : '';
   if (requested) return { badge: 'chat-thread.badge.served', badgeParams: { ...params, requested } };
   return { badge: meta.route === 'pool' ? 'chat-thread.badge.pool' : 'chat-thread.badge.provider', badgeParams: params };
@@ -405,7 +414,9 @@ function labelAnswer(el, node) {
     refreshIcons(slot);
     return;
   }
-  renderAnswerLabel(el, answerLabelOf(node));
+  const name = answerLabelOf(node);
+  renderAnswerLabel(el, name);
+  if (name.startsWith('companion')) renderCompanionNotes(el, metaOf(node).companion ?? {});
   renderWebCheck(el, readWebCheck(metaOf(node).web_check));
 }
 
@@ -939,12 +950,21 @@ function noteMissing(missing) {
 }
 
 /**
- * Whether a model runs on this device or on the user's own server (turns that stay on this device
- * may go to it).
+ * Whether a model runs on this device, on the user's own server or in the paired companion on this
+ * machine (turns that stay on this device may go to it; the companion gets such a question with the
+ * data class `sensitive`, which it shows no cloud model).
  * @param {Target} target
  */
 function onThisDevice(target) {
-  return target.route === 'device' || target.route === 'local';
+  return target.route === 'device' || target.route === 'local' || target.route === 'companion';
+}
+
+/**
+ * Whether a picker value is the paired companion.
+ * @param {string} value
+ */
+function isCompanionValue(value) {
+  return typeof value === 'string' && value.startsWith('companion:');
 }
 
 /**
@@ -1201,6 +1221,7 @@ function usageOf(result) {
 function engineOf(target) {
   if (target.provider === 'webgpu') return 'client';
   if (target.provider === 'wasm') return 'wasm';
+  if (target.provider === 'companion') return 'companion';
   if (target.route === 'local') return 'local';
   return target.route === 'pool' ? 'pool' : 'cloud';
 }
@@ -1305,6 +1326,7 @@ async function nameConversation(id, question, answer) {
  * @param {{ before?: Element | null }} [placement]
  */
 async function answerFree(question, value, signal, placement = {}) {
+  if (isCompanionValue(value)) return answerCompanion(question, signal, placement, 'free');
   const started = performance.now();
   const hasImages = needsVision(question.parts.map((p) => ({ kind: p.type === 'image' ? 'image' : 'file' })));
   let candidates = await chatCandidates(value, { vision: hasImages });
@@ -1386,6 +1408,158 @@ async function answerFree(question, value, signal, placement = {}) {
   labelAnswer(stream.element, node);
   decorateAnswer(stream.element, node);
   if (result.error && !signal.aborted && onScreen()) noticeFor(result, true);
+  return node;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Answers of the paired companion
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The companion turn of a result (the opaque block its adapter adds), or null.
+ * @param {CompletionResult} result
+ */
+function companionTurn(result) {
+  for (const part of result.opaque) {
+    const found = part.provider === 'companion' ? companionTurnOf(part.block) : null;
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * The request for the companion: its own earlier answers in this path (their provider state names
+ * the companion's conversation, which holds the history) and the question with its text files. The
+ * app's context block and notes stay out: the companion has its own rules and clock.
+ * @param {Target} target
+ * @param {NodeRecord[]} path  the active path ending with the question
+ * @returns {Promise<AiRequest>}
+ */
+async function companionRequest(target, path) {
+  const asked = /** @type {NodeRecord} */ (path.at(-1));
+  /** @type {Message[]} */
+  const messages = [];
+  for (const node of path.slice(0, -1)) {
+    if (node.role !== 'assistant' || node.provider !== 'companion') continue;
+    const state = (node.opaque ?? []).filter((o) => /** @type {any} */ (o)?.type === 'opaque' && /** @type {any} */ (o).provider === 'companion');
+    if (state.length) messages.push({ role: 'assistant', content: [{ type: 'text', text: nodeText(node) || '-' }, .../** @type {Part[]} */ (state)] });
+  }
+  /** @type {Map<string, string>} */
+  const missing = new Map();
+  const meta = { ...metaOf(asked) };
+  delete meta.context;
+  messages.push(await userMessage({ ...asked, meta }, target, capsOf(target.provider, target.model), [], missing));
+  noteMissing(missing);
+  return { provider: 'companion', model: target.model, messages };
+}
+
+/**
+ * Says why the companion gave no answer, in its own words where it has a code of its own.
+ * @param {CompletionResult} result
+ */
+function companionNotice(result) {
+  const code = result.error?.code ?? 'bad_response';
+  if (code === 'aborted') return;
+  const own = result.error?.providerCode ? `companion.error.${result.error.providerCode}` : '';
+  appendNotice({ icon: 'triangle-alert', tone: 'warn', title: 'chat-thread.notice.companion_failed_title', body: own && hasKey(own) ? own : `ai.error.${code}` });
+}
+
+/**
+ * The fields of a companion answer as the store keeps them (the thread's and a compare column's):
+ * the released text, its label from the companion, and what the companion said about it. It stays on
+ * this device.
+ * @param {import('../ai/adapters/companion.js').CompanionTurn} answer
+ * @param {Target} target
+ */
+function companionAnswerFields(answer, target) {
+  return {
+    text: answer.text,
+    label: companionLabel(answer),
+    model: answer.model ?? target.model,
+    meta: {
+      engine: 'companion',
+      chat_mode: answer.mode === 'sources' ? 'grounded' : 'free',
+      answer_label: companionLabel(answer),
+      companion: { mode: answer.mode, source: answer.source, notice: answer.notice, withheld: answer.withheld, locality: answer.locality, data_class: answer.dataClass, conversation: answer.conversation, turn: answer.turn },
+    },
+  };
+}
+
+/**
+ * Answers the question at the end of the active path with the paired companion. `mode`: `sources`
+ * (from its documents and notes, every number checked by its gate) or `free` (general knowledge).
+ * A question that stays on this device goes with the data class `sensitive`. The live view shows
+ * exactly the units released so far (a withdrawal takes them away again); the stored answer is the
+ * companion's own text. A stopped answer is not kept: the companion drops an abandoned turn from its
+ * conversation too, so both histories stay alike.
+ * @param {NodeRecord} question
+ * @param {AbortSignal} signal
+ * @param {{ before?: Element | null }} placement
+ * @param {'sources' | 'free'} mode
+ */
+async function answerCompanion(question, signal, placement, mode) {
+  const started = performance.now();
+  /** @type {Target} */
+  const target = { provider: 'companion', model: COMPANION_MODEL, route: routeOf('companion') };
+  if (target.route === 'none') {
+    turnNotice({ icon: 'plug', tone: 'info', title: 'chat-thread.notice.companion_unpaired_title', body: 'chat-thread.notice.companion_unpaired_body' });
+    return null;
+  }
+  if (question.parts.some((p) => p.type === 'image')) {
+    turnNotice({ icon: 'info', tone: 'info', title: 'chat.free_no_model_title', body: 'chat-thread.notice.no_vision_model' });
+    return null;
+  }
+  const held = staysOnDevice(question);
+  const path = turnThread()?.path ?? [question];
+  const badge = answerBadge({ provider: 'companion', model: COMPANION_MODEL });
+  const stream = createStreamingMessage(badge.badge, badge.badgeParams, placement);
+  placed(stream.element);
+  if (turn) turn.live = stream.element;
+  const adapter = createCompanionAdapter({ mode, ...(held ? { dataClass: /** @type {const} */ ('sensitive') } : {}), onText: (text) => stream.update(text) });
+  /** @type {import('./runner.js').RunResult} */
+  let run;
+  try {
+    run = await runAnswer({ candidates: [target], signal, build: (tg) => companionRequest(tg, path), adapterFor: () => adapter });
+  } catch (err) {
+    stream.remove();
+    throw err;
+  } finally {
+    if (turn?.live === stream.element) turn.live = null;
+  }
+  const { result } = run;
+  const answer = companionTurn(result);
+  if (!answer || !run.target || signal.aborted) {
+    stream.remove();
+    if (!signal.aborted && onScreen()) companionNotice(result);
+    return null;
+  }
+  const durationMs = Math.round(performance.now() - started);
+  const fields = companionAnswerFields(answer, target);
+  const served = answerBadge({ provider: 'companion', model: fields.model });
+  const trace = describeChatTrace({ engineLabel: t(served.badge, served.badgeParams), durationMs, attachment: chipsOf(question).map((c) => c.name).join(', ') || null });
+  const db = await store();
+  const answerId = crypto.randomUUID();
+  ownNode(answerId);
+  const node = await db.appendNode(turnConversation(), {
+    id: answerId,
+    parentId: question.id,
+    role: 'assistant',
+    parts: [{ type: 'text', text: fields.text }],
+    opaque: result.opaque,
+    model: fields.model,
+    provider: 'companion',
+    label: fields.label,
+    usage: null,
+    localOnly: true,
+    meta: { ...fields.meta, requested: target.model, route: target.route, duration_ms: durationMs, stop_reason: result.stopReason, thoughts: trace },
+  });
+  await reload();
+  keepReadable(node.id, { label: 'free', sources: [], grounding: null });
+  stream.element.dataset.nodeId = node.id;
+  stream.setBadge(served.badge, served.badgeParams);
+  stream.finalize(fields.text, { citations: null, trace, durationMs, traceRoles: FREE_TRACE_ROLES, meta: metaLine(node) });
+  labelAnswer(stream.element, node);
+  decorateAnswer(stream.element, node);
   return node;
 }
 
@@ -1721,6 +1895,14 @@ async function gateCounts(answer, sources) {
  * @param {{ before?: Element | null }} [placement]
  */
 async function answerGrounded(q, signal, placement = {}) {
+  if (isCompanionValue(q.value)) {
+    // The companion answers from its own documents and notes: nothing is retrieved here.
+    const held = q.held ?? (q.question ? staysOnDevice(q.question) : false);
+    const kept = (q.reuseParts ?? []).filter((p) => p.type === 'image' || p.type === 'file');
+    const question = q.question ?? (await storeQuestion({ text: q.text, attachments: q.attachments, reuseParts: kept, parentId: q.parentId, route: 'grounded', localOnly: held, deviceOnly: held }));
+    if (!q.question && onScreen()) renderNode(question);
+    return answerCompanion(question, signal, placement, 'sources');
+  }
   const started = performance.now();
   const kept = (q.reuseParts ?? []).filter((p) => p.type === 'image' || p.type === 'file');
   const chips = [...q.attachments.map((a) => ({ name: a.name, kind: /** @type {'image' | 'file'} */ (a.kind === 'image' ? 'image' : 'file') })), ...kept.map((p) => ({ name: String(p.name ?? ''), kind: /** @type {'image' | 'file'} */ (p.type === 'image' ? 'image' : 'file') }))];
@@ -2105,8 +2287,12 @@ export async function sendQuestion(options = {}) {
   const mode = options.chatMode ?? getChatMode();
   const kinds = draft.attachments.map((a) => ({ name: a.name, kind: a.kind }));
   // A question that stays on this device (an AI edit of such a canvas document) goes the free route here.
-  const decision = options.chatMode || deviceOnly ? null : await routeFor(draft.text, mode, kinds, value);
-  const route = deviceOnly ? 'free' : (options.chatMode ?? (decision?.route === 'free' || decision?.route === 'mixed' ? decision.route : 'grounded'));
+  // The companion's mode follows the mode control alone: Grounded asks it to answer from its own
+  // documents and notes, Free and Auto from general knowledge (what Auto weighs, the files and the
+  // library here, is not what the companion holds).
+  const companion = isCompanionValue(value);
+  const decision = options.chatMode || deviceOnly || companion ? null : await routeFor(draft.text, mode, kinds, value);
+  const route = deviceOnly ? 'free' : (options.chatMode ?? (companion ? (mode === 'grounded' ? 'grounded' : 'free') : decision?.route === 'free' || decision?.route === 'mixed' ? decision.route : 'grounded'));
   if (decision?.reasons.includes('web_unavailable') && !webNoticeShown) {
     webNoticeShown = true;
     appendNotice({ icon: 'info', tone: 'info', title: 'answers.notice.web_unavailable_title', body: 'answers.notice.web_unavailable_body' });
@@ -2368,6 +2554,12 @@ export async function prepareQuestion(input) {
  */
 export function freeAnswerInput(input) {
   const { question, target, result, durationMs } = input;
+  const companion = target.provider === 'companion' ? companionTurn(result) : null;
+  if (companion) {
+    // A companion answer is kept as the companion released it, and stays on this device.
+    const fields = companionAnswerFields(companion, target);
+    return { role: 'assistant', parts: [{ type: 'text', text: fields.text }], opaque: result.opaque, model: fields.model, provider: 'companion', label: fields.label, usage: null, localOnly: true, meta: { ...fields.meta, requested: target.model, route: target.route, duration_ms: durationMs, stop_reason: input.aborted ? 'cancelled' : result.stopReason, ...(input.meta ?? {}) } };
+  }
   const fields = freeAnswerFields(result, { question: metaOf(question).continue ? '' : nodeText(question), locale: getLocale() });
   const badge = answerBadge({ provider: target.provider, model: result.model, meta: { requested: target.model, route: target.route } });
   return {

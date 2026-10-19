@@ -11,10 +11,11 @@
 //   '<provider>:<model>'    one model of one provider: with the user's key, or through the site's
 //                           pool when the user has none ('nvidia:<id>', 'groq:<id>', ...)
 //   'local:*'               the first model the user's own server lists; 'local:<id>' one of them
+//   'companion:starpi-core' the paired companion (Starpi Core), offered once this browser is paired
 // Before the device probe the pickers hold the static options of index.html ('auto', 'device',
 // 'local:*'); 2.x values ('council', 'client', 'local', 'nvidia') are still read once.
 import { POOLS } from '../ai/catalog/pools.js';
-import { getProvider } from '../ai/catalog/providers.js';
+import { COMPANION_MODEL, getProvider } from '../ai/catalog/providers.js';
 import { MODEL_CATALOG, normalizePreference } from '../webgpu/models.js';
 import { recommendModels } from './device.js';
 import { NVIDIA_MODELS } from './nvidia-catalog.js';
@@ -28,13 +29,13 @@ import { WASM_CATALOG } from './wasm-catalog.js';
  * @typedef {import('./device.js').HardwareProfile} HardwareProfile
  * @typedef {import('./device.js').MeasuredRun} MeasuredRun
  *
- * @typedef {'recommended' | 'device' | 'pools' | 'anthropic' | 'openai' | 'gemini' | 'xai' | 'groq' | 'mistral' | 'deepseek' | 'openrouter' | 'nvidia' | 'server'} GroupId
+ * @typedef {'recommended' | 'device' | 'companion' | 'pools' | 'anthropic' | 'openai' | 'gemini' | 'xai' | 'groq' | 'mistral' | 'deepseek' | 'openrouter' | 'nvidia' | 'server'} GroupId
  *
  * @typedef {'needs-webgpu' | 'heavy' | 'no-vision' | 'not-configured'} PickerWarning
  *
  * @typedef {object} PickerItem
  * @property {string} value
- * @property {'webgpu' | 'wasm' | 'pool' | 'key' | 'server' | 'mode'} runtime
+ * @property {'webgpu' | 'wasm' | 'pool' | 'key' | 'server' | 'companion' | 'mode'} runtime
  * @property {string} [label] Model name (catalog data, never translated).
  * @property {string} [labelKey] i18n key of an item without a model name.
  * @property {ProviderId} [provider]
@@ -67,6 +68,7 @@ import { WASM_CATALOG } from './wasm-catalog.js';
  * @property {Partial<Record<ProviderId, readonly ModelOption[]>>} models model lists of the keyed providers
  * @property {boolean} server the user set up their own server
  * @property {readonly string[]} serverModels models the own server listed (empty while unknown)
+ * @property {boolean} [companion] a companion is paired with this browser
  * @property {string} [current] the value to keep visible even when nothing else offers it
  *
  * @typedef {{ text: string } | { key: string, gb?: number }} OptionPart A model name (data, shown
@@ -113,7 +115,11 @@ const RECOMMENDED_KEYS = Object.freeze({
 /** A model id as a picker value carries it (the same rule as state.js normalizeAssistant). */
 const MODEL_ID = /^(?:\*|[\w][\w.:/@+-]{0,199})$/;
 /** Providers whose models a value may name; the on-device engines go through their presets. */
-const VALUE_PROVIDERS = new Set([...PROVIDER_GROUPS, 'local']);
+const VALUE_PROVIDERS = new Set([...PROVIDER_GROUPS, 'local', 'companion']);
+/** The picker value of the paired companion. */
+export const COMPANION_VALUE = `companion:${COMPANION_MODEL}`;
+/** i18n key of the companion's option. */
+const COMPANION_LABEL_KEY = 'companion.card.title';
 
 /**
  * Reads a picker value. 2.x values map once: 'council' to auto, 'client' to the on-device model,
@@ -138,6 +144,8 @@ export function parsePickerValue(value, stored = {}) {
   const model = value.slice(at + 1);
   if (!VALUE_PROVIDERS.has(provider) || !MODEL_ID.test(model)) return null;
   if (model === '*' && provider !== 'local') return null;
+  // The companion has one model: which of its own models answers is the companion's choice.
+  if (provider === 'companion' && model !== COMPANION_MODEL) return null;
   // NVIDIA models are an allowlist: the site's pool serves no others.
   if (provider === 'nvidia' && !NVIDIA_MODELS.some((m) => m.id === model)) return null;
   return { assistant: /** @type {import('../config.js').AssistantValue} */ (value) };
@@ -250,8 +258,8 @@ export function defaultPoolValue(state) {
 
 /**
  * Option groups in picker order: recommended (Auto, the device's pick and suggestion, the site's
- * default free model), on this device, free through the site's pools, one group per provider the
- * user has a key for, and their own server. A stored value nothing offers stays visible in the
+ * default free model), on this device, the paired companion, free through the site's pools, one
+ * group per provider the user has a key for, and their own server. A stored value nothing offers stays visible in the
  * group it belongs to, so the picker can show it.
  * @param {PickerState} state
  * @returns {PickerGroup[]}
@@ -275,6 +283,10 @@ export function assistantGroups(state) {
     if (!state.keyed.includes(provider)) continue;
     const items = (state.models[provider] ?? []).map((m) => /** @type {PickerItem} */ ({ value: `${provider}:${m.id}`, runtime: 'key', provider, label: m.label || m.id, ...(m.unverified ? { unverified: true } : {}) }));
     groups.push({ id: /** @type {GroupId} */ (provider), items });
+  }
+  if (state.companion || state.current === COMPANION_VALUE) {
+    // Offered only while paired; a stored choice of an unpaired one stays visible, disabled.
+    groups.splice(2, 0, { id: 'companion', items: [{ value: COMPANION_VALUE, runtime: 'companion', provider: 'companion', labelKey: COMPANION_LABEL_KEY, ...(state.companion ? {} : { disabled: true }) }] });
   }
   if (state.server || state.current?.startsWith('local:')) {
     const items = [{ value: 'local:*', runtime: /** @type {const} */ ('server'), labelKey: 'chat-thread.picker.server_first' }, ...state.serverModels.map((id) => ({ value: `local:${id}`, runtime: /** @type {const} */ ('server'), label: id }))];

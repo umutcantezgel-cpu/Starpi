@@ -71,6 +71,13 @@ function fetchWithTimeout(input, init = {}) {
  */
 const SUPABASE_LIB_URL = '__STARPI_SUPABASE_LIB_URL__';
 
+/**
+ * A build the companion serves (profile `companion`) runs on the companion's own origin, whose
+ * policy lets the page reach that origin only: the library is never loaded there, connect() ends
+ * offline at once without retrying, and every query answers as if the network were gone.
+ */
+const LIBRARY_OFF = typeof __STARPI_PROFILE__ === 'string' && __STARPI_PROFILE__ === 'companion';
+
 /** @type {Promise<SupabaseClient> | null} */
 let clientPromise = null;
 /** Loads of the library that failed or ran out of time so far. */
@@ -134,6 +141,8 @@ function loadLib() {
  * @returns {Promise<SupabaseClient>}
  */
 function client() {
+  // The message is one classifyError() reads as 'network'.
+  if (LIBRARY_OFF) return Promise.reject(new Error('NetworkError: the library is not part of a build the companion serves'));
   if (clientPromise) return clientPromise;
   clientPromise = loadLib()
     .then(({ createClient }) =>
@@ -319,6 +328,11 @@ async function ensureSession() {
 export function connect() {
   if (!connectPromise) {
     connectPromise = (async () => {
+      if (LIBRARY_OFF) {
+        const error = /** @type {DataError} */ ({ kind: 'network', message: 'The library is not part of a build the companion serves' });
+        updateConnection({ status: 'offline', signedIn: false, authError: error, hardened: false, probeError: error });
+        return connection;
+      }
       if (globalThis.navigator?.onLine === false) {
         const error = /** @type {DataError} */ ({ kind: 'network', message: 'The browser is offline' });
         updateConnection({ status: 'offline', signedIn: false, authError: error, hardened: false, probeError: error });

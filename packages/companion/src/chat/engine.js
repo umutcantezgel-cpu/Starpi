@@ -21,7 +21,7 @@ import { strictest } from '../contracts/data-classes.js';
 import { codeOf } from '../lib/errors.js';
 import { clip } from '../setup/kit.js';
 import { CALL_PREFIX, parseToolCall, systemMessage, toolResultBlock } from './rules.js';
-import { gatherSources } from './sources.js';
+import { gatherSources, zoneIdentifiers } from './sources.js';
 
 export const MAX_TOOL_CALLS = 4;
 export const TOOL_RESULT_CHARS = 8000;
@@ -100,6 +100,8 @@ export function joinUnits(raw, units) {
 export function createAnswerEngine({ hub, router, audit, auditKind, clock, timeZone, log = () => {} }) {
   /** @param {number} ms */
   const localTime = (ms) => new Intl.DateTimeFormat('en-GB', { timeZone, dateStyle: 'full', timeStyle: 'short' }).format(new Date(ms));
+  // The zone name is in every feed reading's text: its digits are part of a name, not numbers.
+  const zonePatterns = zoneIdentifiers(timeZone);
 
   /**
    * Answers one turn.
@@ -141,7 +143,7 @@ export function createAnswerEngine({ hub, router, audit, auditKind, clock, timeZ
       gateSources = [...sources, ...toolSources];
       raw = '';
       units = [];
-      gate = createSentenceGate({ mode, question, sources: gateSources.map((s) => ({ label: s.label, kind: s.kind, text: s.text })) });
+      gate = createSentenceGate({ mode, question, identifierPatterns: zonePatterns, sources: gateSources.map((s) => ({ label: s.label, kind: s.kind, text: s.text })) });
       return gate;
     };
     /** @param {Array<{ text: string, cites: number[], kind: string, start: number, end: number }>} released */

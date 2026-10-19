@@ -129,6 +129,37 @@ describe('labels', () => {
   });
 });
 
+describe('companion answers', () => {
+  it('take their label from the companion, with its notice and the withheld count under it', () => {
+    assert.equal(labels.companionLabel({ mode: 'sources', source: 'model' }), 'companion');
+    assert.equal(labels.companionLabel({ mode: 'free', source: 'model' }), 'companion_free');
+    assert.equal(labels.companionLabel({ mode: 'sources', source: 'template' }), 'companion_template');
+    const want = { companion: ['checked', 'Checked by the companion'], companion_free: ['unchecked', 'General knowledge, not checked against sources'], companion_template: ['withheld', 'Template answer, no model wrote it'] };
+    for (const [name, [kind, text]] of Object.entries(want)) {
+      const el = message('An answer.');
+      labels.renderAnswerLabel(el, /** @type {any} */ (name));
+      const row = /** @type {HTMLElement} */ (labelOf(el));
+      assert.equal(row.querySelector('[data-provenance]')?.getAttribute('data-provenance'), kind);
+      assert.equal(row.textContent?.trim(), text);
+      assert.ok(row.querySelector('[data-provenance]')?.getAttribute('title'));
+    }
+    assert.equal(labels.answerLabelOf({ label: 'companion_free', meta: { answer_label: 'companion_free' } }), 'companion_free');
+
+    const el = message('No language model is configured.');
+    labels.renderAnswerLabel(el, 'companion_template');
+    labels.renderCompanionNotes(el, { notice: 'no_model', withheld: 2 });
+    labels.renderCompanionNotes(el, { notice: 'no_model', withheld: 2 });
+    const notes = [...el.querySelectorAll('.companion-note')];
+    assert.equal(notes.length, 2, 'shown once');
+    assert.match(notes[0].textContent ?? '', /No language model is configured in the companion/);
+    assert.match(notes[1].textContent ?? '', /2 sentences were withheld/);
+    assert.equal(labelOf(el)?.nextElementSibling, notes[0], 'right under the label');
+    const other = message('x');
+    labels.renderCompanionNotes(other, { notice: 'something_new', withheld: 0 });
+    assert.match(other.textContent ?? '', /The companion answered with a template/);
+  });
+});
+
 describe('mixed answers', () => {
   const PLAN = 'Project Nebula launches on 12 May 2027. The approved budget is 480,000 EUR.';
 

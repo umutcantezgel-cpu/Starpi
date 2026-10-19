@@ -50,7 +50,7 @@ import { openDb, StoreError } from './idb.js';
  * @property {unknown[]} opaque  provider state (signed thinking, encrypted reasoning) replayed unchanged
  * @property {string | null} model
  * @property {string | null} provider
- * @property {string | null} label  answer label: 'grounded', 'free', 'mixed', 'web'
+ * @property {string | null} label  answer label: 'grounded', 'free', 'mixed', 'web', or the companion's ('companion', 'companion_free', 'companion_template')
  * @property {unknown} [grounding]  the source-check result of the answer
  * @property {string} [receiptId]
  * @property {NodeUsage | null} usage

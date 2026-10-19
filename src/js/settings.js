@@ -20,10 +20,10 @@ import * as engine from './webgpu/engine.js';
 /** @typedef {import('./config.js').AssistantValue} AssistantValue */
 
 /**
- * Where a question goes with the chosen assistant: on this device, the own server, a provider with
- * the user's key, a pool of this site, or nowhere (no model is set up).
+ * Where a question goes with the chosen assistant: on this device, the own server, the paired
+ * companion, a provider with the user's key, a pool of this site, or nowhere (no model is set up).
  * @param {AssistantValue} value
- * @returns {{ kind: 'device' | 'local' | 'key' | 'pool' | 'none', provider?: import('./ai/contract.js').ProviderId }}
+ * @returns {{ kind: 'device' | 'local' | 'companion' | 'key' | 'pool' | 'none', provider?: import('./ai/contract.js').ProviderId }}
  */
 export function destinationOf(value) {
   if (value === 'device') return { kind: 'device' };
@@ -32,6 +32,7 @@ export function destinationOf(value) {
   const route = routeOf(provider);
   if (route === 'key' || route === 'pool') return { kind: route, provider };
   if (route === 'local') return { kind: 'local' };
+  if (route === 'companion') return { kind: 'companion' };
   return { kind: 'none' };
 }
 
@@ -61,6 +62,10 @@ export function renderPrivacyNotice() {
       // keep empty host
     }
     params = { host: host || '–' };
+  } else if (dest.kind === 'companion') {
+    // The companion answers from its documents and notes only in Grounded mode (Auto and Free: general knowledge).
+    icon = 'plug';
+    key = mode === 'grounded' ? 'privacy.companion' : 'privacy.free_companion';
   } else if (dest.kind === 'pool') {
     icon = 'cloud';
     key = free ? 'chat-thread.privacy.free_pool' : 'chat-thread.privacy.pool';

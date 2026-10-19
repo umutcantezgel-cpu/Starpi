@@ -1,11 +1,13 @@
 // @ts-check
 // The built-in adapter of every provider, and a helper that registers them all with the AI layer's
-// registry (src/js/ai/index.js). The Anthropic adapter loads its SDK only when a call runs, and
-// the on-device adapters load their engines the same way, so importing this module stays cheap.
+// registry (src/js/ai/index.js). The Anthropic adapter loads its SDK only when a call runs, the
+// on-device adapters load their engines the same way and the companion adapter its pairing, so
+// importing this module stays cheap.
 import { registerAdapter } from '../index.js';
 import { getProvider, PROVIDER_ORDER } from '../catalog/providers.js';
 import { createLocalQuirks, getQuirks } from '../quirks/index.js';
 import { createAnthropicAdapter } from './anthropic.js';
+import { createCompanionAdapter } from './companion.js';
 import { createGeminiAdapter } from './gemini.js';
 import { createOpenAiChatAdapter } from './openai-chat.js';
 import { createOpenAiResponsesAdapter } from './openai-responses.js';
@@ -20,6 +22,7 @@ import { createWebllmAdapter } from './webllm.js';
  * @property {import('./anthropic.js').AnthropicOptions} [anthropic]  e.g. { serverFallbacks: true } for the site's BYOK chat
  * @property {import('../quirks/local.js').LocalQuirkOptions} [local]
  * @property {import('./on-device.js').OnDeviceOptions} [onDevice]
+ * @property {import('./companion.js').CompanionAdapterOptions} [companion]
  */
 
 /**
@@ -42,6 +45,8 @@ export function createAdapter(provider, options = {}) {
       return createWasmAdapter(options.onDevice);
     case 'local':
       return createOpenAiChatAdapter({ provider, quirks: createLocalQuirks(options.local) });
+    case 'companion':
+      return createCompanionAdapter(options.companion);
     default: {
       const info = getProvider(provider);
       if (!info) throw new TypeError(`Unknown provider id: ${String(provider).slice(0, 40)}`);

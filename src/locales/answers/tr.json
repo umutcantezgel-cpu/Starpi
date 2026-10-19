@@ -8,7 +8,10 @@
     "hint_free": "Modelin kendi bilgisiyle yanıtlandı; hiçbir şey kaynaklarla karşılaştırılmadı.",
     "hint_grounded": "Her ifade kaynaklarınızın alıntılarıyla karşılaştırıldı.",
     "hint_mixed": "Kaynaklarınızdan alınan ifadeler denetlenip işaretlendi; geri kalanı genel bilgidir.",
-    "hint_web": "Yanıt, bir web aramasının bulduğu sayfalara atıf yapıyor; içerikleri doğrulanmadı."
+    "hint_web": "Yanıt, bir web aramasının bulduğu sayfalara atıf yapıyor; içerikleri doğrulanmadı.",
+    "hint_companion": "Bu bilgisayardaki Companion, kendi belgelerinden ve notlarından yanıt verdi; filtresi, gösterilmeden önce her sayıyı cümlenin alıntıladığı kaynakla karşılaştırdı.",
+    "hint_companion_free": "Bu bilgisayardaki Companion genel bilgiyle yanıt verdi; filtresi bağlantıları kaldırdı, ancak hiçbir şey kaynaklarla karşılaştırılmadı.",
+    "hint_companion_template": "Bunu hiçbir model yazmadı: Companion sabit bir metinle yanıt verdi ve notu nedenini açıklıyor."
   },
   "mixed": {
     "title": "Denetlenen kısımlar",

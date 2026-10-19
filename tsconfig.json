@@ -94,6 +94,7 @@
     "src/js/chat/tree.js",
     "src/js/ai/adapters/anthropic.js",
     "src/js/ai/adapters/common.js",
+    "src/js/ai/adapters/companion.js",
     "src/js/ai/adapters/gemini.js",
     "src/js/ai/adapters/index.js",
     "src/js/ai/adapters/on-device.js",

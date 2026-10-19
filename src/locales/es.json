@@ -75,8 +75,9 @@
     "free_cloud": "Chat libre: tu pregunta, un archivo adjunto y los mensajes anteriores de este chat van a tu proveedor. No se busca en ninguna fuente.",
     "free_nvidia": "Chat libre: tu pregunta, un archivo adjunto y los mensajes anteriores de este chat pasan por el servidor de Starpi hasta NVIDIA. No se busca en ninguna fuente.",
     "free_no_model": "Chat libre: no hay ningún modelo configurado, así que no se envía nada. Añade una clave en Ajustes o usa el modo de fuentes verificadas.",
-    "history_synced": "Las preguntas y respuestas se guardan en tu historial de chat privado; puedes eliminarlo en Ajustes.",
-    "history_local": "Los chats se guardan en este navegador; puedes eliminarlos en Ajustes."
+    "history_local": "Los chats se guardan en este navegador; puedes eliminarlos en Ajustes.",
+    "companion": "Acompañante: tu pregunta va a Starpi Core en este ordenador, que responde a partir de sus propios documentos y notas con los modelos que tiene configurados. Decide por clase de datos si un modelo en la nube puede ver la pregunta.",
+    "free_companion": "Chat libre con el acompañante: tu pregunta va a Starpi Core en este ordenador, que responde con los modelos que tiene configurados. Decide por clase de datos si un modelo en la nube puede ver la pregunta. No se busca en ninguna fuente."
   },
   "engine": {
     "mode_cloud": "Asistente en la nube",
@@ -214,7 +215,6 @@
     "mode_grounded": "Modo de fuentes verificadas",
     "mode_free_hint": "Habla directamente con el modelo. Las respuestas no se comprueban con las fuentes.",
     "mode_grounded_hint": "Las respuestas salen de tus fuentes y se comprueban frase por frase.",
-    "free_note": "Chat libre · sin comprobar con las fuentes",
     "free_no_model_title": "El chat libre necesita un modelo",
     "free_no_model_body": "Añade una clave de Gemini u OpenRouter en Ajustes, carga el modelo local o conecta tu servidor propio. El modo de fuentes verificadas también responde sin modelo, citando tus fuentes.",
     "free_failed_body": "{reason}. Vuelve a intentarlo o cambia al modo de fuentes verificadas para obtener una respuesta citada de tus fuentes.",

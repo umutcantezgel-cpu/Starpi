@@ -8,7 +8,10 @@
     "hint_free": "Réponse tirée des connaissances propres du modèle ; rien n’a été comparé à des sources.",
     "hint_grounded": "Chaque affirmation a été comparée aux extraits de vos sources.",
     "hint_mixed": "Les affirmations tirées de vos sources sont vérifiées et signalées ; le reste relève des connaissances générales.",
-    "hint_web": "La réponse cite des pages trouvées par une recherche web ; leur contenu n’a pas été vérifié."
+    "hint_web": "La réponse cite des pages trouvées par une recherche web ; leur contenu n’a pas été vérifié.",
+    "hint_companion": "Le compagnon de cet ordinateur a répondu à partir de ses documents et notes, et son filtre a vérifié chaque nombre par rapport à la source citée par la phrase avant de l’afficher.",
+    "hint_companion_free": "Le compagnon de cet ordinateur a répondu à partir de connaissances générales ; son filtre a retiré les liens, mais rien n’a été comparé à des sources.",
+    "hint_companion_template": "Aucun modèle n’a écrit ceci : le compagnon a répondu avec un texte fixe, et sa remarque en donne la raison."
   },
   "mixed": {
     "title": "Parties vérifiées",

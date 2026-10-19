@@ -243,7 +243,10 @@
     "calls_ask": "pregunta cada vez",
     "calls_allow": "se ejecuta sin preguntar",
     "approve_tool_allow": "Aprobar y ejecutar sin preguntar",
-    "approve_allow_confirm": "¿Aprobar {tool} con la descripción que muestra ahora el servidor y dejar que se ejecute sin preguntar? Una llamada escrita después del resultado de una herramienta te seguirá preguntando antes."
+    "approve_allow_confirm": "¿Aprobar {tool} con la descripción que muestra ahora el servidor y dejar que se ejecute sin preguntar? Una llamada escrita después del resultado de una herramienta te seguirá preguntando antes.",
+    "state_up": "disponible",
+    "state_down": "no disponible",
+    "state_unknown": "aún sin comprobar"
   },
   "audit": {
     "title": "Auditoría",
@@ -351,6 +354,8 @@
     "mcp_clients_full": "Ya hay tantos clientes MCP como se permiten.",
     "notify_streams": "Hay demasiadas conexiones abiertas a la bandeja de entrada; cierra otras pestañas.",
     "session_unknown": "Esa sesión ya ha terminado.",
-    "audit_seq_unknown": "El acompañante no tiene esa entrada."
+    "audit_seq_unknown": "El acompañante no tiene esa entrada.",
+    "conversation_busy": "El acompañante todavía está con preguntas anteriores de esta conversación. Espera a que termine y vuelve a preguntar.",
+    "connector_down": "El servidor MCP no responde, así que el acompañante no lo llama ahora."
   }
 }

@@ -4,9 +4,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { tempDir } from './helpers.mjs';
 import { chatModel, client, eventually, startModules } from './module-helpers.mjs';
+import { createHub } from '../src/setup/hub.js';
+import { standardModules } from '../src/setup/standard.js';
 import { joinUnits } from '../src/chat/engine.js';
 import { parseToolCall, sourceBlock, toolResultBlock } from '../src/chat/rules.js';
-import { readingText } from '../src/chat/sources.js';
+import { readingText, zoneIdentifiers } from '../src/chat/sources.js';
 
 /** @param {string} url */
 const localBrain = (url) => ({ brains: [{ id: 'local', type: 'openai-compat', baseUrl: `${url}/v1`, model: 'test-model' }] });
@@ -160,6 +162,26 @@ test('a reading carries its local time and date, so a sentence may give them in 
   assert.deepEqual(answer.withheld, [{ reason: 'unsupported_number', kind: 'sentence' }], 'the day of the date is no number of its own');
 });
 
+test('a zone name with digits is a name, never a number a sentence may cite', async (t) => {
+  assert.deepEqual(zoneIdentifiers('Europe/Berlin'), [], 'a name without digits needs no pattern');
+  assert.equal(zoneIdentifiers('Etc/GMT+5')[0].test('local time in Etc/GMT+5:'), true);
+  assert.equal(zoneIdentifiers('EST5EDT')[0].test('5'), false);
+
+  const model = await chatModel(() => 'The room had 21.5 °C at 2:05 local time in Etc/GMT+5 [S1]. It got 5 degrees warmer since the morning [S1].');
+  const { dir, cleanup } = tempDir();
+  const { companion, hub } = await startModules(dir, { only: ['retrieval', 'feeds', 'ask'], raw: { ...localBrain(model.url), timeZone: 'Etc/GMT+5' } });
+  t.after(async () => {
+    await companion.stop();
+    await model.close();
+    cleanup();
+  });
+  const c = await client(companion);
+  /** @type {any} */ (hub.get('feeds')).ingest([{ source_id: 'home-sensor', series: 'room.temperature', value: 21.5, unit: '°C', ts_source: '2026-10-18T07:05:00Z', quality: 'good' }], { dataClass: 'public' });
+  const { answer } = (await c.post('/v1/ask', { question: 'What is the room temperature?' })).json();
+  assert.equal(answer.text, 'The room had 21.5 °C at 2:05 local time in Etc/GMT+5.', 'the zone may be named as the source writes it');
+  assert.deepEqual(answer.withheld, [{ reason: 'unsupported_number', kind: 'sentence' }], 'the 5 of the zone name holds up no 5 of a sentence');
+});
+
 test('without a model the template passes the gate with its notice', async (t) => {
   const { dir, cleanup } = tempDir();
   const { companion } = await startModules(dir, { only: ['ask'] });
@@ -310,4 +332,56 @@ test('/v1/chat: a busy conversation refuses more waiting turns; a rename or a de
   assert.equal(events.find((e) => e.event === 'error')?.data.code, 'conversation_unknown');
   assert.equal((await c.get(`/v1/chat/conversations/${conversation}`)).status, 404, 'a deleted conversation does not come back');
   assert.deepEqual((await c.get('/v1/chat/conversations')).json().conversations, []);
+});
+
+/**
+ * Reads the events of a route's stream to its end.
+ * @param {AsyncIterable<{ event: string, data: any }>} stream
+ */
+async function drainStream(stream) {
+  const events = [];
+  for await (const e of stream) events.push(e);
+  return events;
+}
+
+test('/v1/chat: a waiting turn whose client went away gives its place back at once', async (t) => {
+  const model = await heldModel(() => 'Fine.');
+  const { dir, cleanup } = tempDir();
+  const modules = standardModules({ hub: createHub(), only: ['chat'] });
+  const { companion } = await startModules(dir, { modules, raw: { ...localBrain(model.url), modules: { chat: { waitingTurns: 1 } } } });
+  t.after(async () => {
+    model.releaseAll();
+    await companion.stop();
+    await model.close();
+    cleanup();
+  });
+  const c = await client(companion);
+  const first = await c.stream('POST', '/v1/chat', { body: { question: 'Hello?', mode: 'free' }, until: streamEnded });
+  const conversation = first.events.find((e) => e.event === 'done')?.data.conversation;
+  // The route itself, so the test decides exactly when a waiting client goes away.
+  const route = /** @type {any} */ (modules.find((m) => m.id === 'chat')).routes.find((/** @type {any} */ r) => r.method === 'POST' && r.path === '/');
+  /** @param {string} question @param {AbortSignal} signal */
+  const turn = (question, signal) => route.handler({ method: 'POST', path: '/v1/chat', params: {}, body: { question, conversation, mode: 'free' }, session: null, signal });
+
+  // One turn runs (its model call is held), one waits behind it: the lane is full.
+  const running = c.stream('POST', '/v1/chat', { body: { question: 'Running?', conversation, mode: 'free' }, until: streamEnded });
+  await eventually(() => model.held.length === 1);
+  const gone = new AbortController();
+  const waiting = turn('Waiting?', gone.signal);
+  assert.throws(() => turn('One more?', new AbortController().signal), (/** @type {any} */ err) => err.code === 'conversation_busy', 'the lane is full');
+
+  // The waiting client goes away before its turn begins: its place is free again while the
+  // running turn still holds the model.
+  gone.abort();
+  assert.deepEqual(await drainStream(waiting.stream), [], 'the abandoned turn sent nothing');
+  const next = turn('Next?', new AbortController().signal);
+  assert.equal(model.held.length, 1, 'the running turn is still running');
+  model.held.shift()?.();
+  assert.equal((await running).events.find((e) => e.event === 'done')?.data.turn, 2);
+  await eventually(() => model.held.length === 1);
+  model.held.shift()?.();
+  const events = await drainStream(next.stream);
+  assert.equal(events.find((e) => e.event === 'error'), undefined, 'the next turn ran');
+  assert.equal(events.find((e) => e.event === 'done')?.data.turn, 3, 'the abandoned turn left nothing behind');
+  assert.equal((await c.get(`/v1/chat/conversations/${conversation}`)).json().conversation.turns, 3);
 });

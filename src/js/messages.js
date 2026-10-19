@@ -504,22 +504,3 @@ export function appendLoading(key = 'chat.thinking') {
   scrollToBottom();
   return () => div.remove();
 }
-
-/**
- * Marks an answer of the free chat: it searched no sources and was not checked against any.
- * @param {HTMLElement} messageEl
- */
-export function markFreeAnswer(messageEl) {
-  const slot = messageEl.querySelector('.message-provenance');
-  if (!slot) return;
-  const note = document.createElement('p');
-  note.className = 'free-note';
-  const icon = document.createElement('i');
-  icon.dataset.lucide = 'message-square';
-  icon.className = 'w-3.5 h-3.5 flex-shrink-0';
-  const text = document.createElement('span');
-  setText(text, 'chat.free_note');
-  note.append(icon, text);
-  slot.append(note);
-  refreshIcons(note);
-}

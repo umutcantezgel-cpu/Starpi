@@ -37,7 +37,8 @@
     "pool": "{provider} via Starpi · {model}",
     "served": "{provider} · {model} (au lieu de {requested})",
     "device": "Sur cet appareil · {model}",
-    "server": "Votre serveur · {model}"
+    "server": "Votre serveur · {model}",
+    "companion": "Compagnon local · {model}"
   },
   "meta": {
     "tokens": "{input} en entrée · {output} en sortie",
@@ -88,13 +89,16 @@
     "image_not_source": "{name} n’a pas été ajouté à vos sources : lire le texte d’une image demande un modèle capable de voir, et votre accord.",
     "rate_limited_wait": "Trop de requêtes chez le fournisseur en ce moment : patientez {seconds} s puis réessayez.",
     "stays_on_device_title": "Cette question reste sur cet appareil",
-    "stays_on_device_body": "Elle a été posée sur cet appareil : seul le modèle d’ici ou votre propre serveur y répond. Choisissez l’un des deux, ou reposez la question dans un nouveau message.",
+    "stays_on_device_body": "Elle a été posée sur cet appareil : seul le modèle d’ici, votre propre serveur ou votre compagnon associé y répond. Choisissez l’un d’eux, ou reposez la question dans un nouveau message.",
     "failed_body": "Un problème est survenu pendant la réponse. Veuillez réessayer.",
     "store_failed": "La discussion n’a pas pu être enregistrée dans ce navigateur (fenêtre privée, stockage bloqué ou plein).",
     "attachment_missing_title": "Une pièce jointe ne se trouve que sur l’appareil où elle a été ajoutée",
     "attachment_missing_body": "Les pièces jointes ne sont pas synchronisées : {names} {n:a été laissée|ont été laissées} de côté pour cette demande.",
     "deleted_elsewhere_title": "Cette discussion a été supprimée dans un autre onglet ou navigateur",
-    "deleted_elsewhere_body": "Une nouvelle discussion a commencé ici."
+    "deleted_elsewhere_body": "Une nouvelle discussion a commencé ici.",
+    "companion_unpaired_title": "Aucun compagnon associé",
+    "companion_unpaired_body": "Associez Starpi Core sur cet ordinateur dans les Paramètres, ou choisissez un autre modèle.",
+    "companion_failed_title": "Le compagnon n’a pas pu répondre"
   },
   "continued": "Suite après la limite de longueur",
   "continue_prompt": "Continue exactement là où tu t’es arrêté.",

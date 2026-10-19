@@ -75,8 +75,9 @@
     "free_cloud": "Discussion libre : votre question, un fichier joint et les messages précédents de cette discussion vont à votre fournisseur. Aucune source n’est consultée.",
     "free_nvidia": "Discussion libre : votre question, un fichier joint et les messages précédents de cette discussion passent par le serveur de Starpi jusqu’à NVIDIA. Aucune source n’est consultée.",
     "free_no_model": "Discussion libre : aucun modèle n’est configuré, rien n’est donc envoyé. Ajoutez une clé dans les Paramètres ou utilisez le mode sources vérifiées.",
-    "history_synced": "Les questions et les réponses sont enregistrées dans votre historique de discussion privé ; vous pouvez le supprimer dans les Paramètres.",
-    "history_local": "Les discussions sont enregistrées dans ce navigateur ; vous pouvez les supprimer dans les Paramètres."
+    "history_local": "Les discussions sont enregistrées dans ce navigateur ; vous pouvez les supprimer dans les Paramètres.",
+    "companion": "Compagnon : votre question va à Starpi Core sur cet ordinateur, qui répond à partir de ses propres documents et notes avec les modèles qui y sont configurés. Il décide selon la classe de données si un modèle cloud peut voir la question.",
+    "free_companion": "Discussion libre avec le compagnon : votre question va à Starpi Core sur cet ordinateur, qui répond avec les modèles qui y sont configurés. Il décide selon la classe de données si un modèle cloud peut voir la question. Aucune source n’est consultée."
   },
   "engine": {
     "mode_cloud": "Assistant cloud",
@@ -214,7 +215,6 @@
     "mode_grounded": "Mode sources vérifiées",
     "mode_free_hint": "Échangez directement avec le modèle. Les réponses ne sont pas vérifiées par rapport aux sources.",
     "mode_grounded_hint": "Les réponses proviennent de vos sources et sont vérifiées phrase par phrase.",
-    "free_note": "Discussion libre · non vérifiée par rapport aux sources",
     "free_no_model_title": "La discussion libre nécessite un modèle",
     "free_no_model_body": "Ajoutez une clé Gemini ou OpenRouter dans les Paramètres, chargez le modèle local ou connectez votre serveur personnel. Le mode sources vérifiées répond aussi sans modèle, en citant vos sources.",
     "free_failed_body": "{reason}. Réessayez, ou passez au mode sources vérifiées pour obtenir une réponse citée depuis vos sources.",

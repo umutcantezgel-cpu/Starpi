@@ -6,10 +6,12 @@
 // from general knowledge (mode `free`) with the models it is configured for, routed by data class
 // on that machine. Every answer has already passed the companion's sentence gate, so the browser
 // passes it through unchanged: released units are shown as they arrive, withdrawn ones go away on
-// `reset`, and nothing is checked, rewritten or cached here. Answers are not kept in the browser at
-// all: the conversation lives sealed in the companion, and the Companion tab reads it from there.
-// A template answer carries a notice code (no model, secret content, a resting model, ...), which
-// the app translates (companion.notice.<code>).
+// `reset`, and nothing is checked, rewritten or cached here. The conversation lives sealed in the
+// companion, and the Companion tab reads it from there; in the chat, where the companion is the AI
+// layer's provider `companion` (ai/adapters/companion.js), its answer is also stored in the local
+// conversation like every answer (on this device only, never in the router's cache). A template
+// answer carries a notice code (no model, secret content, a resting model, ...), which the app
+// translates (companion.notice.<code>).
 //
 // Source "Companion documents and notes": a grounded question in the chat also searches the
 // companion (POST /v1/retrieval/search), and its passages join the excerpts of the question like

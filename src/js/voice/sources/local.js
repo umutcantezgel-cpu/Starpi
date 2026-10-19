@@ -18,7 +18,8 @@ import { transcriptionForm, transcriptText } from './openai.js';
 /**
  * @typedef {object} VoiceServer
  * @property {string} base                 API root without /v1
- * @property {Record<string, string>} headers  auth headers of the server (the companion's token)
+ * @property {Record<string, string>} headers  auth headers of the server (the companion's token or CSRF value)
+ * @property {'omit' | 'same-origin'} [credentials]  cookies sent along: only to the companion that serves this page
  */
 
 /**
@@ -36,7 +37,7 @@ export function serverRoot(url) {
  * @param {RequestInit} init
  */
 function serverFetch(ctx, server, path, init) {
-  return fetchFor(ctx)(`${server.base}${path}`, { ...init, headers: { ...server.headers, ...(/** @type {Record<string, string>} */ (init.headers ?? {})) }, credentials: 'omit', redirect: 'error', cache: 'no-store' });
+  return fetchFor(ctx)(`${server.base}${path}`, { ...init, headers: { ...server.headers, ...(/** @type {Record<string, string>} */ (init.headers ?? {})) }, credentials: server.credentials ?? 'omit', redirect: 'error', cache: 'no-store' });
 }
 
 /**

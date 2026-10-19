@@ -243,7 +243,10 @@
     "calls_ask": "fragt jedes Mal",
     "calls_allow": "läuft ohne Nachfrage",
     "approve_tool_allow": "Freigeben, ohne Nachfrage",
-    "approve_allow_confirm": "{tool} mit der Beschreibung freigeben, die der Server jetzt zeigt, und ohne Nachfrage laufen lassen? Ein Aufruf nach einem Werkzeugergebnis fragt trotzdem zuerst bei Ihnen nach."
+    "approve_allow_confirm": "{tool} mit der Beschreibung freigeben, die der Server jetzt zeigt, und ohne Nachfrage laufen lassen? Ein Aufruf nach einem Werkzeugergebnis fragt trotzdem zuerst bei Ihnen nach.",
+    "state_up": "erreichbar",
+    "state_down": "nicht erreichbar",
+    "state_unknown": "noch nicht geprüft"
   },
   "audit": {
     "title": "Protokoll",
@@ -351,6 +354,8 @@
     "mcp_clients_full": "Es gibt bereits so viele MCP-Clients wie erlaubt.",
     "notify_streams": "Zu viele offene Verbindungen zum Posteingang; schließen Sie andere Tabs.",
     "session_unknown": "Diese Sitzung ist bereits beendet.",
-    "audit_seq_unknown": "Einen solchen Eintrag hat der Begleiter nicht."
+    "audit_seq_unknown": "Einen solchen Eintrag hat der Begleiter nicht.",
+    "conversation_busy": "Der Begleiter arbeitet noch an früheren Fragen dieses Gesprächs. Warten Sie darauf und fragen Sie dann erneut.",
+    "connector_down": "Der MCP-Server antwortet nicht, daher ruft der Begleiter ihn jetzt nicht auf."
   }
 }

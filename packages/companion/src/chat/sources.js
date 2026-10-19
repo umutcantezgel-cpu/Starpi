@@ -4,8 +4,9 @@
 // match the question. Each becomes a labelled source ([S1], [S2], ...) for the prompt and for the
 // sentence gate, which withholds every number that the source a sentence cites does not hold. A
 // feed reading is a source like any other: its number can be cited exactly as the feed reported it,
-// and its time in the forms a person writes it in the companion's time zone. Nothing above the
-// class ceiling is taken (secret content never reaches a prompt).
+// and its time in the forms a person writes it in the companion's time zone (whose name the gate
+// reads as an identifier, never as a number: zoneIdentifiers). Nothing above the class ceiling is
+// taken (secret content never reaches a prompt).
 import { codeOf } from '../lib/errors.js';
 
 /**
@@ -43,6 +44,20 @@ export function localTimeForms(iso, timeZone) {
   const bare = `${Number(p.day)}.${Number(p.month)}.${p.year}`;
   if (bare !== dates[1]) dates.push(bare);
   return { times, dates };
+}
+
+/**
+ * The name of a time zone as an identifier for the sentence gate. Some zone names carry digits
+ * (`Etc/GMT+5`, `EST5EDT`); written into a source as they are, the gate would read `5` as a number
+ * the source holds, and a sentence citing the reading could state any 5. A pattern for the whole
+ * name makes it one identifier instead: its digits count as no number, and a sentence may name the
+ * zone only as the source writes it. Names without digits need no pattern.
+ * @param {string} timeZone
+ * @returns {RegExp[]}
+ */
+export function zoneIdentifiers(timeZone) {
+  if (typeof timeZone !== 'string' || !/\d/.test(timeZone)) return [];
+  return [new RegExp(timeZone.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&'), 'i')];
 }
 
 /**
