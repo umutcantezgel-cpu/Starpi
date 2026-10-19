@@ -3,8 +3,10 @@
 // revision of it becomes version 2, an AI edit of a selection version 3 (as a new chat turn), older
 // versions show again, the preview runs in the render frame and the document is there after a
 // reload; one question to two models of the own server side by side, "Continue with this" as the
-// newest branch; the council in the conversation with three providers and a labelled answer; all
-// without a page error and with the panels passing axe.
+// newest branch; the council in the conversation with three providers and a labelled answer; a
+// compared column runs its tool calls, and one compared from an answer written with search results
+// carries the same web check as the thread's; all without a page error and with the panels passing
+// axe.
 import AxeBuilder from '@axe-core/playwright';
 import { expect, mockSupabase, sseBody, test } from './fixtures.mjs';
 
@@ -340,9 +342,14 @@ test.describe('compare and council', () => {
       [SERVER, SEARCH_FAKE],
     );
     await page.goto('/');
-    await page.fill('#chatInput', 'Tide basics');
-    await page.locator('details.tools-menu summary').click();
-    await page.locator('#toolsMenuList [data-arg="compare"]').click();
+    // Asked in the chat, the question goes out with the search results and its answer is checked.
+    // (A new question typed into Compare for models here and the own server only stays on this
+    // device: it goes to no search service.)
+    await ask(page, 'Tide basics');
+    await settled(page);
+    await expect(answers(page).last().locator('[data-answer-label="web"]')).toBeVisible();
+    // Compared from that answer, every column gets the same results and the same check.
+    await answers(page).last().locator('[data-action="msg-extra"][data-extra="compare"]').click();
     const panel = page.locator('#chat-aside-compare');
     await expect(panel.locator('[data-compare-question]')).toHaveValue('Tide basics');
     await expect(panel.locator('[data-compare-model]')).toHaveCount(2);
@@ -358,6 +365,7 @@ test.describe('compare and council', () => {
     await columns.nth(1).locator('[data-action="compare-continue"]').click();
     await expect(columns.nth(1)).toContainText('In the chat as the newest branch');
     const newest = answers(page).last();
+    await expect(newest.locator('.branch-pos')).toHaveText('2/2');
     await expect(newest.locator('[data-answer-label="web"]')).toBeVisible();
     await expect(newest.locator('.web-check')).toHaveText('Checked against the cited text: 1 of 2 statements found');
     await expect(newest.locator('.web-sources a')).toHaveCount(1);
