@@ -506,6 +506,21 @@ describe('Live source mode with the default ask and retrieval', () => {
     assert.equal(controller.state(), 'ended');
     assert.equal(controller.reason(), 'no_model');
   });
+
+  it('ends a source conversation the picked companion cannot answer, with its own reason', async () => {
+    const { controller } = controllerWith({
+      canUseLive: () => false,
+      // eslint-disable-next-line require-yield
+      ask: async function* () {
+        throw Object.assign(new Error('the companion answers free turns only'), { code: 'companion_sources' });
+      },
+      retrieve: async () => [],
+    });
+    await controller.start('sources');
+    await controller.say('What do my files say?');
+    assert.equal(controller.state(), 'ended');
+    assert.equal(controller.reason(), 'companion_sources');
+  });
 });
 
 describe('Live session limits', () => {
