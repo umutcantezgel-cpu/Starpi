@@ -67,6 +67,28 @@ describe('companion dependency check', () => {
     assert.ok(!maskComments(src).includes('commented-out'));
   });
 
+  it('reads every spelling of getBuiltinModule and reports the ones it cannot follow', () => {
+    const literal = [
+      "const a = process.getBuiltinModule?.('child_process');",
+      'const b = process["getBuiltinModule"]("node:dns");',
+      "const c = process['getBuiltinModule']?.('tls');",
+      'const d = process[`getBuiltinModule`]("cluster");',
+    ];
+    assert.deepEqual(
+      specifiersOf(literal.join('\n')).specifiers.map((s) => s.spec),
+      ['node:child_process', 'node:dns', 'node:tls', 'node:cluster'],
+    );
+    const unfollowable = [
+      'const load = process.getBuiltinModule;',
+      "const e = process.getBuiltinModule.call(process, 'child_process');",
+      "const f = Reflect.get(process, 'getBuiltinModule')('child_process');",
+      'const g = process.getBuiltinModule(name);',
+    ];
+    const { specifiers, computed } = specifiersOf(unfollowable.join('\n'));
+    assert.deepEqual(specifiers, []);
+    assert.deepEqual(computed, [1, 2, 3, 4]);
+  });
+
   it('reports every rule', () => {
     const root = fakePackage('bad', {
       'src/a.js': "import fs from 'fs';\nimport x from 'left-pad';\nimport y from '../../outside.js';\nimport cp from 'node:child_process';\nimport z from 'node:nothing';\nconst m = import(dynamicName);\n",

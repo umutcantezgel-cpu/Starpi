@@ -9,7 +9,9 @@
 //     on its own), and any import at all but `node:` built-ins in deploy/ (those files run from
 //     the offline bundle, outside app/, before anything is installed);
 //   - a computed specifier (`import(name)`, `require(name)`, `process.getBuiltinModule(name)`),
-//     which no review can follow (getBuiltinModule with a literal name counts as an import);
+//     which no review can follow. getBuiltinModule called with a literal name counts as an
+//     import (also as `?.(` or `process['getBuiltinModule'](`); any other use of that name, such
+//     as an alias, `.call` or a lookup by string, counts as computed;
 //   - a module that only certain files may import (RESTRICTED below): the companion forbids
 //     spawning and patches the network stack in one place, so the modules that could go around
 //     that stay in the files that own them.
@@ -159,12 +161,24 @@ export function specifiersOf(src) {
     }
   }
   // process.getBuiltinModule() reaches a built-in without an import; its name may lack the prefix.
-  for (const match of code.matchAll(/\bgetBuiltinModule\s*\(\s*(['"])([^'"\n]+)\1\s*\)/g)) {
-    specifiers.push({ spec: match[2].startsWith('node:') ? match[2] : `node:${match[2]}`, line: lineAt(match.index ?? 0) });
+  // A call with a literal name is read in its dot, optional-call and bracket spellings; every
+  // other appearance of the name is a route this check cannot follow.
+  /** @type {Array<[number, number]>} */
+  const calls = [];
+  const builtinCall = /(?:\bgetBuiltinModule|\[\s*(['"`])getBuiltinModule\1\s*\])\s*(?:\?\.\s*)?\(\s*(['"])([^'"\n]+)\2\s*\)/g;
+  for (const match of code.matchAll(builtinCall)) {
+    const at = match.index ?? 0;
+    calls.push([at, at + match[0].length]);
+    specifiers.push({ spec: match[3].startsWith('node:') ? match[3] : `node:${match[3]}`, line: lineAt(at) });
   }
   /** @type {number[]} */
   const computed = [];
-  for (const match of code.matchAll(/\b(?:import|require|getBuiltinModule)\s*\(\s*(?!['"])/g)) computed.push(lineAt(match.index ?? 0));
+  for (const match of code.matchAll(/\b(?:import|require)\s*\(\s*(?!['"])/g)) computed.push(lineAt(match.index ?? 0));
+  for (const match of code.matchAll(/\bgetBuiltinModule\b/g)) {
+    const at = match.index ?? 0;
+    if (!calls.some(([start, end]) => at >= start && at < end)) computed.push(lineAt(at));
+  }
+  computed.sort((a, b) => a - b);
   return { specifiers: specifiers.sort((a, b) => a.line - b.line), computed };
 }
 

@@ -36,9 +36,9 @@ Restart=on-failure
 RestartSec=3
 RestartPreventExitStatus=2
 
-# Folders: data, anchors (keep them apart; put the anchors on another disk with a drop-in that sets
-# ReadWritePaths= and RequiresMountsFor= for that place and audit.anchorDir in config.json), and
-# the key file of the default KEK provider, outside the data folder.
+# Folders: data, anchors (keep them apart; to put the anchors on another disk, add a drop-in that
+# sets ReadWritePaths= and RequiresMountsFor= for that place and set the top-level "anchorDir" key
+# of config.json to it), and the key file of the default KEK provider, outside the data folder.
 StateDirectory=starpi-companion starpi-companion-anchors starpi-companion-key
 StateDirectoryMode=0700
 # /etc/starpi-companion (root:starpi-companion 0750, config.json 0640) is made by install.sh; the
