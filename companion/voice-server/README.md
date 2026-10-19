@@ -61,6 +61,10 @@ prompt after them, both within a budget of 120 tokens. Whisper shares its decode
 these hints and the transcript, so a short budget keeps long dictations whole. Terms that do not
 fit are left out, never the transcript.
 
+Hints are never a reason to refuse a dictation: `prompt` and `glossary` longer than 1,000
+characters are cut after their last whole term (the app sends at most 60 terms of 600 characters
+together, joined with commas or line breaks, which stays below that).
+
 ## Browsers, origins and the private network
 
 Only `127.0.0.1` is bound. Every request must name `127.0.0.1:<port>`, `localhost:<port>` or

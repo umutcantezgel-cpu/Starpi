@@ -265,6 +265,30 @@ class TranscriptionTest(ServerCase):
         self.assertEqual(plan.hotwords, "Kubernetes, pnpm, focaccia")
         self.assertEqual(plan.initial_prompt, "notes from the stand-up")
 
+    def test_glossaries_of_the_apps_full_size_are_served(self) -> None:
+        # The app allows 60 terms and 600 characters of term text; it sends them joined with ", "
+        # as the prompt and with line breaks as the glossary, so both fields pass 600 characters.
+        for count, length in ((60, 10), (10, 60), (40, 15)):
+            terms = [f"{i:02d}" + "k" * (length - 2) for i in range(count)]
+            with self.subTest(count=count, length=length):
+                self.recognizer.calls.clear()
+                status, _, body = self.transcribe(prompt=", ".join(terms), glossary="\n".join(terms))
+                self.assertEqual((status, json.loads(body)), (200, {"text": "a simulated transcript"}))
+                plan = self.recognizer.calls[0][1]
+                self.assertTrue((plan.hotwords or "").startswith(terms[0]))
+                self.assertIsNone(plan.initial_prompt)  # the prompt repeats the glossary
+
+    def test_over_long_hints_are_cut_after_a_whole_term(self) -> None:
+        terms = [f"term{i:04d}" for i in range(400)]  # 3,600 characters with separators
+        status, _, _ = self.transcribe(prompt="; ".join(terms), glossary="\n".join(terms))
+        self.assertEqual(status, 200)
+        plan = self.recognizer.calls[0][1]
+        self.assertEqual((plan.hotwords or "").split(", ")[:3], ["term0000", "term0001", "term0002"])
+        # One term longer than the cut leaves nothing to hint, and the dictation still runs.
+        status, _, _ = self.transcribe(glossary="x" * 1500)
+        self.assertEqual(status, 200)
+        self.assertEqual(self.recognizer.calls[1][1], vs.PromptPlan(None, None))
+
     def test_without_hints_nothing_is_sent(self) -> None:
         self.transcribe()
         self.assertEqual(self.recognizer.calls[0], (None, vs.PromptPlan(None, None)))
@@ -293,11 +317,6 @@ class TranscriptionTest(ServerCase):
             ),
             (form([("file", make_wav(), "a.wav", None), ("prompt", b"a\x00b", None, None)]), 400, "invalid_text"),
             (form([("file", make_wav(), "a.wav", None), ("prompt", b"\xff\xfe", None, None)]), 400, "invalid_text"),
-            (
-                form([("file", make_wav(), "a.wav", None), ("glossary", ("x" * 601).encode(), None, None)]),
-                400,
-                "too_long",
-            ),
             (
                 form([("file", make_wav(), "a.wav", None), ("language", b"english!", None, None)]),
                 400,
@@ -539,6 +558,13 @@ class UnitTest(unittest.TestCase):
         )
         self.assertEqual(vs.split_terms("a\nb\nc", 2), ["a", "b"])
         self.assertEqual(vs.split_terms(None, 5), [])
+
+    def test_clip_terms_never_splits_a_term(self) -> None:
+        self.assertEqual(vs.clip_terms("alpha, beta", 11), "alpha, beta")
+        self.assertEqual(vs.clip_terms("alpha, beta, gamma", 11), "alpha, beta")  # cut lands on a comma
+        self.assertEqual(vs.clip_terms("alpha, beta, gamma", 14), "alpha, beta")
+        self.assertEqual(vs.clip_terms("alpha\nbeta\ngamma", 10), "alpha\nbeta")
+        self.assertEqual(vs.clip_terms("alphabet soup", 5), "")
 
     def test_plan_prompt_keeps_the_budget(self) -> None:
         words = lambda text: len(text.split())  # noqa: E731

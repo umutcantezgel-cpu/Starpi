@@ -78,15 +78,20 @@ log = logging.getLogger("starpi-voice")
 @dataclass(frozen=True)
 class Limits:
     """Sizes and times every request is held to. The app records at most 60 s of 16 kHz PCM16
-    (1.92 MB) and splits speech below 600 characters, so these leave room without inviting abuse."""
+    (1.92 MB) and splits speech below 600 characters, so these leave room without inviting abuse.
+
+    The spelling hints (`prompt`, `glossary`) are cut, never refused: a longer hint loses its
+    last terms, not the dictation. The app sends up to 60 terms of 600 characters together, joined
+    with ", " and line breaks, which stays below the cut; only the token budget of plan_prompt
+    decides what reaches Whisper."""
 
     audio_bytes: int = 2 * 1024 * 1024
     form_overhead: int = 64 * 1024
     json_bytes: int = 16 * 1024
     form_parts: int = 16
     speak_chars: int = 600
-    prompt_chars: int = 600
-    glossary_chars: int = 600
+    prompt_chars: int = 1000
+    glossary_chars: int = 1000
     glossary_terms: int = 60
     transcript_chars: int = 4000
     field_chars: int = 100
@@ -181,6 +186,15 @@ def split_terms(text: str | None, limit: int) -> list[str]:
             if len(terms) == limit:
                 break
     return terms
+
+
+def clip_terms(text: str, limit: int) -> str:
+    """At most `limit` characters of a term list, cut after the last whole term: a term that
+    would cross the limit is dropped with everything after it, never split."""
+    if len(text) <= limit:
+        return text
+    ends = [m.start() for m in TERM_SEPARATORS.finditer(text, 0, limit + 1)]
+    return text[: ends[-1]] if ends else ""
 
 
 # ==== spelling hints ====
@@ -1149,13 +1163,14 @@ class VoiceHandler(http.server.BaseHTTPRequestHandler):
             raise HttpError(413, "too_large", f"the audio may have at most {limits.audio_bytes} bytes")
         check_wav(audio.data)
         text = {
-            name: self._form_text(form, name, limit)
-            for name, limit in (
-                ("model", limits.field_chars),
-                ("language", limits.field_chars),
-                ("response_format", limits.field_chars),
-                ("prompt", limits.prompt_chars),
-                ("glossary", limits.glossary_chars),
+            name: self._form_text(form, name, limit, clip=clip)
+            for name, limit, clip in (
+                ("model", limits.field_chars, False),
+                ("language", limits.field_chars, False),
+                ("response_format", limits.field_chars, False),
+                # Spelling hints are cut after their last whole term, never refused (Limits).
+                ("prompt", limits.prompt_chars, True),
+                ("glossary", limits.glossary_chars, True),
             )
         }
         language = None
@@ -1184,7 +1199,7 @@ class VoiceHandler(http.server.BaseHTTPRequestHandler):
         else:
             self._json(200, {"text": transcript})
 
-    def _form_text(self, form: dict[str, FormField], name: str, limit: int) -> str | None:
+    def _form_text(self, form: dict[str, FormField], name: str, limit: int, *, clip: bool = False) -> str | None:
         part = form.get(name)
         if part is None:
             return None
@@ -1192,7 +1207,7 @@ class VoiceHandler(http.server.BaseHTTPRequestHandler):
             value = part.data.decode("utf-8")
         except UnicodeDecodeError:
             raise bad_request("invalid_text", f"{name} is not UTF-8") from None
-        return checked_text(value, name, limit)
+        return checked_text(clip_terms(value, limit) if clip else value, name, limit)
 
     # --- speech output ---
 
