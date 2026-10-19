@@ -21,16 +21,40 @@ export const LIVE_INSTRUCTIONS = Object.freeze({
     'Antworte in der Sprache, in der der Nutzer spricht, in kurzen gesprochenen Sätzen ohne Listen, Tabellen, Links oder Auszeichnungen.',
     'Zeigt der Nutzer ein Bild, beschreibe nur, was darauf wirklich zu sehen ist.',
   ].join(' '),
+  fr: [
+    'Tu es l’assistant vocal de Starpi, une application de connaissances, dans une conversation orale libre.',
+    'Tes réponses ne sont pas vérifiées par rapport aux documents de l’utilisateur. Dis-le quand tu n’es pas sûr et n’invente jamais de faits, de chiffres, de citations ni de sources.',
+    'Réponds dans la langue que parle l’utilisateur, en phrases orales courtes, sans listes, tableaux, liens ni mise en forme.',
+    'Quand l’utilisateur montre une image, décris uniquement ce qu’on y voit réellement.',
+  ].join(' '),
+  es: [
+    'Eres el asistente de voz de Starpi, una aplicación de conocimiento, en una conversación hablada libre.',
+    'Tus respuestas no se comprueban con los documentos del usuario. Di cuándo no estás seguro y nunca inventes datos, cifras, citas ni fuentes.',
+    'Responde en el idioma que habla el usuario, en frases habladas cortas, sin listas, tablas, enlaces ni formato.',
+    'Cuando el usuario muestre una imagen, describe solo lo que realmente se ve en ella.',
+  ].join(' '),
+  it: [
+    'Sei l’assistente vocale di Starpi, un’app di conoscenza, in una conversazione parlata libera.',
+    'Le tue risposte non vengono verificate sui documenti dell’utente. Di’ quando non sei sicuro e non inventare mai fatti, cifre, citazioni o fonti.',
+    'Rispondi nella lingua in cui parla l’utente, con brevi frasi parlate, senza elenchi, tabelle, link o formattazione.',
+    'Quando l’utente mostra un’immagine, descrivi solo ciò che vi si vede davvero.',
+  ].join(' '),
+  tr: [
+    'Sen serbest bir sesli sohbette bir bilgi uygulaması olan Starpi’nin sesli asistanısın.',
+    'Yanıtların kullanıcının belgeleriyle karşılaştırılarak denetlenmez. Emin olmadığında bunu söyle ve asla olgu, rakam, alıntı veya kaynak uydurma.',
+    'Kullanıcı hangi dili konuşuyorsa o dilde, kısa ve konuşma diline uygun cümlelerle yanıt ver; liste, tablo, bağlantı veya biçimlendirme kullanma.',
+    'Kullanıcı bir resim gösterdiğinde yalnızca resimde gerçekten görülebilenleri anlat.',
+  ].join(' '),
 });
 
 /** BCP 47 language of the speech output per interface language. */
-const SPEECH_LANGUAGE = Object.freeze({ en: 'en-US', de: 'de-DE' });
+const SPEECH_LANGUAGE = Object.freeze({ en: 'en-US', de: 'de-DE', fr: 'fr-FR', es: 'es-ES', it: 'it-IT', tr: 'tr-TR' });
 
 /**
  * @typedef {object} LiveSetupInput
  * @property {string} model      Live model id (without "models/")
  * @property {string} voice      a prebuilt Gemini voice
- * @property {'en' | 'de'} locale
+ * @property {import('../voice-routes.js').VoiceLocale} locale
  */
 
 /**
@@ -40,7 +64,7 @@ const SPEECH_LANGUAGE = Object.freeze({ en: 'en-US', de: 'de-DE' });
 export function buildLiveSetup({ model, voice, locale }) {
   if (!/^[a-z0-9][a-z0-9.-]{0,99}$/.test(model)) throw new TypeError('buildLiveSetup: invalid model id');
   if (!isGeminiVoice(voice)) throw new TypeError('buildLiveSetup: not a prebuilt voice');
-  const lang = locale === 'de' ? 'de' : 'en';
+  const lang = Object.hasOwn(SPEECH_LANGUAGE, locale) ? locale : 'en';
   return {
     model: `models/${model}`,
     generationConfig: {

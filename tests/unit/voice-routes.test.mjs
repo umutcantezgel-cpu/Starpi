@@ -10,14 +10,16 @@ import { createVoiceBudget, readVoiceLimits, VOICE_LIMIT_DEFAULTS } from '../../
 import { createKeyRing } from '../../api/_lib/gemini/client.js';
 import { buildLiveSetup, LIVE_INSTRUCTIONS } from '../../api/_lib/gemini/live-setup.js';
 import { checkRecording } from '../../api/_lib/gemini/stt.js';
-import { buildVoiceDeps, geminiVoiceKeys } from '../../api/_lib/voice-routes.js';
+import { buildVoiceDeps, geminiVoiceKeys, requestLocale, VOICE_LOCALES } from '../../api/_lib/voice-routes.js';
 import * as liveToken from '../../api/voice/live-token.js';
 import * as speak from '../../api/voice/speak.js';
 import * as transcribe from '../../api/voice/transcribe.js';
 import * as voices from '../../api/voice/voices.js';
 import { createElevenLabsFake } from '../../scripts/fakes/elevenlabs.mjs';
 import { createGeminiFake, FAKE_TRANSCRIPTS } from '../../scripts/fakes/gemini.mjs';
+import { SHIPPED_LOCALES } from '../../src/locales/index.js';
 import { isLiveSocketUrl } from '../../src/js/voice/catalog.js';
+import { transcriptionInstruction } from '../../src/js/voice/gemini-wire.js';
 import { bytesToBase64, decodeWav, encodeWav } from '../../src/js/voice/wav.js';
 import { errorOf, jsonRequest, siteRequest, testKey } from './relay-helpers.mjs';
 
@@ -299,5 +301,19 @@ describe('voice server helpers', () => {
     assert.deepEqual(setup.inputAudioTranscription, {});
     assert.throws(() => buildLiveSetup({ model: 'x', voice: 'Clone-of-someone', locale: 'en' }), TypeError);
     assert.throws(() => buildLiveSetup({ model: '../x', voice: 'Kore', locale: 'en' }), TypeError);
+  });
+
+  it('keep each interface language for dictation, speech and Live, and English for any other', () => {
+    assert.deepEqual([...VOICE_LOCALES], [...SHIPPED_LOCALES]);
+    assert.deepEqual(['fr-FR', 'es', 'IT', 'tr-TR', 'de-AT', 'pt-BR', '', 7].map(requestLocale), ['fr', 'es', 'it', 'tr', 'de', 'en', 'en', 'en']);
+    assert.match(transcriptionInstruction(requestLocale('fr-FR')), /most likely in French/);
+    assert.match(transcriptionInstruction(requestLocale('tr')), /most likely in Turkish/);
+    const codes = { en: 'en-US', de: 'de-DE', fr: 'fr-FR', es: 'es-ES', it: 'it-IT', tr: 'tr-TR' };
+    for (const locale of VOICE_LOCALES) {
+      const setup = buildLiveSetup({ model: 'gemini-live-x', voice: 'Puck', locale });
+      assert.equal(setup.generationConfig.speechConfig.languageCode, codes[locale], locale);
+      assert.equal(setup.systemInstruction.parts[0].text, LIVE_INSTRUCTIONS[locale], locale);
+    }
+    assert.equal(new Set(Object.values(LIVE_INSTRUCTIONS)).size, VOICE_LOCALES.length, 'an instruction of its own per language');
   });
 });
