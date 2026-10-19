@@ -11,7 +11,11 @@
 // In a build for the profile `companion` (the companion serves the app from its own loopback
 // origin, Mode A), the page's origin is the companion and the Companion entry is always shown.
 import { registerRetrievalSource } from '../chat/hooks.js';
+import { readLocal } from '../storage.js';
 import { registerFeature } from './registry.js';
+
+/** Set while a pairing is stored (companion/pair.js LINK_MARKER): without it nothing is loaded for a question. */
+export const LINK_MARKER = 'starpi_companion_linked';
 
 /** The page's origin when the companion serves this build (Mode A), else null. */
 const SELF_ORIGIN = typeof __STARPI_PROFILE__ === 'string' && __STARPI_PROFILE__ === 'companion' && typeof location !== 'undefined' ? location.origin : null;
@@ -34,6 +38,7 @@ function pairing() {
 registerRetrievalSource({
   id: 'companion',
   async search(query, ctx) {
+    if (!SELF_ORIGIN && readLocal(LINK_MARKER) !== '1') return { hits: [], label: '' };
     const { companionSource } = await import('../companion/tier.js');
     return companionSource(pairing).search(query, ctx);
   },

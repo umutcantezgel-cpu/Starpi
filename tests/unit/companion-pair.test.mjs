@@ -7,7 +7,7 @@ import './setup.mjs';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { CompanionError } from '../../src/js/companion/client.js';
-import { compareHeads, createPairing, normalizeCode, openSecret, sealSecret } from '../../src/js/companion/pair.js';
+import { compareHeads, createPairing, LINK_MARKER, normalizeCode, openSecret, sealSecret } from '../../src/js/companion/pair.js';
 import { fakeCompanion, memoryLinkStore, memoryMarker, settle } from './companion-fakes.mjs';
 
 const TOKEN = 'tok_0123456789abcdefghijklmnopqrstuvwxyzABCDE';
@@ -117,6 +117,11 @@ describe('pairing', () => {
     assert.equal(await openSecret(key, sealed, link), 'secret-value');
     assert.equal(await openSecret(key, sealed, { ...link, session: 's2' }), null);
     assert.equal(await openSecret(key, { iv: 'bad', data: sealed.data }, link), null);
+  });
+
+  it('keeps its stored-link flag under the name the feature module reads', async () => {
+    const feature = await import('../../src/js/features/companion.js');
+    assert.equal(feature.LINK_MARKER, LINK_MARKER);
   });
 
   it('normalizes what the user typed', () => {
