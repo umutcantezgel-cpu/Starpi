@@ -49,6 +49,7 @@ export const de = {
   },
   // "ein" and "eins" only take part in a larger number ("einhundert", "eins komma fünf").
   numberParts: ['eins?', 'tausend', 'millionen', 'mio', 'milliarden?', 'mrd', 'dutzend'],
+  ownNumberParts: [],
   numberJoiners: ['und'],
 
   boilerplate: [
