@@ -37,6 +37,8 @@ Usage:  python3 -I server.py [--port 8000] [--whisper-model small] [--voices-dir
 
 from __future__ import annotations
 
+# Standard library only at import time; the speech engines load when first used.
+
 import argparse
 import contextlib
 import http.server
@@ -155,10 +157,9 @@ def checked_text(value: Any, name: str, limit: int, *, required: bool = False) -
         raise bad_request("invalid_field", f"{name} must be a string")
     if len(value) > limit:
         raise bad_request("too_long", f"{name} has more than {limit} characters")
-    try:
-        value.encode("utf-8")
-    except UnicodeEncodeError:
-        raise bad_request("invalid_text", f"{name} is not valid Unicode") from None
+    # A lone surrogate (from a broken JSON escape) cannot be written out as UTF-8.
+    if any(0xD800 <= ord(ch) <= 0xDFFF for ch in value):
+        raise bad_request("invalid_text", f"{name} is not valid Unicode")
     if CONTROL_CHARS.search(value):
         raise bad_request("invalid_text", f"{name} holds control characters")
     return value
@@ -439,7 +440,8 @@ class WhisperRecognizer:
 
     @property
     def ready(self) -> bool:
-        return self._model is not None
+        loaded = self._model
+        return loaded is not None
 
     @property
     def counter(self) -> TokenCounter | None:
@@ -514,11 +516,13 @@ class PiperSpeaker:
         self.cache_s = cache_s
         self.env = {k: os.environ[k] for k in CHILD_ENV_KEYS if k in os.environ}
         self.env.update({"PYTHONIOENCODING": "utf-8", "PYTHONDONTWRITEBYTECODE": "1"})
-        self._cache: tuple[float, dict[str, InstalledVoice]] | None = None
+        # The voice listing is read at most every cache_s seconds; the lock keeps two readers from racing.
         self._lock = threading.Lock()
+        self._cache: tuple[float, dict[str, InstalledVoice]] | None = None
 
     @property
     def ready(self) -> bool:
+        """A Piper command is set and the voices folder exists (voices may still be missing)."""
         return bool(self.command) and self.voices_dir.is_dir()
 
     def voices(self) -> dict[str, InstalledVoice]:
@@ -616,10 +620,12 @@ class PiperSpeaker:
         except subprocess.TimeoutExpired:
             raise EngineFailure("Piper did not exit", 504) from None
         finally:
-            if proc.poll() is None:
+            if proc.returncode is None and proc.poll() is None:
                 proc.kill()
-                with contextlib.suppress(subprocess.TimeoutExpired):
+                try:
                     proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass  # The reader thread below still ends; the process is left to the system.
             reader.join(2)
             stdout.close()
         if overflow:
@@ -1382,4 +1388,4 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
