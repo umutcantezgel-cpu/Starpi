@@ -266,6 +266,7 @@ test.describe('encrypted chat sync', () => {
     await card.locator('[data-sv="account"] summary').click();
     await card.locator('#svEmail').fill(EMAIL);
     await card.locator('[data-action="sync-email-link"]').click();
+    await expect(card.locator('[data-sv="result"]')).toContainText(`sent a code to ${EMAIL}`);
     await card.locator('#svCode').fill(CODE);
     await card.locator('[data-action="sync-email-verify"]').click();
     await expect(card.locator('[data-sv="who"]')).toContainText(`Signed in as ${EMAIL}`);
@@ -286,6 +287,9 @@ test.describe('encrypted chat sync', () => {
     await card2.locator('[data-action="sync-email-signin"]').click();
     await card2.locator('#svCode').fill(CODE);
     await card2.locator('[data-action="sync-email-verify"]').click();
+    // The card shows the join form once the sign-in is through; a passphrase typed earlier is lost.
+    await expect(card2.locator('[data-sv="result"]')).toContainText('Enter your passphrase');
+    await expect(card2.locator('[data-sv-form]')).toHaveAttribute('data-sv-form', 'join');
     await card2.locator('#svPass').fill(PASSPHRASE);
     await card2.locator('[data-action="sync-enable"]').click();
     await expect(card2.locator('[data-sv="result"]')).toContainText('Unlocked', { timeout: 20_000 });

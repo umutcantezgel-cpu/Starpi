@@ -220,7 +220,7 @@ test.describe('compare and council', () => {
     await expect(columns.nth(1)).toHaveAttribute('data-status', 'done');
     for (const i of [0, 1]) {
       await expect(columns.nth(i).locator('[data-column-body]')).toContainText('simulated answer from the local test provider');
-      await expect(columns.nth(i).locator('.free-note')).toBeVisible();
+      await expect(columns.nth(i).locator('[data-answer-label="free"]')).toBeVisible();
       await expect(columns.nth(i).locator('[data-column-stats]')).toContainText('No cost: your own server');
     }
     await expect(columns.nth(1).locator('[data-column-model]')).toContainText('fake-local-reasoner:4b');
