@@ -6,7 +6,8 @@
 // approves the new description: the change is recorded in the audit chain and put in the inbox.
 // Before every call the list is fetched again, so a change between two refreshes is caught too; a
 // call runs only when that fresh list carries the approved pin (a server whose list cannot be read
-// gets no call at all, whatever an earlier list said).
+// gets no call at all, whatever an earlier list said). A call that waited for a person is checked
+// once more after the decision, right before it goes to the server.
 //   GET  /v1/connectors                              member  servers and their tools, pins and states
 //   POST /v1/connectors/:server/refresh              owner   lists the server's tools again now
 //   POST /v1/connectors/:server/approve              owner   { tool, pin, calls: 'ask' | 'allow' }
@@ -188,19 +189,30 @@ export function createConnectorsModule({ hub }) {
       if (cut < 1 || !s || !TOOL_NAME.test(toolName)) throw fail('tool_unknown', 'no such connector tool', { status: 404 });
       /** @param {string} outcome @param {string} approval */
       const record = (outcome, approval) => ctx.audit.append({ kind: 'connectors.call', subject: `${serverId}/${toolName}`, details: { outcome, approval } });
-      // The description may have changed since the last refresh: look again right before the call,
-      // and judge the call by that fresh list only. A server that cannot be listed gets no call.
-      const fresh = await refresh(serverId, signal);
-      if (!fresh) {
-        record('server_down', 'none');
-        throw fail('connector_down', 'the server could not list its tools, so no call goes to it now', { status: 503 });
-      }
-      const entry = approvedOf(serverId)[toolName];
-      const listed = fresh.get(toolName);
-      if (!entry || !listed || entry.pin !== listed.pin) {
-        record('pin_changed', 'none');
-        throw fail('tool_pin_changed', 'the tool is not approved in the form the server describes it now', { status: 409 });
-      }
+      /**
+       * Lists the server again and returns the owner's approval of the tool, but only when the fresh
+       * list describes the tool with exactly the approved pin (and, after a person was asked, with
+       * the pin they were asked about). A server that cannot be listed gets no call.
+       * @param {string} approval  how the call was approved so far, for the audit record
+       * @param {string | null} asked  the pin a person decided on, or null before anyone was asked
+       */
+      const approvedNow = async (approval, asked) => {
+        const fresh = await refresh(serverId, signal);
+        if (!fresh) {
+          record('server_down', approval);
+          throw fail('connector_down', 'the server could not list its tools, so no call goes to it now', { status: 503 });
+        }
+        const entry = approvedOf(serverId)[toolName];
+        const listed = fresh.get(toolName);
+        if (!entry || !listed || entry.pin !== listed.pin || (asked !== null && listed.pin !== asked)) {
+          record('pin_changed', approval);
+          throw fail('tool_pin_changed', 'the tool is not approved in the form the server describes it now', { status: 409 });
+        }
+        return entry;
+      };
+      // The description may have changed since the last refresh: look again before anyone is asked,
+      // and judge the call by that fresh list only.
+      const entry = await approvedNow('none', null);
       let approval = 'allow';
       if (entry.calls === 'ask' || tainted) {
         const decision = await /** @type {import('./approvals.js').Approvals} */ (approvals).ask({ server: serverId, tool: toolName, args, reason: tainted && entry.calls !== 'ask' ? 'after_result' : 'policy' }, { signal, onAsk: onApproval });
@@ -209,6 +221,9 @@ export function createConnectorsModule({ hub }) {
           throw fail(`tool_${decision.outcome}`, `the call was ${decision.outcome}`, { status: 409 });
         }
         approval = 'approved';
+        // A person may take a while: the server may describe the tool differently by now, or the
+        // owner may have revoked it. Look once more right before the call.
+        await approvedNow(approval, entry.pin);
       }
       let result;
       try {
