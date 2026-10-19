@@ -10,7 +10,7 @@
 //     its data class), shows what its gate released, and a question continued with it stays here;
 //   - a free Live turn asks it the same way and goes on in the session's conversation; a source
 //     turn does not ask it.
-/* global document, window */
+/* global document */
 import './setup.mjs';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
