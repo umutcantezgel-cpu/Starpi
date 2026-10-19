@@ -79,6 +79,9 @@ import { en } from './en.js';
  * @property {string[]} versionWords     words before a dotted triple that make it a version ("firmware 10.4.12")
  * @property {Record<string, number>} numberWords  numbers written as words, read as values
  * @property {string[]} numberParts      patterns: number words that only form part of a larger number
+ * @property {string[]} ownNumberParts   patterns: number words that make a number word of this pack next to them part
+ *   of a larger number, but only this pack's: other languages write them as common words (French "sept" in
+ *   "dix-sept" and English "Sept", Turkish "on" in "on beş" and English "on")
  * @property {string[]} numberJoiners    the word that joins two number words ("a hundred and twenty")
  * @property {string[]} boilerplate      folded words that describe the sources rather than state something
  * @property {string[]} stopwords        function words that carry no retrieval signal
@@ -113,6 +116,9 @@ import { en } from './en.js';
  * @property {Array<[number, number, number]>} [additions]  [a, from, to]: a cardinal of value `a` followed by one from `from`
  *   to `to` adds up to one number where the general rules would read two (French "dix-sept" [10, 1, 9] and
  *   "soixante-dix" [60, 10, 19], Turkish "on beş" [10, 1, 9], Spanish "mil doscientos" [1000, 1, 999])
+ * @property {Array<[number, number]>} [products]  [a, b]: a cardinal of value `a` followed by one of value `b` is
+ *   their product, a number of its own that the rules above go on from (French "quatre-vingts" [4, 20], so
+ *   "quatre-vingt-cinq" is 85 and "quatre-vingt-dix-sept" 97 with the addition [80, 10, 19])
  * @property {string[]} [tenJoiners]     words between a ten and the unit it takes ("treinta y cinco", "vingt et un")
  * @property {boolean} [elision]         in a compound word a ten drops its last vowel before a unit that starts
  *   with a vowel (Italian "ventuno", "trentotto")
@@ -172,7 +178,7 @@ function deepFreeze(value) {
 
 const LIST_FIELDS = /** @type {const} */ ([
   'ambiguousMonths', 'monthContext', 'monthPosition', 'dayMonthLinks', 'ordinalSuffixes', 'numericDateContext', 'clockWords',
-  'scales', 'percentWords', 'currencyWords', 'unitWords', 'approxWords', 'versionWords', 'numberParts', 'numberJoiners',
+  'scales', 'percentWords', 'currencyWords', 'unitWords', 'approxWords', 'versionWords', 'numberParts', 'ownNumberParts', 'numberJoiners',
   'boilerplate', 'stopwords', 'abbreviations',
 ]);
 const MAP_FIELDS = /** @type {const} */ (['months', 'monthAbbreviations', 'weekdays', 'numberWords']);
@@ -229,6 +235,7 @@ function completeGate(gate) {
       ...Object.fromEntries(NUMBER_WORD_LISTS.map((k) => [k, words[k] ?? []])),
       compound: words.compound ?? false,
       additions: words.additions ?? [],
+      products: words.products ?? [],
       elision: words.elision ?? false,
       suffixes: { ordinal: [], fraction: [], multiplier: [], ...words.suffixes },
     }),
@@ -268,6 +275,10 @@ function validateGate(gate) {
   const additions = /** @type {unknown} */ (words.additions);
   if (!Array.isArray(additions) || !additions.every((a) => Array.isArray(a) && a.length === 3 && a.every((n) => Number.isFinite(n) && n >= 0) && a[1] <= a[2])) {
     fail('numberWords.additions" must list [value, from, to] triples');
+  }
+  const products = /** @type {unknown} */ (words.products);
+  if (!Array.isArray(products) || !products.every((a) => Array.isArray(a) && a.length === 2 && a.every((n) => Number.isFinite(n) && n > 0))) {
+    fail('numberWords.products" must list [value, factor] pairs');
   }
   for (const kind of SUFFIX_KINDS) {
     const list = words.suffixes?.[kind];

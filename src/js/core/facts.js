@@ -76,6 +76,16 @@ const tables = fromPacks((packs) => {
   for (const [factor, words] of packs.flatMap((p) => p.scales)) scales.set(factor, union([scales.get(factor) ?? [], words]));
   const joiners = anyOf(all((p) => p.numberJoiners));
   const numberWord = [alternation(spelled.keys()), ...all((p) => p.numberParts)].filter(Boolean).join('|') || '(?!)';
+  /** @type {Map<string, Array<{ after: RegExp, before: RegExp }>>} per number word, the parts of its own packs */
+  const ownParts = new Map();
+  for (const p of packs) {
+    if (!p.ownNumberParts.length) continue;
+    const own = p.ownNumberParts.join('|');
+    const join = p.numberJoiners.length ? `(?:${anyOf(p.numberJoiners)}\\s+)?` : '';
+    const joinBefore = p.numberJoiners.length ? `(?:\\s+${anyOf(p.numberJoiners)})?` : '';
+    const parts = { after: new RegExp(`^[\\s-]+${join}(?:${own})(?![\\p{L}])`, 'iu'), before: new RegExp(`(?<![\\p{L}])(?:${own})${joinBefore}[\\s-]+$`, 'iu') };
+    for (const w of Object.keys(p.numberWords)) ownParts.set(w, [...(ownParts.get(w) ?? []), parts]);
+  }
   const positions = all((p) => p.monthPosition);
   const links = all((p) => p.dayMonthLinks);
   const ordinals = all((p) => p.ordinalSuffixes);
@@ -115,6 +125,7 @@ const tables = fromPacks((packs) => {
     spelled,
     spelledAlt: alternation(spelled.keys()) || '(?!)',
     spelledFolded: new Map([...spelled].map(([w, n]) => [fold(w), n])),
+    ownParts,
     // "and" joins two number words ("a hundred and twenty"); between other words it is just "and".
     spelledPartAfter: new RegExp(`^[\\s-]+(?:${joiners}\\s+)?(?:${numberWord})(?![\\p{L}])|^[\\s-]*\\d`, 'iu'),
     spelledPartBefore: new RegExp(`(?<![\\p{L}])(?:${numberWord})(?:\\s+${joiners})?[\\s-]+$|\\d[\\s-]*$`, 'iu'),
@@ -589,8 +600,10 @@ function findSpelledNumbers(text) {
   while ((m = re.exec(text)) !== null) {
     const n = t.spelled.get(m[1].toLowerCase());
     const rest = text.slice(m.index + m[0].length);
-    // Part of a larger number ("twenty-five", "two hundred", "ten thousand"): left to the reader.
-    if (!n || n === 100 || t.spelledPartAfter.test(rest) || t.spelledPartBefore.test(text.slice(0, m.index))) continue;
+    // Part of a larger number ("twenty-five", "two hundred", "ten thousand", "dix-sept"): left to the reader.
+    const lead = text.slice(0, m.index);
+    if (!n || n === 100 || t.spelledPartAfter.test(rest) || t.spelledPartBefore.test(lead)) continue;
+    if (t.ownParts.get(m[1].toLowerCase())?.some((o) => o.after.test(rest) || o.before.test(lead))) continue;
     if (n < 10 && !t.unitAfter.test(rest)) continue;
     const before = text.slice(Math.max(0, m.index - 24), m.index);
     out.push({ start: m.index, end: m.index + m[0].length, surface: m[0], claim: [numKey(n)], source: [numKey(n)], nums: [n], approx: t.approxBefore.test(before) });

@@ -152,6 +152,7 @@ export function valueKey(n) {
  * @property {Set<string>} negative
  * @property {RegExp} unitWord           a whole word that is a unit, percent or currency word of the pack
  * @property {Array<[number, number, number]>} additions  a cardinal that takes a following one ("dix-sept")
+ * @property {Array<[number, number]>} products  two cardinals that multiply ("quatre-vingts")
  * @property {Set<string>} tenJoiners    words between a ten and its unit ("treinta y cinco")
  * @property {boolean} elision           a ten drops its last vowel inside a compound ("ventuno")
  * @property {boolean} ownCase           the pack lowercases its own way (Turkish "I" → "ı")
@@ -212,6 +213,7 @@ function compile(pack) {
     negative: new Set(n.negative),
     unitWord: new RegExp(`^(?:${anyOf([...pack.unitWords, ...pack.percentWords, ...pack.currencyWords])})$`, 'iu'),
     additions: n.additions ?? [],
+    products: n.products ?? [],
     tenJoiners: new Set(n.tenJoiners ?? []),
     elision: n.elision ?? false,
     ownCase: Object.keys(pack.caseFold ?? {}).length > 0,
@@ -381,6 +383,16 @@ function continues(last, next, pack) {
   if (last.shape === 'hundred' || last.shape === 'group') return next.value < 100;
   if (last.shape === 'ten') return next.value > 0 && next.value < 10;
   return false;
+}
+
+/**
+ * Whether two cardinals multiply in the pack ("quatre" "vingts" is 80).
+ * @param {WordTag} last
+ * @param {WordTag} next
+ * @param {PackTable} pack
+ */
+function isProduct(last, next, pack) {
+  return last.kind === 'cardinal' && next.kind === 'cardinal' && !last.scale && !next.scale && pack.products.some(([a, b]) => last.value === a && next.value === b);
 }
 
 /**
@@ -815,6 +827,14 @@ function readWords(elements, items, packs, lenient) {
         if (joins && elements[at + 1]?.t === 'word' && elements[at + 1].tight) at += 1;
         const tag = tagIn(wordIn(elements[at], pack), pack);
         if (!tag) break;
+        // "quatre-vingts": a product stands for its two words, at the start or after a hundred
+        // ("cent quatre-vingts"), and the number goes on from it ("quatre-vingt-dix-sept").
+        if (at === k && isProduct(prev, tag, pack) && (run.length === 1 || ['hundred', 'group'].includes(run[run.length - 2].shape))) {
+          const value = prev.value * tag.value;
+          run[run.length - 1] = { ...tag, value, shape: shapeOf(value, false), scale: false, alone: false, contextual: false };
+          last = at;
+          continue;
+        }
         if (continues(prev, tag, pack)) {
           run.push(tag);
           last = at;

@@ -56,6 +56,8 @@ export const fr = {
     nonante: 90,
   },
   numberParts: ['un', 'une', 'cents?', 'mille', 'millions?', 'milliards?'],
+  // Not read alone (English "Sept", "seize"; "neuf" is also "new"), but "dix-sept" or "vingt-neuf" is one number.
+  ownNumberParts: ['sept', 'neuf', 'seize'],
   numberJoiners: ['et'],
 
   boilerplate: [
@@ -160,9 +162,10 @@ export const fr = {
       fractionLeads: ['un', 'une'],
       negative: ['moins'],
       compound: false,
-      // "dix-sept", "soixante-dix", "soixante-dix-neuf"; "quatre-vingts" is read as two numbers (a
-      // claim the sources do not support, so it is held back rather than misread).
-      additions: [[10, 7, 9], [60, 10, 19]],
+      // "dix-sept", "soixante-dix", "soixante-dix-neuf"; "quatre-vingts" is four times twenty, and
+      // "quatre-vingt-dix", "quatre-vingt-onze" go on from it like "soixante-dix".
+      additions: [[10, 7, 9], [60, 10, 19], [80, 10, 19]],
+      products: [[4, 20]],
       tenJoiners: ['et'],
       suffixes: { ordinal: ['ième'], fraction: [], multiplier: [] },
     },

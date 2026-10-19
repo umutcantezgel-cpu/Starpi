@@ -8,7 +8,7 @@ import { checkText } from '../../src/js/core/gate.js';
 import { blocksFromMarkdown, groundAnswer } from '../../src/js/core/grounding.js';
 import { extractFacts, fold, guessLanguage } from '../../src/js/core/facts.js';
 import { LANGUAGES, languagePack, loadShippedLanguages, lowerCase, registerLanguage, SHIPPED_LANGUAGES } from '../../src/js/core/lang/index.js';
-import { numberWordTag } from '../../src/js/core/number-words.js';
+import { numberWordTag, scanNumbers } from '../../src/js/core/number-words.js';
 import { negationInversion, sourceClauses } from '../../src/js/core/polarity.js';
 import { splitSentences } from '../../src/js/core/sentences.js';
 import { spokenForm } from '../../src/js/core/spoken.js';
@@ -64,6 +64,8 @@ describe('shipped language packs', () => {
       [{ code: 'xb', caseFold: { i: 'ı' } }, /caseFold/],
       [{ code: 'xb', caseFold: { I: 'ıı1' } }, /caseFold/],
       [{ code: 'xb', gate: { numberWords: { additions: [[10, 9, 1]] } } }, /additions/],
+      [{ code: 'xb', gate: { numberWords: { products: [[4, 20, 1]] } } }, /products/],
+      [{ code: 'xb', gate: { numberWords: { products: [[0, 20]] } } }, /products/],
       [{ code: 'xb', gate: { numberWords: { elision: 'yes' } } }, /elision/],
       [{ code: 'xb', gate: { numberWords: { tenJoiners: ['y y'] } } }, /tenJoiners/],
     ];
@@ -186,6 +188,24 @@ describe('Turkish case', () => {
     assert.deepEqual(numberWordTag('İKİ', 'tr'), { kind: 'cardinal', value: 2 });
     assert.deepEqual(numberWordTag('ÜÇÜNCÜ', 'tr'), { kind: 'ordinal', value: 3 });
   });
+
+  it('reads French eighty to ninety-nine as one number, and four and twenty apart as two', () => {
+    const values = (/** @type {string} */ text) => scanNumbers(text, { locale: 'fr' }).map((n) => [n.raw, n.value]);
+    assert.deepEqual(values('Il y a quatre-vingts membres.'), [['quatre-vingts', 80]]);
+    assert.deepEqual(values('Il y a quatre-vingt-dix-sept membres.'), [['quatre-vingt-dix-sept', 97]]);
+    assert.deepEqual(values('Il y a cent quatre-vingt-un membres.'), [['cent quatre-vingt-un', 181]]);
+    assert.deepEqual(values('Il y a quatre-vingt mille habitants.'), [['quatre-vingt mille', 80000]]);
+    assert.deepEqual(values('Il y a quatre membres et vingt invités.'), [['quatre', 4], ['vingt', 20]]);
+  });
+
+  it('read no part of a compound number as a number of its own', () => {
+    // The fact reader leaves compounds to the number reader of the gate; a part alone ("dix" of
+    // "dix-sept", "beş" of "on beş") would be a claim the excerpt contradicts.
+    for (const text of ['Le projet compte dix-sept participants.', 'Le club compte vingt-neuf membres.', 'Il y a trente-sept membres.', 'Projede on beş kişi var.', 'ON YEDİ kişi çalışıyor.'])
+      assert.deepEqual(facts(text), [], text);
+    assert.deepEqual(facts('The shop is open on five days.'), ['number n:5'], 'an English "on" before a number is no Turkish ten');
+    assert.deepEqual(facts('Il y a dix personnes.'), ['number n:10']);
+  });
 });
 
 describe('the sentence gate in each language', () => {
@@ -193,6 +213,10 @@ describe('the sentence gate in each language', () => {
     const cases = /** @type {Array<[string, string, string, string]>} */ ([
       ['fr', 'Le projet compte dix-sept participants', 'Le projet compte dix-huit participants', 'Le projet compte 17 participants.'],
       ['fr', 'Le parc compte soixante-dix-neuf arbres', 'Le parc compte soixante-dix-huit arbres', 'Le parc compte 79 arbres.'],
+      ['fr', 'Le club compte quatre-vingts membres', 'Le club compte quatre-vingt-quatre membres', 'Le club compte 80 membres.'],
+      ['fr', 'La salle compte quatre-vingt-dix-sept places', 'La salle compte quatre-vingt-sept places', 'La salle compte 97 places.'],
+      ['fr', 'La salle compte quatre-vingt-onze places', 'La salle compte quatre-vingt-un places', 'La salle compte 91 places.'],
+      ['fr', 'Le trajet dure deux cent quatre-vingt-cinq jours', 'Le trajet dure deux cent quatre-vingts jours', 'Le trajet dure 285 jours.'],
       ['es', 'El plan dura treinta y cinco días', 'El plan dura treinta y seis días', 'El plan dura 35 días.'],
       ['es', 'El presupuesto es de mil doscientos euros', 'El presupuesto es de mil trescientos euros', 'El presupuesto es de 1200 euros.'],
       ['it', 'Il progetto ha ventuno partecipanti', 'Il progetto ha ventidue partecipanti', 'Il progetto ha 21 partecipanti.'],

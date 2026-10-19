@@ -80,6 +80,8 @@ export const tr = {
     altmis: 60, yetmiş: 70, yetmis: 70, seksen: 80, doksan: 90,
   },
   numberParts: ['bir', 'yüz', 'milyon', 'milyar'],
+  // "on" (ten) is an English word as well, but "on beş" is one number.
+  ownNumberParts: ['on'],
   numberJoiners: [],
 
   // Folded forms (see above).
