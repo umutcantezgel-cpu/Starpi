@@ -25,6 +25,9 @@ export function isAbbreviation(token) {
   return last !== '' && known.has(last);
 }
 
+/** A time of day with "h" between hours and minutes, at the end of a text ("12 h 00", "9h30"). */
+const CLOCK_MINUTES = /(?<![\p{L}\p{N}])\d{1,2}\s?h\s?\d{2}$/iu;
+
 /**
  * Sentence spans in `text`: offsets into the original string, trimmed of surrounding whitespace.
  * Line breaks always end a sentence; `.`, `!` and `?` end one when whitespace and more text follow,
@@ -49,8 +52,10 @@ export function sentenceSpans(text) {
     const ends = /[.!?]+(?=\s+\S)/g;
     let m;
     while ((m = ends.exec(content)) !== null) {
-      const lastToken = (content.slice(start, m.index).match(/(\S+)$/)?.[1] ?? '').toLowerCase();
-      if (m[0] === '.' && isAbbreviation(lastToken)) continue;
+      const before = content.slice(start, m.index);
+      const lastToken = (before.match(/(\S+)$/)?.[1] ?? '').toLowerCase();
+      // The minutes of a time written with "h" ("de 8 h 30 à 12 h 00.") are no ordinal: the dot ends the sentence.
+      if (m[0] === '.' && isAbbreviation(lastToken) && !CLOCK_MINUTES.test(before)) continue;
       push(base + start, base + m.index + m[0].length);
       start = m.index + m[0].length;
     }

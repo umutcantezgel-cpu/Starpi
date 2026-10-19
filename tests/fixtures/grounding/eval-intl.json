@@ -1,0 +1,491 @@
+{
+  "description": "Small source-check sets in French, Spanish, Italian and Turkish (sets fr, es, it, tr): per language one fictitious, neutral document of two sections, three faithful answers and seven answers with exactly one planted error (a number, date, time, weekday, code, person or negation). Development sets: they measure the language packs, they do not gate anything.",
+  "corpora": {
+    "intl_fr": [
+      {
+        "label": "[Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 1]",
+        "doc": "Règlement de la résidence Les Tilleuls (exemple)",
+        "heading": "",
+        "text": "Ceci est un exemple : la résidence Les Tilleuls, ses habitants et tous les chiffres sont fictifs. La résidence compte 48 logements répartis sur 6 étages. Le gardien, Julien Moreau, est présent du lundi au vendredi de 8 h 30 à 12 h 00. L’assemblée générale annuelle a eu lieu le 14 mars 2027 ; la prochaine est prévue le 12 mars 2028."
+      },
+      {
+        "label": "[Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 2]",
+        "doc": "Règlement de la résidence Les Tilleuls (exemple)",
+        "heading": "",
+        "text": "Les charges mensuelles s’élèvent à 185 euros par logement. Le local à vélos est accessible avec le badge B-204. Les travaux bruyants sont interdits le dimanche et les jours fériés. La présidente du conseil syndical, Nadia Lefèvre, valide les devis supérieurs à 2 000 euros."
+      }
+    ],
+    "intl_es": [
+      {
+        "label": "[Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 1]",
+        "doc": "Normas del club de remo Ría Azul (ejemplo)",
+        "heading": "",
+        "text": "Esto es un ejemplo: el club de remo Ría Azul, sus socios y todas las cifras son ficticios. El club tiene 120 socios y 14 embarcaciones. La entrenadora, Carmen Ortega, dirige los entrenamientos de martes a jueves de 18:00 a 20:00. La asamblea anual se celebró el 9 de febrero de 2027 y la próxima será el 8 de febrero de 2028."
+      },
+      {
+        "label": "[Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 2]",
+        "doc": "Normas del club de remo Ría Azul (ejemplo)",
+        "heading": "",
+        "text": "La cuota anual es de 240 euros por socio. Las taquillas se abren con la llave T-318. No se permite salir al agua con viento de más de 30 km/h. El tesorero, Andrés Molina, aprueba los gastos superiores a 1.500 euros."
+      }
+    ],
+    "intl_it": [
+      {
+        "label": "[Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 1]",
+        "doc": "Regolamento della biblioteca civica di Valfonda (esempio)",
+        "heading": "",
+        "text": "Questo è un esempio: la biblioteca civica di Valfonda, il suo personale e tutte le cifre sono inventati. La biblioteca possiede 36.000 volumi e 25 postazioni di lettura. La direttrice, Elena Marchetti, riceve il pubblico il mercoledì dalle 15:00 alle 17:30. Il nuovo regolamento è entrato in vigore il 2 maggio 2027."
+      },
+      {
+        "label": "[Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 2]",
+        "doc": "Regolamento della biblioteca civica di Valfonda (esempio)",
+        "heading": "",
+        "text": "Ogni utente può prendere in prestito fino a 6 libri per 30 giorni. La sala studio si prenota con il codice S-512. Non è consentito consumare cibo nelle sale di lettura. Il responsabile tecnico, Paolo Rinaldi, gestisce le postazioni informatiche."
+      }
+    ],
+    "intl_tr": [
+      {
+        "label": "[Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 1]",
+        "doc": "Kuzeytepe Sitesi yönetim kuralları (örnek)",
+        "heading": "",
+        "text": "Bu bir örnektir: Kuzeytepe Sitesi, sakinleri ve tüm rakamlar hayalîdir. Sitede 64 daire ve 4 blok bulunur. Site yöneticisi Murat Kaya, pazartesiden cumaya 09:00 ile 17:00 arasında yönetim ofisindedir. Olağan genel kurul 18 Nisan 2027 tarihinde yapıldı; bir sonraki genel kurul 16 Nisan 2028 tarihinde yapılacak."
+      },
+      {
+        "label": "[Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]",
+        "doc": "Kuzeytepe Sitesi yönetim kuralları (örnek)",
+        "heading": "",
+        "text": "Aylık aidat daire başına 950 TL’dir. Otopark girişi K-77 numaralı kartla açılır. Gece 23:00’ten sonra yüksek sesle müzik çalmak yasaktır. Denetim kurulu başkanı Zeynep Arslan, 10.000 TL’yi aşan harcamaları onaylar."
+      }
+    ]
+  },
+  "items": [
+    {
+      "id": "fr-faithful-01",
+      "set": "fr",
+      "corpus": "intl_fr",
+      "answerLanguage": "fr",
+      "kind": "faithful",
+      "category": "none",
+      "changed": "",
+      "answer": "La résidence compte 48 logements répartis sur 6 étages [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 1]. Le gardien, Julien Moreau, est présent du lundi au vendredi de 8 h 30 à 12 h 00 [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 1]."
+    },
+    {
+      "id": "fr-faithful-02",
+      "set": "fr",
+      "corpus": "intl_fr",
+      "answerLanguage": "fr",
+      "kind": "faithful",
+      "category": "none",
+      "changed": "",
+      "answer": "Les charges mensuelles s’élèvent à 185 euros par logement [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 2]. Les travaux bruyants sont interdits le dimanche et les jours fériés [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 2]."
+    },
+    {
+      "id": "fr-faithful-03",
+      "set": "fr",
+      "corpus": "intl_fr",
+      "answerLanguage": "fr",
+      "kind": "faithful",
+      "category": "none",
+      "changed": "",
+      "answer": "La prochaine assemblée générale est prévue le 12 mars 2028 [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 1]. Nadia Lefèvre valide les devis supérieurs à 2 000 euros [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 2]."
+    },
+    {
+      "id": "fr-number-01",
+      "set": "fr",
+      "corpus": "intl_fr",
+      "answerLanguage": "fr",
+      "kind": "perturbed",
+      "category": "number",
+      "variant": "changed_value",
+      "changed": "158 euros",
+      "answer": "Les charges mensuelles s’élèvent à 158 euros par logement [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 2]. Le local à vélos est accessible avec le badge B-204 [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 2]."
+    },
+    {
+      "id": "fr-date-02",
+      "set": "fr",
+      "corpus": "intl_fr",
+      "answerLanguage": "fr",
+      "kind": "perturbed",
+      "category": "date",
+      "variant": "changed_day",
+      "changed": "21 mars 2028",
+      "answer": "L’assemblée générale annuelle a eu lieu le 14 mars 2027 [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 1]. La prochaine est prévue le 21 mars 2028 [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 1]."
+    },
+    {
+      "id": "fr-time-03",
+      "set": "fr",
+      "corpus": "intl_fr",
+      "answerLanguage": "fr",
+      "kind": "perturbed",
+      "category": "time",
+      "variant": "changed_time",
+      "changed": "13 h 00",
+      "answer": "Le gardien, Julien Moreau, est présent du lundi au vendredi de 8 h 30 à 13 h 00 [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 1]. La résidence compte 48 logements [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 1]."
+    },
+    {
+      "id": "fr-weekday-04",
+      "set": "fr",
+      "corpus": "intl_fr",
+      "answerLanguage": "fr",
+      "kind": "perturbed",
+      "category": "weekday",
+      "variant": "changed_weekday",
+      "changed": "du mardi au vendredi",
+      "answer": "La résidence compte 48 logements répartis sur 6 étages [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 1]. Le gardien est présent du mardi au vendredi de 8 h 30 à 12 h 00 [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 1]."
+    },
+    {
+      "id": "fr-code-05",
+      "set": "fr",
+      "corpus": "intl_fr",
+      "answerLanguage": "fr",
+      "kind": "perturbed",
+      "category": "code",
+      "variant": "changed_code",
+      "changed": "B-240",
+      "answer": "Le local à vélos est accessible avec le badge B-240 [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 2]. Les charges mensuelles s’élèvent à 185 euros par logement [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 2]."
+    },
+    {
+      "id": "fr-entity-06",
+      "set": "fr",
+      "corpus": "intl_fr",
+      "answerLanguage": "fr",
+      "kind": "perturbed",
+      "category": "entity",
+      "variant": "swapped_person",
+      "changed": "Nadia Lefèvre, est présent",
+      "answer": "Le gardien, Nadia Lefèvre, est présent du lundi au vendredi de 8 h 30 à 12 h 00 [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 1]. La résidence compte 48 logements [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 1]."
+    },
+    {
+      "id": "fr-negation-07",
+      "set": "fr",
+      "corpus": "intl_fr",
+      "answerLanguage": "fr",
+      "kind": "perturbed",
+      "category": "negation",
+      "variant": "add_negator",
+      "changed": "ne sont pas interdits",
+      "answer": "Les travaux bruyants ne sont pas interdits le dimanche [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 2]. Les charges mensuelles s’élèvent à 185 euros par logement [Doc: Règlement de la résidence Les Tilleuls (exemple), Chunk: 2]."
+    },
+    {
+      "id": "es-faithful-01",
+      "set": "es",
+      "corpus": "intl_es",
+      "answerLanguage": "es",
+      "kind": "faithful",
+      "category": "none",
+      "changed": "",
+      "answer": "El club tiene 120 socios y 14 embarcaciones [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 1]. La entrenadora, Carmen Ortega, dirige los entrenamientos de martes a jueves de 18:00 a 20:00 [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 1]."
+    },
+    {
+      "id": "es-faithful-02",
+      "set": "es",
+      "corpus": "intl_es",
+      "answerLanguage": "es",
+      "kind": "faithful",
+      "category": "none",
+      "changed": "",
+      "answer": "La cuota anual es de 240 euros por socio [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 2]. No se permite salir al agua con viento de más de 30 km/h [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 2]."
+    },
+    {
+      "id": "es-faithful-03",
+      "set": "es",
+      "corpus": "intl_es",
+      "answerLanguage": "es",
+      "kind": "faithful",
+      "category": "none",
+      "changed": "",
+      "answer": "La próxima asamblea anual será el 8 de febrero de 2028 [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 1]. Andrés Molina aprueba los gastos superiores a 1.500 euros [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 2]."
+    },
+    {
+      "id": "es-number-01",
+      "set": "es",
+      "corpus": "intl_es",
+      "answerLanguage": "es",
+      "kind": "perturbed",
+      "category": "number",
+      "variant": "changed_value",
+      "changed": "420 euros",
+      "answer": "La cuota anual es de 420 euros por socio [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 2]. Las taquillas se abren con la llave T-318 [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 2]."
+    },
+    {
+      "id": "es-date-02",
+      "set": "es",
+      "corpus": "intl_es",
+      "answerLanguage": "es",
+      "kind": "perturbed",
+      "category": "date",
+      "variant": "changed_day",
+      "changed": "18 de febrero de 2028",
+      "answer": "La asamblea anual se celebró el 9 de febrero de 2027 [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 1]. La próxima será el 18 de febrero de 2028 [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 1]."
+    },
+    {
+      "id": "es-time-03",
+      "set": "es",
+      "corpus": "intl_es",
+      "answerLanguage": "es",
+      "kind": "perturbed",
+      "category": "time",
+      "variant": "changed_time",
+      "changed": "21:00",
+      "answer": "La entrenadora, Carmen Ortega, dirige los entrenamientos de martes a jueves de 18:00 a 21:00 [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 1]. El club tiene 120 socios [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 1]."
+    },
+    {
+      "id": "es-weekday-04",
+      "set": "es",
+      "corpus": "intl_es",
+      "answerLanguage": "es",
+      "kind": "perturbed",
+      "category": "weekday",
+      "variant": "changed_weekday",
+      "changed": "de lunes a jueves",
+      "answer": "El club tiene 120 socios y 14 embarcaciones [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 1]. Los entrenamientos son de lunes a jueves de 18:00 a 20:00 [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 1]."
+    },
+    {
+      "id": "es-code-05",
+      "set": "es",
+      "corpus": "intl_es",
+      "answerLanguage": "es",
+      "kind": "perturbed",
+      "category": "code",
+      "variant": "changed_code",
+      "changed": "T-381",
+      "answer": "Las taquillas se abren con la llave T-381 [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 2]. La cuota anual es de 240 euros por socio [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 2]."
+    },
+    {
+      "id": "es-entity-06",
+      "set": "es",
+      "corpus": "intl_es",
+      "answerLanguage": "es",
+      "kind": "perturbed",
+      "category": "entity",
+      "variant": "swapped_person",
+      "changed": "Andrés Molina, dirige",
+      "answer": "El entrenador, Andrés Molina, dirige los entrenamientos de martes a jueves [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 1]. El club tiene 120 socios [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 1]."
+    },
+    {
+      "id": "es-negation-07",
+      "set": "es",
+      "corpus": "intl_es",
+      "answerLanguage": "es",
+      "kind": "perturbed",
+      "category": "negation",
+      "variant": "drop_negator",
+      "changed": "Se permite salir al agua",
+      "answer": "Se permite salir al agua con viento de más de 30 km/h [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 2]. La cuota anual es de 240 euros por socio [Doc: Normas del club de remo Ría Azul (ejemplo), Chunk: 2]."
+    },
+    {
+      "id": "it-faithful-01",
+      "set": "it",
+      "corpus": "intl_it",
+      "answerLanguage": "it",
+      "kind": "faithful",
+      "category": "none",
+      "changed": "",
+      "answer": "La biblioteca possiede 36.000 volumi e 25 postazioni di lettura [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 1]. La direttrice, Elena Marchetti, riceve il pubblico il mercoledì dalle 15:00 alle 17:30 [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 1]."
+    },
+    {
+      "id": "it-faithful-02",
+      "set": "it",
+      "corpus": "intl_it",
+      "answerLanguage": "it",
+      "kind": "faithful",
+      "category": "none",
+      "changed": "",
+      "answer": "Ogni utente può prendere in prestito fino a 6 libri per 30 giorni [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 2]. Non è consentito consumare cibo nelle sale di lettura [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 2]."
+    },
+    {
+      "id": "it-faithful-03",
+      "set": "it",
+      "corpus": "intl_it",
+      "answerLanguage": "it",
+      "kind": "faithful",
+      "category": "none",
+      "changed": "",
+      "answer": "Il nuovo regolamento è entrato in vigore il 2 maggio 2027 [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 1]. Paolo Rinaldi gestisce le postazioni informatiche [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 2]."
+    },
+    {
+      "id": "it-number-01",
+      "set": "it",
+      "corpus": "intl_it",
+      "answerLanguage": "it",
+      "kind": "perturbed",
+      "category": "number",
+      "variant": "changed_value",
+      "changed": "per 45 giorni",
+      "answer": "Ogni utente può prendere in prestito fino a 6 libri per 45 giorni [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 2]. La sala studio si prenota con il codice S-512 [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 2]."
+    },
+    {
+      "id": "it-date-02",
+      "set": "it",
+      "corpus": "intl_it",
+      "answerLanguage": "it",
+      "kind": "perturbed",
+      "category": "date",
+      "variant": "changed_month",
+      "changed": "2 giugno 2027",
+      "answer": "Il nuovo regolamento è entrato in vigore il 2 giugno 2027 [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 1]. La biblioteca possiede 36.000 volumi [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 1]."
+    },
+    {
+      "id": "it-time-03",
+      "set": "it",
+      "corpus": "intl_it",
+      "answerLanguage": "it",
+      "kind": "perturbed",
+      "category": "time",
+      "variant": "changed_time",
+      "changed": "18:30",
+      "answer": "La direttrice, Elena Marchetti, riceve il pubblico il mercoledì dalle 15:00 alle 18:30 [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 1]. La biblioteca possiede 25 postazioni di lettura [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 1]."
+    },
+    {
+      "id": "it-weekday-04",
+      "set": "it",
+      "corpus": "intl_it",
+      "answerLanguage": "it",
+      "kind": "perturbed",
+      "category": "weekday",
+      "variant": "changed_weekday",
+      "changed": "il giovedì",
+      "answer": "La biblioteca possiede 36.000 volumi [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 1]. La direttrice riceve il pubblico il giovedì dalle 15:00 alle 17:30 [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 1]."
+    },
+    {
+      "id": "it-code-05",
+      "set": "it",
+      "corpus": "intl_it",
+      "answerLanguage": "it",
+      "kind": "perturbed",
+      "category": "code",
+      "variant": "changed_code",
+      "changed": "S-215",
+      "answer": "La sala studio si prenota con il codice S-215 [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 2]. Ogni utente può prendere in prestito fino a 6 libri [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 2]."
+    },
+    {
+      "id": "it-entity-06",
+      "set": "it",
+      "corpus": "intl_it",
+      "answerLanguage": "it",
+      "kind": "perturbed",
+      "category": "entity",
+      "variant": "swapped_person",
+      "changed": "Paolo Rinaldi, riceve",
+      "answer": "Il responsabile tecnico, Paolo Rinaldi, riceve il pubblico il mercoledì dalle 15:00 alle 17:30 [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 1]. La biblioteca possiede 36.000 volumi [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 1]."
+    },
+    {
+      "id": "it-negation-07",
+      "set": "it",
+      "corpus": "intl_it",
+      "answerLanguage": "it",
+      "kind": "perturbed",
+      "category": "negation",
+      "variant": "drop_negator",
+      "changed": "È consentito consumare cibo",
+      "answer": "È consentito consumare cibo nelle sale di lettura [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 2]. Ogni utente può prendere in prestito fino a 6 libri [Doc: Regolamento della biblioteca civica di Valfonda (esempio), Chunk: 2]."
+    },
+    {
+      "id": "tr-faithful-01",
+      "set": "tr",
+      "corpus": "intl_tr",
+      "answerLanguage": "tr",
+      "kind": "faithful",
+      "category": "none",
+      "changed": "",
+      "answer": "Sitede 64 daire ve 4 blok bulunur [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 1]. Site yöneticisi Murat Kaya, pazartesiden cumaya 09:00 ile 17:00 arasında yönetim ofisindedir [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 1]."
+    },
+    {
+      "id": "tr-faithful-02",
+      "set": "tr",
+      "corpus": "intl_tr",
+      "answerLanguage": "tr",
+      "kind": "faithful",
+      "category": "none",
+      "changed": "",
+      "answer": "Aylık aidat daire başına 950 TL’dir [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]. Gece 23:00’ten sonra yüksek sesle müzik çalmak yasaktır [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]."
+    },
+    {
+      "id": "tr-faithful-03",
+      "set": "tr",
+      "corpus": "intl_tr",
+      "answerLanguage": "tr",
+      "kind": "faithful",
+      "category": "none",
+      "changed": "",
+      "answer": "Bir sonraki genel kurul 16 Nisan 2028 tarihinde yapılacak [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 1]. Zeynep Arslan, 10.000 TL’yi aşan harcamaları onaylar [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]."
+    },
+    {
+      "id": "tr-number-01",
+      "set": "tr",
+      "corpus": "intl_tr",
+      "answerLanguage": "tr",
+      "kind": "perturbed",
+      "category": "number",
+      "variant": "changed_value",
+      "changed": "590 TL",
+      "answer": "Aylık aidat daire başına 590 TL’dir [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]. Otopark girişi K-77 numaralı kartla açılır [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]."
+    },
+    {
+      "id": "tr-date-02",
+      "set": "tr",
+      "corpus": "intl_tr",
+      "answerLanguage": "tr",
+      "kind": "perturbed",
+      "category": "date",
+      "variant": "changed_month",
+      "changed": "16 Mayıs 2028",
+      "answer": "Olağan genel kurul 18 Nisan 2027 tarihinde yapıldı [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 1]. Bir sonraki genel kurul 16 Mayıs 2028 tarihinde yapılacak [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 1]."
+    },
+    {
+      "id": "tr-time-03",
+      "set": "tr",
+      "corpus": "intl_tr",
+      "answerLanguage": "tr",
+      "kind": "perturbed",
+      "category": "time",
+      "variant": "changed_time",
+      "changed": "18:00",
+      "answer": "Site yöneticisi Murat Kaya, pazartesiden cumaya 09:00 ile 18:00 arasında yönetim ofisindedir [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 1]. Sitede 64 daire bulunur [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 1]."
+    },
+    {
+      "id": "tr-weekday-04",
+      "set": "tr",
+      "corpus": "intl_tr",
+      "answerLanguage": "tr",
+      "kind": "perturbed",
+      "category": "weekday",
+      "variant": "changed_weekday",
+      "changed": "salıdan cumaya",
+      "answer": "Sitede 64 daire ve 4 blok bulunur [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 1]. Site yöneticisi salıdan cumaya 09:00 ile 17:00 arasında yönetim ofisindedir [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 1]."
+    },
+    {
+      "id": "tr-code-05",
+      "set": "tr",
+      "corpus": "intl_tr",
+      "answerLanguage": "tr",
+      "kind": "perturbed",
+      "category": "code",
+      "variant": "changed_code",
+      "changed": "K-71",
+      "answer": "Otopark girişi K-71 numaralı kartla açılır [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]. Aylık aidat daire başına 950 TL’dir [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]."
+    },
+    {
+      "id": "tr-entity-06",
+      "set": "tr",
+      "corpus": "intl_tr",
+      "answerLanguage": "tr",
+      "kind": "perturbed",
+      "category": "entity",
+      "variant": "swapped_person",
+      "changed": "Site yöneticisi Zeynep Arslan",
+      "answer": "Site yöneticisi Zeynep Arslan, pazartesiden cumaya 09:00 ile 17:00 arasında yönetim ofisindedir [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 1]. Sitede 64 daire bulunur [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 1]."
+    },
+    {
+      "id": "tr-negation-07",
+      "set": "tr",
+      "corpus": "intl_tr",
+      "answerLanguage": "tr",
+      "kind": "perturbed",
+      "category": "negation",
+      "variant": "add_negator",
+      "changed": "yasak değildir",
+      "answer": "Gece 23:00’ten sonra yüksek sesle müzik çalmak yasak değildir [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]. Aylık aidat daire başına 950 TL’dir [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]."
+    }
+  ]
+}

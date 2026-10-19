@@ -20,6 +20,25 @@
  */
 const W = (body) => new RegExp(`(?<![\\p{L}\\p{N}])(?:${body})(?![\\p{L}\\p{N}])`, 'gu');
 
+/**
+ * Weekday names with the endings a day takes in a span or a habit: from ("pazartesiden"), to
+ * ("cumaya") and every ("salıları"); a day takes them directly, without an apostrophe. Each base
+ * name is listed with its endings as vowel harmony shapes them.
+ * @type {Array<[string, number, string[]]>}
+ */
+const WEEKDAY_FORMS = [
+  ['pazartesi', 1, ['den', 'ye', 'leri']],
+  ['salı', 2, ['dan', 'ya', 'ları']],
+  ['sali', 2, ['dan', 'ya', 'lari']],
+  ['çarşamba', 3, ['dan', 'ya', 'ları']],
+  ['carsamba', 3, ['dan', 'ya', 'lari']],
+  ['perşembe', 4, ['den', 'ye', 'leri']],
+  ['persembe', 4, ['den', 'ye', 'leri']],
+  ['cuma', 5, ['dan', 'ya', 'ları', 'lari']],
+  ['cumartesi', 6, ['den', 'ye', 'leri']],
+  ['pazar', 7, ['dan', 'a', 'ları', 'lari']],
+];
+
 /** @type {import('./index.js').PackInput} */
 export const tr = {
   code: 'tr',
@@ -33,9 +52,7 @@ export const tr = {
   },
   monthAbbreviations: { oca: 1, şub: 2, nis: 4, haz: 6, tem: 7, ağu: 8, eyl: 9 },
   ambiguousMonths: [],
-  weekdays: {
-    pazartesi: 1, salı: 2, sali: 2, çarşamba: 3, carsamba: 3, perşembe: 4, persembe: 4, cuma: 5, cumartesi: 6, pazar: 7,
-  },
+  weekdays: Object.fromEntries(WEEKDAY_FORMS.flatMap(([day, n, endings]) => [[day, n], ...endings.map((e) => [`${day}${e}`, n])])),
   monthContext: ['geçen', 'gelecek', 'bu', 'önümüzdeki'],
   monthPosition: [],
   dayMonthLinks: [],
@@ -87,8 +104,9 @@ export const tr = {
 
   polarity: {
     // A Turkish negator follows the word it negates ("aktif değil", "şifreleme yok").
-    negators: ['değil', 'yok', 'hiç', 'asla', 'hiçbir', 'hiçbiri'],
-    plainNegators: ['değil'],
+    // With the copula ("değildir", "yoktur") as well.
+    negators: ['değil', 'değildir', 'değiller', 'değildi', 'yok', 'yoktur', 'hiç', 'asla', 'hiçbir', 'hiçbiri'],
+    plainNegators: ['değil', 'değildir', 'değiller', 'değildi'],
     qualifiers: ['henuez', 'hala', 'hâlâ', 'zaten', 'otomatik', 'artik', 'şu', 'anda', 'daha', 'kesinlikle'],
     contractions: [],
     infixNegators: [],
@@ -111,8 +129,8 @@ export const tr = {
       [W('çoezueldue|çoezuelmueş|netleşti|karara bağlandi'), 'çoezuelmueş'],
       [W('devre dişi|kapali|pasif|etkisiz'), 'etkin', true],
       [W('etkinleştirilmiş|etkinleştirildi|aktif'), 'etkin'],
-      [W('yasak|yasaklanmiş|yasaklandi'), 'izinli', true],
-      [W('izinli|izin verilir|serbest'), 'izinli'],
+      [W('yasak(?:tir)?|yasaklanmiş(?:tir)?|yasaklandi'), 'izinli', true],
+      [W('izinli(?:dir)?|izin verilir|serbest(?:tir)?'), 'izinli'],
       [W('reddedildi|reddedilmiş|reddedilen'), 'kabul', true],
       [W('başarisiz|başarisizlik'), 'başarili', true],
       [W('azaldi|duestue|geriledi|azalmiş|duesmueş'), 'artti', true],
