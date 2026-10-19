@@ -75,7 +75,7 @@ describe('decideRoute', () => {
     for (const lang of ['fr', 'es', 'it', 'tr']) {
       const own = cases.filter((/** @type {{ lang: string }} */ c) => c.lang === lang);
       assert.ok(own.length >= 5, lang);
-      for (const route of ['grounded', 'free']) assert.ok(own.some((/** @type {{ route: string }} */ c) => c.route === route), `${lang}: a ${route} case`);
+      for (const route of ['grounded', 'mixed', 'free']) assert.ok(own.some((/** @type {{ route: string }} */ c) => c.route === route), `${lang}: a ${route} case`);
       assert.ok(own.some((/** @type {{ reference?: boolean }} */ c) => c.reference), `${lang}: a reference case`);
     }
     /** @type {string[]} */

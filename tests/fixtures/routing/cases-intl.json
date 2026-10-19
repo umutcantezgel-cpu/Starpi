@@ -81,6 +81,16 @@
       "route": "free"
     },
     {
+      "lang": "es",
+      "q": "¿Cuántas plazas tiene un aparcamiento público típico?",
+      "route": "mixed"
+    },
+    {
+      "lang": "es",
+      "q": "¿Conviene guardar las bicicletas en casa o en el aparcamiento?",
+      "route": "mixed"
+    },
+    {
       "lang": "it",
       "q": "Con quanto anticipo si prenotano le sale riunioni?",
       "route": "grounded"
@@ -110,6 +120,11 @@
       "lang": "it",
       "q": "Come si organizza una videoconferenza con clienti esteri?",
       "route": "free"
+    },
+    {
+      "lang": "it",
+      "q": "Quali sono i vantaggi di un calendario condiviso per le prenotazioni?",
+      "route": "mixed"
     },
     {
       "lang": "tr",
@@ -147,6 +162,16 @@
       "lang": "tr",
       "q": "Güçlü bir parola nasıl oluşturulur?",
       "route": "free"
+    },
+    {
+      "lang": "tr",
+      "q": "Kilitli hesaplar için güvenlik önerileri nelerdir?",
+      "route": "mixed"
+    },
+    {
+      "lang": "tr",
+      "q": "Rakam içermelidir kuralı güvenliği artırır mı?",
+      "route": "mixed"
     }
   ]
 }
