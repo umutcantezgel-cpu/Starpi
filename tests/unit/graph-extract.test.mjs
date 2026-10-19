@@ -10,6 +10,7 @@ import { describe, it } from 'node:test';
 import { messageText } from '../../src/js/ai/contract.js';
 import { getPurpose, graphPassages } from '../../src/js/ai/purposes.js';
 import { configureRouter } from '../../src/js/ai/router.js';
+import { loadShippedLanguages } from '../../src/js/core/lang/index.js';
 import {
   appModelRunner,
   batchInput,
@@ -329,6 +330,36 @@ describe('without a model', () => {
     const graph = cooccurrenceGraph(doc);
     assert.deepEqual([...graph.entities.values()].map((e) => e.name).sort(), ['Mara Jensen', 'Nordwind Energie']);
     assert.deepEqual(graph.triples.map((t) => [t.subject, t.object]), [['Mara Jensen', 'Nordwind Energie']]);
+  });
+
+  it('reads names in French, Spanish, Italian and Turkish: their joining words, elided articles and Turkish endings', async () => {
+    await loadShippedLanguages();
+    const docs = {
+      fr: 'Le projet du jardin est dirigé par Claire Dubois avec la Banque de France. En mars, Claire Dubois a présenté le budget à la mairie de Lyon. Le directeur de l’Agence Verte rencontre Claire Dubois à Lyon chaque lundi.',
+      es: 'El proyecto del huerto lo dirige Lucía Romero con el Banco de España. En marzo, Lucía Romero presentó el presupuesto en Sevilla. La Fundación Aurora colabora con Lucía Romero desde Sevilla.',
+      it: 'Il progetto dell’orto è guidato da Giulia Ferri con la Cassa di Risparmio. A marzo Giulia Ferri ha presentato il bilancio a Torino. Il direttore dell’Agenzia Verde incontra Giulia Ferri a Torino ogni lunedì.',
+      tr: 'Bahçe projesini Elif Aydın yürütüyor ve Kuzey Enerji destek veriyor. Mart ayında Elif Aydın bütçeyi Ankara’da sundu. Kuzey Enerji, Elif Aydın’ın ekibine Ankara’daki ofisten yardım ediyor.',
+    };
+    const names = /** @type {Record<string, string[]>} */ ({});
+    for (const [lang, text] of Object.entries(docs)) {
+      const doc = [{ doc: lang, docName: `${lang}.md`, chunk: 0, text }];
+      const graph = cooccurrenceGraph(doc);
+      names[lang] = [...graph.entities.values()].map((e) => e.name).sort();
+      assert.equal(graph.dropped.relations, 0, lang);
+      const passages = new Map([[`${lang}#0`, passageOf(text)]]);
+      for (const t of graph.triples) assert.equal(checkTriple(t, passages), null, `${lang}: ${t.subject} – ${t.object}`);
+    }
+    // Months and weekdays ("mars", "Mart", "lunedì") and sentence starts ("Le", "Il") are no names.
+    assert.deepEqual(names, {
+      fr: ['Agence Verte', 'Banque de France', 'Claire Dubois', 'Lyon'],
+      es: ['Banco de España', 'Fundación Aurora', 'Lucía Romero', 'Sevilla'],
+      it: ['Agenzia Verde', 'Cassa di Risparmio', 'Giulia Ferri', 'Torino'],
+      tr: ['Ankara', 'Elif Aydın', 'Kuzey Enerji'],
+    });
+    const keys = (/** @type {string} */ s, /** @type {any} */ o) => capitalisedPhrases(s, o).map((h) => h.surface);
+    assert.deepEqual(keys('Le siège de l’Agence Verte est à Lyon.', { apostrophes: 'elision' }), ['Agence Verte', 'Lyon']);
+    assert.deepEqual(keys('Toplantı Ankara’da, Elif Aydın’ın ofisinde.', { apostrophes: 'suffix' }), ['Toplantı Ankara', 'Elif Aydın']);
+    assert.deepEqual(keys('Le siège de l’Agence Verte est à Lyon.'), ['Verte', 'Lyon'], 'read without elision, the article cuts the name in half');
   });
 
   it('hands the thread back between chunks, so the page stays responsive and Stop works', async () => {

@@ -342,8 +342,33 @@ function foldWord(word) {
 /** Lowercase words that may join two capitalised words of one English name ("Bank of England"). */
 const PARTICLES_EN = new Set(['of', 'de', 'da', 'di', 'du', 'del', 'della', 'van', 'von', 'la', 'le']);
 /**
+ * The joining words of names per language ("Banque de France", "Banco de España", "Cassa di
+ * Risparmio"). German needs none: its compounds are one word. Turkish has none: a name is a run of
+ * capitalised words ("Merkez Bankası"). English joins with PARTICLES_EN, and so does a text whose
+ * language is unclear.
+ * @type {Readonly<Record<string, ReadonlySet<string>>>}
+ */
+const PARTICLES = Object.freeze({
+  de: new Set(),
+  fr: new Set(['de', 'du', 'des', 'la', 'le', 'van', 'von']),
+  es: new Set(['de', 'del', 'van', 'von']),
+  it: new Set(['di', 'del', 'della', 'dello', 'dei', 'degli', 'delle', 'da', 'van', 'von']),
+  tr: new Set(),
+});
+/**
+ * How a language attaches small words to a name with an apostrophe, so the name inside is found:
+ * French and Italian elide an article or preposition before it ("l’Europe", "dell’Agenzia"),
+ * Turkish separates the case endings of a name after it ("Ankara’da", "Mara’nın").
+ * @type {Readonly<Record<string, 'elision' | 'suffix'>>}
+ */
+const APOSTROPHES = Object.freeze({ fr: 'elision', it: 'elision', tr: 'suffix' });
+const ELIDED = /^\p{Ll}{1,5}['’](?=\p{Lu})/u;
+const SUFFIXED = /(?<=\p{L})['’]\p{Ll}+$/u;
+/**
  * German capitalises every noun, so a single capitalised word after one of these is a noun, not a
- * name ("das Projekt"); names rarely take them.
+ * name ("das Projekt"); names rarely take them. French, Spanish, Italian and Turkish write nouns in
+ * lower case, as English does: a capital marks a name or a sentence start, and the sentence-start
+ * rule below covers the latter, so they need no rule of this kind.
  */
 const DETERMINERS_DE = new Set(
   'der die das den dem des ein eine einen einem einer eines kein keine keinen keinem keiner keines dieser diese dieses diesem diesen jeder jede jedes jedem jeden mein meine meinem meinen meiner sein seine seinem seinen seiner ihr ihre ihrem ihren ihrer unser unsere unserem unseren unserer zum zur im am vom beim'.split(' '),
@@ -367,13 +392,27 @@ const capitalised = (word) => /^\p{Lu}/u.test(word) || /^\p{Ll}+\p{Lu}/u.test(wo
  * without leading or trailing function words; a run of only function words, months or weekdays is
  * none.
  * @param {string} sentence
- * @param {{ particles?: ReadonlySet<string> }} [options]
+ * @param {{ particles?: ReadonlySet<string>, apostrophes?: 'elision' | 'suffix' }} [options]  the joining words of names;
+ *   how the language attaches words with an apostrophe (an elided "l’" before a name, a Turkish ending after it)
  * @returns {PhraseHit[]}
  */
 export function capitalisedPhrases(sentence, options = {}) {
   const particles = options.particles ?? PARTICLES_EN;
   const common = commonWords();
-  const words = [...sentence.matchAll(WORD)].map((m) => ({ text: m[0], start: m.index ?? 0, end: (m.index ?? 0) + m[0].length }));
+  const words = [...sentence.matchAll(WORD)].map((m) => {
+    let start = m.index ?? 0;
+    let text = m[0];
+    if (options.apostrophes === 'elision') {
+      const elided = ELIDED.exec(text);
+      if (elided) {
+        start += elided[0].length;
+        text = text.slice(elided[0].length);
+      }
+    } else if (options.apostrophes === 'suffix' && /^\p{Lu}/u.test(text)) {
+      text = text.replace(SUFFIXED, '');
+    }
+    return { text, start, end: start + text.length };
+  });
   /** @type {PhraseHit[]} */
   const out = [];
   let i = 0;
@@ -456,8 +495,10 @@ export async function cooccurrenceGraphSliced(chunks, slice) {
 function* cooccurrenceSteps(chunks) {
   const result = emptyPart();
   if (!chunks.length) return result;
-  const german = guessLanguage(chunks.slice(0, 4).map((c) => c.text).join('\n')) === 'de';
-  const particles = german ? new Set() : PARTICLES_EN;
+  const lang = guessLanguage(chunks.slice(0, 4).map((c) => c.text).join('\n'));
+  const german = lang === 'de';
+  const particles = (lang && PARTICLES[lang]) || PARTICLES_EN;
+  const apostrophes = lang ? APOSTROPHES[lang] : undefined;
   /** @type {Array<{ chunk: GraphChunk, hits: PhraseHit[] }>} */
   const sentences = [];
   /** Names the document writes capitalised inside a sentence. */
@@ -469,7 +510,7 @@ function* cooccurrenceSteps(chunks) {
   for (const chunk of chunks) {
     for (const m of chunk.text.matchAll(/(?<![\p{L}\p{N}])\p{Ll}[\p{L}\p{M}]*/gu)) lower.add(foldWord(m[0]));
     for (const span of sentenceSpans(chunk.text)) {
-      const hits = capitalisedPhrases(chunk.text.slice(span.start, span.end), { particles });
+      const hits = capitalisedPhrases(chunk.text.slice(span.start, span.end), { particles, apostrophes });
       for (const h of hits) {
         if (!h.initial) inside.add(h.key);
         if (german && h.single && h.afterDeterminer) articled.add(h.key);
