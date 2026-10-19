@@ -68,18 +68,21 @@ without it the action is not offered. Blocked apps can be neither allowed nor op
    right before it runs; a different target voids the approval.
 6. **Stop.** Any paired session, never refused, no model involved. It aborts the model request and
    the step in progress, waits at most a second for the standstill and records how long it took.
-   The stop flag is kept until the owner starts the next mandate. A restart ends a mandate that
-   was running.
+   Every stop request is recorded (`computer.stop.requested`) with what it met: `idle`, `running`,
+   or `ending` when an expiry, a withdrawal or the end of the task was already ending the mandate.
+   The stop flag is kept until the owner starts the next mandate, also across restarts. A restart
+   ends a mandate that was running.
 
 Every decision and every step is a record in the audit chain (`computer.*`: ids, codes, counts and
-app ids; never the task, typed text, window titles or screen content). The task, approval
-previews, the journal and model text live in memory only.
+app ids; never the task, typed text, window titles or screen content). A typing step records how
+many characters were actually typed, also when it stopped part-way. The task, approval previews,
+the journal and model text live in memory only.
 
 ## Routes
 
 | Route | Access | Body / answer |
 | --- | --- | --- |
-| `GET /v1/computer` | member | consent, stop flag, the running mandate, the open approval (its preview only for the mandate owner), hints and summaries |
+| `GET /v1/computer` | member | consent, stop flag, the running mandate, the open approval (its preview only for the mandate owner); hints and model summaries only for owner sessions and the session that started their mandate (other members get an empty `notes` list) |
 | `POST /v1/computer/consent` | owner | `{ grant: true, version }` or `{ grant: false }` |
 | `POST /v1/computer/mandate` | owner | `{ task, shareable?, actions? }` |
 | `POST /v1/computer/mandate/extend` | member (mandate owner only) | `{ mandate }` |

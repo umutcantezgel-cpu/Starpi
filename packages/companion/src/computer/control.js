@@ -9,15 +9,18 @@
 //    the deadline to the full length from now again. With little time left no step starts and the
 //    loop waits for that extension or the end.
 //  - Stop: any paired session, never refused, no model involved. It aborts the model request and
-//    the step in progress, waits briefly for the standstill and records how long that took. The stop
-//    flag survives a restart; a restart also ends a mandate that was running.
+//    the step in progress, waits briefly for the standstill and records how long that took. Every
+//    stop request is recorded with what it met (nothing running, a running mandate, or a mandate an
+//    expiry, a withdrawal or the loop is already ending). The stop flag survives a restart; a restart
+//    also ends a mandate that was running.
 //  - Approvals: a step of the high class waits until the mandate owner decides; any other session is
 //    refused. Nobody can approve while the actor works or right after its last step (the quiet
 //    period), so the actor cannot approve its own step by pressing the button. An approved step is
 //    looked at again just before it runs; a different target voids the approval.
 //  - Every decision and every step is a record in the audit chain (ids, codes, counts, app ids; no
 //    task text, typed text, window titles or screen content). Task, previews, the journal and model
-//    text live in memory only and go with the mandate.
+//    text live in memory only and go with the mandate. Hints and model summaries are shown to owner
+//    sessions and to the session that started their mandate; other members see the state only.
 import { randomUUID } from 'node:crypto';
 import { canonicalJson, sha256Hex } from '../lib/canonical.js';
 import { isoAt } from '../lib/clock.js';
@@ -74,9 +77,21 @@ import { SECRET_ROLE } from './lists.js';
  * @property {AbortController} abort
  * @property {unknown} timer
  * @property {boolean} closed
+ * @property {import('./limits.js').EndReason | null} ending  why it is ending, once it is
+ * @property {Promise<void> | null} ended  settles when the end is written
  * @property {Pending | null} pending
  * @property {((extended: boolean) => void) | null} onExtend
  * @property {unknown[] | null} history  the agent loop's turns (memory only)
+ */
+
+/**
+ * What the actor did with one step; `typed` counts the characters it typed before it stopped.
+ * @typedef {({ ok: true, screen?: import('./actor.js').ScreenReport } | { ok: false, code: string }) & { typed: number }} ActOutcome
+ */
+
+/**
+ * A hint or a model summary kept for the person, with the session that started its mandate.
+ * @typedef {{ owner: string, note: Record<string, unknown> }} Note
  */
 
 /**
@@ -113,11 +128,11 @@ export function createController({ actor, state, audit, clock, policy, settings,
   let loop = null;
   /** @type {Array<Record<string, unknown>>} */
   const journal = [];
-  /** Hints (codes) and model summaries for the person, memory only. @type {Array<Record<string, unknown>>} */
+  /** Hints (codes) and model summaries for the person, memory only. @type {Note[]} */
   const notes = [];
 
   const iso = () => isoAt(clock.now());
-  /** @param {Array<Record<string, unknown>>} list @param {Record<string, unknown>} entry */
+  /** @template T @param {T[]} list @param {T} entry */
   const keep = (list, entry) => {
     list.push(entry);
     if (list.length > JOURNAL_LIMIT) list.splice(0, list.length - JOURNAL_LIMIT);
@@ -152,7 +167,7 @@ export function createController({ actor, state, audit, clock, policy, settings,
 
   /** @param {Run} run @param {string} code */
   function hint(run, code) {
-    keep(notes, { at: iso(), mandate: run.id, kind: 'hint', code });
+    keep(notes, { owner: run.owner, note: { at: iso(), mandate: run.id, kind: 'hint', code } });
   }
 
   /** @param {Run} run @returns {import('./state.js').MandateRecord} */
@@ -225,7 +240,8 @@ export function createController({ actor, state, audit, clock, policy, settings,
     const run = {
       id: randomUUID(), owner: who.session, task, shareable: b.shareable === true, actions: [.../** @type {string[]} */ (actions)],
       startedAt: now, expiresAt: now + Math.min(settings.mandateS, MANDATE_LIMIT_S) * 1000, extensions: 0, seq: 0, turns: 0,
-      screenRead: false, abort: new AbortController(), timer: null, closed: false, pending: null, onExtend: null, history: null,
+      screenRead: false, abort: new AbortController(), timer: null, closed: false, ending: null, ended: null, pending: null, onExtend: null,
+      history: null,
     };
     record('mandate.started', run.id, who, { mandate: run.id, actions: run.actions, shareable: run.shareable, expiresAt: isoAt(run.expiresAt) });
     state.setHalt(null);
@@ -263,16 +279,25 @@ export function createController({ actor, state, audit, clock, policy, settings,
 
   /**
    * Ends a mandate: aborts the model request and the step in progress, settles an open approval,
-   * waits briefly for the standstill, then writes the end with the time it took.
+   * waits briefly for the standstill, then writes the end with the time it took. The abort happens
+   * before this returns; `run.ended` settles once the end is written.
    * @param {Run} run
    * @param {import('./limits.js').EndReason} reason
    * @param {Who | null} who   null for the companion itself
    * @param {number} [t0]      performance.now() when the end was asked for
    * @returns {Promise<number | null>} milliseconds until standstill, null when it had ended already
    */
-  async function end(run, reason, who, t0 = performance.now()) {
-    if (run.closed) return null;
+  function end(run, reason, who, t0 = performance.now()) {
+    if (run.closed) return Promise.resolve(null);
     run.closed = true;
+    run.ending = reason;
+    const writing = finishEnd(run, reason, who, t0);
+    run.ended = writing.then(() => {}, () => {});
+    return writing;
+  }
+
+  /** The body of `end` once the mandate is marked closed. @param {Run} run @param {import('./limits.js').EndReason} reason @param {Who | null} who @param {number} t0 */
+  async function finishEnd(run, reason, who, t0) {
     run.abort.abort();
     if (run.timer !== null) clock.clearTimeout(run.timer);
     run.pending?.settle('ended');
@@ -293,14 +318,32 @@ export function createController({ actor, state, audit, clock, policy, settings,
     return stopMs;
   }
 
-  /** Stop: any paired session, never refused. @param {Who} who */
+  /**
+   * Stop: any paired session, never refused. The request is recorded whatever it meets: nothing
+   * running ('idle'), a running mandate it ends ('running'), or a mandate already being ended by an
+   * expiry, a withdrawal or the loop ('ending', with that reason); then it waits for the standstill.
+   * @param {Who} who
+   */
   async function stop(who) {
     const t0 = performance.now();
     const run = current;
+    const met = run === null ? 'idle' : run.closed ? 'ending' : 'running';
     state.setHalt({ at: iso(), by: who.session });
-    const stopMs = run ? await end(run, 'stopped', who, t0) : null;
-    if (!run) record('stop.requested', 'idle', who, { mandate: null });
-    return { stopped: true, mandate: run?.id ?? null, stopMs: stopMs ?? 0 };
+    try {
+      /** @type {Record<string, unknown>} */
+      const details = { mandate: run?.id ?? null, met };
+      if (run !== null && met === 'ending') details.ending = run.ending;
+      record('stop.requested', run?.id ?? 'idle', who, details);
+    } catch (err) {
+      log('warn', 'stop_not_recorded', { met, error: err });
+    }
+    let stopMs = 0;
+    if (run !== null && met === 'running') stopMs = (await end(run, 'stopped', who, t0)) ?? 0;
+    else if (run !== null && run.ended !== null) {
+      await run.ended;
+      stopMs = Math.max(0, Math.round(performance.now() - t0));
+    }
+    return { stopped: true, mandate: run?.id ?? null, stopMs };
   }
 
   /** At module start: a mandate recorded as active did not survive the restart. */
@@ -430,7 +473,7 @@ export function createController({ actor, state, audit, clock, policy, settings,
    * Performs an allowed step with the actor: one abort signal per step tied to the mandate, keys
    * one at a time, text in pieces with stop, deadline and the target field checked before each.
    * @param {Run} run @param {import('./classes.js').Step} step @param {import('./classes.js').Target} target @param {import('./classes.js').Seen} seen
-   * @returns {Promise<{ ok: true, screen?: import('./actor.js').ScreenReport } | { ok: false, code: string }>}
+   * @returns {Promise<ActOutcome>}
    */
   async function act(run, step, target, seen) {
     const local = new AbortController();
@@ -441,6 +484,8 @@ export function createController({ actor, state, audit, clock, policy, settings,
     /** @type {import('./actor.js').Expect} */
     const expect = { front: typeof seen.front?.app === 'string' ? seen.front.app : null, app: target.app, title: target.title };
     const args = step.args;
+    /** Characters typed so far: a typing step that stops part-way records only these. */
+    let typed = 0;
     const work = (async () => {
       switch (step.action) {
         case ACTIONS.look: {
@@ -476,8 +521,10 @@ export function createController({ actor, state, audit, clock, policy, settings,
               if (!same) return { ok: false, code: 'target_moved' };
               if (!alive()) return { ok: false, code: 'aborted' };
             }
-            const r = await actor.typePiece({ text: chars.slice(from, from + TYPE_PIECE_CHARS).join(''), expect: fieldExpect, signal });
+            const piece = chars.slice(from, from + TYPE_PIECE_CHARS);
+            const r = await actor.typePiece({ text: piece.join(''), expect: fieldExpect, signal });
             if (!r.ok) return r;
+            typed += piece.length;
           }
           return { ok: true };
         }
@@ -489,9 +536,9 @@ export function createController({ actor, state, audit, clock, policy, settings,
     })();
     acting = work;
     try {
-      return /** @type {any} */ (await work);
+      return { .../** @type {any} */ (await work), typed };
     } catch {
-      return { ok: false, code: signal.aborted ? 'aborted' : 'actor_failed' };
+      return { ok: false, code: signal.aborted ? 'aborted' : 'actor_failed', typed };
     } finally {
       if (acting === work) acting = null;
       lastStepEnd = clock.now();
@@ -555,7 +602,7 @@ export function createController({ actor, state, audit, clock, policy, settings,
     }
 
     const result = await act(run, step, ruling.target, seen);
-    const typed = action === ACTIONS.type ? { typedChars: [...String(step.args.text)].length } : {};
+    const typed = action === ACTIONS.type ? { typedChars: result.typed } : {};
     if (result.ok) {
       logStep(run, seq, action, ruling.cls, 'done', ruling.reasons, ruling.target.app, typed);
       /** @type {Record<string, unknown>} */
@@ -584,16 +631,21 @@ export function createController({ actor, state, audit, clock, policy, settings,
 
   /** @param {Run} run @param {string} text @param {string} brain */
   function keepSummary(run, text, brain) {
-    keep(notes, { at: iso(), mandate: run.id, kind: 'model', brain, text });
+    keep(notes, { owner: run.owner, note: { at: iso(), mandate: run.id, kind: 'model', brain, text } });
   }
 
   // ------------------------------------------------------------------------- reading
 
-  /** @param {Who} who */
+  /**
+   * The state for one session. Hints and model summaries can quote the screen, typed text or window
+   * titles, so only owner sessions and the session that started their mandate read them.
+   * @param {Who} who
+   */
   function status(who) {
     const saved = state.read();
     const run = current;
     const mine = run !== null && run.owner === who.session;
+    const readable = who.role === 'owner' ? notes : notes.filter((n) => n.owner === who.session);
     return {
       actor: { kind: actor.kind, preview: actor.preview },
       consent: { granted: saved.consent !== null, at: saved.consent?.at ?? null, version: saved.consent?.version ?? null, current: CONSENT_VERSION },
@@ -609,14 +661,14 @@ export function createController({ actor, state, audit, clock, policy, settings,
         id: run.pending.id, action: run.pending.action, reasons: [...run.pending.reasons], expiresAt: isoAt(run.pending.expiresAt),
         ...(mine ? { preview: { ...run.pending.preview } } : {}),
       } : null,
-      notes: notes.slice(-50).map((n) => ({ ...n })),
+      notes: readable.slice(-50).map((n) => ({ ...n.note })),
     };
   }
 
   return {
     grantConsent, revokeConsent, useLoop, startMandate, extend, stop, decide, end, afterRestart, shutdown, waitForExtension,
     perform, skip, hint, noteTurn, keepSummary, status, offered,
-    journal: () => ({ steps: journal.map((e) => ({ ...e })), notes: notes.map((n) => ({ ...n })) }),
+    journal: () => ({ steps: journal.map((e) => ({ ...e })), notes: notes.map((n) => ({ ...n.note })) }),
     /** @returns {Run | null} */
     current: () => current,
     quiet,

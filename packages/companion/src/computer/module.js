@@ -6,7 +6,8 @@
 //
 // Routes (below /v1/computer/):
 //   GET  /                     member  state: consent, stop flag, the running mandate, the open approval
-//                                      (its preview only for the mandate owner), hints and summaries
+//                                      (its preview only for the mandate owner); hints and summaries only
+//                                      for owner sessions and the session that started their mandate
 //   POST /consent              owner   { grant: true, version } grants, { grant: false } withdraws
 //   POST /mandate              owner   { task, shareable?, actions? } starts a mandate
 //   POST /mandate/extend       member  { mandate } extends it (the mandate owner only)

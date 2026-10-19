@@ -178,6 +178,10 @@ test('over HTTP: consent by the owner, a mandate, an approval only by its owner,
   const after = (await call(`${base}`, as(ownerA))).json();
   assert.equal(after.notes.at(-1).text, 'Wrote a greeting into the note.');
   assert.equal(after.notes.at(-1).kind, 'model');
+  // A member reads the state, never the model's summary.
+  const byMember = (await call(`${base}`, as(member))).json();
+  assert.deepEqual(byMember.notes, []);
+  assert.equal(byMember.consent.granted, true);
   assert.equal(model.seen[0].messages[0].role, 'system');
   assert.match(model.seen[1].messages.at(-1).content, /Note text/, 'the screen report went back to the model');
 
