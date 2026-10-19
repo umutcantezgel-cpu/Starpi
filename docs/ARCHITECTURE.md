@@ -40,12 +40,11 @@ idealised design. When the code changes, change the diagram in the same pull req
 2. [Boot and settings](#2-boot-and-settings)
    - [boot(): module start-up order](#boot-module-start-up-order)
    - [Boot-time changeEngine: cached model only, never a download](#boot-time-changeengine-cached-model-only-never-a-download)
-   - [connect(), connection subscribers and restoreHistory](#connect-connection-subscribers-and-restorehistory)
-   - [restoreHistory: merging synced and on-device messages](#restorehistory-merging-synced-and-on-device-messages)
-   - [saveSettings: server URL, API keys and a pending assistant pick](#savesettings-server-url-api-keys-and-a-pending-assistant-pick)
-   - [changeEngine, clearKeys and deleteModelCache](#changeengine-clearkeys-and-deletemodelcache)
+   - [Opening the conversation store](#opening-the-conversation-store)
+   - [saveSettings: model strength and a pending assistant pick](#savesettings-model-strength-and-a-pending-assistant-pick)
+   - [Keys: the tab, the vault and its lock](#keys-the-tab-the-vault-and-its-lock)
    - [deleteHistory: deleting the chat history](#deletehistory-deleting-the-chat-history)
-   - [testProvider: Gemini and OpenRouter connection tests](#testprovider-gemini-and-openrouter-connection-tests)
+   - [Testing a key](#testing-a-key)
 3. [Answering a question](#3-answering-a-question)
    - [submitChat: from input to persisted answer](#submitchat-from-input-to-persisted-answer)
    - [retrieve(): knowledge-base decision tree per mode](#retrieve-knowledge-base-decision-tree-per-mode)
@@ -1094,503 +1093,326 @@ flowchart TD
 
 ## 2. Boot and settings
 
-What happens between the first byte of `index.html` and a usable chat, and how the settings form stores provider keys, preferences and the engine choice, tests provider keys and deletes the chat history.
+What happens between the first byte of `index.html` and a usable chat, how the stored model choice is applied without a download, how the conversation store opens (with the one-time move of 2.x data), and how settings, keys and the vault, key tests and the deletion of the chat history work.
 
 ### boot(): module start-up order
 
-main.js boot() runs initI18n first, so the stored starpi_locale (or en) is applied before any module renders text. It then installs the delegated click/change dispatcher, registers the switch-tab and toggle-sidebar actions, calls syncSidebarAccess(false) so that below 768 px the closed off-canvas sidebar is inert, registers set-locale and the lazy onTabOpen hooks, and runs the thirteen init* functions (initModelPicker right after initSettings, initDemo and initReceipts last), refreshIcons, detectAndDisplayDevice and registerServiceWorker. registerServiceWorker registers the reload-app and dismiss-update actions, fetches /build-manifest.json on every controllerchange and shows the update banner only when its entries.mainJs differs from the page's own /assets/ module script, and registers /sw.js on window load (section 7 shows the update flow). sw.js calls skipWaiting only when no window is open at install time or on a SKIP_WAITING message, which main.js never sends, so an updated worker usually waits until every Starpi tab is closed. boot() subscribes to onConnectionChange before calling connect(), so the listener also renders the later attempts that connect() schedules itself after an offline result, while restoreHistory() runs only once. changeEngine is started with void, so it is neither awaited nor covered by boot().catch, while connect() and restoreHistory() are awaited in sequence. initModelPicker leaves the static options of both assistant pickers in place and rebuilds them once the page is idle (requestIdleCallback, at most 2 s), after the device probe and again when the NVIDIA proxy answers. A throw or rejection inside boot() skips the remaining steps, and reportUnexpected only logs it with console.error.
+theme-boot.js, a classic script in `<head>`, applies the stored theme (system, light or dark) before the first paint. main.js boot() then runs initI18n first, so the stored language (or English) is applied before any module renders text; a stored language other than English has its dictionary loaded before main.js runs. It installs the delegated click and change dispatcher and builds the shell: initTheme, initSidebar (a rail that collapses, a drawer on phones), renderLanguageSwitch (the six-language select that replaces the static EN/DE buttons of the pre-boot markup) and initChatAside (the chat side panel). It registers switch-tab and set-locale, the lazy onTabOpen hooks of the library and the diagnostics tab, and runs the init functions in order: initMessages, initProviders (which sets up the AI layer once the page is idle and again whenever keys, pools or the own server change), initSettings, initModelPicker (after the settings, so the pickers show the stored choice first and the device's groups later), initEngineUi, initChat, initLibrary, initIngest, initGraphTab, initVoice, initBenchUi, initCitations, initDemo and initReceipts. mountFeatures() then mounts every feature registration into its mount point (not awaited; a failing mount is logged). refreshIcons, detectAndDisplayDevice and registerServiceWorker follow, and loadShippedLanguages() loads the French, Spanish, Italian and Turkish packs of the source check after the first paint. boot() subscribes to onConnectionChange before connect(), so later reconnects reach the same listener (renderConnection, renderPrivacyNotice, refreshSyncStatus). changeEngine(getAssistant(), interactive false) is started with void and never downloads; connect() and restoreHistory() are awaited in sequence. A throw inside boot() skips the remaining steps, and reportUnexpected only logs it.
 
 <!-- diagram: boot-sequence-overview -->
 ```mermaid
 sequenceDiagram
     autonumber
+    participant Head as theme-boot.js in head
     participant Main as main.js boot()
-    participant I18n as i18n/index.js
-    participant Dom as dom.js
-    participant UI as ui.js
-    participant Mods as init* feature modules
-    participant Icons as icons.js
-    participant SW as registerServiceWorker
+    participant Shell as i18n, dom.js, ui/theme.js,<br/>ui/sidebar.js, ui.js
+    participant Init as init functions
+    participant Feat as features/registry.js
+    participant Lang as core/lang/index.js
     participant Set as settings.js
     participant Sb as supabase.js
     participant Chat as chat.js
 
-    Main->>I18n: initI18n()
-    Note over I18n: readStoredLocale() from starpi_locale, else en.<br/>Sets html lang, then applyTranslations(document)
-    Main->>Dom: installDelegation()
-    Note over Dom: document click and change listeners dispatch<br/>data-action and data-change to registered handlers
-    Main->>Dom: onAction switch-tab, toggle-sidebar
-    Main->>UI: syncSidebarAccess(false)
-    Note over UI: below 768 px the closed sidebar gets inert<br/>and menuButton aria-expanded false
-    Main->>Dom: onAction set-locale
-    Main->>UI: onTabOpen library, graph, bench
-    Note over UI: loadDocuments, loadKnowledgeGraph and refreshDiagnostics<br/>only run when switchTab opens that tab
-    Main->>Mods: initMessages, initSettings, initModelPicker, initEngineUi, initChat
-    Main->>Mods: initLibrary, initIngest, initGraph, initVoice
-    Main->>Mods: initBenchUi, initCitations, initDemo, initReceipts
-    Note over Mods: initMessages clones the welcome bubble.<br/>initSettings fills the form, key hints and the privacy notice<br/>and selects the stored mode in the static pickers.<br/>initModelPicker: on idle getDeviceProbe and getNvidiaCatalog,<br/>then both pickers rebuilt as option groups.<br/>initEngineUi subscribes render to onEngineChange and onLocaleChange.<br/>initDemo and initReceipts only register actions,<br/>initReceipts also two receipt-option change listeners
-    Main->>Icons: refreshIcons()
-    Main->>UI: detectAndDisplayDevice()
-    Main->>SW: registerServiceWorker()
-    opt serviceWorker in navigator
-        SW->>SW: currentMain = src of the page module script under /assets/
-        SW->>Dom: onAction reload-app (this tab only), dismiss-update
-        SW->>SW: on controllerchange fetch /build-manifest.json with cache no-store
-        Note over SW: updateBanner is shown only when entries.mainJs differs from currentMain.<br/>No currentMain, offline, a non-2xx answer or an unreadable manifest shows nothing
-        SW->>SW: register /sw.js with scope / on window load
-        Note over SW: a failed registration only logs console.warn.<br/>sw.js skips waiting only with no window open at install time or on a<br/>SKIP_WAITING message that main.js never sends, so an update usually waits
-    end
-    Main->>Sb: onConnectionChange(listener)
-    Note over Main,Sb: listener runs renderConnection, renderPrivacyNotice<br/>and void refreshSyncStatus on every connection update
-    Main->>Set: void changeEngine(getMode(), interactive false)
-    Note over Main,Set: not awaited and not covered by boot().catch.<br/>Only an already cached model is loaded, never a model download,<br/>NVIDIA mode asks GET /api/models/nvidia afresh
+    Head->>Head: stored theme applied before the first paint
+    Main->>Shell: initI18n(), installDelegation()
+    Main->>Shell: initTheme(), initSidebar(), renderLanguageSwitch(), initChatAside()
+    Main->>Shell: onAction switch-tab, set-locale, onTabOpen library and bench
+    Main->>Init: initMessages, initProviders (AI layer when idle),<br/>initSettings, initModelPicker, initEngineUi, initChat
+    Main->>Init: initLibrary, initIngest, initGraphTab, initVoice,<br/>initBenchUi, initCitations, initDemo, initReceipts
+    Main-)Feat: mountFeatures(shell services), not awaited
+    Note over Feat: every registration renders into its mount point,<br/>a failing mount is logged and the others go on
+    Main->>Shell: refreshIcons(), detectAndDisplayDevice()
+    Main->>Main: registerServiceWorker(): register /sw.js on load,<br/>compare build-manifest.json on controllerchange
+    Main-)Lang: loadShippedLanguages(): fr, es, it, tr after the first paint
+    Main->>Sb: onConnectionChange(renderConnection,<br/>renderPrivacyNotice, refreshSyncStatus)
+    Main-)Set: changeEngine(getAssistant(), interactive false)
+    Note over Set: cached model only, never a download,<br/>see boot-sequence-engine-restore
     Main->>Sb: await connect()
-    opt browser offline, or probe network or timeout error
-        Sb->>Sb: scheduleReconnect(), connect() again on the online event or after 30 s, doubling up to 5 min
-    end
-    Sb-->>Main: ConnectionState
-    Main->>UI: renderConnection(state)
+    Sb-->>Main: connection state
+    Main->>Shell: renderConnection(state)
     Main->>Chat: await restoreHistory()
-    Chat-->>Main: synced and local messages replayed, boot notices kept
-    Note over Main,Sb: a later reconnect only reaches the listener, restoreHistory() is not run again
-    opt a boot step throws or rejects
-        Main->>Dom: boot().catch(reportUnexpected)
-        Note over Main,Dom: only console.error, the remaining boot steps are skipped
-    end
+    Note over Chat: opens the conversation store and shows<br/>the current conversation, see boot-sequence-conversation-store
 ```
 
-<sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/dom.js`](../src/js/dom.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/icons.js`](../src/js/icons.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/state.js`](../src/js/state.js), [`scripts/build.mjs`](../scripts/build.mjs), [`src/sw.js`](../src/sw.js)</sub>
+<sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/theme-boot.js`](../src/js/theme-boot.js), [`src/js/ui/theme.js`](../src/js/ui/theme.js), [`src/js/ui/sidebar.js`](../src/js/ui/sidebar.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/dom.js`](../src/js/dom.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/features/registry.js`](../src/js/features/registry.js), [`src/js/core/lang/index.js`](../src/js/core/lang/index.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat.js`](../src/js/chat.js)</sub>
 
 ### Boot-time changeEngine: cached model only, never a download
 
-At boot changeEngine applies the stored compute mode (state.js has already mapped legacy values and fallen back to council) with interactive false: parseAssistantChoice reads the bare mode, which keeps the stored on-device and NVIDIA models, and changeEngine resolves to whether setMode could store it, which boot() discards. In client mode startLocalEngine calls engine.loadModel with onlyIfCached true and no confirmDownload callback. loadModel probes the device with the high-performance adapter and a 10 s deadline (a browser without WebGPU, an adapter that fails or does not answer in time gives a profile without WebGPU) and chooseModel resolves the stored preference, where auto picks a processor (WASM) model on a device without WebGPU. A WebGPU preset on a device without WebGPU rejects with the probe's EngineError. For a WebGPU model certainlyNotCached looks for the model's tensor-cache.json in the webllm/model cache, and for a WASM model wasmCacheStatus looks for its config, tokenizer and weights in transformers-cache; when they are missing, loadModel resolves false before the WebLLM library is imported or a worker starts, and the engine status stays unchanged (idle at boot). Otherwise the engine tears down any old worker and switches to loading: a WASM model starts the starpi-wasm worker and loads from transformers-cache, while a WebGPU model imports WebLLM, checks that the model id is in the WebLLM build and asks hasModelInCache, and a model that is not fully cached resolves false with status idle. In no case is model data downloaded, and a load that resolves false with status idle turns the engine dot off. Missing WebGPU for a WebGPU preset, a failed WebLLM import (kind code-download when the error message is one of the browser texts for a failed module import), a model missing from the WebLLM build (kind unknown) or a failed load of a cached model rejects with an EngineError and status error, which engine-ui turns into a chat notice (notice_unavailable_title for the kinds unsupported and no-adapter, otherwise notice_failed_title). Local mode probes GET /models on the own server URL with a 4 s timeout, NVIDIA mode asks the proxy for its catalog afresh (GET /api/models/nvidia on the app's origin, 6 s), and both show the result in the engine dot and the assistant status line; council mode only checks whether a Gemini or OpenRouter key exists.
+state.js has already read the stored picker value (`starpi_assistant_v1`) when the module loaded; a profile of 2.x without one gets it once from `starpi_compute_mode` (`council` becomes `auto`, `client` becomes `device`, `local` becomes `local:*`, `nvidia` becomes `nvidia:<stored model>`), and the normalised values are written back. At boot changeEngine applies that value with interactive false. parsePickerValue (models/choices.js) accepts `auto`, `device`, an on-device preset (`webgpu:<key>`, `wasm:<key>`), `local:*`, `companion:starpi-core`, and `<provider>:<model>` for a known provider (an NVIDIA model only from its allowlist); anything else leaves the pickers on the stored choice. For `device`, startLocalEngine calls loadModel with onlyIfCached true and no confirmDownload callback: the device probe (high-performance adapter, 10 s deadline) and chooseModel (the stored preference; `auto` takes the benchmark history into account and picks a processor model without WebGPU) decide the model, and a model whose files are missing resolves false before WebLLM is imported or a worker starts. A cached model has its stored files checked against `model-lock.json` before a runtime reads them (section 5), then loads; a model that is only partly cached resolves false with status idle. In no case is model data downloaded. A failure rejects with an EngineError that engine-ui.js turns into a notice. `local:*` probes the own server's model list (GET /v1/models, 4 s) and shows the result in the engine dot and the status line. Every other value only shows whether the model can be reached now (renderReach: a key, a pool with keys, a paired companion) without a request.
 
 <!-- diagram: boot-sequence-engine-restore -->
 ```mermaid
 sequenceDiagram
     autonumber
     participant Main as main.js boot()
-    participant Set as settings.js changeEngine
     participant St as state.js
+    participant Set as settings.js changeEngine
+    participant Ch as models/choices.js
     participant EUI as engine-ui.js
     participant Eng as webgpu/engine.js
-    participant CS as Cache API webllm/model or transformers-cache
-    participant Msg as messages.js
-    participant UI as ui.js
+    participant Int as models/integrity.js
     participant Prov as providers.js
+    participant UI as ui.js
 
-    Main->>Set: changeEngine(getMode(), interactive false)
-    Set->>Set: parseAssistantChoice(mode): a bare mode, stored models kept
-    Set->>St: setMode(choice.mode), getMode()
-    Note over St: normalizeMode maps legacy values and falls back<br/>to council, then writes starpi_compute_mode.<br/>Returns false when writeLocal could not store it
-    Set->>Set: syncPickerValue(), renderPrivacyNotice()
-    Set->>EUI: renderEngineState(getEngineState())
-    alt mode is client
-        alt engine.isReady()
-            Set->>UI: setEngineDot(ok)
-        else engine not ready
-            Set->>EUI: startLocalEngine(interactive false)
-            EUI->>Eng: loadModel(preference, onlyIfCached true)
-            Note over EUI,Eng: no confirmDownload callback, so never a download prompt.<br/>A load already in flight is shared
-            Eng->>Eng: probeDevice with the high-performance adapter, 10 s deadline,<br/>no adapter or no answer gives a profile without WebGPU
-            Eng->>Eng: chooseModel(hw, preference), auto without WebGPU picks a WASM model
-            alt a WebGPU preset and no WebGPU
-                Eng-->>EUI: rejects EngineError unsupported or no-adapter, status error
-                EUI->>Msg: appendNotice engine.notice_unavailable_title
-                EUI-->>Set: false
-            else model runs on this device
-                Eng->>CS: WebGPU: certainlyNotCached(modelId), tensor-cache.json in webllm/model<br/>WASM: wasmCacheStatus, config, tokenizer and weights in transformers-cache
-                alt files missing, or a WASM model not fully cached
-                    Eng-->>EUI: false, status unchanged, no import and no worker
-                    EUI-->>Set: false
-                else cached, or the WebGPU check cannot tell
-                    Eng->>Eng: teardown(), setState status loading
-                    alt WASM model
-                        Eng->>Eng: new Worker starpi-wasm, WasmEngineClient.load from transformers-cache
-                        Note over Eng: pinned files only, answered from the cache, see wasm-runtime-load
-                    else WebGPU model
-                        Eng->>Eng: loadWebLLM() imports the WebLLM library
-                        alt import fails, or the model id is not in the WebLLM build
-                            Eng-->>EUI: rejects EngineError via classifyEngineError, e.g. code-download or unknown, status error
-                            EUI->>Msg: appendNotice engine.notice_failed_title, body engine.error.kind
-                            EUI-->>Set: false
-                        else WebLLM imported and model id listed
-                            Eng->>Eng: hasModelInCache(modelId), a failed check counts as not cached
-                            opt not fully cached
-                                Eng->>Eng: setState status idle
-                                Eng-->>EUI: false
-                            end
-                            Eng->>Eng: CreateWebWorkerMLCEngine in starpi-webllm Worker
-                        end
-                    end
-                    alt load fails
-                        Eng-->>EUI: rejects EngineError from classifyEngineError, status error
-                        EUI->>Msg: appendNotice engine.notice_failed_title, or notice_unavailable_title<br/>for kind unsupported, body engine.error.kind
-                        EUI-->>Set: false
-                    else loaded
-                        Eng-->>EUI: true, status ready
-                        EUI-->>Set: true, no ready notice when not interactive
+    Note over St: at module load: starpi_assistant_v1, or once from the 2.x<br/>starpi_compute_mode (council auto, client device, local local:*,<br/>nvidia nvidia:model), normalised values written back
+    Main->>Set: changeEngine(getAssistant(), interactive false)
+    Set->>Ch: parsePickerValue(value, stored NVIDIA model)
+    alt not a valid value
+        Set->>Set: syncPickerValue(), false
+    else valid
+        Set->>St: setAssistant(preference or assistant)
+        Set->>Set: syncPickerValue(), renderPrivacyNotice()
+        Set->>EUI: renderEngineState(getEngineState())
+        alt assistant is device
+            alt engine.isReady()
+                Set->>UI: setEngineDot(ok)
+            else
+                Set->>EUI: startLocalEngine(interactive false)
+                EUI->>Eng: loadModel(preference, benchmark history, onlyIfCached true)
+                Eng->>Eng: probe within 10 s, chooseModel(hw, preference, history)
+                alt WebGPU preset without WebGPU
+                    Eng-->>EUI: rejects EngineError unsupported or no-adapter
+                    EUI->>UI: notice engine.notice_unavailable_title
+                else files missing: certainlyNotCached or wasmCacheStatus not full
+                    Eng-->>EUI: false, no import, no worker
+                else cached
+                    Eng->>Eng: teardown(), status loading
+                    Eng->>Int: checkModelFiles before a runtime reads them
+                    alt a stored file does not match model-lock.json
+                        Int-->>Eng: file deleted, EngineError integrity
+                        Eng-->>EUI: rejects, status error, notice
+                    else WebGPU model only partly cached (hasModelInCache false)
+                        Eng-->>EUI: false, status idle
+                    else
+                        Eng->>Eng: new Worker starpi-wasm or starpi-webllm, load from the cache
+                        Eng-->>EUI: true, status ready, no ready notice
                     end
                 end
+                opt not loaded and status idle
+                    Set->>UI: setEngineDot(off)
+                end
             end
-            Note over EUI,Eng: code-download only when the error message matches a known browser text<br/>for a failed module import. The app does not keep a failed import,<br/>but the browser may keep the failure until the page is reloaded
-            Note over EUI,Eng: every setState notifies onEngineChange, so render()<br/>updates banner, memory badge and engine dot
-            opt not loaded and engine status is idle
-                Set->>UI: setEngineDot(off)
-            end
+        else assistant is local:*
+            Set->>UI: setEngineDot(busy)
+            Set->>Prov: probeLocalServer(getLlmUrl()): GET /v1/models, 4 s
+            Prov-->>Set: reachable, model ids kept per server
+            Set->>UI: setEngineDot(ok or warn), status.ready or status.server_unreachable
+        else auto, a provider or pool model, or the companion
+            Set->>Set: renderReach(): destinationOf(value) from routeOf(provider)
+            Set->>UI: setEngineDot(ok, or off when nothing can answer)
         end
-    else mode is local
-        Set->>UI: setEngineDot(busy)
-        Set->>Prov: probeLocalServer(getLlmUrl())
-        Note over Prov: normalizeServerUrl, then GET url/models with a 4 s timeout.<br/>Invalid URL, any error or non-2xx gives false. On 2xx the first<br/>string id in data, cut to 200 characters, is kept per server URL for callLocalServer
-        Prov-->>Set: reachable true or false
-        Set->>UI: setEngineDot(ok or warn)
-        Set->>UI: setAssistantStatus(status.ready or status.server_unreachable)
-    else mode is nvidia
-        Set->>UI: setEngineDot(busy)
-        Set->>Prov: getNvidiaCatalog(refresh true)
-        Note over Prov: same-origin GET /api/models/nvidia, no-store, 6 s.<br/>A 404, a reply that is not JSON or a network error means no proxy.<br/>Listeners such as the model pickers hear the result
-        Prov-->>Set: catalog with configured and reachable
-        opt mode is still nvidia
-            Set->>UI: setEngineDot(ok if configured, else warn)
-            Set->>UI: setAssistantStatus(status.ready or status.nvidia_unavailable)
-        end
-    else mode is council
-        Set->>UI: setEngineDot(ok if a Gemini or OpenRouter key, else off)
     end
-    Set-->>Main: stored flag from setMode, discarded because boot uses void
+    Set-->>Main: stored flag, discarded (void)
 ```
 
-<sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/models/device.js`](../src/js/models/device.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/state.js`](../src/js/state.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/config.js`](../src/js/config.js)</sub>
+<sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/models/integrity.js`](../src/js/models/integrity.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/ui.js`](../src/js/ui.js)</sub>
 
-### connect(), connection subscribers and restoreHistory
+### Opening the conversation store
 
-connect() first checks navigator.onLine: when the browser reports offline it marks the state offline (signedIn and hardened false, authError and probeError of kind network) without sending any request. Otherwise ensureSession reuses the stored session; without one it first reads the public auth settings (GET /auth/v1/settings). When they report anonymous sign-ins as off, authError is auth_disabled; when that read times out, the timeout error itself becomes authError. In both cases no sign-in request is sent, so a project that does not answer costs one timeout less. In all other cases (sign-ins on, a non-2xx answer, an unreadable body or a network error) it signs in anonymously. connect() then probes for the hardened schema by selecting id and is_public from knowledge_documents; every Supabase request, including the settings read, has a 12 s fetch timeout and the client's own retries are off (db retry false). Only a network or timeout error of that probe marks the state offline; a timeout authError on its own only leaves signedIn false. In both offline cases scheduleReconnect() clears connectPromise and calls connect() again on the window online event or after 30 s, doubling up to 5 min, until an attempt is no longer offline. Later, any request sent through run() that fails with a network or timeout error while the status is ready switches only the status to offline (signedIn and hardened keep their values) and schedules the same reconnect. updateConnection calls the single subscriber from main.js (renderConnection, renderPrivacyNotice, refreshSyncStatus) and boot then calls renderConnection again, while a later reconnect reaches only the subscriber and never runs restoreHistory again.
+restoreHistory() loads the chat thread (chat/thread.js, a lazy chunk) and shows the current conversation; the chat session id in `starpi_chat_session_id` is the id of a conversation. The thread asks chat-store.js for the store, which imports chat/store.js on first use, and openChatStore() runs the start-up migrations once per page: store/migrate.js holds a Web Lock while it works and records a marker per migration in the `settings` store, so each runs once per browser profile. The first, `local-chats-v1`, turns every chat that 2.x kept in `starpi_local_chats_v1` into a conversation with one linear thread, in one transaction with its marker and with ids derived from the legacy data, so a repeat after an interrupted run finds its own records; every message keeps its on-device flag (`localOnly`), so a turn that stayed on the device in 2.x is never sent to a cloud model as history later. The second, `legacy-keys-v1`, moves the provider keys 2.x remembered in plaintext into the tab's session storage and removes them and the remember switch from localStorage (the key store does the same on its first use). A migration that fails is tried again on the next start, and the ones after it wait. showConversation() then loads the conversation's active path from IndexedDB and renders it; notices shown since boot stay below it, and an answer still being written in that conversation keeps streaming under its question. Nothing is merged with a server copy: the encrypted sync (section 8) writes into the same store through its change events, and the thread follows such changes on screen.
 
-<!-- diagram: boot-sequence-connect-history -->
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Main as main.js boot()
-    participant Sb as supabase.js connect()
-    participant Auth as Supabase Auth
-    participant DB as Supabase PostgREST
-    participant L as onConnectionChange listener
-    participant UI as ui.js
-    participant Store as chat-store.js
-    participant Chat as chat.js restoreHistory
-
-    Main->>Sb: await connect()
-    Note over Sb: concurrent callers share connectPromise
-    alt navigator.onLine is false
-        Sb->>L: updateConnection status offline, signedIn false, hardened false,<br/>authError and probeError kind network, no request sent
-    else browser reports online
-        Sb->>Auth: ensureSession(): sb.auth.getSession()
-        opt no session and no error
-            Sb->>Auth: anonymousSignInsEnabled(): GET /auth/v1/settings
-            alt external.anonymous_users is false
-                Note over Sb,Auth: authError auth_disabled, no sign-in request
-            else settings read times out after 12 s
-                Note over Sb,Auth: authError is that timeout error, no sign-in request.<br/>The probe below is still sent
-            else true, or the settings cannot be read (non-2xx, unreadable, network error)
-                Sb->>Auth: sb.auth.signInAnonymously()
-            end
-        end
-        Auth-->>Sb: authError null or classifyError kind
-        Sb->>DB: run() select id, is_public from knowledge_documents limit 1
-        DB-->>Sb: probe Result, fetchWithTimeout 12 s, no client retries
-        Note over Sb: offline only if the probe kind is network or timeout.<br/>hardened = probe.ok, signedIn = authError is null
-        Sb->>L: updateConnection merges the patch, calls listener(connection)
-    end
-    L->>UI: renderConnection(state)
-    L->>L: settings.js renderPrivacyNotice()
-    Note over L: adds privacy.history_synced when the mode is not client and canSyncChats()
-    L->>Store: void refreshSyncStatus()
-    Note over Store: not ready gives sync.device_offline, no sync gives<br/>device_no_session or device_migration, else count chat_history<br/>for sync.synced_count, or sync.synced when the count fails
-    alt status offline
-        Sb->>Sb: scheduleReconnect() sets connectPromise = null
-        Note over Sb: unless a retry is pending, setTimeout(retry, 30 s x 2^offlineAttempts, max 5 min)<br/>and a window online listener, whichever comes first calls connect()
-    else status ready
-        Sb->>Sb: offlineAttempts = 0
-    end
-    Sb-->>Main: ConnectionState
-    Main->>UI: renderConnection(state) a second time
-    Note over UI: offline gives status.offline. Ready gives status.live if hardened and signedIn,<br/>status.public if only hardened, migration_pending on missing_schema, else restricted
-    Main->>Chat: await restoreHistory(), see the next diagram
-    Chat-->>Main: done
-    opt later, a request through run() fails with network or timeout while status is ready
-        Sb->>L: updateConnection status offline only, signedIn and hardened keep their values
-        Sb->>Sb: scheduleReconnect()
-    end
-    opt later reconnect after an offline result
-        Sb->>Sb: retry() on the online event or timer, void connect(), same attempt as above
-        Sb->>L: listener(connection) with the new state
-        L->>UI: renderConnection(state), e.g. Offline to Live
-        L->>L: renderPrivacyNotice()
-        L->>Store: void refreshSyncStatus()
-        Note over Store,Chat: restoreHistory() is not called again. Messages on screen stay,<br/>new messages that are not local-only sync once canSyncChats() is true
-    end
-```
-
-<sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/config.js`](../src/js/config.js)</sub>
-
-### restoreHistory: merging synced and on-device messages
-
-restoreHistory first awaits loadCurrentSession. It reads the current session's messages from localStorage, where rows without a boolean metadata.local_only flag count as on-device turns, and, only when canSyncChats() (signedIn and hardened), the newest 200 chat_history rows of the session, returned oldest first. With rows on both sides, mergeByTime drops local rows without created_at that repeat a synced row's role and content, and sorts the rest by created_at with a stable sort, rows without a valid time last. A failed query only logs console.warn and falls back to the local rows. The messages are replayed with title-only sources and the stored engine badge (metadata.engine, with the model name of an NVIDIA answer from metadata.model), a free-chat answer (metadata.chat_mode free) gets its not-checked note again, the conversation keeps each turn's localOnly flag, engine, model, chat mode and time so that on-device turns are never sent as history to a cloud provider, NVIDIA or the own server and the chat export has them, every bubble shown after the welcome while the history loaded (such as an engine notice) is appended again after the restored messages, and turns already in memory are kept after the restored turns.
-
-<!-- diagram: boot-sequence-restore-history -->
+<!-- diagram: boot-sequence-conversation-store -->
 ```mermaid
 sequenceDiagram
     autonumber
     participant Main as main.js boot()
     participant Chat as chat.js restoreHistory
-    participant Store as chat-store.js loadCurrentSession
-    participant LS as localStorage starpi_local_chats_v1
-    participant Sb as supabase.js loadChatSession
-    participant DB as Supabase chat_history
-    participant Msg as messages.js
+    participant Th as chat/thread.js
+    participant CS as chat-store.js
+    participant Store as chat/store.js
+    participant Mig as chat/migrate-v1.js, store/migrate.js
+    participant DB as IndexedDB starpi
+    participant LS as localStorage
 
     Main->>Chat: await restoreHistory()
-    Chat->>Store: loadCurrentSession()
-    Store->>LS: messages of the current session id
-    Note over Store,LS: rows without a boolean metadata.local_only get local_only true
-    alt canSyncChats() false
-        Store-->>Chat: local rows
-    else signedIn and hardened
-        Store->>Sb: loadChatSession(sessionId)
-        Sb->>DB: select role, content, sources, metadata, created_at by session_id,<br/>order created_at descending, limit 200
-        DB-->>Sb: rows or error
-        Sb-->>Store: Result, rows reversed to oldest first
-        alt query fails
-            Note over Sb: on a network or timeout error while ready, run() has<br/>already set the status offline and scheduled a reconnect
-            Store->>Store: console.warn
-            Store-->>Chat: local rows
-        else no remote rows
-            Store-->>Chat: local rows
-        else no local rows
-            Store-->>Chat: remote rows
-        else rows on both sides
-            Store->>Store: mergeByTime(remote, local)
-            Note over Store: local rows without created_at are dropped when a remote row<br/>has the same role and content. Stable sort by created_at,<br/>rows without a valid time go last
-            Store-->>Chat: merged rows
-        end
+    Chat->>Th: import() the thread
+    Th->>Th: showConversation(currentSessionId(), keepNotices)
+    Th->>CS: chatData()
+    CS->>Store: import(), openChatStore()
+    Store->>Mig: runStartupMigrations(), once per page
+    Mig->>Mig: Web Lock, markers migration:* in settings
+    opt marker local-chats-v1 missing
+        Mig->>LS: read starpi_local_chats_v1
+        Mig->>DB: conversations and nodes with the marker in one transaction,<br/>ids from the legacy data, localOnly kept
+        Mig->>LS: remove the legacy chats
     end
-    Chat->>Chat: shownSinceBoot = chatMessages children after the welcome, live = conversation
-    Chat->>Msg: resetMessages() keeps a fresh welcome bubble only
-    loop each restored row
-        Chat->>Msg: appendMessage(role, content, sources, badge from metadata.engine and metadata.model)
-        opt metadata.chat_mode is free and the row is an answer
-            Chat->>Msg: markFreeAnswer: Free chat, not checked against sources
-        end
-        Chat->>Chat: conversation.push(role, content, localOnly = metadata.local_only is true,<br/>engine, model, chat mode, created_at)
+    opt marker legacy-keys-v1 missing
+        Mig->>LS: move starpi_gemini_key, starpi_openrouter_key to sessionStorage,<br/>remove starpi_remember_keys, set starpi_vault_hint
     end
-    Note over Chat,Msg: restored answers get title-only sources and no citation scope,<br/>so Doc and Chunk labels are not clickable, and no source check or receipt button
-    Chat->>Chat: append shownSinceBoot, push the live turns
-    Note over Chat: shareableHistory leaves localOnly turns out of the history sent to<br/>a cloud provider, NVIDIA or the own server: the last 4 of the rest in source mode,<br/>up to 16 turns and 24000 characters in free chat
-    Chat-->>Main: done
+    Note over Mig: a failed migration runs again next start,<br/>the ones after it wait
+    Store-->>Th: the store, notify all when chats were imported
+    Th->>DB: loadThread(id): the active path
+    Th->>Th: resetMessages(), renderNode per message
+    Th->>Th: notices shown since boot appended again,<br/>a live answer of this conversation kept below its question
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/config.js`](../src/js/config.js)</sub>
+<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat/store.js`](../src/js/chat/store.js), [`src/js/chat/migrate-v1.js`](../src/js/chat/migrate-v1.js), [`src/js/store/migrate.js`](../src/js/store/migrate.js), [`src/js/ai/keys.js`](../src/js/ai/keys.js), [`src/js/store/schema.js`](../src/js/store/schema.js), [`tests/e2e/migration.spec.mjs`](../tests/e2e/migration.spec.mjs)</sub>
 
-### saveSettings: server URL, API keys and a pending assistant pick
+### saveSettings: model strength and a pending assistant pick
 
-saveSettings first validates the own-server URL with normalizeServerUrl and stops with an alert (and focus on the field) when it is invalid, insecure or contains credentials. The URL and the remember toggle go to localStorage; each key is written only when a new one was typed, or re-written to the other storage when an existing key's remember setting changed, and writeSecret always deletes both copies first and then uses localStorage (remember) or sessionStorage. Inputs are cleared and only masked hints with the last four characters are shown. The assistant pickers apply a pick as soon as it is made, so Save calls changeEngine only when the settings picker shows another value than the stored choice (currentPickerValue), for example a pick made with the arrow keys that has not settled yet; re-applying the recommendation the picker shows for auto would turn the stored auto into a fixed model. changeEngine resolves with whether every write it made was stored, and saveSettings then alerts settings.saved_toast only when every write returned true, otherwise settings.save_failed.
+Keys, the vault, the relay switch and the own server's address moved to Settings › Model providers and keys (settings/providers-view.js, next section); the Save button of the general settings keeps two things. The model strength (max, super, auto or fast: ai/model-selection.js, which Auto and provider picks follow) is stored again when it differs from the stored one or when the browser refused it when it was picked. The assistant pickers apply a pick when it is made, so Save calls changeEngine only when the settings picker shows another value than the stored choice (a keyboard pick that has not settled yet); re-applying the shown recommendation would turn a stored `auto` into a fixed model. The alert says settings.saved_toast only when every write was stored, otherwise settings.save_failed. The own server's address is saved in the providers card after normalizeServerUrl: `https` anywhere, `http` only for loopback hosts, no user or password, query and fragment dropped.
 
 <!-- diagram: settings-flow-save -->
 ```mermaid
 flowchart TD
-    Save(["save-settings click: saveSettings()"]) --> Norm["normalizeServerUrl(cfgLlmUrl value)"]
-    Norm --> UrlOk{"ProviderError thrown?"}
-    UrlOk -->|"yes"| UrlAlert["window.alert: provider.invalid_url, provider.insecure_url<br/>(https, or http only on localhost and 127.0.0.1)<br/>or provider.credentials_in_url<br/>focus cfgLlmUrl, nothing is saved"]
-    UrlOk -->|"no"| SetUrl["stored = setLlmUrl(url): localStorage starpi_llm_url<br/>field shows the URL without hash, query, trailing slash"]
-    SetUrl --> Remember["remember = cfgRememberKeys checked<br/>wasRemembered = starpi_remember_keys is 1"]
-    Remember --> Flag["stored = writeLocal(starpi_remember_keys, 1 or 0) and stored<br/>localStorage"]
-    Flag --> Loop["for starpi_gemini_key and starpi_openrouter_key"]
-    Loop --> Typed{"new key typed<br/>in the input?"}
-    Typed -->|"yes"| WriteTyped["stored = writeSecret(key, typed, remember) and stored"]
-    Typed -->|"no"| Moved{"stored key exists and<br/>remember changed?"}
-    Moved -->|"yes"| Migrate["stored = writeSecret(key, existing, remember) and stored<br/>moves it to the other storage"]
-    Moved -->|"no"| Keep["stored key left as is"]
-    WriteTyped --> ClearInput
-    Migrate --> ClearInput
-    Keep --> ClearInput["input.value cleared<br/>stored keys are never written back to inputs"]
-    ClearInput -->|"next key"| Loop
-    ClearInput -->|"both done"| Hints["renderKeyHints(): masked hint settings.key_saved<br/>with the last 4 chars, or settings.key_none"]
-    Hints --> Pending{"cfgComputeMode value differs from<br/>currentPickerValue(), the stored choice<br/>with auto shown as its recommendation?"}
-    Pending -->|"no: the pick was applied<br/>when it was made"| AllOk
-    Pending -->|"yes, e.g. arrow keys not settled"| Change["stored = await changeEngine(value, interactive true) and stored<br/>stores the mode and the picked on-device or NVIDIA model,<br/>see the next diagram"]
-    Change -->|"resolves, in client mode only after any<br/>download confirm and the model load"| AllOk{"stored?<br/>every write returned true"}
-    AllOk -->|"yes"| Toast(["window.alert settings.saved_toast"])
-    AllOk -->|"no"| Failed(["window.alert settings.save_failed<br/>some settings could not be saved,<br/>they may be lost on reload"])
+    save(["Save in Settings"])
+    strengthQ{"cfgStrength valid and different from the stored<br/>strength, or the last pick was not stored?"}
+    setStrength["model-selection.js setModelStrength(value)<br/>strengthUnsaved = not stored"]
+    pickQ{"cfgComputeMode shows another value<br/>than currentPickerValue()?"}
+    change["changeEngine(value, interactive true)<br/>may ask to download an on-device model"]
+    allQ{"every write stored?"}
+    ok(["alert settings.saved_toast"])
+    fail(["alert settings.save_failed"])
+    save --> strengthQ
+    strengthQ -->|"yes"| setStrength --> pickQ
+    strengthQ -->|"no"| pickQ
+    pickQ -->|"yes"| change --> allQ
+    pickQ -->|"no"| allQ
+    allQ -->|"yes"| ok
+    allQ -->|"no"| fail
 
-    subgraph sg_secret["storage.js writeSecret(key, value, remember)"]
-        WS1["removeSecret: delete from<br/>localStorage and sessionStorage"] --> WS2{"remember?"}
-        WS2 -->|"yes"| WS3[("writeLocal: localStorage, kept on this device")]
-        WS2 -->|"no"| WS4[("sessionStorage, this tab only")]
-        WS3 --> WS5["returns true, or false when the storage area<br/>is missing or setItem throws"]
-        WS4 --> WS5
-    end
-    WriteTyped -.-> WS1
-    Migrate -.-> WS1
-    StoreErr["writeLocal and writeSecret catch storage exceptions<br/>(private mode, blocked, quota) and return false,<br/>also when the storage area is missing"] -.- sg_secret
-    StoreErr -.->|"any false"| Failed
+    url(["providers card: own server address"])
+    norm{"normalizeServerUrl: parses, https or<br/>http on a loopback host, no credentials?"}
+    keep["setLlmUrl(url without query and fragment)"]
+    err(["the field shows provider.invalid_url,<br/>insecure_url or credentials_in_url"])
+    url --> norm
+    norm -->|"yes"| keep
+    norm -->|"no"| err
 ```
 
-<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/config.js`](../src/js/config.js)</sub>
+<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/ai/model-selection.js`](../src/js/ai/model-selection.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/settings/providers-view.js`](../src/js/settings/providers-view.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/state.js`](../src/js/state.js)</sub>
 
-### changeEngine, clearKeys and deleteModelCache
+### Keys: the tab, the vault and its lock
 
-changeEngine takes a picker value: a mode (council, local, or before the device probe the bare client and nvidia, which keep the stored models), an on-device model (webgpu:key or wasm:key) or an NVIDIA model (nvidia:id). parseAssistantChoice refuses any other value, such as an NVIDIA id outside the allowlist, and the pickers then show the stored choice again (syncPickerValue). While an answer is being written, a switch to another mode or model is refused, with the models.switch_busy alert when the user picked it, because unloading the model would cut the answer off. Otherwise changeEngine stores the on-device preference (and unloads another on-device model that is loaded or loading), the NVIDIA model and the mode, selects the stored choice in both pickers, refreshes the privacy notice and the engine state, sets the status dot per mode and resolves with whether every write was stored (saveSettings uses it; boot and the two pickers, engineSelector and cfgComputeMode, ignore it): client reuses a ready engine or calls startLocalEngine (interactive loads may ask to download, non-interactive loads only use a cached model), local probes GET /models on the own server with a 4 s timeout and also writes status.ready or status.server_unreachable to the assistant status line, nvidia asks the proxy for its catalog afresh and writes status.ready or status.nvidia_unavailable unless another mode was picked meanwhile, and council is ok only when a Gemini or OpenRouter key is stored. Client and council mode leave the assistant status line as it is. A pick with the mouse or by touch applies at once; a change that follows a key press within 500 ms (Chrome fires change at every arrow step on a closed select) applies once the keys rest for 700 ms, on Enter or when the picker loses focus. clearKeys removes both keys from localStorage and sessionStorage and refreshes hints and privacy notice but not the engine dot. deleteModelCache asks for confirmation, unloads the engine, deletes the transformers-cache of the processor models and the cached f16 and f32 variants of every WebGPU catalog model, alerting done or failed; the ONNX Runtime binary is app code under /assets and stays.
+A key typed into Settings › Model providers and keys lives in the tab's session storage by default and is gone when the tab closes. With a passphrase (at least 8 characters) the vault keeps every key it holds as one AES-GCM-256 record in the `keyvault` store of the app database; the AES key is derived with PBKDF2-SHA-256 (600,000 iterations, a 16-byte random salt) as a non-extractable CryptoKey that lives in memory only. Creating the vault moves every key of the tab into it. Unlocking derives the key again and reads the record afresh (another tab may have replaced it); locking by hand or after 30 minutes without activity drops the key and the decrypted keys from memory. setKey stores a key either in the tab or, with keep-in-vault, in the unlocked vault, and removes the other copy. MCP bearer tokens, the voice and search services and the site's access code have slots of their own in the same store. While the vault is unlocked, other features can seal their own text with its key, bound to their purpose; the saved notes of the memory do. Keys are never written in plaintext outside session storage, never exported, synced or put into receipts and logs, and a transport sets the provider's auth header itself. changeEngine applies a picked model (refused while an answer is being written, because unloading the model would cut it off; an interactive pick of an on-device model may ask to download it). Delete downloaded model data unloads the engine, deletes the processor models' cache and every WebLLM model of the catalog, and resets the integrity records, so a new download is hashed again.
 
-<!-- diagram: settings-flow-engine-keys-cache -->
+<!-- diagram: settings-flow-keys-vault -->
 ```mermaid
 flowchart TD
-    Pick(["change on engineSelector or cfgComputeMode:<br/>pickFromSelect"]) --> KeyQ{"a key was pressed on the<br/>picker within the last 500 ms?"}
-    KeyQ -->|"no: mouse or touch"| CE
-    KeyQ -->|"yes: arrow keys"| Settle["timer 700 ms, restarted at every step,<br/>Enter or blur applies at once"]
-    Settle --> CE
-    CE(["changeEngine(value, opts)<br/>pickers and saveSettings: interactive true<br/>boot: interactive false"]) --> Parse{"parseAssistantChoice(value, NVIDIA_MODELS ids):<br/>council, local, client, nvidia,<br/>webgpu:key, wasm:key or nvidia:id?"}
-    Parse -->|"no"| Revert(["syncPickerValue, return false"])
-    Parse -->|"yes"| Busy{"a switch of mode or model<br/>while isChatBusy()?"}
-    Busy -->|"yes"| Refuse(["syncPickerValue, alert models.switch_busy<br/>when interactive, return false"])
-    Busy -->|"no"| Local{"an on-device model picked?"}
-    Local -->|"yes"| SetPref["stored = setModelPreference: starpi_webgpu_model<br/>changed and the engine not idle, unless it is<br/>ready with that model: unloadModel()"]
-    Local -->|"no"| Nv
-    SetPref --> Nv{"an NVIDIA model picked?"}
-    Nv -->|"yes"| SetNv["stored = setNvidiaModel: starpi_nvidia_model,<br/>normalized against the allowlist"]
-    Nv -->|"no"| SetMode
-    SetNv --> SetMode["stored = setMode: normalizeMode (legacy aliases, unknown becomes council)<br/>writeLocal starpi_compute_mode, false when not stored"]
-    SetMode --> SyncUi["syncPickerValue (both pickers),<br/>renderPrivacyNotice, renderEngineState"]
-    SyncUi --> Mode{"mode?"}
-    Mode -->|"client"| Ready{"engine.isReady()?"}
-    Ready -->|"yes"| DotOk1["setEngineDot ok"]
-    Ready -->|"no"| Start["startLocalEngine: engine.loadModel with getModelPreference()<br/>interactive: confirm before a download, ready notice<br/>not interactive: onlyIfCached, no download, stops before<br/>the WebLLM import or the worker when the model is not cached<br/>EngineError other than cancelled: error notice<br/>any error: returns false"]
-    Start --> Loaded{"not loaded, not interactive<br/>and engine status idle?"}
-    Loaded -->|"yes"| DotOff1["setEngineDot off"]
-    Loaded -->|"no"| DotEngine["dot follows the engine state (engine-ui render):<br/>ready ok, loading busy, error warn, idle off"]
-    Mode -->|"local"| Probe["setEngineDot busy<br/>probeLocalServer(getLlmUrl()): GET base URL + /models<br/>4 s timeout (TIMEOUTS_MS.localServerProbe)"]
-    Probe --> ProbeOk{"response ok?"}
-    ProbeOk -->|"yes"| DotOk2["setEngineDot ok<br/>setAssistantStatus status.ready<br/>first model id kept for callLocalServer"]
-    ProbeOk -->|"no, invalid URL, non-2xx or error"| DotWarn["setEngineDot warn<br/>setAssistantStatus status.server_unreachable"]
-    Mode -->|"nvidia"| NvCat["setEngineDot busy<br/>getNvidiaCatalog(refresh true):<br/>same-origin GET /api/models/nvidia"]
-    NvCat --> NvMode{"mode still nvidia<br/>when it answers?"}
-    NvMode -->|"no"| Ret
-    NvMode -->|"yes"| NvDot["setEngineDot ok when configured, else warn<br/>setAssistantStatus status.ready<br/>or status.nvidia_unavailable"]
-    Mode -->|"council"| HasKey{"Gemini or OpenRouter key stored?"}
-    HasKey -->|"yes"| DotOk3["setEngineDot ok"]
-    HasKey -->|"no"| DotOff2["setEngineDot off"]
-    Ret(["return stored<br/>saveSettings: save_failed when false<br/>boot and both pickers ignore it"])
-    DotOk1 --> Ret
-    DotOff1 --> Ret
-    DotEngine --> Ret
-    DotOk2 --> Ret
-    DotWarn --> Ret
-    NvDot --> Ret
-    DotOk3 --> Ret
-    DotOff2 --> Ret
+    typed(["key typed in a provider row"])
+    remember{"keep in vault?"}
+    session[("sessionStorage of the tab")]
+    vaultQ{"vault state?"}
+    vault[("IndexedDB starpi, keyvault store:<br/>one AES-GCM-256 record, salt, iv, PBKDF2-SHA-256<br/>600,000 iterations")]
+    mem["non-extractable AES key and the<br/>decrypted keys, in memory only"]
+    locked(["store error locked: unlock first"])
+    typed --> remember
+    remember -->|"no"| session
+    remember -->|"yes"| vaultQ
+    vaultQ -->|"unlocked"| vault
+    vaultQ -->|"locked or none"| locked
+    session -.->|"setKey removes the vault copy"| vault
 
-    Clear(["clear-keys click: clearKeys()"]) --> Remove["removeSecret starpi_gemini_key and starpi_openrouter_key<br/>(localStorage and sessionStorage)"]
-    Remove --> ClearUi["renderKeyHints: settings.key_none<br/>renderPrivacyNotice<br/>engine dot is not re-evaluated"]
-    ClearUi --> ClearAlert(["window.alert settings.keys_cleared"])
+    pass(["passphrase entered"])
+    stateQ{"vault exists?"}
+    create["at least 8 characters: random salt, derive key,<br/>move every key of the tab into the new record"]
+    open["read the record again, derive the key,<br/>decrypt; wrong passphrase: no change"]
+    pass --> stateQ
+    stateQ -->|"no"| create --> mem
+    stateQ -->|"yes"| open --> mem
+    mem --> vault
+    idle["30 minutes without activity, or Lock now"]
+    idle -->|"drop key and keys"| mem
+    seal["seal(purpose, text): memory notes,<br/>bound to their purpose, while unlocked"]
+    mem --> seal
+    forget(["Forget all keys"]) -->|"tab copies and the vault record deleted"| vault
 
-    Del(["delete-model-cache click: deleteModelCache()"]) --> Confirm{"window.confirm<br/>settings.delete_models_confirm?"}
-    Confirm -->|"cancel"| NoOp(["nothing happens"])
-    Confirm -->|"ok"| DelCache["engine.deleteCachedModels(): unloadModel,<br/>caches.delete transformers-cache (a failure only logged),<br/>loadWebLLM, then deleteModelAllInfoInCache for the f16<br/>and f32 id of every MODEL_CATALOG entry (per-id failures only logged)"]
-    DelCache --> Threw{"threw?"}
-    Threw -->|"no"| DelDone(["window.alert settings.delete_models_done"])
-    Threw -->|"yes"| DelFail(["window.alert settings.delete_models_failed with reason"])
+    legacy(["2.x plaintext keys in localStorage"])
+    legacy -->|"migrateLegacyKeys: moved once, remember switch removed,<br/>vault hint suggests a passphrase"| session
+
+    del(["Delete downloaded model data"])
+    del --> unload["unloadModel()"] --> caches["delete transformers-cache and every<br/>WebLLM catalog model, forgetVerified()"]
 ```
 
-<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/models/choices.js`](../src/js/models/choices.js), [`src/js/model-picker.js`](../src/js/model-picker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/state.js`](../src/js/state.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/config.js`](../src/js/config.js), [`src/js/main.js`](../src/js/main.js)</sub>
+<sub>Sources: [`src/js/ai/keys.js`](../src/js/ai/keys.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/settings/providers-view.js`](../src/js/settings/providers-view.js), [`src/js/store/migrate.js`](../src/js/store/migrate.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/models/integrity.js`](../src/js/models/integrity.js)</sub>
 
 ### deleteHistory: deleting the chat history
 
-The delete-chat-history button first checks isChatBusy(): while an answer is still running (or a question waits for an attached file) it only alerts settings.delete_history_busy and deletes nothing, because the running turn would be stored again after the delete. Otherwise it asks for confirmation and then calls deleteChatHistory in chat-store.js. It first waits for message writes still under way and marks their sessions as deleted, so a write that ends later cannot store a deleted chat again, then overwrites the local chat store with an empty object, which removes every session kept in this browser (a failed write is not reported), and starts a new session id. It resolves true without any remote delete only when the connection status is ready and canSyncChats() is false (no session or an older schema, so nothing was synced). In every other case, including offline and a still pending connection, it calls deleteOwnChats, which reads the auth session and deletes every chat_history row whose owner_id is the signed-in user, across all of that user's sessions; row level security limits the delete to own rows. If reading the session throws, deleteOwnChats returns a failed Result without sending the delete; if it yields no user id, nothing is deleted in Supabase and the Result still counts as ok. Offline, the delete request is still sent when a user id is found and its failure is reported. After deleteChatHistory the chat on screen is reset whatever it returned, and the alert says settings.delete_history_done, or settings.delete_history_partial when deleteOwnChats returned a failed Result. Delete this chat in the chat menu does the same for the current session only: it is refused with chat.delete_busy while an answer is being written, asks chat.delete_confirm, and deleteSession(sid) waits for that session's writes, removes it from the local store, starts a new session and deletes its synced rows with deleteChatSession (owner_id and session_id), reporting chat.deleted_title or chat.delete_partial_title as a notice.
+The delete-chat-history button is refused with settings.delete_history_busy while an answer is being written, because the running turn would be stored again. Otherwise it asks for confirmation (a stronger text when the encrypted sync is on, since the deletion also reaches the synced copy and the other browsers) and calls deleteChatHistory in chat-store.js. It waits for message writes still under way and marks their sessions as deleted, so a write that ends later cannot store a deleted chat again; it notes the ids of every conversation when sync is on, clears every conversation in IndexedDB and starts a new session id. It then deletes what a 2.x version may have stored in the plaintext `chat_history` table: nothing when the connection is ready and canSyncChats() is false, otherwise deleteOwnChats() (own rows only, by RLS; a failure counts as partial). With sync on, the sync hook writes deletion markers for the noted conversations now, so other browsers delete them too; it reports a failure when that failed or a conversation came back because another browser added messages to it. The chat on screen is reset whatever happened, and the alert says done or partial. Delete this chat in the conversation list does the same for one conversation (deleteSession).
 
 <!-- diagram: settings-flow-delete-history -->
 ```mermaid
 flowchart TD
-    Start(["delete-chat-history click: deleteHistory()"]) --> Busy{"isChatBusy()?<br/>an answer is running or<br/>a question waits for a file"}
-    Busy -->|"yes"| BusyAlert(["window.alert settings.delete_history_busy<br/>nothing is deleted"])
-    Busy -->|"no"| Confirm{"window.confirm<br/>settings.delete_history_confirm?"}
-    Confirm -->|"cancel"| NoOp(["nothing happens"])
-    Confirm -->|"ok"| Wipe["deleteChatHistory(): await message writes still under way,<br/>their sessions marked deleted, then writeLocalJson<br/>starpi_local_chats_v1 as an empty object, all sessions<br/>in this browser, a failed write is not reported"]
-    Wipe --> NewSid["startNewSession(): new starpi_ UUID<br/>written to starpi_chat_session_id"]
-    NewSid --> CanSync{"connection status ready<br/>and canSyncChats() false?<br/>(no session or an older schema)"}
-    CanSync -->|"yes, nothing was synced"| LocalOnly["resolves true, no remote delete"]
-    CanSync -->|"no: can sync, offline or still pending"| GetSession["deleteOwnChats(): sb.auth.getSession()"]
-    GetSession -->|"throws"| SessErr["Result not ok, classifyError<br/>no delete sent, connection state unchanged"]
-    GetSession -->|"resolves"| Uid{"session user id?"}
-    Uid -->|"no, also when getSession reports an error"| NoUid["Result ok, nothing deleted in Supabase"]
-    Uid -->|"yes"| Rows["run(): delete from chat_history where owner_id = user id<br/>every session of this user, RLS policy chat_history_delete_own"]
-    Rows --> RowsOk{"Result ok?"}
-    RowsOk -->|"yes"| Refresh
-    RowsOk -->|"no"| RowsFail["Result not ok, a network or timeout error<br/>while ready also sets the connection offline<br/>and schedules a reconnect"]
-    NoUid --> Refresh["void refreshSyncStatus()<br/>resolves res.ok"]
-    RowsFail --> Refresh
-    SessErr --> Refresh
-    LocalOnly --> Reset
-    Refresh --> Reset["chat.js resetConversation(): conversation emptied,<br/>resetMessages() keeps the welcome bubble,<br/>setAssistantStatus status.ready"]
-    Reset --> Ok{"deleteChatHistory resolved true?"}
-    Ok -->|"yes"| Done(["window.alert settings.delete_history_done"])
-    Ok -->|"no"| Partial(["window.alert settings.delete_history_partial<br/>browser chats deleted, synced history not"])
-    One(["chat menu delete-chat: deleteCurrentChat()<br/>chat.delete_busy alert while busy, chat.delete_confirm"]) -.->|"same steps for the current session only:<br/>deleteSession(sid), deleteChatSession with<br/>owner_id and session_id, then a notice<br/>chat.deleted_title or chat.delete_partial_title"| Wipe
+    btn(["Delete chat history"])
+    busy{"isChatBusy()?"}
+    refuse(["alert settings.delete_history_busy"])
+    confirm{"confirm: delete_history_confirm,<br/>or the synced text when sync is on"}
+    stop(["nothing deleted"])
+    settle["settleWrites(): wait for pending writes,<br/>mark their sessions deleted"]
+    note["sync on: note every conversation id,<br/>archived ones included"]
+    clear["store.clearConversations() in IndexedDB;<br/>a failure counts as partial"]
+    newSession["startNewSession()"]
+    legacyQ{"connection ready and<br/>canSyncChats() false?"}
+    legacyDel["deleteOwnChats(): 2.x chat_history rows of this user,<br/>RLS owner only; failure counts as partial"]
+    syncQ{"sync hook bound?"}
+    flush["flush(deleted): write deletion markers now;<br/>false when it failed or a chat came back"]
+    reset["resetConversation()"]
+    result{"local, legacy and sync all ok?"}
+    done(["alert settings.delete_history_done"])
+    partial(["alert delete_history_partial,<br/>or the synced variant"])
+    btn --> busy
+    busy -->|"yes"| refuse
+    busy -->|"no"| confirm
+    confirm -->|"cancel"| stop
+    confirm -->|"ok"| settle --> note --> clear --> newSession --> legacyQ
+    legacyQ -->|"yes: nothing could be stored"| syncQ
+    legacyQ -->|"no, also offline or pending"| legacyDel --> syncQ
+    syncQ -->|"yes"| flush --> reset
+    syncQ -->|"no"| reset
+    reset --> result
+    result -->|"yes"| done
+    result -->|"no"| partial
 ```
 
-<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/config.js`](../src/js/config.js), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat/store.js`](../src/js/chat/store.js), [`src/js/sync/service.js`](../src/js/sync/service.js), [`src/js/sync/sync.js`](../src/js/sync/sync.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/chat.js`](../src/js/chat.js)</sub>
 
-### testProvider: Gemini and OpenRouter connection tests
+### Testing a key
 
-A test button disables itself, shows an amber running box and sends readinessPrompt in the active language (English or German) through callGemini or callOpenRouter, each request limited to 20 s. A key typed into cfgGeminiKey or cfgOpenrouterKey is tested as typed, without saving it or clearing the field; with an empty field the stored key is used (sessionStorage first, then localStorage). With neither, the provider throws a ProviderError with notConfigured, shown as an amber settings.test_not_configured box with the settings.test_enter_key hint; any other failure shows a rose settings.test_failed box with the error message; success shows a green box with the elapsed milliseconds and the first 140 characters of the reply. The reply and the error message pass through sanitizeModelNames. The headings and the hint are set with setText, so they re-translate on a language switch (the milliseconds, the reply and the error message do not), and the button is re-enabled in all cases.
+The Test button of a provider row tests the key typed into the row (without saving it) or, with an empty field, the stored one; the own server row tests its address after normalizeServerUrl, with an optional key. testKey (ai/transport-select.js) builds the transport a call would take, without the site's pools: direct, auto (direct, retried through the relay when the browser blocks the call), or the relay. When no transport fits (the relay is switched off for a provider that needs it), the result is the code cors, else auth. The test asks the provider's model list (GET /models) with a timeout; a 2xx answer is ok and names the route that answered (direct or relay). Any other answer is reduced to an error code (fromHttp: auth, quota, rate_limited, not_found, server and others), and a thrown error to the code toAiError gives (network, timeout, cors, aborted). The provider's error text is never shown or kept: the row shows the code and the translated text of `ai.error.<code>`. Afterwards the row statuses are refreshed.
 
-<!-- diagram: settings-flow-test-provider -->
+<!-- diagram: settings-flow-test-key -->
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User
-    participant Set as settings.js testProvider
-    participant P as prompts.js
-    participant Prov as providers.js
-    participant St as storage.js
-    participant API as Gemini or OpenRouter API
-    participant R as render.js
+    participant Row as providers-view.js runKeyTest
+    participant Keys as ai/keys.js
+    participant TS as ai/transport-select.js testKey
+    participant Tr as transport: direct, auto or relay
+    participant Up as provider or /api/relay
 
-    User->>Set: test-gemini or test-openrouter
-    Set->>Set: disable btnTestPrimary or btnTestSecondary
-    Set-->>User: amber box, loader-2 icon and settings.test_running_primary or _secondary
-    Set->>P: readinessPrompt(getLocale())
-    P-->>Set: prompt asking for one short sentence that the assistant is ready, in English or German
-    Set->>Set: typed = cfgGeminiKey or cfgOpenrouterKey value, trimmed, undefined when empty
-    alt gemini
-        Set->>Prov: callGemini(prompt, key typed)
-    else openrouter
-        Set->>Prov: callOpenRouter with one user message, key typed
+    Row->>Row: key = typed value, else keys.getKey(id)
+    alt no key and not the own server
+        Row->>Row: report key.empty
+    else
+        opt own server
+            Row->>Row: normalizeServerUrl(address), a failure is shown at once
+        end
+        Row->>Row: report test.running
+        Row->>TS: testKey(id, key, baseUrl, access code)
+        TS->>TS: selectTransport(id, key, pool false)
+        alt no transport
+            TS-->>Row: ok false, code cors (relay off) or auth
+        else
+            TS->>Tr: GET modelsPath, provider auth header, timeout
+            Tr->>Up: direct, auto retries through the relay when blocked
+            alt 2xx
+                Up-->>TS: model list, body cancelled
+                TS-->>Row: ok true, via direct or relay
+                Row->>Row: report test.ok_direct or test.ok_relay
+            else error status
+                TS->>TS: fromHttp(status, headers, a short snippet) to an AiError code
+                TS-->>Row: ok false, code
+                Row->>Row: report test.failed with the code and ai.error.code, never the provider text
+            else thrown
+                TS->>TS: toAiError(err): network, timeout, cors, aborted
+                TS-->>Row: ok false, code
+            end
+        end
+        Row->>Row: refreshStatuses()
     end
-    opt no typed key
-        Prov->>St: readSecret(key), sessionStorage first, then localStorage
-    end
-    alt no typed and no stored key
-        Prov-->>Set: throw ProviderError with notConfigured true
-    else key present
-        Prov->>API: POST gemini-2.5-flash (x-goog-api-key), or up to 3 free OpenRouter models (Bearer)
-        Note over Prov,API: 20 s timeout per request, no caller signal<br/>OpenRouter tries the next model on failure or an empty answer,<br/>stops early on HTTP 401 or 403
-        API-->>Prov: reply or HTTP error
-        Prov-->>Set: text, or throw (ProviderError for HTTP status or empty answer, fetch and timeout errors)
-    end
-    alt success
-        Set->>R: sanitizeModelNames(first 140 chars of the reply)
-        Set-->>User: green box settings.test_ok_primary or _secondary, elapsed ms, quoted reply
-    else error with notConfigured
-        Set-->>User: amber info box settings.test_not_configured (Gemini or OpenRouter)<br/>and the hint settings.test_enter_key
-    else any other error
-        Set->>R: sanitizeModelNames(error message)
-        Set-->>User: rose box settings.test_failed plus the message
-    end
-    Note over Set,R: sanitizeModelNames replaces provider and model names with app.model_generic.<br/>Headings and the hint use setText and follow a language switch,<br/>the ms value, reply and error message are plain text
-    Set->>Set: finally refreshIcons(box), re-enable the button
 ```
 
-<sub>Sources: [`src/js/settings.js`](../src/js/settings.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/config.js`](../src/js/config.js), [`src/js/render.js`](../src/js/render.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/settings/providers-view.js`](../src/js/settings/providers-view.js), [`src/js/ai/transport-select.js`](../src/js/ai/transport-select.js), [`src/js/ai/transport.js`](../src/js/ai/transport.js), [`src/js/ai/errors.js`](../src/js/ai/errors.js), [`src/js/ai/keys.js`](../src/js/ai/keys.js), [`src/js/providers.js`](../src/js/providers.js)</sub>
 
 ## 3. Answering a question
 
