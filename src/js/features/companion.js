@@ -1,7 +1,9 @@
 // @ts-check
 // Companion: Starpi Core, the local companion paired with this browser. This module only
 // registers: the Companion tab (#tab-companion), its card under Settings (#companionSettings) and
-// the retrieval source "Companion documents and notes" of grounded questions (chat/hooks.js).
+// the retrieval source "Companion documents and notes" of grounded questions (chat/hooks.js). The
+// companion as a model of the chat is the AI layer's provider `companion` (ai/adapters/companion.js),
+// offered in the pickers once paired (providers.js).
 // Pairing, the client, the tier and the views load as their own chunks after the first paint.
 //
 // Nothing here touches the network at boot: the stored link is read from IndexedDB, which also

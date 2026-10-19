@@ -37,7 +37,8 @@
     "pool": "Starpi üzerinden {provider} · {model}",
     "served": "{provider} · {model} ({requested} yerine)",
     "device": "Bu cihazda · {model}",
-    "server": "Sunucunuz · {model}"
+    "server": "Sunucunuz · {model}",
+    "companion": "Yerel Companion · {model}"
   },
   "meta": {
     "tokens": "{input} giriş · {output} çıkış",
@@ -88,13 +89,16 @@
     "image_not_source": "{name} kaynaklarınıza eklenmedi: görsellerdeki metni okumak, görebilen bir model ve izninizi gerektirir.",
     "rate_limited_wait": "Sağlayıcıda şu anda çok fazla istek var: lütfen {seconds} sn bekleyip yeniden deneyin.",
     "stays_on_device_title": "Bu soru bu cihazda kalır",
-    "stays_on_device_body": "Bu cihazda soruldu; bu yüzden yalnızca buradaki model veya kendi sunucunuz yanıtlar. Bunlardan birini seçin ya da soruyu yeni bir mesaj olarak yeniden sorun.",
+    "stays_on_device_body": "Bu cihazda soruldu; bu yüzden yalnızca buradaki model, kendi sunucunuz veya eşleştirilmiş Companion’ınız yanıtlar. Bunlardan birini seçin ya da soruyu yeni bir mesaj olarak yeniden sorun.",
     "failed_body": "Yanıtlanırken bir sorun oluştu. Lütfen yeniden deneyin.",
     "store_failed": "Sohbet bu tarayıcıya kaydedilemedi (gizli pencere, engellenmiş veya dolu depolama).",
     "attachment_missing_title": "Bir ek yalnızca eklendiği cihazda bulunuyor",
     "attachment_missing_body": "Ekler eşitlenmez; bu nedenle {names} bu istekte {n:dışarıda bırakıldı|dışarıda bırakıldı}.",
     "deleted_elsewhere_title": "Bu sohbet başka bir sekmede veya tarayıcıda silindi",
-    "deleted_elsewhere_body": "Burada yeni bir sohbet başladı."
+    "deleted_elsewhere_body": "Burada yeni bir sohbet başladı.",
+    "companion_unpaired_title": "Eşleştirilmiş Companion yok",
+    "companion_unpaired_body": "Ayarlar’dan bu bilgisayardaki Starpi Core ile eşleştirin ya da başka bir model seçin.",
+    "companion_failed_title": "Companion yanıt veremedi"
   },
   "continued": "Uzunluk sınırından sonra devam edildi",
   "continue_prompt": "Tam olarak kaldığın yerden devam et.",

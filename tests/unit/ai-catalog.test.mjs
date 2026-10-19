@@ -46,7 +46,7 @@ describe('provider catalog', () => {
 
   it('sets the transport defaults of the design: direct where browsers are allowed, auto, pool, device', () => {
     const transport = Object.fromEntries(PROVIDER_IDS.map((id) => [id, PROVIDERS[id].transport]));
-    assert.deepEqual(transport, { anthropic: 'direct', openai: 'direct', gemini: 'direct', xai: 'auto', groq: 'auto', mistral: 'auto', deepseek: 'auto', openrouter: 'direct', nvidia: 'pool', local: 'device', webgpu: 'device', wasm: 'device' });
+    assert.deepEqual(transport, { anthropic: 'direct', openai: 'direct', gemini: 'direct', xai: 'auto', groq: 'auto', mistral: 'auto', deepseek: 'auto', openrouter: 'direct', nvidia: 'pool', local: 'device', webgpu: 'device', wasm: 'device', companion: 'device' });
     assert.equal(PROVIDERS.local.auth, 'optional-bearer');
   });
 

@@ -37,7 +37,8 @@
     "pool": "{provider} via Starpi · {model}",
     "served": "{provider} · {model} (instead of {requested})",
     "device": "On this device · {model}",
-    "server": "Your server · {model}"
+    "server": "Your server · {model}",
+    "companion": "Local companion · {model}"
   },
   "meta": {
     "tokens": "{input} in · {output} out",
@@ -88,13 +89,16 @@
     "image_not_source": "{name} was not added to your sources: reading text in images needs a model that can see, and your consent.",
     "rate_limited_wait": "Too many requests at the provider right now: please wait {seconds} s and try again.",
     "stays_on_device_title": "This question stays on this device",
-    "stays_on_device_body": "It was asked on this device, so only the model here or your own server answers it. Pick one of them, or ask the question again as a new message.",
+    "stays_on_device_body": "It was asked on this device, so only the model here, your own server or your paired companion answers it. Pick one of them, or ask the question again as a new message.",
     "failed_body": "Something went wrong while answering. Please try again.",
     "store_failed": "The chat could not be stored in this browser (private window, blocked or full storage).",
     "attachment_missing_title": "An attachment is only on the device it was added on",
     "attachment_missing_body": "Attachments are not synced, so {names} {n:was|were} left out of this request.",
     "deleted_elsewhere_title": "This chat was deleted in another tab or browser",
-    "deleted_elsewhere_body": "A new chat has started here."
+    "deleted_elsewhere_body": "A new chat has started here.",
+    "companion_unpaired_title": "No companion paired",
+    "companion_unpaired_body": "Pair Starpi Core on this computer under Settings, or pick another model.",
+    "companion_failed_title": "The companion could not answer"
   },
   "continued": "Continued after the length limit",
   "continue_prompt": "Continue exactly where you stopped.",

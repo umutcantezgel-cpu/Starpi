@@ -14,7 +14,7 @@ import { NVIDIA_DEFAULT_MODEL } from '../../models/nvidia-catalog.js';
 import { WASM_CATALOG } from '../../models/wasm-catalog.js';
 import { MODEL_CATALOG } from '../../webgpu/models.js';
 import { readText } from '../sse.js';
-import { getProvider } from './providers.js';
+import { COMPANION_MODEL, getProvider } from './providers.js';
 import snapshotData from './snapshot.json' with { type: 'json' };
 
 /** @typedef {import('../contract.js').Caps} Caps */
@@ -168,12 +168,47 @@ export function onDeviceModels() {
 /** @type {ModelEntry[] | null} */
 let deviceCache = null;
 
+export { COMPANION_MODEL };
+
+
+/**
+ * The paired companion as a model: text in and out, no tools, images or web search of its own here
+ * (the companion runs its own tools), and it runs on this machine.
+ * @returns {ModelEntry}
+ */
+function companionEntry() {
+  return {
+    provider: 'companion',
+    id: COMPANION_MODEL,
+    label: 'Starpi Core',
+    source: 'device',
+    listed: true,
+    caps: {
+      ...heuristicCaps('companion', COMPANION_MODEL, { contextTokens: 8192, maxOutput: 1500 }),
+      vision: false,
+      pdf: false,
+      tools: false,
+      parallelTools: false,
+      reasoning: 'none',
+      reasoningVisible: false,
+      search: 'none',
+      imageOut: false,
+      json: false,
+      latency: 'normal',
+      free: true,
+      local: true,
+      verified: true,
+    },
+  };
+}
+
 /**
  * The curated models of a provider (for webgpu and wasm: the on-device presets).
  * @param {ProviderId} provider
  * @returns {ModelEntry[]}
  */
 export function snapshotModels(provider) {
+  if (provider === 'companion') return [companionEntry()];
   if (provider === 'webgpu' || provider === 'wasm') {
     deviceCache ??= onDeviceModels();
     return deviceCache.filter((m) => m.provider === provider);

@@ -8,7 +8,10 @@
     "hint_free": "Risposta basata sulle conoscenze proprie del modello; nulla è stato confrontato con le fonti.",
     "hint_grounded": "Ogni affermazione è stata confrontata con gli estratti delle tue fonti.",
     "hint_mixed": "Le affermazioni prese dalle tue fonti sono verificate e segnalate; il resto è conoscenza generale.",
-    "hint_web": "La risposta cita pagine trovate da una ricerca web; il loro contenuto non è stato verificato."
+    "hint_web": "La risposta cita pagine trovate da una ricerca web; il loro contenuto non è stato verificato.",
+    "hint_companion": "Il companion di questo computer ha risposto dai propri documenti e note, e il suo filtro ha verificato ogni numero con la fonte citata dalla frase prima di mostrarla.",
+    "hint_companion_free": "Il companion di questo computer ha risposto con conoscenze generali; il suo filtro ha rimosso i link, ma nulla è stato confrontato con le fonti.",
+    "hint_companion_template": "Nessun modello ha scritto questo testo: il companion ha risposto con un testo fisso, e la sua nota spiega perché."
   },
   "mixed": {
     "title": "Parti verificate",

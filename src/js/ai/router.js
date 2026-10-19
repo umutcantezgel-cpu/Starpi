@@ -18,8 +18,9 @@
 // model that served (which may differ from the requested one when a provider falls back itself).
 // A cached answer remembers whether its provider was simulated (a local fake behind the site's
 // relay, as GET /api/health reports) and is only served while that provider still is, so simulated
-// and real answers never stand in for each other. runPurpose() never rejects, except with an
-// AbortError when the caller's signal aborts.
+// and real answers never stand in for each other. The paired companion is never a step of a
+// chain and none of its answers is cached (NO_PURPOSE_PROVIDERS). runPurpose() never rejects,
+// except with an AbortError when the caller's signal aborts.
 import { getLocale } from '../i18n/index.js';
 import { findModel } from './catalog/models.js';
 import { isProviderId, textPart } from './contract.js';
@@ -145,6 +146,12 @@ export const MAX_CALLS = 8;
 /** Codes that end every further call to the provider in this run: the key, the account or the browser path is the problem. */
 const PROVIDER_FAILURES = new Set(['auth', 'quota', 'cors']);
 const ON_DEVICE = new Set(['webgpu', 'wasm', 'local']);
+/**
+ * Providers no purpose runs on and no answer of which is cached: the paired companion answers
+ * through its own gate in a conversation it keeps, and its answers stay with the chat that asked
+ * (stored there like every answer, never in this cache).
+ */
+export const NO_PURPOSE_PROVIDERS = /** @type {ReadonlySet<string>} */ (new Set(['companion']));
 
 /** @type {Readonly<Record<AiErrorCode, AttemptOutcome>>} */
 const OUTCOME_OF_CODE = Object.freeze({
@@ -299,6 +306,7 @@ export function purposeCacheKey(purpose, locale, inputKey) {
  */
 function cachedEntry(deps, key) {
   const entry = deps.cache.get(key);
+  if (entry && NO_PURPOSE_PROVIDERS.has(entry.provider)) return null;
   if (!entry || typeof entry !== 'object' || !isProviderId(entry.provider) || typeof entry.simulated !== 'boolean') return null;
   return entry.simulated === deps.simulated(entry.provider) ? entry : null;
 }
@@ -370,13 +378,13 @@ function orderedRoleChain(provider, role, deps) {
  * @returns {Step[]}
  */
 export function planChain(def, opts, deps) {
-  const providers = [...new Set(opts.providers ?? deps.configured())].filter(isProviderId);
-  const primary = opts.provider && isProviderId(opts.provider) ? opts.provider : providers[0];
+  const providers = [...new Set(opts.providers ?? deps.configured())].filter((p) => isProviderId(p) && !NO_PURPOSE_PROVIDERS.has(p));
+  const primary = opts.provider && isProviderId(opts.provider) && !NO_PURPOSE_PROVIDERS.has(opts.provider) ? opts.provider : providers[0];
   /** @type {Step[]} */
   const steps = [];
   /** @param {RouteTier} tier @param {ProviderId} provider @param {string} model @param {ModelRole | null} role */
   const add = (tier, provider, model, role) => {
-    if (!model || steps.some((s) => s.provider === provider && s.model === model)) return;
+    if (!model || NO_PURPOSE_PROVIDERS.has(provider) || steps.some((s) => s.provider === provider && s.model === model)) return;
     // A model the catalog knows cannot see images never gets an image purpose.
     if (def.role === 'vision' && deps.caps(provider, model)?.vision === false) return;
     steps.push({ tier, provider, model, role });
@@ -556,7 +564,7 @@ export async function runPurpose(purpose, input, opts = {}) {
         record(base);
         const served = res.model || step.model;
         const simulated = ON_DEVICE.has(step.provider) ? false : deps.simulated(step.provider);
-        if (key) deps.cache.set(key, { kind: def.jsonSchema ? 'value' : 'text', output: checked.value, provider: step.provider, model: served, simulated, at: deps.now() });
+        if (key && !NO_PURPOSE_PROVIDERS.has(step.provider)) deps.cache.set(key, { kind: def.jsonSchema ? 'value' : 'text', output: checked.value, provider: step.provider, model: served, simulated, at: deps.now() });
         /** @type {PurposeResult} */
         const result = { purpose: def.name, ok: true, ...output(checked.value), provider: step.provider, model: served, tier: step.tier, simulated: simulated === true, attempts };
         if (thinks) result.thinking = true;

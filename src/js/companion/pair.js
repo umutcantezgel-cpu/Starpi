@@ -27,6 +27,7 @@
 // companion's current state. A lower head alone is no proof: answers to requests made at the same
 // time can arrive out of order. So the current head is asked for first, and the late head only has
 // to be the chain's own record at its number.
+import { setCompanionPaired } from '../providers.js';
 import { setCompanionVoiceLink } from '../voice/sources/companion.js';
 import { fromBase64url, toBase64url } from '../core/hash.js';
 import { readLocal, removeLocal, writeLocal } from '../storage.js';
@@ -565,11 +566,21 @@ export function createPairing(options = {}) {
 /** @type {Pairing | null} */
 let shared = null;
 
+/** The page's origin when the companion serves this build (profile `companion`, Mode A), else null. */
+export function selfServedOrigin() {
+  return typeof __STARPI_PROFILE__ === 'string' && __STARPI_PROFILE__ === 'companion' && typeof location !== 'undefined' ? location.origin : null;
+}
+
 /**
- * The app's pairing (one per page).
+ * The app's pairing (one per page), whoever asks for it first: the Companion tab, the retrieval
+ * source or the chat's companion adapter. Its phase reaches the model pickers (providers.js).
  * @param {{ selfOrigin?: string | null }} [opts]
  */
 export function companionPairing(opts = {}) {
-  shared ??= createPairing({ selfOrigin: opts.selfOrigin ?? null });
+  if (!shared) {
+    shared = createPairing({ selfOrigin: opts.selfOrigin ?? selfServedOrigin() });
+    // The model pickers offer the companion while it is paired.
+    shared.subscribe((s) => setCompanionPaired(s.phase === 'paired'));
+  }
   return shared;
 }

@@ -75,7 +75,9 @@
     "free_cloud": "Free chat: your question, an attached file and earlier messages of this chat go to your provider. No sources are searched.",
     "free_nvidia": "Free chat: your question, an attached file and earlier messages of this chat go through Starpi's server to NVIDIA. No sources are searched.",
     "free_no_model": "Free chat: no model is set up, so nothing is sent. Add a key in Settings or use verified source mode.",
-    "history_local": "Chats are saved in this browser; delete them in Settings."
+    "history_local": "Chats are saved in this browser; delete them in Settings.",
+    "companion": "Companion: your question goes to Starpi Core on this computer, which answers from its own documents and notes with the models it is set up for. It decides by data class whether a cloud model may see the question.",
+    "free_companion": "Free chat with the companion: your question goes to Starpi Core on this computer, which answers with the models it is set up for. It decides by data class whether a cloud model may see the question. No sources are searched."
   },
   "engine": {
     "mode_cloud": "Cloud assistant",

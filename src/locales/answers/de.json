@@ -8,7 +8,10 @@
     "hint_free": "Aus dem eigenen Wissen des Modells beantwortet; nichts wurde mit Quellen abgeglichen.",
     "hint_grounded": "Jede Aussage wurde mit den Auszügen Ihrer Quellen abgeglichen.",
     "hint_mixed": "Aussagen aus Ihren Quellen sind geprüft und markiert; der Rest ist Allgemeinwissen.",
-    "hint_web": "Die Antwort zitiert Seiten aus einer Websuche; ihr Inhalt wurde nicht verifiziert."
+    "hint_web": "Die Antwort zitiert Seiten aus einer Websuche; ihr Inhalt wurde nicht verifiziert.",
+    "hint_companion": "Der Begleiter auf diesem Computer hat aus seinen Dokumenten und Notizen geantwortet; sein Filter hat jede Zahl mit der Quelle abgeglichen, die ein Satz zitiert, bevor sie angezeigt wurde.",
+    "hint_companion_free": "Der Begleiter auf diesem Computer hat aus allgemeinem Wissen geantwortet; sein Filter hat Links entfernt, aber nichts wurde mit Quellen abgeglichen.",
+    "hint_companion_template": "Kein Modell hat das geschrieben: Der Begleiter hat mit einem festen Text geantwortet, und sein Hinweis nennt den Grund."
   },
   "mixed": {
     "title": "Geprüfte Teile",

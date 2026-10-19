@@ -75,7 +75,9 @@
     "free_cloud": "Serbest sohbet: sorunuz, ekli bir dosya ve bu sohbetin önceki mesajları sağlayıcınıza gider. Hiçbir kaynakta arama yapılmaz.",
     "free_nvidia": "Serbest sohbet: sorunuz, ekli bir dosya ve bu sohbetin önceki mesajları Starpi’nin sunucusu üzerinden NVIDIA’ya gider. Hiçbir kaynakta arama yapılmaz.",
     "free_no_model": "Serbest sohbet: kurulu model olmadığından hiçbir şey gönderilmez. Ayarlar’dan bir anahtar ekleyin veya doğrulanmış kaynak modunu kullanın.",
-    "history_local": "Sohbetler bu tarayıcıya kaydedilir; onları Ayarlar’dan silebilirsiniz."
+    "history_local": "Sohbetler bu tarayıcıya kaydedilir; onları Ayarlar’dan silebilirsiniz.",
+    "companion": "Companion: sorunuz bu bilgisayardaki Starpi Core’a gider; Starpi Core, kendi belgelerinden ve notlarından, orada yapılandırılmış modellerle yanıt verir. Bir bulut modelinin soruyu görüp göremeyeceğine veri sınıfına göre karar verir.",
+    "free_companion": "Companion ile serbest sohbet: sorunuz bu bilgisayardaki Starpi Core’a gider; Starpi Core, orada yapılandırılmış modellerle yanıt verir. Bir bulut modelinin soruyu görüp göremeyeceğine veri sınıfına göre karar verir. Hiçbir kaynakta arama yapılmaz."
   },
   "engine": {
     "mode_cloud": "Bulut asistanı",

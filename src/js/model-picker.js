@@ -1,8 +1,9 @@
 // @ts-check
 // The assistant pickers: the header's #engineSelector and the settings' #cfgComputeMode. Once the
 // device is probed they are rebuilt as option groups: recommended for this device (Auto, the
-// model this device runs best, the site's default free model), on this device, free through the
-// site's pools, one group per provider the user has a key for, and their own server
+// model this device runs best, the site's default free model), on this device, the paired
+// companion, free through the site's pools, one group per provider the user has a key for, and
+// their own server
 // (models/choices.js). Until then the static options in index.html stay. The settings also show
 // the hardware badges and the state of the site's pools. Model names come from the catalogs;
 // everything else is translated.
@@ -151,7 +152,7 @@ export function renderModelPickers() {
   if (!hw) return;
   const state = providerState();
   const value = choiceValue(currentState(), hw, history);
-  const groups = assistantGroups({ hw, history, pools: state.pools, keyed: state.keyed, models: state.models, server: state.server, serverModels: state.serverModels, current: value });
+  const groups = assistantGroups({ hw, history, pools: state.pools, keyed: state.keyed, models: state.models, server: state.server, serverModels: state.serverModels, companion: state.companion, current: value });
   for (const { id, labels } of PICKERS) {
     const sel = byId(id);
     if (!(sel instanceof HTMLSelectElement)) continue;

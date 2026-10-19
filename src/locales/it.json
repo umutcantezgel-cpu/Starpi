@@ -75,7 +75,9 @@
     "free_cloud": "Chat libera: la tua domanda, un file allegato e i messaggi precedenti di questa chat vanno al tuo provider. Nessuna fonte viene consultata.",
     "free_nvidia": "Chat libera: la tua domanda, un file allegato e i messaggi precedenti di questa chat passano dal server di Starpi fino a NVIDIA. Nessuna fonte viene consultata.",
     "free_no_model": "Chat libera: nessun modello è configurato, quindi non viene inviato nulla. Aggiungi una chiave nelle Impostazioni o usa la modalità fonti verificate.",
-    "history_local": "Le chat vengono salvate in questo browser; puoi eliminarle nelle Impostazioni."
+    "history_local": "Le chat vengono salvate in questo browser; puoi eliminarle nelle Impostazioni.",
+    "companion": "Companion: la tua domanda va a Starpi Core su questo computer, che risponde dai propri documenti e note con i modelli configurati. Decide in base alla classe di dati se un modello cloud può vedere la domanda.",
+    "free_companion": "Chat libera con il companion: la tua domanda va a Starpi Core su questo computer, che risponde con i modelli configurati. Decide in base alla classe di dati se un modello cloud può vedere la domanda. Nessuna fonte viene consultata."
   },
   "engine": {
     "mode_cloud": "Assistente cloud",

@@ -13,7 +13,12 @@
 //
 // Keys never leave the browser except to their provider (direct) or through the stateless relay;
 // pool calls carry no key at all.
-import { getProvider, PROVIDER_ORDER } from './ai/catalog/providers.js';
+//
+// The paired companion (Starpi Core) is a provider of its own: offered once this browser is paired
+// (the flag companion/pair.js keeps in localStorage while a link is stored, so a browser that never
+// paired opens no database for it), reached through the pairing, never part of Auto and never
+// asked for a purpose (titles, OCR, council).
+import { COMPANION_MODEL, getProvider, PROVIDER_ORDER } from './ai/catalog/providers.js';
 import { POOLS } from './ai/catalog/pools.js';
 import { hasKey, onKeysChange } from './ai/keys.js';
 import { STORAGE_KEYS, TIMEOUTS_MS } from './config.js';
@@ -30,9 +35,9 @@ import { MODEL_CATALOG } from './webgpu/models.js';
 /** @typedef {import('./models/choices.js').PoolState} PoolState */
 
 /**
- * How a call to a provider goes: the user's key, this site's pool, the user's own server, or the
- * engine in this browser; 'none' when it cannot be reached.
- * @typedef {'key' | 'pool' | 'local' | 'device' | 'none'} Route
+ * How a call to a provider goes: the user's key, this site's pool, the user's own server, the
+ * engine in this browser, or the paired companion on this machine; 'none' when it cannot be reached.
+ * @typedef {'key' | 'pool' | 'local' | 'device' | 'companion' | 'none'} Route
  */
 
 /**
@@ -44,6 +49,7 @@ import { MODEL_CATALOG } from './webgpu/models.js';
  * @property {string[]} serverModels        models the own server listed (empty while unknown)
  * @property {Partial<Record<ProviderId, ModelOption[]>>} models  model lists of the keyed providers
  * @property {boolean} ready                the AI layer is installed (adapters, resolver, router)
+ * @property {boolean} companion            a companion is paired with this browser
  */
 
 export class ProviderError extends Error {
@@ -137,6 +143,12 @@ function serverBase() {
   }
 }
 
+/** Set while a companion link is stored (companion/pair.js LINK_MARKER). */
+const COMPANION_LINK_MARKER = 'starpi_companion_linked';
+
+/** Whether a companion is paired, from the flag alone (no database is opened for it). */
+const companionLinked = () => readLocal(COMPANION_LINK_MARKER) === '1';
+
 /** Providers a key can be added for, in picker order. */
 const KEY_PROVIDERS = PROVIDER_ORDER.filter((id) => getProvider(id)?.byok);
 
@@ -146,7 +158,7 @@ function keyedProviders() {
 }
 
 /** @type {ProviderState} */
-let state = { keyed: keyedProviders(), pools: null, server: serverBase() !== '', serverModels: [], models: {}, ready: false };
+let state = { keyed: keyedProviders(), pools: null, server: serverBase() !== '', serverModels: [], models: {}, ready: false, companion: companionLinked() };
 /** @type {Set<(state: ProviderState) => void>} */
 const listeners = new Set();
 
@@ -191,6 +203,7 @@ export function updateProviderState(patch) {
  */
 export function routeOf(provider) {
   if (provider === 'webgpu' || provider === 'wasm') return 'device';
+  if (provider === 'companion') return state.companion ? 'companion' : 'none';
   if (provider === 'local') return state.server ? 'local' : 'none';
   if (state.keyed.includes(provider)) return 'key';
   const pool = Object.values(POOLS).find((p) => p.provider === provider);
@@ -199,7 +212,8 @@ export function routeOf(provider) {
 
 /**
  * Providers that can answer now, in the order Auto tries them: the user's keys, the site's pools,
- * the own server. The engine in this browser comes last and is not listed here.
+ * the own server. The engine in this browser comes last and is not listed here; the paired
+ * companion answers only when it is picked.
  * @returns {ProviderId[]}
  */
 export function configuredProviders() {
@@ -216,6 +230,7 @@ export function configuredProviders() {
  * @param {string} model
  */
 export function modelLabel(provider, model) {
+  if (provider === 'companion') return model && model !== COMPANION_MODEL ? model : 'Starpi Core';
   if (provider === 'webgpu') return MODEL_CATALOG[/** @type {keyof typeof MODEL_CATALOG} */ (model.replace(/^webgpu:/, ''))]?.label ?? model;
   if (provider === 'wasm') return WASM_CATALOG[/** @type {keyof typeof WASM_CATALOG} */ (model.replace(/^wasm:/, ''))]?.label ?? model;
   if (provider === 'nvidia') return findNvidiaModel(model)?.label ?? model;
@@ -231,6 +246,17 @@ export function modelLabel(provider, model) {
  */
 export function providerLabel(provider) {
   return getProvider(provider)?.label ?? provider;
+}
+
+/**
+ * Tells the pickers whether a companion is paired now (the pairing calls this when it pairs,
+ * unpairs or finds its link gone).
+ * @param {boolean} paired
+ */
+export function setCompanionPaired(paired) {
+  if (state.companion === paired) return;
+  state = { ...state, companion: paired };
+  notify();
 }
 
 /** @type {Promise<typeof import('./chat/runner.js')> | null} */
@@ -270,7 +296,7 @@ export function refreshProviders() {
     again = true;
     return refreshing;
   }
-  state = { ...state, keyed: keyedProviders(), server: serverBase() !== '' };
+  state = { ...state, keyed: keyedProviders(), server: serverBase() !== '', companion: companionLinked() };
   notify();
   refreshing = (async () => {
     try {

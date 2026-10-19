@@ -14,12 +14,14 @@
 //           the outcome is remembered per provider
 //   relay   always through this site's stateless relay
 //   pool    this site's key pool (no key in the browser); a user key goes through the relay
-//   device  local server on the user's network or an in-browser engine; never relayed
+//   device  local server on the user's network, an in-browser engine, or the paired companion on
+//           this machine (its adapter reaches it through the pairing, without a transport); never
+//           relayed
 
 /** @typedef {import('../contract.js').ProviderId} ProviderId */
 
 /**
- * @typedef {'anthropic' | 'openai-responses' | 'openai-chat' | 'gemini' | 'webllm' | 'wasm'} Dialect
+ * @typedef {'anthropic' | 'openai-responses' | 'openai-chat' | 'gemini' | 'webllm' | 'wasm' | 'companion'} Dialect
  * @typedef {'bearer' | 'x-api-key' | 'x-goog-api-key' | 'optional-bearer' | 'none'} AuthStyle
  * @typedef {'direct' | 'auto' | 'relay' | 'pool' | 'device'} TransportDefault
  *
@@ -263,11 +265,32 @@ export const PROVIDERS = Object.freeze({
     byok: false,
     pool: false,
   }),
+  // The paired companion: reached through the pairing (companion/pair.js), never with a key.
+  companion: provider({
+    id: 'companion',
+    label: 'Starpi Core',
+    dialect: 'companion',
+    baseUrl: null,
+    auth: 'none',
+    authHeader: null,
+    transport: 'device',
+    keyPattern: null,
+    keyHint: null,
+    docsUrl: null,
+    keysUrl: null,
+    quirks: null,
+    modelsPath: null,
+    byok: false,
+    pool: false,
+  }),
 });
+
+/** The one model id of the paired companion: which of its models answers is the companion's choice. */
+export const COMPANION_MODEL = 'starpi-core';
 
 /** Provider ids in the order pickers list them. */
 export const PROVIDER_ORDER = /** @type {readonly ProviderId[]} */ (
-  Object.freeze(['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter', 'nvidia', 'local', 'webgpu', 'wasm'])
+  Object.freeze(['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter', 'nvidia', 'local', 'webgpu', 'wasm', 'companion'])
 );
 
 /**

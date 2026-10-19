@@ -37,7 +37,8 @@
     "pool": "{provider} tramite Starpi · {model}",
     "served": "{provider} · {model} (invece di {requested})",
     "device": "Su questo dispositivo · {model}",
-    "server": "Il tuo server · {model}"
+    "server": "Il tuo server · {model}",
+    "companion": "Companion locale · {model}"
   },
   "meta": {
     "tokens": "{input} in ingresso · {output} in uscita",
@@ -88,13 +89,16 @@
     "image_not_source": "{name} non è stato aggiunto alle tue fonti: leggere il testo in un’immagine richiede un modello che veda, e il tuo consenso.",
     "rate_limited_wait": "Troppe richieste al provider in questo momento: attendi {seconds} s e riprova.",
     "stays_on_device_title": "Questa domanda resta su questo dispositivo",
-    "stays_on_device_body": "È stata posta su questo dispositivo, quindi risponde solo il modello di qui o il tuo server. Scegli uno dei due, oppure fai di nuovo la domanda in un nuovo messaggio.",
+    "stays_on_device_body": "È stata posta su questo dispositivo, quindi risponde solo il modello di qui, il tuo server o il tuo companion associato. Scegli uno di loro, oppure fai di nuovo la domanda in un nuovo messaggio.",
     "failed_body": "Qualcosa è andato storto durante la risposta. Riprova.",
     "store_failed": "Non è stato possibile salvare la chat in questo browser (finestra privata, archiviazione bloccata o piena).",
     "attachment_missing_title": "Un allegato si trova solo sul dispositivo in cui è stato aggiunto",
     "attachment_missing_body": "Gli allegati non vengono sincronizzati, quindi {names} {n:è stato escluso|sono stati esclusi} da questa richiesta.",
     "deleted_elsewhere_title": "Questa chat è stata eliminata in un’altra scheda o in un altro browser",
-    "deleted_elsewhere_body": "Qui è iniziata una nuova chat."
+    "deleted_elsewhere_body": "Qui è iniziata una nuova chat.",
+    "companion_unpaired_title": "Nessun companion associato",
+    "companion_unpaired_body": "Associa Starpi Core su questo computer in Impostazioni, oppure scegli un altro modello.",
+    "companion_failed_title": "Il companion non è riuscito a rispondere"
   },
   "continued": "Proseguita dopo il limite di lunghezza",
   "continue_prompt": "Continua esattamente da dove ti sei fermato.",

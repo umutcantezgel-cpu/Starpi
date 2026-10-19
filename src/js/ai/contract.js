@@ -5,7 +5,9 @@
 // server code share it.
 
 /**
- * @typedef {'anthropic' | 'openai' | 'gemini' | 'xai' | 'groq' | 'mistral' | 'deepseek' | 'openrouter' | 'nvidia' | 'local' | 'webgpu' | 'wasm'} ProviderId
+ * `companion` is the paired local companion (Starpi Core): it answers through its own sentence gate
+ * in a conversation it keeps itself, so its answers are passed through as it released them.
+ * @typedef {'anthropic' | 'openai' | 'gemini' | 'xai' | 'groq' | 'mistral' | 'deepseek' | 'openrouter' | 'nvidia' | 'local' | 'webgpu' | 'wasm' | 'companion'} ProviderId
  */
 
 /** @typedef {'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'} ImageMime */
@@ -106,7 +108,7 @@
  */
 
 export const PROVIDER_IDS = /** @type {readonly ProviderId[]} */ (
-  Object.freeze(['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter', 'nvidia', 'local', 'webgpu', 'wasm'])
+  Object.freeze(['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter', 'nvidia', 'local', 'webgpu', 'wasm', 'companion'])
 );
 export const ROLES = /** @type {readonly Role[]} */ (Object.freeze(['system', 'user', 'assistant', 'tool']));
 export const PART_TYPES = Object.freeze(['text', 'image', 'file', 'tool_call', 'tool_result', 'opaque']);

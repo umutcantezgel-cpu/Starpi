@@ -5,6 +5,13 @@
 //   grounded  Checked against your sources
 //   mixed     Partly from sources (checked parts marked)
 //   web       From the web · cited, not verified
+//   companion           Checked by the companion (it answered from its documents and notes)
+//   companion_free      the companion's general knowledge, not checked against sources
+//   companion_template  the companion's fixed text, no model wrote it
+//
+// A companion answer arrives already gated by the companion and is shown as it was released: its
+// label comes from the companion (mode and source), and under it the companion's notice and how
+// many sentences its gate withheld (renderCompanionNotes). Nothing here checks it again.
 //
 // An embedding app passes its own wording per label (setAnswerLabelProfile): an i18n key of its
 // own, or the text per language. While a grounded or mixed answer is checked after its stream, its
@@ -26,7 +33,7 @@ import { html, label as labelEl, provenanceBadge } from '../ui/kit.js';
 /** @typedef {import('../core/grounding.js').SentenceResult} SentenceResult */
 /** @typedef {import('../rag/web-check.js').WebCheck} WebCheck */
 /** @typedef {import('../ui/kit.js').Label} Label */
-/** @typedef {'free' | 'grounded' | 'mixed' | 'web'} AnswerLabel */
+/** @typedef {'free' | 'grounded' | 'mixed' | 'web' | 'companion' | 'companion_free' | 'companion_template'} AnswerLabel */
 
 /** The built-in labels: the provenance kind (colour and icon), the text and the tooltip. */
 export const ANSWER_LABELS = Object.freeze({
@@ -34,7 +41,55 @@ export const ANSWER_LABELS = Object.freeze({
   grounded: Object.freeze({ kind: /** @type {const} */ ('checked'), key: 'answers.label.grounded', hint: 'answers.label.hint_grounded' }),
   mixed: Object.freeze({ kind: /** @type {const} */ ('mixed'), key: 'answers.label.mixed', hint: 'answers.label.hint_mixed' }),
   web: Object.freeze({ kind: /** @type {const} */ ('web'), key: 'answers.label.web', hint: 'answers.label.hint_web' }),
+  companion: Object.freeze({ kind: /** @type {const} */ ('checked'), key: 'companion.ask.label_checked', hint: 'answers.label.hint_companion' }),
+  companion_free: Object.freeze({ kind: /** @type {const} */ ('unchecked'), key: 'companion.ask.label_free', hint: 'answers.label.hint_companion_free' }),
+  companion_template: Object.freeze({ kind: /** @type {const} */ ('withheld'), key: 'companion.ask.label_template', hint: 'answers.label.hint_companion_template' }),
 });
+
+/**
+ * The label of a companion answer, from what the companion said about it.
+ * @param {{ mode: string, source: string }} turn
+ * @returns {AnswerLabel}
+ */
+export function companionLabel(turn) {
+  if (turn.source === 'template') return 'companion_template';
+  return turn.mode === 'sources' ? 'companion' : 'companion_free';
+}
+
+/** Notice codes of the companion with a text of their own (companion/tier.js NOTICE_CODES). */
+const COMPANION_NOTICES = new Set(['no_model', 'class_secret', 'no_brain_for_class', 'brain_unavailable', 'brain_failed_midway', 'refusal', 'breaker']);
+
+/**
+ * Shows under the label of a companion answer what the companion said about it: its notice (a
+ * template answer's reason) and the sentences its gate withheld (replacing lines shown before).
+ * @param {HTMLElement} messageEl
+ * @param {{ notice?: string | null, withheld?: number }} turn
+ */
+export function renderCompanionNotes(messageEl, turn) {
+  const slot = messageEl.querySelector('.message-provenance');
+  if (!slot) return;
+  slot.querySelectorAll(':scope > .companion-note').forEach((el) => el.remove());
+  /** @type {HTMLElement[]} */
+  const lines = [];
+  if (turn.notice) {
+    const line = document.createElement('p');
+    line.className = 'companion-note mt-1 text-[11px] text-slate-600';
+    line.dataset.companionNotice = turn.notice;
+    setText(line, COMPANION_NOTICES.has(turn.notice) ? `companion.notice.${turn.notice}` : 'companion.notice.other');
+    lines.push(line);
+  }
+  const withheld = Number(turn.withheld) || 0;
+  if (withheld > 0) {
+    const line = document.createElement('p');
+    line.className = 'companion-note mt-1 text-[11px] text-slate-600';
+    line.dataset.companionWithheld = String(withheld);
+    setText(line, 'companion.ask.withheld', { n: withheld });
+    lines.push(line);
+  }
+  const label = slot.querySelector(':scope > .answer-label');
+  if (label) label.after(...lines);
+  else slot.prepend(...lines);
+}
 
 /**
  * Wording an embedding app gives a label: an i18n key, or the text per language ("en", "de", …).

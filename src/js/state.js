@@ -36,7 +36,7 @@ export function normalizeChatMode(value) {
 /** A model id as a picker value carries it: printable, no spaces; '*' for "the server's first model". */
 const MODEL_ID = /^(?:\*|[\w][\w.:/@+-]{0,199})$/;
 /** Providers a picker value may name; the on-device engines are reached through 'device'. */
-const VALUE_PROVIDERS = new Set(['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter', 'nvidia', 'local']);
+const VALUE_PROVIDERS = new Set(['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter', 'nvidia', 'local', 'companion']);
 
 /**
  * A stored or picked assistant value, or null when it is none. 'webgpu:<key>' and 'wasm:<key>'

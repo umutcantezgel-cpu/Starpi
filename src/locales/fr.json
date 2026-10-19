@@ -75,7 +75,9 @@
     "free_cloud": "Discussion libre : votre question, un fichier joint et les messages précédents de cette discussion vont à votre fournisseur. Aucune source n’est consultée.",
     "free_nvidia": "Discussion libre : votre question, un fichier joint et les messages précédents de cette discussion passent par le serveur de Starpi jusqu’à NVIDIA. Aucune source n’est consultée.",
     "free_no_model": "Discussion libre : aucun modèle n’est configuré, rien n’est donc envoyé. Ajoutez une clé dans les Paramètres ou utilisez le mode sources vérifiées.",
-    "history_local": "Les discussions sont enregistrées dans ce navigateur ; vous pouvez les supprimer dans les Paramètres."
+    "history_local": "Les discussions sont enregistrées dans ce navigateur ; vous pouvez les supprimer dans les Paramètres.",
+    "companion": "Compagnon : votre question va à Starpi Core sur cet ordinateur, qui répond à partir de ses propres documents et notes avec les modèles qui y sont configurés. Il décide selon la classe de données si un modèle cloud peut voir la question.",
+    "free_companion": "Discussion libre avec le compagnon : votre question va à Starpi Core sur cet ordinateur, qui répond avec les modèles qui y sont configurés. Il décide selon la classe de données si un modèle cloud peut voir la question. Aucune source n’est consultée."
   },
   "engine": {
     "mode_cloud": "Assistant cloud",
