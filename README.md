@@ -262,47 +262,33 @@ the source check says about grounded ones.
 <!-- diagram: source-check-pipeline -->
 ```mermaid
 flowchart TD
-    sIn(["chat.js submitChat: rendered messageEl, a citation scope,<br/>the same chat session still shown"]) --> sEng{"answer.engine is synthesizer?"}
-    sEng -->|"yes"| sFull["every excerpt delivered full,<br/>text = the excerpt as given"]
-    sEng -->|"no, a model answered"| sCov["contextCoverage(citationList, deliveredContext or context):<br/>the EXCERPT n blocks of the context that was sent give<br/>full, partial without the ellipsis, or omitted"]
-    sFull --> sApply
-    sCov --> sApply
-    sDemo(["demo.js showCheckDemo: excerpts delivered full,<br/>no given, citedOnly off"]) -.-> sApply
-    sApply["applyGrounding(messageEl): scope, sources with label, doc,<br/>heading, delivered text and state, given = the prompt and the<br/>user messages among the last 4 conversation entries,<br/>citedOnly = synthesizer answer"]
-    sApply --> sSlot{".message-content and .message-provenance<br/>present and sources not empty?"}
-    sSlot -->|"no"| sNull(["returns null, no panel"])
-    sSlot -->|"yes"| sBlocks["blocksFromElement: one block per p, li, h1 to h6, tr,<br/>blockquote, dd, dt, pre skipped, br as a line break,<br/>td and th cells joined with a separator,<br/>kind p, li, heading, row, header-row or other"]
-    sBlocks --> sBtn{"button with data-action open-citation<br/>and data-arg of this answer's scope?"}
-    sBtn -->|"yes"| sCite["cite segment, chip position recorded"]
-    sBtn -->|"no"| sIgn["other buttons ignored"]
-    sBlocks --> sLoose["text matching LOOSE_LABEL_PATTERN: badcite,<br/>resolveLabel by document name and chunk number"]
-    sBlocks --> sLead["list item, or the first paragraph of a loose list item,<br/>whose list follows a block ending in a colon:<br/>leadIn = that block"]
-    sCite --> sSize
-    sLoose --> sSize
-    sLead --> sSize
-    sSize{"groundAnswer, rules version GROUNDING.version 2:<br/>text segments over THRESHOLDS.maxChars 20000 characters?"}
+    sIn(["chat/thread.js answerGrounded: the answer streamed and rendered,<br/>pack labels [S#] and [F#] expanded to the canonical labels"]) --> sEng{"who answered?"}
+    sEng -->|"the extractive synthesizer"| sFull["every excerpt delivered full"]
+    sEng -->|"a model, with a context pack"| sPack["the pack's coverage per excerpt:<br/>full, partial or omitted"]
+    sEng -->|"a model, plain context"| sCov["contextCoverage: the EXCERPT n blocks<br/>of the context that was sent"]
+    sFull --> sKind
+    sPack --> sKind
+    sCov --> sKind
+    sKind{"a mixed answer from Auto?"}
+    sKind -->|"yes"| sMixed["applyMixedMarks: the same check, per statement<br/>from the sources, partly, cited but not found<br/>or not in the sources"]
+    sKind -->|"no"| sApply["applyGrounding: sources with their delivered text and state,<br/>given = the question and the user messages among the last 4 entries,<br/>citedOnly = synthesizer answer, localOnly = the answer stays here"]
+    sDemo(["demo.js showCheckDemo: excerpts full, no given"]) -.-> sApply
+    sApply --> sBlocks["blocksFromElement: blocks of the rendered DOM,<br/>citation buttons of this answer's scope as citations,<br/>other label-like text as bad citations"]
+    sBlocks --> sSize{"groundAnswer with GROUNDING.version 3:<br/>more than 20,000 characters or 300 statements?"}
     sSize -->|"yes"| sSkip["skipped too_long"]
-    sSize -->|"no"| sAssoc["associate: sentenceSpans per block, no statement ends at the dot<br/>of an ordinal, a day.month date such as 1.6. or a known abbreviation,<br/>a marker belongs to the last statement that starts before it,<br/>a statement without one inherits from the next cited statement<br/>of its block, then the previous one, then its lead-in up to 4 hops,<br/>then the markers and bad labels of contentless blocks<br/>such as a Sources line"]
-    sAssoc --> sMany{"more than maxSentences 300 statements?"}
-    sMany -->|"yes"| sSkip
-    sMany -->|"no"| sIdx["indexSource per excerpt over text, doc and heading<br/>with the same rules version, no index for an omitted excerpt,<br/>given indexed, answer language from guessLanguage"]
+    sSize -->|"no"| sAssoc["associate: markers to statements, a statement without one<br/>inherits from its block's cited statements or its lead-in"]
+    sAssoc --> sIdx["indexSource per delivered excerpt, given indexed,<br/>answer language from guessLanguage"]
     sIdx --> sCheck["checkSentence per statement,<br/>see source-check-verdicts and source-check-v2-checks"]
-    sCheck --> sCount["counts supported, weak, unsupported, unchecked,<br/>neutral statements not counted"]
-    sCount --> sAny{"anything counted, unchecked or skipped?"}
-    sSkip --> sAny
-    sAny -->|"no"| sQuiet(["report returned, no panel"])
-    sAny -->|"yes"| sBar["details.grounding-bar replaces the .message-provenance content:<br/>grounding-review and shield-alert when a statement is unsupported,<br/>else grounding-partial and shield-question-mark when one is weak,<br/>else grounding-ok and shield-check when statements were compared,<br/>else grounding-none and shield"]
-    sBar --> sSum["summary: grounding.title, then grounding.too_long,<br/>grounding.summary ok of total, or grounding.only_unchecked,<br/>badges grounding.review n and grounding.partial n"]
-    sSum --> sList["ol.grounding-list: unsupported first, then weak, in answer order,<br/>li id grd-n-i, n per panel, i the statement index,<br/>grounding.statement cut to 160 chars,<br/>one grounding.reason_code line per reason, citation badges"]
-    sList --> sNotes["grounding.unchecked n when statements were not compared,<br/>grounding.disclaimer in every panel"]
-    sNotes --> sOpen["details opened when a statement is unsupported"]
-    sOpen --> sChips["each citation button belongs to the last statement of its block<br/>that starts before it, else the first, if that one is unsupported:<br/>class citation-chip-flag, aria-describedby = id of its list item"]
-    sChips --> sHl{"Highlight and CSS.highlights available?"}
-    sHl -->|"yes"| sMark["a Range per unsupported statement in the<br/>starpi-review highlight, no DOM change, no inline style"]
-    sHl -->|"no"| sNoMark["no highlight, the flagged list<br/>stays the accessible channel"]
-    sMark --> sRet(["report returned to chat.js for the receipt draft"])
-    sNoMark --> sRet
-    sReset(["resetMessages: new chat, deleted or restored history"]) -.-> sClear["clearGroundingHighlights"]
+    sCheck --> sRel["applyRelations: changes, comparisons, order in time<br/>and carried-over values, see source-check-relations"]
+    sRel --> sCount["counts supported, weak, unsupported, unchecked,<br/>neutral statements not counted"]
+    sSkip --> sBar
+    sCount --> sBar["details.grounding-bar: review, partial, ok or none;<br/>flagged list, unsupported first, one reason line each;<br/>relations note, unchecked note, disclaimer"]
+    sBar --> sSecond{"a weak statement with a delivered cited excerpt?"}
+    sSecond -->|"yes"| sOp["second-opinion buttons: the entailment model on this device,<br/>the AI judge only when localOnly is false; advisory,<br/>recorded in the report, never a new verdict"]
+    sSecond -->|"no"| sChips
+    sOp --> sChips["citation buttons of unsupported statements flagged with<br/>aria-describedby; Custom Highlight where supported"]
+    sChips --> sRet(["report back to chat/thread.js: answer label,<br/>receipt draft, the stored answer"])
+    sMixed --> sRet
 ```
 
 ## What is spoken is checked: the sentence gate

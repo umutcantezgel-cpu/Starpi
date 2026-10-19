@@ -149,9 +149,11 @@ idealised design. When the code changes, change the diagram in the same pull req
     - [Source check: from the rendered answer to the panel](#source-check-from-the-rendered-answer-to-the-panel)
     - [checkSentence: when a statement is checked, its reasons and its verdict](#checksentence-when-a-statement-is-checked-its-reasons-and-its-verdict)
     - [checkV2: negations, names and values in another place](#checkv2-negations-names-and-values-in-another-place)
+    - [Relations: changes, comparisons and order in time (version 3)](#relations-changes-comparisons-and-order-in-time-version-3)
     - [Facts: strict claims, lenient excerpts and how they are matched](#facts-strict-claims-lenient-excerpts-and-how-they-are-matched)
+    - [Sentence gate: what may be shown, spoken and counted as checked](#sentence-gate-what-may-be-shown-spoken-and-counted-as-checked)
     - [Answer receipts: fingerprints, draft, dialog and download](#answer-receipts-fingerprints-draft-dialog-and-download)
-    - [Receipts v2: Merkle tree, inclusion proofs and signature](#receipts-v2-merkle-tree-inclusion-proofs-and-signature)
+    - [Receipts v2 and v3: Merkle tree, inclusion proofs and signature](#receipts-v2-and-v3-merkle-tree-inclusion-proofs-and-signature)
     - [Deterministic citation verification and receipt flow](#deterministic-citation-verification-and-receipt-flow)
     - [Re-checking a receipt in the app and on the command line](#re-checking-a-receipt-in-the-app-and-on-the-command-line)
     - [starpi-ground: from arguments to exit code](#starpi-ground-from-arguments-to-exit-code)
@@ -2328,7 +2330,7 @@ sequenceDiagram
 
 ### verify-receipt: re-checking an answer receipt against the original files
 
-The receipt dialog's verify mode reads the chosen receipt file (at most RECEIPT_LIMITS.bytes, 2,000,000 bytes), parses it as JSON on the main thread, reads an optional public key of the signer (a JWK or PEM file of at most MAX_KEY_BYTES, 16,384 bytes) as text and sends both with the chosen original files to the ingestion worker, because extraction and chunking are too heavy for the UI thread; nothing is added to the workspace. The worker validates the receipt as starpi.receipt/v2 or v1 with its size limits, each format with its own list of members (a v1 receipt with a Merkle tree, a proof or a signature is refused) and of reason codes (REASON_CODES_V1 for v1, REASON_CODES for v2), and replies with the first invalid path instead of throwing; a key that importPublicKey cannot read ends the check with invalidKey. It takes the first 20 chosen files (MAX_VERIFY_FILES) and skips any of them above MAX_FILE_BYTES. For a v2 receipt verifyReceipt first recomputes the Merkle root, checks every inclusion proof and the signature, if there is one, against the chosen key or else the key embedded in the receipt (receipts-merkle-signature). For each workspace citation that carries a file fingerprint it looks for a provided file with the same SHA-256, extracts that file once with the worker's own extractText, and compares the text fingerprint, the passage at the recorded offsets and the chunk bounds that chunkText gives with the recorded size and overlap; a file that cannot be extracted adds a warning and leaves those three checks empty. A match shows that the cited excerpt can be reproduced from the same file under the recorded rules. The source-check verdicts are then recomputed on the excerpt texts in the receipt, or, when a text was left out or does not match its fingerprint, on the matching passage, unless the excerpt was truncated or never reached the model; for a partly delivered excerpt only its first deliveredChars characters count, and without deliveredChars that excerpt counts as unavailable; a statement is not recomputed when one of its cited excerpts, or of the other excerpts its reasons name, is unavailable, and the verdicts are recomputed with the rules version the receipt records. The app does not sign receipts, and a signature checked only with the key embedded in the receipt shows that the receipt is unchanged since signing, not who signed it; the check does not show what a model saw or that the answer's reasoning is right. Section 12 (receipts-verify) draws the same check in more detail, with the recomputed source check and the command-line script.
+The receipt dialog's verify mode reads the chosen receipt file (at most RECEIPT_LIMITS.bytes, 2,000,000 bytes), parses it as JSON on the main thread, reads an optional public key of the signer (a JWK or PEM file of at most MAX_KEY_BYTES, 16,384 bytes) as text and sends both with the chosen original files to the ingestion worker, because extraction and chunking are too heavy for the UI thread; nothing is added to the workspace. The worker validates the receipt as starpi.receipt/v3, v2 or v1 with its size limits, each format with its own list of members (a v1 receipt with a Merkle tree, a proof or a signature is refused, and so is a v2 receipt with a member v3 added) and of reason codes (REASON_CODES_V1 for v1, REASON_CODES for v2 and v3), and replies with the first invalid path instead of throwing; a key that importPublicKey cannot read ends the check with invalidKey. It takes the first 20 chosen files (MAX_VERIFY_FILES) and skips any of them above MAX_FILE_BYTES. For a v2 or v3 receipt verifyReceipt first recomputes the Merkle root, checks every inclusion proof and the signature, if there is one, against the chosen key or else the key embedded in the receipt; a v3 receipt that names a signer and carries no signature is reported as missing (receipts-merkle-signature). For each workspace citation that carries a file fingerprint it looks for a provided file with the same SHA-256, extracts that file once with the worker's own extractText, and compares the text fingerprint, the passage at the recorded offsets and the chunk bounds that chunkText gives with the recorded size and overlap; a file that cannot be extracted adds a warning and leaves those three checks empty, and text that OCR read from an image is marked ocr and only its file fingerprint is checked. A match shows that the cited excerpt can be reproduced from the same file under the recorded rules. The source-check verdicts are then recomputed on the excerpt texts in the receipt, or, when a text was left out or does not match its fingerprint, on the matching passage, unless the excerpt was truncated or never reached the model; for a partly delivered excerpt only its first deliveredChars characters count, and without deliveredChars that excerpt counts as unavailable; a statement is not recomputed when one of its cited excerpts, or of the other excerpts its reasons name, is unavailable, and the verdicts are recomputed with the rules version the receipt records (for version 3 with its relations). Receipts the app exports are signed with this device's key when "Sign exported receipts" is on; a signature checked only with the key embedded in the receipt shows that the receipt is unchanged since signing, not who signed it, and the report names a signing key that is one of this device's own; the check does not show what a model saw or that the answer's reasoning is right. Section 12 (receipts-verify) draws the same check in more detail, with the recomputed source check and the command-line script.
 
 <!-- diagram: workspace-ingestion-verify-receipt -->
 ```mermaid
@@ -2343,7 +2345,7 @@ flowchart TD
     keySize -->|"yes"| badSize["receipt.verify_bad_key, reason size"]
     keySize -->|"no"| send["receipt.verify_running, then verifyReceiptFiles:<br/>request verify-receipt with the receipt,<br/>the files chosen in receiptSources and<br/>the key file's text, or null without one"]
     send -.->|"rejects, e.g. worker crash or Clear workspace"| rej["receipt.verify_invalid with the error message"]
-    send --> valQ{"validateReceipt in the worker: schema starpi.receipt/v2 or v1,<br/>only the members of that format, field types, hex fingerprints,<br/>size limits, reason codes from REASON_CODES, for v1 from<br/>REASON_CODES_V1, for v2 a merkle record and a proof<br/>per citation, a signature with alg, keyId, publicKey and value?"}
+    send --> valQ{"validateReceipt in the worker: schema starpi.receipt/v3, v2 or v1,<br/>only the members of that format, field types, hex fingerprints,<br/>size limits, reason codes from REASON_CODES, for v1 from<br/>REASON_CODES_V1, for v2 and v3 a merkle record and a proof<br/>per citation, a signature with alg, keyId, publicKey and value,<br/>for v3 signer, gate, secondOpinion, relations and OCR extractor?"}
     valQ -->|"no"| inv["reply invalid with error and path<br/>receipt.verify_invalid, reason error (path)"]
     valQ -->|"yes"| keyQ{"key text sent?"}
     keyQ -->|"yes"| impQ{"importPublicKey reads it: a public JWK<br/>or PEM SPKI key, Ed25519 or P-256,<br/>a JWK with a private member d refused?"}
@@ -2351,8 +2353,8 @@ flowchart TD
     impQ -->|"yes"| files
     keyQ -->|"no"| files["the first MAX_VERIFY_FILES 20 chosen files,<br/>any above MAX_FILE_BYTES skipped, the rest read into bytes,<br/>nothing is added to the workspace"]
     files --> hashes["verifyReceipt with publicKey: idMatches from the receipt hash,<br/>answerMatches from the answer hash"]
-    hashes --> v2Q{"schema starpi.receipt/v2?"}
-    v2Q -->|"yes"| tree["Merkle root recomputed from the citations, every<br/>inclusion proof checked, signature status valid, invalid,<br/>unsigned, key_mismatch or unsupported_algorithm,<br/>see receipts-merkle-signature"]
+    hashes --> v2Q{"schema starpi.receipt/v2 or v3?"}
+    v2Q -->|"yes"| tree["Merkle root recomputed from the citations, every<br/>inclusion proof checked, signature status valid, invalid,<br/>unsigned, missing, key_mismatch or unsupported_algorithm,<br/>see receipts-merkle-signature"]
     v2Q -->|"no, v1"| noTree["merkle and signature null,<br/>proof null for every citation"]
     tree --> byHash["provided files keyed by the SHA-256 of their bytes"]
     noTree --> byHash
@@ -2372,10 +2374,10 @@ flowchart TD
     extrErr --> moreQ
     cCheck --> moreQ{"more citations?"}
     moreQ -->|"yes"| exc
-    moreQ -->|"no"| report(["VerifyReport: schema, passages that match of citations marked verifiable,<br/>merkle and signature results and a proof flag per citation for v2,<br/>source-check verdicts recomputed with the recorded rules version<br/>on the excerpt texts or matching passages,<br/>a partly delivered excerpt only on its first deliveredChars characters,<br/>skipping statements whose cited or other named excerpts are unknown,<br/>compared with the recorded ones, warnings, shown by renderReport,<br/>see receipts-verify"])
+    moreQ -->|"no"| report(["VerifyReport: schema, passages that match of citations marked verifiable,<br/>merkle and signature results and a proof flag per citation for v2 and v3,<br/>source-check verdicts recomputed with the recorded rules version<br/>on the excerpt texts or matching passages,<br/>a partly delivered excerpt only on its first deliveredChars characters,<br/>skipping statements whose cited or other named excerpts are unknown,<br/>compared with the recorded ones, warnings, shown by renderReport,<br/>see receipts-verify"])
 ```
 
-<sub>Sources: [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/trust/signing.js`](../src/js/trust/signing.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json)</sub>
 
 ### Worker crash, Clear workspace and restart
 
@@ -5781,68 +5783,54 @@ flowchart TD
 
 ## 12. Source check, answer receipts and sample files
 
-Every new answer with citations gets a source check and a receipt draft, both on the device; the fixed demo answer gets only the check. The logic lives in pure modules under src/js/core (no DOM; they run in the browser, in workers and in Node, and @starpi/core re-exports them). The source check compares the numbers, dates, times, weekdays, codes, quotations and wording of each statement with the excerpts it cites; version 2 of its rules (starpi-grounding 2, the current one; version 1 can still be run) also reports, in the excerpts' language, a statement that reverses a negation of its excerpt and a name or value that the excerpt puts next to something else. It is a deterministic heuristic, not a second model, and a match never proves a statement correct. An answer receipt is starpi.receipt/v2 JSON with a Merkle tree over its citations: it shows that the cited workspace excerpts can be reproduced from the same files and that each citation belongs to the receipt, and it does not prove what a model saw or that the answer's reasoning is right. The app does not sign receipts; a deployment can sign one with signReceipt from @starpi/core, and only a verifier who has the signer's public key learns who signed it. starpi-ground runs the same source check on a Markdown document against source files for scripts and CI. The sample files let a new user try the check and the receipts without any setup.
+Every grounded answer with citations gets a source check on the device; one whose citations come from the workspace or the library also gets a receipt draft, while an answer that rests on web pages is checked and labelled without a receipt, and the fixed demo answer gets only the check. The logic lives in pure modules under src/js/core (no DOM; they run in the browser, in workers and in Node, and @starpi/core re-exports them). The source check compares the numbers, dates, times, weekdays, codes, quotations and wording of each statement with the excerpts it cites. Version 2 of its rules adds, in the excerpts' language, a statement that reverses a negation of its excerpt and a name or value that the excerpt puts next to something else; version 3 (starpi-grounding 3, the current one; versions 1 and 2 can still be run) also checks relations: a change, comparison, order in time or value carried over from the statement before that the cited excerpts give the other way round or do not give. It is a deterministic heuristic, not a second model, and a match never proves a statement correct; a second opinion from an entailment model on this device or from the AI judge can be asked for on a weak statement and never changes its verdict. The sentence gate is the strict sibling of the check: it judges each streamed unit once and releases it only when the rules of its mode hold (in sources mode every number must stand in an excerpt the unit cites), and the speech queue speaks nothing the gate did not release. An answer receipt is starpi.receipt/v3 JSON with a Merkle tree over its citations: it shows that the cited workspace excerpts can be reproduced from the same files and that each citation belongs to the receipt, and it does not prove what a model saw or that the answer's reasoning is right. With "Sign exported receipts" on (the default), the app names this device's signing key inside the receipt and signs it on export; who signed it is shown only to a verifier who has that public key from the user. starpi-ground and starpi-gate run the same checks on documents for scripts and CI. The sample files let a new user try the check and the receipts without any setup.
 
 ### Source check: from the rendered answer to the panel
 
-After an answer with a citation scope is rendered, chat.js passes applyGrounding one source per excerpt, carrying the text that actually reached the model. For the extractive synthesizer that is the excerpt as given; for a model answer it is what contextCoverage parses back from the context that was sent, marked full, partial or omitted. given holds the question and the user's messages among the last 4 conversation entries, never the model's own earlier answers, and citedOnly (extractive answers) makes the check ignore statements without their own marker. blocksFromElement reads the rendered DOM, not the Markdown, so a citation counts only when it is a citation button of this answer's scope; other label-like text becomes a bad citation. groundAnswer runs the current rules, version 2 (GROUNDING.version), since the app passes no other version; it skips answers with more than 20,000 characters of text, links markers to statements, skips answers with more than 300 statements and runs checkSentence on each one (next two diagrams). The result is a details panel under the answer that lists the flagged statements with one reason line per reason, unsupported ones first, and opens by itself when a statement is unsupported. Its colour and shield icon follow the worst verdict; when nothing was compared (the answer was too long, or every checked statement stayed unchecked) the bar is neutral grey with a plain shield, never the green one. Citation buttons of unsupported statements are flagged and point to their list item with aria-describedby. Where the browser supports the CSS Custom Highlight API, those statements are also highlighted without changing the DOM. Every panel ends with the disclaimer that a match does not prove a statement correct.
+After a grounded answer has streamed, chat/thread.js expands the short labels of a context pack ([S1], [F1]) to the canonical labels, renders the answer and passes applyGrounding one source per excerpt, carrying the text that actually reached the model: the excerpt as given for the extractive synthesizer, the pack's coverage for a context pack, or what contextCoverage parses back from the context that was sent, each marked full, partial or omitted. given holds the question and the user's messages among the last 4 conversation entries, never the model's own earlier answers, and citedOnly (extractive answers) makes the check ignore statements without their own marker. A mixed answer (Auto with a weaker match in the sources) goes to applyMixedMarks instead, which runs the same check and lists per statement whether it was found in the sources. blocksFromElement reads the rendered DOM, not the Markdown, so a citation counts only when it is a citation button of this answer's scope; other label-like text becomes a bad citation. groundAnswer runs the current rules, version 3 (GROUNDING.version); it skips answers with more than 20,000 characters of text, links markers to statements, skips answers with more than 300 statements, runs checkSentence on each one and then checks the relations between them (next diagrams). The result is a details panel under the answer that lists the flagged statements with one reason line per reason, unsupported ones first, and opens by itself when a statement is unsupported; a note counts the relations compared and how many were flagged, and weak statements get the second-opinion buttons (the AI judge only for an answer that may leave this device). Its colour and shield icon follow the worst verdict; when nothing was compared the bar is neutral grey with a plain shield, never the green one. Citation buttons of unsupported statements are flagged and point to their list item with aria-describedby, and where the browser supports the CSS Custom Highlight API those statements are highlighted without changing the DOM. Every panel ends with the disclaimer that a match does not prove a statement correct.
 
 <!-- diagram: source-check-pipeline -->
 ```mermaid
 flowchart TD
-    sIn(["chat.js submitChat: rendered messageEl, a citation scope,<br/>the same chat session still shown"]) --> sEng{"answer.engine is synthesizer?"}
-    sEng -->|"yes"| sFull["every excerpt delivered full,<br/>text = the excerpt as given"]
-    sEng -->|"no, a model answered"| sCov["contextCoverage(citationList, deliveredContext or context):<br/>the EXCERPT n blocks of the context that was sent give<br/>full, partial without the ellipsis, or omitted"]
-    sFull --> sApply
-    sCov --> sApply
-    sDemo(["demo.js showCheckDemo: excerpts delivered full,<br/>no given, citedOnly off"]) -.-> sApply
-    sApply["applyGrounding(messageEl): scope, sources with label, doc,<br/>heading, delivered text and state, given = the prompt and the<br/>user messages among the last 4 conversation entries,<br/>citedOnly = synthesizer answer"]
-    sApply --> sSlot{".message-content and .message-provenance<br/>present and sources not empty?"}
-    sSlot -->|"no"| sNull(["returns null, no panel"])
-    sSlot -->|"yes"| sBlocks["blocksFromElement: one block per p, li, h1 to h6, tr,<br/>blockquote, dd, dt, pre skipped, br as a line break,<br/>td and th cells joined with a separator,<br/>kind p, li, heading, row, header-row or other"]
-    sBlocks --> sBtn{"button with data-action open-citation<br/>and data-arg of this answer's scope?"}
-    sBtn -->|"yes"| sCite["cite segment, chip position recorded"]
-    sBtn -->|"no"| sIgn["other buttons ignored"]
-    sBlocks --> sLoose["text matching LOOSE_LABEL_PATTERN: badcite,<br/>resolveLabel by document name and chunk number"]
-    sBlocks --> sLead["list item, or the first paragraph of a loose list item,<br/>whose list follows a block ending in a colon:<br/>leadIn = that block"]
-    sCite --> sSize
-    sLoose --> sSize
-    sLead --> sSize
-    sSize{"groundAnswer, rules version GROUNDING.version 2:<br/>text segments over THRESHOLDS.maxChars 20000 characters?"}
+    sIn(["chat/thread.js answerGrounded: the answer streamed and rendered,<br/>pack labels [S#] and [F#] expanded to the canonical labels"]) --> sEng{"who answered?"}
+    sEng -->|"the extractive synthesizer"| sFull["every excerpt delivered full"]
+    sEng -->|"a model, with a context pack"| sPack["the pack's coverage per excerpt:<br/>full, partial or omitted"]
+    sEng -->|"a model, plain context"| sCov["contextCoverage: the EXCERPT n blocks<br/>of the context that was sent"]
+    sFull --> sKind
+    sPack --> sKind
+    sCov --> sKind
+    sKind{"a mixed answer from Auto?"}
+    sKind -->|"yes"| sMixed["applyMixedMarks: the same check, per statement<br/>from the sources, partly, cited but not found<br/>or not in the sources"]
+    sKind -->|"no"| sApply["applyGrounding: sources with their delivered text and state,<br/>given = the question and the user messages among the last 4 entries,<br/>citedOnly = synthesizer answer, localOnly = the answer stays here"]
+    sDemo(["demo.js showCheckDemo: excerpts full, no given"]) -.-> sApply
+    sApply --> sBlocks["blocksFromElement: blocks of the rendered DOM,<br/>citation buttons of this answer's scope as citations,<br/>other label-like text as bad citations"]
+    sBlocks --> sSize{"groundAnswer with GROUNDING.version 3:<br/>more than 20,000 characters or 300 statements?"}
     sSize -->|"yes"| sSkip["skipped too_long"]
-    sSize -->|"no"| sAssoc["associate: sentenceSpans per block, no statement ends at the dot<br/>of an ordinal, a day.month date such as 1.6. or a known abbreviation,<br/>a marker belongs to the last statement that starts before it,<br/>a statement without one inherits from the next cited statement<br/>of its block, then the previous one, then its lead-in up to 4 hops,<br/>then the markers and bad labels of contentless blocks<br/>such as a Sources line"]
-    sAssoc --> sMany{"more than maxSentences 300 statements?"}
-    sMany -->|"yes"| sSkip
-    sMany -->|"no"| sIdx["indexSource per excerpt over text, doc and heading<br/>with the same rules version, no index for an omitted excerpt,<br/>given indexed, answer language from guessLanguage"]
+    sSize -->|"no"| sAssoc["associate: markers to statements, a statement without one<br/>inherits from its block's cited statements or its lead-in"]
+    sAssoc --> sIdx["indexSource per delivered excerpt, given indexed,<br/>answer language from guessLanguage"]
     sIdx --> sCheck["checkSentence per statement,<br/>see source-check-verdicts and source-check-v2-checks"]
-    sCheck --> sCount["counts supported, weak, unsupported, unchecked,<br/>neutral statements not counted"]
-    sCount --> sAny{"anything counted, unchecked or skipped?"}
-    sSkip --> sAny
-    sAny -->|"no"| sQuiet(["report returned, no panel"])
-    sAny -->|"yes"| sBar["details.grounding-bar replaces the .message-provenance content:<br/>grounding-review and shield-alert when a statement is unsupported,<br/>else grounding-partial and shield-question-mark when one is weak,<br/>else grounding-ok and shield-check when statements were compared,<br/>else grounding-none and shield"]
-    sBar --> sSum["summary: grounding.title, then grounding.too_long,<br/>grounding.summary ok of total, or grounding.only_unchecked,<br/>badges grounding.review n and grounding.partial n"]
-    sSum --> sList["ol.grounding-list: unsupported first, then weak, in answer order,<br/>li id grd-n-i, n per panel, i the statement index,<br/>grounding.statement cut to 160 chars,<br/>one grounding.reason_code line per reason, citation badges"]
-    sList --> sNotes["grounding.unchecked n when statements were not compared,<br/>grounding.disclaimer in every panel"]
-    sNotes --> sOpen["details opened when a statement is unsupported"]
-    sOpen --> sChips["each citation button belongs to the last statement of its block<br/>that starts before it, else the first, if that one is unsupported:<br/>class citation-chip-flag, aria-describedby = id of its list item"]
-    sChips --> sHl{"Highlight and CSS.highlights available?"}
-    sHl -->|"yes"| sMark["a Range per unsupported statement in the<br/>starpi-review highlight, no DOM change, no inline style"]
-    sHl -->|"no"| sNoMark["no highlight, the flagged list<br/>stays the accessible channel"]
-    sMark --> sRet(["report returned to chat.js for the receipt draft"])
-    sNoMark --> sRet
-    sReset(["resetMessages: new chat, deleted or restored history"]) -.-> sClear["clearGroundingHighlights"]
+    sCheck --> sRel["applyRelations: changes, comparisons, order in time<br/>and carried-over values, see source-check-relations"]
+    sRel --> sCount["counts supported, weak, unsupported, unchecked,<br/>neutral statements not counted"]
+    sSkip --> sBar
+    sCount --> sBar["details.grounding-bar: review, partial, ok or none;<br/>flagged list, unsupported first, one reason line each;<br/>relations note, unchecked note, disclaimer"]
+    sBar --> sSecond{"a weak statement with a delivered cited excerpt?"}
+    sSecond -->|"yes"| sOp["second-opinion buttons: the entailment model on this device,<br/>the AI judge only when localOnly is false; advisory,<br/>recorded in the report, never a new verdict"]
+    sSecond -->|"no"| sChips
+    sOp --> sChips["citation buttons of unsupported statements flagged with<br/>aria-describedby; Custom Highlight where supported"]
+    sChips --> sRet(["report back to chat/thread.js: answer label,<br/>receipt draft, the stored answer"])
+    sMixed --> sRet
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/sentences.js`](../src/js/core/sentences.js), [`src/js/core/labels.js`](../src/js/core/labels.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/demo.js`](../src/js/demo.js), [`src/styles/app.css`](../src/styles/app.css), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/chat/answer-labels.js`](../src/js/chat/answer-labels.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/relations.js`](../src/js/core/relations.js), [`src/js/core/entail.js`](../src/js/core/entail.js), [`src/js/core/sentences.js`](../src/js/core/sentences.js), [`src/js/core/labels.js`](../src/js/core/labels.js), [`src/js/ai/context-pack.js`](../src/js/ai/context-pack.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/demo.js`](../src/js/demo.js)</sub>
 
 ### checkSentence: when a statement is checked, its reasons and its verdict
 
-checkSentence first decides whether a statement is checked at all. Headings and table header rows without their own marker, statements without their own marker in extractive answers, statements with no citation, no bad label and no fact, and statements with no fact, fewer than 3 content words and no bad label of their own are neutral: they are not counted and not written to a receipt. For every other statement it collects reasons, each at level weak or unsupported: bad labels, cited excerpts that did not fit into the model's context, each fact looked up in the cited delivered excerpts and then in the other excerpts and in what the user said, word overlap and names of English statements missing from the excerpts. Then the rules version decides: version 1 compares each value found with the words next to it (fact_context), and version 2, the default, runs checkV2 when every cited delivered excerpt is in the statement's language or either language is unknown: a reversed negation, a name in another place and its own fact_context rule, all weak (next diagram). One unsupported reason makes the statement unsupported and any other reason makes it weak. A cited statement without reasons is supported when it had facts or measured overlap, and unchecked otherwise, which in practice means a statement without facts whose excerpts are all in another language.
+checkSentence first decides whether a statement is checked at all. Headings and table header rows without their own marker, statements without their own marker in extractive answers, statements with no citation, no bad label and no fact, and statements with no fact, fewer than 3 content words and no bad label of their own are neutral: they are not counted and not written to a receipt. For every other statement it collects reasons, each at level weak or unsupported: bad labels, cited excerpts that did not fit into the model's context, each fact looked up in the cited delivered excerpts and then in the other excerpts and in what the user said, word overlap and names of English statements missing from the excerpts. Then the rules version decides: version 1 compares each value found with the words next to it (fact_context), and versions 2 and 3 run checkV2 when every cited delivered excerpt is in the statement's language or either language is unknown: a reversed negation, a name in another place and its own fact_context rule, all weak (next diagram). One unsupported reason makes the statement unsupported and any other reason makes it weak. A cited statement without reasons is supported when it had facts or measured overlap, and unchecked otherwise, which in practice means a statement without facts whose excerpts are all in another language. Version 3 then checks the relations across the statements (next but one diagram) and may add relation_inverted or relation_unsupported, both weak, to the statement that states a relation last.
 
 <!-- diagram: source-check-verdicts -->
 ```mermaid
 flowchart TD
-    vIn(["checkSentence(statement, ctx)"]) --> vFacts["extractFacts with ctx.version, GROUNDING.version 2<br/>by default, and contentTokens of the statement text"]
+    vIn(["checkSentence(statement, ctx)"]) --> vFacts["extractFacts with ctx.version, GROUNDING.version 3<br/>by default, and contentTokens of the statement text"]
     vFacts --> vN1{"heading or header-row<br/>without its own marker?"}
     vN1 -->|"yes"| vNeutral(["neutral: not counted,<br/>left out of the receipt"])
     vN1 -->|"no"| vN2{"citedOnly, an extractive answer,<br/>and no own marker?"}
@@ -5880,7 +5868,7 @@ flowchart TD
     vOverlap --> vNames["English statement with delivered excerpts: a capitalised word that<br/>opens no sentence, list item, cell or clause, is no fact, weekday,<br/>month or stopword, and is in no cited delivered excerpt:<br/>from_conversation, weak, when it is in given, else name_missing, weak"]
     vNames --> vVer{"rules version?"}
     vVer -->|"1"| vCtx["version 1 fact_context, weak: a found value stands only in passages<br/>of the cited excerpts that share none of the words next to it in the<br/>statement, counting words found in at most half the passages, while<br/>a passage without the value shares them, the excerpt's heading<br/>counting as part of every passage, its document name not,<br/>found = the first such passage, at most 160 chars"]
-    vVer -->|"2"| vSame{"delivered cited excerpts, not crossLanguage,<br/>and each of them in the statement's language,<br/>or either language unknown?"}
+    vVer -->|"2 or 3"| vSame{"delivered cited excerpts, not crossLanguage,<br/>and each of them in the statement's language,<br/>or either language unknown?"}
     vSame -->|"yes"| vV2["checkV2, see source-check-v2-checks:<br/>negation_inversion, name_context and<br/>version 2 fact_context, each weak"]
     vSame -->|"no"| vVerdict
     vCross --> vVerdict
@@ -5892,18 +5880,19 @@ flowchart TD
     vVerdict -->|"no reason, no citation"| vW2(["weak, reason uncited_found added"])
     vVerdict -->|"no reason, cited, facts or overlap"| vS(["supported"])
     vVerdict -->|"no reason, cited, no fact, no overlap"| vC(["unchecked"])
+    vVerdict -.->|"version 3, after every statement"| vRel3["applyRelations: relation_inverted or relation_unsupported,<br/>weak, on the statement that states the relation last,<br/>see source-check-relations"]
 ```
 
-<sub>Sources: [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/core/relations.js`](../src/js/core/relations.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
 
 ### checkV2: negations, names and values in another place
 
-Version 2 of the rules adds three checks to every statement that cites delivered excerpts in its own language (or in an unknown one). Each compares the statement only with the delivered excerpts it cites, never with other statements or with excerpts it does not cite, so a receipt that leaves other excerpts out still recomputes it. Each gives a weak reason, never an unsupported one: a lexical reading cannot tell every restatement from a contradiction, and a flag means open the source and check. The negation check (core/polarity.js) rewrites statement and excerpt sentences into a canonical form, in which "disabled" reads as "not enabled" and "prohibited" as "not allowed", splits them into clauses and anchors each negator to the word it negates; a statement clause that matches an excerpt clause in its words, in both directions, and in its numbers, but differs in the parity of its negations is reported as negation_inversion, quoting the excerpt sentence. The name check (core/binding.js) splits statement and excerpts into units at semicolons and conjunctions and reports name_context when the excerpt unit that best matches the statement's other words has a different name in place of the statement's, unless every such name of the statement stands in another excerpt unit that shares two of those words, so a statement that joins two passages is not flagged. Names are found without a list: capitalised words inside an English sentence, runs of two or more capitalised words, CamelCase and all-capital words, and capitalised words the excerpts themselves use as names. The value check replaces version 1's fact_context rule: a value of a statement part is reported when the passages holding it share fewer of the part's words than another passage with a value of the same kind, by the margins below. The thresholds were chosen on the development sets (docs/eval/v2-protocol.md).
+Versions 2 and 3 of the rules add three checks to every statement that cites delivered excerpts in its own language (or in an unknown one). Each compares the statement only with the delivered excerpts it cites, never with other statements or with excerpts it does not cite, so a receipt that leaves other excerpts out still recomputes it. Each gives a weak reason, never an unsupported one: a lexical reading cannot tell every restatement from a contradiction, and a flag means open the source and check. The negation check (core/polarity.js) rewrites statement and excerpt sentences into a canonical form, in which "disabled" reads as "not enabled" and "prohibited" as "not allowed", splits them into clauses and anchors each negator to the word it negates; a statement clause that matches an excerpt clause in its words, in both directions, and in its numbers, but differs in the parity of its negations is reported as negation_inversion, quoting the excerpt sentence. The name check (core/binding.js) splits statement and excerpts into units at semicolons and conjunctions and reports name_context when the excerpt unit that best matches the statement's other words has a different name in place of the statement's, unless every such name of the statement stands in another excerpt unit that shares two of those words, so a statement that joins two passages is not flagged. Names are found without a list: capitalised words inside an English sentence, runs of two or more capitalised words, CamelCase and all-capital words, and capitalised words the excerpts themselves use as names. The value check replaces version 1's fact_context rule: a value of a statement part is reported when the passages holding it share fewer of the part's words than another passage with a value of the same kind, by the margins below. The negators, antonyms, restrictions and conjunctions come from the language packs of all six languages; the diagram names the English and German ones. The thresholds were chosen on the development sets (docs/eval/v2-protocol.md).
 
 <!-- diagram: source-check-v2-checks -->
 ```mermaid
 flowchart TD
-    wIn(["checkV2(statement text, delivered cited excerpts, ctx), from checkSentence<br/>with version 2, lang = the statement's language, else the answer's"])
+    wIn(["checkV2(statement text, delivered cited excerpts, ctx), from checkSentence<br/>with version 2 or 3, lang = the statement's language, else the answer's"])
     wIn --> nQ{"statement ends with a question mark?"}
     subgraph sg_neg["negationInversion: core/polarity.js"]
         nCanon["canonicalText of the statement and of each excerpt sentence: fold,<br/>isn't and can't as is not and can not, neither ... nor as not ... or not,<br/>it is not true that as one negation; disabled, prohibited, rejected,<br/>failed, decreased, listed un-, in-, im-, il-, ir- and dis- words and<br/>-less words as notx before the positive word, German deaktiviert,<br/>verboten, gesunken, listed un-, in-, il- and ir- words and -los<br/>words likewise;<br/>no later than, not only, nicht nur and whether or not lose their<br/>negator; in a clause with a time condition such as until, before,<br/>bevor or bis, or next to a clause that starts with one,<br/>negators are dropped unless it is a range"]
@@ -5957,28 +5946,62 @@ flowchart TD
     vParts -->|"no"| wOut(["reasons appended to checkSentence's reasons, all weak:<br/>a statement with no other reason becomes weak,<br/>never unsupported"])
 ```
 
-<sub>Sources: [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/polarity.js`](../src/js/core/polarity.js), [`src/js/core/binding.js`](../src/js/core/binding.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/core/sentences.js`](../src/js/core/sentences.js), [`src/locales/en.json`](../src/locales/en.json), [`docs/eval/v2-protocol.md`](eval/v2-protocol.md)</sub>
+<sub>Sources: [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/polarity.js`](../src/js/core/polarity.js), [`src/js/core/binding.js`](../src/js/core/binding.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/core/sentences.js`](../src/js/core/sentences.js), [`src/js/core/lang/index.js`](../src/js/core/lang/index.js), [`src/locales/en.json`](../src/locales/en.json), [`docs/eval/v2-protocol.md`](eval/v2-protocol.md)</sub>
+
+### Relations: changes, comparisons and order in time (version 3)
+
+A statement can repeat every value of its excerpt and still turn around what the excerpt says: a value that "rose" from the larger to the smaller number, a comparison the other way round, an event placed before one that came first, or a second statement that carries the value of the first one on in the wrong direction. Version 3 of the rules (core/relations.js, called by applyRelations after every statement was checked) reads these relations in English and German statements and in the statement directly before, looks up both values or dates in the excerpts the statement cites and decides a relation only when both are found and bound to their sides without ambiguity. A relation the excerpts give the other way round is inverted, one whose direction they give but not the stated factor, share or a difference at all is unsupported, and either adds a weak reason (relation_inverted, relation_unsupported) to the statement that states the relation last; a supported statement then turns weak. Negated and conditional clauses are left alone, neutral statements take no part, and statements compared across languages serve only as context. The result depends only on the statements, their order and the excerpts they cite, so a receipt recomputes it; the relations go into the report and from there into the receipt.
+
+<!-- diagram: source-check-relations -->
+```mermaid
+flowchart TD
+    rIn(["applyRelations(results, ctx), rules version 3 or later"]) --> rOrder["checked statements in answer order, neutral ones left out;<br/>cross-language statements only as context"]
+    rOrder --> rFind["findRelations: per statement, and with the statement before it<br/>(RELATIONS.referenceDistance 1), in English and German"]
+    rFind --> rKinds{"what does the statement state?"}
+    rKinds -->|"a change: rose, fell, doubled, halved from A to B,<br/>rose to B, B up from A, rose by half"| rCmp
+    rKinds -->|"a comparison: more, fewer, higher, lower than,<br/>twice as many as"| rCmp
+    rKinds -->|"an order in time: before, after, earlier,<br/>later, followed by, preceded"| rTime
+    rKinds -->|"a carried-over value: it rose to B,<br/>that number shrank to B"| rRef
+    rKinds -->|"a share: X % of, both values stated"| rCmp
+    rCmp["comparative: both values looked up in the cited excerpts,<br/>factor within factorTolerance 0.1, hedged factors such as<br/>more than doubled as bounds, share within 0.5 points"]
+    rTime["temporal: both events dated in the cited excerpts,<br/>the passive read the other way round"]
+    rRef["reference: compared with the single value<br/>of the statement before"]
+    rCmp --> rDecide
+    rTime --> rDecide
+    rRef --> rDecide
+    rDecide{"both sides found and bound without ambiguity,<br/>clause neither negated nor conditional?"}
+    rDecide -->|"no"| rNone(["no relation reported"])
+    rDecide -->|"yes"| rVerdict{"what do the excerpts give?"}
+    rVerdict -->|"the same direction, factor and share"| rSup(["supported: recorded, no reason"])
+    rVerdict -->|"the opposite direction or order"| rInv["relation_inverted, weak"]
+    rVerdict -->|"the direction, not the stated factor or share,<br/>or two equal values"| rUns["relation_unsupported, weak"]
+    rInv --> rOn
+    rUns --> rOn
+    rOn(["reason on the statement that states it last, found = the excerpt<br/>passages; report.relations, receipt relations, a note in the panel"])
+```
+
+<sub>Sources: [`src/js/core/relations.js`](../src/js/core/relations.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`tests/unit/grounding-v3.test.mjs`](../tests/unit/grounding-v3.test.mjs)</sub>
 
 ### Facts: strict claims, lenient excerpts and how they are matched
 
-facts.js reads facts in two modes. extractFacts reads an answer statement strictly and records only what it is sure of, taking the dominant reading of a number; indexSource reads an excerpt leniently and records every plausible reading. A fact copied verbatim, or rewritten between English and German formats, therefore matches, while a changed value does not. Version 2 of the rules, the default of both functions, also reads version numbers with three or four dotted parts (4.2.1, v3.9.4) as codes, where version 1 read 3.9.4 am as the number 3.9 and the time 4 am. Quotation words, codes, month names, content words and the excerpt word sequence go through the same fold on both sides. lookupFact answers exact, approx (numbers only: within 5 percent when the statement says the value is approximate, or equal once rounded to the digits written with a scale word), partial (quotations only, 80 percent of the words) or null. Word overlap uses tokenMatches, which tolerates inflection and German compounds. guessLanguage decides between English and German from function words; when a statement and all its cited excerpts are in different languages, only the facts are compared.
+facts.js reads facts in two modes. extractFacts reads an answer statement strictly and records only what it is sure of, taking the dominant reading of a number; indexSource reads an excerpt leniently and records every plausible reading. A fact copied verbatim, or rewritten between English and German formats, therefore matches, while a changed value does not. From version 2 of the rules on (the current rules are version 3), both functions also read version numbers with three or four dotted parts (4.2.1, v3.9.4) as codes, where version 1 read 3.9.4 am as the number 3.9 and the time 4 am. Quotation words, codes, month names, content words and the excerpt word sequence go through the same fold on both sides. lookupFact answers exact, approx (numbers only: within 5 percent when the statement says the value is approximate, or equal once rounded to the digits written with a scale word), partial (quotations only, 80 percent of the words) or null. Word overlap uses tokenMatches, which tolerates inflection and German compounds. Month and weekday names, number words and the scale, unit, currency, hedge and version words come from the language packs of all six languages (English, German, French, Spanish, Italian, Turkish); the diagram gives the English and German forms. guessLanguage decides between the six languages from function words and letters; when a statement and all its cited excerpts are in different languages, only the facts are compared.
 
 <!-- diagram: source-check-facts -->
 ```mermaid
 flowchart TD
-    fFold["fold, used on both sides for quotation words, code values, month names,<br/>content tokens and the word sequence, not for the raw text: NFKC,<br/>soft hyphens and PDF line-break hyphens removed, lower case, ae, oe,<br/>ue and ss for umlauts and sharp s, quotation marks and dashes unified"]
+    fFold["fold, used on both sides for quotation words, code values, month names,<br/>content tokens and the word sequence, not for the raw text: NFKC,<br/>soft hyphens and PDF line-break hyphens removed, lower case, Turkish dotted and dotless i as i,<br/>ae, oe, ue and ss for umlauts and sharp s, quotation marks and dashes unified"]
     subgraph sg_claim["extractFacts(statement): claim mode, strict"]
         fC0["citation labels blanked, then each kind in this order,<br/>quotes, version numbers, dates, times and codes masked once found"]
         fC1["quote: 3 to 300 chars between German, English,<br/>straight or French quotation marks, at least 2 words"]
         fCV["version 2 only, version number as a code: 3 or 4 parts of<br/>1 to 4 digits joined by dots, an optional v, value v:4.2.1 without<br/>leading zeros; not when the later parts all have 3 digits, as in<br/>4.480.000, nor when it could be a date, as 10.4.12, unless a v or<br/>a word such as version, firmware, release, build or patch precedes;<br/>a date written d.m.yy also gets the version reading"]
         fC2["date: 2026-09-14, 14.09.2026, 14.09.26, 14. September 2026,<br/>14 September 2026, September 14, 2026, September 2026,<br/>9/14/2026 read both ways when ambiguous, 09/2026,<br/>14.09. and am 14.09., 14.09. also read as the number 14.09,<br/>impossible dates dropped"]
         fC3["time: 10:00 with optional Uhr, h, am or pm,<br/>10.00 Uhr, 10.30 pm, 10 am, 10 Uhr"]
-        fC4["weekday: English and German names, plural s allowed,<br/>month: full name only after in, by, until, bis, seit, early,<br/>end of and similar words, lowercase may skipped as a verb"]
+        fC4["weekday: the names of every language pack, plural s allowed,<br/>month: full name only after in, by, until, bis, seit, early,<br/>end of and similar words, lowercase may skipped as a verb"]
         fC5["code: letters and digits mixed as in Q3, A320, v2, or a prefix of<br/>1 to 6 letters, a hyphen, also a typographic hyphen or en dash,<br/>digits as in R-02, ISO-27001, the hyphen dropped, digits followed by letters, as 480k, 10kg, 3rd, are no code"]
         fC6["number: 480,000, 480.000, 1.234,56, 3 100, a single separator<br/>before exactly 3 digits groups thousands, k, Tsd., Mio.,<br/>million, Mrd. and bn scale it, a unit, percent or currency<br/>marks it as a quantity, the value itself carries no unit"]
         fC7["not a claim: a lone integer below 10 without a unit,<br/>list numbering, ordinals, a number glued to a word"]
         fC8["approx when a word such as about, around, roughly, nearly, over,<br/>up to, circa, rund, etwa, knapp, über or bis zu, or a tilde, stands<br/>before it, a scale word records the significant digits written"]
-        fC9["spelled numbers, English and German: ten to ninety always,<br/>two to nine only before a unit word, hundred never, skipped as part<br/>of a larger number: next to another number word, directly or joined<br/>by and or und, as in twenty-five or a hundred and twenty, or next<br/>to a digit, while twenty in drivers and twenty trucks still counts"]
+        fC9["spelled numbers of the language packs, here English and German: ten to ninety always,<br/>two to nine only before a unit word, hundred never, skipped as part<br/>of a larger number: next to another number word, directly or joined<br/>by and or und, as in twenty-five or a hundred and twenty, or next<br/>to a digit, while twenty in drivers and twenty trucks still counts"]
         fCT["contentTokens: BM25 tokens without stopwords, folded, without<br/>words such as according, source, about or million,<br/>without tokens that contain a digit"]
     end
     subgraph sg_src["indexSource(excerpt, doc, heading): source mode, every reading"]
@@ -5987,7 +6010,7 @@ flowchart TD
         fS2["times with the hour as a number, weekdays,<br/>every full month name, no preposition needed"]
         fS3["codes, plus neighbouring word and number pairs:<br/>ISO 27001 and Q 3 index as ISO27001 and Q3"]
         fS4["numbers with both readings of 480.000, scaled and unscaled,<br/>number words anywhere, every number kept for approx"]
-        fS5["content tokens, their first 5 letters, the folded<br/>word sequence, language en, de or null"]
+        fS5["content tokens, their first 5 letters, the folded<br/>word sequence, the excerpt language or null"]
     end
     fFold -.-> fC0
     fFold -.-> fS0
@@ -6008,15 +6031,67 @@ flowchart TD
     fCT --> fTok
     fS5 --> fTok["tokenMatches(token, index): the same token, or 5 or more letters<br/>sharing a prefix of at least max(5, longer length minus 4),<br/>or a German compound: a token of 8 or more letters contains<br/>a long source token, or the reverse"]
     fTok --> fOver["overlap and names in checkSentence"]
-    fS5 --> fLang["guessLanguage: words in only the English or only the German<br/>stopword list, umlauts and sharp s count for German,<br/>a one-sided signal, or at least 2 and twice the other, else null"]
+    fS5 --> fLang["guessLanguage: function words of each language pack, Turkish<br/>with its own lower case, a pack's own letters count once;<br/>a one-sided signal, or at least 2 and twice the next, else null"]
     fLang --> fCross["statement language differs from every cited excerpt:<br/>facts only, so 28.08.2026 still matches August 28, 2026<br/>and 480.000 matches 480,000"]
 ```
 
-<sub>Sources: [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/labels.js`](../src/js/core/labels.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js)</sub>
+<sub>Sources: [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/labels.js`](../src/js/core/labels.js), [`src/js/core/lang/index.js`](../src/js/core/lang/index.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js)</sub>
+
+### Sentence gate: what may be shown, spoken and counted as checked
+
+The sentence gate (core/gate.js) is the last step between a streamed answer and anything that speaks it or counts it as checked. The streaming releaser (release.js) hands over a unit (a sentence, list item, table row, heading or code block) only once it can no longer change, with the same sentence rules as the source check, in linear time and with the same units however the text was split into deltas. The gate judges the unit's canonical text (canonical.js: Markdown marks, invisible and private characters removed, a small explicit normalisation, never NFKC) exactly once: first the labels, characters and links, then digits joined into another number, then each number, quantity word and identifier in the order written, then the spoken form. The first rule a unit breaks withholds it with that reason and the token that broke it; in free mode only the character and link rules apply. A released unit is a frozen object only the gate creates, and isReleased() tells it apart from anything else, so the speech queue (voice/tts.js) accepts nothing else than released units and its own fixed notices. Its spoken form (spoken.js) writes out the abbreviations and unit signs of the language pack and is dropped when the expansion would change a number. The app uses the gate for reading answers aloud (sources mode for grounded answers, web mode for web answers, free mode otherwise), for Live answers, for research reports, for the web check of web answers and for the gate counts of a receipt; starpi-gate runs it on a text for scripts and CI (JSON or SARIF, exit 1 when a unit was withheld).
+
+<!-- diagram: sentence-gate -->
+```mermaid
+flowchart TD
+    gIn(["createSentenceGate(mode sources, web or free, locale, sources,<br/>question, grounding, identifiers) or checkText(text, options)"]) --> gRel["release.js: a unit only once it can no longer change:<br/>sentence, list item, table row, heading or code block;<br/>a trailing citation label still belongs to its sentence"]
+    gRel --> gCan["canonical.js: Markdown marks and invisible characters removed,<br/>minus signs, hyphens and fullwidth forms normalised, NFC,<br/>white space collapsed; citation labels taken out as cites"]
+    gCan --> r1{"sources mode: a label that names no source?"}
+    r1 -->|"yes"| w1["unknown_source"]
+    r1 -->|"no"| r2{"a character outside the allowlist: other scripts and digit<br/>systems, look-alike signs, invisible marks?"}
+    r2 -->|"yes"| w2["chars"]
+    r2 -->|"no"| r3{"a URL, bare domain or Markdown link target?"}
+    r3 -->|"yes"| w3["link"]
+    r3 -->|"no"| rFree{"free mode?"}
+    rFree -->|"yes"| rSp
+    rFree -->|"no"| r4{"digits a listener would hear as another number:<br/>4 80, 5OO, 10³, 5 hundred, .5?"}
+    r4 -->|"yes"| w4["joined"]
+    r4 -->|"no"| r5{"each number, quantity word and identifier, in the order written"}
+    r5 -->|"an identifier with digits such as ISO 9001, identifiers verbatim"| r6{"literally in the question, in a cited excerpt (sources)<br/>or inside a grounded segment (web)?"}
+    r6 -->|"no"| w7["identifier"]
+    r6 -->|"yes"| r5
+    r5 -->|"a number or quantity word, sources mode"| r7{"in an excerpt the unit cites with the same value, no tolerance;<br/>a convention-dependent or compound form as written?"}
+    r7 -->|"no, digits"| w5["unsupported_number"]
+    r7 -->|"no, a word"| w6["number_word"]
+    r7 -->|"yes"| r5
+    r5 -->|"a number or quantity word, web mode"| r8{"inside a grounded segment with an http(s) source?"}
+    r8 -->|"no, digits"| w8["web_ungrounded"]
+    r8 -->|"no, a word"| w6
+    r8 -->|"yes"| r5
+    r5 -->|"none left"| rSp
+    rSp{"spoken.js, unless spoken is canonical:<br/>the expansion keeps every number?"}
+    rSp -->|"yes, or spoken canonical"| gOk(["released: frozen object, isReleased() true,<br/>text, spoken, cites, numbers"])
+    rSp -->|"no, spoken expand"| gOk2(["released, spoken as the canonical text,<br/>counted as spokenFallback"])
+    rSp -->|"no, spoken strict"| w9["spoken_mismatch"]
+    w1 --> gW
+    w2 --> gW
+    w3 --> gW
+    w4 --> gW
+    w5 --> gW
+    w6 --> gW
+    w7 --> gW
+    w8 --> gW
+    w9 --> gW
+    gW(["withheld: reason, token, offsets and line"])
+    gOk --> use["voice/tts.js speaks released units and fixed notices only;<br/>read-aloud, Live, research, web check, receipt gate counts,<br/>starpi-gate with JSON or SARIF"]
+    gOk2 --> use
+```
+
+<sub>Sources: [`src/js/core/gate.js`](../src/js/core/gate.js), [`src/js/core/release.js`](../src/js/core/release.js), [`src/js/core/canonical.js`](../src/js/core/canonical.js), [`src/js/core/spoken.js`](../src/js/core/spoken.js), [`src/js/core/number-words.js`](../src/js/core/number-words.js), [`src/js/voice/tts.js`](../src/js/voice/tts.js), [`src/js/voice/read-aloud.js`](../src/js/voice/read-aloud.js), [`src/js/live/controller.js`](../src/js/live/controller.js), [`src/js/research/sources-part.js`](../src/js/research/sources-part.js), [`src/js/rag/web-check.js`](../src/js/rag/web-check.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`scripts/gate.mjs`](../scripts/gate.mjs)</sub>
 
 ### Answer receipts: fingerprints, draft, dialog and download
 
-A receipt relies on fingerprints taken when a file is added. The ingestion worker hashes the file bytes before parsing, because pdf.js detaches the buffer it reads, then hashes the extracted text and records the extractor and chunker ids and versions with the chunk size and overlap. After the source check, chat.js keeps a receipt draft in main-thread memory. The draft holds the answer, the question, the check report and, for each citation, its delivered state and excerpt, for a partly delivered excerpt how many of its first characters reached the model (deliveredChars), plus the document fingerprints and chunk offsets of workspace excerpts. Nothing is written to storage. The Receipt button opens the export dialog, which previews the receipt id, the Merkle root and the counts and lets the user leave out the question or the excerpt texts; without the excerpt texts, the passages and numbers that check reasons quote from them (found of fact_context, approximate, fact_elsewhere, negation_inversion and name_context) are left out too. Download builds the receipt again in the starpi.receipt/v2 format, keeping at most the first 20 reasons of each statement, puts one Merkle leaf per citation into a tree with an inclusion proof in each citation (receipts-merkle-signature), computes its id as the SHA-256 of the canonical JSON of everything but the id and a signature, and saves it as a JSON file on the device. The id changes with any edit to the contents, but whoever edits a receipt can compute a new id and a new tree: the app does not sign receipts, and anyone can write a well-formed receipt.
+A receipt relies on fingerprints taken when a file is added. The ingestion worker hashes the file bytes before parsing, because pdf.js detaches the buffer it reads, then hashes the extracted text and records the extractor and chunker ids and versions with the chunk size and overlap; text that OCR read from an image also records the service and model, because it cannot be extracted again. After the source check, chat/thread.js keeps a receipt draft in main-thread memory for an answer whose citations come from the workspace or the library; an answer that rests on web pages gets none, because a web passage is what a search said about a page, not the page. Research reports keep a draft as well. The draft holds the answer, who answered, the question, the check report and, for each citation, its delivered state and excerpt, for a partly delivered excerpt how many of its first characters reached the model (deliveredChars), plus the document fingerprints and chunk offsets of workspace excerpts; then the sentence gate's counts for the answer in sources mode, the relations of the report and whatever a registered receipt hook adds. Nothing is written to storage. The Receipt button opens the export dialog, which previews the receipt id, the Merkle root, the counts and the signing line (signed with this device's key, or unsigned because signing is off or unavailable) and lets the user leave out the question or the excerpt texts; without the excerpt texts, the passages and numbers that check reasons quote from them are left out too. Download builds the receipt again in the starpi.receipt/v3 format with the relations and second opinions the report holds by then, keeping at most the first 20 reasons of each statement, puts one Merkle leaf per citation into a tree with an inclusion proof in each citation (receipts-merkle-signature), names the signer key inside the body, computes the id as the SHA-256 of the canonical JSON of everything but the id and the signature, signs it with this device's key and saves it as a JSON file on the device. Because the signer is part of the id, a removed signature or one by another key shows in every check; a receipt exported with signing off can be rewritten by anyone with a new id and a new tree.
 
 <!-- diagram: receipts-build-and-download -->
 ```mermaid
@@ -6025,66 +6100,70 @@ sequenceDiagram
     actor User
     participant WS as rag/workspace.js
     participant W as ingest.worker.js
-    participant Chat as chat.js
+    participant TH as chat/thread.js
     participant RV as rag/receipts.js
+    participant SG as trust/signing.js
     participant RC as core/receipt.js
     participant B as Browser
     User->>WS: add a file, addToWorkspace(file)
     WS->>W: ingest request with the File
-    W->>W: fileSha256 = sha256Hex of the file bytes, taken before parsing<br/>because pdf.js detaches the buffer it reads, null without<br/>crypto.subtle or above MAX_FILE_BYTES 25 MiB
+    W->>W: fileSha256 of the file bytes, taken before parsing,<br/>null without crypto.subtle or above MAX_FILE_BYTES 25 MiB
     alt same fileSha256, chunk size and overlap already indexed
         W-->>WS: the existing document with duplicate true
     else new file
-        W->>W: extractText gives text, kind, pages and the pdf.js version<br/>textSha256 = sha256Hex of the extracted text<br/>chunkText, size 500 and overlap 50 by default, exact offsets
-        W-->>WS: DocumentInfo with bytes, fileSha256, textSha256, chars, pages,<br/>extractor starpi-extract 1 with pdfjs, chunker starpi-chunk 1 with size and overlap
+        W->>W: extractText: text, kind, pages, pdf.js version, OCR service and model<br/>textSha256 of the extracted text, chunkText 500 and 50, exact offsets
+        W-->>WS: DocumentInfo with fingerprints, extractor and chunker ids and versions
     end
-    Note over User,Chat: later an answer with citations is rendered and source-checked
-    Chat->>RV: storeReceiptDraft with createdAt, APP_VERSION, answer text, engine,<br/>locale, question, grounding report or null and per citation label, doc,<br/>heading, source, delivered, deliveredChars = the length of the delivered<br/>part of a partial excerpt that starts the excerpt, excerpt text, truncated, knowledge documentId, workspace document fields<br/>found by span docId, chunk index, start, end
-    RV->>RV: id r1, r2 and so on in a Map of at most 50 drafts,<br/>the oldest dropped, never stored
-    RV-->>Chat: draft id
-    Chat->>Chat: receiptButton(id) appended to .message-provenance,<br/>data-action open-receipt, label receipt.button
+    Note over User,TH: later a grounded answer is rendered and source-checked
+    alt a citation is a web passage
+        TH->>TH: checked and labelled, no receipt draft
+    else workspace and library citations only
+        TH->>TH: gateCounts: checkText in sources mode, released and withheld<br/>relations from the report, then every registered receipt hook
+        TH->>RV: storeReceiptDraft: createdAt, APP_VERSION, answer, engine, locale,<br/>question, report, per citation label, doc, source, delivered,<br/>deliveredChars, excerpt, document fields, chunk index and offsets
+        RV->>RV: id r1, r2 and so on in a Map of at most 50 drafts,<br/>the oldest dropped, never stored
+        RV-->>TH: draft id, Receipt button in .message-provenance
+    end
     User->>RV: Receipt button, open-receipt
-    alt draft no longer in memory
-        RV-->>User: nothing opens
-    else draft found
-        RV->>B: openDialog receiptModal in export mode, title receipt.title,<br/>receipt.proves and receipt.not_proves shown
-        RV->>RC: preview, buildReceipt(draft, includeQuestion, includeExcerpts)
-        RC-->>RV: receipt
-        RV->>B: receiptId = first 16 hex chars of the id,<br/>receiptRoot = first 16 hex chars of merkle.root, a dash without one,<br/>receipt.counts with workspace and knowledge
-    end
+    RV->>SG: exportSigner: this device's key when Sign exported receipts is on
+    SG-->>RV: signer keyId and alg, or unsigned with reason off or unavailable
+    RV->>RC: preview, buildReceipt(draft with the report's relations<br/>and second opinions, includeQuestion, includeExcerpts, signer)
+    RC-->>RV: receipt
+    RV->>B: receipt id and Merkle root, first 16 hex chars each,<br/>counts, trust.receipt.signed_by or unsigned_off or unsigned_unavailable
     User->>RV: toggle receiptIncludeQuestion or receiptIncludeExcerpts
     RV->>RC: preview again, a result overtaken by a newer preview is dropped
     User->>RV: download-receipt
-    RV->>RC: buildReceipt(draft, options)
-    RC->>RC: per citation excerpt sha256, excerpt text or null,<br/>verifiable = workspace with fileSha256 and chunk,<br/>chunk sha256 null when the excerpt was truncated,<br/>deliveredChars kept when the excerpt is partial and it is an integer
-    RC->>RC: grounding with the report's algorithm, starpi-grounding 2,<br/>counts and statements without neutral ones, at most 20 reasons each,<br/>found of fact_context, approximate, fact_elsewhere, negation_inversion<br/>and name_context dropped without excerpt texts, question null when left out
-    RC->>RC: schema starpi.receipt/v2 unless options.schema asks for v1:<br/>merkleTree over citationLeafHash of each citation, proof per citation,<br/>merkle with alg sha256-rfc6962, size and root
-    RC->>RC: id = sha256Hex of canonicalJson of the body without id and signature,<br/>keys sorted, no whitespace, undefined members dropped,<br/>schema and id written first
+    RV->>RC: buildReceipt(draft, options, signer)
+    RC->>RC: schema starpi.receipt/v3: signer, gate, secondOpinion, relations,<br/>OCR provenance per document, at most 20 reasons per statement,<br/>quoted passages dropped without excerpt texts
+    RC->>RC: merkleTree over citationLeafHash, a proof per citation,<br/>merkle alg sha256-rfc6962, size and root
+    RC->>RC: id = sha256Hex of canonicalJson without id and signature
     RC-->>RV: receipt
-    RV->>B: Blob of JSON.stringify with 2-space indent, application/json,<br/>object URL, download name starpi-receipt-first 12 hex chars.json
-    B-->>User: file saved on this device, object URL revoked after 1000 ms
+    RV->>SG: exporter.sign(receipt)
+    SG->>RC: signReceipt with the non-extractable key from IndexedDB signingKeys,<br/>made with the first signed receipt
+    RC-->>RV: receipt with signature: alg, keyId, publicKey JWK, value
+    RV->>B: JSON with 2-space indent, starpi-receipt-first 12 hex chars.json
+    B-->>User: file saved on this device
 ```
 
-<sub>Sources: [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/core/hash.js`](../src/js/core/hash.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
+<sub>Sources: [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/chat/hooks.js`](../src/js/chat/hooks.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/trust/signing.js`](../src/js/trust/signing.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/core/hash.js`](../src/js/core/hash.js), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
 
-### Receipts v2: Merkle tree, inclusion proofs and signature
+### Receipts v2 and v3: Merkle tree, inclusion proofs and signature
 
-A starpi.receipt/v2 receipt puts its citations into a Merkle tree as RFC 6962 defines it for Certificate Transparency, with SHA-256. Each citation is one leaf, hashed from its canonical JSON without its proof and with the excerpt reduced to its hash and truncated flag, so a receipt exported without excerpt texts has the same root. Each citation carries its audit path, so one citation can be checked against the root without the others (verifyCitationProof). The id is the hash of everything but the id and the signature. A signature is optional and never made by the app: signReceipt in @starpi/core signs, with Ed25519 or ECDSA P-256 (ES256) through WebCrypto, a fixed prefix and the canonical JSON of the algorithm, the id, the key id and the Merkle record, and embeds the public key as a JWK; the key id is the SHA-256 of the key's SubjectPublicKeyInfo. Verifying recomputes the root and every proof, and checks the signature with the public key the verifier gives, or else with the embedded one, which shows only that the receipt is unchanged since it was signed, not who signed it. A v1 receipt has no tree and no signature.
+A starpi.receipt/v2 or v3 receipt puts its citations into a Merkle tree as RFC 6962 defines it for Certificate Transparency, with SHA-256. Each citation is one leaf, hashed from its canonical JSON without its proof and with the excerpt reduced to its hash and truncated flag, so a receipt exported without excerpt texts has the same root. Each citation carries its audit path, so one citation can be checked against the root without the others (verifyCitationProof). The id is the hash of everything but the id and the signature; in v3 that includes the signer the receipt names. signReceipt signs, with Ed25519 or ECDSA P-256 (ES256) through WebCrypto, a fixed prefix and the canonical JSON of the algorithm, the id, the key id and the Merkle record, and embeds the public key as a JWK; the key id is the SHA-256 of the key's SubjectPublicKeyInfo. The app signs on export with this device's key (trust/signing.js: one non-extractable key at a time, ES256 where the browser has no Ed25519, kept as a CryptoKey handle in the IndexedDB store signingKeys; rotating keeps the old public key exportable and never signs with it again, deleting removes a key), and a deployment can call signReceipt itself. A v3 receipt that names a signer can only be signed by that key. Verifying recomputes the root and every proof and checks the signature with the public key the verifier gives, or else with the embedded one, which shows only that the receipt is unchanged since it was signed, not who signed it; a v3 receipt that names a signer but carries no signature is reported as missing, one signed by another key as invalid. A v1 receipt has no tree and no signature.
 
 <!-- diagram: receipts-merkle-signature -->
 ```mermaid
 flowchart TD
-    subgraph sg_build["buildReceipt, schema starpi.receipt/v2 unless v1 is asked for"]
+    subgraph sg_build["buildReceipt, schema starpi.receipt/v3 unless v2 or v1 is asked for"]
         bLeaf["citationLeafHash per citation, in answer order: canonicalJson of the<br/>citation without proof, its excerpt reduced to sha256 and truncated,<br/>merkleLeafHash = SHA-256 of the byte 0x00 and that UTF-8 text"]
         bTree["merkleTree, RFC 6962: an interior node is SHA-256 of the byte 0x01,<br/>the left and the right hash; a range of more than 1 leaf is split<br/>at the largest power of two below its size;<br/>no citations: SHA-256 of the empty string"]
         bProof["proof in each citation: its audit path from the sibling up to<br/>the child of the root, at most RECEIPT_LIMITS.proof 6 hashes"]
-        bHead["merkle = alg sha256-rfc6962, size = number of citations, root;<br/>id = sha256Hex of canonicalJson without id and signature"]
+        bHead["merkle = alg sha256-rfc6962, size = number of citations, root;<br/>v3: signer keyId and alg in the body;<br/>id = sha256Hex of canonicalJson without id and signature"]
         bLeaf --> bTree --> bProof --> bHead
     end
     bProof -.-> bOne["verifyCitationProof(citation, index, merkle):<br/>one citation, also without its excerpt text,<br/>checked against the root without the others"]
-    subgraph sg_sign["signReceipt(receipt, privateKey, publicKey?), outside the app"]
-        sChk{"schema v2 with merkle, and the id and the root<br/>and size recomputed from the contents match?"}
-        sKey{"private CryptoKey Ed25519 or ECDSA P-256, and a public key<br/>given or exported from the extractable private key,<br/>for the same algorithm?"}
+    subgraph sg_sign["signReceipt(receipt, privateKey, publicKey?): trust/signing.js on export, or a deployment"]
+        sChk{"schema v3 or v2 with merkle, and the id and the root<br/>and size recomputed from the contents match?"}
+        sKey{"private CryptoKey Ed25519 or ECDSA P-256, and a public key<br/>given or exported from the extractable private key,<br/>for the same algorithm, and the signer a v3 receipt names?"}
         sMsg["keyId = SHA-256 of the public key's SPKI in DER;<br/>signed bytes = UTF-8 of starpi.receipt/v2 signature, a line break<br/>and canonicalJson of alg, id, keyId and merkle"]
         sVal{"crypto.subtle.sign, then crypto.subtle.verify<br/>with the public key accepts the value?"}
         sOut["signature: alg Ed25519 or ES256, keyId, publicKey as a JWK<br/>with kty, crv, x and for ES256 y, value base64url of the<br/>64-byte signature, r then s for ES256; signing again replaces it"]
@@ -6097,7 +6176,7 @@ flowchart TD
     sKey -->|"no"| sErr
     sVal -->|"no"| sErr
     subgraph sg_ver["verifyReceipt(receipt, files, tools, publicKey?)"]
-        vV2{"schema starpi.receipt/v2?"}
+        vV2{"schema starpi.receipt/v2 or v3?"}
         vTree["leaves and tree recomputed: rootMatches when the root and the<br/>number of citations equal merkle.root and merkle.size,<br/>proof per citation = verifyMerkleProof(leaf, index, size, proof, root),<br/>the algorithm of RFC 9162, validProofs = how many lead to the root"]
         vSig{"signature present?"}
         vAlg{"alg Ed25519 or ES256?"}
@@ -6105,7 +6184,7 @@ flowchart TD
         vGiven{"a key given by the verifier?"}
         vKid{"same algorithm, and the SHA-256 of its SPKI<br/>equals signature.keyId?"}
         vVal{"value decodes to 64 bytes, and crypto.subtle.verify<br/>accepts it over the signed bytes?"}
-        vSame{"verifyReceiptSignature: the id and the Merkle root<br/>recomputed from the contents still match?"}
+        vSame{"verifyReceiptSignature: the id and the Merkle root<br/>recomputed from the contents still match, and the key<br/>is the signer a v3 receipt names?"}
         vV2 -->|"yes"| vTree --> vSig
         vSig -->|"yes"| vAlg
         vAlg -->|"yes"| vImp
@@ -6116,7 +6195,9 @@ flowchart TD
     sOut -.->|"signed receipt"| vV2
     bHead -.->|"unsigned receipt"| vV2
     vV2 -->|"no, v1"| rV1(["merkle and signature null, proof null per citation"])
-    vSig -->|"no"| rUns(["unsigned"])
+    vSig -->|"no"| vNamed{"a v3 receipt that names a signer?"}
+    vNamed -->|"yes"| rMissing(["missing: the signature was removed"])
+    vNamed -->|"no"| rUns(["unsigned"])
     vAlg -->|"no"| rAlg(["unsupported_algorithm"])
     vImp -->|"NotSupportedError, e.g. no Ed25519 in this browser"| rAlg
     vImp -->|"other error with the embedded key"| rInv(["invalid, trusted false"])
@@ -6130,21 +6211,21 @@ flowchart TD
     vSame -->|"no"| rInv
     vSame -->|"yes, a given key"| rTrust(["valid, trusted: signed with the verifier's key"])
     vSame -->|"yes, the embedded key"| rEmb(["valid, not trusted: unchanged since signing,<br/>not who signed"])
-    rShow["shown by renderReport: receipt.merkle_ok or merkle_failed with<br/>valid of n proofs, check_proof_invalid per failed proof, format_v1,<br/>signature_trusted, signature_embedded, signature_key_mismatch,<br/>signature_invalid, signature_unsupported, signature_unsigned, or<br/>signature_unsigned_key when a key was chosen; verify-receipt.mjs<br/>exits 1 unless the root and every proof are valid, the status is<br/>valid or unsigned, and, with --public-key, valid and trusted"]
+    rShow["shown by renderReport: receipt.merkle_ok or merkle_failed with<br/>valid of n proofs, check_proof_invalid per failed proof, format_v1,<br/>signature_trusted, signature_embedded, signature_key_mismatch,<br/>signature_invalid, signature_unsupported, signature_unsigned,<br/>signature_unsigned_key when a key was chosen, trust.receipt.signature_missing,<br/>the signer line; verify-receipt.mjs exits 1 unless the root and every<br/>proof are valid, the status is valid or unsigned, with --public-key<br/>valid and trusted, with --require-signature valid"]
     vTree -.- rShow
 ```
 
-<sub>Sources: [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/hash.js`](../src/js/core/hash.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`src/locales/en.json`](../src/locales/en.json), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
+<sub>Sources: [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/hash.js`](../src/js/core/hash.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/trust/signing.js`](../src/js/trust/signing.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`src/locales/en.json`](../src/locales/en.json), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
 
 ### Deterministic citation verification and receipt flow
 
-The verification pipeline links an on-screen answer back to source file bytes through four deterministic layers (L0 to L3). During ingestion, `chunkText` records exact UTF-16 code unit offsets `[start, end]` alongside `fileSha256` and `textSha256`. After the answer is rendered, `applyGrounding` runs `groundAnswer`, which compares the facts of each statement (`extractFacts`) with the cited excerpts (`indexSource`) and, with rules version 2, checks negations, names and values in another place (`checkV2`), without a second model. chat.js keeps the result in a receipt draft; to export it, `buildReceipt` records citation offsets and source-check findings, puts one leaf per citation into an RFC 6962 Merkle tree, serializes the receipt as canonical JSON (keys sorted by UTF-16 code units, no whitespace, undefined members dropped, which for the strings, integers, booleans, nulls, arrays and objects of a receipt equals RFC 8785) and computes `id = sha256Hex(canonicalJson(body))` over everything but the id and a signature. During verification, in the ingestion worker or in scripts/verify-receipt.mjs, `validateReceipt` checks the structure against strict limits before anything is read, and `verifyReceipt` recomputes the Merkle root, the inclusion proofs and any signature, identifies source files by hash rather than file name, checks each passage against the original text and recomputes the verdicts with the rules version the receipt records.
+The verification pipeline links an on-screen answer back to source file bytes through four deterministic layers (L0 to L3). During ingestion, `chunkText` records exact UTF-16 code unit offsets `[start, end]` alongside `fileSha256` and `textSha256`. After the answer is rendered, `applyGrounding` runs `groundAnswer`, which compares the facts of each statement (`extractFacts`) with the cited excerpts (`indexSource`) and, from rules version 2 on, checks negations, names and values in another place (`checkV2`) and, with version 3, the relations between statements (`applyRelations`), without a second model. chat/thread.js keeps the result in a receipt draft; to export it, `buildReceipt` records citation offsets and source-check findings, puts one leaf per citation into an RFC 6962 Merkle tree, serializes the receipt as canonical JSON (keys sorted by UTF-16 code units, no whitespace, undefined members dropped, which for the strings, integers, booleans, nulls, arrays and objects of a receipt equals RFC 8785) and computes `id = sha256Hex(canonicalJson(body))` over everything but the id and the signature, the signer a v3 receipt names included; with signing on, trust/signing.js signs it with this device's key. During verification, in the ingestion worker or in scripts/verify-receipt.mjs, `validateReceipt` checks the structure against strict limits before anything is read, and `verifyReceipt` recomputes the Merkle root, the inclusion proofs and the signature, if one is there or the receipt names a signer, identifies source files by hash rather than file name, checks each passage against the original text and recomputes the verdicts with the rules version the receipt records.
 
 <!-- diagram: citation-verification-receipt-flow -->
 ```mermaid
 sequenceDiagram
     autonumber
-    participant UI as chat.js and rag/receipts.js
+    participant UI as chat/thread.js and rag/receipts.js
     participant GW as rag/grounding-view.js
     participant CG as core/grounding.js
     participant CR as core/receipt.js
@@ -6153,22 +6234,22 @@ sequenceDiagram
     UI->>GW: applyGrounding(messageEl, { scope, sources, given, citedOnly })
     GW->>CG: groundAnswer(blocks from the rendered DOM, sources, { given, citedOnly })
     CG->>CG: associate markers with statements, extractFacts (strict claims), indexSource (lenient excerpts)
-    CG->>CG: checkSentence per statement, with version 2 also checkV2, verdicts supported, weak, unsupported or unchecked
-    CG-->>GW: GroundingReport (algorithm starpi-grounding 2, counts, statements, reasons)
+    CG->>CG: checkSentence per statement (checkV2 from version 2), then applyRelations (version 3), verdicts supported, weak, unsupported or unchecked
+    CG-->>GW: GroundingReport (algorithm starpi-grounding 3, counts, statements, reasons, relations)
     GW-->>UI: report, kept with storeReceiptDraft
     Note over UI,CR: 2. Receipt assembly
     UI->>CR: buildReceipt(draft, { includeQuestion, includeExcerpts }) for the preview and the download
     CR->>CR: anchor citations with document fingerprints and chunk offsets [start, end]
     CR->>CR: Merkle tree with one leaf per citation, a proof in each citation, merkle root
     CR->>CR: canonicalJson(body without id and signature), id = sha256Hex of it
-    CR-->>UI: starpi.receipt/v2 JSON, not signed by the app
+    CR-->>UI: starpi.receipt/v3 JSON naming the signer, signed on download with this device's key
     Note over UI,VR: 3. Four-tier deterministic verification
     UI->>VR: verifyReceiptFiles(receipt, files, publicKey) from the receipt dialog, or the command line
-    VR->>CR: validateReceipt: schema v2 or v1, bounds, allowed members and reason codes
+    VR->>CR: validateReceipt: schema v3, v2 or v1, bounds, allowed members and reason codes
     VR->>CR: verifyReceipt(receipt, files, { extract, extractor }, { publicKey })
-    CR->>CR: v2 only: Merkle root and inclusion proofs recomputed, signature status
+    CR->>CR: v2 and v3: Merkle root and inclusion proofs recomputed, signature status, missing when a named signer did not sign
     CR->>CR: L0 File Check: sha256Hex(fileBytes) == document.fileSha256
-    CR->>CR: L1 Text Check: sha256Hex(extractedText) == document.textSha256
+    CR->>CR: L1 Text Check: sha256Hex(extractedText) == document.textSha256, OCR text marked ocr, not extracted again
     CR->>CR: L2 Passage Check: extractedText.slice(start, end) hashes to chunk.sha256, or excerpt.sha256
     CR->>CR: L3 Chunk Check: chunkText(text, size, overlap) reproduces [start, end]
     CR->>CG: checkSentence per recorded statement, with the rules version the receipt records
@@ -6176,11 +6257,11 @@ sequenceDiagram
     VR-->>UI: renderReport in the dialog, or the command-line report and exit code
 ```
 
-<sub>Sources: [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/core/hash.js`](../src/js/core/hash.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/chat.js`](../src/js/chat.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
+<sub>Sources: [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/core/hash.js`](../src/js/core/hash.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/trust/signing.js`](../src/js/trust/signing.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`docs/spec/receipts.md`](spec/receipts.md)</sub>
 
 ### Re-checking a receipt in the app and on the command line
 
-A receipt can be re-checked in the receipt dialog, where the ingestion worker does the work, or with scripts/verify-receipt.mjs in Node, which runs the same core/receipt.js, extraction and chunking code. Both read starpi.receipt/v2 and v1 receipts, validate the receipt before reading any source file, refusing members and reason codes its format does not define, accept an optional public key of the signer, and match the given files by SHA-256, never by name. For a v2 receipt verifyReceipt first recomputes the Merkle root and every inclusion proof and checks the signature, if there is one (receipts-merkle-signature). For each workspace citation verifyReceipt checks four levels: L0 a file with the recorded fingerprint, L1 the recorded text fingerprint after extraction, L2 the passage at the recorded offsets (moved when the excerpt occurs elsewhere once whitespace is collapsed), and L3 the chunk bounds that chunking gives today. Knowledge-base citations are listed as not verifiable and never counted as reproduced. The source check is then recomputed from the receipt's excerpts, for a partly delivered excerpt on its first deliveredChars characters, with the rules version the receipt records (version 1 for receipts of Starpi 1.x, version 2 for this release; an unknown id or version is recomputed with the current rules and a warning), and compared with the recorded verdicts; a statement is skipped when an excerpt it cites, or one a reason names as the other place of a value, has no usable text. A full match shows only that the cited excerpts can be reproduced from these files under the recorded rules; it does not show what a model saw or that the answer is right, and it shows who wrote the receipt only for a receipt signed with the public key the verifier supplied.
+A receipt can be re-checked in the receipt dialog, where the ingestion worker does the work, or with scripts/verify-receipt.mjs in Node, which runs the same core/receipt.js, extraction and chunking code. Both read starpi.receipt/v3, v2 and v1 receipts, validate the receipt before reading any source file, refusing members and reason codes its format does not define, accept an optional public key of the signer, and match the given files by SHA-256, never by name. For a v2 or v3 receipt verifyReceipt first recomputes the Merkle root and every inclusion proof and checks the signature, if there is one (receipts-merkle-signature). For each workspace citation verifyReceipt checks four levels: L0 a file with the recorded fingerprint, L1 the recorded text fingerprint after extraction, L2 the passage at the recorded offsets (moved when the excerpt occurs elsewhere once whitespace is collapsed), and L3 the chunk bounds that chunking gives today. Text that OCR read from an image cannot be extracted again: such a citation checks only the file fingerprint and is marked ocr. Knowledge-base citations are listed as not verifiable and never counted as reproduced. The source check is then recomputed from the receipt's excerpts, for a partly delivered excerpt on its first deliveredChars characters, with the rules version the receipt records (version 1 for receipts of Starpi 1.x, version 2 for 2.x, version 3 for this release, whose relations are recomputed with the verdicts; an unknown id or version is recomputed with the current rules and a warning), and compared with the recorded verdicts; a statement is skipped when an excerpt it cites, or one a reason names as the other place of a value, has no usable text. Recorded second opinions and the gate counts are shown as recorded, not recomputed. A full match shows only that the cited excerpts can be reproduced from these files under the recorded rules; it does not show what a model saw or that the answer is right, and it shows who wrote the receipt only for a receipt signed with the public key the verifier supplied; `--require-signature` on the command line also fails an unsigned receipt.
 
 <!-- diagram: receipts-verify -->
 ```mermaid
@@ -6195,7 +6276,7 @@ flowchart TD
         rA4["worker reads the first MAX_VERIFY_FILES 20 files,<br/>files above MAX_FILE_BYTES skipped"]
     end
     subgraph sg_cli["Command line"]
-        rB0(["node scripts/verify-receipt.mjs receipt.json file ...<br/>--public-key key --json, npm run verify:receipt,<br/>or starpi-verify-receipt from @starpi/core,<br/>the same script bundled, Node 22.13 or later"])
+        rB0(["node scripts/verify-receipt.mjs receipt.json file ...<br/>--public-key key --require-signature --json,<br/>npm run verify:receipt,<br/>or starpi-verify-receipt from @starpi/core,<br/>the same script bundled, Node 22.13 or later"])
         rB1{"options known, receipt path given, readable,<br/>at most 2000000 bytes and JSON?"}
         rB2(["usage message on stderr, exit 2"])
         rBK{"no --public-key, or importPublicKey reads<br/>the file as a JWK or PEM public key?"}
@@ -6209,7 +6290,7 @@ flowchart TD
     rB1 -->|"no"| rB2
     rA3 --> rVal
     rB1 -->|"yes"| rVal
-    rVal{"validateReceipt: schema starpi.receipt/v2 or v1, only the members<br/>of that format, field types, SHA-256 hex, at most 64 citations,<br/>500 statements of at most 20,000 chars, 20 reasons each with a code<br/>from REASON_CODES, for v1 from REASON_CODES_V1, labels and document<br/>names at most 600 chars, other strings bounded, deliveredChars only<br/>on a partial excerpt, the four counts as integers, citation indexes<br/>in range; v2: merkle alg, size and root, a proof of at most<br/>6 hashes per citation, an optional signature of the defined form?"}
+    rVal{"validateReceipt: schema starpi.receipt/v3, v2 or v1, only the members<br/>of that format, field types, SHA-256 hex, at most 64 citations,<br/>500 statements of at most 20,000 chars, 20 reasons each with a code<br/>of that version's rules, labels and document<br/>names at most 600 chars, other strings bounded, deliveredChars only<br/>on a partial excerpt, the four counts as integers, citation indexes<br/>in range; v2 and v3: merkle alg, size and root, a proof of at most<br/>6 hashes per citation, an optional signature of the defined form;<br/>v3: signer, gate, secondOpinion, relations and OCR extractor<br/>of the defined forms?"}
     rVal -->|"no: unsupported_version, not_a_receipt,<br/>or the first bad field with its path"| rInv["app: receipt.verify_invalid with error and path,<br/>CLI: not a valid Starpi receipt"]
     rInv -.->|"CLI"| rB2
     rVal -->|"yes, app"| rAK
@@ -6222,7 +6303,7 @@ flowchart TD
     rB3 -->|"yes"| rB4
     rA4 --> rVR
     rB4 --> rVR
-    rVR["verifyReceipt with extractText and EXTRACTOR of rag/parser.js<br/>and the public key: idMatches = hash of canonicalJson without id<br/>and signature equals id, answerMatches = the answer text hashes<br/>to answer.sha256, for v2 the Merkle root, a proof flag per citation<br/>and the signature status, see receipts-merkle-signature,<br/>files keyed by the SHA-256 of their bytes, not by name"]
+    rVR["verifyReceipt with extractText and EXTRACTOR of rag/parser.js<br/>and the public key: idMatches = hash of canonicalJson without id<br/>and signature equals id, answerMatches = the answer text hashes<br/>to answer.sha256, for v2 and v3 the Merkle root, a proof flag per citation<br/>and the signature status, see receipts-merkle-signature,<br/>files keyed by the SHA-256 of their bytes, not by name"]
     rVR --> rEx["per citation: excerptConsistent when the excerpt text hashes to<br/>excerpt.sha256, null without text, false adds a warning"]
     rEx --> rWs{"workspace citation with a document,<br/>a chunk and a fileSha256?"}
     rWs -->|"no, e.g. a knowledge-base excerpt"| rNV["file not_verifiable"]
@@ -6230,7 +6311,10 @@ flowchart TD
     rL0 -->|"no"| rMiss["file missing"]
     rL0 -->|"yes"| rRead["file match, extracted once per fingerprint, the file type<br/>taken from the recorded kind, not from the file name,<br/>an extraction error becomes a warning and ends this citation"]
     rRead --> rVer["extractor id or version differ, or both pdf.js versions are<br/>known and differ: warning that names both versions"]
-    rVer --> rL1["L1 text: SHA-256 equals textSha256: match,<br/>else version_differs when the versions differ, else mismatch"]
+    rVer --> rOcr{"OCR text: the extractor names an OCR service and model?"}
+    rOcr -->|"yes"| rOcrY["text ocr: cannot be extracted again,<br/>only the file fingerprint counts, a warning"]
+    rOcr -->|"no"| rL1["L1 text: SHA-256 equals textSha256: match,<br/>else version_differs when the versions differ, else mismatch"]
+    rOcrY --> rSum
     rL1 --> rL2{"L2 passage: the text from start to end hashes to chunk.sha256,<br/>or to excerpt.sha256 when that is null?"}
     rL2 -->|"yes"| rPM["passage match"]
     rL2 -->|"no, but the consistent excerpt occurs in<br/>the text once whitespace is collapsed"| rPMo["passage moved"]
@@ -6243,39 +6327,39 @@ flowchart TD
     rMiss --> rSum
     rL3 --> rSum
     rSum["reproduced = passages that match,<br/>verifiable = citations marked verifiable"]
-    rSum --> rG["with a grounding record: the recorded version when the id is<br/>starpi-grounding and GROUNDING_VERSIONS 1 and 2 has it, else<br/>version 2 and a warning naming both, checkSentence per recorded<br/>statement with that version on the consistent excerpt texts,<br/>else on the matching passage of an excerpt neither omitted nor truncated,<br/>for a partial excerpt only its first deliveredChars, none without that field,<br/>given = the recorded question, a statement skipped when an excerpt<br/>it cites or a reason names in other has no text, differing verdicts listed,<br/>needsConversation when a reason is from_conversation"]
+    rSum --> rG["with a grounding record: the recorded version when the id is<br/>starpi-grounding and GROUNDING_VERSIONS 1, 2 and 3 has it, else<br/>version 3 and a warning naming both, checkSentence per recorded<br/>statement with that version on the consistent excerpt texts,<br/>else on the matching passage of an excerpt neither omitted nor truncated,<br/>for a partial excerpt only its first deliveredChars, none without that field,<br/>given = the recorded question, a statement skipped when an excerpt<br/>it cites or a reason names in other has no text, differing verdicts listed,<br/>needsConversation when a reason is from_conversation;<br/>version 3: applyRelations over the recomputed statements,<br/>the skipped ones as context"]
     rG --> rOut{"where?"}
-    rOut -->|"app"| rApp["renderReport: receipt.summary, id and answer lines,<br/>merkle_ok, merkle_failed or format_v1, the signature line,<br/>check_knowledge, check_file, check_passage, check_text<br/>and check_chunk lines, check_proof_invalid per failed proof,<br/>grounding_same or grounding_differs,<br/>grounding_conversation, warnings as plain text"]
+    rOut -->|"app"| rApp["renderReport: receipt.summary, id and answer lines,<br/>merkle_ok, merkle_failed or format_v1, the signature line,<br/>check_knowledge, check_file, check_passage, check_text<br/>and check_chunk lines, check_proof_invalid per failed proof,<br/>grounding_same or grounding_differs,<br/>grounding_conversation, recorded second opinions, relations<br/>and gate counts, warnings as plain text"]
     rOut -->|"CLI"| rCli["ok or FAIL lines for the hashes, the Merkle root and the<br/>signature, n/a for format v1, one ok, FAIL or n/a line per citation<br/>with inclusion proof invalid where it fails, reproduced of verifiable,<br/>recomputed verdicts and warn lines, control and bidi characters<br/>in receipt strings, file names and warnings shown escaped, or with<br/>--json one JSON object with ok, receipt id and the report"]
-    rCli --> rExit{"id and answer match, every workspace citation<br/>has file match and passage match, no excerpt<br/>contradicts its fingerprint, root and every proof valid,<br/>signature valid or unsigned, and valid and trusted<br/>when --public-key was given?"}
+    rCli --> rExit{"id and answer match, every workspace citation<br/>has file match and passage match or OCR text, no excerpt<br/>contradicts its fingerprint, root and every proof valid,<br/>signature valid or unsigned, valid and trusted with<br/>--public-key, valid with --require-signature?"}
     rExit -->|"yes"| rE0(["exit 0"])
     rExit -->|"no, moved and missing included"| rE1(["exit 1"])
 ```
 
-<sub>Sources: [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`packages/core/package.json`](../packages/core/package.json), [`package.json`](../package.json), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`src/js/core/merkle.js`](../src/js/core/merkle.js), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`src/js/core/relations.js`](../src/js/core/relations.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`packages/core/package.json`](../packages/core/package.json), [`package.json`](../package.json), [`src/locales/en.json`](../src/locales/en.json)</sub>
 
 ### starpi-ground: from arguments to exit code
 
-starpi-ground (scripts/ground.mjs, packaged as the starpi-ground command of @starpi/core) runs the source check on a Markdown document, such as an answer, release notes or generated documentation, against source files, for scripts and CI. It reads the sources the way the app does (Markdown, text, CSV, logs and JSON, PDF when the optional pdfjs-dist is installed), chunks them with the app's chunker and labels each chunk like a workspace excerpt, with the relative path instead of the file name when two files share a name. checkDocument compares each statement with the excerpts its citation labels name or, in a document without labels, with every excerpt; it splits a document above the source check's limits at headings, and then between blocks, into sections that each fit, and reports a part that still does not fit as not checked, never as passed. The report is text, JSON or SARIF 2.1.0 for code scanning, and the exit code says whether a statement reached the --fail-on level. As in the app, a finding means: open the source and check; a pass does not prove the document correct.
+starpi-ground (scripts/ground.mjs, packaged as the starpi-ground command of @starpi/core) runs the source check on a Markdown document, such as an answer, release notes or generated documentation, against source files, for scripts and CI. It reads the sources the way the app does (Markdown, text, CSV, logs, JSON, Word, Excel and PowerPoint files, HTML, and PDF when the optional pdfjs-dist is installed), chunks them with the app's chunker and labels each chunk like a workspace excerpt, with the relative path instead of the file name when two files share a name. checkDocument compares each statement with the excerpts its citation labels name or, in a document without labels, with every excerpt; it splits a document above the source check's limits at headings, and then between blocks, into sections that each fit, and reports a part that still does not fit as not checked, never as passed. `--grounding 1|2|3` runs an earlier version of the rules (the default is the current one, version 3). The report is text, JSON or SARIF 2.1.0 for code scanning, and the exit code says whether a statement reached the --fail-on level. As in the app, a finding means: open the source and check; a pass does not prove the document correct.
 
 <!-- diagram: source-check-ground-cli -->
 ```mermaid
 flowchart TD
-    gArgs(["starpi-ground from @starpi/core, or node scripts/ground.mjs:<br/>--answer file.md, --source file or directory, repeatable,<br/>--format text, json or sarif, --output file,<br/>--fail-on unsupported, weak or never, --cite auto, labels or all,<br/>each as --name value or --name=value"])
+    gArgs(["starpi-ground from @starpi/core, or node scripts/ground.mjs:<br/>--answer file.md, --source file or directory, repeatable,<br/>--format text, json or sarif, --output file,<br/>--fail-on unsupported, weak or never, --cite auto, labels or all,<br/>--grounding 1, 2 or 3, each as --name value or --name=value"])
     gArgs --> gHelp{"--help or -h, else --version, anywhere?"}
     gHelp -->|"yes"| gInfo(["the usage line, or the version of<br/>packages/core/package.json, on stdout, exit 0"])
-    gHelp -->|"no"| gParse{"every argument known and with a non-empty value,<br/>format, fail-on and cite one of their choices,<br/>--answer and at least one --source given?"}
+    gHelp -->|"no"| gParse{"every argument known and with a non-empty value,<br/>format, fail-on, cite and grounding one of their choices,<br/>--answer and at least one --source given?"}
     gParse -->|"no"| gUsage(["starpi-ground: the reason and the usage line<br/>on stderr, exit 2"])
     gParse -->|"yes"| gRead{"the answer readable as UTF-8, each source a file of a<br/>SUPPORTED_EXTENSIONS type or a directory, at least one<br/>supported file, each readable, at most MAX_FILE_BYTES 25 MiB,<br/>and extractText succeeds on it?"}
     gRead -->|"no"| gUsage
     gRead -->|"yes"| gSrc["CRLF in the answer made LF; a directory adds its supported files<br/>below it, sorted by name, hidden entries and node_modules skipped,<br/>a file named twice read once; extractText as in the app, chunkText<br/>500 and 50, one source per chunk labelled Doc: file name, Chunk: n,<br/>the relative path when two files share a name, delivered full"]
-    gSrc --> gDoc["checkDocument: blocksFromMarkdown, one block per non-empty line<br/>with its line number, labels of the sources as cite segments, other<br/>label-like text as badcite; mode labels with --cite labels, or with<br/>auto when the document has a label, else all: one more block<br/>citing every excerpt"]
+    gSrc --> gDoc["checkDocument with that version: blocksFromMarkdown, one block per non-empty line<br/>with its line number, labels of the sources as cite segments, other<br/>label-like text as badcite; mode labels with --cite labels, or with<br/>auto when the document has a label, else all: one more block<br/>citing every excerpt"]
     gDoc --> gFit{"all blocks within THRESHOLDS.maxChars 20000 characters<br/>and maxSentences 300 statements?"}
     gFit -->|"yes"| gOne["one section"]
     gFit -->|"no"| gSplit["units from heading to heading packed into sections<br/>while they fit, a unit that does not fit split between<br/>blocks, answer-wide Sources lines added to every section"]
     gOne --> gGround
     gSplit --> gGround
-    gGround["groundAnswer per section with the current rules, version 2;<br/>a section it skips as too_long recorded with its first and last line,<br/>else every statement that is not neutral counted, with its line<br/>and its column in UTF-16 code units"]
+    gGround["groundAnswer per section with the --grounding version,<br/>by default the current rules, version 3;<br/>a section it skips as too_long recorded with its first and last line,<br/>else every statement that is not neutral counted, with its line<br/>and its column in UTF-16 code units"]
     gGround --> gFmt{"--format?"}
     gFmt -->|"text, the default"| gText["per weak or unsupported statement: path:line:column, the verdict<br/>and the statement cut to 200 chars, one describeReason line per<br/>reason; a not checked line per skipped part; the counts; a note<br/>when statements were compared across languages; control and<br/>bidi characters escaped"]
     gFmt -->|"json"| gJson["ok, tool, answer, mode, algorithm, the files with their<br/>chunk counts, sections, counts, skipped and every statement<br/>with line, column, verdict, cited labels and reasons<br/>with their message"]
@@ -6298,7 +6382,7 @@ flowchart TD
 
 ### Sample files and the source-check demo
 
-The sample files describe a fictitious project (plan, risk register and kickoff notes). They are same-origin static files under public/samples, in German when the interface language is German and in English otherwise. loadSamples fetches each file and adds it to the on-device workspace like a dropped file, skipping names that are already there; nothing is uploaded. The three suggested questions search only the workspace and always run in verified source mode, switching the chat mode toggle to it. The check demo shows a fixed answer that states one wrong number, labelled as written for the demo and not generated, with citations that point at the real sample chunks, and runs the same source check on it. Its language follows the sample set that is in the workspace, preferring the interface language, and it is neither stored nor given a receipt.
+The sample files describe a fictitious project (plan, risk register and kickoff notes). They are same-origin static files under public/samples, in German when the interface language is German and in English otherwise. loadSamples fetches each file and adds it to the on-device workspace like a dropped file, skipping names that are already there; nothing is uploaded. The three suggested questions search only the workspace and always run in the Grounded mode, switching the mode control to it. The check demo shows a fixed answer that states one wrong number, labelled as written for the demo and not generated, with citations that point at the real sample chunks, and runs the same source check on it. Its language follows the sample set that is in the workspace, preferring the interface language, and it is neither stored nor given a receipt.
 
 <!-- diagram: sample-files-demo -->
 ```mermaid
@@ -6329,7 +6413,7 @@ flowchart TD
     dReady --> dQs["buttons demo.q_launch, demo.q_budget, demo.q_risks:<br/>quick-prompt, data-arg key_question, data-scope workspace,<br/>and demo.check with data-action demo-check"]
     dReady --> dFin(["loading = false"])
     dErr --> dFin
-    dQs -->|"a question"| dAsk["submitChat(t(key_question), workspaceOnly true,<br/>chatMode grounded: the toggle switches to it)"]
+    dQs -->|"a question"| dAsk["submitChat(t(key_question), workspaceOnly true,<br/>chatMode grounded: the mode control switches to it,<br/>answered by chat/thread.js answerGrounded)"]
     dAsk --> dRet["retrieve: workspace hits only,<br/>the knowledge base is not searched"]
     dRet --> dAns(["answer in the active mode with citations,<br/>source check and Receipt button"])
     dQs -->|"demo.check"| dShow["showCheckDemo: language = the first sample set whose three<br/>files are all in the workspace, the interface language first,<br/>else the interface language"]
@@ -6343,7 +6427,7 @@ flowchart TD
     dCheck --> dResult(["2/3 statements match, 520,000 is not in the cited plan excerpt:<br/>missing_fact, unsupported, panel opened, one flagged citation chip,<br/>one highlight where supported, no receipt draft, nothing persisted"])
 ```
 
-<sub>Sources: [`src/js/demo.js`](../src/js/demo.js), [`src/index.html`](../src/index.html), [`src/js/chat.js`](../src/js/chat.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`public/samples/en/nebula-plan.md`](../public/samples/en/nebula-plan.md), [`public/samples/de/nebula-projektplan.md`](../public/samples/de/nebula-projektplan.md), [`src/locales/en.json`](../src/locales/en.json), [`src/locales/de.json`](../src/locales/de.json), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs)</sub>
+<sub>Sources: [`src/js/demo.js`](../src/js/demo.js), [`src/index.html`](../src/index.html), [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`public/samples/en/nebula-plan.md`](../public/samples/en/nebula-plan.md), [`public/samples/de/nebula-projektplan.md`](../public/samples/de/nebula-projektplan.md), [`src/locales/en.json`](../src/locales/en.json), [`src/locales/de.json`](../src/locales/de.json), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs)</sub>
 
 ## 13. NVIDIA cloud proxy
 
