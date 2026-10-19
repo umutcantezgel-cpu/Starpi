@@ -283,9 +283,9 @@ const RULE_TEXT = /** @type {const} */ ({
 });
 
 /**
- * One problem code as a short phrase for the retry message.
+ * One problem code as a short phrase for the retry message (German for German, English otherwise).
  * @param {string} code
- * @param {'en' | 'de'} locale
+ * @param {string} locale
  */
 export function describeError(code, locale = 'en') {
   const lang = locale === 'de' ? 'de' : 'en';
@@ -302,7 +302,7 @@ export function describeError(code, locale = 'en') {
 /**
  * The message that asks a model to answer again without the listed problems.
  * @param {readonly string[]} errors
- * @param {'en' | 'de'} [locale]
+ * @param {string} [locale]  German for "de", English otherwise
  * @param {{ json?: boolean }} [options] json: the purpose expects a JSON object
  */
 export function retryHint(errors, locale = 'en', options = {}) {

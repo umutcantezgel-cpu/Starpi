@@ -76,7 +76,8 @@ describe('research step: shape', () => {
     };
     assert.match(String(problem({ part: 'other', question: QUESTION, locale: 'en' })), /part/);
     assert.match(String(problem({ part: 'sources', question: ' ', locale: 'en' })), /question/);
-    assert.match(String(problem({ part: 'sources', question: QUESTION, locale: 'fr' })), /locale/);
+    assert.match(String(problem({ part: 'sources', question: QUESTION, locale: 'pt' })), /locale/);
+    for (const locale of ['de', 'fr', 'es', 'it', 'tr']) assert.equal(checkStepRequest({ part: 'sources', question: QUESTION, locale }).ok, true, locale);
     assert.match(String(problem({ part: 'sources', question: QUESTION, locale: 'en', extra: 1 })), /unknown field/);
     const turn = { role: 'model', parts: [callPart('search_sources', { query: 'rooms' })] };
     const sig = 'a'.repeat(43);

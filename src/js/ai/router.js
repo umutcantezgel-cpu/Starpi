@@ -26,7 +26,7 @@ import { isProviderId, textPart } from './contract.js';
 import { providerSimulated } from './health-client.js';
 import { complete as completeCall } from './index.js';
 import { selectedModel } from './model-selection.js';
-import { getPurpose, responseSchema } from './purposes.js';
+import { getPurpose, isPromptLocale, responseSchema } from './purposes.js';
 import { roleChainModels } from './roles.js';
 import { applyThinking, isThinkingOn, thinkingFor } from './thinking.js';
 import { modelWheel } from './wheel.js';
@@ -224,7 +224,7 @@ const defaults = {
   cache: createPurposeCache(),
   simulated: providerSimulated,
   now: () => Date.now(),
-  locale: () => (getLocale() === 'de' ? 'de' : 'en'),
+  locale: () => getLocale(),
 };
 
 /**
@@ -458,7 +458,7 @@ export async function runPurpose(purpose, input, opts = {}) {
   const def = getPurpose(purpose);
   if (!def) throw new TypeError(`unknown purpose: ${String(purpose).slice(0, 40)}`);
   const deps = routerDeps(opts.deps);
-  const locale = opts.locale === 'de' || opts.locale === 'en' ? opts.locale : deps.locale();
+  const locale = isPromptLocale(opts.locale) ? opts.locale : deps.locale();
   const thinking = opts.thinking ?? isThinkingOn();
   const useCache = opts.cache !== 'off' && opts.fallback !== false;
   const key = useCache ? purposeCacheKey(def.name, locale, opts.cacheKey ?? hashInput(input)) : null;

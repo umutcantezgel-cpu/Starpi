@@ -45,7 +45,7 @@ import { splitStreamingText } from '../chat-stream.js';
 import { APP_VERSION, LIMITS, TIMEOUTS_MS } from '../config.js';
 import { contextCoverage, receiptAdvisory } from '../core/grounding.js';
 import { startLocalEngine } from '../engine-ui.js';
-import { formatNumber, getLocale, hasKey, setText, t } from '../i18n/index.js';
+import { formatNumber, getLocale, hasKey, LOCALES, setText, t } from '../i18n/index.js';
 import { refreshIcons } from '../icons.js';
 import { appendLoading, appendMessage, appendNotice, createStreamingMessage, resetMessages } from '../messages.js';
 import { modelLabel, providerLabel } from '../providers.js';
@@ -2189,7 +2189,8 @@ const SPOKEN_ANSWER_TOKENS = 700;
  * @returns {AiRequest}
  */
 export function liveRequest(target, turn) {
-  const locale = /** @type {import('../i18n/index.js').Locale} */ (turn.locale.slice(0, 2) === 'de' ? 'de' : 'en');
+  const code = turn.locale.slice(0, 2).toLowerCase();
+  const locale = /** @type {import('../i18n/index.js').Locale} */ (LOCALES.includes(/** @type {any} */ (code)) ? code : 'en');
   const caps = capsOf(target.provider, target.model);
   const who = target.route === 'device' ? 'local' : target.route === 'local' ? 'server' : 'cloud';
   /** @type {string | null} */

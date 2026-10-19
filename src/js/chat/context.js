@@ -289,7 +289,7 @@ async function suggestFor(chats, nodeId, conversationId, toast) {
   // compared here and does not leave the device for this call.
   const ideas = await suggestFacts(
     { question: turn.question, answer: turn.answer, ...suggestionNotes(facts, scopes, turn) },
-    { run: (purpose, input, opts) => runPurpose(purpose, input, /** @type {import('../ai/router.js').RunOptions} */ (opts)), providers: titleProviders(answer), locale: getLocale() === 'de' ? 'de' : 'en', signal: AbortSignal.timeout(20_000) },
+    { run: (purpose, input, opts) => runPurpose(purpose, input, /** @type {import('../ai/router.js').RunOptions} */ (opts)), providers: titleProviders(answer), locale: getLocale(), signal: AbortSignal.timeout(20_000) },
   );
   if (!ideas.length || currentSessionId() !== conversationId) return;
   showSuggestions(nodeId, ideas, defaultScopeFor(project), toast);

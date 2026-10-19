@@ -566,10 +566,10 @@ export function webHits(answer, max = MAX_WEB_PASSAGES) {
  */
 export async function browserWebSearch(locale) {
   try {
-    const [{ browserRuntime }, { byokWebSearch, poolWebSearch }] = await Promise.all([import('../research/runtime.js'), import('../research/web-part.js')]);
+    const [{ browserRuntime }, { byokWebSearch, poolWebSearch }, { researchLocale }] = await Promise.all([import('../research/runtime.js'), import('../research/web-part.js'), import('../research/prompts.js')]);
     const runtime = browserRuntime();
     const routes = await runtime.routes();
-    const lang = String(locale).slice(0, 2) === 'de' ? 'de' : 'en';
+    const lang = researchLocale(locale);
     if (routes.web) return byokWebSearch({ complete: runtime.complete, provider: routes.web.provider, model: routes.web.model, locale: lang });
     if (routes.pool) return poolWebSearch({ step: runtime.step, locale: lang });
   } catch (err) {
