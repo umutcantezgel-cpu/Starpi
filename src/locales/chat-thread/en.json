@@ -74,7 +74,8 @@
     "key": "{provider}, your key: your question goes to the knowledge-base search, and with matching excerpts to {provider}.",
     "free_key": "Free chat with {provider}, your key: your question, attached files and earlier messages of this chat go to {provider}. No sources are searched.",
     "pool": "{provider} via Starpi: your question goes to the knowledge-base search; the question, the matching excerpts and earlier messages go through Starpi's server to {provider}.",
-    "free_pool": "Free chat with {provider} via Starpi: your question, attached files and earlier messages of this chat go through Starpi's server to {provider}. No sources are searched."
+    "free_pool": "Free chat with {provider} via Starpi: your question, attached files and earlier messages of this chat go through Starpi's server to {provider}. No sources are searched.",
+    "history_synced": "Sync is on: this chat is kept end-to-end encrypted in your synced copy and reaches your other browsers."
   },
   "status": {
     "not_set_up": "This model is not set up: add its key in Settings or pick another one"
@@ -89,7 +90,11 @@
     "stays_on_device_title": "This question stays on this device",
     "stays_on_device_body": "It was asked on this device, so only the model here or your own server answers it. Pick one of them, or ask the question again as a new message.",
     "failed_body": "Something went wrong while answering. Please try again.",
-    "store_failed": "The chat could not be stored in this browser (private window, blocked or full storage)."
+    "store_failed": "The chat could not be stored in this browser (private window, blocked or full storage).",
+    "attachment_missing_title": "An attachment is only on the device it was added on",
+    "attachment_missing_body": "Attachments are not synced, so {names} {n:was|were} left out of this request.",
+    "deleted_elsewhere_title": "This chat was deleted in another tab or browser",
+    "deleted_elsewhere_body": "A new chat has started here."
   },
   "continued": "Continued after the length limit",
   "continue_prompt": "Continue exactly where you stopped.",

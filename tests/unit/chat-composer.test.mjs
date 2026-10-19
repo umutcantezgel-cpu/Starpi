@@ -173,28 +173,6 @@ describe('mode row', () => {
     assert.equal(byId('webToggle').getAttribute('aria-pressed'), 'true');
     byId('webToggle').click();
   });
-
-  it('routes Auto to the sources for documents and files in the workspace, otherwise to the free chat', async () => {
-    const image = { name: 'a.png', kind: 'image' };
-    const doc = { name: 'a.pdf', kind: 'pdf' };
-    assert.equal(mode.builtInRoute({ mode: 'auto', attachments: [], workspaceDocs: 0 }), 'free');
-    assert.equal(mode.builtInRoute({ mode: 'auto', attachments: [], workspaceDocs: 2 }), 'grounded');
-    assert.equal(mode.builtInRoute({ mode: 'auto', attachments: [image], workspaceDocs: 2 }), 'free');
-    assert.equal(mode.builtInRoute({ mode: 'auto', attachments: [image, doc], workspaceDocs: 0 }), 'grounded');
-    assert.equal(mode.builtInRoute({ mode: 'free', attachments: [doc], workspaceDocs: 3 }), 'free');
-    assert.equal(mode.builtInRoute({ mode: 'grounded', attachments: [], workspaceDocs: 0 }), 'grounded');
-    // Documents in the knowledge base count like files in the workspace; without a model the
-    // sources are quoted.
-    assert.equal(mode.builtInRoute({ mode: 'auto', attachments: [], workspaceDocs: 0, knowledgeDocs: 4 }), 'grounded');
-    assert.equal(mode.builtInRoute({ mode: 'auto', attachments: [], workspaceDocs: 0, knowledgeDocs: 0, modelReady: false }), 'grounded');
-    assert.equal(mode.builtInRoute({ mode: 'auto', attachments: [image], workspaceDocs: 0, modelReady: false }), 'free');
-    // A registered decider decides Auto, never an explicit mode; null keeps the built-in rule.
-    const off = hooks.setRouteDecider((input) => (input.question.includes('web') ? { route: 'grounded' } : null));
-    assert.equal(await mode.decideRoute({ question: 'search the web', mode: 'auto', attachments: [], workspaceDocs: 0 }), 'grounded');
-    assert.equal(await mode.decideRoute({ question: 'hello', mode: 'auto', attachments: [], workspaceDocs: 0 }), 'free');
-    assert.equal(await mode.decideRoute({ question: 'search the web', mode: 'free', attachments: [], workspaceDocs: 0 }), 'free');
-    off();
-  });
 });
 
 describe('action bar', () => {

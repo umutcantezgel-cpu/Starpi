@@ -293,6 +293,121 @@ describe('compare in the side panel', () => {
   });
 });
 
+describe('compare: tools and the web check', () => {
+  /** A compared answer that stopped for a tool call, carrying provider state, by model. */
+  const toolStop = (/** @type {any} */ target) => ({
+    text: '',
+    reasoning: '',
+    reasoningTokens: 0,
+    toolCalls: [{ id: 'call_1', name: 'datetime', args: {}, argsText: '{}' }],
+    citations: [],
+    images: [],
+    opaque: [{ type: 'opaque', provider: target.provider, block: { kind: 'state' } }],
+    stopReason: /** @type {const} */ ('tool_call'),
+    provider: target.provider,
+    model: target.model,
+    requestId: null,
+    usage: { input: 10, output: 2, reasoning: 0, cacheRead: 0 },
+    error: null,
+  });
+
+  /**
+   * Mounts the panel with a runAnswer that answers every column with `make(target)`.
+   * @param {(target: any) => any} make
+   */
+  function scripted(make) {
+    /** @type {any[]} */
+    const built = [];
+    compare.mountCompare(panel(), {
+      openAside: (tab) => void asides.push(String(tab)),
+      runAnswer: /** @type {any} */ (
+        async (/** @type {any} */ o) => {
+          const target = o.candidates[0];
+          built.push(await o.build(target));
+          o.onStart?.(target, target.model);
+          return { result: make(target), target, attempts: [{ provider: target.provider, model: target.model, outcome: 'ok' }], continued: 0 };
+        }
+      ),
+    });
+    return built;
+  }
+
+  it('runs the tool runner for a column whose model stopped for a tool call, and the answer goes on there', async () => {
+    const { setToolRunner } = await import('../../src/js/chat/hooks.js');
+    /** @type {any[]} */
+    const seen = [];
+    const off = setToolRunner(async ({ result, request, ctx, view }) => {
+      const req = await request();
+      seen.push({ stop: result.stopReason, model: req.model, conversationId: ctx.conversationId, question: ctx.question, inColumn: Boolean(view?.element.closest('[data-column]')) });
+      view?.update('Working on it…');
+      return { ...result, text: 'It is noon. The tool said so.', stopReason: 'end', toolCalls: [] };
+    });
+    const built = scripted(toolStop);
+    try {
+      compare.openCompare({ text: 'What time is it?' });
+      /** @type {HTMLFormElement} */ (panel().querySelector('[data-compare-form]')).requestSubmit();
+      await until(() => columns().length === 3);
+      await until(settled);
+      assert.equal(seen.length, 3, 'every column went through the tool runner');
+      for (const s of seen) assert.deepEqual([s.stop, s.question, s.inColumn], ['tool_call', 'What time is it?', true]);
+      assert.equal(built.length, 3);
+      assert.deepEqual(seen.map((x) => x.model).sort(), ['fake-local-reasoner:4b', 'fake-local:70b', 'fake-local:8b'], "the runner rebuilt each column's own request");
+      for (const col of columns()) {
+        assert.equal(col.dataset.status, 'done');
+        assert.match(col.querySelector('[data-column-body]')?.textContent ?? '', /It is noon/);
+      }
+    } finally {
+      off();
+    }
+  });
+
+  it('stores a continued answer that stopped with tool calls left open without provider state', async () => {
+    const built = scripted((target) => ({ ...toolStop(target), text: 'Partial answer before the tool.' }));
+    compare.openCompare({ text: 'Which day is it?' });
+    /** @type {HTMLFormElement} */ (panel().querySelector('[data-compare-form]')).requestSubmit();
+    await until(() => columns().length === 3);
+    await until(settled);
+    assert.ok(built.length >= 3);
+    /** @type {HTMLButtonElement} */ (columns()[0].querySelector('[data-action="compare-continue"]')).click();
+    await until(() => compare.compareState().columns[0].adopted !== null);
+    const fresh = (await storedPath()).at(-1);
+    assert.equal(fresh?.meta?.stop_reason, 'tool_call');
+    assert.deepEqual(fresh?.opaque, [], 'tool calls without results are never replayed');
+  });
+
+  it('labels a column that cites web pages as the thread does, with its web check, and stores it so', async () => {
+    const { setToolRunner } = await import('../../src/js/chat/hooks.js');
+    // The runner hands back a verified web answer (a checked web pack): n of m statements found.
+    const off = setToolRunner(async ({ result }) => ({
+      ...result,
+      citations: [{ url: 'https://example.org/tides', title: 'Tides', citedText: 'Tides follow the Moon.', start: 0, end: 22 }],
+      webCheck: { kind: 'checked', pages: 2, supported: 1, flagged: 1, total: 2 },
+    }));
+    scripted((target) => ({ ...toolStop(target), text: 'Tides follow the Moon. Waves are tall.', toolCalls: [], stopReason: 'end', opaque: [] }));
+    try {
+      compare.openCompare({ text: 'What moves the tides?' });
+      /** @type {HTMLFormElement} */ (panel().querySelector('[data-compare-form]')).requestSubmit();
+      await until(() => columns().length === 3);
+      await until(settled);
+      await until(() => columns()[0].querySelector('[data-answer-label]') !== null);
+      const col = columns()[0];
+      assert.ok(col.querySelector('[data-answer-label="web"]'), 'labelled as a web answer');
+      assert.match(col.querySelector('.web-check')?.textContent ?? '', /1 of 2 statements found/);
+      /** @type {HTMLButtonElement} */ (col.querySelector('[data-action="compare-continue"]')).click();
+      await until(() => compare.compareState().columns[0].adopted !== null);
+      const fresh = (await storedPath()).at(-1);
+      assert.equal(fresh?.label, 'web');
+      assert.deepEqual(fresh?.meta?.web_check, { kind: 'checked', pages: 2, supported: 1, flagged: 1, total: 2 });
+      assert.equal(fresh?.meta?.web_sources?.[0]?.url, 'https://example.org/tides');
+      await until(() => rows('assistant').at(-1)?.querySelector('.web-check') !== null);
+      assert.match(rows('assistant').at(-1)?.querySelector('.web-check')?.textContent ?? '', /1 of 2 statements found/, 'the thread shows the stored check');
+    } finally {
+      off();
+      compare.mountCompare(panel(), { openAside: (tab) => void asides.push(String(tab)) });
+    }
+  });
+});
+
 /** @param {any} provider @param {string} model @param {Array<import('../../src/js/ai/roles.js').ModelRole>} roles */
 const entry = (provider, model, roles) => ({ provider, model, roles, pinned: false });
 const POOL = [entry('openai', 'gpt-5-mini', ['reasoning', 'fast']), entry('anthropic', 'claude-sonnet-5-5', ['reasoning']), entry('gemini', 'gemini-2.5-flash', ['reasoning']), entry('openai', 'gpt-5', ['judge', 'reasoning'])];

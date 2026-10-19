@@ -3,15 +3,35 @@
 // revision of it becomes version 2, an AI edit of a selection version 3 (as a new chat turn), older
 // versions show again, the preview runs in the render frame and the document is there after a
 // reload; one question to two models of the own server side by side, "Continue with this" as the
-// newest branch; the council in the conversation with three providers and a labelled answer; all
-// without a page error and with the panels passing axe.
+// newest branch; the council in the conversation with three providers and a labelled answer; a
+// compared column runs its tool calls, and one compared from an answer written with search results
+// carries the same web check as the thread's; all without a page error and with the panels passing
+// axe.
 import AxeBuilder from '@axe-core/playwright';
-import { expect, mockSupabase, test } from './fixtures.mjs';
+import { expect, mockSupabase, sseBody, test } from './fixtures.mjs';
 
 const FAKES = Number(process.env.STARPI_FAKES_PORT || 4610);
 /** The OpenAI-compatible fake as an Ollama server (no key, reasoning in <think> tags). */
 const SERVER = `http://127.0.0.1:${FAKES + 1}/flavor/ollama/v1`;
 const ANTHROPIC_FAKE = `http://127.0.0.1:${FAKES + 2}`;
+const SEARCH_FAKE = `http://127.0.0.1:${FAKES + 7}`;
+
+/**
+ * An Anthropic event stream of one answer that calls a tool.
+ * @param {string} name
+ * @param {Record<string, unknown>} input
+ */
+function toolUseStream(name, input) {
+  const events = [
+    ['message_start', { type: 'message_start', message: { id: 'msg_e2e_tool', type: 'message', role: 'assistant', model: 'claude-haiku-5-5', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 12, output_tokens: 1 } } }],
+    ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_e2e_1', name, input: {} } }],
+    ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(input) } }],
+    ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+    ['message_delta', { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 9 } }],
+    ['message_stop', { type: 'message_stop' }],
+  ];
+  return events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('');
+}
 
 const PAGE_V1 = ['<!doctype html>', '<h1 id="t">Welcome to the page</h1>', '<p>Body text.</p>', '<script>document.getElementById("t").textContent = "Ran";</script>'].join('\n');
 const PAGE_V2 = PAGE_V1.replace('<p>Body text.</p>', '<p>Body text, now blue.</p>');
@@ -246,5 +266,108 @@ test.describe('compare and council', () => {
     expect(new Set(providers.map((p) => p.trim())).size).toBe(3);
     const results = await new AxeBuilder({ page }).include('#chatMessages').analyze();
     expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
+  });
+
+  test('runs the tools of a compared answer in its column, with the answer going on after them', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-expose-headers': 'request-id' };
+    /** @type {any[]} */
+    const toolRounds = [];
+    await page.route('https://api.anthropic.com/**', async (route) => {
+      const req = route.request();
+      if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+      const url = new URL(req.url());
+      const body = req.method() === 'POST' ? JSON.parse(req.postData() ?? '{}') : null;
+      const chat = body && Array.isArray(body.messages) && !JSON.stringify(body.system ?? '').includes('starpi-purpose');
+      const offers = chat && (body.tools ?? []).some((/** @type {any} */ t) => t.name === 'datetime');
+      const answered = chat && body.messages.some((/** @type {any} */ m) => Array.isArray(m.content) && m.content.some((/** @type {any} */ b) => b.type === 'tool_result'));
+      if (answered) toolRounds.push(body);
+      if (offers && !answered && JSON.stringify(body.messages).includes('What time is it')) return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'text/event-stream', 'request-id': 'req_e2e_tool' }, body: toolUseStream('datetime', {}) });
+      const res = await route.fetch({ url: `${ANTHROPIC_FAKE}${url.pathname}${url.search}` });
+      return route.fulfill({ response: res, headers: { ...res.headers(), ...cors } });
+    });
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem('e2e_seeded')) return;
+      sessionStorage.setItem('e2e_seeded', '1');
+      sessionStorage.setItem('starpi_key_anthropic', 'sk-ant-e2e0123456789abcdefghijklmnop');
+      localStorage.setItem('starpi_chat_mode', 'free');
+      localStorage.setItem('starpi_assistant_v1', 'anthropic:claude-haiku-5-5');
+    });
+    await page.goto('/');
+    await page.fill('#chatInput', 'What time is it in Lisbon?');
+    await page.locator('details.tools-menu summary').click();
+    await page.locator('#toolsMenuList [data-arg="compare"]').click();
+    const panel = page.locator('#chat-aside-compare');
+    await expect(panel.locator('[data-compare-question]')).toHaveValue('What time is it in Lisbon?');
+    const remove = panel.locator('[data-action="compare-remove"]');
+    while ((await panel.locator('[data-compare-model]').count()) > 2) await remove.last().click();
+    await panel.locator('[data-compare-run]').click();
+    const columns = panel.locator('[data-column]');
+    await expect(columns).toHaveCount(2);
+    for (const i of [0, 1]) {
+      await expect(columns.nth(i)).toHaveAttribute('data-status', 'done');
+      // The date tool ran in the column (a read tool of this device: no approval card), and the
+      // answer went on with its result.
+      await expect(columns.nth(i).locator('.tool-call')).toHaveAttribute('data-status', 'done');
+      await expect(columns.nth(i).locator('[data-column-body]')).not.toBeEmpty();
+    }
+    expect(toolRounds.length).toBeGreaterThanOrEqual(2);
+    await columns.nth(0).locator('[data-action="compare-continue"]').click();
+    await expect(columns.nth(0)).toContainText('In the chat as the newest branch');
+    await expect(answers(page).last().locator('[data-compared]')).toContainText('Chosen in a comparison of 2 models');
+  });
+
+  test('labels a compared web answer with its web check, as the thread does, and keeps it when continued', async ({ page, request, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await request.post(`${SEARCH_FAKE}/__fake/reset`);
+    // The own server answers a question that came with search results from them, citing [W#].
+    await page.route(
+      (url) => url.href.startsWith(SERVER) && url.pathname.endsWith('/chat/completions'),
+      async (route) => {
+        const body = route.request().postData() ?? '';
+        if (!body.includes('<<<WEB 1 [W1]') || body.includes('starpi-purpose')) return route.fallback();
+        return route.fulfill({ status: 200, contentType: 'text/event-stream; charset=utf-8', headers: { 'access-control-allow-origin': '*' }, body: sseBody({ content: ['Simulated search result 1 about Tide basics. [W1] ', 'Tides rise 900 meters every minute. [W2]'] }) });
+      },
+    );
+    await page.addInitScript(
+      ([url, search]) => {
+        if (sessionStorage.getItem('e2e_seeded')) return;
+        sessionStorage.setItem('e2e_seeded', '1');
+        localStorage.setItem('starpi_llm_url', url);
+        localStorage.setItem('starpi_assistant_v1', 'local:*');
+        localStorage.setItem('starpi_chat_mode', 'free');
+        localStorage.setItem('starpi_web_search_v1', 'on');
+        localStorage.setItem('starpi_search_v1', JSON.stringify({ provider: 'searxng', searxngUrl: search }));
+      },
+      [SERVER, SEARCH_FAKE],
+    );
+    await page.goto('/');
+    // Asked in the chat, the question goes out with the search results and its answer is checked.
+    // (A new question typed into Compare for models here and the own server only stays on this
+    // device: it goes to no search service.)
+    await ask(page, 'Tide basics');
+    await settled(page);
+    await expect(answers(page).last().locator('[data-answer-label="web"]')).toBeVisible();
+    // Compared from that answer, every column gets the same results and the same check.
+    await answers(page).last().locator('[data-action="msg-extra"][data-extra="compare"]').click();
+    const panel = page.locator('#chat-aside-compare');
+    await expect(panel.locator('[data-compare-question]')).toHaveValue('Tide basics');
+    await expect(panel.locator('[data-compare-model]')).toHaveCount(2);
+    await panel.locator('[data-compare-run]').click();
+    const columns = panel.locator('[data-column]');
+    await expect(columns).toHaveCount(2);
+    for (const i of [0, 1]) {
+      await expect(columns.nth(i)).toHaveAttribute('data-status', 'done');
+      await expect(columns.nth(i).locator('[data-answer-label="web"]')).toBeVisible();
+      await expect(columns.nth(i).locator('.web-check')).toHaveText('Checked against the cited text: 1 of 2 statements found');
+      await expect(columns.nth(i).locator('[data-column-body]')).not.toContainText('[W1]');
+    }
+    await columns.nth(1).locator('[data-action="compare-continue"]').click();
+    await expect(columns.nth(1)).toContainText('In the chat as the newest branch');
+    const newest = answers(page).last();
+    await expect(newest.locator('.branch-pos')).toHaveText('2/2');
+    await expect(newest.locator('[data-answer-label="web"]')).toBeVisible();
+    await expect(newest.locator('.web-check')).toHaveText('Checked against the cited text: 1 of 2 statements found');
+    await expect(newest.locator('.web-sources a')).toHaveCount(1);
   });
 });

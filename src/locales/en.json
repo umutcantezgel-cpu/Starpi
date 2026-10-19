@@ -232,10 +232,10 @@
     "export_meta": "Exported on {date} · {n} {n:message|messages}",
     "export_you": "You",
     "delete": "Delete this chat",
-    "delete_confirm": "Delete this chat? Its messages are removed from this browser and, if chats are synced, from your synced chat history. This cannot be undone.",
+    "delete_confirm": "Delete this chat? Its messages are removed from this browser. This cannot be undone.",
     "delete_busy": "An answer is still being written. Wait for it or stop it, then delete the chat.",
     "deleted_title": "Chat deleted",
-    "delete_partial_title": "The chat was deleted in this browser, but its synced copy could not be deleted right now. Delete the chat history in Settings when the knowledge base is reachable."
+    "delete_partial_title": "The chat was deleted in this browser, but messages an earlier version kept on the server could not be deleted right now. Delete the chat history in Settings when you are online."
   },
   "demo": {
     "pitch": "New here? Load three sample files of a fictitious project and ask about them. The files are read on this device; nothing is uploaded.",
@@ -670,9 +670,9 @@
     "test_failed": "Test failed",
     "test_enter_key": "Enter a key in the field above; it is tested as typed, and saved only when you click Save settings.",
     "delete_history": "Delete chat history",
-    "delete_history_confirm": "Delete every chat stored in this browser and, if chats are synced, your synced chat history? This cannot be undone.",
+    "delete_history_confirm": "Delete every chat stored in this browser and the messages an earlier version kept on the server? This cannot be undone.",
     "delete_history_done": "Chat history deleted.",
-    "delete_history_partial": "The chats in this browser were deleted, but the synced history could not be deleted right now. Try again when the knowledge base is reachable.",
+    "delete_history_partial": "The chats in this browser were deleted, but messages an earlier version kept on the server could not be deleted right now. Try again when you are online.",
     "delete_history_busy": "An answer is still being written. Wait for it or stop it, then delete the chat history."
   },
   "sync": {

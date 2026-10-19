@@ -85,7 +85,7 @@ async function handle(type, payload, id) {
       return workspace.searchHybrid(payload.query, payload.vector ?? null, payload.topK, payload.docIds ?? null);
     case 'probe':
       await workspace.init();
-      return workspace.probe(payload.question, payload.k);
+      return workspace.probe(payload.question, payload.k, payload.docIds ?? null);
     case 'context':
       await workspace.init();
       return workspace.context(payload.docId, payload.start, payload.end, payload.pad);

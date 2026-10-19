@@ -2,7 +2,9 @@
 // DOM (jsdom) with the app database in memory and the OpenAI-compatible fake as the own server:
 // they go along with the question they were asked for, in their own context block, are never
 // stored with it and never sent again with a later turn; a regenerated answer asks for them again,
-// Continue does not, and a hook that stops giving notes leaves none anywhere in the request.
+// Continue does not, and a hook that stops giving notes leaves none anywhere in the request. A
+// question asked outside the thread (compare, council: thread.js prepareQuestion) gets the same
+// notes, asked once for every model, and none for Continue.
 /* global document */
 import './setup.mjs';
 import 'fake-indexeddb/auto';
@@ -155,5 +157,32 @@ describe('request notes', () => {
     await until(() => !thread.isThreadBusy());
     assert.equal(asked.length, before + 1, 'Continue asks for no notes');
     assert.doesNotMatch(JSON.stringify(lastChat()), /lives by the sea/);
+  });
+
+  it('go along with a question asked outside the thread, asked once for every model, and none for Continue', async () => {
+    noteFor = (q) => `Saved: the user keeps bees (for "${q}")`;
+    const id = chatStore.currentSessionId();
+    const before = asked.length;
+    const prepared = await thread.prepareQuestion({ conversationId: id, text: 'When do bees swarm?' });
+    const target = /** @type {any} */ ({ provider: 'local', model: 'fake-local:8b', route: 'local' });
+    const first = await prepared.build(target);
+    const second = await prepared.build({ ...target, model: 'fake-local-reasoner:4b' });
+    assert.equal(asked.length, before + 1, 'asked once for the question');
+    for (const req of [first, second]) {
+      const question = /** @type {any} */ (req.messages.at(-1));
+      assert.match(question.content.map((/** @type {any} */ p) => p.text ?? '').join('\n'), /Saved: the user keeps bees \(for "When do bees swarm\?"\)/);
+    }
+    assert.doesNotMatch(JSON.stringify(prepared.question), /keeps bees/, 'never kept with the question');
+    // The hooks learn whether the question stays on this device (the tools then keep it here).
+    assert.equal(prepared.ctx.localOnly, false);
+    assert.equal((await thread.prepareQuestion({ conversationId: id, text: 'A question that stays here', localOnly: true })).ctx.localOnly, true);
+    // A stored "Continue" asks for the rest of an answer: no notes.
+    const continued = (await storedPath()).find((n) => n.role === 'user' && /** @type {any} */ (n.meta)?.continue);
+    assert.ok(continued, 'the earlier test left a Continue turn');
+    const again = await thread.prepareQuestion({ conversationId: id, questionId: continued.id });
+    const req = await again.build(target);
+    assert.equal(asked.length, before + 1);
+    assert.doesNotMatch(JSON.stringify(req), /keeps bees/);
+    noteFor = () => null;
   });
 });

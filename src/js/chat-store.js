@@ -30,6 +30,8 @@ export const CHAT_SYNC_ENABLED = false;
 
 /** @type {ChatSyncHook | null} */
 let syncHook = null;
+/** @type {Set<() => void>} */
+const syncListeners = new Set();
 
 /**
  * Binds the encrypted sync (null unbinds it).
@@ -38,6 +40,17 @@ let syncHook = null;
 export function bindChatSync(hook) {
   syncHook = hook;
   void refreshSyncStatus();
+}
+
+/**
+ * Calls the listener whenever the sync may have been switched on or off (bound, unbound, or its
+ * state moved), so texts that say where chats are kept can follow (chatSyncActive).
+ * @param {() => void} listener
+ * @returns {() => void} stops listening
+ */
+export function onChatSyncChange(listener) {
+  syncListeners.add(listener);
+  return () => syncListeners.delete(listener);
 }
 
 /**
@@ -328,8 +341,18 @@ export async function deleteSession(sid) {
   return legacy && synced && local;
 }
 
-/** Writes the sync line in Settings: the encrypted sync's state, or "This device only". */
+/**
+ * Writes the sync line in Settings (the encrypted sync's state, or "This device only") and tells the
+ * listeners of onChatSyncChange.
+ */
 export async function refreshSyncStatus() {
+  for (const listener of [...syncListeners]) {
+    try {
+      listener();
+    } catch (err) {
+      console.error('[starpi] a chat sync listener failed', err);
+    }
+  }
   const el = byId('chatSyncStatusText');
   if (!el) return;
   const label = syncHook?.statusLine() ?? null;

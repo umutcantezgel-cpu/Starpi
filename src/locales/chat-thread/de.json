@@ -74,7 +74,8 @@
     "key": "{provider}, Ihr Schlüssel: Ihre Frage geht an die Suche in der Wissensdatenbank und mit passenden Auszügen an {provider}.",
     "free_key": "Freier Chat mit {provider}, Ihr Schlüssel: Ihre Frage, angehängte Dateien und frühere Nachrichten dieses Chats gehen an {provider}. Es werden keine Quellen durchsucht.",
     "pool": "{provider} über Starpi: Ihre Frage geht an die Suche in der Wissensdatenbank; Frage, passende Auszüge und frühere Nachrichten gehen über Starpis Server an {provider}.",
-    "free_pool": "Freier Chat mit {provider} über Starpi: Ihre Frage, angehängte Dateien und frühere Nachrichten dieses Chats gehen über Starpis Server an {provider}. Es werden keine Quellen durchsucht."
+    "free_pool": "Freier Chat mit {provider} über Starpi: Ihre Frage, angehängte Dateien und frühere Nachrichten dieses Chats gehen über Starpis Server an {provider}. Es werden keine Quellen durchsucht.",
+    "history_synced": "Die Synchronisierung ist an: Dieser Chat wird Ende-zu-Ende-verschlüsselt in Ihrer synchronisierten Kopie gespeichert und erreicht Ihre anderen Browser."
   },
   "status": {
     "not_set_up": "Dieses Modell ist nicht eingerichtet: Fügen Sie seinen Schlüssel in den Einstellungen hinzu oder wählen Sie ein anderes"
@@ -89,7 +90,11 @@
     "stays_on_device_title": "Diese Frage bleibt auf diesem Gerät",
     "stays_on_device_body": "Sie wurde auf diesem Gerät gestellt, deshalb beantwortet sie nur das Modell hier oder Ihr eigener Server. Wählen Sie eines davon oder stellen Sie die Frage als neue Nachricht.",
     "failed_body": "Beim Antworten ist etwas schiefgegangen. Bitte versuchen Sie es noch einmal.",
-    "store_failed": "Der Chat konnte in diesem Browser nicht gespeichert werden (privates Fenster, blockierter oder voller Speicher)."
+    "store_failed": "Der Chat konnte in diesem Browser nicht gespeichert werden (privates Fenster, blockierter oder voller Speicher).",
+    "attachment_missing_title": "Ein Anhang ist nur auf dem Gerät, auf dem er hinzugefügt wurde",
+    "attachment_missing_body": "Anhänge werden nicht synchronisiert, deshalb {n:wurde|wurden} {names} bei dieser Anfrage weggelassen.",
+    "deleted_elsewhere_title": "Dieser Chat wurde in einem anderen Tab oder Browser gelöscht",
+    "deleted_elsewhere_body": "Hier hat ein neuer Chat begonnen."
   },
   "continued": "Fortgesetzt nach der Längengrenze",
   "continue_prompt": "Mach genau dort weiter, wo du aufgehört hast.",

@@ -33,6 +33,7 @@ import { onSidebarSections, sidebarSections } from './hooks.js';
  * @property {() => boolean} isBusy  an answer is being written
  * @property {() => string | null} [answering]  the conversation an answer is being written in
  * @property {() => void} [afterRemoveCurrent]  clears the chat after its conversation was deleted
+ * @property {() => boolean} [synced]  whether chats sync (a deletion then reaches the synced copy and the other browsers)
  * @property {(id: string) => Promise<void>} [settle]  waits for messages of a conversation still being stored
  * @property {string} version  app version for exports
  * @property {(name: string, text: string, type: string) => void} [download]
@@ -512,7 +513,9 @@ export function mountConversationList(root, ctx, deps) {
       render(`menu:${id}`);
       return;
     }
-    if (!confirmBox(t('chat.list.delete_confirm', { title: titleOf(conversation) }))) {
+    // With sync on, the deletion also reaches the synced copy and the other browsers: the texts say so.
+    const synced = deps.synced?.() ?? false;
+    if (!confirmBox(t(synced ? 'chat.list.delete_confirm_synced' : 'chat.list.delete_confirm', { title: titleOf(conversation) }))) {
       render(`menu:${id}`);
       return;
     }
@@ -525,7 +528,7 @@ export function mountConversationList(root, ctx, deps) {
     state.conversations = state.conversations.filter((c) => c.id !== id);
     render(next ? `open:${next}` : undefined);
     if (!next) search.focus();
-    ctx.toast(ok ? 'chat.list.deleted' : 'chat.list.delete_partial', { tone: ok ? 'ok' : 'warn' });
+    ctx.toast(ok ? 'chat.list.deleted' : synced ? 'chat.list.delete_partial_synced' : 'chat.list.delete_partial', { tone: ok ? 'ok' : 'warn' });
   }
 
   /** @param {File} file */

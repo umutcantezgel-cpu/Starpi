@@ -9,19 +9,23 @@
 // - the workspace scope of a grounded question: the project's files;
 // - chats started in a project or with an assistant: the session starts at once, the conversation
 //   is stored with its first message and gets its project and assistant then (until that moment
-//   they are kept here); the project's or assistant's model is picked, an assistant's tools are
-//   switched and its conversation starters are shown;
+//   they are kept with the draft, in this browser's storage, so a reload before the first question
+//   keeps them); the project's or assistant's model is picked, an assistant's tools are switched
+//   and its conversation starters are shown;
+// - the memory_lookup tool (hooks.js setMemoryLookup): the saved notes that match its query, only
+//   while memory is on and from the scopes the conversation may use;
 // - "Remember this" on a message, and the notes a model suggests after a free answer (only while
 //   memory and suggestions are on; shown below the answer, kept only when the user accepts one);
 // - the chip in the chat toolbar that names the project and assistant of the chat on screen.
 import { chatData, currentSessionId, onSessionChange, startNewSession } from '../chat-store.js';
 import { downloadText } from '../dom.js';
+import { readLocalJson, writeLocalJson } from '../storage.js';
 import { getLocale, onLocaleChange, t } from '../i18n/index.js';
 import { refreshIcons } from '../icons.js';
 import { modelLabel, providerLabel } from '../providers.js';
 import { getAssistant, setAssistant, setWebSearch } from '../state.js';
 import { html, icon, label } from '../ui/kit.js';
-import { cleanFactText, defaultScopeFor, MEMORY_LIMITS, MemoryError, memoryStore, scopesFor, suggestFacts, suggestionNotes, systemNoteFor } from '../ai/memory.js';
+import { cleanFactText, defaultScopeFor, MEMORY_LIMITS, MemoryError, memoryStore, rankFacts, scopesFor, suggestFacts, suggestionNotes, systemNoteFor } from '../ai/memory.js';
 import { setThinking } from '../ai/thinking.js';
 import { APP_VERSION } from '../config.js';
 import { assistantFileName, AssistantError, assistantStore, exportAssistant, mountAssistantsSection, openAssistantEditor } from './assistants.js';
@@ -39,11 +43,44 @@ import { nodeText } from './tree.js';
 /** A suggestion is only offered for an answer this recent (a change event of an older one is a replay). */
 const SUGGEST_WINDOW_MS = 120_000;
 
+/** Where the drafts of chats started in a project or with an assistant are kept across a reload. */
+export const DRAFTS_KEY = 'starpi_chat_drafts_v1';
+/** Drafts kept at most (the newest). */
+const DRAFTS_KEPT = 20;
+const SESSION_ID = /^starpi_[\w-]{6,120}$/;
+const RECORD_ID = /^[\w:.-]{1,200}$/;
+
 /**
- * Chats started in a project or with an assistant whose conversation is not stored yet.
+ * The stored drafts, as far as they read back.
+ * @returns {Map<string, { projectId?: string, assistantId?: string }>}
+ */
+function readDrafts() {
+  /** @type {Map<string, { projectId?: string, assistantId?: string }>} */
+  const out = new Map();
+  const raw = /** @type {unknown} */ (readLocalJson(DRAFTS_KEY, null));
+  if (!Array.isArray(raw)) return out;
+  for (const entry of raw.slice(-DRAFTS_KEPT)) {
+    if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !SESSION_ID.test(entry[0])) continue;
+    const v = entry[1] && typeof entry[1] === 'object' ? entry[1] : {};
+    /** @type {{ projectId?: string, assistantId?: string }} */
+    const draft = {};
+    if (typeof v.projectId === 'string' && RECORD_ID.test(v.projectId)) draft.projectId = v.projectId;
+    if (typeof v.assistantId === 'string' && RECORD_ID.test(v.assistantId)) draft.assistantId = v.assistantId;
+    if (draft.projectId || draft.assistantId) out.set(entry[0], draft);
+  }
+  return out;
+}
+
+/**
+ * Chats started in a project or with an assistant whose conversation is not stored yet (kept in
+ * this browser's storage too, so a reload before the first question keeps them).
  * @type {Map<string, { projectId?: string, assistantId?: string }>}
  */
-const pending = new Map();
+const pending = readDrafts();
+
+function saveDrafts() {
+  writeLocalJson(DRAFTS_KEY, [...pending].slice(-DRAFTS_KEPT));
+}
 /** Answers a suggestion was already asked for. */
 const suggested = new Set();
 /** @type {{ enabled: boolean, suggest: boolean }} */
@@ -103,6 +140,34 @@ export async function workspaceScope(conversationId) {
   return project?.docIds.length ? project.docIds : null;
 }
 
+/**
+ * The saved notes that match a query, for the memory_lookup tool: nothing while memory is off, only
+ * notes that share a word with the query, from the scopes the conversation may use (a project with
+ * memory off: none). They count as used, as notes that went along with a question do.
+ * @param {string} query
+ * @param {number} limit
+ * @param {string | null} conversationId
+ * @returns {Promise<Array<{ text: string, updatedAt: string }>>}
+ */
+export async function lookupNotes(query, limit, conversationId) {
+  if (!String(query ?? '').trim()) return [];
+  const store = memoryStore();
+  if (!(await store.prefs()).enabled) return [];
+  const { project } = conversationId ? await contextOf(conversationId) : { project: null };
+  const scopes = scopesFor(project);
+  if (!scopes.length) return [];
+  const { facts } = await store.list();
+  const matched = rankFacts(
+    facts.filter((f) => scopes.includes(f.scope)),
+    query,
+    { now: Date.now() },
+  )
+    .filter((r) => r.parts.relevance > 0)
+    .slice(0, Math.max(1, Math.min(limit, MEMORY_LIMITS.injectedFacts)));
+  if (matched.length) await store.markUsed(matched.map((r) => r.fact.id));
+  return matched.map((r) => ({ text: r.fact.text, updatedAt: new Date(r.fact.usedAt ?? r.fact.createdAt).toISOString() }));
+}
+
 /** Whether memory is on (read when the action bars render "Remember this"). */
 export function memoryEnabled() {
   return prefs.enabled;
@@ -148,7 +213,10 @@ export function modelName(value) {
 export async function startChat(where, ui = {}) {
   const [project, assistant] = await Promise.all([where.projectId ? projectStore().get(where.projectId) : null, where.assistantId ? assistantStore().get(where.assistantId) : null]);
   const id = startNewSession();
-  pending.set(id, { ...(project ? { projectId: project.id } : {}), ...(assistant ? { assistantId: assistant.id } : {}) });
+  if (project || assistant) {
+    pending.set(id, { ...(project ? { projectId: project.id } : {}), ...(assistant ? { assistantId: assistant.id } : {}) });
+    saveDrafts();
+  }
   const thread = await import('./thread.js');
   thread.resetThread();
   const model = assistant?.model ?? project?.defaultModel ?? null;
@@ -156,6 +224,8 @@ export async function startChat(where, ui = {}) {
   if (assistant) {
     setWebSearch(assistant.tools.includes('web'));
     setThinking(assistant.tools.includes('thinking'));
+    // The chat's own tools it names are switched on (the others keep their setting).
+    if (assistant.tools.some((x) => x !== 'web' && x !== 'thinking')) await import('./tools.js').then((m) => m.switchOnTools(assistant.tools)).catch((err) => console.warn('[starpi] the assistant could not switch its tools on', err));
     showStarters(assistant);
   }
   ui.switchTab?.('chat');
@@ -194,18 +264,35 @@ function showStarters(assistant) {
  * @param {ChatStore} chats
  */
 function watchPending(chats) {
-  chats.onChange((change) => {
-    if (change.kind !== 'conversation' || change.op !== 'put' || change.remote) return;
-    const early = pending.get(change.id);
+  /** @param {string} id */
+  const settle = (id) => {
+    const early = pending.get(id);
     if (!early) return;
-    pending.delete(change.id);
+    pending.delete(id);
+    saveDrafts();
     const patch = { ...(early.projectId ? { projectId: early.projectId } : {}), ...(early.assistantId ? { assistantId: early.assistantId } : {}) };
     // Asked for right away, so it is stored before the first answer goes out.
-    void chats.updateConversation(change.id, patch).catch((err) => {
-      pending.set(change.id, early);
+    void chats.updateConversation(id, patch).catch((err) => {
+      pending.set(id, early);
+      saveDrafts();
       console.warn('[starpi] the chat could not keep its project or assistant', err);
     });
+  };
+  chats.onChange((change) => {
+    if (change.kind !== 'conversation' || change.op !== 'put' || change.remote) return;
+    settle(change.id);
   });
+  // Drafts kept from before a reload: one whose conversation was stored meanwhile gets its context
+  // now; one left without a question (another chat is on screen) is dropped.
+  for (const id of [...pending.keys()]) {
+    void chats
+      .getConversation(id)
+      .then((conversation) => {
+        if (conversation) settle(id);
+        else if (id !== currentSessionId() && pending.delete(id)) saveDrafts();
+      })
+      .catch(() => {});
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

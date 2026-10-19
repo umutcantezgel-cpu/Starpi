@@ -22,6 +22,8 @@
  * @property {{ provider: string, model: string } | null} target  the model asked first (null: none)
  * @property {string} locale
  * @property {readonly { name: string, kind: string }[]} attachments
+ * @property {boolean} [localOnly]        the question stays on this device: a hook sends nothing of
+ *   it anywhere else (no search service, no tool that reaches beyond this device)
  */
 
 /**
@@ -118,12 +120,28 @@ const toolListeners = new Set();
  */
 
 /**
+ * What the tool runner returns: the answer after its tool calls, with the web check it made itself
+ * when the question went out with search results (the verified web answer), in the shape of
+ * rag/web-check.js, so the answer is labelled and stored as the thread's web check would.
+ * @typedef {CompletionResult & { webCheck?: import('../rag/web-check.js').WebCheck }} ToolRunResult
+ */
+
+/**
  * Another adapter for one call of a free answer (provider-side tools); undefined keeps the default.
  * @typedef {(target: { provider: string, model: string, route: string }, req: AiRequest) => import('../ai/stream.js').Adapter | undefined} AdapterChooser
  */
 
-/** @type {{ scope: WorkspaceScope | null, route: RouteDecider | null, tools: ((input: ToolRunInput) => Promise<CompletionResult | null>) | null, label: ((node: NodeRecord) => { kind: import('../ui/kit.js').Provenance, labelKey?: string } | null) | null, adapter: AdapterChooser | null }} */
-export const single = { scope: null, route: null, tools: null, label: null, adapter: null };
+/**
+ * The memory feature's side of the memory_lookup tool: whether memory is on (read when a request
+ * offers its tools, so the tool is offered only then) and the saved notes that match a query, from
+ * the scopes the conversation may use (its project's setting).
+ * @typedef {object} MemoryLookup
+ * @property {() => boolean} enabled
+ * @property {(query: string, limit: number, conversationId: string | null) => Promise<Array<{ text: string, updatedAt?: string }>>} lookup
+ */
+
+/** @type {{ scope: WorkspaceScope | null, route: RouteDecider | null, tools: ((input: ToolRunInput) => Promise<ToolRunResult | null>) | null, label: ((node: NodeRecord) => { kind: import('../ui/kit.js').Provenance, labelKey?: string } | null) | null, adapter: AdapterChooser | null, memory: MemoryLookup | null }} */
+export const single = { scope: null, route: null, tools: null, label: null, adapter: null, memory: null };
 
 /**
  * Notes for the current user turn of a free-chat question (memory facts, context packs). They go
@@ -203,6 +221,18 @@ export function setToolRunner(fn) {
   single.tools = fn;
   return () => {
     if (single.tools === fn) single.tools = null;
+  };
+}
+
+/**
+ * Lets the memory feature answer the memory_lookup tool (one; a later one replaces it). Until then,
+ * and while memory is off, the tool is not offered.
+ * @param {MemoryLookup | null} lookup
+ */
+export function setMemoryLookup(lookup) {
+  single.memory = lookup;
+  return () => {
+    if (single.memory === lookup) single.memory = null;
   };
 }
 

@@ -23,7 +23,9 @@
 //      e. Without a model that could answer, the sources are quoted: grounded.
 //      f. With the Web toggle on and a model without its own web search, a search API (when one
 //         is set up and the question may leave this device) finds pages, they become the passages
-//         of a context pack, and the answer is grounded on them.
+//         of a context pack, and the answer is grounded on them. The search service of Settings ›
+//         Tools (Brave, Tavily, SearXNG; ai/search.js) comes first, then a web search with the
+//         user's own key at a provider that can search, then the site's search step.
 //
 // The thresholds are tuned on tests/fixtures/routing (neutral workspace and questions); the unit
 // test fails when a change of the probe or of a threshold moves a case to a looser route.
@@ -376,14 +378,56 @@ export function webHits(answer, max = MAX_WEB_PASSAGES) {
 }
 
 
+/** Results the search service is asked for per question. */
+const SEARCH_API_RESULTS = 6;
+
 /**
- * The search API of this browser for questions to models that cannot search themselves: a web
- * search with the person's own key at a provider that can (research/runtime.js picks it), else the
- * site's search step when it offers one; null when neither is set up. Loaded on first use.
+ * A search service (ai/search.js: Brave, Tavily or a SearXNG instance) as a WebSearch: each result's
+ * snippet is the part of the answer that rests on its page, so webHits makes one passage per page.
+ * @param {(query: string, count: number, signal?: AbortSignal) => Promise<Array<{ title: string, url: string, snippet: string }>>} search
+ * @returns {import('../research/web-part.js').WebSearch}
+ */
+export function searchServiceWebSearch(search) {
+  return async (query, signal) => {
+    const results = await search(query, SEARCH_API_RESULTS, signal);
+    let text = '';
+    /** @type {import('../research/web-part.js').WebAnswer['segments']} */
+    const segments = [];
+    /** @type {import('../research/web-part.js').WebAnswer['sources']} */
+    const sources = [];
+    for (const r of results) {
+      const snippet = String(r.snippet ?? '').trim();
+      if (!snippet || !/^https?:\/\//i.test(r.url)) continue;
+      if (text) text += '\n\n';
+      segments.push({ start: text.length, end: text.length + snippet.length, sources: [sources.length] });
+      text += snippet;
+      sources.push({ uri: r.url, title: r.title });
+    }
+    return { text, segments, sources, queries: [query], suggestionsHtml: null };
+  };
+}
+
+/**
+ * The search API of this browser for questions to models that cannot search themselves: the search
+ * service set up under Settings › Tools (ai/search.js), else a web search with the person's own key
+ * at a provider that can (research/runtime.js picks it), else the site's search step when it offers
+ * one; null when none is set up. Loaded on first use.
  * @param {string} locale
  * @returns {Promise<import('../research/web-part.js').WebSearch | null>}
  */
 export async function browserWebSearch(locale) {
+  try {
+    const [search, keys] = await Promise.all([import('./search.js'), import('./keys.js')]);
+    const settings = search.readSearchSettings();
+    if (settings.provider !== 'off' && search.searchReady(settings, keys.getKey)) {
+      const provider = settings.provider;
+      return searchServiceWebSearch((query, count, signal) =>
+        search.webSearch(query, { provider, key: provider === 'searxng' ? undefined : keys.getKey(provider), baseUrl: settings.searxngUrl, count, signal, access: () => keys.getKey(keys.ACCESS_SLOT) }),
+      );
+    }
+  } catch (err) {
+    console.warn('[starpi] the search service could not be set up', err);
+  }
   try {
     const [{ browserRuntime }, { byokWebSearch, poolWebSearch }] = await Promise.all([import('../research/runtime.js'), import('../research/web-part.js')]);
     const runtime = browserRuntime();

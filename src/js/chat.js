@@ -12,7 +12,7 @@
 // registerVoiceUi (dictation into the composer, the speaker button and reading aloud of answers, Live
 // turns through the chat's model and retrieval), research through startResearch ("Research this"
 // on an answer, a message action).
-import { bindChatView, currentSessionId, deleteSession, refreshSyncStatus, startNewSession, switchSession } from './chat-store.js';
+import { bindChatView, chatSyncActive, currentSessionId, deleteSession, refreshSyncStatus, startNewSession, switchSession } from './chat-store.js';
 import { APP_VERSION } from './config.js';
 import { downloadText, onAction } from './dom.js';
 import { formatDate, getLocale, hasKey, t } from './i18n/index.js';
@@ -75,8 +75,9 @@ export function resetConversation() {
 /**
  * Sends a question: the composer's draft, or the given text.
  * @param {string} [rawText]  a question from elsewhere (quick prompts, the graph); omitted: the draft
- * @param {{ workspaceOnly?: boolean, chatMode?: 'grounded' | 'free', localOnly?: boolean }} [options]
- *   localOnly: the question stays on this device (thread.js sendQuestion)
+ * @param {{ workspaceOnly?: boolean, chatMode?: 'grounded' | 'free', localOnly?: boolean, docIds?: readonly string[] }} [options]
+ *   localOnly: the question stays on this device; docIds: a grounded question searches only these
+ *   workspace documents (thread.js sendQuestion)
  */
 export async function submitChat(rawText, options = {}) {
   starting = true;
@@ -182,10 +183,12 @@ async function deleteCurrentChat() {
     window.alert(t('chat.delete_busy'));
     return;
   }
-  if (!window.confirm(t('chat.delete_confirm'))) return;
+  // With sync on, the deletion also reaches the synced copy and the other browsers.
+  const synced = chatSyncActive();
+  if (!window.confirm(t(synced ? 'chat.list.delete_current_confirm_synced' : 'chat.delete_confirm'))) return;
   const ok = await deleteSession(currentSessionId());
   resetConversation();
-  appendNotice(ok ? { icon: 'check-circle-2', tone: 'success', title: 'chat.deleted_title' } : { icon: 'triangle-alert', tone: 'warn', title: 'chat.delete_partial_title' });
+  appendNotice(ok ? { icon: 'check-circle-2', tone: 'success', title: 'chat.deleted_title' } : { icon: 'triangle-alert', tone: 'warn', title: synced ? 'chat.list.delete_partial_synced' : 'chat.delete_partial_title' });
 }
 
 /**

@@ -519,10 +519,11 @@ export function createWorkspace(options = {}) {
   /**
    * @param {string} question
    * @param {number} [k]
+   * @param {readonly string[] | null} [docIds]  probe only these documents
    * @returns {WorkspaceProbe}
    */
-  function probe(question, k) {
-    return probeIndex(index, String(question ?? ''), Math.min(Math.max(Number(k) || 5, 1), 20));
+  function probe(question, k, docIds) {
+    return probeIndex(index, String(question ?? ''), Math.min(Math.max(Number(k) || 5, 1), 20), acceptOf(docIds));
   }
 
   /**

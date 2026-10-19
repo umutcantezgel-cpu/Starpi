@@ -4,9 +4,8 @@
 // the model strength Auto and provider picks follow, the privacy notice under the composer, and
 // the deletion of model data and chat history. Keys, the vault, the relay and the own server's
 // address live in Settings › Model providers and keys (settings/providers-view.js, ai/keys.js).
-import { deleteChatHistory } from './chat-store.js';
+import { chatSyncActive, deleteChatHistory, onChatSyncChange } from './chat-store.js';
 import { isChatBusy, resetConversation } from './chat.js';
-import { canSyncChats } from './supabase.js';
 import { byId, onAction, onChange } from './dom.js';
 import { renderEngineState, startLocalEngine } from './engine-ui.js';
 import { refreshIcons } from './icons.js';
@@ -77,11 +76,14 @@ export function renderPrivacyNotice() {
   const text = document.createElement('span');
   setText(text, key, params);
   el.replaceChildren(iconEl, text);
-  // Disclose where the conversation itself is kept when it leaves the browser.
-  if (dest.kind !== 'device' && canSyncChats()) {
+  // Disclose where the conversation itself is kept when it leaves the browser: with the encrypted
+  // sync on, in the synced copy and the user's other browsers (a question that stays on this device
+  // never syncs).
+  if (dest.kind !== 'device' && chatSyncActive()) {
     const history = document.createElement('span');
     history.className = 'basis-full sm:basis-auto'; // its own line on phones
-    setText(history, 'privacy.history_synced');
+    history.dataset.historySynced = '';
+    setText(history, 'chat-thread.privacy.history_synced');
     el.append(history);
   }
   refreshIcons(el);
@@ -195,10 +197,12 @@ async function deleteHistory() {
     window.alert(t('settings.delete_history_busy'));
     return;
   }
-  if (!window.confirm(t('settings.delete_history_confirm'))) return;
+  // With sync on, the deletion also reaches the synced copy and the other browsers.
+  const synced = chatSyncActive();
+  if (!window.confirm(t(synced ? 'chat.list.delete_history_confirm_synced' : 'settings.delete_history_confirm'))) return;
   const ok = await deleteChatHistory();
   resetConversation();
-  window.alert(t(ok ? 'settings.delete_history_done' : 'settings.delete_history_partial'));
+  window.alert(t(ok ? 'settings.delete_history_done' : synced ? 'chat.list.delete_history_partial_synced' : 'settings.delete_history_partial'));
 }
 
 async function deleteModelCache() {
@@ -272,6 +276,7 @@ export function initSettings() {
     renderPrivacyNotice();
     renderReach();
   });
+  onChatSyncChange(() => renderPrivacyNotice());
 
   onChange('change-engine', (el) => pickFromSelect(/** @type {HTMLSelectElement} */ (el)));
   onChange('change-strength', async (el) => {

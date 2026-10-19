@@ -2,10 +2,11 @@
 // opens their settings; a tool of an MCP server (the MCP fake, its definition approved and pinned)
 // asks in the answer before it runs, and the answer goes on with its quoted result; and with Web on,
 // a model without a search of its own gets the results of the search service (the SearXNG fake) in
-// its turn.
+// its turn, its answer is checked against them and shows the outcome as its web check, and Auto
+// takes web passages from the same service.
 import { toolDefinitions } from '../../scripts/fakes/mcp.mjs';
 import { toolPin } from '../../src/js/ai/mcp/pin.js';
-import { expect, mockSupabase, test } from './fixtures.mjs';
+import { expect, mockSupabase, sseBody, storedChatNodes, test } from './fixtures.mjs';
 
 const FAKES = Number(process.env.STARPI_FAKES_PORT || 4610);
 const OPENAI_FAKE = `http://127.0.0.1:${FAKES + 1}`;
@@ -128,9 +129,48 @@ test.describe('tools', () => {
     expect(diagnostics).toEqual([]);
   });
 
-  test('with Web on, a model without a search of its own gets the search results in its turn', async ({ page, request, diagnostics }) => {
+  test('with Web on, a model without a search of its own gets the search results in its turn', async ({ page, diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
-    await request.post(`${OPENAI_FAKE}/__fake/reset`);
+    await page.addInitScript(
+      ([server, search]) => {
+        if (sessionStorage.getItem('e2e_seeded')) return;
+        sessionStorage.setItem('e2e_seeded', '1');
+        localStorage.setItem('starpi_llm_url', server);
+        localStorage.setItem('starpi_assistant_v1', 'local:*');
+        localStorage.setItem('starpi_chat_mode', 'free');
+        localStorage.setItem('starpi_web_search_v1', 'on');
+        localStorage.setItem('starpi_search_v1', JSON.stringify({ provider: 'searxng', searxngUrl: search }));
+      },
+      [SERVER, SEARCH_FAKE],
+    );
+    // The requests of this page (the fake's own log is shared with the other workers).
+    /** @type {any[]} */
+    const sent = [];
+    page.on('request', (req) => {
+      if (req.method() === 'POST' && /\/chat\/completions$/.test(new URL(req.url()).pathname)) sent.push(JSON.parse(req.postData() ?? '{}'));
+    });
+    await page.goto('/');
+    await ask(page, 'How do tides work?');
+    await expect(page.locator('#stopBtn')).toBeHidden();
+    await expect(answers(page).last()).toHaveAttribute('data-node-id', /.+/);
+    const chat = sent.filter((body) => !JSON.stringify(body).includes('starpi-purpose'));
+    const turn = JSON.stringify(chat.at(-1)?.messages.at(-1));
+    expect(turn).toContain('<<<WEB 1 [W1] Overview: How do tides work?');
+    expect(turn).toContain('untrusted data from the web');
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('a verified web answer shows its web check under the label, also after a reload', async ({ page, request, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await request.post(`${SEARCH_FAKE}/__fake/reset`);
+    await page.route(
+      (url) => url.href.startsWith(SERVER) && url.pathname.endsWith('/chat/completions'),
+      async (route) => {
+        const body = route.request().postData() ?? '';
+        if (!body.includes('<<<WEB 1 [W1]') || body.includes('starpi-purpose')) return route.fallback();
+        return route.fulfill({ status: 200, contentType: 'text/event-stream; charset=utf-8', headers: { 'access-control-allow-origin': '*' }, body: sseBody({ content: ['Simulated search result 1 about Tide basics. [W1] ', 'Tides rise 900 meters every minute. [W2]'] }) });
+      },
+    );
     await page.addInitScript(
       ([server, search]) => {
         if (sessionStorage.getItem('e2e_seeded')) return;
@@ -144,14 +184,58 @@ test.describe('tools', () => {
       [SERVER, SEARCH_FAKE],
     );
     await page.goto('/');
+    await ask(page, 'Tide basics');
+    await expect(page.locator('#stopBtn')).toBeHidden();
+    const answer = answers(page).last();
+    await expect(answer).toHaveAttribute('data-node-id', /.+/);
+    await expect(answer.locator('.message-content')).not.toContainText('[W1]');
+    await expect(answer.locator('[data-answer-label="web"]')).toBeVisible();
+    await expect(answer.locator('.web-check')).toHaveText('Checked against the cited text: 1 of 2 statements found');
+    // Only the supported statement links its page.
+    await expect(answer.locator('.web-sources a')).toHaveCount(1);
+    await page.reload();
+    await expect(answers(page).last().locator('.web-check')).toHaveText('Checked against the cited text: 1 of 2 statements found');
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('Auto takes web passages from the search service for a model without a search of its own', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    // The requests of this page (the fakes' own logs are shared with the other workers).
+    /** @type {any[]} */
+    const sent = [];
+    /** @type {string[]} */
+    const searches = [];
+    page.on('request', (req) => {
+      const url = new URL(req.url());
+      if (req.method() === 'POST' && /\/chat\/completions$/.test(url.pathname)) sent.push(JSON.parse(req.postData() ?? '{}'));
+      if (url.href.startsWith(SEARCH_FAKE) && url.pathname === '/search') searches.push(url.search);
+    });
+    await page.addInitScript(
+      ([server, search]) => {
+        if (sessionStorage.getItem('e2e_seeded')) return;
+        sessionStorage.setItem('e2e_seeded', '1');
+        localStorage.setItem('starpi_llm_url', server);
+        localStorage.setItem('starpi_assistant_v1', 'local:*');
+        localStorage.setItem('starpi_chat_mode', 'auto');
+        localStorage.setItem('starpi_web_search_v1', 'on');
+        localStorage.setItem('starpi_search_v1', JSON.stringify({ provider: 'searxng', searxngUrl: search }));
+      },
+      [SERVER, SEARCH_FAKE],
+    );
+    await page.goto('/');
     await ask(page, 'How do tides work?');
     await expect(page.locator('#stopBtn')).toBeHidden();
-    await expect(answers(page).last()).toHaveAttribute('data-node-id', /.+/);
-    const recorded = await (await request.get(`${OPENAI_FAKE}/__fake/requests`)).json();
-    const chat = recorded.filter((/** @type {any} */ r) => /chat\/completions$/.test(r.path) && !JSON.stringify(r.body).includes('starpi-purpose'));
-    const turn = JSON.stringify(chat.at(-1)?.body.messages.at(-1));
-    expect(turn).toContain('<<<WEB 1 [W1] Overview: How do tides work?');
-    expect(turn).toContain('untrusted data from the web');
+    const answer = answers(page).last();
+    await expect(answer).toHaveAttribute('data-node-id', /.+/);
+    await expect(answer.locator('[data-answer-label="web"]')).toBeVisible();
+    expect(searches.some((q) => q.includes('tides'))).toBe(true);
+    // The pages went to the model as passages of a context pack.
+    const chat = sent.filter((body) => !JSON.stringify(body).includes('starpi-purpose'));
+    expect(JSON.stringify(chat.at(-1))).toContain('Simulated search result 1 about How do tides work?');
+    // Auto chose the search service's passages (a grounded answer on them), not the free route.
+    const stored = /** @type {any} */ ((await storedChatNodes(page)).at(-1));
+    expect(stored.meta.chat_mode).toBe('grounded');
+    expect(stored.meta.route_reasons).toContain('web_search_api');
     expect(diagnostics).toEqual([]);
   });
 });

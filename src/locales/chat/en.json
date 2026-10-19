@@ -57,8 +57,13 @@
     "delete_confirm": "Delete “{title}”? Its messages are removed from this browser. This cannot be undone.",
     "delete_answering": "An answer is still being written in this chat. Wait for it or stop it, then delete the chat.",
     "deleted": "Chat deleted",
-    "delete_partial": "The chat could not be deleted everywhere. Try again when you are online.",
+    "delete_partial": "Deleted in this browser, but messages an earlier version kept on the server could not be deleted right now. Delete the chat history in Settings when you are online.",
     "action_failed": "That did not work. Please try again.",
-    "device_only": "This device only"
+    "device_only": "This device only",
+    "delete_confirm_synced": "Delete “{title}”? Sync is on: the chat is removed from this browser, from the synced copy and from your other browsers when they sync next. This cannot be undone.",
+    "delete_current_confirm_synced": "Delete this chat? Sync is on: it is removed from this browser, from the synced copy and from your other browsers when they sync next. This cannot be undone.",
+    "delete_history_confirm_synced": "Delete every chat stored in this browser? Sync is on: the deletion also reaches the synced copy and your other browsers when they sync next. This cannot be undone.",
+    "delete_partial_synced": "Deleted in this browser. The synced copy and your other browsers follow with the next sync; if another browser added messages to this chat meanwhile, it comes back.",
+    "delete_history_partial_synced": "The chats in this browser were deleted. The synced copy and your other browsers follow with the next sync; a chat another browser added messages to meanwhile comes back."
   }
 }

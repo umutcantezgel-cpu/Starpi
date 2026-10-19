@@ -1,8 +1,16 @@
 // End-to-end smoke of the encrypted chat sync against a mocked Supabase project: Settings › Chat
 // sync turns sync on with a passphrase and sends only ciphertext; a second browser reaches the same
 // account with an email code and restores the conversation with the passphrase; turning off with
-// deletion removes the key first and then the rows.
+// deletion removes the key first and then the rows. With sync on, the privacy line says so, a
+// question whose attachment stayed in the first browser goes out without it (with a note), the
+// delete confirmation names the synced copy and the other browsers, and a chat deleted in one
+// browser takes the other browser, which shows it, back to a new chat.
 import { expect, mockSupabase, storedChatText, test } from './fixtures.mjs';
+
+const FAKES = Number(process.env.STARPI_FAKES_PORT || 4610);
+const OPENAI_FAKE = `http://127.0.0.1:${FAKES + 1}`;
+/** The OpenAI-compatible fake as an Ollama server (no key). */
+const SERVER = `${OPENAI_FAKE}/flavor/ollama/v1`;
 
 const PASSPHRASE = 'a passphrase for the smoke test';
 const QUESTION = 'Wann ist der Launch von Projekt Beta?';
@@ -205,6 +213,124 @@ test.describe('encrypted chat sync', () => {
     expect(deletes).toEqual(['/rest/v1/chat_sync_keys', '/rest/v1/chat_sync']);
     expect(supabase.rows).toHaveLength(0);
     await expect(page.locator('#chatSyncStatusText')).toContainText('This device only');
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('with sync on: the privacy line, attachments left on their device, delete texts and a deletion followed elsewhere', async ({ page, browser, diagnostics }) => {
+    test.skip((page.viewportSize()?.width ?? 1280) < 768, 'desktop layout');
+    test.setTimeout(150_000);
+    const supabase = project();
+    /** @param {import('@playwright/test').Page} p */
+    const useServer = (p) =>
+      p.addInitScript((url) => {
+        if (sessionStorage.getItem('e2e_seeded')) return;
+        sessionStorage.setItem('e2e_seeded', '1');
+        localStorage.setItem('starpi_llm_url', url);
+        localStorage.setItem('starpi_assistant_v1', 'local:*');
+        localStorage.setItem('starpi_chat_mode', 'free');
+      }, SERVER);
+    /** @param {import('@playwright/test').Page} p @param {string} text */
+    const ask = async (p, text) => {
+      await p.fill('#chatInput', text);
+      await p.press('#chatInput', 'Enter');
+      await expect(p.locator('#stopBtn')).toBeHidden();
+      await expect(p.locator('#chatMessages .message-row[data-role="assistant"]').last()).toHaveAttribute('data-node-id', /.+/);
+    };
+    /** @type {string[]} */
+    const dialogs = [];
+    await supabase.attach(page);
+    await useServer(page);
+    page.on('dialog', (dialog) => {
+      dialogs.push(dialog.message());
+      void dialog.accept();
+    });
+    await page.goto('/');
+    const history = page.locator('#privacyNotice [data-history-synced]');
+    await expect(page.locator('#privacyNotice')).toContainText('Free chat: your question');
+    await expect(history).toHaveCount(0);
+
+    // Two chats in the first browser: one with an attached file.
+    await page.setInputFiles('#chatFileInput', { name: 'roses.txt', mimeType: 'text/plain', buffer: Buffer.from('The red roses need water every second day.') });
+    await expect(page.locator('#attachedInfo')).toContainText('roses.txt');
+    await ask(page, 'Summarize the rose garden notes');
+    await page.click('#chat-sidebar [data-action="new-chat"]');
+    await ask(page, 'Plan the vegetable beds');
+
+    const card = await openSettings(page);
+    await card.locator('#svPass').fill(PASSPHRASE);
+    await card.locator('#svPass2').fill(PASSPHRASE);
+    await card.locator('[data-action="sync-enable"]').click();
+    await expect(card.locator('[data-sv="result"]')).toContainText('Sync is on', { timeout: 20_000 });
+    await expect(card.locator('[data-sv="count"]')).toContainText('2 conversations synced');
+    await card.locator('[data-sv="account"] summary').click();
+    await card.locator('#svEmail').fill(EMAIL);
+    await card.locator('[data-action="sync-email-link"]').click();
+    await expect(card.locator('[data-sv="result"]')).toContainText(`sent a code to ${EMAIL}`);
+    await card.locator('#svCode').fill(CODE);
+    await card.locator('[data-action="sync-email-verify"]').click();
+    await expect(card.locator('[data-sv="who"]')).toContainText(`Signed in as ${EMAIL}`);
+    await page.click('#nav-chat');
+    // Item 1: the privacy line says the chat syncs once the sync is on.
+    await expect(history).toContainText('Sync is on: this chat is kept end-to-end encrypted');
+
+    // The second browser joins and restores both chats.
+    const other = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' });
+    const page2 = await other.newPage();
+    await supabase.attach(page2);
+    await useServer(page2);
+    page2.on('dialog', (dialog) => void dialog.accept());
+    // The chat requests of the second browser (the fake's own log is shared with the other workers).
+    /** @type {any[]} */
+    const sent2 = [];
+    page2.on('request', (req) => {
+      if (req.method() === 'POST' && /\/chat\/completions$/.test(new URL(req.url()).pathname)) sent2.push(JSON.parse(req.postData() ?? '{}'));
+    });
+    await page2.goto('/');
+    const card2 = await openSettings(page2);
+    await card2.locator('[data-sv="account"] summary').click();
+    await card2.locator('#svEmail').fill(EMAIL);
+    await card2.locator('[data-action="sync-email-signin"]').click();
+    await card2.locator('#svCode').fill(CODE);
+    await card2.locator('[data-action="sync-email-verify"]').click();
+    // The card shows the join form once the sign-in is through; a passphrase typed earlier is lost.
+    await expect(card2.locator('[data-sv="result"]')).toContainText('Enter your passphrase');
+    await expect(card2.locator('[data-sv-form]')).toHaveAttribute('data-sv-form', 'join');
+    await card2.locator('#svPass').fill(PASSPHRASE);
+    await card2.locator('[data-action="sync-enable"]').click();
+    await expect(card2.locator('[data-sv="result"]')).toContainText('Unlocked', { timeout: 20_000 });
+    await page2.click('#nav-chat');
+    const list2 = page2.locator('#chat-sidebar');
+    await expect(list2.locator('[data-action="conv-open"]').filter({ hasText: 'rose garden' })).toHaveCount(1, { timeout: 15_000 });
+
+    // Item 2: the restored question's file stayed in the first browser: it goes as its name only.
+    await list2.locator('[data-action="conv-open"]').filter({ hasText: 'rose garden' }).click();
+    await expect(page2.locator('#chatMessages .message-row[data-role="user"]').first()).toContainText('Summarize the rose garden notes');
+    await ask(page2, 'And how often do they need water?');
+    await expect(page2.locator('#chatMessages')).toContainText('An attachment is only on the device it was added on');
+    await expect(page2.locator('#chatMessages')).toContainText('roses.txt was left out of this request');
+    const turn = sent2.filter((body) => JSON.stringify(body).includes('how often do they need water')).at(-1);
+    const firstQuestion = JSON.stringify(turn.messages.find((/** @type {any} */ m) => m.role === 'user'));
+    expect(firstQuestion).toContain('[roses.txt]');
+    expect(firstQuestion).not.toContain('need water every second day');
+
+    // The other chat is on screen in the second browser.
+    await list2.locator('[data-action="conv-open"]').filter({ hasText: 'vegetable beds' }).click();
+    await expect(page2.locator('#chatMessages .message-row[data-role="user"]').first()).toContainText('Plan the vegetable beds');
+
+    // Item 4: deleting it in the first browser names the synced copy and the other browsers.
+    const list = page.locator('#chat-sidebar');
+    const row = list.locator('[data-conv-id]').filter({ hasText: 'vegetable beds' });
+    await row.locator('[data-action="conv-menu"]').click();
+    await list.locator('[data-action="conv-delete"]').click();
+    await expect(page.locator('#toastRegion')).toContainText('Chat deleted');
+    expect(dialogs.at(-1)).toContain('Sync is on: the chat is removed from this browser, from the synced copy and from your other browsers');
+
+    // Item 3: the second browser syncs, the chat on screen is gone: a new chat, and a note.
+    await page2.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect(page2.locator('#chatMessages')).toContainText('This chat was deleted in another tab or browser', { timeout: 15_000 });
+    await expect(page2.locator('#chatMessages .message-row')).toHaveCount(0);
+    await expect(list2.locator('[data-action="conv-open"]').filter({ hasText: 'vegetable beds' })).toHaveCount(0);
+    await other.close();
     expect(diagnostics).toEqual([]);
   });
 });

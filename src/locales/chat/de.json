@@ -57,8 +57,13 @@
     "delete_confirm": "„{title}“ löschen? Die Nachrichten werden aus diesem Browser entfernt. Das lässt sich nicht rückgängig machen.",
     "delete_answering": "In diesem Chat wird noch eine Antwort geschrieben. Warten Sie darauf oder stoppen Sie sie, und löschen Sie dann den Chat.",
     "deleted": "Chat gelöscht",
-    "delete_partial": "Der Chat ließ sich nicht überall löschen. Versuchen Sie es erneut, wenn Sie online sind.",
+    "delete_partial": "In diesem Browser gelöscht, aber Nachrichten, die eine frühere Version auf dem Server gespeichert hat, ließen sich gerade nicht löschen. Löschen Sie den Chatverlauf in den Einstellungen, wenn Sie online sind.",
     "action_failed": "Das hat nicht geklappt. Bitte versuchen Sie es erneut.",
-    "device_only": "Nur auf diesem Gerät"
+    "device_only": "Nur auf diesem Gerät",
+    "delete_confirm_synced": "„{title}“ löschen? Die Synchronisierung ist an: Der Chat wird aus diesem Browser, aus der synchronisierten Kopie und aus Ihren anderen Browsern entfernt, sobald diese das nächste Mal synchronisieren. Das lässt sich nicht rückgängig machen.",
+    "delete_current_confirm_synced": "Diesen Chat löschen? Die Synchronisierung ist an: Er wird aus diesem Browser, aus der synchronisierten Kopie und aus Ihren anderen Browsern entfernt, sobald diese das nächste Mal synchronisieren. Das lässt sich nicht rückgängig machen.",
+    "delete_history_confirm_synced": "Alle in diesem Browser gespeicherten Chats löschen? Die Synchronisierung ist an: Das Löschen erreicht auch die synchronisierte Kopie und Ihre anderen Browser, sobald diese das nächste Mal synchronisieren. Das lässt sich nicht rückgängig machen.",
+    "delete_partial_synced": "In diesem Browser gelöscht. Die synchronisierte Kopie und Ihre anderen Browser folgen mit der nächsten Synchronisierung; hat ein anderer Browser dem Chat inzwischen Nachrichten hinzugefügt, kommt er zurück.",
+    "delete_history_partial_synced": "Die Chats in diesem Browser wurden gelöscht. Die synchronisierte Kopie und Ihre anderen Browser folgen mit der nächsten Synchronisierung; ein Chat, dem ein anderer Browser inzwischen Nachrichten hinzugefügt hat, kommt zurück."
   }
 }

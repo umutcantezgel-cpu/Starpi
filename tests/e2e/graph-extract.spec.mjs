@@ -89,6 +89,8 @@ test.describe('knowledge graph from files', () => {
     await expect(details).toContainText('appears with');
     await expect(details).toContainText('garden.md, passage 1');
     await expect(details.locator('[data-action="ask-entity"]')).toHaveAttribute('data-scope', 'files');
+    // Asking about it searches the file it was found in.
+    await expect(details.locator('[data-action="ask-entity"]')).toHaveAttribute('data-docs', /^\["[\w:.-]+"\]$/);
 
     await list.getByRole('button', { name: 'Mara Jensen', exact: true }).click();
     await expect(details).toContainText('Added by hand and found in your files');

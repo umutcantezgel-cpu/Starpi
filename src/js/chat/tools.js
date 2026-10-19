@@ -12,8 +12,14 @@
  *   approval cards and one line per call appear in the answer's bubble.
  * - Verified web answer: with Web on, a model without a search of its own and a search service set
  *   up, the question is searched first and the web pack goes into the turn's notes; once the answer
- *   is in, the runner checks it against the results (ai/search.js) and keeps the citations of the
- *   statements the check supports.
+ *   is in, the runner checks it against the results (ai/search.js), keeps the citations of the
+ *   statements the check supports and hands back the outcome as the answer's web check (the thread
+ *   labels and stores it as its own web check: "n of m statements found"). The pack stays for
+ *   answers written again from the same turn (regenerate, compare columns) until the next question.
+ * - memory_lookup answers from the memory feature (hooks.js setMemoryLookup): offered only while
+ *   memory is on, with the notes the conversation of the turn may use.
+ * - A question that stays on this device (TurnContext.localOnly) gets no web pack and is offered
+ *   only the tools whose results stay with the model answering it (ON_DEVICE_TOOLS).
  * - Provider-side MCP servers (behind their flag) reach Anthropic and OpenAI calls through an
  *   adapter chooser.
  */
@@ -23,7 +29,7 @@ import { ACCESS_SLOT, getKey, keyStore } from '../ai/keys.js';
 import { createMcpBridge, createServerStore, PROVIDER_MCP, withProviderMcp } from '../ai/mcp/client.js';
 import { checkWebAnswer, readSearchSettings, searchReady, webPack, webSearch } from '../ai/search.js';
 import { createApprovalGate, activityBox, createToolActivity, localApprovalStore, renderApprovalCard } from '../ai/tools/approval.js';
-import { builtinTools, readToolSwitches, TOOL_SETTINGS_KEY } from '../ai/tools/builtin.js';
+import { builtinTools, DEFAULT_TOOL_SWITCHES, readToolSwitches, TOOL_SETTINGS_KEY } from '../ai/tools/builtin.js';
 import { runToolLoop } from '../ai/tools/loop.js';
 import { createToolRegistry, TOOL_RESULT_RULE } from '../ai/tools/registry.js';
 import { getLocale, t } from '../i18n/index.js';
@@ -31,7 +37,7 @@ import { routeOf } from '../providers.js';
 import { searchWorkspace } from '../rag/workspace.js';
 import { getAssistant, getWebSearch } from '../state.js';
 import { readLocalJson, writeLocalJson } from '../storage.js';
-import { registerComposerTool, registerRequestHook, registerTurnNotes, setAdapterChooser, setToolRunner } from './hooks.js';
+import { registerComposerTool, registerRequestHook, registerTurnNotes, setAdapterChooser, setToolRunner, single } from './hooks.js';
 import { imageProvider, imageTool } from './image-view.js';
 import { capsOf, chatCandidates } from './runner.js';
 
@@ -44,6 +50,12 @@ import { capsOf, chatCandidates } from './runner.js';
 
 /** Web packs kept for answers still being written, at most. */
 const MAX_PACKS = 20;
+/**
+ * The built-in tools that keep a question on this device (their results go only to the model that
+ * answers it): the only tools a question that stays here is offered. The web search, image
+ * generation and MCP servers would carry what the model writes elsewhere.
+ */
+const ON_DEVICE_TOOLS = new Set(['datetime', 'calculator', 'workspace_search', 'memory_lookup']);
 const PACK_SEARCH_MS = 15_000;
 
 /** The composer's tools menu: the groups it switches. */
@@ -56,18 +68,30 @@ const MENU = /** @type {const} */ ([
 
 /** @type {ReturnType<typeof createRuntime> | null} */
 let runtime = null;
-/** @type {((query: string, limit: number) => Promise<Array<{ text: string, updatedAt?: string }>>) | null} */
-let memoryLookup = null;
+
+export { setMemoryLookup } from './hooks.js';
 
 /**
- * Lets the memory feature answer memory_lookup (until then the tool reports memory as off).
- * @param {typeof memoryLookup} fn
+ * The memory_lookup tool answering from the notes one conversation may use (null: outside a turn,
+ * the global notes).
+ * @param {string | null} conversationId
  */
-export function setMemoryLookup(fn) {
-  memoryLookup = fn;
-  return () => {
-    if (memoryLookup === fn) memoryLookup = null;
-  };
+function memoryTool(conversationId) {
+  return builtinTools({ memoryLookup: (q, k) => (single.memory ? single.memory.lookup(q, k, conversationId) : Promise.resolve([])) }).find((d) => d.name === 'memory_lookup') ?? null;
+}
+
+/**
+ * Switches on the built-in tools an assistant names (chat/assistants.js ASSISTANT_TOOLS), as starting
+ * a chat with it does; every other tool keeps its setting.
+ * @param {readonly string[]} names
+ */
+export function switchOnTools(names) {
+  const keys = Object.keys(DEFAULT_TOOL_SWITCHES).filter((k) => names.includes(k));
+  if (!keys.length) return;
+  /** @type {Partial<ToolSwitches>} */
+  const patch = Object.fromEntries(keys.map((k) => [k, true]));
+  if (runtime) runtime.setSwitches(patch);
+  else writeLocalJson(TOOL_SETTINGS_KEY, readToolSwitches({ .../** @type {object} */ (readLocalJson(TOOL_SETTINGS_KEY, null) ?? {}), ...patch }));
 }
 
 /**
@@ -84,6 +108,33 @@ export function searchWithSettings(query, count, signal) {
 
 /** @param {TurnContext} ctx */
 const packKey = (ctx) => `${ctx.conversationId}\n${ctx.question}`;
+
+/**
+ * The verified web answer: an answer written from a web pack, checked against the pack's results
+ * (ai/search.js checkWebAnswer). The [W#] markers leave the text, the statements the check supports
+ * cite their pages, and the outcome comes along as the answer's web check (rag/web-check.js shape:
+ * `checked`, the pages its markers named, n of m marked statements found), so the thread labels and
+ * stores it as its own web check.
+ *
+ * Null when the answer marks no statement with a result: it stays as it is, and its own citations
+ * (a model that searched the web itself) decide its check, as for any other answer. An answer that
+ * cites pages of its own besides the markers carries no web check either: the thread checks all its
+ * citations together (the pack's supported statements among them), so no flagged statement of its
+ * own search goes unseen behind the pack's count.
+ * @param {import('../ai/index.js').CompletionResult} base
+ * @param {WebPack} pack
+ * @returns {import('./hooks.js').ToolRunResult | null}
+ */
+export function verifiedWebAnswer(base, pack) {
+  const check = checkWebAnswer(base.text, pack.results);
+  if (!check.statements) return null;
+  const answer = { ...base, text: check.text, citations: [...base.citations, ...check.citations] };
+  if (base.citations.some((c) => /^https?:\/\//i.test(c.url))) return answer;
+  const cited = new Set([...base.text.matchAll(/\[W(\d{1,2})\]/g)].map((m) => Number(m[1])).filter((n) => n >= 1 && n <= pack.results.length));
+  /** @type {import('../rag/web-check.js').WebCheck} */
+  const webCheck = { kind: 'checked', pages: cited.size, supported: check.supported, flagged: check.statements - check.supported, total: check.statements };
+  return { ...answer, webCheck };
+}
 
 /**
  * @param {{ openSettings?: () => void }} [opts]
@@ -119,7 +170,7 @@ function createRuntime(opts = {}) {
   for (const def of builtinTools({
     timeZone: tz,
     searchWorkspace: (q, k) => searchWorkspace(q, k),
-    memoryLookup: (q, k) => (memoryLookup ? memoryLookup(q, k) : Promise.resolve([])),
+    memoryLookup: (q, k) => (single.memory ? single.memory.lookup(q, k, null) : Promise.resolve([])),
     webSearch: (q, count, signal) => searchWithSettings(q, count, signal),
   })) {
     registry.register(def);
@@ -136,8 +187,8 @@ function createRuntime(opts = {}) {
     if (def.origin === 'mcp') return bridge.approved(def);
     if (def.name === 'web_search') return switches.web_search && !webTurn && searchReady(readSearchSettings(), getKey);
     if (def.name === 'generate_image') return switches.generate_image && imageProvider() !== null;
-    // Memory is offered once the memory feature answers it.
-    if (def.name === 'memory_lookup') return switches.memory_lookup && memoryLookup !== null;
+    // Memory is offered once the memory feature answers it, and only while memory is on.
+    if (def.name === 'memory_lookup') return switches.memory_lookup && Boolean(single.memory?.enabled());
     return Boolean(/** @type {Record<string, boolean>} */ (switches)[def.name]);
   };
 
@@ -160,19 +211,23 @@ function createRuntime(opts = {}) {
     // API: a web turn there keeps the search and offers no functions.
     if (req.provider === 'gemini' && req.search?.enabled) return req;
     const webTurn = packs.has(packKey(ctx));
-    const specs = registry.specs((d) => offered(d, webTurn)).filter((s) => !(req.tools ?? []).some((own) => own.name === s.name));
+    // A question that stays on this device is offered only the tools that keep it here.
+    const specs = registry.specs((d) => offered(d, webTurn) && (!ctx.localOnly || (d.origin !== 'mcp' && ON_DEVICE_TOOLS.has(d.name)))).filter((s) => !(req.tools ?? []).some((own) => own.name === s.name));
     if (!specs.length) return req;
     const rule = TOOL_RESULT_RULE[getLocale() === 'de' ? 'de' : 'en'];
     return { ...req, tools: [...(req.tools ?? []), ...specs].slice(0, 128), system: [req.system, rule].filter(Boolean).join('\n\n') };
   });
 
-  // The web pack of a question, for a model that cannot search itself.
+  // The web pack of a question, for a model that cannot search itself. A new question replaces the
+  // pack an earlier one with the same words left.
   registerTurnNotes(async (ctx) => {
+    packs.delete(packKey(ctx));
     if (!ctx.question.trim() || !getWebSearch()) return [];
     if (!searchReady(readSearchSettings(), getKey)) return [];
     const value = getAssistant();
-    // A question asked to stay on this device goes to no search service either.
-    if (value === 'device') return [];
+    // A question asked to stay on this device goes to no search service either (nor one asked with
+    // the model here, which keeps it here).
+    if (ctx.localOnly || value === 'device') return [];
     const [first] = await chatCandidates(value);
     if (!first) return [];
     const caps = capsOf(first.provider, first.model);
@@ -209,8 +264,17 @@ function createRuntime(opts = {}) {
   };
   setAdapterChooser((target) => chooseAdapter(target));
 
+  /**
+   * The registry as one turn's loop sees it: memory_lookup answers with the notes of that turn's
+   * conversation (its project decides which).
+   * @param {TurnContext} ctx
+   * @returns {typeof registry}
+   */
+  const turnRegistry = (ctx) => ({ ...registry, get: (name) => (name === 'memory_lookup' ? memoryTool(ctx.conversationId) : registry.get(name)) });
+
   // Tool calls, and the check of a web answer.
   setToolRunner(async ({ result, request, ctx, signal, view }) => {
+    /** @type {import('./hooks.js').ToolRunResult | null} */
     let out = null;
     if (result.stopReason === 'tool_call' && result.toolCalls.length) {
       const req = await request();
@@ -219,7 +283,7 @@ function createRuntime(opts = {}) {
       const loop = await runToolLoop({
         request: req,
         first: result,
-        registry,
+        registry: turnRegistry(ctx),
         gate,
         signal,
         locale: ctx.locale,
@@ -235,14 +299,11 @@ function createRuntime(opts = {}) {
       });
       out = loop.result;
     }
-    const key = packKey(ctx);
-    const pack = packs.get(key);
-    packs.delete(key);
-    if (pack) {
-      const base = out ?? result;
-      const check = checkWebAnswer(base.text, pack.results);
-      if (check.statements) out = { ...base, text: check.text, citations: [...base.citations, ...check.citations] };
-    }
+    // The pack stays for answers written again from this turn (regenerate, compare columns); the
+    // next question with the same words replaces it. An answer that marks nothing from it stays as
+    // it is.
+    const pack = packs.get(packKey(ctx));
+    if (pack) out = verifiedWebAnswer(out ?? result, pack) ?? out;
     return out;
   });
 

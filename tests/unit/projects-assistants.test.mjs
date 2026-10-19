@@ -157,7 +157,18 @@ describe('assistant import and export', () => {
     assert.deepEqual(fields.tools, ['web', 'thinking']);
     assert.deepEqual(dropped, ['code_interpreter', 'python', '42']);
     assert.ok(!('code' in fields) && !('files' in fields));
-    assert.deepEqual(ASSISTANT_TOOLS, ['web', 'thinking']);
+    assert.deepEqual(ASSISTANT_TOOLS, ['web', 'thinking', 'datetime', 'calculator', 'workspace_search', 'memory_lookup', 'web_search', 'generate_image']);
+  });
+
+  it("may switch on the chat's built-in tools, but an import does not bring those that read files or cost money", () => {
+    const tools = ['web_search', 'workspace_search', 'generate_image', 'calculator', 'memory_lookup', 'mcp_Dictionary_define_word'];
+    const imported = parseAssistant(JSON.stringify({ schema: ASSISTANT_SCHEMA, assistant: { ...sample, tools } }));
+    assert.deepEqual(imported.fields.tools, ['calculator', 'memory_lookup', 'web_search']);
+    assert.deepEqual(imported.dropped, ['workspace_search', 'generate_image', 'mcp_Dictionary_define_word']);
+    // Ticked in the editor, they are kept; a tool of an MCP server never is.
+    const edited = assistantFields({ ...sample, tools });
+    assert.deepEqual(edited.fields.tools, ['calculator', 'workspace_search', 'memory_lookup', 'web_search', 'generate_image']);
+    assert.deepEqual(edited.dropped, ['mcp_Dictionary_define_word']);
   });
 
   it('cuts every field to its limit and falls back for an unknown icon or model', () => {
