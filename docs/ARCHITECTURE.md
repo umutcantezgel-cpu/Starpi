@@ -177,6 +177,10 @@ idealised design. When the code changes, change the diagram in the same pull req
     - [Speech in and out: dictation, the speech queue and read-aloud](#speech-in-and-out-dictation-the-speech-queue-and-read-aloud)
     - [Live conversations](#live-conversations)
     - [Research jobs](#research-jobs)
+17. [Local companion](#17-local-companion)
+    - [Modules of the companion and of the browser side](#modules-of-the-companion-and-of-the-browser-side)
+    - [Pairing, the audit check and what the app asks the companion](#pairing-the-audit-check-and-what-the-app-asks-the-companion)
+    - [Threat model, packaging and checks](#threat-model-packaging-and-checks)
 
 ## 1. System overview
 
@@ -7012,3 +7016,144 @@ flowchart TD
 ```
 
 <sub>Sources: [`src/js/research/deep.js`](../src/js/research/deep.js), [`src/js/research/jobs.js`](../src/js/research/jobs.js), [`src/js/research/runtime.js`](../src/js/research/runtime.js), [`src/js/research/sources-part.js`](../src/js/research/sources-part.js), [`src/js/research/web-part.js`](../src/js/research/web-part.js), [`src/js/research/web-query.js`](../src/js/research/web-query.js), [`src/js/research/view.js`](../src/js/research/view.js), [`api/research/step.js`](../api/research/step.js)</sub>
+
+## 17. Local companion
+
+The companion (Starpi Core, `@starpi/companion` in packages/companion) is an optional Node.js service on the user's own computer, listening on 127.0.0.1 only. It keeps documents, notes, an agenda, an inbox and conversations sealed on that machine, answers questions through the same sentence gate as the app (from `@starpi/core`), routes every model call by the data class of its content, and writes a signed audit chain with anchors outside its data folder. The app pairs with it once and then uses it as a model (companion:starpi-core), as a source of grounded questions and as a speech-input source; nothing about it is synced.
+
+### Modules of the companion and of the browser side
+
+service.js starts the companion in a fixed order: open the installation (key-encryption key, keyring, SQLite store, vault, identity, audit chain), check it (the chain and the event links recompute and the anchor folder is still reached by the database, otherwise refuse with audit_tampered, audit_rollback, anchor_invalid, anchor_key_mismatch or anchor_dir_missing and change nothing), apply the deletion list, install the egress guard and hand each module the capability for its listed hosts, build the brains, breaker, admission control, scheduler, sessions and routes, start the modules and listen, then write an anchor and tell systemd it is ready. The HTTP server checks every request in order: the Host (127.0.0.1, localhost or [::1] with its port, else 421, which stops DNS rebinding), the Origin (none, its own, or an allowed cross origin with CORS for exactly that origin), the route's access level and role, the breaker's lane and the body; every answer carries the signed audit head. The standard modules are retrieval, memory, docs, ask and chat, mcp (with bin/mcp-stdio.mjs for desktop MCP clients), connectors, agenda, notify, the voice relay, setup, feeds (CSV and MQTT) and computer control (experimental, off, a simulated screen only). On the browser side, companion/client.js is the HTTP client (no cache, no redirects, only Authorization and Content-Type), pair.js holds the pairing and the audit check, tier.js streams answers and searches the companion for grounded questions, view.js draws its Settings card and tab, ai/adapters/companion.js makes it a provider of the AI layer, voice/sources/companion.js a speech-input source, and features/companion.js registers its retrieval source with the chat.
+
+<!-- diagram: companion-modules -->
+```mermaid
+flowchart LR
+    subgraph browser["Browser: src/js"]
+        client["companion/client.js: loopback HTTP,<br/>cookie or bearer, audit head of every answer"]
+        pair["companion/pair.js: pairing, sealed secret,<br/>audit head check, rollback or fork banner"]
+        tier["companion/tier.js: POST /v1/chat and /v1/ask,<br/>POST /v1/retrieval/search for grounded questions"]
+        view["companion/view.js: Settings card and Companion tab"]
+        adapter["ai/adapters/companion.js: provider companion"]
+        vsrc["voice/sources/companion.js: speech input"]
+        feat["features/companion.js: registerRetrievalSource"]
+    end
+    subgraph kernel["packages/companion/src kernel"]
+        svc["service.js start order, installation.js, config.js"]
+        http["server/http.js, routes.js, static.js:<br/>Host, Origin, access, breaker, body"]
+        authm["auth/origins.js, sessions.js"]
+        adm["admission, breaker, scheduler"]
+        auditm["audit/chain.js, anchors.js, identity.js, verify.js"]
+        vaultm["vault/*, kek/ file, systemd-creds, keychain-macos;<br/>store/sqlite.js"]
+        egress["egress/guard.js, hosts.js, splice.js"]
+        brainm["brain/router.js by data class: anthropic,<br/>gemini, openai-compat, none"]
+    end
+    subgraph modules["standard modules"]
+        m1["retrieval, memory, docs"]
+        m2["ask and chat, through the sentence gate of @starpi/core"]
+        m3["mcp + bin/mcp-stdio.mjs, connectors"]
+        m4["agenda, notify, relay (voice), setup, feeds"]
+        m5["computer: experimental, off, simulated screen"]
+    end
+    client --> http
+    pair --> client
+    tier --> client
+    view --> client
+    adapter --> tier
+    vsrc --> client
+    feat --> tier
+    http --> authm
+    http --> modules
+    svc --> kernel
+    modules --> brainm
+    modules --> vaultm
+    modules --> auditm
+    brainm --> egress
+```
+
+<sub>Sources: [`packages/companion/src/service.js`](../packages/companion/src/service.js), [`packages/companion/src/installation.js`](../packages/companion/src/installation.js), [`packages/companion/src/server/http.js`](../packages/companion/src/server/http.js), [`packages/companion/src/server/routes.js`](../packages/companion/src/server/routes.js), [`packages/companion/src/auth/sessions.js`](../packages/companion/src/auth/sessions.js), [`packages/companion/src/brain/router.js`](../packages/companion/src/brain/router.js), [`packages/companion/src/egress/guard.js`](../packages/companion/src/egress/guard.js), [`packages/companion/src/audit/anchors.js`](../packages/companion/src/audit/anchors.js), [`packages/companion/src/vault/kek/index.js`](../packages/companion/src/vault/kek/index.js), [`packages/companion/src/chat/module.js`](../packages/companion/src/chat/module.js), [`packages/companion/bin/mcp-stdio.mjs`](../packages/companion/bin/mcp-stdio.mjs), [`src/js/companion/client.js`](../src/js/companion/client.js), [`src/js/companion/pair.js`](../src/js/companion/pair.js), [`src/js/companion/tier.js`](../src/js/companion/tier.js), [`src/js/companion/view.js`](../src/js/companion/view.js), [`src/js/ai/adapters/companion.js`](../src/js/ai/adapters/companion.js), [`src/js/voice/sources/companion.js`](../src/js/voice/sources/companion.js), [`src/js/features/companion.js`](../src/js/features/companion.js)</sub>
+
+### Pairing, the audit check and what the app asks the companion
+
+`starpi-companion pair` prints a one-time code of 8 characters without look-alikes, valid for 10 minutes; the companion keeps only its salted scrypt hash, and five wrong codes in a row void every open code. In Mode A the app is served by the companion itself (a build with STARPI_HEADER_PROFILE=companion, same origin): pairing gives an HttpOnly SameSite=Strict cookie and a CSRF value the app sends in X-Companion-CSRF. In Mode B the hosted app runs on an origin the companion allows: when the user opens "Connect the companion on this computer", the card probes GET /v1/hello, and pairing gives a 32-byte bearer token bound to that origin, with the private-network preflight the browser asks for. Either answer brings the companion's Ed25519 public key. The secret is sealed with AES-GCM under a non-extractable key and kept in the IndexedDB database starpi-companion; the app makes no network call to the companion at boot. Every answer carries the signed audit head; pair.js checks it with the pairing key and stores the highest verified head per companion, and an older head (rollback) or another history at a known number (fork) shows a red banner until the user accepts the current state. In the chat, the companion answers only the bare question in a conversation per branch (POST /v1/chat with `after`), in sources or free mode, with the question's data class (sensitive for a question that stays on this device), and its answers stay local-only and unsynced (section 15). For grounded questions with other models, tier.js searches it (POST /v1/retrieval/search) and its passages join the excerpts: up to the class sensitive for a question that stays on this device, up to the ceiling the user chose otherwise.
+
+<!-- diagram: companion-pairing -->
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant App as Browser: view.js and pair.js
+    participant DB as IndexedDB starpi-companion
+    participant C as Companion on 127.0.0.1
+    User->>C: starpi-companion pair
+    C-->>User: one-time code, 8 characters, 10 minutes, only its scrypt hash stored
+    alt Mode B: the hosted app on an allowed origin
+        User->>App: opens Connect the companion on this computer
+        App->>C: GET /v1/hello, private-network preflight
+        C-->>App: companion found, CORS for exactly this origin
+    else Mode A: the build the companion serves
+        Note over App,C: same origin, no probe needed
+    end
+    User->>App: enters the code
+    App->>C: POST /v1/session/pair with the code
+    alt five wrong codes in a row
+        C-->>App: every open code voided
+    else code right
+        C-->>App: Mode A cookie + CSRF value, or Mode B origin-bound 32-byte token,<br/>Ed25519 public key and key id, signed audit head
+        App->>DB: secret sealed with a non-extractable AES-GCM key, public key, head
+    end
+    loop every later request
+        App->>C: Authorization or cookie + X-Companion-CSRF, no-store, no redirects
+        C-->>App: answer with X-Companion-Audit-Head seq.hash.sig
+        App->>App: Ed25519 check with the pairing key, compare with the highest head
+        alt older head or another history at a known number
+            App-->>User: red banner rollback or fork until accept current state
+        else newer or same
+            App->>DB: highest verified head stored per companion
+        end
+    end
+```
+
+<sub>Sources: [`src/js/companion/pair.js`](../src/js/companion/pair.js), [`src/js/companion/client.js`](../src/js/companion/client.js), [`src/js/companion/view.js`](../src/js/companion/view.js), [`src/js/companion/tier.js`](../src/js/companion/tier.js), [`packages/companion/src/auth/sessions.js`](../packages/companion/src/auth/sessions.js), [`packages/companion/src/auth/origins.js`](../packages/companion/src/auth/origins.js), [`packages/companion/src/server/http.js`](../packages/companion/src/server/http.js), [`packages/companion/src/audit/chain.js`](../packages/companion/src/audit/chain.js), [`scripts/headers.json`](../scripts/headers.json)</sub>
+
+### Threat model, packaging and checks
+
+The companion's network boundary is its in-process egress guard: it patches socket connect, DNS lookups, datagrams and process spawning, so the process reaches nothing but loopback except through a capability the kernel hands a module for the `host:443` entries the owner listed, and it forbids child processes and worker threads in this release (the kernel's key runner excepted). Its limits are references taken before it was installed, Node's internal handles, native add-ons and WebAssembly with host imports. Only the Linux system unit adds a boundary outside the process: IPAddressDeny=any, with an egress splice unit on a Unix socket that accepts CONNECT to listed hosts with public addresses only and sees ciphertext; the user unit and macOS launchd rely on the guard alone. The brain router sends secret content to no model, sensitive content only to local models and personal content to cloud models only when the owner allows it, and never moves a request to a weaker place when a brain fails. Vault and store are sealed under a key-encryption key from a file, systemd credentials or the macOS keychain; anchors outside the data folder make the companion refuse to start after a rollback or tampering. It ships with Linux user and system units (with credential drop-ins), a macOS launchd agent (with an optional sandbox profile, a preview), an offline bundle with SHA256SUMS signed in the release workflow, and the local voice server; CI runs its typecheck, tests, dependency and licence checks, the offline install and a systemd run, and the end-to-end suite pairs a built companion with the app.
+
+<!-- diagram: companion-threat-model -->
+```mermaid
+flowchart LR
+    subgraph browser["Browser tab (paired)"]
+        app["src/js/companion/client.js<br/>no cache, no redirects,<br/>only Authorization and Content-Type"]
+        sealed[("IndexedDB starpi-companion<br/>token or CSRF value sealed with<br/>a non-extractable AES-GCM key")]
+        heads["pair.js: highest audit head per companion,<br/>Ed25519 check with the pairing key"]
+        banner["red banner on rollback or fork<br/>until accept current state"]
+    end
+    subgraph machine["User's machine"]
+        subgraph proc["starpi-companion process, 127.0.0.1 only"]
+            host{"Host is 127.0.0.1, localhost<br/>or [::1] with the port?"}
+            auth["auth/sessions.js: Mode A cookie + X-Companion-CSRF,<br/>Mode B origin-bound bearer token;<br/>hashes only, 5 wrong codes void all codes"]
+            mods["modules with a capability<br/>for their listed host:443 entries only"]
+            guard["egress/guard.js in process:<br/>socket connect, DNS lookup, datagrams patched,<br/>no child processes or worker threads<br/>limits: early references, native add-ons,<br/>WebAssembly host imports"]
+            brain["brain/router.js by data class:<br/>public, personal (cloud only if allowed),<br/>sensitive local only, secret no model"]
+            audit["audit chain with signed heads"]
+            vault[("vault + sqlite store, sealed;<br/>KEK in a file, systemd credentials<br/>or the macOS keychain")]
+        end
+        anchors[("anchor folder outside the data folder:<br/>refuse start on rollback or tamper")]
+        splice["Linux system unit only:<br/>IPAddressDeny=any + egress splice socket"]
+    end
+    internet["Listed hosts only"]
+    app -->|"HTTP on loopback"| host
+    host -->|"no: 421"| reject(["refused"])
+    host -->|"yes"| auth --> mods
+    mods --> guard
+    guard -->|"listed host, public address, TLS"| splice
+    splice -.->|"user unit and launchd: guard alone"| internet
+    splice --> internet
+    mods --> brain
+    mods --> vault
+    mods --> audit --> anchors
+    audit -->|"head in every answer"| heads --> banner
+    app --- sealed
+```
+
+<sub>Sources: [`packages/companion/src/egress/guard.js`](../packages/companion/src/egress/guard.js), [`packages/companion/src/egress/hosts.js`](../packages/companion/src/egress/hosts.js), [`packages/companion/src/egress/splice.js`](../packages/companion/src/egress/splice.js), [`packages/companion/src/contracts/data-classes.js`](../packages/companion/src/contracts/data-classes.js), [`packages/companion/src/brain/router.js`](../packages/companion/src/brain/router.js), [`packages/companion/src/auth/sessions.js`](../packages/companion/src/auth/sessions.js), [`packages/companion/src/server/http.js`](../packages/companion/src/server/http.js), [`packages/companion/src/audit/anchors.js`](../packages/companion/src/audit/anchors.js), [`packages/companion/src/vault/kek/index.js`](../packages/companion/src/vault/kek/index.js), [`packages/companion/deploy/linux/README.md`](../packages/companion/deploy/linux/README.md), [`packages/companion/deploy/linux/system/starpi-companion.service`](../packages/companion/deploy/linux/system/starpi-companion.service), [`packages/companion/deploy/macos/app.starpi.companion.plist`](../packages/companion/deploy/macos/app.starpi.companion.plist), [`scripts/companion-offline-pack.mjs`](../scripts/companion-offline-pack.mjs), [`src/js/companion/client.js`](../src/js/companion/client.js), [`src/js/companion/pair.js`](../src/js/companion/pair.js), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)</sub>
