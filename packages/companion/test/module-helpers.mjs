@@ -175,19 +175,20 @@ export async function localServer(handler) {
 
 /**
  * A chat model on a free port that speaks the OpenAI-shaped streaming route. `reply` decides the
- * text for each request (it sees the messages).
- * @param {(messages: Array<{ role: string, content: string }>, call: number) => string | { text: string, stop?: string }} reply
+ * text for each request (it sees the messages); it may also answer later, with a promise.
+ * @typedef {string | { text: string, stop?: string }} ModelReply
+ * @param {(messages: Array<{ role: string, content: string }>, call: number) => ModelReply | Promise<ModelReply>} reply
  */
 export async function chatModel(reply) {
   let calls = 0;
-  const server = await localServer((req, body, res) => {
+  const server = await localServer(async (req, body, res) => {
     if (req.url?.endsWith('/models')) {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ object: 'list', data: [{ id: 'test-model', object: 'model' }] }));
       return;
     }
     calls += 1;
-    const out = reply(body.messages, calls);
+    const out = await reply(body.messages, calls);
     const { text, stop = 'stop' } = typeof out === 'string' ? { text: out } : out;
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     // Split into small deltas, the way a model streams.

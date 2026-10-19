@@ -217,3 +217,97 @@ test('/v1/chat streams released units, keeps history and raises the conversation
   assert.equal((await c.get(`/v1/chat/conversations/${conversation}`)).status, 404);
   assert.equal((await c.stream('POST', '/v1/chat', { body: { question: 'x', conversation } })).status, 404);
 });
+
+/**
+ * A model whose every answer after the first waits until the test lets it go.
+ * @param {(call: number) => string} answer
+ */
+async function heldModel(answer) {
+  /** @type {Array<() => void>} */
+  const held = [];
+  /** @type {Array<Array<{ role: string, content: string }>>} */
+  const requests = [];
+  const model = await chatModel(async (messages, call) => {
+    requests.push(messages);
+    if (call > 1) await new Promise((resolve) => held.push(() => resolve(undefined)));
+    return answer(call);
+  });
+  return { ...model, held, requests, releaseAll: () => held.splice(0).forEach((go) => go()) };
+}
+
+/** @param {Array<{ event: string }>} events */
+const streamEnded = (events) => events.some((x) => x.event === 'audit');
+
+test('/v1/chat: turns of one conversation run one after the other, so none is lost', async (t) => {
+  const words = ['zero', 'one', 'two', 'three', 'four', 'five'];
+  const model = await heldModel((call) => `This is answer ${words[call]}.`);
+  const { dir, cleanup } = tempDir();
+  const { companion } = await startModules(dir, { only: ['chat'], raw: localBrain(model.url) });
+  t.after(async () => {
+    model.releaseAll();
+    await companion.stop();
+    await model.close();
+    cleanup();
+  });
+  const c = await client(companion, { role: 'member' });
+  const first = await c.stream('POST', '/v1/chat', { body: { question: 'Hello?', mode: 'free' }, until: streamEnded });
+  const conversation = first.events.find((e) => e.event === 'done')?.data.conversation;
+  assert.ok(conversation);
+
+  // Three turns sent at once: whichever comes first runs, the others wait for it.
+  const turns = ['Question a?', 'Question b?', 'Question c?'].map((question) => c.stream('POST', '/v1/chat', { body: { question, conversation, mode: 'free' }, until: streamEnded }));
+  let finished = false;
+  const all = Promise.all(turns).finally(() => (finished = true));
+  while (!finished) {
+    model.held.shift()?.();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  const results = await all;
+
+  const numbers = (/** @type {string} */ name) => results.map((r) => r.events.find((e) => e.event === name)?.data.turn).sort((a, b) => a - b);
+  assert.deepEqual(numbers('start'), [2, 3, 4], 'each turn got its own number');
+  assert.deepEqual(numbers('done'), [2, 3, 4]);
+  const full = (await c.get(`/v1/chat/conversations/${conversation}`)).json();
+  assert.equal(full.conversation.turns, 4, 'no turn is lost');
+  assert.deepEqual(full.turns.map((/** @type {any} */ x) => x.n), [1, 2, 3, 4]);
+  assert.deepEqual(full.turns.map((/** @type {any} */ x) => x.answer.text), words.slice(1, 5).map((w) => `This is answer ${w}.`));
+  // Each turn saw the one before it in its history.
+  assert.equal(model.requests.length, 4);
+  for (let i = 1; i < 4; i += 1) assert.equal(model.requests[i].filter((m) => m.role === 'assistant').at(-1)?.content, `This is answer ${words[i]}.`);
+});
+
+test('/v1/chat: a busy conversation refuses more waiting turns; a rename or a deletion while a turn runs is kept', async (t) => {
+  const model = await heldModel(() => 'All right.');
+  const { dir, cleanup } = tempDir();
+  const { companion } = await startModules(dir, { only: ['chat'], raw: { ...localBrain(model.url), modules: { chat: { waitingTurns: 0 } } } });
+  t.after(async () => {
+    model.releaseAll();
+    await companion.stop();
+    await model.close();
+    cleanup();
+  });
+  const c = await client(companion);
+  const first = await c.stream('POST', '/v1/chat', { body: { question: 'Hello?', mode: 'free' }, until: streamEnded });
+  const conversation = first.events.find((e) => e.event === 'done')?.data.conversation;
+
+  const renamed = c.stream('POST', '/v1/chat', { body: { question: 'Still there?', conversation, mode: 'free' }, until: streamEnded });
+  await eventually(() => model.held.length === 1);
+  const busy = await c.post('/v1/chat', { question: 'And again?', conversation, mode: 'free' });
+  assert.equal(busy.status, 409);
+  assert.equal(busy.json().error.code, 'conversation_busy');
+  assert.equal((await c.put(`/v1/chat/conversations/${conversation}`, { title: 'Greetings' })).status, 200);
+  model.held.shift()?.();
+  assert.equal((await renamed).events.find((e) => e.event === 'done')?.data.turn, 2);
+  const after = (await c.get(`/v1/chat/conversations/${conversation}`)).json().conversation;
+  assert.equal(after.title, 'Greetings', 'the new title survives the turn');
+  assert.equal(after.turns, 2);
+
+  const deleted = c.stream('POST', '/v1/chat', { body: { question: 'And now?', conversation, mode: 'free' }, until: streamEnded });
+  await eventually(() => model.held.length === 1);
+  assert.equal((await c.del(`/v1/chat/conversations/${conversation}`)).status, 200);
+  model.held.shift()?.();
+  const events = (await deleted).events;
+  assert.equal(events.find((e) => e.event === 'error')?.data.code, 'conversation_unknown');
+  assert.equal((await c.get(`/v1/chat/conversations/${conversation}`)).status, 404, 'a deleted conversation does not come back');
+  assert.deepEqual((await c.get('/v1/chat/conversations')).json().conversations, []);
+});
