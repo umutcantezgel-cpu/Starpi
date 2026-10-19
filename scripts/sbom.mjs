@@ -2,7 +2,8 @@
 // Writes CycloneDX 1.5 SBOMs (JSON) that npm sbom generates from package-lock.json, without
 // installing anything:
 //   <out>/starpi-<version>.cdx.json       the app: every package in the lockfile, development
-//                                         tooling marked (scope optional, cdx:npm:package:development),
+//                                         tooling marked (scope optional, cdx:npm:package:development)
+//                                         except what the render frame bundles (mermaid and its tree),
 //                                         and as an ML-BOM the on-device models of both model
 //                                         catalogs (type machine-learning-model)
 //   <out>/starpi-core-<version>.cdx.json  the @starpi/core package, which has no dependencies
@@ -20,7 +21,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MODEL_CATALOG } from '../src/js/webgpu/models.js';
 import { WASM_CATALOG } from '../src/js/models/wasm-catalog.js';
-import { findSecrets, normalizeCoreSbom, normalizeSbom, validateSbom, wasmModels, webllmModels, withModels } from './lib/sbom.mjs';
+import { packageName, productionTree } from './license-gate.mjs';
+import { findSecrets, markShipped, normalizeCoreSbom, normalizeSbom, validateSbom, wasmModels, webllmModels, withModels } from './lib/sbom.mjs';
 import { credentialRules } from './lib/secret-rules.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -92,8 +94,25 @@ const models = [
   ...wasmModels(WASM_CATALOG, { runtime: lockedRuntime('@huggingface/transformers') }),
 ];
 
+/**
+ * Development dependencies whose code ships anyway: the render frame (public/render-frame.js,
+ * bundled by scripts/build.mjs) carries mermaid. They and everything they need at run time are
+ * listed as shipped, except the packages the build replaces with a stub (license-allowlist.json
+ * "excluded", such as mermaid's optional ELK layout).
+ */
+const FRAME_PACKAGES = ['mermaid'];
+const licensePolicy = await readJson('scripts/license-allowlist.json');
+const frameTree = productionTree(
+  { packages: { ...lock.packages, '': { dependencies: Object.fromEntries(FRAME_PACKAGES.map((name) => [name, root.devDependencies?.[name] ?? '*'])) } } },
+  { skip: Object.keys(licensePolicy.excluded ?? {}) },
+);
+if (frameTree.problems.length > 0) throw new Error(`the render frame's packages: ${frameTree.problems.join('; ')}`);
+const frameRefs = frameTree.keys.map((key) => `${packageName(key, lock.packages[key])}@${lock.packages[key].version}`);
+
 const time = timestamp();
-const app = withModels(normalizeSbom(npmSbom(['--sbom-type', 'application']), { names, timestamp: time }), models);
+const shipped = markShipped(normalizeSbom(npmSbom(['--sbom-type', 'application']), { names, timestamp: time }), frameRefs);
+if (shipped.missing.length > 0) throw new Error(`the render frame ships ${shipped.missing.join(', ')}, which the SBOM does not list`);
+const app = withModels(shipped.doc, models);
 const pkg = normalizeCoreSbom(normalizeSbom(npmSbom(['--sbom-type', 'library', '--workspace', core.name]), { names, timestamp: time }), {
   ref: `${core.name}@${core.version}`,
   manifest: core,
@@ -107,7 +126,7 @@ const files = [
       name: root.name,
       version: root.version,
       type: 'application',
-      required: Object.keys(root.dependencies ?? {}),
+      required: [...Object.keys(root.dependencies ?? {}), ...FRAME_PACKAGES],
       models: models.map((m) => m['bom-ref']),
     }),
   },
