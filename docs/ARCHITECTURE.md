@@ -11,10 +11,18 @@ idealised design. When the code changes, change the diagram in the same pull req
 - **Single source:** this file is the only place a diagram is edited. The README and the guides embed
   some of them as exact copies under the same `<!-- diagram: <id> -->` marker: `npm run docs:sync`
   refreshes the copies, and `tests/unit/docs.test.mjs` fails when a copy differs from this file.
-- **Conventions:** dashed nodes and edges are optional, manual or outside Starpi's control. Mode names
-  follow the UI: *on-device* is the `client` mode (a WebGPU or a processor (WASM) model), *cloud
-  assistant* is `council`, *own server* is `local` and *NVIDIA NIM cloud* is `nvidia`. The chat modes
-  are *verified source mode* (`grounded`) and *free chat* (`free`).
+- **Conventions:** dashed nodes and edges are optional, manual or outside Starpi's control. The model
+  picker stores one value (`starpi_assistant_v1`, `AssistantValue` in `config.js`): `auto` (the best
+  model that is set up), `device` (the model on this device), `<provider>:<model>` (one model of one
+  provider, `nvidia:<id>` without a key being the site's pool), `local:*` (the first model of the
+  user's own server) and `companion:starpi-core` (the paired local companion). The composer's modes
+  are *Auto*, *Free* and *Grounded* (`auto`, `free`, `grounded`); a turn takes one of three routes
+  (`free`, `mixed`, `grounded`, `ai/hybrid.js`). *On this device* means the providers `webgpu` and
+  `wasm`. A provider is reached by one of the transports of `ai/catalog/providers.js`: `direct` from
+  the browser, `auto` (direct, retried through the relay when the browser call is blocked), `relay`,
+  `pool` (the site's keys) or `device` (a worker in the browser, the user's own server, the
+  companion). The 2.x names `client`, `local`, `nvidia` and `council` survive only as the
+  `ComputeMode` other modules still ask for, and as the values the 2.x migration reads.
 
 ## Contents
 
@@ -156,7 +164,7 @@ idealised design. When the code changes, change the diagram in the same pull req
 
 ## 1. System overview
 
-Where each part of Starpi runs, which trust boundary it sits behind, and how the frontend modules depend on each other. The browser tab is the trusted zone; Supabase, model providers, Starpi's NVIDIA proxy, the optional library publisher, model downloads and the browser's speech recognition are reached across explicit boundaries.
+Where each part of Starpi runs, which trust boundary it sits behind, and how the frontend modules depend on each other. The browser tab is the trusted zone; Supabase, the model providers, Starpi's server functions (relay, pools, speech and research), the paired local companion on the loopback interface, the optional library publisher, model downloads, search services and speech services are reached across explicit boundaries.
 
 ### System context and trust boundaries
 
