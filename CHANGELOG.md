@@ -209,10 +209,14 @@ on your own machine. What to change when you come from 2.x is in
 - **The companion in the app**: a Companion tab and settings card, the retrieval source "Companion
   documents and notes" for grounded questions (a device-only question may take passages up to the
   class sensitive, other questions up to the user's ceiling, secret never), and the companion as a
-  model of the chat: its answers arrive already gated, are shown as released with their label,
-  notice and withheld count, and are stored on this device only, like the question asked there.
-  Compare, the council and Live reach it like the main thread (the bare question, the mode and the
-  data class); Auto asks it in free mode; a stopped companion answer is not kept.
+  model of the chat: it gets the bare question, never the app's prompt, with the mode and the
+  question's data class; its answers arrive already gated, are shown as released with their label,
+  notice and withheld count, and stay on this device like the question asked there (never in the
+  encrypted sync). Each branch of a thread is its own conversation on the companion (`after` on
+  `POST /v1/chat`): asking again, changing a question or going on in another branch continues in a
+  copy of the turns up to there. A Compare column asks it like the thread, without the app's tools;
+  the council never seats it; Live asks it in free conversations only; Auto asks it in free mode; a
+  stopped companion answer is not kept, on either side.
 - **Packaging**: systemd user and system units with readiness and a watchdog, the egress splice
   unit and a credential drop-in, a launchd agent, install and uninstall scripts, an offline bundle
   with `SHA256SUMS` (and an Ed25519 signature on request), and a local voice server (Whisper-class
@@ -266,6 +270,11 @@ on your own machine. What to change when you come from 2.x is in
 - The library publisher writes 384-dimensional multilingual-e5-small vectors (optional migration
   `20261101000000_embedding_384.sql`), the model the browser embeds its questions with.
 - The app SBOM lists what the render frame bundles (mermaid and its tree) as shipped.
+- On-device answers: a free answer may use the device's output budget (512 tokens on phones, 768 on
+  small GPUs, 1,024 on laptops, 2,048 on desktops and strong GPUs), at most half the model's context
+  window; a grounded answer keeps the preset's length within that budget. A smaller budget of 1,024
+  tokens for free answers on strong GPUs was considered for 3.0 and not adopted: the half-window cap
+  already keeps half the context for the conversation.
 - `@starpi/core`, `@starpi/companion` and the app are 3.0.0; `CITATION.cff` follows.
 
 ### Removed

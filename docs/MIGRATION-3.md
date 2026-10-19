@@ -47,6 +47,10 @@ Nothing needs to be done. On the first start of 3.0 in a browser profile:
 - **Files.** Workspace files now stay on the device after a reload. The first file asks whether to
   keep files or hold them in memory only; **Settings › Files on this device** shows the storage used
   and offers "Forget all".
+- **Answers on this device.** A free answer of a model on this device may now be longer: up to the
+  device's output budget (2,048 tokens on desktops and strong GPUs, 1,024 on laptops, less on small
+  GPUs and phones), at most half the model's context window. Processor (WASM) models keep 384 tokens
+  unless the benchmark measured them faster.
 - **Receipts.** Downloaded receipts are signed with a key of this device (Ed25519, or ECDSA P-256),
   whose public key **Settings › Trust** exports. A verifier of 2.x refuses a v3 receipt: use the
   3.0 app or `starpi-verify-receipt` of `@starpi/core` 3.0. Receipts of 1.x and 2.x still verify.
