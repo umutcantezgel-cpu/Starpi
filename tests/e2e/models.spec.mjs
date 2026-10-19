@@ -3,7 +3,7 @@
 // the settings, the migration of a stored 2.0 preference, language switches and switching while an
 // answer is written.
 import { NVIDIA_DEFAULT_MODEL, NVIDIA_MODELS } from '../../src/js/models/nvidia-catalog.js';
-import { expect, mockNvidia, mockSupabase, test, useNvidia } from './fixtures.mjs';
+import { chooseLanguage, expect, mockNvidia, mockSupabase, test, useNvidia } from './fixtures.mjs';
 
 /**
  * Emulates a desktop with 8 GB of memory, with or without a WebGPU adapter (Intel, shader-f16, 2 GiB
@@ -155,7 +155,7 @@ test.describe('model picker', () => {
     await expect(badges).toContainText('8 GB RAM');
     await expect(badges).toContainText('Device class: desktop');
 
-    await page.click('[data-action="set-locale"][data-arg="de"]');
+    await chooseLanguage(page, 'de');
     await expect(page.locator(`${SETTINGS} optgroup`).first()).toHaveAttribute('label', 'Empfohlen für dieses Gerät');
     await expect(page.locator(`${HEADER} optgroup`).nth(1)).toHaveAttribute('label', 'Auf diesem Gerät');
     await expect(page.locator(`${HEADER} option[value="webgpu:llama-3b"]`)).toContainText('Llama 3.2 3B · Grafikkarte (WebGPU) · 1,9 GB Download');

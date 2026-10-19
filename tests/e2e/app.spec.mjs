@@ -1,6 +1,6 @@
 import { WASM_CATALOG } from '../../src/js/models/wasm-catalog.js';
 import { makePdf } from '../fixtures/pdf.mjs';
-import { expect, mockSupabase, storedChatNodes, storedChatText, test } from './fixtures.mjs';
+import { chooseLanguage, expect, mockSupabase, storedChatNodes, storedChatText, test } from './fixtures.mjs';
 
 const WASM_LABELS = Object.values(WASM_CATALOG).map((src) => src.label);
 
@@ -366,20 +366,20 @@ test.describe('internationalization', () => {
     await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Ask anything…');
     await expect(settingsNav).toHaveText('Settings');
     await expect(page.locator('#privacyNotice')).toContainText('No model configured');
-    await expect(page.locator('[data-action="set-locale"][data-arg="en"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('select[data-change="set-locale"]')).toHaveValue('en');
 
     /** @type {string[]} */
     const navigations = [];
     page.on('framenavigated', (frame) => {
       if (frame === page.mainFrame()) navigations.push(frame.url());
     });
-    await page.click('[data-action="set-locale"][data-arg="de"]');
+    await chooseLanguage(page, 'de');
     await expect(page.locator('html')).toHaveAttribute('lang', 'de');
     await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Fragen Sie, was Sie wollen…');
     await expect(settingsNav).toHaveText(isMobile ? 'Optionen' : 'Einstellungen');
     await expect(page.locator('#privacyNotice')).toContainText('Kein Modell eingerichtet');
     await expect(page.locator('#sendBtn')).toHaveAttribute('aria-label', 'Senden');
-    await expect(page.locator('[data-action="set-locale"][data-arg="de"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('select[data-change="set-locale"]')).toHaveValue('de');
     expect(navigations).toEqual([]);
 
     // Quick prompts ask in the active language.
@@ -393,8 +393,46 @@ test.describe('internationalization', () => {
     await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Frage stellen…');
     await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
 
-    await page.click('[data-action="set-locale"][data-arg="en"]');
+    await chooseLanguage(page, 'en');
     await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Ask a question…');
+    await expect(settingsNav).toHaveText('Settings');
+    expect(await page.evaluate(() => localStorage.getItem('starpi_locale'))).toBe('en');
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('offers six languages and switches to French and Turkish without a reload', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await page.goto('/');
+    const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
+    const settingsNav = page.locator(isMobile ? '#mobile-nav-settings' : '#nav-settings');
+    const select = page.locator('select[data-change="set-locale"]');
+    await expect(select.locator('option')).toHaveText(['English', 'Deutsch', 'Français', 'Español', 'Italiano', 'Türkçe']);
+    /** @type {string[]} */
+    const navigations = [];
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) navigations.push(frame.url());
+    });
+
+    await chooseLanguage(page, 'fr');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Demandez ce que vous voulez…');
+    await expect(settingsNav).toHaveText(isMobile ? 'Réglages' : 'Paramètres');
+    await expect(page.locator('#privacyNotice')).toContainText('Aucun modèle configuré');
+    await expect(page.locator('#sendBtn')).toHaveAttribute('aria-label', 'Envoyer');
+
+    await chooseLanguage(page, 'tr');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'tr');
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'İstediğinizi sorun…');
+    await expect(settingsNav).toHaveText('Ayarlar');
+    await expect(page.locator('#privacyNotice')).toContainText('Yapılandırılmış model yok');
+    expect(navigations).toEqual([]);
+
+    // The choice is kept, and its dictionary is loaded before the first render.
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'tr');
+    await expect(select).toHaveValue('tr');
+    await expect(settingsNav).toHaveText('Ayarlar');
+    await chooseLanguage(page, 'en');
     await expect(settingsNav).toHaveText('Settings');
     expect(await page.evaluate(() => localStorage.getItem('starpi_locale'))).toBe('en');
     expect(diagnostics).toEqual([]);
