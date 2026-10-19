@@ -232,10 +232,10 @@
     "export_meta": "Esportata il {date} · {n} {n:messaggio|messaggi}",
     "export_you": "Tu",
     "delete": "Elimina questa chat",
-    "delete_confirm": "Eliminare questa chat? I suoi messaggi vengono rimossi da questo browser e, se le chat sono sincronizzate, dalla tua cronologia sincronizzata. L’operazione non si può annullare.",
+    "delete_confirm": "Eliminare questa chat? I suoi messaggi vengono rimossi da questo browser. L’operazione non si può annullare.",
     "delete_busy": "Una risposta è ancora in fase di scrittura. Attendila o interrompila, poi elimina la chat.",
     "deleted_title": "Chat eliminata",
-    "delete_partial_title": "La chat è stata eliminata in questo browser, ma la sua copia sincronizzata non può essere eliminata in questo momento. Elimina la cronologia chat nelle Impostazioni quando la base di conoscenza sarà raggiungibile."
+    "delete_partial_title": "La chat è stata eliminata in questo browser, ma i messaggi che una versione precedente aveva conservato sul server non si possono eliminare in questo momento. Elimina la cronologia chat nelle Impostazioni quando sei online."
   },
   "demo": {
     "pitch": "Sei nuovo? Carica tre file di esempio di un progetto immaginario e fai domande su di essi. I file vengono letti su questo dispositivo; non viene caricato nulla.",
@@ -670,9 +670,9 @@
     "test_failed": "Prova non riuscita",
     "test_enter_key": "Inserisci una chiave nel campo qui sopra; viene provata così come è scritta e salvata solo quando fai clic su Salva le impostazioni.",
     "delete_history": "Elimina la cronologia chat",
-    "delete_history_confirm": "Eliminare tutte le chat salvate in questo browser e, se le chat sono sincronizzate, la tua cronologia sincronizzata? L’operazione non si può annullare.",
+    "delete_history_confirm": "Eliminare tutte le chat salvate in questo browser e i messaggi che una versione precedente aveva conservato sul server? L’operazione non si può annullare.",
     "delete_history_done": "Cronologia chat eliminata.",
-    "delete_history_partial": "Le chat in questo browser sono state eliminate, ma la cronologia sincronizzata non può essere eliminata in questo momento. Riprova quando la base di conoscenza sarà raggiungibile.",
+    "delete_history_partial": "Le chat di questo browser sono state eliminate, ma i messaggi che una versione precedente aveva conservato sul server non si possono eliminare in questo momento. Riprova quando sei online.",
     "delete_history_busy": "Una risposta è ancora in fase di scrittura. Attendila o interrompila, poi elimina la cronologia chat."
   },
   "sync": {

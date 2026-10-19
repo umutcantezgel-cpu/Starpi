@@ -125,7 +125,7 @@
     "tools": "Araçlar",
     "tool_web": "Web’de ara (bunu yapabilen modeller)",
     "tool_thinking": "Genişletilmiş düşünme",
-    "tools_hint": "Asistanlar asla kod çalıştırmaz.",
+    "tools_hint": "Asistanlar asla kod çalıştırmaz. Asistanla bir sohbet, burada işaretlenen araçları açar; MCP sunucularının araçları kendi onaylarını korur.",
     "starters": "Sohbet başlangıçları",
     "starter_n": "Sohbet başlangıcı {n}",
     "starter_placeholder": "Başlamak için bir soru",
@@ -138,7 +138,7 @@
     "delete_confirm": "{name} asistanı silinsin mi? Onunla yapılan sohbetler kalır.",
     "deleted": "{name} asistanı silindi",
     "imported": "{name} asistanı içe aktarıldı",
-    "imported_dropped": "{name} asistanı, kullanamayacağı araçlar olmadan içe aktarıldı: {tools}",
+    "imported_dropped": "{name} asistanı şu araçlar olmadan içe aktarıldı: {tools}. Dosyalarınızı okuyan veya ücretli araçlar düzenleyicide işaretlenebilir.",
     "error_json": "Bu dosya bir asistan değil (JSON değil).",
     "error_schema": "Bu dosya bir Starpi asistanı değil.",
     "error_invalid": "Bu asistan dosyası bozuk ve içe aktarılmadı.",
@@ -146,6 +146,12 @@
     "error_too_large": "Bu dosya bir asistan için çok büyük.",
     "error_full": "Oluşturulabilecek en fazla asistan sayısına zaten ulaşıldı.",
     "error_not_found": "Bu asistan artık yok.",
-    "error_store": "Asistan bu cihaza kaydedilemedi."
+    "error_store": "Asistan bu cihaza kaydedilemedi.",
+    "tool_datetime": "Tarih ve saat",
+    "tool_calculator": "Hesap makinesi",
+    "tool_workspace_search": "Dosyalarımda ara",
+    "tool_memory_lookup": "Kayıtlı notlara bak (bellek açıkken)",
+    "tool_web_search": "Arama hizmeti üzerinden web araması",
+    "tool_generate_image": "Görsel oluştur"
   }
 }

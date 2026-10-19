@@ -125,7 +125,7 @@
     "tools": "Outils",
     "tool_web": "Chercher sur le web (modèles qui en sont capables)",
     "tool_thinking": "Réflexion approfondie",
-    "tools_hint": "Les assistants n’exécutent jamais de code.",
+    "tools_hint": "Les assistants n’exécutent jamais de code. Une discussion avec l’assistant active les outils cochés ici ; les outils des serveurs MCP gardent leurs propres autorisations.",
     "starters": "Amorces de conversation",
     "starter_n": "Amorce de conversation {n}",
     "starter_placeholder": "Une question pour commencer",
@@ -138,7 +138,7 @@
     "delete_confirm": "Supprimer l’assistant {name} ? Les discussions avec lui sont conservées.",
     "deleted": "Assistant {name} supprimé",
     "imported": "Assistant {name} importé",
-    "imported_dropped": "Assistant {name} importé sans les outils qu’il n’a pas le droit d’utiliser : {tools}",
+    "imported_dropped": "Assistant {name} importé sans ces outils : {tools}. Les outils qui lisent vos fichiers ou qui coûtent de l’argent peuvent être cochés dans l’éditeur.",
     "error_json": "Ce fichier n’est pas un assistant (ce n’est pas du JSON).",
     "error_schema": "Ce fichier n’est pas un assistant Starpi.",
     "error_invalid": "Ce fichier d’assistant est endommagé et n’a pas été importé.",
@@ -146,6 +146,12 @@
     "error_too_large": "Ce fichier est trop volumineux pour un assistant.",
     "error_full": "Le nombre maximal d’assistants est atteint.",
     "error_not_found": "Cet assistant n’existe plus.",
-    "error_store": "L’assistant n’a pas pu être enregistré sur cet appareil."
+    "error_store": "L’assistant n’a pas pu être enregistré sur cet appareil.",
+    "tool_datetime": "Date et heure",
+    "tool_calculator": "Calculatrice",
+    "tool_workspace_search": "Rechercher dans mes fichiers",
+    "tool_memory_lookup": "Consulter les notes enregistrées (quand la mémoire est activée)",
+    "tool_web_search": "Recherche web via le service de recherche",
+    "tool_generate_image": "Créer des images"
   }
 }

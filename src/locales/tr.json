@@ -232,10 +232,10 @@
     "export_meta": "Dışa aktarma tarihi: {date} · {n} {n:mesaj|mesaj}",
     "export_you": "Siz",
     "delete": "Bu sohbeti sil",
-    "delete_confirm": "Bu sohbet silinsin mi? Mesajları bu tarayıcıdan ve sohbetler eşitleniyorsa eşitlenen sohbet geçmişinizden kaldırılır. Bu işlem geri alınamaz.",
+    "delete_confirm": "Bu sohbet silinsin mi? Mesajları bu tarayıcıdan kaldırılır. Bu işlem geri alınamaz.",
     "delete_busy": "Bir yanıt hâlâ yazılıyor. Bitmesini bekleyin veya durdurun, sonra sohbeti silin.",
     "deleted_title": "Sohbet silindi",
-    "delete_partial_title": "Sohbet bu tarayıcıda silindi, ancak eşitlenen kopyası şu anda silinemedi. Bilgi tabanına ulaşılabildiğinde sohbet geçmişini Ayarlar’dan silin."
+    "delete_partial_title": "Sohbet bu tarayıcıda silindi, ancak önceki bir sürümün sunucuda tuttuğu mesajlar şu anda silinemedi. Çevrimiçi olduğunuzda sohbet geçmişini Ayarlar’dan silin."
   },
   "demo": {
     "pitch": "Yeni misiniz? Hayalî bir projenin üç örnek dosyasını yükleyin ve onlar hakkında sorular sorun. Dosyalar bu cihazda okunur; hiçbir şey yüklenmez.",
@@ -670,9 +670,9 @@
     "test_failed": "Test başarısız oldu",
     "test_enter_key": "Yukarıdaki alana bir anahtar girin; yazıldığı hâliyle test edilir ve yalnızca Ayarları kaydet’e tıkladığınızda kaydedilir.",
     "delete_history": "Sohbet geçmişini sil",
-    "delete_history_confirm": "Bu tarayıcıda saklanan tüm sohbetler ve sohbetler eşitleniyorsa eşitlenen sohbet geçmişiniz silinsin mi? Bu işlem geri alınamaz.",
+    "delete_history_confirm": "Bu tarayıcıda kayıtlı tüm sohbetler ve önceki bir sürümün sunucuda tuttuğu mesajlar silinsin mi? Bu işlem geri alınamaz.",
     "delete_history_done": "Sohbet geçmişi silindi.",
-    "delete_history_partial": "Bu tarayıcıdaki sohbetler silindi, ancak eşitlenen geçmiş şu anda silinemedi. Bilgi tabanına ulaşılabildiğinde yeniden deneyin.",
+    "delete_history_partial": "Bu tarayıcıdaki sohbetler silindi, ancak önceki bir sürümün sunucuda tuttuğu mesajlar şu anda silinemedi. Çevrimiçi olduğunuzda yeniden deneyin.",
     "delete_history_busy": "Bir yanıt hâlâ yazılıyor. Bitmesini bekleyin veya durdurun, sonra sohbet geçmişini silin."
   },
   "sync": {

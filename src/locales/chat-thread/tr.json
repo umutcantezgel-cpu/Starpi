@@ -74,7 +74,8 @@
     "key": "{provider}, sizin anahtarınız: sorunuz bilgi tabanı aramasına, eşleşen alıntılarla birlikte de {provider} sağlayıcısına gider.",
     "free_key": "{provider} ile serbest sohbet, sizin anahtarınız: sorunuz, ekli dosyalar ve bu sohbetin önceki mesajları {provider} sağlayıcısına gider. Hiçbir kaynakta arama yapılmaz.",
     "pool": "Starpi üzerinden {provider}: sorunuz bilgi tabanı aramasına gider; soru, eşleşen alıntılar ve önceki mesajlar Starpi’nin sunucusu üzerinden {provider} sağlayıcısına gider.",
-    "free_pool": "Starpi üzerinden {provider} ile serbest sohbet: sorunuz, ekli dosyalar ve bu sohbetin önceki mesajları Starpi’nin sunucusu üzerinden {provider} sağlayıcısına gider. Hiçbir kaynakta arama yapılmaz."
+    "free_pool": "Starpi üzerinden {provider} ile serbest sohbet: sorunuz, ekli dosyalar ve bu sohbetin önceki mesajları Starpi’nin sunucusu üzerinden {provider} sağlayıcısına gider. Hiçbir kaynakta arama yapılmaz.",
+    "history_synced": "Eşitleme açık: bu sohbet uçtan uca şifrelenmiş olarak eşitlenmiş kopyanızda saklanır ve diğer tarayıcılarınıza ulaşır."
   },
   "status": {
     "not_set_up": "Bu model kurulu değil: anahtarını Ayarlar’a ekleyin veya başka bir model seçin"
@@ -89,7 +90,11 @@
     "stays_on_device_title": "Bu soru bu cihazda kalır",
     "stays_on_device_body": "Bu cihazda soruldu; bu yüzden yalnızca buradaki model veya kendi sunucunuz yanıtlar. Bunlardan birini seçin ya da soruyu yeni bir mesaj olarak yeniden sorun.",
     "failed_body": "Yanıtlanırken bir sorun oluştu. Lütfen yeniden deneyin.",
-    "store_failed": "Sohbet bu tarayıcıya kaydedilemedi (gizli pencere, engellenmiş veya dolu depolama)."
+    "store_failed": "Sohbet bu tarayıcıya kaydedilemedi (gizli pencere, engellenmiş veya dolu depolama).",
+    "attachment_missing_title": "Bir ek yalnızca eklendiği cihazda bulunuyor",
+    "attachment_missing_body": "Ekler eşitlenmez; bu nedenle {names} bu istekte {n:dışarıda bırakıldı|dışarıda bırakıldı}.",
+    "deleted_elsewhere_title": "Bu sohbet başka bir sekmede veya tarayıcıda silindi",
+    "deleted_elsewhere_body": "Burada yeni bir sohbet başladı."
   },
   "continued": "Uzunluk sınırından sonra devam edildi",
   "continue_prompt": "Tam olarak kaldığın yerden devam et.",

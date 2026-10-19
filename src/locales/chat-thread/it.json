@@ -74,7 +74,8 @@
     "key": "{provider}, la tua chiave: la tua domanda va alla ricerca nella base di conoscenza e, con gli estratti corrispondenti, a {provider}.",
     "free_key": "Chat libera con {provider}, la tua chiave: la tua domanda, i file allegati e i messaggi precedenti di questa chat vanno a {provider}. Nessuna fonte viene consultata.",
     "pool": "{provider} tramite Starpi: la tua domanda va alla ricerca nella base di conoscenza; la domanda, gli estratti corrispondenti e i messaggi precedenti passano dal server di Starpi fino a {provider}.",
-    "free_pool": "Chat libera con {provider} tramite Starpi: la tua domanda, i file allegati e i messaggi precedenti di questa chat passano dal server di Starpi fino a {provider}. Nessuna fonte viene consultata."
+    "free_pool": "Chat libera con {provider} tramite Starpi: la tua domanda, i file allegati e i messaggi precedenti di questa chat passano dal server di Starpi fino a {provider}. Nessuna fonte viene consultata.",
+    "history_synced": "La sincronizzazione è attiva: questa chat viene conservata con crittografia end-to-end nella tua copia sincronizzata e arriva agli altri tuoi browser."
   },
   "status": {
     "not_set_up": "Questo modello non è configurato: aggiungi la sua chiave nelle Impostazioni o scegline un altro"
@@ -89,7 +90,11 @@
     "stays_on_device_title": "Questa domanda resta su questo dispositivo",
     "stays_on_device_body": "È stata posta su questo dispositivo, quindi risponde solo il modello di qui o il tuo server. Scegli uno dei due, oppure fai di nuovo la domanda in un nuovo messaggio.",
     "failed_body": "Qualcosa è andato storto durante la risposta. Riprova.",
-    "store_failed": "Non è stato possibile salvare la chat in questo browser (finestra privata, archiviazione bloccata o piena)."
+    "store_failed": "Non è stato possibile salvare la chat in questo browser (finestra privata, archiviazione bloccata o piena).",
+    "attachment_missing_title": "Un allegato si trova solo sul dispositivo in cui è stato aggiunto",
+    "attachment_missing_body": "Gli allegati non vengono sincronizzati, quindi {names} {n:è stato escluso|sono stati esclusi} da questa richiesta.",
+    "deleted_elsewhere_title": "Questa chat è stata eliminata in un’altra scheda o in un altro browser",
+    "deleted_elsewhere_body": "Qui è iniziata una nuova chat."
   },
   "continued": "Proseguita dopo il limite di lunghezza",
   "continue_prompt": "Continua esattamente da dove ti sei fermato.",

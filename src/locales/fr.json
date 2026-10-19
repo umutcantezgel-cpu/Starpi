@@ -232,10 +232,10 @@
     "export_meta": "Exporté le {date} · {n} {n:message|messages}",
     "export_you": "Vous",
     "delete": "Supprimer cette discussion",
-    "delete_confirm": "Supprimer cette discussion ? Ses messages sont effacés de ce navigateur et, si les discussions sont synchronisées, de votre historique synchronisé. Cette action est irréversible.",
+    "delete_confirm": "Supprimer cette discussion ? Ses messages sont effacés de ce navigateur. Cette action est irréversible.",
     "delete_busy": "Une réponse est encore en cours de rédaction. Attendez-la ou arrêtez-la, puis supprimez la discussion.",
     "deleted_title": "Discussion supprimée",
-    "delete_partial_title": "La discussion a été supprimée dans ce navigateur, mais sa copie synchronisée n’a pas pu être supprimée pour le moment. Supprimez l’historique de discussion dans les Paramètres lorsque la base de connaissances sera joignable."
+    "delete_partial_title": "La discussion a été supprimée dans ce navigateur, mais les messages qu’une version précédente avait conservés sur le serveur n’ont pas pu être supprimés pour le moment. Supprimez l’historique de discussion dans les Paramètres lorsque vous serez en ligne."
   },
   "demo": {
     "pitch": "Vous découvrez Starpi ? Chargez trois fichiers d’exemple d’un projet fictif et posez des questions dessus. Les fichiers sont lus sur cet appareil ; rien n’est envoyé.",
@@ -670,9 +670,9 @@
     "test_failed": "Le test a échoué",
     "test_enter_key": "Saisissez une clé dans le champ ci-dessus ; elle est testée telle que saisie et n’est enregistrée que lorsque vous cliquez sur Enregistrer les paramètres.",
     "delete_history": "Supprimer l’historique de discussion",
-    "delete_history_confirm": "Supprimer toutes les discussions enregistrées dans ce navigateur et, si les discussions sont synchronisées, votre historique synchronisé ? Cette action est irréversible.",
+    "delete_history_confirm": "Supprimer toutes les discussions enregistrées dans ce navigateur ainsi que les messages qu’une version précédente avait conservés sur le serveur ? Cette action est irréversible.",
     "delete_history_done": "Historique de discussion supprimé.",
-    "delete_history_partial": "Les discussions de ce navigateur ont été supprimées, mais l’historique synchronisé n’a pas pu l’être pour le moment. Réessayez lorsque la base de connaissances sera joignable.",
+    "delete_history_partial": "Les discussions de ce navigateur ont été supprimées, mais les messages qu’une version précédente avait conservés sur le serveur n’ont pas pu être supprimés pour le moment. Réessayez lorsque vous serez en ligne.",
     "delete_history_busy": "Une réponse est encore en cours de rédaction. Attendez-la ou arrêtez-la, puis supprimez l’historique de discussion."
   },
   "sync": {

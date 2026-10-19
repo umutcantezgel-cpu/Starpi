@@ -57,8 +57,13 @@
     "delete_confirm": "¿Eliminar «{title}»? Sus mensajes se borran de este navegador. No se puede deshacer.",
     "delete_answering": "Todavía se está escribiendo una respuesta en este chat. Espera a que termine o detenla y luego elimina el chat.",
     "deleted": "Chat eliminado",
-    "delete_partial": "No se pudo eliminar el chat en todas partes. Vuelve a intentarlo cuando tengas conexión.",
+    "delete_partial": "Eliminado en este navegador, pero los mensajes que una versión anterior guardó en el servidor no se han podido borrar ahora. Elimina el historial de chat en Ajustes cuando tengas conexión.",
     "action_failed": "No ha funcionado. Vuelve a intentarlo.",
-    "device_only": "Solo en este dispositivo"
+    "device_only": "Solo en este dispositivo",
+    "delete_confirm_synced": "¿Eliminar «{title}»? La sincronización está activada: el chat se borra de este navegador, de la copia sincronizada y de tus otros navegadores cuando vuelvan a sincronizarse. No se puede deshacer.",
+    "delete_current_confirm_synced": "¿Eliminar este chat? La sincronización está activada: se borra de este navegador, de la copia sincronizada y de tus otros navegadores cuando vuelvan a sincronizarse. No se puede deshacer.",
+    "delete_history_confirm_synced": "¿Eliminar todos los chats guardados en este navegador? La sincronización está activada: el borrado también llega a la copia sincronizada y a tus otros navegadores cuando vuelvan a sincronizarse. No se puede deshacer.",
+    "delete_partial_synced": "Eliminado en este navegador. La copia sincronizada y tus otros navegadores lo harán en la próxima sincronización; si otro navegador añadió mensajes a este chat entretanto, volverá.",
+    "delete_history_partial_synced": "Se eliminaron los chats de este navegador. La copia sincronizada y tus otros navegadores lo harán en la próxima sincronización; un chat al que otro navegador añadió mensajes entretanto volverá."
   }
 }

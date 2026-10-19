@@ -57,8 +57,13 @@
     "delete_confirm": "Eliminare «{title}»? I suoi messaggi vengono rimossi da questo browser. L’operazione non si può annullare.",
     "delete_answering": "In questa chat si sta ancora scrivendo una risposta. Attendila o interrompila, poi elimina la chat.",
     "deleted": "Chat eliminata",
-    "delete_partial": "Non è stato possibile eliminare la chat ovunque. Riprova quando sei online.",
+    "delete_partial": "Eliminata in questo browser, ma i messaggi che una versione precedente aveva conservato sul server non si possono eliminare in questo momento. Elimina la cronologia chat nelle Impostazioni quando sei online.",
     "action_failed": "Non ha funzionato. Riprova.",
-    "device_only": "Solo questo dispositivo"
+    "device_only": "Solo questo dispositivo",
+    "delete_confirm_synced": "Eliminare «{title}»? La sincronizzazione è attiva: la chat viene rimossa da questo browser, dalla copia sincronizzata e dagli altri tuoi browser alla prossima sincronizzazione. L’operazione non si può annullare.",
+    "delete_current_confirm_synced": "Eliminare questa chat? La sincronizzazione è attiva: viene rimossa da questo browser, dalla copia sincronizzata e dagli altri tuoi browser alla prossima sincronizzazione. L’operazione non si può annullare.",
+    "delete_history_confirm_synced": "Eliminare tutte le chat salvate in questo browser? La sincronizzazione è attiva: l’eliminazione raggiunge anche la copia sincronizzata e gli altri tuoi browser alla prossima sincronizzazione. L’operazione non si può annullare.",
+    "delete_partial_synced": "Eliminata in questo browser. La copia sincronizzata e gli altri tuoi browser seguiranno alla prossima sincronizzazione; se nel frattempo un altro browser ha aggiunto messaggi a questa chat, ricomparirà.",
+    "delete_history_partial_synced": "Le chat di questo browser sono state eliminate. La copia sincronizzata e gli altri tuoi browser seguiranno alla prossima sincronizzazione; una chat a cui nel frattempo un altro browser ha aggiunto messaggi ricomparirà."
   }
 }

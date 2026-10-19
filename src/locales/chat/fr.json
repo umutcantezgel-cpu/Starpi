@@ -57,8 +57,13 @@
     "delete_confirm": "Supprimer « {title} » ? Ses messages sont effacés de ce navigateur. Cette action est irréversible.",
     "delete_answering": "Une réponse est encore en cours de rédaction dans cette discussion. Attendez-la ou arrêtez-la, puis supprimez la discussion.",
     "deleted": "Discussion supprimée",
-    "delete_partial": "La discussion n’a pas pu être supprimée partout. Réessayez une fois en ligne.",
+    "delete_partial": "Supprimée dans ce navigateur, mais les messages qu’une version précédente avait conservés sur le serveur n’ont pas pu être supprimés pour le moment. Supprimez l’historique de discussion dans les Paramètres lorsque vous serez en ligne.",
     "action_failed": "Cela n’a pas fonctionné. Veuillez réessayer.",
-    "device_only": "Cet appareil uniquement"
+    "device_only": "Cet appareil uniquement",
+    "delete_confirm_synced": "Supprimer « {title} » ? La synchronisation est activée : la discussion est effacée de ce navigateur, de la copie synchronisée et de vos autres navigateurs lors de leur prochaine synchronisation. Cette action est irréversible.",
+    "delete_current_confirm_synced": "Supprimer cette discussion ? La synchronisation est activée : elle est effacée de ce navigateur, de la copie synchronisée et de vos autres navigateurs lors de leur prochaine synchronisation. Cette action est irréversible.",
+    "delete_history_confirm_synced": "Supprimer toutes les discussions enregistrées dans ce navigateur ? La synchronisation est activée : la suppression atteint aussi la copie synchronisée et vos autres navigateurs lors de leur prochaine synchronisation. Cette action est irréversible.",
+    "delete_partial_synced": "Supprimée dans ce navigateur. La copie synchronisée et vos autres navigateurs suivront à la prochaine synchronisation ; si un autre navigateur a entre-temps ajouté des messages à cette discussion, elle reviendra.",
+    "delete_history_partial_synced": "Les discussions de ce navigateur ont été supprimées. La copie synchronisée et vos autres navigateurs suivront à la prochaine synchronisation ; une discussion à laquelle un autre navigateur a entre-temps ajouté des messages reviendra."
   }
 }

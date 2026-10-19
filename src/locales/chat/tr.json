@@ -57,8 +57,13 @@
     "delete_confirm": "“{title}” silinsin mi? Mesajları bu tarayıcıdan kaldırılır. Bu işlem geri alınamaz.",
     "delete_answering": "Bu sohbette hâlâ bir yanıt yazılıyor. Bitmesini bekleyin veya durdurun, sonra sohbeti silin.",
     "deleted": "Sohbet silindi",
-    "delete_partial": "Sohbet her yerden silinemedi. Çevrimiçi olduğunuzda yeniden deneyin.",
+    "delete_partial": "Bu tarayıcıda silindi, ancak önceki bir sürümün sunucuda tuttuğu mesajlar şu anda silinemedi. Çevrimiçi olduğunuzda sohbet geçmişini Ayarlar’dan silin.",
     "action_failed": "Bu işe yaramadı. Lütfen yeniden deneyin.",
-    "device_only": "Yalnızca bu cihaz"
+    "device_only": "Yalnızca bu cihaz",
+    "delete_confirm_synced": "“{title}” silinsin mi? Eşitleme açık: sohbet bu tarayıcıdan, eşitlenmiş kopyadan ve bir sonraki eşitlemede diğer tarayıcılarınızdan kaldırılır. Bu işlem geri alınamaz.",
+    "delete_current_confirm_synced": "Bu sohbet silinsin mi? Eşitleme açık: sohbet bu tarayıcıdan, eşitlenmiş kopyadan ve bir sonraki eşitlemede diğer tarayıcılarınızdan kaldırılır. Bu işlem geri alınamaz.",
+    "delete_history_confirm_synced": "Bu tarayıcıda kayıtlı tüm sohbetler silinsin mi? Eşitleme açık: silme işlemi bir sonraki eşitlemede eşitlenmiş kopyaya ve diğer tarayıcılarınıza da ulaşır. Bu işlem geri alınamaz.",
+    "delete_partial_synced": "Bu tarayıcıda silindi. Eşitlenmiş kopya ve diğer tarayıcılarınız bir sonraki eşitlemede aynısını yapar; bu arada başka bir tarayıcı bu sohbete mesaj eklediyse sohbet geri gelir.",
+    "delete_history_partial_synced": "Bu tarayıcıdaki sohbetler silindi. Eşitlenmiş kopya ve diğer tarayıcılarınız bir sonraki eşitlemede aynısını yapar; bu arada başka bir tarayıcının mesaj eklediği bir sohbet geri gelir."
   }
 }

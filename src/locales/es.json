@@ -232,10 +232,10 @@
     "export_meta": "Exportado el {date} · {n} {n:mensaje|mensajes}",
     "export_you": "Tú",
     "delete": "Eliminar este chat",
-    "delete_confirm": "¿Eliminar este chat? Sus mensajes se borran de este navegador y, si los chats están sincronizados, de tu historial sincronizado. No se puede deshacer.",
+    "delete_confirm": "¿Eliminar este chat? Sus mensajes se borran de este navegador. No se puede deshacer.",
     "delete_busy": "Todavía se está escribiendo una respuesta. Espera a que termine o detenla y luego elimina el chat.",
     "deleted_title": "Chat eliminado",
-    "delete_partial_title": "El chat se eliminó en este navegador, pero su copia sincronizada no se pudo eliminar ahora. Elimina el historial de chat en Ajustes cuando la base de conocimiento esté disponible."
+    "delete_partial_title": "El chat se eliminó en este navegador, pero los mensajes que una versión anterior guardó en el servidor no se han podido borrar ahora. Elimina el historial de chat en Ajustes cuando tengas conexión."
   },
   "demo": {
     "pitch": "¿Eres nuevo? Carga tres archivos de ejemplo de un proyecto ficticio y haz preguntas sobre ellos. Los archivos se leen en este dispositivo; no se sube nada.",
@@ -670,9 +670,9 @@
     "test_failed": "La prueba falló",
     "test_enter_key": "Escribe una clave en el campo de arriba; se prueba tal como la escribes y solo se guarda al hacer clic en Guardar los ajustes.",
     "delete_history": "Eliminar el historial de chat",
-    "delete_history_confirm": "¿Eliminar todos los chats guardados en este navegador y, si los chats están sincronizados, tu historial sincronizado? No se puede deshacer.",
+    "delete_history_confirm": "¿Eliminar todos los chats guardados en este navegador y los mensajes que una versión anterior guardó en el servidor? No se puede deshacer.",
     "delete_history_done": "Historial de chat eliminado.",
-    "delete_history_partial": "Los chats de este navegador se eliminaron, pero el historial sincronizado no se pudo eliminar ahora. Vuelve a intentarlo cuando la base de conocimiento esté disponible.",
+    "delete_history_partial": "Se eliminaron los chats de este navegador, pero los mensajes que una versión anterior guardó en el servidor no se han podido borrar ahora. Vuelve a intentarlo cuando tengas conexión.",
     "delete_history_busy": "Todavía se está escribiendo una respuesta. Espera a que termine o detenla y luego elimina el historial de chat."
   },
   "sync": {

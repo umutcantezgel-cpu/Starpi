@@ -125,7 +125,7 @@
     "tools": "Herramientas",
     "tool_web": "Buscar en la web (modelos que pueden hacerlo)",
     "tool_thinking": "Razonamiento ampliado",
-    "tools_hint": "Los asistentes nunca ejecutan código.",
+    "tools_hint": "Los asistentes nunca ejecutan código. Un chat con el asistente activa las herramientas marcadas aquí; las herramientas de los servidores MCP conservan sus propias aprobaciones.",
     "starters": "Frases de inicio",
     "starter_n": "Frase de inicio {n}",
     "starter_placeholder": "Una pregunta para empezar",
@@ -138,7 +138,7 @@
     "delete_confirm": "¿Eliminar el asistente {name}? Los chats con él se conservan.",
     "deleted": "Asistente {name} eliminado",
     "imported": "Asistente {name} importado",
-    "imported_dropped": "Asistente {name} importado sin las herramientas que no puede usar: {tools}",
+    "imported_dropped": "Asistente {name} importado sin estas herramientas: {tools}. Las herramientas que leen tus archivos o que cuestan dinero se pueden marcar en el editor.",
     "error_json": "Este archivo no es un asistente (no es JSON).",
     "error_schema": "Este archivo no es un asistente de Starpi.",
     "error_invalid": "Este archivo de asistente está dañado y no se importó.",
@@ -146,6 +146,12 @@
     "error_too_large": "Este archivo es demasiado grande para un asistente.",
     "error_full": "Ya existe el número máximo de asistentes.",
     "error_not_found": "Este asistente ya no existe.",
-    "error_store": "No se pudo guardar el asistente en este dispositivo."
+    "error_store": "No se pudo guardar el asistente en este dispositivo.",
+    "tool_datetime": "Fecha y hora",
+    "tool_calculator": "Calculadora",
+    "tool_workspace_search": "Buscar en mis archivos",
+    "tool_memory_lookup": "Consultar las notas guardadas (con la memoria activada)",
+    "tool_web_search": "Búsqueda web mediante el servicio de búsqueda",
+    "tool_generate_image": "Crear imágenes"
   }
 }
