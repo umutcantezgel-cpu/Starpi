@@ -54,7 +54,7 @@
         "label": "[Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]",
         "doc": "Kuzeytepe Sitesi yönetim kuralları (örnek)",
         "heading": "",
-        "text": "Aylık aidat daire başına 950 TL’dir. Otopark girişi K-77 numaralı kartla açılır. Gece 23:00’ten sonra yüksek sesle müzik çalmak yasaktır. Denetim kurulu başkanı Zeynep Arslan, 10.000 TL’yi aşan harcamaları onaylar."
+        "text": "Aylık aidat daire başına 950 TL’dir. Otopark girişi P-277 numaralı kartla açılır. Gece 23:00’ten sonra yüksek sesle müzik çalmak yasaktır. Denetim kurulu başkanı Zeynep Arslan, 10.000 TL’yi aşan harcamaları onaylar."
       }
     ]
   },
@@ -419,7 +419,7 @@
       "category": "number",
       "variant": "changed_value",
       "changed": "590 TL",
-      "answer": "Aylık aidat daire başına 590 TL’dir [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]. Otopark girişi K-77 numaralı kartla açılır [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]."
+      "answer": "Aylık aidat daire başına 590 TL’dir [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]. Otopark girişi P-277 numaralı kartla açılır [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]."
     },
     {
       "id": "tr-date-02",
@@ -462,8 +462,8 @@
       "kind": "perturbed",
       "category": "code",
       "variant": "changed_code",
-      "changed": "K-71",
-      "answer": "Otopark girişi K-71 numaralı kartla açılır [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]. Aylık aidat daire başına 950 TL’dir [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]."
+      "changed": "P-271",
+      "answer": "Otopark girişi P-271 numaralı kartla açılır [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]. Aylık aidat daire başına 950 TL’dir [Doc: Kuzeytepe Sitesi yönetim kuralları (örnek), Chunk: 2]."
     },
     {
       "id": "tr-entity-06",
