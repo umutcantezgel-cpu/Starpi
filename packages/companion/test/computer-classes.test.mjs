@@ -62,11 +62,11 @@ test('risky words and own hosts', () => {
 
 /** Consequential controls as an interface in each shipped language labels them. */
 const RISKY_LABELS = {
-  en: ['Send', 'Delete', 'Pay now', 'Buy', 'Confirm', 'Submit', 'Publish', 'Remove', 'Transfer'],
-  de: ['Senden', 'Löschen', 'Jetzt bezahlen', 'Kaufen', 'Bestätigen', 'Absenden', 'Veröffentlichen', 'Entfernen', 'Überweisen', 'Zahlungspflichtig bestellen'],
-  fr: ['Envoyer', 'Supprimer', 'Payer', 'Acheter', 'Confirmer', 'Soumettre', 'Publier', 'Retirer', 'Transférer', 'Valider'],
+  en: ['Send', 'Delete', 'Pay now', 'Buy', 'Confirm', 'Submit', 'Publish', 'Remove', 'Transfer', 'Add payee', 'Request payout', 'PayPal', 'Become a buyer', 'Get a shareable link'],
+  de: ['Senden', 'Löschen', 'Jetzt bezahlen', 'Kaufen', 'Bestätigen', 'Absenden', 'Veröffentlichen', 'Entfernen', 'Überweisen', 'Zahlungspflichtig bestellen', 'Übermitteln'],
+  fr: ['Envoyer', 'Supprimer', 'Payer', 'Acheter', 'Confirmer', 'Soumettre', 'Publier', 'Retirer', 'Transférer', 'Valider', 'Payez', 'Achetez', 'Commandez', 'Abonnez-vous'],
   es: ['Enviar', 'Eliminar', 'Pagar', 'Comprar', 'Confirmar', 'Publicar', 'Quitar', 'Transferir', 'Cerrar sesión'],
-  it: ['Invia', 'Elimina', 'Paga ora', 'Acquista', 'Conferma', 'Pubblica', 'Rimuovi', 'Trasferisci', 'Non salvare'],
+  it: ['Invia', 'Elimina', 'Paga ora', 'Acquista', 'Conferma', 'Pubblica', 'Rimuovi', 'Trasferisci', 'Non salvare', 'Iscriviti'],
   tr: ['Gönder', 'Sil', 'Öde', 'Satın al', 'Onayla', 'Yayınla', 'Kaldır', 'Havale yap', 'Çıkış yap'],
 };
 /** Harmless words that merely begin like a risky one: whole-word matching leaves them alone. */
