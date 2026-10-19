@@ -6,9 +6,10 @@
 import './setup.mjs';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { webPack } from '../../src/js/ai/search.js';
+import { webPack, writeSearchSettings } from '../../src/js/ai/search.js';
 import { installChatTools, setMemoryLookup, switchOnTools, verifiedWebAnswer } from '../../src/js/chat/tools.js';
-import { requestHooks, single } from '../../src/js/chat/hooks.js';
+import { requestHooks, single, turnNoteHooks } from '../../src/js/chat/hooks.js';
+import { getAssistant, getWebSearch, setAssistant, setWebSearch } from '../../src/js/state.js';
 
 /** @typedef {import('../../src/js/ai/contract.js').AiRequest} AiRequest */
 
@@ -17,11 +18,12 @@ const ctx = /** @type {import('../../src/js/chat/hooks.js').TurnContext} */ (/**
 /**
  * The tools a request offers after the hooks ran.
  * @param {Partial<AiRequest>} over
+ * @param {Partial<import('../../src/js/chat/hooks.js').TurnContext>} [turn]  changes to the turn
  */
-function offered(over) {
+function offered(over, turn = {}) {
   /** @type {AiRequest} */
   let req = { provider: 'openai', model: 'gpt-5', messages: [{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }], ...over };
-  for (const hook of requestHooks) req = hook(req, ctx);
+  for (const hook of requestHooks) req = hook(req, { ...ctx, ...turn });
   return (req.tools ?? []).map((t) => t.name);
 }
 
@@ -86,6 +88,54 @@ describe('tools offered by the chat', () => {
     } finally {
       globalThis.fetch = realFetch;
       off();
+    }
+  });
+
+  it('offers a question that stays on this device only the tools that keep it here, and searches the web for it nowhere', async () => {
+    const before = { assistant: getAssistant(), web: getWebSearch() };
+    // The search service's settings live in this browser's storage.
+    const kept = new Map();
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: { getItem: (/** @type {string} */ k) => kept.get(k) ?? null, setItem: (/** @type {string} */ k, /** @type {string} */ v) => void kept.set(k, String(v)), removeItem: (/** @type {string} */ k) => void kept.delete(k) },
+    });
+    writeSearchSettings({ provider: 'searxng', searxngUrl: 'https://search.example.org' });
+    runtime.setSwitches({ web_search: true, workspace_search: true });
+    const off = setMemoryLookup({ enabled: () => true, lookup: async () => [] });
+    const realFetch = globalThis.fetch;
+    /** @type {string[]} */
+    const fetched = [];
+    globalThis.fetch = async (url) => {
+      fetched.push(String(url));
+      return new Response(JSON.stringify({ results: [{ title: 'Garden notes', url: 'https://example.org/garden', content: 'Roses need water every second day.' }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+    try {
+      assert.ok(offered({}).includes('web_search'), 'the web search is offered to a question that may leave');
+      assert.deepEqual(offered({}, { localOnly: true }), ['datetime', 'calculator', 'workspace_search', 'memory_lookup']);
+      // The web pack: the own server's model cannot search itself, so a question that may leave is
+      // searched first; one that stays here goes to no search service.
+      setAssistant('local:fake-model');
+      setWebSearch(true);
+      const notes = async (/** @type {Partial<import('../../src/js/chat/hooks.js').TurnContext>} */ turn) => {
+        const out = [];
+        for (const hook of turnNoteHooks) out.push(...(await hook({ ...ctx, question: 'How often do roses need water?', ...turn })));
+        return out;
+      };
+      assert.deepEqual(await notes({ conversationId: 'c-held', localOnly: true }), []);
+      assert.deepEqual(fetched, [], 'nothing went to the search service');
+      const open = await notes({ conversationId: 'c-open' });
+      assert.equal(open.length, 1);
+      assert.match(open[0], /Roses need water every second day/);
+      assert.equal(fetched.length, 1);
+      assert.match(fetched[0], /^https:\/\/search\.example\.org\/search\?/);
+    } finally {
+      globalThis.fetch = realFetch;
+      off();
+      runtime.setSwitches({ web_search: false, workspace_search: false });
+      writeSearchSettings({ provider: 'off', searxngUrl: '' });
+      delete (/** @type {any} */ (globalThis)).localStorage;
+      setAssistant(before.assistant);
+      setWebSearch(before.web);
     }
   });
 

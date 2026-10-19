@@ -48,6 +48,12 @@ import { capsOf, chatCandidates } from './runner.js';
 
 /** Web packs kept for answers still being written, at most. */
 const MAX_PACKS = 20;
+/**
+ * The built-in tools that keep a question on this device (their results go only to the model that
+ * answers it): the only tools a question that stays here is offered. The web search, image
+ * generation and MCP servers would carry what the model writes elsewhere.
+ */
+const ON_DEVICE_TOOLS = new Set(['datetime', 'calculator', 'workspace_search', 'memory_lookup']);
 const PACK_SEARCH_MS = 15_000;
 
 /** The composer's tools menu: the groups it switches. */
@@ -194,7 +200,8 @@ function createRuntime(opts = {}) {
     // API: a web turn there keeps the search and offers no functions.
     if (req.provider === 'gemini' && req.search?.enabled) return req;
     const webTurn = packs.has(packKey(ctx));
-    const specs = registry.specs((d) => offered(d, webTurn)).filter((s) => !(req.tools ?? []).some((own) => own.name === s.name));
+    // A question that stays on this device is offered only the tools that keep it here.
+    const specs = registry.specs((d) => offered(d, webTurn) && (!ctx.localOnly || (d.origin !== 'mcp' && ON_DEVICE_TOOLS.has(d.name)))).filter((s) => !(req.tools ?? []).some((own) => own.name === s.name));
     if (!specs.length) return req;
     const rule = TOOL_RESULT_RULE[getLocale() === 'de' ? 'de' : 'en'];
     return { ...req, tools: [...(req.tools ?? []), ...specs].slice(0, 128), system: [req.system, rule].filter(Boolean).join('\n\n') };
@@ -207,8 +214,9 @@ function createRuntime(opts = {}) {
     if (!ctx.question.trim() || !getWebSearch()) return [];
     if (!searchReady(readSearchSettings(), getKey)) return [];
     const value = getAssistant();
-    // A question asked to stay on this device goes to no search service either.
-    if (value === 'device') return [];
+    // A question asked to stay on this device goes to no search service either (nor one asked with
+    // the model here, which keeps it here).
+    if (ctx.localOnly || value === 'device') return [];
     const [first] = await chatCandidates(value);
     if (!first) return [];
     const caps = capsOf(first.provider, first.model);

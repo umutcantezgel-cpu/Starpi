@@ -173,6 +173,9 @@ describe('request notes', () => {
       assert.match(question.content.map((/** @type {any} */ p) => p.text ?? '').join('\n'), /Saved: the user keeps bees \(for "When do bees swarm\?"\)/);
     }
     assert.doesNotMatch(JSON.stringify(prepared.question), /keeps bees/, 'never kept with the question');
+    // The hooks learn whether the question stays on this device (the tools then keep it here).
+    assert.equal(prepared.ctx.localOnly, false);
+    assert.equal((await thread.prepareQuestion({ conversationId: id, text: 'A question that stays here', localOnly: true })).ctx.localOnly, true);
     // A stored "Continue" asks for the rest of an answer: no notes.
     const continued = (await storedPath()).find((n) => n.role === 'user' && /** @type {any} */ (n.meta)?.continue);
     assert.ok(continued, 'the earlier test left a Continue turn');

@@ -1320,7 +1320,7 @@ async function answerFree(question, value, signal, placement = {}) {
   }
   const path = turnThread()?.path ?? [question];
   /** @type {TurnContext} */
-  const ctx = { conversationId: turnConversation(), question: nodeText(question), mode: getChatMode(), route: 'free', target: candidates[0], locale: getLocale(), attachments: chipsOf(question) };
+  const ctx = { conversationId: turnConversation(), question: nodeText(question), mode: getChatMode(), route: 'free', target: candidates[0], locale: getLocale(), attachments: chipsOf(question), localOnly: staysOnDevice(question) };
   const notes = await requestNotesFor(question, ctx);
   const { stream, run } = await streamAnswer(candidates, (target) => freeRequest(target, path, ctx, notes), signal, placement, (target) => ({ label: searchesWeb(target) ? 'web' : 'free', question: ctx.question, locale: ctx.locale }));
   let { result } = run;
@@ -2114,7 +2114,7 @@ export async function sendQuestion(options = {}) {
       return;
     }
     /** @type {TurnContext} */
-    const ctx = { conversationId: turnConversation(), question: text, mode, route: 'free', target: null, locale: getLocale(), attachments: kinds };
+    const ctx = { conversationId: turnConversation(), question: text, mode, route: 'free', target: null, locale: getLocale(), attachments: kinds, localOnly: value === 'device' || deviceOnly };
     const question = await storeQuestion({ text, attachments: draft.attachments, parentId: leafId(), route: 'free', localOnly: value === 'device' || deviceOnly, context: await contextFor(ctx) });
     if (onScreen()) renderNode(question);
     const answer = await answerFree(question, value, signal);
@@ -2202,7 +2202,7 @@ export async function editQuestion(nodeId, text) {
       await answerGrounded({ text, attachments: [], reuseParts: reuse, parentId: node.parentId, value, workspaceOnly: false, held: staysOnDevice(node) }, signal);
     } else {
       /** @type {TurnContext} */
-      const ctx = { conversationId: turnConversation(), question: text, mode: getChatMode(), route: 'free', target: null, locale: getLocale(), attachments: chipsOf(node) };
+      const ctx = { conversationId: turnConversation(), question: text, mode: getChatMode(), route: 'free', target: null, locale: getLocale(), attachments: chipsOf(node), localOnly: node.localOnly };
       const question = await storeQuestion({ text, attachments: [], reuseParts: reuse, parentId: node.parentId, route: 'free', localOnly: node.localOnly, context: await contextFor(ctx) });
       if (onScreen()) renderNode(question);
       await answerFree(question, value, signal);
@@ -2235,7 +2235,7 @@ export async function continueAnswer(nodeId) {
   const value = sameModel(node);
   await withTurn(async (signal) => {
     /** @type {TurnContext} */
-    const ctx = { conversationId: turnConversation(), question: '', mode: getChatMode(), route: 'free', target: null, locale: getLocale(), attachments: [] };
+    const ctx = { conversationId: turnConversation(), question: '', mode: getChatMode(), route: 'free', target: null, locale: getLocale(), attachments: [], localOnly: node.localOnly };
     const question = await storeQuestion({ text: t('chat-thread.continue_prompt'), attachments: [], parentId: node.id, route: 'free', localOnly: node.localOnly, context: await contextFor(ctx), continueOf: true });
     if (onScreen()) renderNode(question);
     await answerFree(question, value, signal);
@@ -2303,7 +2303,7 @@ export async function prepareQuestion(input) {
   /** @type {NodeRecord[]} */
   let path;
   /** @type {TurnContext} */
-  const ctx = { conversationId: input.conversationId, question: '', mode: getChatMode(), route: 'free', target: null, locale: getLocale(), attachments: [] };
+  const ctx = { conversationId: input.conversationId, question: '', mode: getChatMode(), route: 'free', target: null, locale: getLocale(), attachments: [], localOnly: input.localOnly === true };
   if (input.questionId) {
     const found = tree.byId.get(input.questionId);
     if (!found || found.role !== 'user') throw Object.assign(new Error('No such question'), { code: 'not_found' });
@@ -2333,7 +2333,7 @@ export async function prepareQuestion(input) {
   }
   const asked = question;
   /** @type {TurnContext} */
-  const turnCtx = { ...ctx, question: nodeText(asked), attachments: chipsOf(asked) };
+  const turnCtx = { ...ctx, question: nodeText(asked), attachments: chipsOf(asked), localOnly: asked.localOnly };
   /** @type {Promise<string[]> | null} */
   let notes = null;
   return {

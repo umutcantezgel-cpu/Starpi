@@ -22,6 +22,8 @@
  * @property {{ provider: string, model: string } | null} target  the model asked first (null: none)
  * @property {string} locale
  * @property {readonly { name: string, kind: string }[]} attachments
+ * @property {boolean} [localOnly]        the question stays on this device: a hook sends nothing of
+ *   it anywhere else (no search service, no tool that reaches beyond this device)
  */
 
 /**
