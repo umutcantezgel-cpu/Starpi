@@ -3,9 +3,9 @@
 // always through the sentence gate of @starpi/core.
 //   POST   /v1/ask                           member  { question, mode?, dataClass?, documents?, notes?, feeds? }
 //                                                    -> { answer } in one JSON answer
-//   POST   /v1/chat                          member  { question, conversation?, mode?, dataClass?, documents?,
-//                                                    notes?, feeds?, tools? } -> server-sent events:
-//          start {conversation, turn}, sources {...}, unit {text, cites, kind} (as units are released),
+//   POST   /v1/chat                          member  { question, conversation?, after?, mode?, dataClass?,
+//                                                    documents?, notes?, feeds?, tools? } -> server-sent events:
+//          start {conversation, turn, from?}, sources {...}, unit {text, cites, kind} (as units are released),
 //          reset {withdrawn}, tool {tool, state}, approval {...}, done {conversation, turn, answer},
 //          error {code}; the kernel ends every stream with `audit` (the signed head)
 //   GET    /v1/chat/conversations            member  the conversations, most recent first
@@ -15,6 +15,12 @@
 // The turns of one conversation run one after the other: a turn sent while another one runs waits
 // for it (its `start` comes when it begins, and its history holds the turn before it); a turn
 // beyond `waitingTurns` waiting ones is refused with 409 conversation_busy.
+// `after` (with `conversation`) is the number of turns the question follows. A client that keeps
+// its history as a tree sends it with every turn: when the conversation already has more turns (the
+// client asked a question again, changed one, or went back to another branch), the turns up to
+// `after` are copied into a new conversation and the question goes on there; `start` and `done`
+// then name the new conversation and `start` names the one it came `from`. A copy whose first own
+// turn is not answered is not kept.
 // `mode` is `sources` (default: answer from the companion's documents, notes and feed readings,
 // every number checked against the source a sentence cites) or `free` (general knowledge; the gate
 // still withholds links and characters outside its allowlist). `dataClass` defaults to personal.
@@ -26,7 +32,7 @@ import { DATA_CLASSES, isDataClass, strictest } from '../contracts/data-classes.
 import { codeOf, fail } from '../lib/errors.js';
 import { actorOf, bodyOf, checkBody, intIn, moduleConfig, notFound, pushStream } from '../setup/kit.js';
 import { createAnswerEngine, MODES } from './engine.js';
-import { CHATS_NAMESPACE, createChatStore } from './store.js';
+import { CHATS_NAMESPACE, createChatStore, MAX_TURNS } from './store.js';
 
 export const MAX_QUESTION_CHARS = 8000;
 
@@ -36,6 +42,8 @@ const modeRule = (v) => (MODES.includes(/** @type {any} */ (v)) ? null : `one of
 const classRule = (v) => (isDataClass(v) ? null : `one of ${DATA_CLASSES.join(', ')}`);
 /** @param {unknown} v */
 const boolRule = (v) => (typeof v === 'boolean' ? null : 'true or false');
+/** @param {unknown} v */
+const afterRule = (v) => (Number.isSafeInteger(v) && /** @type {number} */ (v) >= 0 && /** @type {number} */ (v) <= MAX_TURNS ? null : `a whole number from 0 to ${MAX_TURNS}`);
 /** @param {unknown} v */
 const documentsRule = (v) => (Array.isArray(v) && v.length <= 50 && v.every((d) => typeof d === 'string' && /^doc-[0-9a-f-]{36}$/.test(d)) ? null : 'a list of up to 50 document ids');
 
@@ -185,9 +193,11 @@ export function createChatModule({ hub }) {
         handler(req) {
           const { engine: eng, store: st } = live();
           const body = bodyOf(req);
-          checkBody(body, { ...QUESTION_FIELDS, conversation: text(64), tools: boolRule }, ['question']);
+          checkBody(body, { ...QUESTION_FIELDS, conversation: text(64), after: afterRule, tools: boolRule }, ['question']);
           const q = questionOf(body);
           if (q.question === '') throw fail('question_empty', 'ask a question', { status: 400 });
+          if (body.after !== undefined && typeof body.conversation !== 'string') throw fail('body_invalid', '`after` needs the conversation it counts in', { status: 400 });
+          const after = /** @type {number | undefined} */ (body.after);
           const existing = typeof body.conversation === 'string' ? conversationOf(body.conversation) : null;
           const created = existing ? null : st.create(q.question, q.dataClass);
           let conversation = /** @type {import('./store.js').Conversation} */ (existing ?? created);
@@ -197,13 +207,25 @@ export function createChatModule({ hub }) {
           const actor = actorOf(req);
           (async () => {
             let answered = false;
+            /** @type {import('./store.js').Conversation | null} */
+            let branched = null;
+            /** @type {ReturnType<typeof enterLane> | null} */
+            let branchLane = null;
             try {
               await lane.wait(req.signal);
               // The turns before this one changed the conversation, or deleted it.
               const current = st.get(conversation.id);
               if (!current) throw notFound('conversation_unknown', 'conversation');
               conversation = current;
-              out.push('start', { conversation: conversation.id, turn: conversation.turns + 1 });
+              // The question follows an earlier turn than the last one: it goes on in a copy of the
+              // turns up to that one. The copy has a lane of its own from the start, so a turn sent
+              // to it once `start` named it waits for this one.
+              if (after !== undefined && after < current.turns) {
+                branched = st.branch(current, after);
+                branchLane = enterLane(branched.id);
+                conversation = branched;
+              }
+              out.push('start', { conversation: conversation.id, turn: conversation.turns + 1, ...(branched ? { from: current.id } : {}) });
               const history = st.turns(conversation, settings.historyTurns).map((t) => ({ question: t.question, answer: t.answer.text }));
               const answer = await eng.answer(
                 { ...q, dataClass: strictest(conversation.dataClass, q.dataClass), history, tools: body.tools === true, maxTokens: settings.maxTokens, subject: conversation.id },
@@ -216,8 +238,11 @@ export function createChatModule({ hub }) {
               if (!req.signal.aborted) out.push('error', { code: codeOf(err) });
               else ctx?.log('info', 'turn_abandoned', { conversation: conversation.id });
             } finally {
-              // A conversation that never got its first answer is not kept.
+              // A conversation that never got its first answer is not kept, nor a copy that never
+              // got its own.
               if (!answered && created && st.get(created.id)?.turns === 0) st.remove(created);
+              if (!answered && branched && st.get(branched.id)?.turns === branched.turns) st.remove(branched);
+              branchLane?.leave();
               lane.leave();
               out.end();
             }

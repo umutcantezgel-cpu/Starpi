@@ -108,7 +108,7 @@
     "busy": "Attendez la fin de la réponse dans la discussion.",
     "no_model": "Ce modèle n’est pas disponible pour le moment.",
     "no_question": "Cette réponse n’a pas de question à reposer.",
-    "stays_on_device": "Cette question reste sur cet appareil : seul le modèle local ou votre propre serveur peut y répondre.",
+    "stays_on_device": "Cette question reste sur cet appareil : seul le modèle local, votre propre serveur ou votre compagnon associé peut y répondre.",
     "failed": "La comparaison n’a pas pu démarrer."
   },
   "council": {

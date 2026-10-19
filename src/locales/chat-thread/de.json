@@ -76,7 +76,8 @@
     "free_key": "Freier Chat mit {provider}, Ihr Schlüssel: Ihre Frage, angehängte Dateien und frühere Nachrichten dieses Chats gehen an {provider}. Es werden keine Quellen durchsucht.",
     "pool": "{provider} über Starpi: Ihre Frage geht an die Suche in der Wissensdatenbank; Frage, passende Auszüge und frühere Nachrichten gehen über Starpis Server an {provider}.",
     "free_pool": "Freier Chat mit {provider} über Starpi: Ihre Frage, angehängte Dateien und frühere Nachrichten dieses Chats gehen über Starpis Server an {provider}. Es werden keine Quellen durchsucht.",
-    "history_synced": "Die Synchronisierung ist an: Dieser Chat wird Ende-zu-Ende-verschlüsselt in Ihrer synchronisierten Kopie gespeichert und erreicht Ihre anderen Browser."
+    "history_synced": "Die Synchronisierung ist an: Dieser Chat wird Ende-zu-Ende-verschlüsselt in Ihrer synchronisierten Kopie gespeichert und erreicht Ihre anderen Browser.",
+    "companion_unsynced": "Die Synchronisierung ist an, aber Fragen an den Begleiter und seine Antworten bleiben auf diesem Gerät: Sie gehören nicht zu Ihrer synchronisierten Kopie."
   },
   "status": {
     "not_set_up": "Dieses Modell ist nicht eingerichtet: Fügen Sie seinen Schlüssel in den Einstellungen hinzu oder wählen Sie ein anderes"
@@ -90,6 +91,7 @@
     "rate_limited_wait": "Der Anbieter erhält gerade zu viele Anfragen: Bitte warten Sie {seconds} s und versuchen Sie es dann erneut.",
     "stays_on_device_title": "Diese Frage bleibt auf diesem Gerät",
     "stays_on_device_body": "Sie wurde auf diesem Gerät gestellt, deshalb beantwortet sie nur das Modell hier, Ihr eigener Server oder Ihr gekoppelter Begleiter. Wählen Sie eines davon oder stellen Sie die Frage als neue Nachricht.",
+    "stays_on_device_companion_body": "Sie wurde Ihrem Begleiter gestellt und bleibt wie seine Antwort auf diesem Gerät (beide werden nicht synchronisiert), deshalb beantwortet sie nur das Modell hier, Ihr eigener Server oder der Begleiter erneut. Wählen Sie eines davon oder stellen Sie die Frage als neue Nachricht.",
     "failed_body": "Beim Antworten ist etwas schiefgegangen. Bitte versuchen Sie es noch einmal.",
     "store_failed": "Der Chat konnte in diesem Browser nicht gespeichert werden (privates Fenster, blockierter oder voller Speicher).",
     "attachment_missing_title": "Ein Anhang ist nur auf dem Gerät, auf dem er hinzugefügt wurde",

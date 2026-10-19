@@ -120,7 +120,7 @@ describe('the companion adapter', () => {
     assert.equal(conversationOf(req), 'conv-7');
     const { result } = await run(createCompanionAdapter({ pairing: async () => pairing, mode: 'sources', dataClass: 'sensitive' }), req);
     assert.equal(result.error, null);
-    assert.deepEqual(companion.calls('POST', '/v1/chat')[0].body, { question: 'When is the meeting?', mode: 'sources', dataClass: 'sensitive', conversation: 'conv-7' });
+    assert.deepEqual(companion.calls('POST', '/v1/chat')[0].body, { question: 'When is the meeting?', mode: 'sources', dataClass: 'sensitive', conversation: 'conv-7', after: 1 });
     assert.equal(/** @type {any} */ (result.opaque[0].block).mode, 'sources');
   });
 

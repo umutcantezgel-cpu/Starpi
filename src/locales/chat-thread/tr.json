@@ -76,7 +76,8 @@
     "free_key": "{provider} ile serbest sohbet, sizin anahtarınız: sorunuz, ekli dosyalar ve bu sohbetin önceki mesajları {provider} sağlayıcısına gider. Hiçbir kaynakta arama yapılmaz.",
     "pool": "Starpi üzerinden {provider}: sorunuz bilgi tabanı aramasına gider; soru, eşleşen alıntılar ve önceki mesajlar Starpi’nin sunucusu üzerinden {provider} sağlayıcısına gider.",
     "free_pool": "Starpi üzerinden {provider} ile serbest sohbet: sorunuz, ekli dosyalar ve bu sohbetin önceki mesajları Starpi’nin sunucusu üzerinden {provider} sağlayıcısına gider. Hiçbir kaynakta arama yapılmaz.",
-    "history_synced": "Eşitleme açık: bu sohbet uçtan uca şifrelenmiş olarak eşitlenmiş kopyanızda saklanır ve diğer tarayıcılarınıza ulaşır."
+    "history_synced": "Eşitleme açık: bu sohbet uçtan uca şifrelenmiş olarak eşitlenmiş kopyanızda saklanır ve diğer tarayıcılarınıza ulaşır.",
+    "companion_unsynced": "Eşitleme açık, ancak Companion’a sorulan sorular ve yanıtları bu cihazda kalır: eşitlenmiş kopyanızın parçası değildir."
   },
   "status": {
     "not_set_up": "Bu model kurulu değil: anahtarını Ayarlar’a ekleyin veya başka bir model seçin"
@@ -90,6 +91,7 @@
     "rate_limited_wait": "Sağlayıcıda şu anda çok fazla istek var: lütfen {seconds} sn bekleyip yeniden deneyin.",
     "stays_on_device_title": "Bu soru bu cihazda kalır",
     "stays_on_device_body": "Bu cihazda soruldu; bu yüzden yalnızca buradaki model, kendi sunucunuz veya eşleştirilmiş Companion’ınız yanıtlar. Bunlardan birini seçin ya da soruyu yeni bir mesaj olarak yeniden sorun.",
+    "stays_on_device_companion_body": "Companion’ınıza soruldu ve yanıtı gibi bu cihazda kalır (ikisi de eşitlenmez); bu yüzden yalnızca buradaki model, kendi sunucunuz veya Companion yeniden yanıtlar. Bunlardan birini seçin ya da soruyu yeni bir mesaj olarak yeniden sorun.",
     "failed_body": "Yanıtlanırken bir sorun oluştu. Lütfen yeniden deneyin.",
     "store_failed": "Sohbet bu tarayıcıya kaydedilemedi (gizli pencere, engellenmiş veya dolu depolama).",
     "attachment_missing_title": "Bir ek yalnızca eklendiği cihazda bulunuyor",

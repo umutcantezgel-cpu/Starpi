@@ -177,6 +177,7 @@ export function noticeKey(code) {
  * @property {'sources' | 'free'} [mode]
  * @property {DataClass} [dataClass]
  * @property {string | null} [conversation]
+ * @property {number | null} [after]   the turns of `conversation` the question follows (the companion goes on in a copy of them when it has more)
  * @property {boolean} [tools]
  * @property {AbortSignal} [signal]
  */
@@ -191,6 +192,7 @@ function questionBody(input) {
     mode: input.mode === 'free' ? 'free' : 'sources',
     ...(input.dataClass && classRank(input.dataClass) >= 0 ? { dataClass: input.dataClass } : {}),
     ...(input.conversation ? { conversation: input.conversation } : {}),
+    ...(input.conversation && Number.isSafeInteger(input.after) && /** @type {number} */ (input.after) >= 0 ? { after: input.after } : {}),
     ...(input.tools ? { tools: true } : {}),
   };
 }
@@ -204,6 +206,7 @@ function questionBody(input) {
 export async function askCompanion(pairing, input) {
   const body = questionBody(input);
   delete (/** @type {any} */ (body).conversation);
+  delete (/** @type {any} */ (body).after);
   delete (/** @type {any} */ (body).tools);
   const answer = await pairing.call('POST', '/v1/ask', { body, signal: input.signal, timeoutMs: 180_000 });
   if (!answer?.answer || typeof answer.answer.text !== 'string') throw new CompanionError('bad_response');

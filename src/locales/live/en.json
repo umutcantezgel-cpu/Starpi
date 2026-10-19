@@ -30,6 +30,7 @@
     "hidden": "Ended because the tab was left.",
     "error": "The connection ended unexpectedly.",
     "no_model": "No model is available. Add a key in Settings → Providers.",
+    "companion_sources": "Starpi Core answers spoken questions in a free conversation only: it answers from its own documents, not from the sources found here. Start a free conversation, or pick another model.",
     "microphone": "The microphone could not start."
   },
   "hint": {

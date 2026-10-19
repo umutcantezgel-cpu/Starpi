@@ -108,7 +108,7 @@
     "busy": "Warten Sie, bis die Antwort im Chat fertig ist.",
     "no_model": "Dieses Modell ist gerade nicht verfügbar.",
     "no_question": "Zu dieser Antwort gibt es keine Frage, die sich erneut stellen lässt.",
-    "stays_on_device": "Diese Frage bleibt auf diesem Gerät: Nur das Modell hier oder Ihr eigener Server darf sie beantworten.",
+    "stays_on_device": "Diese Frage bleibt auf diesem Gerät: Nur das Modell hier, Ihr eigener Server oder Ihr gekoppelter Begleiter darf sie beantworten.",
     "failed": "Der Vergleich konnte nicht starten."
   },
   "council": {

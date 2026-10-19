@@ -389,3 +389,132 @@ test('the companion answers in the chat once paired: its own label, stored here,
   await expect(page.locator('#chatMessages .answer-label[data-answer-label="companion_template"]')).toHaveCount(1);
   expect(problems).toEqual([]);
 });
+
+test('an answer asked again or after a changed question goes on in a branch of its own in the companion', async ({ page }) => {
+  await mockSupabase(page, { hardened: true, anonymousAuth: true });
+  const problems = await watchProblems(page, { ignore: /ERR_CONNECTION_REFUSED/ });
+  page.on('dialog', (d) => d.accept());
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('e2e_seeded')) return;
+    sessionStorage.setItem('e2e_seeded', '1');
+    localStorage.setItem('starpi_chat_mode', 'free');
+  });
+  await page.goto('/');
+  const { token } = await pairHosted(page);
+  const auth = { headers: { authorization: `Bearer ${token}` } };
+  await page.click('#nav-chat');
+  await page.selectOption('#engineSelector', 'companion:starpi-core');
+  const answers = page.locator('#chatMessages .message-row[data-role="assistant"]');
+  const questions = page.locator('#chatMessages .message-row[data-role="user"]');
+  const companionAnswers = async () => (/** @type {any[]} */ (await storedChatNodes(page))).filter((n) => n.role === 'assistant' && n.provider === 'companion').length;
+  /** Runs `act` and returns the body the companion was asked with, once its answer is stored. */
+  const askedWith = async (/** @type {() => Promise<void>} */ act) => {
+    const before = await companionAnswers();
+    const request = page.waitForRequest((r) => r.url() === `${COMPANION}/v1/chat` && r.method() === 'POST');
+    await act();
+    const body = JSON.parse((await request).postData() ?? '{}');
+    await expect.poll(companionAnswers).toBe(before + 1);
+    await expect(page.locator('#stopBtn')).toBeHidden();
+    return body;
+  };
+  const say = (/** @type {string} */ text) => askedWith(async () => {
+    await page.fill('#chatInput', text);
+    await page.press('#chatInput', 'Enter');
+  });
+
+  await say('Where is the ladder?');
+  await expect(answers).toHaveCount(1);
+  const second = await say('And the paint?');
+  await expect(answers).toHaveCount(2);
+  expect(second.after).toBe(1);
+  const original = second.conversation;
+  expect(original).toMatch(/^conv-/);
+
+  // Asked again: the companion goes on in a copy of turn 1, the original keeps both turns.
+  const again = await askedWith(async () => {
+    await answers.last().locator('.regen-menu > summary').click();
+    await answers.last().locator('[data-action="msg-regenerate"][data-value=""]').click();
+  });
+  expect(again).toEqual({ question: 'And the paint?', mode: 'free', conversation: original, after: 1 });
+  await expect(answers.last().locator('.branch-pos')).toHaveText('2/2');
+  const branches = (/** @type {any[]} */ nodes) => nodes.filter((n) => n.role === 'assistant' && n.provider === 'companion').map((n) => n.meta.companion);
+  const afterAgain = branches(/** @type {any[]} */ (await storedChatNodes(page)));
+  expect(afterAgain).toHaveLength(3);
+  expect(afterAgain[2].conversation).not.toBe(original);
+  expect(afterAgain[2].turn).toBe(2);
+  const copy = await (await fetch(`${COMPANION}/v1/chat/conversations/${afterAgain[2].conversation}`, auth)).json();
+  expect(copy.turns.map((/** @type {any} */ x) => x.question)).toEqual(['Where is the ladder?', 'And the paint?']);
+  const kept = await (await fetch(`${COMPANION}/v1/chat/conversations/${original}`, auth)).json();
+  expect(kept.conversation.turns).toBe(2);
+
+  // Changed: another copy of turn 1, without the discarded question.
+  const edited = await askedWith(async () => {
+    await questions.last().locator('[data-action="msg-edit"]').click();
+    await page.fill('.message-editor textarea', 'And the brushes?');
+    await page.click('.message-editor button[type="submit"]');
+  });
+  expect(edited).toEqual({ question: 'And the brushes?', mode: 'free', conversation: original, after: 1 });
+  await expect(questions.last().locator('.branch-pos')).toHaveText('2/2');
+  const latest = branches(/** @type {any[]} */ (await storedChatNodes(page))).at(-1);
+  const changed = await (await fetch(`${COMPANION}/v1/chat/conversations/${latest.conversation}`, auth)).json();
+  expect(changed.turns.map((/** @type {any} */ x) => x.question)).toEqual(['Where is the ladder?', 'And the brushes?']);
+  // Questions to the companion stay on this device like its answers.
+  const stored = /** @type {any[]} */ (await storedChatNodes(page));
+  expect(stored.filter((n) => n.role === 'user').every((n) => n.localOnly === true)).toBe(true);
+  expect(problems).toEqual([]);
+});
+
+test('a stored link that has expired takes the companion out of the picker', async ({ page }) => {
+  await mockSupabase(page, { hardened: true, anonymousAuth: true });
+  const problems = await watchProblems(page, { ignore: /ERR_CONNECTION_REFUSED/ });
+  page.on('dialog', (d) => d.accept());
+  await page.goto('/');
+  await pairHosted(page);
+  const option = page.locator('#engineSelector option[value="companion:starpi-core"]');
+  await expect(option).toHaveCount(1);
+  // As if the session had run out while the browser was closed.
+  await page.evaluate(
+    () =>
+      new Promise((resolve, reject) => {
+        const open = indexedDB.open('starpi-companion');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const tx = db.transaction('link', 'readwrite');
+          const store = tx.objectStore('link');
+          const get = store.get('current');
+          get.onsuccess = () => {
+            store.put({ ...get.result, expiresAt: '2001-01-01T00:00:00.000Z' });
+            tx.oncomplete = () => {
+              db.close();
+              resolve(undefined);
+            };
+          };
+        };
+      }),
+  );
+  // The next page reads the link only once the pairing's code has loaded; until then the pickers
+  // know the flag alone. Hold that code back until they have offered the companion on it.
+  /** @type {() => void} */
+  let release = () => {};
+  const held = new Promise((resolve) => (release = () => resolve(undefined)));
+  await page.route(/\/assets\/chunk-[A-Z0-9]+\.js$/, async (route) => {
+    const response = await route.fetch();
+    const body = await response.text();
+    if (body.includes('starpi-companion-link')) await held;
+    await route.fulfill({ response, body });
+  });
+  await page.reload();
+  await expect(page.locator('#engineSelector[data-ready="true"]')).toHaveCount(1);
+  await expect(option).toHaveCount(1);
+  release();
+  // Reading the link drops it, and the pickers hear it: no entry that every question would fail on.
+  await expect(option).toHaveCount(0);
+  await expect(page.locator('#nav-companion')).toBeHidden();
+  await page.click('#nav-settings');
+  await expect(page.locator('#companionSettings')).toContainText('Not paired');
+  await expect(option).toHaveCount(0);
+  expect(await storedLink(page)).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('starpi_companion_linked'))).toBeNull();
+  expect(problems).toEqual([]);
+});

@@ -8,7 +8,7 @@
 import { getKey } from '../ai/keys.js';
 import { setHtml } from '../dom.js';
 import { getIntlLocale, getLocale, t } from '../i18n/index.js';
-import { getMode } from '../state.js';
+import { getAssistant, getMode } from '../state.js';
 import { html, icon, label, segmented, setSegmentedValue } from '../ui/kit.js';
 import { createCapture } from '../voice/capture.js';
 import { apiLiveToken } from '../voice/client.js';
@@ -57,7 +57,8 @@ function liveController() {
   const queueActivity = { isPlaying: () => queue.speaking(), onStateChange: (/** @type {(on: boolean) => void} */ fn) => queue.onState(fn) };
   controller = createLiveController({
     liveToken: (input) => apiLiveToken({ ...input, locale: getLocale(), camera: getVoiceSettings().camera }, { userKey: getKey('gemini').trim() || null }),
-    canUseLive: () => !pageContext.onDevice() && (getKey('gemini').trim() !== '' || pageContext.site()?.live === true),
+    // With the companion picked, a free conversation runs as turns through it, never Gemini Live.
+    canUseLive: () => !pageContext.onDevice() && !getAssistant().startsWith('companion:') && (getKey('gemini').trim() !== '' || pageContext.site()?.live === true),
     capture: () => createCapture({ context: () => playback.context(), activity: [playback, queueActivity] }),
     playback,
     queue,

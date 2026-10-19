@@ -108,7 +108,7 @@
     "busy": "Sohbetteki yanıtın bitmesini bekleyin.",
     "no_model": "Bu model şu anda kullanılamıyor.",
     "no_question": "Bu yanıtın yeniden sorulacak bir sorusu yok.",
-    "stays_on_device": "Bu soru bu cihazda kalır: yalnızca buradaki model veya kendi sunucunuz yanıtlayabilir.",
+    "stays_on_device": "Bu soru bu cihazda kalır: yalnızca buradaki model, kendi sunucunuz veya eşleştirilmiş Companion’ınız yanıtlayabilir.",
     "failed": "Karşılaştırma başlatılamadı."
   },
   "council": {

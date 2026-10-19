@@ -83,12 +83,14 @@ export function renderPrivacyNotice() {
   el.replaceChildren(iconEl, text);
   // Disclose where the conversation itself is kept when it leaves the browser: with the encrypted
   // sync on, in the synced copy and the user's other browsers (a question that stays on this device
-  // never syncs).
+  // never syncs, and neither does a question to the companion or its answer).
   if (dest.kind !== 'device' && chatSyncActive()) {
     const history = document.createElement('span');
     history.className = 'basis-full sm:basis-auto'; // its own line on phones
-    history.dataset.historySynced = '';
-    setText(history, 'chat-thread.privacy.history_synced');
+    const companion = dest.kind === 'companion';
+    if (companion) history.dataset.historyUnsynced = '';
+    else history.dataset.historySynced = '';
+    setText(history, companion ? 'chat-thread.privacy.companion_unsynced' : 'chat-thread.privacy.history_synced');
     el.append(history);
   }
   refreshIcons(el);

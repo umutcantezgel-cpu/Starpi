@@ -146,8 +146,15 @@ function serverBase() {
 /** Set while a companion link is stored (companion/pair.js LINK_MARKER). */
 export const COMPANION_LINK_MARKER = 'starpi_companion_linked';
 
-/** Whether a companion is paired, from the flag alone (no database is opened for it). */
-const companionLinked = () => readLocal(COMPANION_LINK_MARKER) === '1';
+/** What the page's pairing last reported (setCompanionPaired); null while it has not loaded. */
+/** @type {boolean | null} */
+let companionReported = null;
+
+/**
+ * Whether a companion is paired: what the page's pairing reported, else the flag alone (no
+ * database is opened for it before the pairing loads).
+ */
+const companionLinked = () => companionReported ?? readLocal(COMPANION_LINK_MARKER) === '1';
 
 /** Providers a key can be added for, in picker order. */
 const KEY_PROVIDERS = PROVIDER_ORDER.filter((id) => getProvider(id)?.byok);
@@ -250,10 +257,12 @@ export function providerLabel(provider) {
 
 /**
  * Tells the pickers whether a companion is paired now (the pairing calls this when it pairs,
- * unpairs or finds its link gone).
+ * unpairs, drops a stored link it cannot use, or finds its session gone). From then on its word
+ * counts, not the flag.
  * @param {boolean} paired
  */
 export function setCompanionPaired(paired) {
+  companionReported = paired;
   if (state.companion === paired) return;
   state = { ...state, companion: paired };
   notify();

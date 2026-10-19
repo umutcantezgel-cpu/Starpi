@@ -6,9 +6,13 @@
 //
 // The companion answers in a conversation it keeps itself and passes every answer through its own
 // sentence gate before anything leaves it. This adapter therefore sends only the question (the last
-// user message; the system prompt of the app is not the companion's) and the companion's
-// conversation id, which it finds in the provider state of the companion's earlier answers in the
-// history. It passes the released answer through unchanged:
+// user message; the system prompt of the app is not the companion's), the companion's conversation
+// id and the number of the turn the question follows, both found in the provider state of the
+// companion's latest answer in the history. The chat keeps its history as a tree, the companion
+// keeps one line per conversation: when that conversation already holds more turns (an answer
+// asked for again, a changed question, another branch), the companion goes on in a copy of the
+// turns up to that one, so its history is always the branch being asked. It passes the released
+// answer through unchanged:
 //   - each released unit becomes a text delta, so the answer shows as it is released;
 //   - a withdrawal (`reset`) cannot be undone in an event stream: `onText` hears the visible text
 //     after every unit and every withdrawal, so a view can show exactly what is released now;
@@ -123,23 +127,30 @@ export function companionTurnOf(block) {
 }
 
 /**
- * The companion conversation a request continues: the one of the latest companion answer in its
- * history; null for a first question.
+ * Where in the companion's conversations a request goes on: the conversation and turn of the latest
+ * companion answer in its history (the turn null when that answer names none); null for a first
+ * question.
  * @param {AiRequest} req
- * @returns {string | null}
+ * @returns {{ conversation: string, turn: number | null } | null}
  */
-export function conversationOf(req) {
+export function placeOf(req) {
   for (let i = req.messages.length - 1; i >= 0; i -= 1) {
     const m = req.messages[i];
     if (m.role !== 'assistant') continue;
     for (const part of m.content) {
       if (part.type !== 'opaque' || part.provider !== 'companion') continue;
       const turn = companionTurnOf(part.block);
-      if (turn) return turn.conversation;
+      if (turn) return { conversation: turn.conversation, turn: Number.isSafeInteger(turn.turn) && turn.turn > 0 ? turn.turn : null };
     }
   }
   return null;
 }
+
+/**
+ * The companion conversation a request continues; null for a first question.
+ * @param {AiRequest} req
+ */
+export const conversationOf = (req) => placeOf(req)?.conversation ?? null;
 
 /**
  * The visible text of released units: sentences joined by a space, list items and table rows by a
@@ -236,10 +247,10 @@ export function createCompanionAdapter(options = {}) {
           emitted = text;
         }
       };
-      const conversation = conversationOf(req);
+      const place = placeOf(req);
       stream(
         pairing,
-        { question, mode, ...(options.dataClass ? { dataClass: options.dataClass } : {}), conversation, signal: context.signal },
+        { question, mode, ...(options.dataClass ? { dataClass: options.dataClass } : {}), conversation: place?.conversation ?? null, after: place?.turn ?? null, signal: context.signal },
         {
           onUnit(unit) {
             units.push(unit);

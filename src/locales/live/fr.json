@@ -30,6 +30,7 @@
     "hidden": "Terminée, car l’onglet a été quitté.",
     "error": "La connexion s’est interrompue de manière inattendue.",
     "no_model": "Aucun modèle n’est disponible. Ajoutez une clé dans Paramètres → Fournisseurs.",
+    "companion_sources": "Starpi Core ne répond aux questions orales que dans une conversation libre : il répond à partir de ses propres documents, pas des sources trouvées ici. Lancez une conversation libre ou choisissez un autre modèle.",
     "microphone": "Le microphone n’a pas pu démarrer."
   },
   "hint": {
