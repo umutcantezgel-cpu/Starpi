@@ -29,9 +29,9 @@ test('inbox numbers are never reused: not after removing the newest, not after p
   // An app has seen everything up to 3; then the newest one is removed.
   assert.equal(inbox.remove('n-000000000003'), true);
   assert.equal(inbox.list().latest, 3, 'latest is the highest number handed out, not the newest kept');
-  const next = inbox.post({ kind: 'reminder', title: 'Water the plants' });
+  const next = inbox.post({ kind: 'reminder', title: 'Water the herbs' });
   assert.equal(next.seq, 4);
-  assert.deepEqual(inbox.list({ after: 3 }).notifications.map((n) => n.title), ['Water the plants'], 'the app catching up sees it');
+  assert.deepEqual(inbox.list({ after: 3 }).notifications.map((n) => n.title), ['Water the herbs'], 'the app catching up sees it');
 
   // Everything ages out; the numbers go on.
   clock.advance(31 * 86_400_000);
