@@ -85,7 +85,7 @@ function whoOf(req) {
  * @param {import('./actor.js').Actor} [options.actor]   the actor (default: a mock actor on the demo scene)
  * @param {readonly string[]} [options.ownOrigins]       origins the Starpi app is served from
  * @param {import('../lib/clock.js').Clock} [options.clock]  overrides the kernel's clock
- * @returns {import('../contracts/module.js').CompanionModule & { controller: () => import('./control.js').Controller | null }}
+ * @returns {import('../contracts/module.js').CompanionModule}
  */
 export function createComputerModule({ actor, ownOrigins = [], clock } = {}) {
   /** @type {import('./control.js').Controller | null} */
@@ -145,7 +145,6 @@ export function createComputerModule({ actor, ownOrigins = [], clock } = {}) {
       controller = null;
       await running?.shutdown();
     },
-    controller: () => controller,
   };
 }
 
