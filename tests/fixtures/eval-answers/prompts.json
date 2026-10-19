@@ -1,0 +1,872 @@
+{
+  "description": "Neutral prompts for the answer-quality eval (scripts/eval-answers.mjs): 30 in English and 30 in German, three each in French, Spanish, Italian and Turkish. Free prompts ask general knowledge, explanations, short writing and advice; source prompts carry fictitious sample passages and are asked with the app's grounded prompt. 'mention' lists words of which a good answer names at least one (case and accents ignored). Nothing here gates a build.",
+  "prompts": [
+    {
+      "id": "en-01",
+      "lang": "en",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "What is the capital of Australia?",
+      "mention": [
+        "Canberra"
+      ]
+    },
+    {
+      "id": "en-02",
+      "lang": "en",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "How many minutes are in a day?",
+      "mention": [
+        "1440",
+        "1,440"
+      ]
+    },
+    {
+      "id": "en-03",
+      "lang": "en",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "Which planet is known as the red planet?",
+      "mention": [
+        "Mars"
+      ]
+    },
+    {
+      "id": "en-04",
+      "lang": "en",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "Who wrote the novel Pride and Prejudice?",
+      "mention": [
+        "Austen"
+      ]
+    },
+    {
+      "id": "en-05",
+      "lang": "en",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "What is the boiling point of water at sea level in degrees Celsius?",
+      "mention": [
+        "100"
+      ]
+    },
+    {
+      "id": "en-06",
+      "lang": "en",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "Name the largest ocean on Earth.",
+      "mention": [
+        "Pacific"
+      ]
+    },
+    {
+      "id": "en-07",
+      "lang": "en",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "What gas do plants take in for photosynthesis?",
+      "mention": [
+        "carbon dioxide",
+        "CO2",
+        "CO₂"
+      ]
+    },
+    {
+      "id": "en-08",
+      "lang": "en",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "How many sides does a hexagon have?",
+      "mention": [
+        "6",
+        "six"
+      ]
+    },
+    {
+      "id": "en-09",
+      "lang": "en",
+      "mode": "free",
+      "kind": "explain",
+      "prompt": "Explain the difference between weather and climate in two sentences.",
+      "mention": [
+        "climate"
+      ]
+    },
+    {
+      "id": "en-10",
+      "lang": "en",
+      "mode": "free",
+      "kind": "explain",
+      "prompt": "What does HTTP stand for?",
+      "mention": [
+        "Hypertext Transfer Protocol"
+      ]
+    },
+    {
+      "id": "en-11",
+      "lang": "en",
+      "mode": "free",
+      "kind": "explain",
+      "prompt": "Explain what a binary search does, briefly.",
+      "mention": [
+        "sorted",
+        "half"
+      ]
+    },
+    {
+      "id": "en-12",
+      "lang": "en",
+      "mode": "free",
+      "kind": "explain",
+      "prompt": "What is the difference between a list and a set in programming?",
+      "mention": [
+        "duplicate",
+        "order"
+      ]
+    },
+    {
+      "id": "en-13",
+      "lang": "en",
+      "mode": "free",
+      "kind": "writing",
+      "prompt": "Write a short, friendly reminder for a team meeting on Thursday."
+    },
+    {
+      "id": "en-14",
+      "lang": "en",
+      "mode": "free",
+      "kind": "writing",
+      "prompt": "Suggest three names for a neighbourhood book club."
+    },
+    {
+      "id": "en-15",
+      "lang": "en",
+      "mode": "free",
+      "kind": "writing",
+      "prompt": "Write a haiku about rain in the city."
+    },
+    {
+      "id": "en-16",
+      "lang": "en",
+      "mode": "free",
+      "kind": "writing",
+      "prompt": "Draft a two-sentence apology for a delayed delivery."
+    },
+    {
+      "id": "en-17",
+      "lang": "en",
+      "mode": "free",
+      "kind": "advice",
+      "prompt": "Give me three tips for a productive morning routine."
+    },
+    {
+      "id": "en-18",
+      "lang": "en",
+      "mode": "free",
+      "kind": "advice",
+      "prompt": "How can I prepare for a job interview in one evening?"
+    },
+    {
+      "id": "en-19",
+      "lang": "en",
+      "mode": "free",
+      "kind": "advice",
+      "prompt": "What should I pack for a weekend hiking trip?"
+    },
+    {
+      "id": "en-20",
+      "lang": "en",
+      "mode": "free",
+      "kind": "advice",
+      "prompt": "How do I make a simple tomato sauce?"
+    },
+    {
+      "id": "en-21",
+      "lang": "en",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "office-guide.md",
+          "text": "Office guide (sample). The office opens at 07:30 and closes at 19:00 on working days. Visitors sign in at reception and wear a visitor badge. Meeting room Birch seats 12 people and has a video bar; meeting room Alder seats 6."
+        },
+        {
+          "doc": "office-guide.md",
+          "text": "Printing: every employee has a monthly quota of 300 pages. Colour printing is allowed for client documents only. The kitchen is cleaned every Friday at 15:00, and food left in the fridge is removed then."
+        }
+      ],
+      "prompt": "When does the office open and close?",
+      "mention": [
+        "07:30",
+        "19:00"
+      ]
+    },
+    {
+      "id": "en-22",
+      "lang": "en",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "office-guide.md",
+          "text": "Office guide (sample). The office opens at 07:30 and closes at 19:00 on working days. Visitors sign in at reception and wear a visitor badge. Meeting room Birch seats 12 people and has a video bar; meeting room Alder seats 6."
+        },
+        {
+          "doc": "office-guide.md",
+          "text": "Printing: every employee has a monthly quota of 300 pages. Colour printing is allowed for client documents only. The kitchen is cleaned every Friday at 15:00, and food left in the fridge is removed then."
+        }
+      ],
+      "prompt": "How many people fit in meeting room Birch?",
+      "mention": [
+        "12"
+      ]
+    },
+    {
+      "id": "en-23",
+      "lang": "en",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "office-guide.md",
+          "text": "Office guide (sample). The office opens at 07:30 and closes at 19:00 on working days. Visitors sign in at reception and wear a visitor badge. Meeting room Birch seats 12 people and has a video bar; meeting room Alder seats 6."
+        },
+        {
+          "doc": "office-guide.md",
+          "text": "Printing: every employee has a monthly quota of 300 pages. Colour printing is allowed for client documents only. The kitchen is cleaned every Friday at 15:00, and food left in the fridge is removed then."
+        }
+      ],
+      "prompt": "What is the monthly printing quota?",
+      "mention": [
+        "300"
+      ]
+    },
+    {
+      "id": "en-24",
+      "lang": "en",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "office-guide.md",
+          "text": "Office guide (sample). The office opens at 07:30 and closes at 19:00 on working days. Visitors sign in at reception and wear a visitor badge. Meeting room Birch seats 12 people and has a video bar; meeting room Alder seats 6."
+        },
+        {
+          "doc": "office-guide.md",
+          "text": "Printing: every employee has a monthly quota of 300 pages. Colour printing is allowed for client documents only. The kitchen is cleaned every Friday at 15:00, and food left in the fridge is removed then."
+        }
+      ],
+      "prompt": "When is the kitchen cleaned?",
+      "mention": [
+        "Friday",
+        "15:00"
+      ]
+    },
+    {
+      "id": "en-25",
+      "lang": "en",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "travel-policy.md",
+          "text": "Travel policy (sample). Flights shorter than four hours are booked in economy class. Hotel costs are reimbursed up to 140 EUR per night in most cities and up to 190 EUR in capitals. Expense reports are due within 30 days of the trip."
+        }
+      ],
+      "prompt": "Up to how much is a hotel night in a capital reimbursed?",
+      "mention": [
+        "190"
+      ]
+    },
+    {
+      "id": "en-26",
+      "lang": "en",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "travel-policy.md",
+          "text": "Travel policy (sample). Flights shorter than four hours are booked in economy class. Hotel costs are reimbursed up to 140 EUR per night in most cities and up to 190 EUR in capitals. Expense reports are due within 30 days of the trip."
+        }
+      ],
+      "prompt": "By when are expense reports due?",
+      "mention": [
+        "30 days"
+      ]
+    },
+    {
+      "id": "en-27",
+      "lang": "en",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "travel-policy.md",
+          "text": "Travel policy (sample). Flights shorter than four hours are booked in economy class. Hotel costs are reimbursed up to 140 EUR per night in most cities and up to 190 EUR in capitals. Expense reports are due within 30 days of the trip."
+        }
+      ],
+      "prompt": "Which class is booked for short flights?",
+      "mention": [
+        "economy"
+      ]
+    },
+    {
+      "id": "en-28",
+      "lang": "en",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "garden-club.md",
+          "text": "Community garden club (sample). The club has 46 members and 23 raised beds. Each bed is rented for 35 EUR per season. The water tank is refilled on Mondays and Thursdays. Tools are kept in the shed; the key code is changed every spring."
+        }
+      ],
+      "prompt": "How many members and raised beds does the garden club have?",
+      "mention": [
+        "46",
+        "23"
+      ]
+    },
+    {
+      "id": "en-29",
+      "lang": "en",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "garden-club.md",
+          "text": "Community garden club (sample). The club has 46 members and 23 raised beds. Each bed is rented for 35 EUR per season. The water tank is refilled on Mondays and Thursdays. Tools are kept in the shed; the key code is changed every spring."
+        }
+      ],
+      "prompt": "What does a bed cost per season?",
+      "mention": [
+        "35"
+      ]
+    },
+    {
+      "id": "en-30",
+      "lang": "en",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "garden-club.md",
+          "text": "Community garden club (sample). The club has 46 members and 23 raised beds. Each bed is rented for 35 EUR per season. The water tank is refilled on Mondays and Thursdays. Tools are kept in the shed; the key code is changed every spring."
+        }
+      ],
+      "prompt": "On which days is the water tank refilled?",
+      "mention": [
+        "Monday",
+        "Thursday"
+      ]
+    },
+    {
+      "id": "de-01",
+      "lang": "de",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "Was ist die Hauptstadt von Kanada?",
+      "mention": [
+        "Ottawa"
+      ]
+    },
+    {
+      "id": "de-02",
+      "lang": "de",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "Wie viele Stunden hat eine Woche?",
+      "mention": [
+        "168"
+      ]
+    },
+    {
+      "id": "de-03",
+      "lang": "de",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "Welcher Planet ist der größte im Sonnensystem?",
+      "mention": [
+        "Jupiter"
+      ]
+    },
+    {
+      "id": "de-04",
+      "lang": "de",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "Wer schrieb den Faust?",
+      "mention": [
+        "Goethe"
+      ]
+    },
+    {
+      "id": "de-05",
+      "lang": "de",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "Bei wie viel Grad Celsius gefriert Wasser?",
+      "mention": [
+        "0",
+        "null"
+      ]
+    },
+    {
+      "id": "de-06",
+      "lang": "de",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "Wie heißt der längste Fluss Europas?",
+      "mention": [
+        "Wolga"
+      ]
+    },
+    {
+      "id": "de-07",
+      "lang": "de",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "Welches Gas atmen Menschen hauptsächlich aus?",
+      "mention": [
+        "Kohlendioxid",
+        "CO2",
+        "CO₂",
+        "Kohlenstoffdioxid"
+      ]
+    },
+    {
+      "id": "de-08",
+      "lang": "de",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "Wie viele Ecken hat ein Würfel?",
+      "mention": [
+        "8",
+        "acht"
+      ]
+    },
+    {
+      "id": "de-09",
+      "lang": "de",
+      "mode": "free",
+      "kind": "explain",
+      "prompt": "Erkläre in zwei Sätzen den Unterschied zwischen Wetter und Klima.",
+      "mention": [
+        "Klima"
+      ]
+    },
+    {
+      "id": "de-10",
+      "lang": "de",
+      "mode": "free",
+      "kind": "explain",
+      "prompt": "Wofür steht die Abkürzung PDF?",
+      "mention": [
+        "Portable Document Format"
+      ]
+    },
+    {
+      "id": "de-11",
+      "lang": "de",
+      "mode": "free",
+      "kind": "explain",
+      "prompt": "Erkläre kurz, was eine Datenbank-Indexierung bewirkt.",
+      "mention": [
+        "schnell",
+        "Suche"
+      ]
+    },
+    {
+      "id": "de-12",
+      "lang": "de",
+      "mode": "free",
+      "kind": "explain",
+      "prompt": "Was ist der Unterschied zwischen RAM und Festplatte?",
+      "mention": [
+        "flüchtig",
+        "dauerhaft",
+        "Arbeitsspeicher"
+      ]
+    },
+    {
+      "id": "de-13",
+      "lang": "de",
+      "mode": "free",
+      "kind": "writing",
+      "prompt": "Schreibe eine kurze, freundliche Erinnerung an ein Teamtreffen am Donnerstag."
+    },
+    {
+      "id": "de-14",
+      "lang": "de",
+      "mode": "free",
+      "kind": "writing",
+      "prompt": "Schlage drei Namen für einen Lesekreis in der Nachbarschaft vor."
+    },
+    {
+      "id": "de-15",
+      "lang": "de",
+      "mode": "free",
+      "kind": "writing",
+      "prompt": "Schreibe ein Haiku über Regen in der Stadt."
+    },
+    {
+      "id": "de-16",
+      "lang": "de",
+      "mode": "free",
+      "kind": "writing",
+      "prompt": "Formuliere eine Entschuldigung in zwei Sätzen für eine verspätete Lieferung."
+    },
+    {
+      "id": "de-17",
+      "lang": "de",
+      "mode": "free",
+      "kind": "advice",
+      "prompt": "Gib mir drei Tipps für eine produktive Morgenroutine."
+    },
+    {
+      "id": "de-18",
+      "lang": "de",
+      "mode": "free",
+      "kind": "advice",
+      "prompt": "Wie bereite ich mich an einem Abend auf ein Vorstellungsgespräch vor?"
+    },
+    {
+      "id": "de-19",
+      "lang": "de",
+      "mode": "free",
+      "kind": "advice",
+      "prompt": "Was sollte ich für eine Wanderung am Wochenende einpacken?"
+    },
+    {
+      "id": "de-20",
+      "lang": "de",
+      "mode": "free",
+      "kind": "advice",
+      "prompt": "Wie koche ich eine einfache Tomatensoße?"
+    },
+    {
+      "id": "de-21",
+      "lang": "de",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "buero-leitfaden.md",
+          "text": "Büroleitfaden (Beispiel). Das Büro öffnet an Arbeitstagen um 07:30 Uhr und schließt um 19:00 Uhr. Gäste melden sich am Empfang an und tragen einen Besucherausweis. Der Besprechungsraum Birke bietet 12 Plätze und eine Videoleiste, der Raum Erle 6 Plätze."
+        },
+        {
+          "doc": "buero-leitfaden.md",
+          "text": "Drucken: Jede Mitarbeiterin und jeder Mitarbeiter hat ein monatliches Kontingent von 300 Seiten. Farbdruck ist nur für Kundendokumente erlaubt. Die Küche wird jeden Freitag um 15:00 Uhr gereinigt; Lebensmittel im Kühlschrank werden dann entfernt."
+        }
+      ],
+      "prompt": "Wann öffnet und schließt das Büro?",
+      "mention": [
+        "07:30",
+        "19:00"
+      ]
+    },
+    {
+      "id": "de-22",
+      "lang": "de",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "buero-leitfaden.md",
+          "text": "Büroleitfaden (Beispiel). Das Büro öffnet an Arbeitstagen um 07:30 Uhr und schließt um 19:00 Uhr. Gäste melden sich am Empfang an und tragen einen Besucherausweis. Der Besprechungsraum Birke bietet 12 Plätze und eine Videoleiste, der Raum Erle 6 Plätze."
+        },
+        {
+          "doc": "buero-leitfaden.md",
+          "text": "Drucken: Jede Mitarbeiterin und jeder Mitarbeiter hat ein monatliches Kontingent von 300 Seiten. Farbdruck ist nur für Kundendokumente erlaubt. Die Küche wird jeden Freitag um 15:00 Uhr gereinigt; Lebensmittel im Kühlschrank werden dann entfernt."
+        }
+      ],
+      "prompt": "Wie viele Personen passen in den Raum Birke?",
+      "mention": [
+        "12"
+      ]
+    },
+    {
+      "id": "de-23",
+      "lang": "de",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "buero-leitfaden.md",
+          "text": "Büroleitfaden (Beispiel). Das Büro öffnet an Arbeitstagen um 07:30 Uhr und schließt um 19:00 Uhr. Gäste melden sich am Empfang an und tragen einen Besucherausweis. Der Besprechungsraum Birke bietet 12 Plätze und eine Videoleiste, der Raum Erle 6 Plätze."
+        },
+        {
+          "doc": "buero-leitfaden.md",
+          "text": "Drucken: Jede Mitarbeiterin und jeder Mitarbeiter hat ein monatliches Kontingent von 300 Seiten. Farbdruck ist nur für Kundendokumente erlaubt. Die Küche wird jeden Freitag um 15:00 Uhr gereinigt; Lebensmittel im Kühlschrank werden dann entfernt."
+        }
+      ],
+      "prompt": "Wie hoch ist das monatliche Druckkontingent?",
+      "mention": [
+        "300"
+      ]
+    },
+    {
+      "id": "de-24",
+      "lang": "de",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "buero-leitfaden.md",
+          "text": "Büroleitfaden (Beispiel). Das Büro öffnet an Arbeitstagen um 07:30 Uhr und schließt um 19:00 Uhr. Gäste melden sich am Empfang an und tragen einen Besucherausweis. Der Besprechungsraum Birke bietet 12 Plätze und eine Videoleiste, der Raum Erle 6 Plätze."
+        },
+        {
+          "doc": "buero-leitfaden.md",
+          "text": "Drucken: Jede Mitarbeiterin und jeder Mitarbeiter hat ein monatliches Kontingent von 300 Seiten. Farbdruck ist nur für Kundendokumente erlaubt. Die Küche wird jeden Freitag um 15:00 Uhr gereinigt; Lebensmittel im Kühlschrank werden dann entfernt."
+        }
+      ],
+      "prompt": "Wann wird die Küche gereinigt?",
+      "mention": [
+        "Freitag",
+        "15:00"
+      ]
+    },
+    {
+      "id": "de-25",
+      "lang": "de",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "reiserichtlinie.md",
+          "text": "Reiserichtlinie (Beispiel). Flüge unter vier Stunden werden in der Economy-Klasse gebucht. Hotelkosten werden in den meisten Städten bis 140 EUR pro Nacht erstattet, in Hauptstädten bis 190 EUR. Reisekostenabrechnungen sind innerhalb von 30 Tagen nach der Reise fällig."
+        }
+      ],
+      "prompt": "Bis zu welchem Betrag wird eine Hotelnacht in einer Hauptstadt erstattet?",
+      "mention": [
+        "190"
+      ]
+    },
+    {
+      "id": "de-26",
+      "lang": "de",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "reiserichtlinie.md",
+          "text": "Reiserichtlinie (Beispiel). Flüge unter vier Stunden werden in der Economy-Klasse gebucht. Hotelkosten werden in den meisten Städten bis 140 EUR pro Nacht erstattet, in Hauptstädten bis 190 EUR. Reisekostenabrechnungen sind innerhalb von 30 Tagen nach der Reise fällig."
+        }
+      ],
+      "prompt": "Bis wann sind Reisekostenabrechnungen fällig?",
+      "mention": [
+        "30 Tagen"
+      ]
+    },
+    {
+      "id": "de-27",
+      "lang": "de",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "reiserichtlinie.md",
+          "text": "Reiserichtlinie (Beispiel). Flüge unter vier Stunden werden in der Economy-Klasse gebucht. Hotelkosten werden in den meisten Städten bis 140 EUR pro Nacht erstattet, in Hauptstädten bis 190 EUR. Reisekostenabrechnungen sind innerhalb von 30 Tagen nach der Reise fällig."
+        }
+      ],
+      "prompt": "In welcher Klasse werden kurze Flüge gebucht?",
+      "mention": [
+        "Economy"
+      ]
+    },
+    {
+      "id": "de-28",
+      "lang": "de",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "gartenverein.md",
+          "text": "Gemeinschaftsgarten (Beispiel). Der Verein hat 46 Mitglieder und 23 Hochbeete. Ein Beet kostet 35 EUR pro Saison. Der Wassertank wird montags und donnerstags aufgefüllt. Werkzeug liegt im Schuppen; der Zahlencode wird jedes Frühjahr geändert."
+        }
+      ],
+      "prompt": "Wie viele Mitglieder und Hochbeete hat der Verein?",
+      "mention": [
+        "46",
+        "23"
+      ]
+    },
+    {
+      "id": "de-29",
+      "lang": "de",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "gartenverein.md",
+          "text": "Gemeinschaftsgarten (Beispiel). Der Verein hat 46 Mitglieder und 23 Hochbeete. Ein Beet kostet 35 EUR pro Saison. Der Wassertank wird montags und donnerstags aufgefüllt. Werkzeug liegt im Schuppen; der Zahlencode wird jedes Frühjahr geändert."
+        }
+      ],
+      "prompt": "Was kostet ein Beet pro Saison?",
+      "mention": [
+        "35"
+      ]
+    },
+    {
+      "id": "de-30",
+      "lang": "de",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "gartenverein.md",
+          "text": "Gemeinschaftsgarten (Beispiel). Der Verein hat 46 Mitglieder und 23 Hochbeete. Ein Beet kostet 35 EUR pro Saison. Der Wassertank wird montags und donnerstags aufgefüllt. Werkzeug liegt im Schuppen; der Zahlencode wird jedes Frühjahr geändert."
+        }
+      ],
+      "prompt": "An welchen Tagen wird der Wassertank aufgefüllt?",
+      "mention": [
+        "montags",
+        "donnerstags",
+        "Montag",
+        "Donnerstag"
+      ]
+    },
+    {
+      "id": "fr-01",
+      "lang": "fr",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "Quelle est la capitale du Portugal ?",
+      "mention": [
+        "Lisbonne"
+      ]
+    },
+    {
+      "id": "fr-02",
+      "lang": "fr",
+      "mode": "free",
+      "kind": "writing",
+      "prompt": "Écris deux phrases pour souhaiter un bon anniversaire à une collègue."
+    },
+    {
+      "id": "fr-03",
+      "lang": "fr",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "mediatheque.md",
+          "text": "Règlement de la médiathèque (exemple). La médiathèque est ouverte du mardi au samedi de 9 h à 18 h. Chaque lecteur peut emprunter jusqu’à 8 livres pendant 21 jours."
+        }
+      ],
+      "prompt": "Combien de livres un lecteur peut-il emprunter, et pour combien de temps ?",
+      "mention": [
+        "8",
+        "21"
+      ]
+    },
+    {
+      "id": "es-01",
+      "lang": "es",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "¿Cuál es la capital de Perú?",
+      "mention": [
+        "Lima"
+      ]
+    },
+    {
+      "id": "es-02",
+      "lang": "es",
+      "mode": "free",
+      "kind": "advice",
+      "prompt": "Dame tres consejos para dormir mejor."
+    },
+    {
+      "id": "es-03",
+      "lang": "es",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "aparcamiento.md",
+          "text": "Normas del aparcamiento (ejemplo). Las plazas se reservan con un día de antelación. El aparcamiento cierra a las 22:00 y los fines de semana permanece cerrado."
+        }
+      ],
+      "prompt": "¿A qué hora cierra el aparcamiento?",
+      "mention": [
+        "22:00"
+      ]
+    },
+    {
+      "id": "it-01",
+      "lang": "it",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "Qual è la capitale della Grecia?",
+      "mention": [
+        "Atene"
+      ]
+    },
+    {
+      "id": "it-02",
+      "lang": "it",
+      "mode": "free",
+      "kind": "explain",
+      "prompt": "Spiega in due frasi che cos’è la fotosintesi.",
+      "mention": [
+        "luce",
+        "anidride carbonica",
+        "CO2"
+      ]
+    },
+    {
+      "id": "it-03",
+      "lang": "it",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "sale-riunioni.md",
+          "text": "Sale riunioni (esempio). Le sale si prenotano fino a 14 giorni prima. Una prenotazione dura al massimo 4 ore e la sala grande ha 20 posti."
+        }
+      ],
+      "prompt": "Quanti posti ha la sala grande?",
+      "mention": [
+        "20"
+      ]
+    },
+    {
+      "id": "tr-01",
+      "lang": "tr",
+      "mode": "free",
+      "kind": "knowledge",
+      "prompt": "Japonya’nın başkenti neresidir?",
+      "mention": [
+        "Tokyo"
+      ]
+    },
+    {
+      "id": "tr-02",
+      "lang": "tr",
+      "mode": "free",
+      "kind": "advice",
+      "prompt": "İyi bir sabah rutini için üç öneri ver."
+    },
+    {
+      "id": "tr-03",
+      "lang": "tr",
+      "mode": "grounded",
+      "kind": "sources",
+      "sources": [
+        {
+          "doc": "parola-politikasi.md",
+          "text": "Parola politikası (örnek). Parolalar 90 günde bir değiştirilir ve en az 12 karakterden oluşur. Hesap, 5 hatalı girişten sonra 30 dakika kilitlenir."
+        }
+      ],
+      "prompt": "Hesap kaç hatalı girişten sonra kilitlenir?",
+      "mention": [
+        "5",
+        "beş"
+      ]
+    }
+  ]
+}
