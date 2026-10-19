@@ -8,6 +8,12 @@
 // installed service worker, and the manifest records profile and digest for serve.mjs and
 // verify-dist.mjs. A build for a profile the companion serves also gets dist/headers.json.
 //
+// The companion profile: the app learns its profile as __STARPI_PROFILE__ (in the profile
+// `companion` it is served by the companion from its own origin and pairs with it there, Mode A),
+// and STARPI_DIST_DIR=<folder> writes the build somewhere else than dist/, so a companion build
+// (`STARPI_HEADER_PROFILE=companion STARPI_DIST_DIR=dist-companion npm run build`, then
+// `starpi-companion start --app-dir dist-companion`) can sit next to the build of the site.
+//
 // The Supabase library is a lazy entry of its own (src/js/supabase-lib.js): src/js/supabase.js
 // imports it by URL on the first connect, so it is neither part of the first load nor precached.
 //
@@ -37,8 +43,19 @@ import { evaluateLicense, manifestLicense } from './license-gate.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(ROOT, 'src');
-const DIST = path.join(ROOT, 'dist');
+const DIST = process.env.STARPI_DIST_DIR ? path.resolve(ROOT, process.env.STARPI_DIST_DIR) : path.join(ROOT, 'dist');
 const TMP = path.join(ROOT, '.build');
+// The build folder is emptied before every build: never the checkout, a folder around it, or a
+// folder inside a source folder.
+/** @param {string} parent @param {string} child */
+const within = (parent, child) => {
+  const rel = path.relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+};
+if (within(DIST, ROOT) || ['src', 'public', 'node_modules', 'packages', 'scripts', 'tests', 'docs'].some((dir) => within(path.join(ROOT, dir), DIST))) {
+  console.error(`STARPI_DIST_DIR=${process.env.STARPI_DIST_DIR} would empty the checkout or a source folder; name a build folder of its own`);
+  process.exit(1);
+}
 const ASSETS = path.join(DIST, 'assets');
 
 const args = new Set(process.argv.slice(2));
@@ -256,6 +273,7 @@ const esbuildOptions = {
     __STARPI_SUPABASE_URL__: JSON.stringify(SUPABASE_URL),
     __STARPI_SUPABASE_ANON_KEY__: JSON.stringify(SUPABASE_ANON_KEY),
     __STARPI_VERSION__: JSON.stringify(APP_VERSION),
+    __STARPI_PROFILE__: JSON.stringify(PROFILE),
   },
 };
 

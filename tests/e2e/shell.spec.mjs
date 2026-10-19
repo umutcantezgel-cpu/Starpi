@@ -7,7 +7,7 @@ import { expect, mockSupabase, test } from './fixtures.mjs';
 
 const TABS = ['chat', 'research', 'library', 'ingest', 'graph', 'bench', 'settings'];
 /** Mount points whose feature renders content. */
-const RENDERED = new Set(['chat-sidebar', 'providerSettings', 'toolSettings', 'trustSettings', 'voiceSettings', 'memorySettings', 'syncSettings', 'composerExtras', 'tab-research']);
+const RENDERED = new Set(['chat-sidebar', 'providerSettings', 'toolSettings', 'trustSettings', 'voiceSettings', 'memorySettings', 'syncSettings', 'composerExtras', 'tab-research', 'tab-companion', 'companionSettings']);
 const DARK_PAGE = 'rgb(11, 17, 32)';
 const LIGHT_PAGE = 'rgb(248, 250, 252)';
 
@@ -54,6 +54,7 @@ test.describe('mount points', () => {
     await expect(page.locator('#trustSettings')).toHaveAttribute('data-mounted', 'trust');
     await expect(page.locator('#memorySettings')).toHaveAttribute('data-mounted', 'memory');
     await expect(page.locator('#syncSettings')).toHaveAttribute('data-mounted', 'sync');
+    await expect(page.locator('#companionSettings')).toHaveAttribute('data-mounted', 'companion-settings');
     await expect(page.locator('#chat-sidebar')).toHaveAttribute('data-mounted', 'conversations');
     // Mounted features carry their id, also those that render nothing yet.
     await expect(page.locator('#tab-research')).toHaveAttribute('data-mounted', 'research');

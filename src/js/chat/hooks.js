@@ -55,6 +55,14 @@
  */
 
 /**
+ * A source of excerpts for grounded questions besides the workspace and the library (the paired
+ * companion's documents and notes). `deviceOnly`: the question stays on this device.
+ * @typedef {object} RetrievalSource
+ * @property {string} id
+ * @property {(query: string, ctx: { deviceOnly: boolean }) => Promise<{ hits: import('../supabase.js').KnowledgeHit[], label: string }>} search
+ */
+
+/**
  * An entry of the composer's tools menu.
  * @typedef {object} ComposerTool
  * @property {string} id
@@ -92,6 +100,8 @@ export const composerTools = new Map();
 export const composerSlots = new Map();
 /** @type {Map<string, (host: HTMLElement, ctx: SidebarSectionContext) => void | (() => void)>} */
 export const sidebarSections = new Map();
+/** @type {Map<string, RetrievalSource>} */
+export const retrievalSources = new Map();
 /** @type {Set<() => void>} */
 const sidebarListeners = new Set();
 /** @type {Set<(el: HTMLElement, node: NodeRecord) => void>} */
@@ -217,6 +227,55 @@ export function setAnswerLabeler(fn) {
   return () => {
     if (single.label === fn) single.label = null;
   };
+}
+
+/**
+ * Adds a source of excerpts to grounded questions; a later registration of the same id replaces it.
+ * @param {RetrievalSource} source
+ */
+export function registerRetrievalSource(source) {
+  if (!source?.id || typeof source.search !== 'function') throw new TypeError('registerRetrievalSource({ id, search }) needs an id and a search function');
+  retrievalSources.set(source.id, source);
+  return () => {
+    if (retrievalSources.get(source.id) === source) retrievalSources.delete(source.id);
+  };
+}
+
+/**
+ * The excerpts every registered source has for a question, and the labels that say where they came
+ * from. A source that fails or takes longer than `timeoutMs` adds nothing.
+ * @param {string} query
+ * @param {{ deviceOnly: boolean, timeoutMs?: number }} ctx
+ */
+export async function sourceHits(query, ctx) {
+  const results = await Promise.all(
+    [...retrievalSources.values()].map(
+      (source) =>
+        new Promise((resolve) => {
+          const timer = setTimeout(() => resolve(null), ctx.timeoutMs ?? 5_000);
+          Promise.resolve()
+            .then(() => source.search(query, { deviceOnly: ctx.deviceOnly }))
+            .then(
+              (r) => resolve(r),
+              (err) => {
+                console.warn(`[starpi] the retrieval source "${source.id}" failed`, err);
+                resolve(null);
+              },
+            )
+            .finally(() => clearTimeout(timer));
+        }),
+    ),
+  );
+  /** @type {import('../supabase.js').KnowledgeHit[]} */
+  const hits = [];
+  /** @type {string[]} */
+  const labels = [];
+  for (const r of /** @type {Array<{ hits: import('../supabase.js').KnowledgeHit[], label: string } | null>} */ (results)) {
+    if (!r) continue;
+    if (Array.isArray(r.hits)) hits.push(...r.hits);
+    if (r.label) labels.push(r.label);
+  }
+  return { hits, labels };
 }
 
 /**
