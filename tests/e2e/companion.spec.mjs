@@ -2,8 +2,10 @@
 // port with throwaway folders: Mode A (the companion serves a build of the profile `companion` and
 // pairs it with a cookie and a CSRF value), Mode B (the app on its own origin probes the companion
 // only when asked, pairs with a token kept sealed in IndexedDB, and unpairs), the companion's
-// documents, notes and agenda in the Companion tab, and the red audit rollback banner when the
-// highest head this browser stored is newer than the one the companion reports.
+// documents, notes and agenda in the Companion tab, the red audit rollback banner when the
+// highest head this browser stored is newer than the one the companion reports (and none when an
+// honest answer only arrives with an older head), and the companion as a model of the chat: offered
+// by the picker once paired, its answer shown with its own label and kept out of the router's cache.
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -12,7 +14,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, mockSupabase, test } from './fixtures.mjs';
+import { expect, mockSupabase, storedChatNodes, test } from './fixtures.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const APP_PORT = Number(process.env.STARPI_E2E_PORT || 4173);
@@ -80,9 +82,9 @@ test.afterAll(async () => {
 
 /**
  * Page errors, CSP violations and console errors, except the expected ones: missing /api routes
- * (4xx), and in a companion build the library connection its CSP refuses.
+ * (4xx). A companion build reaches for nothing its CSP refuses (it never loads the library).
  * @param {import('@playwright/test').Page} page
- * @param {{ companionBuild?: boolean, ignore?: RegExp }} [opts]
+ * @param {{ ignore?: RegExp }} [opts]
  */
 async function watchProblems(page, opts = {}) {
   /** @type {string[]} */
@@ -95,7 +97,6 @@ async function watchProblems(page, opts = {}) {
     if (msg.type() !== 'error') return;
     const text = msg.text();
     if (/^Failed to load resource: the server responded with a status of 4\d\d/.test(text)) return;
-    if (opts.companionBuild && /supabase\.co/.test(text)) return;
     if (opts.ignore?.test(text)) return;
     problems.push(`console.error: ${text}`);
   });
@@ -155,7 +156,7 @@ async function pairHosted(page) {
 }
 
 test('Mode A: the companion serves its build, pairs it with a cookie, and shows documents, notes and agenda', async ({ page, context }) => {
-  const problems = await watchProblems(page, { companionBuild: true });
+  const problems = await watchProblems(page);
   page.on('dialog', (d) => d.accept());
   const response = await page.goto(`${COMPANION}/`);
   expect(response?.headers()['content-security-policy']).toContain("connect-src 'self' data:");
@@ -306,5 +307,85 @@ test('shows the red audit rollback banner when this browser saw a newer head tha
   await expect(page.locator('[data-companion-banner]')).toHaveCount(0);
   await page.click('#nav-companion');
   await expect(page.locator('#tab-companion')).toContainText('Audit ok');
+  expect(problems).toEqual([]);
+});
+
+test('an honest answer that arrives with an older audit head raises no rollback banner', async ({ page }) => {
+  await mockSupabase(page, { hardened: true, anonymousAuth: true });
+  const problems = await watchProblems(page, { ignore: /ERR_CONNECTION_REFUSED/ });
+  page.on('dialog', (d) => d.accept());
+  await page.goto('/');
+  const { token } = await pairHosted(page);
+  await page.click('#nav-companion');
+  await expect(page.locator('#tab-companion')).toContainText('Audit ok');
+
+  // An older head of the companion's own chain, as an answer to a request sent before the newest
+  // ones would carry it when it arrives last.
+  const auth = { headers: { authorization: `Bearer ${token}` } };
+  const current = (await (await fetch(`${COMPANION}/v1/audit/head`, auth)).json()).head;
+  expect(current.seq).toBeGreaterThan(1);
+  const stale = (await (await fetch(`${COMPANION}/v1/audit/head?seq=${current.seq - 1}`, auth)).json()).head;
+  await page.route(
+    `${COMPANION}/v1/docs`,
+    async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      await route.fulfill({ response, headers: { ...response.headers(), 'x-companion-audit-head': `${stale.seq}.${stale.hash}.${stale.sig}` }, body: JSON.stringify({ ...body, auditHead: stale }) });
+    },
+    { times: 1 },
+  );
+  const lookedUp = page.waitForRequest((r) => r.url() === `${COMPANION}/v1/audit/head?seq=${stale.seq}`);
+  await page.click('[data-action="companion-page"][data-arg="documents"]');
+  // Before deciding, the browser asked the companion whether the older head is its own record.
+  await lookedUp;
+  await expect(page.locator('#tab-companion')).toContainText('Audit ok');
+  await expect(page.locator('[data-companion-banner]')).toHaveCount(0);
+  expect(problems).toEqual([]);
+});
+
+test('the companion answers in the chat once paired: its own label, stored here, never in the router cache', async ({ page }) => {
+  await mockSupabase(page, { hardened: true, anonymousAuth: true });
+  const problems = await watchProblems(page, { ignore: /ERR_CONNECTION_REFUSED/ });
+  page.on('dialog', (d) => d.accept());
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('e2e_seeded')) return;
+    sessionStorage.setItem('e2e_seeded', '1');
+    localStorage.setItem('starpi_chat_mode', 'free');
+  });
+  await page.goto('/');
+  // Before pairing the picker offers no companion, and no database was opened for it.
+  await expect(page.locator('#engineSelector[data-ready="true"]')).toHaveCount(1);
+  await expect(page.locator('#engineSelector option[value="companion:starpi-core"]')).toHaveCount(0);
+  expect(await page.evaluate(async () => (await indexedDB.databases()).map((d) => d.name))).not.toContain('starpi-companion');
+
+  await pairHosted(page);
+  await expect(page.locator('#engineSelector option[value="companion:starpi-core"]')).toHaveText('Starpi Core (local companion)');
+  await page.click('#nav-chat');
+  await page.selectOption('#engineSelector', 'companion:starpi-core');
+  await expect(page.locator('#privacyNotice')).toContainText('Starpi Core on this computer');
+  const asked = page.waitForRequest((r) => r.url() === `${COMPANION}/v1/chat` && r.method() === 'POST');
+  await page.fill('#chatInput', 'Where is the spare key?');
+  await page.press('#chatInput', 'Enter');
+  expect(JSON.parse((await asked).postData() ?? '{}')).toEqual({ question: 'Where is the spare key?', mode: 'free' });
+
+  // The companion has no model here, so its template answers: shown as released, with its label.
+  const answer = page.locator('#chatMessages .message-row[data-role="assistant"]').last();
+  await expect(answer.locator('.answer-label[data-answer-label="companion_template"]')).toContainText('Template answer, no model wrote it');
+  await expect(answer.locator('[data-companion-notice="no_model"]')).toContainText('No language model is configured in the companion');
+  await expect(answer.locator('.message-content')).toContainText('No language model is configured');
+  await expect(answer.locator('.engine-badge-label')).toHaveText('Local companion · Starpi Core');
+  await expect(page.locator('#stopBtn')).toBeHidden();
+
+  // Kept in the conversation on this device like every answer, and nowhere in the router's cache.
+  const nodes = /** @type {any[]} */ (await storedChatNodes(page));
+  const stored = nodes.find((n) => n.role === 'assistant');
+  expect(stored?.provider).toBe('companion');
+  expect(stored?.localOnly).toBe(true);
+  expect(stored?.meta?.answer_label).toBe('companion_template');
+  const cache = await page.evaluate(() => localStorage.getItem('starpi_ai_cache_v1') ?? '[]');
+  expect(cache).not.toContain('companion');
+  expect(cache).not.toContain('No language model is configured');
+  await page.reload();
+  await expect(page.locator('#chatMessages .answer-label[data-answer-label="companion_template"]')).toHaveCount(1);
   expect(problems).toEqual([]);
 });
