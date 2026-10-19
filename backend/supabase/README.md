@@ -3,7 +3,8 @@
 SQL for the Starpi knowledge base: documents and sections with pgvector
 embeddings (1536-dim, and optionally 384-dim multilingual-e5-small vectors,
 each with an HNSW index), German full-text search, a small knowledge graph,
-chat history and the RPCs used by the browser and the library publisher
+the optional end-to-end encrypted chat sync, the chat history table of 2.x and
+the RPCs used by the browser and the library publisher
 (`tools/library-publisher`, see [../README.md](../README.md#library-publisher)).
 
 | Path | Purpose |
@@ -28,8 +29,8 @@ tests with `pg_dump`).
 1. **Enable anonymous sign-ins**: Supabase dashboard, *Authentication > Sign In / Providers > Anonymous sign-ins*.
    The browser calls `supabase.auth.signInAnonymously()` and then works as role
    `authenticated` with its own user id. Without it the browser stays on the
-   `anon` role: it can read public knowledge but cannot store chats or add
-   documents.
+   `anon` role: it can read public knowledge but cannot sync conversations or
+   add documents (conversations are kept on the device either way).
 2. Recommended for anonymous sign-ins: CAPTCHA protection (*Authentication > Attack Protection*)
    and a sensible rate limit for anonymous sign-ins (*Authentication > Rate Limits*).
    Every sign-in creates a row in `auth.users`.
@@ -263,7 +264,8 @@ erDiagram
     knowledge_entities |o--o{ knowledge_relations : "target_entity_id, on delete cascade"
 ```
 
-Chat history and settings:
+The encrypted chat sync, the chat history of 2.x (no longer read or written; the app only deletes
+the rows an earlier version stored) and the settings:
 
 <!-- diagram: db-schema-chat-settings -->
 ```mermaid
@@ -323,7 +325,7 @@ publisher (bypasses RLS). "own" means `owner_id = auth.uid()`; "visible" means
 | `knowledge_sections` | SELECT if parent document is public | SELECT if parent visible; INSERT / UPDATE / DELETE if parent is own and private | all rows, all DML |
 | `knowledge_entities` | SELECT public rows | same as documents | all rows, all DML |
 | `knowledge_relations` | SELECT public rows | same as documents; both endpoint entities must be visible to the writer | all rows, all DML |
-| `chat_history` | nothing | SELECT / INSERT / DELETE own rows; no UPDATE | all rows, all DML |
+| `chat_history` (2.x) | nothing | SELECT / INSERT / DELETE own rows; no UPDATE (the app only deletes) | all rows, all DML |
 | `chat_sync` (optional) | nothing | SELECT / INSERT / UPDATE / DELETE own rows (`user_id = auth.uid()`); revisions only grow | all rows, all DML |
 | `chat_sync_keys` (optional) | nothing | SELECT / INSERT / DELETE own row; no UPDATE | all rows, all DML |
 | `brain_settings` | nothing | nothing | all DML |
@@ -581,7 +583,8 @@ select * from public.search_knowledge('Budget', 5);      -- only visible rows
 rollback;
 ```
 
-Over HTTP with the anon key, `GET /rest/v1/chat_history` and
+With the optional chat sync, `chat_sync` has 4 policies and `chat_sync_keys` 3, all owner only.
+Over HTTP with the anon key, `GET /rest/v1/chat_history`, `GET /rest/v1/chat_sync` and
 `GET /rest/v1/brain_settings` must fail with `42501` (HTTP 401), while
 `GET /rest/v1/knowledge_documents` returns only public rows.
 *Database > Advisors > Security* should show no Starpi findings apart from
@@ -602,12 +605,14 @@ only), loads a small Supabase stand-in (`tests/stub_supabase.sql`: roles,
   refusing a database without `20260923000000`, and `20261101000000` refusing
   a database without the earlier migrations;
 - identical `pg_dump` output for upgraded and fresh installs;
-- 220 RLS / privilege / RPC / size-limit assertions per scenario, 227 in the
+- 270 RLS / privilege / RPC / size-limit assertions per scenario, 277 in the
   scenarios seeded with legacy rows (`tests/rls_test.sql`), run as `anon`, two
   different anonymous users and `service_role`: tenant isolation in both
   directions on every table, published rows staying read-only for their owner,
   oversized writes rejected, legacy rows above the limits surviving the
-  upgrade, and `match_knowledge_vector_384` returning only visible sections.
+  upgrade, `match_knowledge_vector_384` returning only visible sections, and the
+  encrypted chat sync: owner-only rows and key rows, the format checks that keep
+  every row opaque, revisions that only grow and a key row that is never updated.
 
 The runner applies every file in `migrations/` in file-name order, so a new
 migration is picked up without changing the script.
@@ -697,14 +702,31 @@ It exits non-zero on any failure. As root it runs the server as the
 
 - A failed run changes nothing: every file runs in a single transaction.
 - Before applying to the live project, keep a copy of the Starpi data:
-  `pg_dump "$DATABASE_URL" --data-only --table='public.knowledge_*' --table=public.chat_history --table=public.brain_settings -f starpi_backup.sql`
-  (Supabase also keeps daily backups / PITR depending on the plan).
+  `pg_dump "$DATABASE_URL" --data-only --table='public.knowledge_*' --table='public.chat_*' --table=public.brain_settings -f starpi_backup.sql`
+  (`public.chat_*` covers `chat_history` and, when installed, `chat_sync` and `chat_sync_keys`,
+  which hold only ciphertext and wrapped keys; Supabase also keeps daily backups / PITR depending
+  on the plan).
 - There is no automatic down migration. Undo the migrations in reverse order,
   and do not run `apply_migration.py --migrations` (or `supabase db push`)
   afterwards, since that applies them again. With the Supabase CLI, mark an
   undone migration with `supabase migration repair --status reverted <version>`.
 - If the browser cannot read or write after an upgrade, check first that
   anonymous sign-ins are enabled and that the frontend signs in.
+
+### Undo `20261102000000` (turn the encrypted chat sync off for good)
+
+The tables hold only ciphertext; dropping them deletes every synced copy, while the
+conversations stay in each browser. A browser that still has sync turned on says in its
+settings that the database has no sync tables:
+
+```sql
+begin;
+drop table if exists public.chat_sync;
+drop table if exists public.chat_sync_keys;
+drop function if exists public.chat_sync_guard();
+notify pgrst, 'reload schema';
+commit;
+```
 
 ### Undo `20261101000000` (back to the state after `20260924120000`)
 
