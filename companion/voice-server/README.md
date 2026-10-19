@@ -44,6 +44,8 @@ moves it on every system. `--whisper-model` takes a faster-whisper size (`base`,
 `medium`, `large-v3`, ...) or a folder with a converted model.
 
 Then open Starpi, Settings > Voice, and enter `http://127.0.0.1:8000` as the local voice server.
+The companion's voice relay answers 503 until its `config.json` names the server:
+`"modules": { "voice": { "url": "http://127.0.0.1:8000" } }`.
 
 ## Glossary
 
