@@ -4,7 +4,9 @@
 // (pins.js) and offers a tool to a model only after the owner approved it with exactly the pin the
 // server shows now. A server that changes a tool's description loses that tool until the owner
 // approves the new description: the change is recorded in the audit chain and put in the inbox.
-// Before every call the list is fetched again, so a change between two refreshes is caught too.
+// Before every call the list is fetched again, so a change between two refreshes is caught too; a
+// call runs only when that fresh list carries the approved pin (a server whose list cannot be read
+// gets no call at all, whatever an earlier list said).
 //   GET  /v1/connectors                              member  servers and their tools, pins and states
 //   POST /v1/connectors/:server/refresh              owner   lists the server's tools again now
 //   POST /v1/connectors/:server/approve              owner   { tool, pin, calls: 'ask' | 'allow' }
@@ -69,7 +71,8 @@ export function createConnectorsModule({ hub }) {
   /** @type {any} */
   let ns = null;
   let settings = { servers: /** @type {Array<Record<string, any>>} */ ([]), approvalSeconds: 60, refreshMinutes: 5 };
-  /** @type {Map<string, { config: Record<string, any>, client: import('./client.js').McpClient, state: 'unknown' | 'up' | 'down', detail: string | null, tools: Map<string, { tool: import('./pins.js').ToolDescription, pin: string }>, refreshed: string | null, refreshing: Promise<void> | null }>} */
+  /** @typedef {Map<string, { tool: import('./pins.js').ToolDescription, pin: string }>} ToolMap */
+  /** @type {Map<string, { config: Record<string, any>, client: import('./client.js').McpClient, state: 'unknown' | 'up' | 'down', detail: string | null, tools: ToolMap, refreshed: string | null, refreshing: Promise<ToolMap | null> | null }>} */
   const servers = new Map();
   /** @type {import('./approvals.js').Approvals | null} */
   let approvals = null;
@@ -92,16 +95,18 @@ export function createConnectorsModule({ hub }) {
   }
 
   /**
-   * Lists a server's tools again and reports changed pins.
+   * Lists a server's tools again and reports changed pins. Resolves to the fresh list, or to null
+   * when the server could not be listed.
    * @param {string} serverId
    * @param {AbortSignal} [signal]
+   * @returns {Promise<ToolMap | null>}
    */
   function refresh(serverId, signal) {
     const s = serverOf(serverId);
     s.refreshing ??= (async () => {
       try {
         const listed = await s.client.listTools({ signal });
-        /** @type {Map<string, { tool: import('./pins.js').ToolDescription, pin: string }>} */
+        /** @type {ToolMap} */
         const tools = new Map();
         for (const raw of listed.slice(0, MAX_TOOLS_PER_SERVER)) {
           const tool = readTool(raw);
@@ -121,6 +126,7 @@ export function createConnectorsModule({ hub }) {
             ctx.log('warn', 'tool_pin_changed', { server: serverId, tool: name });
           }
         }
+        return tools;
       } catch (err) {
         s.state = 'down';
         s.detail = codeOf(err);
@@ -129,6 +135,7 @@ export function createConnectorsModule({ hub }) {
         } catch {
           // a session that cannot be closed is dropped anyway
         }
+        return null;
       } finally {
         s.refreshed = isoAt(ctx.clock.now());
         s.refreshing = null;
@@ -181,10 +188,15 @@ export function createConnectorsModule({ hub }) {
       if (cut < 1 || !s || !TOOL_NAME.test(toolName)) throw fail('tool_unknown', 'no such connector tool', { status: 404 });
       /** @param {string} outcome @param {string} approval */
       const record = (outcome, approval) => ctx.audit.append({ kind: 'connectors.call', subject: `${serverId}/${toolName}`, details: { outcome, approval } });
-      // The description may have changed since the last refresh: look again right before the call.
-      await refresh(serverId, signal);
+      // The description may have changed since the last refresh: look again right before the call,
+      // and judge the call by that fresh list only. A server that cannot be listed gets no call.
+      const fresh = await refresh(serverId, signal);
+      if (!fresh) {
+        record('server_down', 'none');
+        throw fail('connector_down', 'the server could not list its tools, so no call goes to it now', { status: 503 });
+      }
       const entry = approvedOf(serverId)[toolName];
-      const listed = s.tools.get(toolName);
+      const listed = fresh.get(toolName);
       if (!entry || !listed || entry.pin !== listed.pin) {
         record('pin_changed', 'none');
         throw fail('tool_pin_changed', 'the tool is not approved in the form the server describes it now', { status: 409 });

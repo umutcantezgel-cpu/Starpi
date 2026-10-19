@@ -130,7 +130,7 @@ export function createFeedsModule({ hub }) {
   let sources = [];
   /** @type {Map<string, Reading>} */
   const latest = new Map();
-  /** @type {Map<string, { type: string, state: string, detail: string | null, samples: number, duplicates: number, dropped: number, problems: number, lastSample: string | null, lastMessage: number, subscriber: ReturnType<typeof createMqttSubscriber> | null }>} */
+  /** @type {Map<string, { type: string, state: string, detail: string | null, samples: number, duplicates: number, dropped: number, problems: number, lastSample: string | null, lastHeard: number, subscriber: ReturnType<typeof createMqttSubscriber> | null }>} */
   const status = new Map();
   /** @type {Map<string, number>} last stored time per source and series, for minIntervalMs */
   const lastStored = new Map();
@@ -244,11 +244,15 @@ export function createFeedsModule({ hub }) {
       keepAliveS: source.keepAliveS ?? 30,
       topics: source.topics.map((/** @type {any} */ t) => ({ filter: t.filter, qos: t.qos ?? 0 })),
       onState(state, detail) {
-        if (state === 'up') health(source.id, 'up', detail ?? null);
-        else if (state === 'down') health(source.id, 'down', detail ?? null);
+        if (state === 'up') {
+          // The stale time runs from the connection on: a source is not stale before it had the
+          // time to say something, after a start or a reconnect alike.
+          st.lastHeard = ctx.clock.now();
+          health(source.id, 'up', detail ?? null);
+        } else if (state === 'down') health(source.id, 'down', detail ?? null);
       },
       onMessage(topic, payload, info) {
-        st.lastMessage = ctx.clock.now();
+        st.lastHeard = ctx.clock.now();
         if (st.state === 'stale') health(source.id, 'up', null);
         const sample = sampleOf(source, topic, payload, info.retain);
         if (!sample) {
@@ -275,11 +279,12 @@ export function createFeedsModule({ hub }) {
     st.subscriber = subscriber;
     subscriber.start();
     undo.push(() => subscriber.stop());
-    // A source that stays connected but quiet is stale.
+    // A source that stays connected but sends nothing for the stale time (counted from its last
+    // message, or from the connection when none came since) is stale.
     const staleMs = (source.staleAfterS ?? 300) * 1000;
     undo.push(
       ctx.scheduler.every(`feeds.stale.${source.id}`, Math.max(1000, Math.min(staleMs / 2, 60_000)), () => {
-        if (st.state === 'up' && ctx.clock.now() - (st.lastMessage || 0) > staleMs) health(source.id, 'stale', 'no message within the stale time');
+        if (st.state === 'up' && ctx.clock.now() - st.lastHeard > staleMs) health(source.id, 'stale', 'no message within the stale time');
       }, 'events'),
     );
   }
@@ -371,7 +376,7 @@ export function createFeedsModule({ hub }) {
       } catch {
         // another profile without that view
       }
-      for (const s of sources) status.set(s.id, { type: s.type, state: 'down', detail: s.type === 'csv' ? 'waiting for an import' : null, samples: 0, duplicates: 0, dropped: 0, problems: 0, lastSample: null, lastMessage: 0, subscriber: null });
+      for (const s of sources) status.set(s.id, { type: s.type, state: 'down', detail: s.type === 'csv' ? 'waiting for an import' : null, samples: 0, duplicates: 0, dropped: 0, problems: 0, lastSample: null, lastHeard: 0, subscriber: null });
       for (const s of sources) if (s.type === 'mqtt') startMqtt(s);
       withdraw = hub.provide('feeds', service);
     },

@@ -293,20 +293,22 @@ vault namespace; the audit chain records ids, classes and counts, never the text
 | `memory` | `GET/POST /memory/notes`, `GET/PUT/DELETE /memory/notes/:id`, `POST /memory/recall` | notes added on purpose; recall ranks by match, use, spread over days and freshness (halving every `halfLifeDays`, 30); a pinned note does not fade |
 | `docs` | `POST /docs?name=&class=` (raw file), `GET /docs`, `GET /docs/:id`, `GET /docs/:id/passages/:n`, `GET /docs/:id/file`, `PUT /docs/:id/class`, `DELETE /docs/:id` | PDF text layer (needs the optional peer `pdfjs-dist`), Word, Excel, PowerPoint, HTML, Markdown, CSV, JSON and text, read by `@starpi/core` in the background lane; original and text are sealed blobs |
 | `ask` | `POST /ask` | one question, one JSON answer |
-| `chat` | `POST /chat` (server-sent events), `GET /chat/conversations`, `GET/PUT/DELETE /chat/conversations/:id` | conversations with history; a conversation's data class only rises |
+| `chat` | `POST /chat` (server-sent events), `GET /chat/conversations`, `GET/PUT/DELETE /chat/conversations/:id` | conversations with history; a conversation's data class only rises; turns of one conversation run one after the other (a turn sent while another runs waits for it, more than `waitingTurns` (4) waiting get 409 `conversation_busy`) |
 | `mcp` | `POST /mcp`, `GET/POST /mcp/clients`, `DELETE /mcp/clients/:id` | an MCP server (2025-06-18) with the read-only tools `search_documents`, `read_excerpt`, `recall_notes`, `list_agenda`; MCP client tokens only (no cookie, no browser session, no Origin) |
-| `connectors` | `GET /connectors`, `POST /connectors/:server/{refresh,approve,revoke}`, `GET /connectors/approvals`, `POST /connectors/approvals/:id` | tools of MCP servers on this machine for the chat: each tool description is pinned by SHA-256 and offered only with the pin the owner approved; a changed description needs a new approval |
+| `connectors` | `GET /connectors`, `POST /connectors/:server/{refresh,approve,revoke}`, `GET /connectors/approvals`, `POST /connectors/approvals/:id` | tools of MCP servers on this machine for the chat: each tool description is pinned by SHA-256 and offered only with the pin the owner approved; a changed description needs a new approval; the list is read again before every call, and a call runs only when that fresh list carries the approved pin |
 | `agenda` | `GET/POST /agenda`, `GET /agenda/upcoming`, `GET/PUT/DELETE /agenda/:id` | reminders (once, daily, weekly, monthly) in the item's, the module's or the companion's time zone, computed with `Intl` |
-| `notify` | `GET /notify`, `GET /notify/stream`, `POST /notify/:id/read`, `POST /notify/read-all`, `DELETE /notify/:id` | the inbox; the app reads it over server-sent events while it is open (no push service) |
+| `notify` | `GET /notify`, `GET /notify/stream`, `POST /notify/:id/read`, `POST /notify/read-all`, `DELETE /notify/:id` | the inbox; the app reads it over server-sent events while it is open (no push service); numbers only rise and are never handed out twice, so an app catching up with `?after=` misses nothing |
 | `voice` | `GET /voice/v1/audio/voices`, `POST /voice/v1/audio/speech`, `POST /voice/v1/audio/transcriptions` | relays speech to the voice server on this machine (`url: "http://127.0.0.1:8000"`) |
-| `feeds` | `GET /feeds`, `GET /feeds/latest`, `POST /feeds/import?source=` (CSV) | experimental and read-only: CSV imports and MQTT subscriptions to a broker on this machine (3.1.1 or 5; the client never publishes) as `feed.sample` / `feed.health` events |
+| `feeds` | `GET /feeds`, `GET /feeds/latest`, `POST /feeds/import?source=` (CSV) | experimental and read-only: CSV imports and MQTT subscriptions to a broker on this machine (3.1.1 or 5; the client never publishes) as `feed.sample` / `feed.health` events; a subscription that hears nothing for `staleAfterS` after its last message or its (re)connection is `stale` |
 | `setup` | `GET /setup`, `GET /setup/models` | first-start checks of the local model, embedding and voice servers, and model sizes the machine's memory holds |
 
 **Answers through the gate.** `/v1/ask` and `/v1/chat` take `mode: "sources"` (default) or
 `"free"`. In source mode the model gets the matching passages of documents, notes and the latest
 feed readings as labelled sources (`[S1]`, `[S2]`, ...), and every answer runs through the sentence
 gate of `@starpi/core`: a sentence whose number is not in the source it cites is withheld, so a feed
-reading can be cited exactly as the feed reported it. Free mode keeps the gate's character and link
+reading can be cited exactly as the feed reported it. A reading's source also gives its time in the
+companion's time zone (24-hour time and the dates `2026-10-18` and `18.10.2026`), so a sentence may
+name when it was measured in those forms; a bare day or year is not citable. Free mode keeps the gate's character and link
 rules. Released units stream as `unit` events; the answer lists what was withheld and why, and the
 sources each sentence cites. A turn's data class is the strictest of the request, the conversation
 and its sources, and decides where the router may send it; secret content never reaches a prompt.

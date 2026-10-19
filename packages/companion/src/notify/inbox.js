@@ -4,7 +4,9 @@
 // app is open it reads them over a server-sent event stream and, after a gap, asks for everything
 // after the last number it saw. Notifications are sealed in the vault namespace `inbox`; each has a
 // rising number, a kind code the app translates, an optional reference (the id of what it is about)
-// and an optional title. The title of something secret is never kept.
+// and an optional title. The title of something secret is never kept. A number is never handed out
+// twice: the highest one is kept as a mark of its own, so removing or pruning the newest
+// notification does not free its number for the next (which an app catching up after it would miss).
 import { isRecord } from '../contracts/check.js';
 import { isDataClass } from '../contracts/data-classes.js';
 import { isoAt, systemClock } from '../lib/clock.js';
@@ -15,6 +17,8 @@ export const KIND = /^[a-z][a-z0-9_]{1,39}$/;
 export const REF = /^[A-Za-z0-9_.:-]{1,128}$/;
 export const TITLE_MAX = 200;
 const ITEM = /^n-(\d{12})$/;
+/** The item that keeps the highest number handed out so far. */
+const MARK = 'mark';
 
 /**
  * @typedef {object} Notification
@@ -53,6 +57,17 @@ export function createInbox({ namespace, clock = systemClock, keepDays = 30, max
     return out.sort((a, b) => a.seq - b.seq);
   }
 
+  /**
+   * The highest number handed out so far: the mark, or the newest stored number when that is
+   * higher (a mark that was never written or a write that did not finish).
+   * @param {Notification[]} items  stored notifications, oldest first
+   */
+  function highest(items) {
+    const mark = namespace.getJson(MARK);
+    const kept = isRecord(mark) && Number.isSafeInteger(mark.seq) ? /** @type {number} */ (mark.seq) : 0;
+    return Math.max(kept, items.at(-1)?.seq ?? 0);
+  }
+
   /** Drops notifications older than keepDays, then the oldest read ones above maxItems. */
   function prune() {
     const items = all();
@@ -85,7 +100,7 @@ export function createInbox({ namespace, clock = systemClock, keepDays = 30, max
       if (input.ref !== undefined && input.ref !== null && !REF.test(input.ref)) throw fail('notification_ref', 'a reference is an id', { status: 400 });
       const dataClass = isDataClass(input.dataClass) ? input.dataClass : 'personal';
       const items = all();
-      const seq = (items.at(-1)?.seq ?? 0) + 1;
+      const seq = highest(items) + 1;
       /** @type {Notification} */
       const n = {
         id: idOf(seq),
@@ -98,6 +113,7 @@ export function createInbox({ namespace, clock = systemClock, keepDays = 30, max
         read: false,
       };
       namespace.putJson(n.id, n);
+      namespace.putJson(MARK, { seq });
       if (items.length + 1 > maxItems) prune();
       for (const listener of listeners) {
         try {
@@ -109,12 +125,14 @@ export function createInbox({ namespace, clock = systemClock, keepDays = 30, max
       return n;
     },
     /**
-     * Notifications after a number, oldest first.
+     * Notifications after a number, oldest first; `latest` is the highest number handed out so far
+     * (also when that notification is gone).
      * @param {{ after?: number, limit?: number, unread?: boolean }} [query]
      */
     list({ after = 0, limit = 200, unread = false } = {}) {
-      const items = all().filter((n) => n.seq > after && (!unread || !n.read));
-      return { notifications: items.slice(0, limit), latest: all().at(-1)?.seq ?? 0, unread: items.filter((n) => !n.read).length };
+      const stored = all();
+      const items = stored.filter((n) => n.seq > after && (!unread || !n.read));
+      return { notifications: items.slice(0, limit), latest: highest(stored), unread: items.filter((n) => !n.read).length };
     },
     /** @param {string} id */
     markRead(id) {

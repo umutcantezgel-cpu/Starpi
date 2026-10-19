@@ -12,11 +12,15 @@
 //   GET    /v1/chat/conversations/:id        member  one conversation with its turns
 //   PUT    /v1/chat/conversations/:id        member  { title } renames it
 //   DELETE /v1/chat/conversations/:id        member  deletes it with every turn
+// The turns of one conversation run one after the other: a turn sent while another one runs waits
+// for it (its `start` comes when it begins, and its history holds the turn before it); a turn
+// beyond `waitingTurns` waiting ones is refused with 409 conversation_busy.
 // `mode` is `sources` (default: answer from the companion's documents, notes and feed readings,
 // every number checked against the source a sentence cites) or `free` (general knowledge; the gate
 // still withholds links and characters outside its allowlist). `dataClass` defaults to personal.
 // Tools of connectors are offered only in the chat and only when `tools` is true.
-// Configuration (`modules.ask`, `modules.chat`): { "maxTokens": 1500, "historyTurns": 6 } (history: chat only).
+// Configuration (`modules.ask`, `modules.chat`): { "maxTokens": 1500, "historyTurns": 6, "waitingTurns": 4 }
+// (history and waiting turns: chat only).
 import { text } from '../contracts/check.js';
 import { DATA_CLASSES, isDataClass, strictest } from '../contracts/data-classes.js';
 import { codeOf, fail } from '../lib/errors.js';
@@ -104,7 +108,7 @@ export function createChatModule({ hub }) {
   let store = null;
   /** @type {any} */
   let ctx = null;
-  let settings = { maxTokens: 1500, historyTurns: 6 };
+  let settings = { maxTokens: 1500, historyTurns: 6, waitingTurns: 4 };
   const live = () => {
     if (!engine || !store) throw fail('module_stopped', 'the chat is not running', { status: 503 });
     return { engine, store };
@@ -114,6 +118,35 @@ export function createChatModule({ hub }) {
     const c = live().store.get(id);
     if (!c) throw notFound('conversation_unknown', 'conversation');
     return c;
+  };
+  /** @type {Map<string, { tail: Promise<void>, size: number }>} conversation id -> its turns, running and waiting */
+  const lanes = new Map();
+  /**
+   * A place in the conversation's lane: `ready` settles when every turn before it has ended, and
+   * `leave` ends this one (also when it gave up while waiting; the next still waits for the rest).
+   * @param {string} id
+   */
+  const enterLane = (id) => {
+    const lane = lanes.get(id) ?? { tail: Promise.resolve(), size: 0 };
+    if (lane.size > settings.waitingTurns) throw fail('conversation_busy', 'too many turns of this conversation are waiting', { status: 409 });
+    lanes.set(id, lane);
+    lane.size += 1;
+    /** @type {() => void} */
+    let end = () => {};
+    const ended = new Promise((resolve) => (end = () => resolve(undefined)));
+    const ready = lane.tail;
+    lane.tail = ready.then(() => ended);
+    let left = false;
+    return {
+      ready,
+      leave() {
+        if (left) return;
+        left = true;
+        end();
+        lane.size -= 1;
+        if (lane.size === 0 && lanes.get(id) === lane) lanes.delete(id);
+      },
+    };
   };
 
   return {
@@ -135,12 +168,21 @@ export function createChatModule({ hub }) {
           const q = questionOf(body);
           if (q.question === '') throw fail('question_empty', 'ask a question', { status: 400 });
           const existing = typeof body.conversation === 'string' ? conversationOf(body.conversation) : null;
+          const created = existing ? null : st.create(q.question, q.dataClass);
+          let conversation = /** @type {import('./store.js').Conversation} */ (existing ?? created);
+          // The lane of a new conversation is empty, so only a turn of a known one can be refused here.
+          const lane = enterLane(conversation.id);
           const out = pushStream({ signal: req.signal, max: 5000 });
           const actor = actorOf(req);
           (async () => {
-            let conversation = existing ?? st.create(q.question, q.dataClass);
             let answered = false;
             try {
+              await lane.ready;
+              req.signal.throwIfAborted();
+              // The turns before this one changed the conversation, or deleted it.
+              const current = st.get(conversation.id);
+              if (!current) throw notFound('conversation_unknown', 'conversation');
+              conversation = current;
               out.push('start', { conversation: conversation.id, turn: conversation.turns + 1 });
               const history = st.turns(conversation, settings.historyTurns).map((t) => ({ question: t.question, answer: t.answer.text }));
               const answer = await eng.answer(
@@ -155,7 +197,8 @@ export function createChatModule({ hub }) {
               else ctx?.log('info', 'turn_abandoned', { conversation: conversation.id });
             } finally {
               // A conversation that never got its first answer is not kept.
-              if (!answered && conversation.turns === 0) st.remove(conversation);
+              if (!answered && created && st.get(created.id)?.turns === 0) st.remove(created);
+              lane.leave();
               out.end();
             }
           })();
@@ -203,7 +246,7 @@ export function createChatModule({ hub }) {
     ],
     start(context) {
       ctx = context;
-      settings = moduleConfig('chat', ctx.config, { maxTokens: intIn(64, 32_000), historyTurns: intIn(0, 50) }, settings);
+      settings = moduleConfig('chat', ctx.config, { maxTokens: intIn(64, 32_000), historyTurns: intIn(0, 50), waitingTurns: intIn(0, 16) }, settings);
       store = createChatStore({ namespace: ctx.vault.namespace(CHATS_NAMESPACE), clock: ctx.clock });
       engine = createAnswerEngine({ hub, router: ctx.brains, audit: ctx.audit, auditKind: 'chat.answered', clock: ctx.clock, timeZone: ctx.timeZone, log: ctx.log });
     },

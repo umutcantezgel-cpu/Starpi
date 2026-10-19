@@ -5,6 +5,7 @@ import { createServer } from 'node:net';
 import { test } from 'node:test';
 import { tempDir } from './helpers.mjs';
 import { client, eventually, startModules } from './module-helpers.mjs';
+import { manualClock } from '../src/lib/clock.js';
 import { readTime, samplesFromCsv } from '../src/feeds/csv.js';
 import { createMqttSubscriber, decodeLength, encodeLength, packetReader, topicMatches } from '../src/feeds/mqtt.js';
 import { seriesFor } from '../src/feeds/module.js';
@@ -219,6 +220,49 @@ for (const protocol of /** @type {const} */ ([4, 5])) {
     assert.ok(/** @type {any} */ (hub.get('feeds')).relevant('how cold is the garage temperature').some((/** @type {any} */ r) => r.series === 'garage.temperature'));
   });
 }
+
+test('MQTT: a quiet source turns stale only once the stale time has passed since it connected, also after a reconnect', async (t) => {
+  const broker = await brokerSim();
+  const clock = manualClock(Date.UTC(2026, 9, 18, 7, 0));
+  const { dir, cleanup } = tempDir();
+  const raw = { modules: { feeds: { sources: [{ id: 'quiet-sensor', type: 'mqtt', url: `mqtt://127.0.0.1:${broker.port}`, topics: [{ filter: 'home/#', series: 'home.value' }], staleAfterS: 60 }] } } };
+  const { companion } = await startModules(dir, { only: ['feeds'], raw, options: { clock } });
+  t.after(async () => {
+    await companion.stop();
+    await broker.close();
+    cleanup();
+  });
+  const c = await client(companion);
+  const state = async () => (await c.get('/v1/feeds')).json().sources[0].state;
+  /** Moves the clock on and waits until the periodic checks that fell due have run and are armed again. @param {number} ms */
+  const pass = async (ms) => {
+    const armed = clock.pending();
+    clock.advance(ms);
+    await eventually(() => clock.pending() >= armed);
+  };
+  const health = () => companion.installation.store.read({ types: ['feed.health'] }).map((e) => `${e.body.state}@${e.body.checked_at.slice(11, 19)}`);
+  await eventually(async () => (await state()) === 'up');
+
+  // The check runs every 30 s; at 30 s and at 60 s after the connection the source is not stale yet.
+  await pass(30_000);
+  assert.equal(await state(), 'up', 'not stale right after the connection');
+  await pass(30_000);
+  assert.equal(await state(), 'up');
+  await pass(30_000);
+  await eventually(async () => (await state()) === 'stale');
+  assert.deepEqual(health(), ['up@07:00:00', 'stale@07:01:30']);
+
+  // After a reconnect the stale time starts again.
+  broker.dropClients();
+  await eventually(async () => (await state()) === 'down');
+  await eventually(async () => (await state()) === 'up', { timeoutMs: 8000 });
+  await pass(30_000);
+  assert.equal(await state(), 'up', 'not stale right after the reconnect');
+  await pass(30_000);
+  await pass(30_000);
+  await eventually(async () => (await state()) === 'stale');
+  assert.deepEqual(health(), ['up@07:00:00', 'stale@07:01:30', 'down@07:01:30', 'up@07:01:30', 'stale@07:03:00']);
+});
 
 test('MQTT subscriber: a refused connection is retried and reported down', async (t) => {
   const server = createServer((socket) => {

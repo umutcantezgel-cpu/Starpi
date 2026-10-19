@@ -87,17 +87,20 @@ export function createChatStore({ namespace, clock }) {
       return out;
     },
     /**
-     * Stores a turn and raises the conversation's class to the turn's.
+     * Stores a turn and raises the conversation's class to the turn's. The record is read again
+     * first, so whatever changed while the answer was written (a new title, a deletion) is kept.
      * @param {Conversation} c
      * @param {string} question
      * @param {import('./engine.js').Answer} answer
      */
     addTurn(c, question, answer) {
-      if (c.turns >= MAX_TURNS) throw fail('conversation_full', `a conversation holds at most ${MAX_TURNS} turns`, { status: 409 });
+      const current = get(c.id);
+      if (!current) throw fail('conversation_unknown', 'the conversation was deleted', { status: 404 });
+      if (current.turns >= MAX_TURNS) throw fail('conversation_full', `a conversation holds at most ${MAX_TURNS} turns`, { status: 409 });
       const at = isoAt(clock.now());
-      const n = c.turns + 1;
+      const n = current.turns + 1;
       namespace.putJson(turnId(c.id, n), { n, question, answer, at });
-      const next = { ...c, turns: n, updated: at, dataClass: strictest(c.dataClass, answer.dataClass) };
+      const next = { ...current, turns: n, updated: at, dataClass: strictest(current.dataClass, answer.dataClass) };
       namespace.putJson(c.id, next);
       return next;
     },

@@ -56,11 +56,12 @@ export function sourceBlock(source) {
 }
 
 /**
- * One tool result in a prompt.
+ * One tool result in a prompt. An error text may come from the server just like a result, so it is
+ * fenced the same way: neither can end the frame early or open a frame of its own.
  * @param {{ label: string, tool: string, text: string, error?: string | null }} result
  */
 export function toolResultBlock(result) {
-  const body = result.error ? `The call did not run: ${result.error}.` : fenced(result.text);
+  const body = result.error ? `The call did not run: ${fenced(result.error)}.` : fenced(result.text);
   return `<<<RESULT ${result.label} of ${header(result.tool)}>>>\n${body}\n<<<END ${result.label}>>>`;
 }
 
