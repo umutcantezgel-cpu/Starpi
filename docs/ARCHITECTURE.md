@@ -64,7 +64,7 @@ idealised design. When the code changes, change the diagram in the same pull req
    - [Keeping files on this device and searching by meaning](#keeping-files-on-this-device-and-searching-by-meaning)
    - [On-device workspace: from file drop to the document list](#on-device-workspace-from-file-drop-to-the-document-list)
    - [ingest() in the worker: fingerprint, duplicate check, unique name and DocumentInfo](#ingest-in-the-worker-fingerprint-duplicate-check-unique-name-and-documentinfo)
-   - [extractText: checks, text, JSON and CSV branches, normalization](#extracttext-checks-text-json-and-csv-branches-normalization)
+   - [extractText: checks, text, JSON, CSV, Office, HTML and images](#extracttext-checks-text-json-csv-office-html-and-images)
    - [csvToText: CSV rows as column: value lines](#csvtotext-csv-rows-as-column-value-lines)
    - [pdfToText: pdf.js loading, page loop and limits](#pdftotext-pdfjs-loading-page-loop-and-limits)
    - [Workspace RPCs: search, head, context, text, remove, clear](#workspace-rpcs-search-head-context-text-remove-clear)
@@ -76,17 +76,18 @@ idealised design. When the code changes, change the diagram in the same pull req
    - [Citation labels, scopes and the fenced context](#citation-labels-scopes-and-the-fenced-context)
    - [From hits to a citation in the drawer](#from-hits-to-a-citation-in-the-drawer)
    - [linkifyCitations and the Sources row](#linkifycitations-and-the-sources-row)
-   - [Attaching a file to the chat](#attaching-a-file-to-the-chat)
+   - [Attaching files and images to a message](#attaching-files-and-images-to-a-message)
    - [Asking about an attached file](#asking-about-an-attached-file)
-   - [Voice input with the Web Speech API](#voice-input-with-the-web-speech-api)
+   - [Voice input: the dictation chain](#voice-input-the-dictation-chain)
 5. [On-device inference](#5-on-device-inference)
    - [On-device engine status machine](#on-device-engine-status-machine)
    - [loadModel: probe, choice, cache and storage checks](#loadmodel-probe-choice-cache-and-storage-checks)
    - [loadModel: WebLLM import, model record and partial cache](#loadmodel-webllm-import-model-record-and-partial-cache)
    - [loadModel: worker creation, progress phases and generation guards](#loadmodel-worker-creation-progress-phases-and-generation-guards)
    - [Processor (WASM) runtime: loading, pinned downloads, generation and Stop](#processor-wasm-runtime-loading-pinned-downloads-generation-and-stop)
-   - [Diagnostics tab: WebGPU probe](#diagnostics-tab-webgpu-probe)
-   - [Inference benchmark run](#inference-benchmark-run)
+   - [Diagnostics & Benchmark tab: probe and runtime](#diagnostics--benchmark-tab-probe-and-runtime)
+   - [Inference benchmark run and the benchmark history](#inference-benchmark-run-and-the-benchmark-history)
+   - [Model download integrity](#model-download-integrity)
 6. [Knowledge base views](#6-knowledge-base-views)
    - [Knowledge base tab: document list](#knowledge-base-tab-document-list)
    - [Knowledge base tab: document modal](#knowledge-base-tab-document-modal)
@@ -2035,7 +2036,7 @@ flowchart TD
 
 ## 4. On-device workspace and citations
 
-Files added to the workspace are parsed, chunked and indexed in a dedicated worker and are never uploaded. Only the on-device mode keeps their matching excerpts on the device as well: the cloud assistant, an own server and NVIDIA cloud receive the excerpts, labelled with their file name, together with the question, and in free chat the text of a file attached to that question. Retrieved chunks are labelled `[Doc: <name>, Chunk: <n>]`; only labels the app registered itself become clickable citations. The worker also records a SHA-256 fingerprint of each file and of its extracted text; answer receipts copy them, so that a cited excerpt can later be reproduced from the same file.
+Files added to the workspace, or attached to a message, are parsed, chunked and indexed in a dedicated worker and kept on the device; they are never uploaded. Only the excerpts an answer needs leave the device, and only with a model that is not on this device: a provider, a site pool, the own server or the companion get them, labelled with their file name, together with the question. A question asked with the model of this device, and every turn that used a workspace passage, stays on the device and is never part of another model's history or of the encrypted sync. Retrieved chunks are labelled `[Doc: <name>, Chunk: <n>]`; only labels the app registered itself become clickable citations. The worker also records a SHA-256 fingerprint of each file and of its extracted text; answer receipts copy them, so that a cited excerpt can later be reproduced from the same file.
 
 ### Keeping files on this device and searching by meaning
 
@@ -2059,7 +2060,7 @@ sequenceDiagram
     participant CH as chunker.js
     participant IX as bm25.js BM25Index
 
-    Note over UI,WS: chat.js attachFile and demo.js loadSamples also call addToWorkspace(file),<br/>without the extension filter or progress
+    Note over UI,WS: chat/composer.js (a document attached to a message) and demo.js loadSamples<br/>also call addToWorkspace(file), without the extension filter or progress
     User->>UI: drop on dropZone, or pick in workspaceFileInput
     loop addFiles, one file at a time, each awaited
         alt name does not match WORKSPACE_EXTENSIONS
@@ -2114,7 +2115,7 @@ sequenceDiagram
     end
 ```
 
-<sub>Sources: [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`scripts/build.mjs`](../scripts/build.mjs), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/chat/composer.js`](../src/js/chat/composer.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`scripts/build.mjs`](../scripts/build.mjs), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json)</sub>
 
 ### ingest() in the worker: fingerprint, duplicate check, unique name and DocumentInfo
 
@@ -2150,50 +2151,48 @@ flowchart TD
 
 <sub>Sources: [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js)</sub>
 
-### extractText: checks, text, JSON and CSV branches, normalization
+### extractText: checks, text, JSON, CSV, Office, HTML and images
 
-extractText rejects unsupported extensions and files above MAX_FILE_BYTES (25 MiB) before reading anything, hands PDFs to pdfToText and decodes every other type incrementally with TextDecoderStream, cancelling the reader once the text exceeds MAX_TEXT_CHARS (5,000,000). JSON is parsed after a BOM strip and flattened into path: value lines; CSV is normalized and, when it has a usable header row, turned into one `column: value; column: value` line per row (see workspace-ingestion-csv). Neither converted text is length-checked again. Every result is normalized (BOM, line endings, control characters) and rejected as empty when only whitespace remains; each rejection is a ParseError whose code the worker returns. The result also carries the pdf.js version (null for other types), which the worker records in the document's extractor field.
+extractText rejects unsupported extensions and files above MAX_FILE_BYTES (25 MiB) before reading anything. PDFs go to pdfToText; Word, Excel and PowerPoint files (DOCX, XLSX, PPTX) to the dependency-free readers of rag/formats, which open the ZIP package with zip.js and read its XML with a small parser; HTML pages to html.js, which runs and loads nothing (scripts, styles and embedded objects are skipped; headings, lists and tables keep their structure); images (PNG, JPEG, GIF, WebP) to image.js; every other type is decoded incrementally with TextDecoderStream, cancelling the reader once the text exceeds MAX_TEXT_CHARS (5,000,000). The ZIP reader treats an archive as untrusted: before anything is inflated it refuses more than 10,000 entries, an entry above 64 MiB, more than 160 MiB in all, a compression ratio above 200 for entries over 1 MiB and entries whose data overlap; an entry that inflates beyond its declared size is stopped at once, every CRC-32 is checked, and a name with an absolute path, a drive letter, `..` or control characters is unreadable. The XML parser decodes only the five predefined entities and character references, never expands the entity declarations of a DOCTYPE, and refuses nesting deeper than 256 levels; failures are zip_bomb, invalid_document or encrypted_document. The Office and HTML readers stop at MAX_TEXT_CHARS too. An image holds no text the extractor can read: without an OCR hook it fails with needs_ocr, and the workspace asks the user whether a model that can see may read that one file (rag/ocr-hook.js, purpose ocr_image); with consent the hook sends the image to that model and the recognised text is indexed like any other, the provider and model recorded for receipts. JSON is flattened into path: value lines; CSV with a usable header row becomes one `column: value; column: value` line per row. Every result is normalized (BOM, line endings, control characters) and rejected as empty when only whitespace remains. The extractor identity (`starpi-extract` version 2) is recorded in each document; version 2 added the Office and HTML formats and keeps the text of every earlier format byte for byte, so receipts of version 1 still verify.
 
 <!-- diagram: workspace-ingestion-extract-text -->
 ```mermaid
 flowchart TD
-    start(["extractText(file, onPage) in the worker"]) --> ext["ext = extensionOf(file.name): the ASCII letters and digits<br/>after the last dot of the trimmed name, lowercased,<br/>empty when the name does not end that way"]
-    ext --> supQ{"ext in SUPPORTED_EXTENSIONS?<br/>txt, md, markdown, csv, log, json, pdf"}
-    supQ -->|"no"| eType["unsupported_type<br/>details ext, or ? when empty"]
-    supQ -->|"yes"| sizeQ{"file.size above MAX_FILE_BYTES<br/>25 MiB = 26,214,400 bytes?"}
-    sizeQ -->|"yes"| eBig["too_large<br/>details max 25"]
+    start(["extractText(file, onPage, ocr) in the worker"]) --> ext["ext = extensionOf(file.name), lowercased"]
+    ext --> supQ{"ext in SUPPORTED_EXTENSIONS or IMAGE_EXTENSIONS?<br/>txt, md, markdown, csv, log, json, pdf,<br/>docx, xlsx, pptx, html, htm; png, jpg, jpeg, gif, webp"}
+    supQ -->|"no"| eType["unsupported_type"]
+    supQ -->|"yes"| sizeQ{"file.size above 25 MiB?"}
+    sizeQ -->|"yes"| eBig["too_large"]
     sizeQ -->|"no"| kindQ{"ext?"}
-    kindQ -->|"pdf"| pdf["pdfToText(await file.arrayBuffer(), onPage)<br/>see workspace-ingestion-pdf"]
-    pdf -->|"throws"| ePdf["ParseError pdf_reader, encrypted_pdf, invalid_pdf<br/>or too_large, a page read failure reaches the UI as internal"]
-    pdf -->|"text, pages and the pdf.js version"| norm
-    kindQ -->|"json, csv, txt, md, markdown or log"| read{"streamToText(file.stream()):<br/>TextDecoderStream utf-8, reader done?"}
-    read -->|"no"| append["text += decoded piece"]
-    append --> streamLenQ{"text.length above<br/>MAX_TEXT_CHARS 5,000,000?"}
-    streamLenQ -->|"yes, await reader.cancel()"| eLong["too_large<br/>details max 5000000"]
-    streamLenQ -->|"no"| read
-    read -->|"yes"| typeQ{"ext?"}
-    typeQ -->|"json"| parse{"JSON.parse after a BOM strip succeeds?"}
-    parse -->|"no"| eJson["invalid_json<br/>message from JSON.parse"]
-    parse -->|"yes"| flat["flattenJson: one path: value line per scalar<br/>in document order, skips null, undefined and empty strings"]
-    typeQ -->|"csv"| csv["csvToText(normalizeText(text))<br/>column: value lines when the header is usable,<br/>see workspace-ingestion-csv"]
-    typeQ -->|"txt, md, markdown or log"| norm
-    flat -->|"not length-checked again"| norm
-    csv -->|"not length-checked again"| norm
-    norm["normalizeText: strip a leading BOM, CRLF and CR to LF,<br/>drop control characters except tab and newline"]
-    norm --> emptyQ{"only whitespace left?"}
+    kindQ -->|"pdf"| pdf["pdfToText, see workspace-ingestion-pdf"]
+    kindQ -->|"docx, xlsx, pptx"| office["formats/docx.js, xlsx.js, pptx.js:<br/>zip.js package, xml.js parser, maxChars 5,000,000"]
+    office --> zipQ{"ZIP limits: 10,000 entries, 64 MiB per entry,<br/>160 MiB in all, ratio 200 above 1 MiB,<br/>no overlap, CRC-32, safe names?"}
+    zipQ -->|"no"| eZip["zip_bomb, invalid_document<br/>or encrypted_document"]
+    zipQ -->|"yes"| xmlQ{"XML: DOCTYPE entities never expanded,<br/>depth at most 256?"}
+    xmlQ -->|"no"| eZip
+    xmlQ -->|"yes"| norm
+    kindQ -->|"html, htm"| html["decodeHtmlBytes, htmlToText: scripts and styles skipped,<br/>headings, lists and tables kept, maxChars 5,000,000"]
+    html --> norm
+    kindQ -->|"image"| img["imageToText: type from the bytes, size read"]
+    img --> ocrQ{"OCR hook for this file<br/>(the user agreed)?"}
+    ocrQ -->|"no"| eOcr["needs_ocr with purpose ocr_image:<br/>the workspace asks for consent"]
+    ocrQ -->|"yes"| ocr["hook: image to a model that can see,<br/>recognised text, provider and model recorded"]
+    ocr --> norm
+    kindQ -->|"json, csv, txt, md, log"| read["streamToText: TextDecoderStream,<br/>cancelled above 5,000,000 chars: too_large"]
+    read --> typeQ{"ext?"}
+    typeQ -->|"json"| flat["JSON.parse, flattenJson: path: value lines;<br/>invalid_json on a parse error"]
+    typeQ -->|"csv"| csv["csvToText: column: value lines,<br/>see workspace-ingestion-csv"]
+    typeQ -->|"txt, md, log"| norm
+    flat --> norm
+    csv --> norm
+    pdf --> norm
+    norm["normalizeText: BOM, line endings, control characters"]
+    norm --> emptyQ{"only whitespace?"}
     emptyQ -->|"yes"| eEmpty["empty"]
-    emptyQ -->|"no"| ok(["return text, kind (markdown as md),<br/>pages and pdfjs, both null unless pdf"])
-
-    subgraph sg_err["ParseError: the worker replies ok false with this code"]
-        eType
-        eBig
-        eLong
-        eJson
-        eEmpty
-    end
+    emptyQ -->|"no"| ok(["text, kind, pages and pdfjs for a PDF;<br/>EXTRACTOR starpi-extract version 2"])
 ```
 
-<sub>Sources: [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js)</sub>
+<sub>Sources: [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/rag/formats/zip.js`](../src/js/rag/formats/zip.js), [`src/js/rag/formats/xml.js`](../src/js/rag/formats/xml.js), [`src/js/rag/formats/ooxml.js`](../src/js/rag/formats/ooxml.js), [`src/js/rag/formats/docx.js`](../src/js/rag/formats/docx.js), [`src/js/rag/formats/xlsx.js`](../src/js/rag/formats/xlsx.js), [`src/js/rag/formats/pptx.js`](../src/js/rag/formats/pptx.js), [`src/js/rag/formats/html.js`](../src/js/rag/formats/html.js), [`src/js/rag/formats/image.js`](../src/js/rag/formats/image.js), [`src/js/rag/ocr-hook.js`](../src/js/rag/ocr-hook.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js)</sub>
 
 ### csvToText: CSV rows as column: value lines
 
@@ -2261,14 +2260,14 @@ flowchart TD
 
 ### Workspace RPCs: search, head, context, text, remove, clear
 
-Every workspace call goes through request(), which posts {id, type, payload} to the worker and settles on the reply with the same id. searchWorkspace resolves to an empty list without sending anything when there are no documents or the query is blank; the worker clamps topK to 1..50 (default 5), head counts to 1..10 (default 3) and the context pad to 0..2000 (default 300, workspace.js sends 400). chat.js asks for the top 6 (LIMITS.retrievalRows) and for the first 3 chunks of an attached file when none of the hits comes from it; in free chat it reads an attached file's whole text and, for a file over 12,000 characters, its first 2 chunks and the top 12 hits; the workspace search form and the demo's check answer ask for 5. context and text reply with code empty for an unknown docId while head replies with an empty list, and chat.js swallows any retrieval rejection. clearWorkspace rejects pending calls with cleared and sends the worker's clear request, which empties memory and deletes the stored documents; an ingest that started before the clear is cancelled with cleared. The remaining request type besides ingest, verify-receipt, is shown in workspace-ingestion-verify-receipt.
+Every workspace call goes through request(), which posts {id, type, payload} to the worker and settles on the reply with the same id. searchWorkspace resolves to an empty list without sending anything when there are no documents or the query is blank; the worker clamps topK to 1..50 (default 5), head counts to 1..10 (default 3) and the context pad to 0..2000 (default 300, workspace.js sends 400). The thread (chat/thread.js) asks for the top 6 (LIMITS.retrievalRows) and for the first 3 chunks of an attached file when none of the hits comes from it, and reads the whole text of a document attached to a message once (getDocumentText), which the attachment then keeps; the workspace search form and the demo's check answer ask for 5. context and text reply with code empty for an unknown docId while head replies with an empty list, and the thread swallows any retrieval rejection. clearWorkspace rejects pending calls with cleared and sends the worker's clear request, which empties memory and deletes the stored documents; an ingest that started before the clear is cancelled with cleared. The remaining request type besides ingest, verify-receipt, is shown in workspace-ingestion-verify-receipt.
 
 <!-- diagram: workspace-ingestion-rpcs -->
 ```mermaid
 sequenceDiagram
     autonumber
     participant ING as ingest.js
-    participant CHAT as chat.js
+    participant CHAT as chat/thread.js
     participant CIT as rag/citations.js
     participant WS as rag/workspace.js
     participant W as ingest.worker.js
@@ -2293,15 +2292,12 @@ sequenceDiagram
         WS-->>CHAT: pinned in front of the hits, see chat-request-workspace-merge
     end
     Note over CHAT,WS: any rejection here is caught, logged with console.warn,<br/>and the chat continues without workspace hits
-    opt free chat with an attached file: attachmentForChat
+    opt a document attached to a message: storeQuestion
         CHAT->>WS: getDocumentText(docId)
         WS->>W: text, docId
         W-->>WS: name and full text
-        opt text longer than 12000 chars
-            CHAT->>WS: firstChunks(docId, 2) and searchWorkspace(prompt, 12)
-            Note over CHAT: excerptForChat joins the ranges of that file within 12000 chars
-        end
-        Note over CHAT,WS: a rejection is logged and the question goes without the file
+        Note over CHAT: kept as the attachment's text, fitted to the model's budget<br/>when a model gets the question, see attachments-voice-ask
+        Note over CHAT,WS: a rejection is ignored, the text is read from the blob when needed
     end
     CIT->>WS: getChunkContext(docId, start, end)
     WS->>W: context, pad 400 (worker uses Number(pad) or 300, clamped to 0..2000)
@@ -2328,7 +2324,7 @@ sequenceDiagram
     Note over W,IX: rag/receipts.js sends verify-receipt through verifyReceiptFiles,<br/>see workspace-ingestion-verify-receipt
 ```
 
-<sub>Sources: [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/config.js`](../src/js/config.js), [`src/js/prompts.js`](../src/js/prompts.js)</sub>
+<sub>Sources: [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/bm25.js`](../src/js/rag/bm25.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/config.js`](../src/js/config.js), [`src/js/prompts.js`](../src/js/prompts.js)</sub>
 
 ### verify-receipt: re-checking an answer receipt against the original files
 
@@ -2612,12 +2608,12 @@ flowchart TD
 
 ### Citation labels, scopes and the fenced context
 
-assignCitations gives every hit a label [Doc: <name>, Chunk: <n>] built with labelName and citationLabel from core/labels.js (retrieval.js re-exports citationLabel and CITATION_PATTERN). Workspace chunks keep their real chunkIndex + 1, knowledge base sections are numbered per normalized title in order of appearance, and a label already used gets chunk += 1000 until it is unique. Excerpts are cut with safeSlice at excerptChars (1600 in chat and in the demo's check answer, 100000 in the workspace search form; one UTF-16 unit earlier when the cut would split a surrogate pair) and marked truncated; each citation keeps its documentId and, for a workspace chunk, a span with docId, chunkIndex and character offsets. registerCitations stores the list under a scope id (null when empty) and deletes the oldest scope once more than MAX_SCOPES (200) exist. Only chat.js then builds the fenced context with buildContext (maxChars LIMITS.contextCharsCloud, 9000, in every mode): every excerpt gets an opening and a closing fence with its position number, and when the budget runs out an excerpt's text is cut with an ellipsis, never its fences. An excerpt is skipped when less than 120 characters (or less than its own length, if shorter) would be left for its text; a later, shorter excerpt can still fit.
+assignCitations gives every hit a label [Doc: <name>, Chunk: <n>] built with labelName and citationLabel from core/labels.js (retrieval.js re-exports citationLabel and CITATION_PATTERN). Workspace chunks keep their real chunkIndex + 1, knowledge base sections are numbered per normalized title in order of appearance, and a label already used gets chunk += 1000 until it is unique. Excerpts are cut with safeSlice at excerptChars (1600 in chat and in the demo's check answer, 100000 in the workspace search form; one UTF-16 unit earlier when the cut would split a surrogate pair) and marked truncated; each citation keeps its documentId and, for a workspace chunk, a span with docId, chunkIndex and character offsets. registerCitations stores the list under a scope id (null when empty) and deletes the oldest scope once more than MAX_SCOPES (200) exist. For models with a large window the thread (chat/thread.js answerGrounded) then builds the fenced context with buildContext (maxChars LIMITS.contextCharsCloud, 9000); models on this device, the own server and small models get a context pack instead (section 3). In the fenced context every excerpt gets an opening and a closing fence with its position number, and when the budget runs out an excerpt's text is cut with an ellipsis, never its fences. An excerpt is skipped when less than 120 characters (or less than its own length, if shorter) would be left for its text; a later, shorter excerpt can still fit.
 
 <!-- diagram: citations-assign-and-context -->
 ```mermaid
 flowchart TD
-    callers(["assignCitations(hits, limits), limits.excerptChars:<br/>chat.js submitChat, demo.js showCheckDemo: LIMITS.excerptChars 1600<br/>ingest.js runWorkspaceSearch: 100000"])
+    callers(["assignCitations(hits, limits), limits.excerptChars:<br/>chat/thread.js answerGrounded, demo.js showCheckDemo:<br/>LIMITS.excerptChars 1600<br/>ingest.js runWorkspaceSearch: 100000"])
     nextHit["next hit, in the given order<br/>in chat: pinned file chunks, other workspace hits, knowledge base"]
     name["doc = labelName(documentTitle) from core/labels.js<br/>runs of square brackets and line breaks become a space,<br/>whitespace collapsed, trimmed, empty becomes Document"]
     wsQ{"hit.workspace set?"}
@@ -2640,7 +2636,7 @@ flowchart TD
     callerQ{"caller?"}
     wsList(["ingest.js: one result row per hit with a citationButton<br/>badge, or the plain file name when the scope is null"])
     demoOut(["demo.js: a fixed answer text written for the demo<br/>with these labels, in the language of the sample set<br/>found complete in the workspace, the interface language first,<br/>appendMessage with the scope, then the source check with applyGrounding"])
-    ctx["chat.js: buildContext(citationList,<br/>maxChars LIMITS.contextCharsCloud 9000)<br/>for citation n: opening fence EXCERPT n with the label<br/>and the heading, closing fence END EXCERPT n"]
+    ctx["chat/thread.js: buildContext(citationList,<br/>maxChars LIMITS.contextCharsCloud 9000)<br/>for citation n: opening fence EXCERPT n with the label<br/>and the heading, closing fence END EXCERPT n"]
     roomQ{"room left for the text after both fences and,<br/>from the second block on, a blank-line separator:<br/>below min(120, text length)?"}
     skip["excerpt left out, number n is not reused,<br/>the next citation is tried"]
     cutQ{"text longer than the room?"}
@@ -2693,14 +2689,14 @@ flowchart TD
 
 ### From hits to a citation in the drawer
 
-submitChat turns the hits into citations, registers them under a scope and builds the fenced context; a model answers with the labels, or, when there is no usable model answer, synthesizeAnswer quotes up to 4 sentences, each followed by its excerpt label. messages.js renders the answer with renderMarkdown, linkifyCitations turns only registered labels into open-citation buttons and attachSources adds a Sources row; the source check and the receipt button follow (see chat-request-source-check). openCitation looks the citation up in its scope, fills in the metadata, shows the excerpt at once in a mark and opens citationModal through dialog.js, which focuses the close button, keeps Tab inside the dialog, closes it on Escape and returns focus to the chip. For a workspace citation it then asks the worker for up to 400 characters of context on each side of the span and scrolls only the excerpt box to the mark; a reply that arrives after another citation was opened, or after the dialog was closed, is ignored. An unknown docId keeps the excerpt with citation.note_missing; document ids carry a random per-worker prefix, so after Clear workspace or a crash an old span can never open a newer file's text.
+answerGrounded (chat/thread.js) turns the hits into citations, registers them under a scope and builds the fenced context or a context pack; a model answers with the labels, or, when there is no usable model answer, synthesizeAnswer quotes up to 4 sentences, each followed by its excerpt label. messages.js renders the answer with renderMarkdown, linkifyCitations turns only registered labels into open-citation buttons and attachSources adds a Sources row; the source check and the receipt button follow (see chat-request-source-check). openCitation looks the citation up in its scope, fills in the metadata, shows the excerpt at once in a mark and opens citationModal through dialog.js, which focuses the close button, keeps Tab inside the dialog, closes it on Escape and returns focus to the chip. For a workspace citation it then asks the worker for up to 400 characters of context on each side of the span and scrolls only the excerpt box to the mark; a reply that arrives after another citation was opened, or after the dialog was closed, is ignored. An unknown docId keeps the excerpt with citation.note_missing; document ids carry a random per-worker prefix, so after Clear workspace or a crash an old span can never open a newer file's text.
 
 <!-- diagram: citations-answer-to-drawer -->
 ```mermaid
 sequenceDiagram
     autonumber
     actor User
-    participant Chat as chat.js submitChat
+    participant Chat as chat/thread.js answerGrounded
     participant Ret as retrieval.js
     participant Cit as rag/citations.js
     participant Dlg as dialog.js
@@ -2716,15 +2712,15 @@ sequenceDiagram
     Cit-->>Chat: scope id, or null when there are none
     Chat->>Ret: buildContext(citations, maxChars 9000)
     Ret-->>Chat: fenced EXCERPT blocks, each header carries its label
-    alt a model answers (cloud, own server or on-device)
+    alt a model answers (a provider, a site pool, the own server or on this device)
         Chat->>Gen: system prompt with the citation rules and the context
         Gen-->>Chat: answer text that cites labels
     else no model, a failed model or empty text
         Chat->>Gen: synthesizeAnswer with used hits and the citation list
         Gen-->>Chat: up to 4 quoted sentences, each followed by its excerpt label
     end
-    Chat->>Msg: appendMessage(text, citations scope), only if the chat session is unchanged
-    Note over Chat,Msg: a streamed on-device answer is finished by<br/>stream.finalize(text, citations scope) with the same steps
+    Chat->>Msg: a streamed answer: stream.finalize(text, citations scope),<br/>a quoted answer: appendMessage(text, citations scope)
+    Note over Chat,Msg: pack labels S1 and F1 are expanded to the canonical labels first
     Msg->>Cit: linkifyCitations(content rendered by renderMarkdown, scope), then citationSources(scope)
     Cit-->>Msg: open-citation buttons for registered labels only, Sources badge row
     Note over Chat,Msg: then the source check and the receipt button, see chat-request-source-check
@@ -2761,7 +2757,7 @@ sequenceDiagram
     Note over WS,W: ids are ws-instanceId-n with a random instanceId<br/>per worker, so after Clear workspace or a crash<br/>an old span never matches a newer file
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/dialog.js`](../src/js/dialog.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/render.js`](../src/js/render.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/ai/context-pack.js`](../src/js/ai/context-pack.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/dialog.js`](../src/js/dialog.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/render.js`](../src/js/render.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json)</sub>
 
 ### linkifyCitations and the Sources row
 
@@ -2819,195 +2815,123 @@ flowchart TD
 
 <sub>Sources: [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/core/labels.js`](../src/js/core/labels.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/render.js`](../src/js/render.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/chat.js`](../src/js/chat.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
 
-### Attaching a file to the chat
+### Attaching files and images to a message
 
-Choosing a file (data-change attach-file) calls attachFile, which gives the read a token from attachSeq, shows the chip with chat.attaching and sends the File to the starpi-ingest worker through addToWorkspace, without progress. While the read runs, submitChat waits for it (status.reading_file) instead of sending the question without the file. The worker fingerprints, parses, chunks and BM25-indexes the file and returns a DocumentInfo, or the existing document with duplicate true when the same file is already in the workspace; the chip then shows the name and chunk count and the docId is kept as the pending attachment. A worker error reply (ParseError code or internal), a worker crash (worker_crashed) or a workspace clear during the read (cleared) rejects with a WorkspaceError, the chip is removed and a warning notice shows workspace.error_<code> (or workspace.error_internal when no such key exists). A result or error that arrives after the attachment was removed or replaced is ignored. Removing the attachment only clears the chip; the file stays in the on-device workspace.
+The composer (chat/composer.js) takes files from the paperclip, a paste or a drop, up to 10 per message, and prepares each on this device with chat/attachments.js while its chip shows it is being read. kindOf() sorts a file by its type and name: an image (JPEG, PNG, WebP, GIF), a PDF, a text file (prose, data and source code, up to 8 MB read whole) or a document (DOCX, XLSX, PPTX, HTML, read by rag/parser.js); anything else is refused. An image is drawn onto a canvas at most 1,568 pixels on the long edge and stored as JPEG at quality 0.85, unless it is already a small JPEG. A document or a PDF is also added to the on-device workspace (addToWorkspace), so a grounded question can search it and pin its passages. Send waits for every attachment that is still being read, and the composer checks that the chosen model can take them: an image with a model that cannot see disables Send and says why. Nothing here leaves the device; the thread decides what is sent where.
 
 <!-- diagram: attachments-voice-attach -->
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant Chat as chat.js
-    participant WS as rag/workspace.js
-    participant W as ingest.worker.js
-    participant Msg as messages.js
-
-    User->>Chat: pick-chat-file opens chatFileInput, choose a file (change event, attach-file)
-    Chat->>Chat: take files[0], reset the input value, no file means no action
-    Chat->>Chat: attachFile: token = ++attachSeq, attachment = null,<br/>attaching = the readAttachment promise until it settles
-    Chat-->>User: attachedInfo shown, attachedFileName = chat.attaching
-    Chat->>WS: readAttachment calls addToWorkspace(file), no onProgress
-    WS->>WS: getWorker() starts the starpi-ingest module worker if none is running
-    WS->>W: postMessage id, type ingest, payload file (structured clone)
-    W->>W: fileSha256, duplicate check, extractText, textSha256,<br/>uniqueName, chunkText, docId ws-instanceId-N, BM25 index.add
-    Note over Chat: a submit meanwhile waits for attaching with status.reading_file
-    alt worker replies ok
-        W-->>WS: DocumentInfo, or the existing one with duplicate true
-        WS->>WS: a new document extends docs and notifies the listeners,<br/>a duplicate changes nothing
-        WS-->>Chat: document
-        alt token still equals attachSeq
-            Chat->>Chat: attachment = docId and name
-            Chat-->>User: chip shows chat.attached (name, chunk count)
-        else the attachment was removed or replaced meanwhile
-            Chat->>Chat: result ignored, the file stays in the workspace
-        end
-    else request rejected
-        alt worker replies ok false
-            W-->>WS: error code (ParseError code, else internal)
-            Note right of W: ParseError codes: unsupported_type, too_large (25 MiB file<br/>or 5 million chars), empty, invalid_json, invalid_pdf,<br/>encrypted_pdf, pdf_reader
-        else worker error or messageerror event
-            WS->>WS: failAll worker_crashed, terminate worker, clear docs
-        else workspace-clear clicked in the ingest tab meanwhile
-            WS->>WS: clearWorkspace: failAll cleared, terminate worker, clear docs
-        end
-        WS-->>Chat: reject with WorkspaceError(code)
-        opt token still equals attachSeq
-            Chat->>Chat: removeAttachment() hides the chip, clears chatFileInput
-            Chat->>Msg: appendNotice tone warn, title workspace.error_title
-            Note right of Msg: body workspace.error_ + code when that key exists,<br/>else workspace.error_internal, with the file name
-        end
-    end
-    User->>Chat: remove-attachment
-    Chat->>Chat: removeAttachment(): attachment = null, attachSeq += 1,<br/>chip hidden, the file stays in the workspace
+flowchart TD
+    in(["paperclip, paste or drop"])
+    countQ{"more than 10 attachments<br/>in the draft?"}
+    refuse(["notice chat-thread.composer.too_many,<br/>the first ones up to 10 are kept"])
+    kind{"kindOf(file)"}
+    img["image: downscaleImage, at most 1,568 px on the long edge,<br/>JPEG 0.85, a small JPEG stays as it is"]
+    pdf["PDF: kept as it is; text extracted on demand"]
+    text["text file up to 8 MB: read whole"]
+    doc["DOCX, XLSX, PPTX, HTML: text by rag/parser.js<br/>on demand"]
+    none(["refused: not a file the chat can use"])
+    ws["documents and PDFs: addToWorkspace(file),<br/>docId and chunks kept with the attachment"]
+    chip["chip: reading, then ready"]
+    send{"Send pressed"}
+    wait["wait for every attachment being read"]
+    vision{"an image and a model<br/>that cannot see?"}
+    block(["Send disabled with the reason"])
+    draft(["takeDraft(): text and PreparedAttachment list"])
+    in --> countQ
+    countQ -->|"yes"| refuse --> kind
+    countQ -->|"no"| kind
+    kind -->|"image"| img --> chip
+    kind -->|"pdf"| pdf --> ws
+    kind -->|"text"| text --> chip
+    kind -->|"document"| doc --> ws
+    kind -->|"other"| none
+    ws --> chip
+    chip --> send --> wait --> vision
+    vision -->|"yes"| block
+    vision -->|"no"| draft
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/chat/composer.js`](../src/js/chat/composer.js), [`src/js/chat/attachments.js`](../src/js/chat/attachments.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/config.js`](../src/js/config.js)</sub>
 
 ### Asking about an attached file
 
-submitChat first waits for a file that is still being read (status.reading_file), then takes the pending attachment, hides the chip and uses chat.summarize_file as the prompt when no text was typed. The user message (prompt plus [name], the file's name in the workspace, numbered when it was taken) is stored by storeQuestion once retrieval has run (or by the catch if the turn throws first), and because a file is attached it is localOnly and stays in localStorage in every mode. retrieveWorkspace runs a BM25 search (top 6) and pins up to 3 chunks of the attached document in front: its matching chunks, or its first 3 chunks when none of the hits comes from it. mergeHits then fills up to 9 slots (6 plus 3) with the pinned chunks, other workspace hits and knowledge base hits (full-text RPC with a local-ranking fallback, local ranking only in on-device mode, none while the connection is offline); a workspace-only sample question skips the knowledge base and mergeHits and takes the first 9 workspace hits. The fenced context, including the file excerpts, goes to the model of the active mode; the answer is rendered with its citation scope and the source check, and stays local in client mode, when a used hit comes from the workspace (normally the file's own excerpts), or when it was quoted without a model (synthesizer) and its text contains the name of a file in the workspace, such as a list of the available documents. If no used hit comes from the workspace (the workspace search failed, or the file was removed meanwhile and no other file matched) and the answer names no workspace file, only the question is kept local and the answer is synced like any other when chats sync. In free chat the file takes another way: the question is stored at once, still local because of the file, attachmentForChat reads the whole text from the worker, or for a file over 12,000 characters its first 2 chunks and its passages among the top 12 hits, and the text goes to the model fenced as an attached file, without retrieval, citations or source check; the answer is marked as not checked and stays local like its question. Opening a workspace citation reads the surrounding text from the worker with getChunkContext and falls back to citation.note_missing when the document is gone.
+storeQuestion() keeps every attachment as a blob owned by the question node (IndexedDB `blobs`), so a branch, a regenerate or a reload can send it again; the text of a document the workspace already read is taken from there instead of parsing the file twice. When a question goes to a model, userMessage() turns each part into what the model can take: an image as an image part when the model sees (else its name in brackets); a PDF as a file part for a model that reads PDFs, when it is at most 3 MB and not on a site pool; every other file as text fenced as a file (attachmentSection), within a budget that follows the model's context (a fifth of it, at least 2,000 and at most 120,000 characters; 12,000 when the context is unknown), cut at the same place every time so a replayed turn stays the same. An attachment this browser does not have (a conversation restored through the sync, which carries no attachments) goes as its name, and a notice names the files left out. In the grounded route an attached document routes Auto to grounded and its passages are pinned in front of the other hits (chat-request-workspace-merge); a question with only images stays free and needs a model that sees. A question with attachments that stays on this device keeps them here too.
 
 <!-- diagram: attachments-voice-ask -->
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User
-    participant Chat as chat.js submitChat
-    participant Store as chat-store.js
+    participant Th as chat/thread.js
+    participant DB as IndexedDB blobs and nodes
     participant WS as rag/workspace.js
-    participant W as ingest.worker.js
-    participant KB as supabase.js
-    participant Ret as retrieval.js
-    participant Cit as rag/citations.js
-    participant LLM as Model of the mode
-    participant Msg as messages.js
+    participant At as chat/attachments.js
+    participant M as model request
 
-    User->>Chat: send (text may be empty while a file is attached)
-    Note over User,Chat: busy with an earlier answer gives status.busy and stops
-    opt the file is still being read
-        Chat->>Chat: busy, status.reading_file, await attaching
+    Th->>DB: storeQuestion: putBlob per attachment, owner = the question
+    opt a document the workspace read
+        Th->>WS: getDocumentText(docId), kept as the attachment's text
     end
-    Note over User,Chat: no text and no attachment stops here
-    Chat->>Chat: file = attachment, chatInput cleared, removeAttachment() hides the chip
-    Note over Chat: prompt = text or chat.summarize_file with the name<br/>shown text = prompt plus [name], the workspace name of the file
-    Chat->>Msg: appendMessage user, not stored yet
-    Chat->>Msg: appendLoading bubble, after setBusy(true) shows stopBtn
-    opt free chat
-        Chat->>Store: storeQuestion(false), local because a file is attached
-        Chat->>WS: attachmentForChat: getDocumentText, over 12000 chars<br/>firstChunks(docId, 2) and searchWorkspace(prompt, 12)
-        Chat->>LLM: free-chat prompt with the file fenced as data, no citations
-        LLM-->>Chat: answer marked Free chat, not checked, stored local
-        Note over Chat,LLM: the rest of this diagram is verified source mode
-    end
-    Chat->>WS: retrieveWorkspace calls searchWorkspace(prompt, 6)
-    alt workspace empty or blank query
-        WS-->>Chat: empty list, no worker request
-    else documents in the workspace
-        WS->>W: search, topK 6
-        W-->>WS: BM25 hits
-        WS-->>Chat: hits
-    end
-    alt some hits come from the attached docId
-        Chat->>Chat: focus = the first 3 of them
-    else none
-        Chat->>WS: firstChunks(docId, 3)
-        WS->>W: head, count 3
-        W-->>WS: first 3 chunks with score 0, empty when the file is gone
-        WS-->>Chat: focus = those chunks
-    end
-    Note over Chat,WS: hits = focus, then the hits of other files, pinned = focus count.<br/>An error in retrieveWorkspace is logged and yields no workspace hits
-    alt workspaceOnly sample question
-        Note over Chat,KB: no knowledge base request, the first 9 workspace hits
-    else connection offline
-        Note over Chat,KB: no knowledge base request, kbUnavailable
-    else mode council, local or nvidia
-        Chat->>KB: searchKnowledge(prompt), on an error or zero rows recentKnowledge(30) ranked locally
-    else mode client
-        Chat->>KB: recentKnowledge(30) ranked locally, question not sent
-    end
-    Chat->>Ret: mergeHits(workspace, knowledge, limit 6 + 3 = 9, pinned), not for workspaceOnly
-    Note over Chat: the pinned chunks always stay, the greeting shortcut is skipped when a file is attached
-    Chat->>Store: storeQuestion(usesWorkspace), persistMessage user
-    Note over Store: localOnly = client mode, a file attached or a used workspace hit,<br/>so with a file always localStorage starpi_local_chats_v1, never chat_history
-    Chat->>Ret: assignCitations, workspace label [Doc: name, Chunk: chunkIndex + 1]
-    Chat->>Cit: registerCitations gives the citation scope
-    Chat->>Ret: buildContext fences the excerpts, max 9000 chars
-    Chat->>LLM: prompt plus context incl. the file excerpts (Gemini or OpenRouter, WebGPU or WASM, own server, NVIDIA)
-    LLM-->>Chat: answer text, or none or empty (e.g. no cloud key, a failed model),<br/>then synthesizeAnswer is used with focusName = that name
-    alt answer ready
-        Chat->>Msg: answer shown with its citation scope, source check and receipt button (same session only)
-        Chat->>Store: persistMessage answer, localOnly = client mode, a used hit from the workspace,<br/>or a synthesizer answer whose text contains a workspace file name
-    else exception
-        Chat->>Store: storeQuestion(false), stores only if retrieval had not finished, still local with a file
-        Chat->>Msg: appendNotice chat.error_title, chat.error_body unless a user abort
-    end
-    User->>Cit: open-citation on a workspace label
-    Cit->>WS: getChunkContext(docId, start, end)
-    WS->>W: context, pad 400
-    alt document still in the worker
-        WS-->>Cit: before, match, after, chunk highlighted, citation.note_workspace
-    else document gone (worker crash, clear or remove)
-        WS-->>Cit: rejects, stored excerpt stays, citation.note_missing
+    Th->>DB: appendNode(question with image and file parts)
+    Note over Th: Auto: an attached document means grounded,<br/>only images stay free and need a model that sees
+    loop each part, when a model gets the question (userMessage)
+        alt image
+            alt the model sees
+                Th->>DB: blob as base64
+                Th->>M: image part
+            else
+                Th->>M: the image's name in brackets
+            end
+        else PDF, the model reads PDFs, at most 3 MB, not a site pool
+            Th->>M: file part application/pdf
+        else any other file
+            Th->>At: attachmentText: plain text, or extractText on demand
+            Th->>Th: fitText within textBudget(caps): a fifth of the context,<br/>2,000 to 120,000 chars, 12,000 when unknown
+            Th->>M: attachmentSection(name, text), fenced as a file
+        end
+        opt the blob is not in this browser (restored by the sync)
+            Th->>M: the name only, noted as left out
+        end
     end
 ```
 
-<sub>Sources: [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/retrieval.js`](../src/js/retrieval.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/synthesizer.js`](../src/js/synthesizer.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/config.js`](../src/js/config.js), [`src/locales/en.json`](../src/locales/en.json), [`src/js/prompts.js`](../src/js/prompts.js)</sub>
+<sub>Sources: [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/chat/attachments.js`](../src/js/chat/attachments.js), [`src/js/chat/store.js`](../src/js/chat/store.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/js/ai/hybrid.js`](../src/js/ai/hybrid.js), [`src/js/config.js`](../src/js/config.js)</sub>
 
-### Voice input with the Web Speech API
+### Voice input: the dictation chain
 
-toggle-voice first checks for SpeechRecognition or webkitSpeechRecognition and shows a chat.voice_unsupported notice when neither exists. A second click while recording stops recognition. Because most browsers recognize speech on their vendor's servers, in the on-device mode (client) voice input only starts when the recognizer supports processLocally; otherwise an info notice (chat.voice_off_title, chat.voice_off_local) says that it is off. A new recognizer gets lang from getIntlLocale (en-US or de-DE), continuous false, interimResults true and, in the on-device mode, processLocally true. Every result event overwrites chatInput with the running transcript and dispatches an input event so the box grows, without submitting it. onstart turns the recording state on (pulse, red button, aria-pressed true, aria-label chat.voice_stop); onend, onerror or an exception during setup turn it off, and every error except aborted shows a warning notice chosen by its error code.
+The microphone button starts the first speech input source of the chain (voice/stt.js): the user's pick first, then the browser, Gemini, OpenAI, Groq, a voice server on the user's machine and the companion, each counted only when it can run now (a key, the site's offer, a server address, a pairing). For a question that stays on this device (the model of this device is picked) only sources that keep audio on the user's machines count, plus the browser where it recognises on the device (`processLocally`). The browser's own recognition writes while the user speaks and ends at the pause; when it is missing, refused or its service fails, dictation records instead and the next sources transcribe the recording (a 16 kHz WAV), each handing over to the next on failure, with the user's glossary of names and terms. The text lands after what the message box holds, and audio is never stored. Section 16 describes the sources, read-aloud and Live.
 
 <!-- diagram: attachments-voice-voice -->
 ```mermaid
 flowchart TD
-    VClick(["voiceBtn click: toggle-voice"]) --> Ctor{"window.SpeechRecognition<br/>or webkitSpeechRecognition?"}
-    Ctor -->|"neither"| Unsupported["appendNotice warn chat.voice_unsupported"]
-    Ctor -->|"available"| Rec{"recording?"}
-    Rec -->|"yes"| Stop["recognition.stop(), setRecording(false)"]
-    Rec -->|"no"| ModeQ{"getMode() is client,<br/>the on-device mode?"}
-    ModeQ -->|"yes"| LocalQ{"processLocally in Ctor.prototype?"}
-    LocalQ -->|"no"| Off["appendNotice info chat.voice_off_title,<br/>body chat.voice_off_local, no recognition"]
-    LocalQ -->|"yes"| Create
-    ModeQ -->|"no"| Create
-
-    subgraph sg_try["try"]
-        Create["recognition = new Ctor()"] --> Lang["recognition.lang = getIntlLocale()<br/>en-US for en, de-DE for de"]
-        Lang --> Opts["continuous = false, interimResults = true,<br/>processLocally = true in the on-device mode"]
-        Opts --> Handlers["set onstart, onresult, onerror, onend"]
-        Handlers --> Start["recognition.start()"]
-    end
-    sg_try -.->|"throws"| InitErr["console.error voice init error, setRecording(false),<br/>notice chat.voice_error_other with the error name"]
-
-    subgraph sg_events["Recognition events"]
-        OnStart["onstart"] --> RecOn["setRecording(true): voicePulse shown,<br/>voiceBtn text-red-700, aria-pressed true,<br/>aria-label chat.voice_stop"]
-        OnResult["onresult, interim and final"] --> Transcript["concatenate transcripts from<br/>resultIndex to the last result"]
-        Transcript --> Fill["chatInput.value = transcript, input event<br/>grows the box, nothing is submitted"]
-        OnError["onerror"] --> ErrOff["setRecording(false)"]
-        ErrOff --> AbortQ{"error is aborted?"}
-        AbortQ -->|"yes"| Quiet["no notice"]
-        AbortQ -->|"no"| ErrNotice["notice warn by error code:<br/>not-allowed, service-not-allowed: chat.voice_error_denied<br/>audio-capture: chat.voice_error_microphone<br/>network: chat.voice_error_network<br/>no-speech: chat.voice_error_no_speech<br/>language-not-supported: chat.voice_error_language<br/>any other: chat.voice_error_other with the code"]
-        OnEnd["onend, also after one utterance"] --> RecOff["setRecording(false): voicePulse hidden,<br/>text-red-700 removed, aria-pressed false,<br/>aria-label chat.voice_input"]
-    end
-    Start --> OnStart
-    Stop --> RecOff
+    mic(["microphone button"])
+    chain["sttChain: the pick first, then browser, Gemini, OpenAI,<br/>Groq, local voice server, companion; available ones only"]
+    devQ{"question stays on this device?"}
+    local["only sources on the user's machines,<br/>the browser only with processLocally"]
+    first{"first source"}
+    browser["browser recognition writes while speaking,<br/>ends at the pause"]
+    fail{"missing, refused or failed?"}
+    record["record a 16 kHz WAV until the second press<br/>or the time limit"]
+    next["transcribeWithFallback: next source,<br/>not configured, refused, rate limited or unreachable hands over"]
+    text(["text after what the box holds, audio not stored"])
+    none(["notice: no source could transcribe"])
+    mic --> chain --> devQ
+    devQ -->|"yes"| local --> first
+    devQ -->|"no"| first
+    first -->|"browser"| browser --> fail
+    fail -->|"no"| text
+    fail -->|"yes"| record
+    first -->|"another source"| record
+    record --> next
+    next -->|"a source answered"| text
+    next -->|"none left"| none
 ```
 
-<sub>Sources: [`src/js/voice.js`](../src/js/voice.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/state.js`](../src/js/state.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/main.js`](../src/js/main.js), [`src/index.html`](../src/index.html), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`src/js/voice/stt.js`](../src/js/voice/stt.js), [`src/js/voice/dictation.js`](../src/js/voice/dictation.js), [`src/js/voice/recognition.js`](../src/js/voice/recognition.js), [`src/js/voice/capture.js`](../src/js/voice/capture.js), [`src/js/voice/catalog.js`](../src/js/voice/catalog.js), [`src/js/voice/sources/index.js`](../src/js/voice/sources/index.js)</sub>
 
 ## 5. On-device inference
 
-The on-device engine runs a WebGPU preset with WebLLM or a processor (WASM) model with Transformers.js, each in its own Web Worker. Loads are sequenced so a superseded load can never change the engine status, and a load settles the cheap questions first: when a model is not cached, a start-up load stops before the WebLLM library is imported or a worker starts, and an interactive load asks for download consent before the library is imported or any model data is downloaded. The benchmark runs on the loaded engine, after an interactive load when none is ready, to measure time to first token and decode speed.
+The on-device engine runs a WebGPU preset with WebLLM or a processor (WASM) model with Transformers.js, each in its own Web Worker. Loads are sequenced so a superseded load can never change the engine status, and a load settles the cheap questions first: when a model is not cached, a start-up load stops before the WebLLM library is imported or a worker starts, and an interactive load asks for download consent before the library is imported or any model data is downloaded. Every model file is checked against its pinned SHA-256 before the model answers. The benchmark runs on the loaded engine, after an interactive load when none is ready, on WebGPU or, without it, on the processor, measures time to first token and decode speed, and keeps every run in a history that the model recommendation reads.
 
 ### On-device engine status machine
 
@@ -3043,7 +2967,7 @@ stateDiagram-v2
         generate and runBenchmark throw not-loaded unless ready,
         and busy while the generating flag is set.
         Other generation errors are rethrown, status stays ready.
-        chat.js, bench-ui.js and changeEngine check isReady first,
+        the thread, the benchmark and changeEngine check isReady first,
         so no caller runs loadModel from ready today.
     end note
     note left of error_state
@@ -3192,13 +3116,13 @@ sequenceDiagram
 
 ### loadModel: worker creation, progress phases and generation guards
 
-For a WebGPU preset, loadModel creates a dedicated module worker (worker.js with WebWorkerMLCEngineHandler) with new Worker and passes it to CreateWebWorkerMLCEngine, which builds the WebWorkerMLCEngine client and sends reload to the worker; loadModel races that promise against the abort promise. Each progress report is mapped by classifyProgress onto init, download, cache, shaders or finalizing and rendered by engine-ui.js as `engine.progress.<phase>` with a percentage. Cancelling or unloading terminates the worker and returns to idle, an engine created after its load was superseded is terminated, success stores vramMB and resolves true, and failures are classified and shown as a localized notice. generate and runBenchmark, the same for a WASM model behind WasmEngineClient, reject with not-loaded unless the engine is ready and with busy while a generation runs; during a run a device-lost or out-of-memory error tears the engine down into error (teardown tries unload for up to 2 s before terminate), and other errors leave it ready. On any generate error chat.js removes the streamed message, shows chat.note_local_failed as the reason in a chat.provider_failed_title notice and, in source mode, answers with the synthesizer; stop-generation aborts the chat request, which calls interrupt and so interruptGenerate, which for a WASM model also skips generations still queued in its worker.
+For a WebGPU preset, loadModel creates a dedicated module worker (worker.js with WebWorkerMLCEngineHandler) with new Worker and passes it to CreateWebWorkerMLCEngine, which builds the WebWorkerMLCEngine client and sends reload to the worker; loadModel races that promise against the abort promise. Each progress report is mapped by classifyProgress onto init, download, cache, shaders or finalizing and rendered by engine-ui.js as `engine.progress.<phase>` with a percentage. Cancelling or unloading terminates the worker and returns to idle, an engine created after its load was superseded is terminated, success stores vramMB and resolves true, and failures are classified and shown as a localized notice. generate and runBenchmark, the same for a WASM model behind WasmEngineClient, reject with not-loaded unless the engine is ready and with busy while a generation runs; during a run a device-lost or out-of-memory error tears the engine down into error (teardown tries unload for up to 2 s before terminate), and other errors leave it ready. A generate error reaches the on-device adapter (ai/adapters/on-device.js) as a failed stream: before any text the runner treats it like any failed model (the grounded route then quotes the sources), after text the answer keeps what arrived; Stop aborts the request, which calls interrupt and so interruptGenerate, which for a WASM model also skips generations still queued in its worker.
 
 <!-- diagram: webgpu-lifecycle-load-worker -->
 ```mermaid
 sequenceDiagram
     autonumber
-    participant C as chat.js, bench-ui.js
+    participant C as ai/adapters/on-device.js, bench/measure.js
     participant UI as engine-ui.js
     participant Eng as webgpu/engine.js
     participant Lib as web-llm module
@@ -3235,7 +3159,7 @@ sequenceDiagram
         Eng-->>UI: reject EngineError
         UI->>UI: errorNotice engine.error.kind unless cancelled, return false
     end
-    Note over C,UI: chat.js and bench-ui.js first call startLocalEngine(interactive true)<br/>unless isReady(), false means no local generation
+    Note over C,UI: the thread and the benchmark first call startLocalEngine(interactive true)<br/>unless isReady(), false means no local generation
     C->>Eng: generate() or runBenchmark()
     alt status not ready or no engine
         Eng-->>C: EngineError not-loaded
@@ -3243,7 +3167,7 @@ sequenceDiagram
         Eng-->>C: EngineError busy
     else ready and no generation running, generating = true
         Eng->>W: chat.completions.create(stream true)
-        opt stop-generation aborts the chat request (chat.js)
+        opt Stop aborts the request (the adapter's abort signal)
             C->>Eng: interrupt()
             Eng->>W: interruptGenerate()
         end
@@ -3257,10 +3181,10 @@ sequenceDiagram
             Eng-->>C: text or BenchmarkRun, generating reset
         end
     end
-    Note over C: on error chat.js removes the streamed message, puts chat.note_local_failed as the reason<br/>into a chat.provider_failed_title notice and, in source mode, answers with the synthesizer,<br/>bench-ui.js shows engine.error.kind. A ready WASM engine takes the same calls through WasmEngineClient
+    Note over C: on error before any text the runner asks the next candidate, the grounded route quotes the sources,<br/>the benchmark shows engine.error.kind. A ready WASM engine takes the same calls through WasmEngineClient
 ```
 
-<sub>Sources: [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/index.html`](../src/index.html), [`src/js/wasm/client.js`](../src/js/wasm/client.js)</sub>
+<sub>Sources: [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/ai/adapters/on-device.js`](../src/js/ai/adapters/on-device.js), [`src/js/bench/measure.js`](../src/js/bench/measure.js), [`src/index.html`](../src/index.html), [`src/js/wasm/client.js`](../src/js/wasm/client.js)</sub>
 
 ### Processor (WASM) runtime: loading, pinned downloads, generation and Stop
 
@@ -3344,9 +3268,9 @@ sequenceDiagram
 
 <sub>Sources: [`src/js/wasm/client.js`](../src/js/wasm/client.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`scripts/build.mjs`](../scripts/build.mjs), [`vercel.json`](../vercel.json), [`package.json`](../package.json)</sub>
 
-### Diagnostics tab: WebGPU probe
+### Diagnostics & Benchmark tab: probe and runtime
 
-Opening the bench tab runs refreshDiagnostics, which calls probeWebGPU: it returns unsupported when navigator.gpu or requestAdapter is missing, no-adapter when requestAdapter (high-performance) throws or returns null, and otherwise the adapter info, those of the 9 reported limits that are finite numbers and the sorted features. The tab always shows the logical cores, and the memory only when navigator.deviceMemory is set; adapter fields, shader-f16 support and the limits appear only when WebGPU is supported, otherwise a warning badge. renderRunner then disables the benchmark button while a run is in progress or the last probe did not report WebGPU support (also before the tab first ran a probe), and it reruns on every engine state change.
+bench/bench-ui.js is the part of the tab in the first load: its action and the refresh hook. Opening the tab loads bench/bench-tab.js (with the history view, the history store and the charts) and runs refreshDiagnostics, which calls probeWebGPU: unsupported when navigator.gpu or requestAdapter is missing, no-adapter when requestAdapter (high-performance) throws or returns null, and otherwise the adapter info, those of the reported limits that are finite numbers and the sorted features. The tab always shows the logical cores, and the memory only when navigator.deviceMemory is set; adapter fields, shader-f16 support and the limits appear only with WebGPU. benchRuntime() then decides what the benchmark can measure here: WebGPU models when an adapter answered, processor (WASM) models otherwise, and nothing without WebAssembly; the button is disabled only while a run is in progress, before the first probe, or when neither runtime exists. The history card shows the runs of this device class and the recommendation they give.
 
 <!-- diagram: benchmark-diagnostics-probe -->
 ```mermaid
@@ -3354,113 +3278,121 @@ sequenceDiagram
     autonumber
     actor User
     participant Tabs as ui.js switchTab
-    participant UI as bench-ui.js
+    participant UI as bench/bench-ui.js
+    participant Tab as bench/bench-tab.js
     participant Eng as webgpu/engine.js
-    participant GPU as navigator.gpu
-    participant DOM as Diagnostics tab DOM
+    participant M as bench/measure.js
+    participant H as bench/history-view.js
 
     User->>Tabs: switch-tab bench
     Tabs->>UI: onTabOpen hook, refreshDiagnostics()
-    UI->>Eng: probeWebGPU()
+    UI->>Tab: import() on first use, refreshDiagnostics()
+    Tab->>Eng: probeWebGPU()
     alt navigator.gpu or requestAdapter missing
-        Eng-->>UI: supported false, EngineError unsupported
-    else WebGPU API present
-        Eng->>GPU: requestAdapter(powerPreference high-performance)
-        alt throws or returns null
-            GPU-->>Eng: error or null
-            Eng-->>UI: supported false, EngineError no-adapter
-        else adapter
-            GPU-->>Eng: adapter with info, limits, features
-            Note over Eng: info vendor, architecture, device, description<br/>9 REPORTED_LIMITS kept when finite<br/>features sorted, hw isMobile via detectMobile,<br/>deviceMemoryGB, maxBufferSize, hasF16 from shader-f16
-            Eng-->>UI: supported true, adapter, hw
-        end
+        Eng-->>Tab: supported false, unsupported
+    else requestAdapter(high-performance) throws or returns null
+        Eng-->>Tab: supported false, no-adapter
+    else adapter
+        Eng-->>Tab: supported true, adapter info, finite limits, sorted features, hw
     end
-    alt navigator.deviceMemory set
-        UI->>DOM: benchMemory memory_value, GB and logical cores
-    else memory hidden
-        UI->>DOM: benchMemory cores_value, logical cores only
-    end
-    alt supported
-        UI->>DOM: vendor, architecture, description or device, features list
-        UI->>DOM: benchF16 f16_yes or f16_no, badge ok webgpu_available
-        UI->>DOM: renderLimits, 3 byte limits via formatBytes, others as counts
-    else unsupported path
-        UI->>DOM: clear adapter fields, benchF16 not_available
-        UI->>DOM: badge warn webgpu_unsupported or webgpu_no_adapter, limits cleared
-    end
-    UI->>DOM: renderRunner()
-    Note over UI,DOM: btnRunBenchmark disabled while running, or unsupported or not yet probed<br/>label running, run when ready, else load_and_run<br/>hint hint_unsupported, hint_ready with modelId, or hint_load<br/>renderRunner also reruns on every engine state change
+    Tab->>Tab: memory and cores, adapter fields and limits only with WebGPU
+    Tab->>M: benchRuntime(probe): webgpu, else wasm with WebAssembly, else none
+    Tab->>Tab: renderRunner: disabled while running, before a probe,<br/>or without a runtime, hint names the model to measure
+    Tab->>H: mount on first use, render the runs of this device class
 ```
 
-<sub>Sources: [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/bench/diagnostics.js`](../src/js/bench/diagnostics.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/main.js`](../src/js/main.js), [`src/js/ui.js`](../src/js/ui.js)</sub>
+<sub>Sources: [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/bench/bench-tab.js`](../src/js/bench/bench-tab.js), [`src/js/bench/measure.js`](../src/js/bench/measure.js), [`src/js/bench/diagnostics.js`](../src/js/bench/diagnostics.js), [`src/js/bench/history-view.js`](../src/js/bench/history-view.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/main.js`](../src/js/main.js), [`src/js/ui.js`](../src/js/ui.js)</sub>
 
-### Inference benchmark run
+### Inference benchmark run and the benchmark history
 
-executeBenchmark ignores clicks while a run is active, refuses to start while a chat request is running (isChatBusy), and when the engine is not ready loads the model interactively, stopping if that load resolves false (the download dialog appears as for a chat load, and its notices go to the chat tab). runBenchmark refuses unless the engine is ready and no generation is running, then resets the chat, sends a warm-up of at most 8 tokens and reads its stream to the end, resets again and times one streamed request for exactly 128 tokens (ignore_eos, include_usage), recording startedAt, firstTokenAt and finishedAt, and resets the chat only after a successful run. computeBenchmarkMetrics derives time to first token, decode throughput over the tokens after the first, total latency and the engine-reported prefill rate. The loaded model may be a processor (WASM) model when it was picked on a device with WebGPU; its result line then shows WASM instead of f16 or f32. Errors show engine.error.kind in the progress card, and device-lost or out-of-memory also tear the engine down.
+A run is refused while an answer is being written (isChatBusy). measureModel() loads the selected model when none is ready (startLocalEngine interactive, so the download question appears as for a chat; a declined or failed load ends the run) and times the load from the moment the engine starts loading. runBenchmark() then resets the chat, sends a warm-up of at most 8 tokens, resets again and times one streamed request for exactly 128 tokens (ignore_eos, temperature 0, usage included), on WebGPU or on the processor (WASM) runtime. computeBenchmarkMetrics derives the time to first token, the decode rate over the tokens after the first, the total latency and the engine's prefill rate. A completed run, and a run that failed with device-lost or out-of-memory after the model was loaded, is recorded in the `bench` store (models/bench-history.js): model id, preset, runtime, device class, browser, tokens per second, first-token time, load time and failures. The history view charts the median decode rate per model against the two thresholds (8 and 20 tokens per second), lists the runs with a trend line, exports them as JSON and can clear them. recommendModels reads the same history: a pick that decodes below 8 tokens per second on this device class steps down a rung, and a larger preset above 20 is suggested, never picked. The answer paths read only the median rate of the loaded processor model (models/bench-rates.js, 300 ms at most), which may raise its output budget above 384 tokens.
 
 <!-- diagram: benchmark-run -->
 ```mermaid
 sequenceDiagram
     autonumber
     actor User
-    participant UI as bench-ui.js
-    participant Chat as chat.js
+    participant Tab as bench/bench-tab.js
+    participant Chat as chat.js isChatBusy
+    participant M as bench/measure.js
     participant EUI as engine-ui.js
     participant Eng as webgpu/engine.js
-    participant W as WebLLM engine in worker.js, or WasmEngineClient
-    participant Diag as diagnostics.js
+    participant Diag as bench/diagnostics.js
+    participant Hist as models/bench-history.js
+    participant Dev as models/device.js
 
-    User->>UI: run-benchmark, executeBenchmark()
-    alt running is true
-        UI-->>User: click ignored
-    else not running
-        UI->>Chat: isChatBusy()
-        Chat-->>UI: busy flag
-        alt chat is busy
-            UI-->>User: benchModelHint diagnostics.hint_busy
-        else chat idle
-            Note over UI: running = true, renderRunner shows diagnostics.running
-            opt engine.isReady() is false
-                UI->>EUI: startLocalEngine(interactive true)
-                EUI->>Eng: loadModel(preference, confirmDownload)
-                Eng-->>EUI: true, false or EngineError
-                EUI-->>UI: loaded
-                Note over UI,EUI: loaded false returns early (declined, cancelled or failed)<br/>load notices, ready or engine.error, go to the chat tab
-            end
-            UI->>Eng: runBenchmark(outputTokens 128, onPhase)
-            Note over Eng: not ready rejects not-loaded, generating rejects busy,<br/>both before the try, else generating = true
-            Eng->>UI: onPhase warmup 0 of 128
-            Eng->>W: resetChat()
-            Eng->>W: create Hello, max_tokens 8, temperature 0, stream read to its end
-            Eng->>W: resetChat()
-            Eng->>UI: onPhase prefill
-            Note over Eng: startedAt = performance.now()
-            Eng->>W: create BENCHMARK_PROMPT, max_tokens 128, temperature 0,<br/>ignore_eos true, stream, include_usage true
-            loop every streamed chunk
-                W-->>Eng: delta content, usage when present
-                Note over Eng: first content chunk sets firstTokenAt<br/>every 8th content chunk calls onPhase decode
-            end
-            Note over Eng: finishedAt = performance.now()
-            alt run completed
-                Eng->>W: resetChat()
-                Eng-->>UI: BenchmarkRun with modelId, runtime, f16, token counts,<br/>startedAt, firstTokenAt, finishedAt, engineStats
-                Note over UI,Eng: completionTokens = usage or content chunk count<br/>promptTokens = usage or 0, no token gives firstTokenAt = finishedAt
-                UI->>Diag: computeBenchmarkMetrics(run)
-                Note over Diag: ttftMs = firstTokenAt - startedAt<br/>decode tok/s = (completionTokens - 1) / ((finishedAt - firstTokenAt) / 1000), else 0<br/>totalMs = finishedAt - startedAt, all clamped at 0<br/>prefill tok/s = engineStats.prefill_tokens_per_s or null
-                Diag-->>UI: BenchmarkMetrics
-                UI->>UI: benchResultTTFT, TPS, Prefill, Latency, result_meta<br/>with WASM in place of f16 or f32 for a processor model
-                UI->>UI: showProgress 128 of 128 phase_done
-            else any step throws
-                Note over Eng: errors after generating = true pass handleGenerationError<br/>and skip the final resetChat<br/>device-lost or out-of-memory tear the engine down (status error)
-                Eng-->>UI: EngineError
-                UI->>UI: benchProgressText engine.error.kind, unknown if not an EngineError
-            end
-            Note over UI,Eng: finally blocks: runBenchmark resets generating,<br/>executeBenchmark sets running = false and calls renderRunner()
+    User->>Tab: run-benchmark
+    alt running, or an answer is being written
+        Tab-->>User: ignored, or hint busy
+    else
+        Tab->>M: measureModel(engine, load, outputTokens 128)
+        opt engine not ready
+            M->>EUI: startLocalEngine(interactive true): download question as in the chat
+            EUI-->>M: loaded, or false (declined or failed): status declined
+            Note over M: loadMs from the first loading state to ready
+        end
+        M->>Eng: runBenchmark(128 tokens, onPhase)
+        Eng->>Eng: resetChat, warm-up 8 tokens, resetChat
+        Eng->>Eng: one streamed request, 128 tokens, ignore_eos, temperature 0
+        alt completed
+            Eng-->>M: BenchmarkRun: runtime, f16, token counts, times, engine stats
+            M->>Diag: computeBenchmarkMetrics: TTFT, decode tok/s, total, prefill
+            M-->>Tab: done, recordable
+        else failed
+            Eng-->>M: EngineError
+            M-->>Tab: failed, recordable only for device-lost or out-of-memory
+        end
+        opt recordable
+            Tab->>Hist: record(model, metrics, loadMs): bench store
+            Tab->>Dev: recommendModels(hw, history): step down under 8 tok/s,<br/>suggest a larger preset above 20 tok/s
+            Tab->>Tab: history chart, table, trend line
         end
     end
 ```
 
-<sub>Sources: [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/bench/diagnostics.js`](../src/js/bench/diagnostics.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/worker.js`](../src/js/webgpu/worker.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/wasm/client.js`](../src/js/wasm/client.js)</sub>
+<sub>Sources: [`src/js/bench/bench-tab.js`](../src/js/bench/bench-tab.js), [`src/js/bench/measure.js`](../src/js/bench/measure.js), [`src/js/bench/diagnostics.js`](../src/js/bench/diagnostics.js), [`src/js/bench/history-view.js`](../src/js/bench/history-view.js), [`src/js/models/bench-history.js`](../src/js/models/bench-history.js), [`src/js/models/bench-rates.js`](../src/js/models/bench-rates.js), [`src/js/models/device.js`](../src/js/models/device.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/chat.js`](../src/js/chat.js)</sub>
+
+### Model download integrity
+
+Every file an on-device runtime stores in Cache Storage (WebLLM's webllm/config, webllm/model and webllm/wasm; Transformers.js's transformers-cache) is hashed and compared with `src/js/models/model-lock.json`, which `npm run models:lock` (scripts/models-lock.mjs) writes from the model hosts: SHA-256 and size of every config, tokenizer, parameter shard and model library, of the processor, search and entailment models' files, and of the self-hosted ONNX Runtime binary. models/integrity.js and the lock (a lazy chunk of its own) load only when a model loads. Stored files are checked before a runtime reads them, and new downloads right after the load, before the model answers. Hashing runs in a worker of its own (starpi-integrity), one file at a time, because a shard can be a few hundred MB; `crypto.subtle.digest` does not stream, so the worker holds the file once more while it hashes, about twice the largest file at the peak (512 MB for the processor model qwen-0.5b's ONNX file). A file that matches is remembered in the `modelIntegrity` store by URL and size, so later loads only compare its size (an in-place change of the same size is not hashed again; Delete downloaded model data resets these records). A file that does not match its pinned hash is deleted and the load is refused (integrity), so the next load downloads it afresh; a file the lock does not name refuses the load as unverified. WebLLM downloads its presets at `main`, so a model may change upstream after a release: Settings › Trust › Model downloads shows the result of each check and offers "Load unverified (upstream changed)" per model, which keeps the files, records the check as override and loads with a warning. A weekly workflow (model-lock.yml) runs `npm run models:lock -- --check` against the hosts, and a unit test fails until the lock matches the catalogs and the WebLLM version. Vectors of an embedding model that was removed stay stored until another model is selected or the files are forgotten.
+
+<!-- diagram: model-download-integrity -->
+```mermaid
+flowchart TD
+    load(["loadModel or the embedding/entailment model starts"])
+    lazy["import models/integrity.js and the lock chunk"]
+    stored["checkModelFiles before a runtime reads stored files"]
+    scope["files of this model in Cache Storage:<br/>webllm/config, webllm/model, webllm/wasm, transformers-cache"]
+    known{"URL and size remembered<br/>as verified in modelIntegrity?"}
+    sizeOk["compare the size only"]
+    hash["starpi-integrity worker: SHA-256 of the cache entry,<br/>one file at a time, about 2x the file in memory"]
+    lockQ{"lock entry for the URL?"}
+    match{"hash and size match?"}
+    ok["saveCheck verified, remember URL and size"]
+    allow{"user allowed this model<br/>to load unverified?"}
+    del["delete the file, IntegrityError mismatch:<br/>EngineError integrity, nothing loads"]
+    unv["IntegrityError unverified: refused"]
+    over["keep the file, check recorded as override,<br/>load with a warning"]
+    fresh["after the load: new downloads checked the same way,<br/>before the model answers"]
+    reset(["Delete downloaded model data: caches deleted,<br/>forgetVerified() clears the records"])
+    weekly(["model-lock.yml weekly: models:lock --check;<br/>unit test: the lock matches the catalogs"])
+    load --> lazy --> stored --> scope --> known
+    known -->|"yes"| sizeOk --> ok
+    known -->|"no"| hash --> lockQ
+    lockQ -->|"no"| allow
+    lockQ -->|"yes"| match
+    match -->|"yes"| ok
+    match -->|"no"| allow
+    allow -->|"yes"| over
+    allow -->|"no, mismatch"| del
+    allow -->|"no, not in the lock"| unv
+    ok --> fresh
+    over --> fresh
+    reset -.-> known
+    weekly -.-> lockQ
+```
+
+<sub>Sources: [`src/js/models/integrity.js`](../src/js/models/integrity.js), [`src/js/models/integrity.worker.js`](../src/js/models/integrity.worker.js), [`src/js/models/integrity-hash.js`](../src/js/models/integrity-hash.js), [`src/js/models/integrity-state.js`](../src/js/models/integrity-state.js), [`src/js/models/model-lock.json`](../src/js/models/model-lock.json), [`src/js/trust/model-integrity-view.js`](../src/js/trust/model-integrity-view.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/rag/embed-client.js`](../src/js/rag/embed-client.js), [`scripts/models-lock.mjs`](../scripts/models-lock.mjs), [`.github/workflows/model-lock.yml`](../.github/workflows/model-lock.yml)</sub>
 
 ## 6. Knowledge base views
 
