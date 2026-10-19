@@ -230,48 +230,33 @@ How the tests keep the dictionaries and keys consistent:
 <!-- diagram: i18n-test-guards -->
 ```mermaid
 flowchart TD
-    subgraph sg_i18n_test["tests/unit/i18n.test.mjs (npm test, CI)"]
-        run(["load en.json and de.json"]) --> load["flatten() to dotted keys"]
-        load --> parity{"identical key sets<br/>in both directions?"}
-        load --> ph{"same sorted plain {name} placeholders<br/>for every key? plural forms not compared"}
-        load --> empty{"no empty or blank values?"}
-        load --> diff{"fewer than 15 percent of entries<br/>identical in de and en?"}
-        run --> scan["usedKeys() scans every .js and .html file under src"]
-        scan --> patterns["literal keys from data-i18n attributes, t('..'),<br/>setText(el, '..'), setAssistantStatus, setWorkspaceStatus,<br/>title, body or badge properties, strings after ? or :, data-arg"]
-        scan --> built["keys assembled at runtime: engine.progress.*, engine.error.*,<br/>workspace.progress_*, workspace.error_*, diagnostics.phase_*,<br/>graph.type_*, nav.*, graph.outgoing and incoming, trace.role_*,<br/>grounding.review and partial, grounding.reason_*, chat.voice_error_*,<br/>demo.q_* and their _question keys, demo.flawed_find_*, receipt.check_*"]
-        patterns --> keys["used keys, ns.* examples excluded"]
-        built --> keys
-        keys --> count{"more than 250 keys found?"}
-        keys --> resolveEn{"hasKey(key, en) for all?<br/>(no fallback allowed)"}
-        keys --> resolveDe{"hasKey(key, de) for all?<br/>(no fallback allowed)"}
-        run --> tt["t() behaviour"]
-        tt --> t1["DEFAULT_LOCALE is en,<br/>nav.settings gives Settings"]
-        tt --> t2["locale de gives Einstellungen"]
-        tt --> t3["workspace.meta interpolates chunks and chars,<br/>a missing param leaves {chars} visible"]
-        tt --> t4["unknown key returns the key,<br/>hasKey is false"]
-        tt --> t5["plural forms: 1 chunk and 12 chunks in en,<br/>1 Abschnitt, 1 Auszug and 2 Dokumenten in de"]
+    subgraph unit["tests/unit/i18n.test.mjs"]
+        layout["layout: namespaces registered, English bundled,<br/>root file per shipped language, keys defined once,<br/>namespace keys under their namespace"]
+        parity["every language: the keys of English, same placeholders,<br/>plural forms kept and flat, no empty values,<br/>under 15 percent identical to English"]
+        used["used keys: data-i18n, t(), setText and runtime families;<br/>more than 250; each resolves in every language"]
+        tbeh["t(): default, other language, interpolation, unknown key,<br/>plural forms in every language"]
+        load["loadLocale: English fallback key by key, unshipped not selectable,<br/>missing files load to false, one shared request; buildDictionary"]
     end
-    subgraph sg_actions["tests/unit/actions.test.mjs (npm test, CI)"]
-        emoji{"no emoji or pictographs in src .js, .html<br/>and .json files, locales included?"}
-        aria{"every static aria-label in index.html has<br/>data-i18n-aria, except the lang-tagged EN/DE buttons?"}
+    subgraph act["tests/unit/actions.test.mjs"]
+        emoji["no emoji in src"]
+        aria["static aria-label needs data-i18n-aria,<br/>except the lang-tagged EN/DE pre-boot buttons"]
     end
-    subgraph sg_e2e["tests/e2e/app.spec.mjs internationalization (npm run test:e2e, CI)"]
-        e1["starts with html lang en, English placeholder,<br/>nav and privacy notice, EN button aria-pressed true"]
-        e2["click DE: lang de, German texts and send button aria-label,<br/>DE aria-pressed true, no page navigation"]
-        e3["German quick prompt gets a German answer,<br/>reload keeps de"]
-        e4["click EN: English again, localStorage starpi_locale is en,<br/>diagnostics empty: no CSP violation, page error,<br/>unexpected console error or request to another host"]
-        e1 --> e2 --> e3 --> e4
+    subgraph e2e["end-to-end"]
+        e1["app.spec: English default, German without a reload, kept on reload"]
+        e2["app.spec: six languages, French and Turkish without a reload"]
+        e3["shell.spec: namespace strings load with the language"]
     end
-    parity -->|"no"| fail(["test fails"])
-    ph -->|"no"| fail
-    empty -->|"no"| fail
-    diff -->|"no"| fail
-    count -->|"no"| fail
-    resolveEn -->|"no"| fail
-    resolveDe -->|"no"| fail
-    emoji -->|"no"| fail
-    aria -->|"no"| fail
-    e4 -.->|"any expectation not met"| fail
+    fail(["CI fails"])
+    layout -.-> fail
+    parity -.-> fail
+    used -.-> fail
+    tbeh -.-> fail
+    load -.-> fail
+    emoji -.-> fail
+    aria -.-> fail
+    e1 -.-> fail
+    e2 -.-> fail
+    e3 -.-> fail
 ```
 
 ## WebGPU and WebLLM
