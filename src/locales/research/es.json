@@ -1,0 +1,123 @@
+{
+  "title": "Investigación",
+  "intro": "Haz una pregunta que requiera varias búsquedas. Starpi busca en tus documentos y, si quieres, en la web, comprueba cada frase y guarda el informe en este dispositivo. Las tareas siguen en marcha mientras trabajas en otra cosa.",
+  "question_label": "Pregunta",
+  "question_placeholder": "¿Qué quieres averiguar?",
+  "include_web": "Buscar también en la web",
+  "strip_pii": "Quitar de la búsqueda web las direcciones de correo, los números de teléfono y datos similares",
+  "focus": "Sobre el documento «{doc}»",
+  "focus_clear": "Investigar en todos los documentos",
+  "start": "Iniciar la investigación",
+  "question_required": "Escribe primero una pregunta.",
+  "started": "Investigación iniciada. Sigue en marcha en segundo plano.",
+  "start_failed": "No se pudo iniciar la investigación.",
+  "jobs_title": "Tareas de investigación",
+  "empty": "Todavía no hay investigaciones. Tus tareas y sus informes aparecen aquí.",
+  "status": {
+    "queued": "En espera",
+    "running": "En curso",
+    "done": "Terminada",
+    "failed": "Fallida",
+    "cancelled": "Cancelada",
+    "stale": "Interrumpida"
+  },
+  "step": {
+    "plan": "Planificando las búsquedas",
+    "sources": "Buscando en tus documentos",
+    "web": "Buscando en la web",
+    "check": "Comprobando las fuentes",
+    "report": "Redactando el informe"
+  },
+  "progress": "{step} · ronda {round} · {n} {n:fuente|fuentes}",
+  "progress_short": "{step}",
+  "queued_hint": "Espera hasta que haya menos de tres tareas en curso.",
+  "elsewhere": "Se está ejecutando en otra pestaña de Starpi.",
+  "stale_hint": "La página se cerró o se recargó mientras se ejecutaba esta tarea. Reintentar ejecuta las partes que faltan.",
+  "failed_hint": "La tarea falló ({code}). Reintentar ejecuta las partes que faltan.",
+  "unread": "Nuevo",
+  "meta": "{date} · {origin}",
+  "origin": {
+    "chat": "Desde un chat",
+    "library": "Desde la biblioteca",
+    "header": "Pestaña Investigación"
+  },
+  "actions": {
+    "open": "Abrir el informe",
+    "close": "Cerrar el informe",
+    "cancel": "Cancelar",
+    "retry": "Reintentar",
+    "remove": "Quitar",
+    "export_md": "Descargar Markdown",
+    "show": "Mostrar en la pestaña Investigación"
+  },
+  "badge": "{n} {n:investigación en curso|investigaciones en curso}",
+  "section": {
+    "summary": "Resumen",
+    "details": "Detalles",
+    "sources": "Fuentes",
+    "open_questions": "Preguntas abiertas"
+  },
+  "part": {
+    "sources": "Según tus documentos",
+    "web": "Según la web"
+  },
+  "via": {
+    "byok": "Redactado por {model} con tu clave",
+    "pool": "Redactado por {model} a través de este sitio",
+    "quote": "Citado de tus documentos: no había ningún modelo disponible"
+  },
+  "fallback": "El modelo falló ({code}), así que se citan en su lugar las frases que mejor coinciden.",
+  "gate_counts": "{released} {released:frase conservada|frases conservadas} · {withheld} retenida(s) por la comprobación de frases",
+  "check_counts": "Comprobación de fuentes: {supported} con respaldo · {weak} débiles · {unsupported} sin respaldo",
+  "no_answer": "Tus documentos no dieron ninguna respuesta a esta pregunta.",
+  "web_query": "Se buscó en la web: {query}",
+  "web_removed": "Eliminado antes de la búsqueda: {kinds}",
+  "pii": {
+    "email": "direcciones de correo electrónico",
+    "phone": "números de teléfono",
+    "iban": "números de cuenta",
+    "card": "números de tarjeta",
+    "ip": "direcciones IP"
+  },
+  "web_released": "Comprobada en su conjunto: cada número está en un pasaje que respaldan los resultados de búsqueda.",
+  "web_withheld": "La respuesta de la web se retiene porque no superó la comprobación en su conjunto: {reason}. Solo se enumeran las páginas que consultó.",
+  "web_off": "Sin búsqueda web: ninguno de tus proveedores busca en la web y este sitio no ofrece ninguna.",
+  "web_empty": "Tras quitar los datos personales, no quedó nada de la pregunta para una búsqueda web.",
+  "web_failed": "La búsqueda web falló ({code}).",
+  "web_running": "La búsqueda web está en curso…",
+  "web_sources": "Páginas consultadas (enumeradas, sin verificar)",
+  "doc_sources": "Documentos",
+  "suggestions": "Sugerencias de búsqueda",
+  "web_reason": {
+    "empty": "estaba vacía",
+    "no_sources": "no nombraba ninguna página web",
+    "web_ungrounded": "un número está fuera de todos los pasajes que respaldan los resultados",
+    "unsupported_number": "un número no tiene respaldo",
+    "chars": "contiene caracteres que no se pueden comprobar",
+    "link": "contiene un enlace",
+    "joined": "contiene cifras que podrían leerse mal",
+    "number_word": "un número escrito con letras no tiene respaldo",
+    "identifier": "un identificador no tiene respaldo",
+    "spoken_mismatch": "leerla en voz alta cambiaría un número",
+    "other": "no superó la comprobación"
+  },
+  "report": {
+    "title": "Informe de investigación",
+    "made_with": "Redactado por {model}",
+    "quoted": "Citado de los documentos sin modelo",
+    "no_document_answer": "Los documentos no dieron ninguna respuesta a esta pregunta.",
+    "from_web": "Según la web",
+    "web_query": "Se buscó: {query}",
+    "web_withheld": "La parte de la web se retuvo: {reason}.",
+    "web_off": "No había búsqueda web disponible.",
+    "web_failed": "La búsqueda web falló.",
+    "documents": "Documentos",
+    "web_sources": "Páginas web (enumeradas, sin verificar con las páginas)",
+    "no_sources": "No se citó ninguna fuente.",
+    "check": "Comprobación de fuentes: {supported} con respaldo, {weak} débiles, {unsupported} sin respaldo.",
+    "withheld": "La comprobación de frases retuvo {n} {n:frase|frases}.",
+    "receipt_note": "El recibo de la respuesta cubre la parte de los documentos; las páginas web se enumeran, pero no se verifican."
+  },
+  "this": "Investigar esto",
+  "prefilled": "La pregunta está en la pestaña Investigación. Ajústala e inicia la investigación."
+}

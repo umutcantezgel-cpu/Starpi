@@ -1,0 +1,123 @@
+{
+  "title": "Araştırma",
+  "intro": "Birden çok arama gerektiren bir soru sorun. Starpi belgelerinizde ve isterseniz web’de arama yapar, her cümleyi denetler ve raporu bu cihazda saklar. Siz başka bir yerde çalışırken işler devam eder.",
+  "question_label": "Soru",
+  "question_placeholder": "Neyi öğrenmek istiyorsunuz?",
+  "include_web": "Web’de de ara",
+  "strip_pii": "E-posta adreslerini, telefon numaralarını ve benzeri ayrıntıları web aramasından çıkar",
+  "focus": "“{doc}” belgesi hakkında",
+  "focus_clear": "Tüm belgelerde araştır",
+  "start": "Araştırmayı başlat",
+  "question_required": "Önce bir soru girin.",
+  "started": "Araştırma başladı. Arka planda devam ediyor.",
+  "start_failed": "Araştırma başlatılamadı.",
+  "jobs_title": "Araştırma işleri",
+  "empty": "Henüz araştırma yok. İşleriniz ve raporları burada görünür.",
+  "status": {
+    "queued": "Bekliyor",
+    "running": "Çalışıyor",
+    "done": "Tamamlandı",
+    "failed": "Başarısız",
+    "cancelled": "İptal edildi",
+    "stale": "Yarıda kaldı"
+  },
+  "step": {
+    "plan": "Aramalar planlanıyor",
+    "sources": "Belgelerinizde aranıyor",
+    "web": "Web’de aranıyor",
+    "check": "Kaynaklar denetleniyor",
+    "report": "Rapor yazılıyor"
+  },
+  "progress": "{step} · {round}. tur · {n} {n:kaynak|kaynak}",
+  "progress_short": "{step}",
+  "queued_hint": "Çalışan iş sayısı üçün altına düşene kadar bekler.",
+  "elsewhere": "Başka bir Starpi sekmesinde çalışıyor.",
+  "stale_hint": "Bu iş çalışırken sayfa kapatıldı veya yenilendi. Yeniden dene, eksik kısımları çalıştırır.",
+  "failed_hint": "İş başarısız oldu ({code}). Yeniden dene, eksik kısımları çalıştırır.",
+  "unread": "Yeni",
+  "meta": "{date} · {origin}",
+  "origin": {
+    "chat": "Bir sohbetten",
+    "library": "Kitaplıktan",
+    "header": "Araştırma sekmesi"
+  },
+  "actions": {
+    "open": "Raporu aç",
+    "close": "Raporu kapat",
+    "cancel": "İptal",
+    "retry": "Yeniden dene",
+    "remove": "Kaldır",
+    "export_md": "Markdown olarak indir",
+    "show": "Araştırma sekmesinde göster"
+  },
+  "badge": "{n} araştırma {n:işi|işi} çalışıyor",
+  "section": {
+    "summary": "Özet",
+    "details": "Ayrıntılar",
+    "sources": "Kaynaklar",
+    "open_questions": "Açık sorular"
+  },
+  "part": {
+    "sources": "Belgelerinizden",
+    "web": "Web’den"
+  },
+  "via": {
+    "byok": "{model} tarafından anahtarınızla yazıldı",
+    "pool": "{model} tarafından bu site üzerinden yazıldı",
+    "quote": "Belgelerinizden alıntılandı: kullanılabilir model yoktu"
+  },
+  "fallback": "Model başarısız oldu ({code}); bu yüzden onun yerine en iyi eşleşen cümleler alıntılanıyor.",
+  "gate_counts": "{released} {released:cümle|cümle} tutuldu · {withheld} tanesi cümle denetimi tarafından alıkonuldu",
+  "check_counts": "Kaynak denetimi: {supported} destekli · {weak} zayıf · {unsupported} desteksiz",
+  "no_answer": "Belgeleriniz bu soruya yanıt vermedi.",
+  "web_query": "Web’de aranan: {query}",
+  "web_removed": "Aramadan önce çıkarılanlar: {kinds}",
+  "pii": {
+    "email": "e-posta adresleri",
+    "phone": "telefon numaraları",
+    "iban": "hesap numaraları",
+    "card": "kart numaraları",
+    "ip": "IP adresleri"
+  },
+  "web_released": "Bütün olarak denetlendi: her sayı, arama sonuçlarının desteklediği bir pasajda yer alıyor.",
+  "web_withheld": "Web yanıtı bütün olarak denetimden geçemediği için alıkonuldu: {reason}. Yalnızca başvurduğu sayfalar listeleniyor.",
+  "web_off": "Web araması yok: sağlayıcılarınızdan hiçbiri web’de arama yapmıyor ve bu site de arama sunmuyor.",
+  "web_empty": "Kişisel ayrıntılar çıkarıldıktan sonra sorudan web araması için hiçbir şey kalmadı.",
+  "web_failed": "Web araması başarısız oldu ({code}).",
+  "web_running": "Web araması çalışıyor…",
+  "web_sources": "Başvurulan sayfalar (listelendi, doğrulanmadı)",
+  "doc_sources": "Belgeler",
+  "suggestions": "Arama önerileri",
+  "web_reason": {
+    "empty": "yanıt boştu",
+    "no_sources": "hiçbir web sayfası belirtmedi",
+    "web_ungrounded": "bir sayı, sonuçların desteklediği tüm pasajların dışında",
+    "unsupported_number": "bir sayının desteği yok",
+    "chars": "denetlenemeyen karakterler içeriyor",
+    "link": "bir bağlantı içeriyor",
+    "joined": "yanlış okunabilecek rakamlar içeriyor",
+    "number_word": "yazıyla yazılmış bir sayının desteği yok",
+    "identifier": "bir tanımlayıcının desteği yok",
+    "spoken_mismatch": "sesli okunması bir sayıyı değiştirir",
+    "other": "denetimden geçemedi"
+  },
+  "report": {
+    "title": "Araştırma raporu",
+    "made_with": "{model} tarafından yazıldı",
+    "quoted": "Model olmadan belgelerden alıntılandı",
+    "no_document_answer": "Belgeler bu soruya yanıt vermedi.",
+    "from_web": "Web’den",
+    "web_query": "Aranan: {query}",
+    "web_withheld": "Web kısmı alıkonuldu: {reason}.",
+    "web_off": "Kullanılabilir web araması yoktu.",
+    "web_failed": "Web araması başarısız oldu.",
+    "documents": "Belgeler",
+    "web_sources": "Web sayfaları (listelendi, sayfalarla karşılaştırılarak doğrulanmadı)",
+    "no_sources": "Hiçbir kaynak gösterilmedi.",
+    "check": "Kaynak denetimi: {supported} destekli, {weak} zayıf, {unsupported} desteksiz.",
+    "withheld": "Cümle denetimi {n} {n:cümleyi|cümleyi} alıkoydu.",
+    "receipt_note": "Yanıt makbuzu belgelerden gelen kısmı kapsar; web sayfaları listelenir ancak doğrulanmaz."
+  },
+  "this": "Bunu araştır",
+  "prefilled": "Soru Araştırma sekmesinde. Düzenleyip araştırmayı başlatın."
+}
