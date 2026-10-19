@@ -1,0 +1,98 @@
+{
+  "read": {
+    "free_notice": "Respuesta libre, sin comprobar.",
+    "withheld": "{count} {count:frase retenida|frases retenidas}.",
+    "nothing": "No se pudo leer en voz alta como comprobada ninguna parte de esta respuesta.",
+    "button": "Leer en voz alta",
+    "stop": "Dejar de leer en voz alta",
+    "unavailable": "Esta respuesta no se puede leer en voz alta."
+  },
+  "preview": {
+    "sample": "Así sonarán tus respuestas cuando se lean en voz alta."
+  },
+  "source": {
+    "browser": "Navegador",
+    "gemini": "Gemini",
+    "openai": "OpenAI",
+    "groq": "Groq",
+    "local": "Servidor de voz local",
+    "companion": "Companion",
+    "elevenlabs": "ElevenLabs"
+  },
+  "fallback": {
+    "to": "{from} no pudo hablar, así que lee {to} en su lugar.",
+    "none": "Ahora mismo ninguna voz pudo hablar. El texto se queda en la pantalla."
+  },
+  "dictation": {
+    "listening": "escuchando",
+    "recording": "grabando",
+    "transcribing": "transcribiendo",
+    "chip": "{source} · {state}",
+    "no_source": "No hay ninguna entrada de voz configurada. Añade una clave o un servidor de voz local en Ajustes → Voz.",
+    "too_short": "Ha sido demasiado corto. Pulsa el micrófono, habla y vuelve a pulsarlo.",
+    "failed": "No se pudo convertir tu voz en texto. Vuelve a intentarlo o elige otra fuente en Ajustes → Voz.",
+    "fallback": "El servicio de voz del navegador no está disponible ({code}). Se graba en su lugar: vuelve a pulsar el micrófono cuando termines."
+  },
+  "capture": {
+    "unsupported": "Este navegador no puede grabar desde el micrófono aquí.",
+    "denied": "Se bloqueó el acceso al micrófono. Permítelo en los ajustes del sitio del navegador.",
+    "no_microphone": "No se encontró ningún micrófono.",
+    "busy": "Otro programa está usando el micrófono.",
+    "worklet": "No se pudo iniciar el procesamiento de audio. Recarga la página y vuelve a intentarlo.",
+    "aborted": "Se detuvo la grabación."
+  },
+  "settings": {
+    "title": "Voz",
+    "subtitle": "Dicta preguntas, haz que se lean las respuestas en voz alta y habla en directo. Las respuestas comprobadas solo se leen hasta donde la comprobación de frases las valida.",
+    "stt_title": "Entrada de voz",
+    "stt_label": "Probar primero",
+    "stt_auto": "Orden automático",
+    "not_ready": "sin configurar",
+    "stt_chain": "Orden actual: {sources}",
+    "stt_none": "Todavía no hay ninguna entrada de voz configurada.",
+    "glossary_label": "Nombres y términos (opcional)",
+    "glossary_placeholder": "Uno por línea o separados por comas",
+    "glossary_hint": "Ayuda a la transcripción a escribir bien tus nombres y términos. Solo se envía con tus grabaciones.",
+    "tts_title": "Lectura en voz alta",
+    "tts_label": "Fuente de voz",
+    "voice_label": "Voz",
+    "voice_auto": "Voz predeterminada",
+    "voice_online": "en línea",
+    "rate_label": "Velocidad",
+    "preview": "Escuchar la voz",
+    "auto_read": "Leer las respuestas en voz alta automáticamente",
+    "tts_hint": "Si la fuente elegida falla, toman el relevo las voces del propio navegador; nada cambia a otro servicio en la nube.",
+    "local_title": "Servidor de voz local",
+    "local_label": "Dirección del servidor de voz local",
+    "local_hint": "Un servidor de voz en tu propio ordenador (por ejemplo, faster-whisper con Piper). Solo se usan voces de Piper con licencia abierta.",
+    "save": "Guardar",
+    "eleven_title": "Clave de ElevenLabs",
+    "eleven_label": "Clave de API de ElevenLabs",
+    "eleven_placeholder": "Pega tu clave de ElevenLabs",
+    "remove": "Quitar",
+    "eleven_hint": "Solo se usan las voces prediseñadas de ElevenLabs. La clave se queda en este navegador, como tus otras claves.",
+    "live_title": "Conversación en directo",
+    "live_voice": "Voz en directo",
+    "camera": "Permitir una foto de la cámara",
+    "saved": "Guardado.",
+    "local_invalid": "Introduce una dirección http o https, por ejemplo http://127.0.0.1:8000.",
+    "local_saved": "Servidor de voz local guardado.",
+    "local_cleared": "Servidor de voz local eliminado.",
+    "key_empty": "Pega primero una clave.",
+    "key_stored": "Clave guardada.",
+    "key_failed": "No se pudo guardar la clave. Desbloquea la bóveda de claves y vuelve a intentarlo.",
+    "key_removed": "Clave eliminada.",
+    "key_saved": "Clave guardada",
+    "key_none": "Sin clave"
+  },
+  "privacy": {
+    "title": "Adónde va tu voz",
+    "browser": "En la mayoría de los navegadores, el reconocimiento se realiza en los servidores del fabricante del navegador; en el dispositivo cuando el navegador lo ofrece.",
+    "gemini": "El audio va a Google, directamente con tu clave o a través de este sitio con la clave de este sitio.",
+    "openai": "El audio va a OpenAI con tu clave.",
+    "groq": "El audio va a Groq con tu clave, directamente o a través del relé de este sitio.",
+    "elevenlabs": "El texto que se lee va a ElevenLabs, con tu clave o con la de este sitio.",
+    "local": "El audio y el texto se quedan en tu ordenador.",
+    "companion": "El audio se queda en tus equipos, a través del Companion emparejado."
+  }
+}

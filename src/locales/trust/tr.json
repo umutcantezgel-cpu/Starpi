@@ -1,0 +1,100 @@
+{
+  "title": "Güven · makbuz imzalama",
+  "subtitle": "Bu cihaz, indirdiğiniz yanıt makbuzlarını tarayıcıdan asla çıkmayan bir anahtarla imzalayabilir. Açık anahtarını makbuzlarınızı denetleyen kişilerle paylaşın.",
+  "state": {
+    "on": "İmzalanıyor",
+    "off": "İmzalanmıyor",
+    "ready": "Anahtar ilk makbuzla oluşturulur",
+    "unavailable": "Burada kullanılamıyor"
+  },
+  "sign": {
+    "label": "Dışa aktarılan makbuzları imzala",
+    "hint": "İndirilen her makbuz, imzalayan olarak bu cihazın anahtarını belirtir ve imzasını taşır. Böylece herkes makbuzun değişmediğini denetleyebilir; açık anahtarınızla makbuzu bu cihazın imzaladığını da denetleyebilir."
+  },
+  "key": {
+    "title": "Bu cihazın imza anahtarı",
+    "alg": "Algoritma",
+    "id": "Anahtar kimliği",
+    "created": "Oluşturulma",
+    "retired": "Değiştirilme",
+    "export_jwk": "Açık anahtar (JWK)",
+    "export_pem": "Açık anahtar (PEM)",
+    "rotate": "Yeni anahtar",
+    "rotate_confirm": "Yeni bir imza anahtarı oluşturulsun mu? Makbuzlar bundan sonra yeni anahtarla imzalanır; eski anahtar bir daha asla imzalamaz ve açık anahtarı dışa aktarım için kullanılabilir kalır.",
+    "delete": "Sil",
+    "delete_confirm": "Bu cihazın imza anahtarı silinsin mi? Dışa aktardıysanız, imzaladığı makbuzlar açık anahtarıyla doğrulanmaya devam eder. Bir sonraki imzalı makbuzla yeni bir anahtar oluşturulur.",
+    "create": "İmza anahtarı oluştur",
+    "none": "Henüz imza anahtarı yok. İmzalama açıkken bir yanıt makbuzunu ilk açtığınızda veya şimdi bir anahtar oluşturulur.",
+    "unavailable": "Bu tarayıcı burada imza anahtarı oluşturamıyor (WebCrypto güvenli bir bağlantı gerektirir). Makbuzlar imzasız indirilir.",
+    "not_persistent": "Bu tarayıcı bu site için veri tutmuyor (örneğin gizli pencerede): anahtar yalnızca sayfa kapanana kadar geçerlidir."
+  },
+  "retired": {
+    "title": "Önceki anahtarlar",
+    "body": "Yerine yenisi gelen anahtarlar artık imzalamaz. Açık anahtarları, imzaladıkları makbuzları denetlemeye devam eder.",
+    "delete_confirm": "Bu önceki anahtar silinsin mi? Açık anahtarı artık buradan dışa aktarılamaz."
+  },
+  "check": {
+    "title": "İmzalı bir makbuzu denetleme",
+    "body": "Makbuzu, özgün dosyaları ve açık anahtarınızı denetleyecek kişiye verin. Kimin imzaladığını yalnızca sizden aldıkları bir açık anahtar gösterir; makbuzun içindeki anahtar yalnızca makbuzun değişmediğini gösterir."
+  },
+  "result": {
+    "exported": "{file} kaydedildi.",
+    "created": "İmza anahtarı oluşturuldu.",
+    "rotated": "Yeni imza anahtarı oluşturuldu. Makbuzlarınızı denetleyen kişiler için açık anahtarını dışa aktarın.",
+    "deleted": "Anahtar silindi.",
+    "sign_on": "Dışa aktarılan makbuzlar imzalanıyor.",
+    "sign_off": "Dışa aktarılan makbuzlar imzalanmıyor.",
+    "sign_page": "Yalnızca bu sayfa için kaydedildi: bu tarayıcı bu site için veri tutmuyor."
+  },
+  "error": {
+    "unavailable": "Bu tarayıcı burada imza anahtarı oluşturamıyor veya kullanamıyor.",
+    "not_found": "Bu anahtar artık yok.",
+    "storage": "Anahtar bu cihaza kaydedilemedi."
+  },
+  "receipt": {
+    "signed_by": "Bu cihazın {key} anahtarıyla imzalandı ({alg}).",
+    "unsigned_off": "İmzalanmadı: imzalama Ayarlar › Güven bölümünde kapalı.",
+    "unsigned_unavailable": "İmzalanmadı: bu tarayıcı burada imza anahtarı oluşturamıyor.",
+    "signer": "Makbuzda belirtilen imzalayan: anahtar {key} ({alg}).",
+    "signature_missing": "Makbuz imzalayan anahtar olarak {key} ({alg}) belirtiyor, ancak imzası kaldırılmış.",
+    "trusted": "Güvenilir: seçtiğiniz açık anahtarla denetlendi.",
+    "not_trusted": "Güvenilir değil: imzalayanın açık anahtarı seçilmedi ve makbuzun içindeki anahtar herhangi birine ait olabilir.",
+    "own_key": "Anahtar bu cihaza ait.",
+    "gate": "Cümle filtresi ({mode} modu, kaydedildiği gibi): {released} onaylandı, {withheld} tutuldu.",
+    "second_opinions": "{n} {n:ifade|ifade} için ikinci görüş kaydedildi, {contradicted} tanesi çelişkili (danışma amaçlı, yeniden hesaplanmadı).",
+    "relations": "İfadeler arasında {n} {n:ilişki|ilişki} kaydedildi, {flagged} tanesi ters veya desteksiz (yeniden hesaplanmadı).",
+    "check_ocr": "{label}: dosya eşleşiyor; metni OCR ile tanındı ve yeniden çıkarılamaz."
+  },
+  "models": {
+    "title": "Güven · model indirmeleri",
+    "subtitle": "Yerel bir model yanıt vermeden önce indirdiği her dosya, Starpi’nin bu sürümünde sabitlenmiş SHA-256 karma değeriyle karşılaştırılır. Eşleşmeyen dosya silinir ve model yüklenmez.",
+    "empty": "Bu cihazda henüz hiçbir model denetlenmedi. Denetim bir model yüklendiğinde çalışır.",
+    "state": {
+      "verified": "Doğrulandı",
+      "override": "Doğrulanmadan yüklendi",
+      "mismatch": "Dosya silindi",
+      "unverified": "Doğrulanmadı"
+    },
+    "runtime": {
+      "webgpu": "GPU (WebGPU)",
+      "wasm": "İşlemci (WASM)",
+      "embed": "Arama modeli",
+      "nli": "İkinci görüş modeli"
+    },
+    "checked": "{n} {n:dosya|dosya} denetlendi · {date}",
+    "mismatched": "Sabitlenmiş karma değeriyle eşleşmedi: {files}",
+    "unpinned": "Sabitlenmiş karma değeri yok: {files}",
+    "allow": "Doğrulanmadan yükle (kaynakta değişti)",
+    "allow_confirm": "{model} eşleşen sabit karma değerleri olmadan yüklensin mi? Bunu yalnızca modelin, Starpi’nin bu sürümü yayımlandıktan sonra kaynağında değiştiğine güveniyorsanız yapın. Dosyaları o zaman olduğu gibi, kurcalamaya karşı koruma olmadan kullanılır.",
+    "allowed": "Doğrulanmadan yüklemeye izin verildi: sabit bir karma değeriyle eşleşmeyen dosyalar olduğu gibi kullanılır.",
+    "revoke": "Doğrulama iste",
+    "note": "Doğrulanan dosyalar adres ve boyutlarıyla hatırlanır; bu nedenle sonraki bir yükleme yalnızca boyutları karşılaştırır. İndirilen modelleri silmek denetimleri sıfırlar.",
+    "result": {
+      "allowed": "{model} doğrulanmadan yüklenebilir. Kullanmak için yeniden yükleyin.",
+      "revoked": "{model} artık yine yalnızca doğrulanmış dosyalarla yüklenir."
+    },
+    "error": {
+      "storage": "Ayar bu cihaza kaydedilemedi."
+    }
+  }
+}

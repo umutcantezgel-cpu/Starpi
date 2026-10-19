@@ -1,0 +1,98 @@
+{
+  "read": {
+    "free_notice": "Serbest yanıt, denetlenmedi.",
+    "withheld": "{count} {count:cümle|cümle} tutuldu.",
+    "nothing": "Bu yanıtın hiçbir kısmı denetlenmiş olarak sesli okunamadı.",
+    "button": "Sesli oku",
+    "stop": "Sesli okumayı durdur",
+    "unavailable": "Bu yanıt sesli okunamıyor."
+  },
+  "preview": {
+    "sample": "Yanıtlarınız sesli okunduğunda böyle duyulacak."
+  },
+  "source": {
+    "browser": "Tarayıcı",
+    "gemini": "Gemini",
+    "openai": "OpenAI",
+    "groq": "Groq",
+    "local": "Yerel ses sunucusu",
+    "companion": "Companion",
+    "elevenlabs": "ElevenLabs"
+  },
+  "fallback": {
+    "to": "{from} konuşamadı, bu yüzden onun yerine {to} okuyor.",
+    "none": "Şu anda hiçbir ses konuşamadı. Metin ekranda kalıyor."
+  },
+  "dictation": {
+    "listening": "dinliyor",
+    "recording": "kaydediyor",
+    "transcribing": "metne dönüştürüyor",
+    "chip": "{source} · {state}",
+    "no_source": "Kurulu ses girişi yok. Ayarlar → Ses bölümünden bir anahtar veya yerel bir ses sunucusu ekleyin.",
+    "too_short": "Bu çok kısaydı. Mikrofona basın, konuşun, sonra yeniden basın.",
+    "failed": "Konuşmanız metne dönüştürülemedi. Yeniden deneyin veya Ayarlar → Ses bölümünden başka bir kaynak seçin.",
+    "fallback": "Tarayıcının konuşma hizmeti kullanılamıyor ({code}). Bunun yerine kayıt yapılıyor: bitirdiğinizde mikrofona yeniden basın."
+  },
+  "capture": {
+    "unsupported": "Bu tarayıcı burada mikrofondan kayıt yapamıyor.",
+    "denied": "Mikrofon erişimi engellendi. Tarayıcının site ayarlarından izin verin.",
+    "no_microphone": "Mikrofon bulunamadı.",
+    "busy": "Mikrofon başka bir program tarafından kullanılıyor.",
+    "worklet": "Ses işleme başlatılamadı. Sayfayı yenileyip yeniden deneyin.",
+    "aborted": "Kayıt durduruldu."
+  },
+  "settings": {
+    "title": "Ses",
+    "subtitle": "Sorularınızı dikte edin, yanıtları sesli okutun ve canlı konuşun. Denetlenen yanıtlar yalnızca cümle denetiminin onayladığı kadarıyla okunur.",
+    "stt_title": "Ses girişi",
+    "stt_label": "Önce dene",
+    "stt_auto": "Otomatik sıra",
+    "not_ready": "kurulu değil",
+    "stt_chain": "Şu anki sıra: {sources}",
+    "stt_none": "Henüz kurulu ses girişi yok.",
+    "glossary_label": "Adlar ve terimler (isteğe bağlı)",
+    "glossary_placeholder": "Her satıra bir tane veya virgülle ayırarak",
+    "glossary_hint": "Metne dönüştürmenin adlarınızı ve terimlerinizi doğru yazmasına yardımcı olur. Yalnızca kayıtlarınızla birlikte gönderilir.",
+    "tts_title": "Sesli okuma",
+    "tts_label": "Ses kaynağı",
+    "voice_label": "Ses",
+    "voice_auto": "Varsayılan ses",
+    "voice_online": "çevrimiçi",
+    "rate_label": "Hız",
+    "preview": "Sesi dinle",
+    "auto_read": "Yanıtları otomatik olarak sesli oku",
+    "tts_hint": "Seçilen kaynak başarısız olursa tarayıcının kendi sesleri devreye girer; hiçbir şey başka bir bulut hizmetine geçmez.",
+    "local_title": "Yerel ses sunucusu",
+    "local_label": "Yerel ses sunucusunun adresi",
+    "local_hint": "Kendi bilgisayarınızda bir konuşma sunucusu (örneğin Piper ile faster-whisper). Yalnızca açık lisanslı Piper sesleri kullanılır.",
+    "save": "Kaydet",
+    "eleven_title": "ElevenLabs anahtarı",
+    "eleven_label": "ElevenLabs API anahtarı",
+    "eleven_placeholder": "ElevenLabs anahtarınızı yapıştırın",
+    "remove": "Kaldır",
+    "eleven_hint": "Yalnızca ElevenLabs’in hazır sesleri kullanılır. Anahtar, diğer anahtarlarınız gibi bu tarayıcıda kalır.",
+    "live_title": "Canlı konuşma",
+    "live_voice": "Canlı ses",
+    "camera": "Kamera fotoğrafına izin ver",
+    "saved": "Kaydedildi.",
+    "local_invalid": "Bir http veya https adresi girin, örneğin http://127.0.0.1:8000.",
+    "local_saved": "Yerel ses sunucusu kaydedildi.",
+    "local_cleared": "Yerel ses sunucusu kaldırıldı.",
+    "key_empty": "Önce bir anahtar yapıştırın.",
+    "key_stored": "Anahtar kaydedildi.",
+    "key_failed": "Anahtar kaydedilemedi. Anahtar kasasının kilidini açıp yeniden deneyin.",
+    "key_removed": "Anahtar kaldırıldı.",
+    "key_saved": "Anahtar kayıtlı",
+    "key_none": "Anahtar yok"
+  },
+  "privacy": {
+    "title": "Sesiniz nereye gidiyor",
+    "browser": "Çoğu tarayıcıda tanıma, tarayıcı üreticisinin sunucularında yapılır; tarayıcı sunuyorsa cihazda yapılır.",
+    "gemini": "Ses Google’a gider: anahtarınızla doğrudan veya bu sitenin anahtarıyla bu site üzerinden.",
+    "openai": "Ses anahtarınızla OpenAI’ya gider.",
+    "groq": "Ses anahtarınızla doğrudan veya bu sitenin aktarıcısı üzerinden Groq’a gider.",
+    "elevenlabs": "Okunacak metin, sizin anahtarınızla veya bu sitenin anahtarıyla ElevenLabs’e gider.",
+    "local": "Ses ve metin bilgisayarınızda kalır.",
+    "companion": "Ses, eşleştirilmiş Companion aracılığıyla kendi makinelerinizde kalır."
+  }
+}

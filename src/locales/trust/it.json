@@ -1,0 +1,100 @@
+{
+  "title": "Fiducia · firma delle ricevute",
+  "subtitle": "Questo dispositivo può firmare le ricevute di risposta che scarichi, con una chiave che non lascia mai il browser. Condividi la sua chiave pubblica con chi verifica le tue ricevute.",
+  "state": {
+    "on": "Firma attiva",
+    "off": "Firma disattivata",
+    "ready": "Chiave con la prima ricevuta",
+    "unavailable": "Non disponibile qui"
+  },
+  "sign": {
+    "label": "Firma le ricevute esportate",
+    "hint": "Ogni ricevuta scaricata indica la chiave di questo dispositivo come firmatario e ne porta la firma. Chiunque può così verificare che la ricevuta non sia cambiata; con la tua chiave pubblica può anche verificare che l’abbia firmata questo dispositivo."
+  },
+  "key": {
+    "title": "Chiave di firma di questo dispositivo",
+    "alg": "Algoritmo",
+    "id": "ID della chiave",
+    "created": "Creata",
+    "retired": "Sostituita",
+    "export_jwk": "Chiave pubblica (JWK)",
+    "export_pem": "Chiave pubblica (PEM)",
+    "rotate": "Nuova chiave",
+    "rotate_confirm": "Creare una nuova chiave di firma? D’ora in poi le ricevute vengono firmate con la nuova chiave; quella vecchia non firma mai più e la sua chiave pubblica resta disponibile per l’esportazione.",
+    "delete": "Elimina",
+    "delete_confirm": "Eliminare la chiave di firma di questo dispositivo? Le ricevute che ha firmato restano verificabili con la sua chiave pubblica, se l’hai esportata. Una nuova chiave viene creata con la prossima ricevuta firmata.",
+    "create": "Crea una chiave di firma",
+    "none": "Ancora nessuna chiave di firma. Ne viene creata una quando apri per la prima volta una ricevuta di risposta con la firma attiva, oppure ora.",
+    "unavailable": "Questo browser non può creare chiavi di firma qui (WebCrypto richiede una connessione sicura). Le ricevute vengono scaricate senza firma.",
+    "not_persistent": "Questo browser non conserva dati per questo sito (ad esempio in una finestra privata): la chiave dura solo finché la pagina non viene chiusa."
+  },
+  "retired": {
+    "title": "Chiavi precedenti",
+    "body": "Le chiavi sostituite da una nuova non firmano più. Le loro chiavi pubbliche verificano ancora le ricevute che hanno firmato.",
+    "delete_confirm": "Eliminare questa chiave precedente? La sua chiave pubblica non potrà più essere esportata da qui."
+  },
+  "check": {
+    "title": "Verificare una ricevuta firmata",
+    "body": "Consegna la ricevuta, i file originali e la tua chiave pubblica a chi effettua la verifica. Solo una chiave pubblica ricevuta da te mostra chi ha firmato; la chiave contenuta in una ricevuta mostra solo che è invariata."
+  },
+  "result": {
+    "exported": "{file} salvato.",
+    "created": "Chiave di firma creata.",
+    "rotated": "Nuova chiave di firma creata. Esporta la sua chiave pubblica per chi verifica le tue ricevute.",
+    "deleted": "Chiave eliminata.",
+    "sign_on": "Le ricevute esportate vengono firmate.",
+    "sign_off": "Le ricevute esportate non vengono firmate.",
+    "sign_page": "Salvato solo per questa pagina: questo browser non conserva dati per questo sito."
+  },
+  "error": {
+    "unavailable": "Questo browser non può creare né usare chiavi di firma qui.",
+    "not_found": "Questa chiave non esiste più.",
+    "storage": "Non è stato possibile salvare la chiave su questo dispositivo."
+  },
+  "receipt": {
+    "signed_by": "Firmata con la chiave {key} di questo dispositivo ({alg}).",
+    "unsigned_off": "Non firmata: la firma è disattivata in Impostazioni › Fiducia.",
+    "unsigned_unavailable": "Non firmata: questo browser non può creare una chiave di firma qui.",
+    "signer": "Firmatario indicato nella ricevuta: chiave {key} ({alg}).",
+    "signature_missing": "La ricevuta indica la chiave del firmatario {key} ({alg}), ma la sua firma è stata rimossa.",
+    "trusted": "Attendibile: verificata con la chiave pubblica che hai scelto.",
+    "not_trusted": "Non attendibile: non è stata scelta alcuna chiave pubblica del firmatario, e la chiave contenuta in una ricevuta può essere di chiunque.",
+    "own_key": "La chiave appartiene a questo dispositivo.",
+    "gate": "Filtro delle frasi (modalità {mode}, come registrato): {released} approvate, {withheld} trattenute.",
+    "second_opinions": "Secondi pareri registrati per {n} {n:affermazione|affermazioni}, {contradicted} contraddette (indicativo, non ricalcolato).",
+    "relations": "{n} {n:relazione|relazioni} tra affermazioni {n:registrata|registrate}, {flagged} invertite o non supportate (non ricalcolato).",
+    "check_ocr": "{label}: il file corrisponde; il suo testo è stato riconosciuto tramite OCR e non può essere estratto di nuovo."
+  },
+  "models": {
+    "title": "Fiducia · download dei modelli",
+    "subtitle": "Prima che un modello locale risponda, ogni file che ha scaricato viene confrontato con l’hash SHA-256 fissato in questa versione di Starpi. Un file che non corrisponde viene eliminato e il modello non viene caricato.",
+    "empty": "Nessun modello è ancora stato verificato su questo dispositivo. La verifica avviene quando un modello viene caricato.",
+    "state": {
+      "verified": "Verificato",
+      "override": "Caricato senza verifica",
+      "mismatch": "File eliminato",
+      "unverified": "Non verificato"
+    },
+    "runtime": {
+      "webgpu": "GPU (WebGPU)",
+      "wasm": "Processore (WASM)",
+      "embed": "Modello di ricerca",
+      "nli": "Modello del secondo parere"
+    },
+    "checked": "{n} {n:file verificato|file verificati} · {date}",
+    "mismatched": "Non corrisponde all’hash fissato: {files}",
+    "unpinned": "Nessun hash fissato: {files}",
+    "allow": "Carica senza verifica (cambiato all’origine)",
+    "allow_confirm": "Caricare {model} senza hash fissati corrispondenti? Fallo solo se sei sicuro che il modello sia cambiato alla sua origine dopo il rilascio di questa versione di Starpi. I suoi file verranno usati così come sono, senza protezione contro le manomissioni.",
+    "allowed": "Caricamento senza verifica consentito: i file che non corrispondono a un hash fissato vengono usati così come sono.",
+    "revoke": "Richiedi la verifica",
+    "note": "I file verificati vengono ricordati per indirizzo e dimensione, quindi un caricamento successivo confronta solo le dimensioni. Eliminare i modelli scaricati azzera le verifiche.",
+    "result": {
+      "allowed": "{model} può essere caricato senza verifica. Caricalo di nuovo per usarlo.",
+      "revoked": "{model} si carica di nuovo solo con file verificati."
+    },
+    "error": {
+      "storage": "Non è stato possibile salvare l’impostazione su questo dispositivo."
+    }
+  }
+}
