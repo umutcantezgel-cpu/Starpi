@@ -2,9 +2,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  argumentsFit, decideClass, fold, hasControlCharacter, isFromTask, keyName, mentionsRiskyWord, namesOwnHost, strongest, windowProblem,
+  argumentsFit, decideClass, fold, hasControlCharacter, isFromTask, keyName, mentionsRiskyWord, namesOwnHost, saysNothing, strongest, windowProblem,
 } from '../src/computer/classes.js';
-import { BLOCKED_APPS_DEFAULT, RISKY_WORDS_DEFAULT, buildPolicy, checkListOptions } from '../src/computer/lists.js';
+import { ANY_LANGUAGE, BLOCKED_APPS_DEFAULT, LANGUAGES, RISKY_WORDS_DEFAULT, VAGUE_LABELS, buildPolicy, checkListOptions } from '../src/computer/lists.js';
 
 const policy = buildPolicy({ openApps: ['org.example.calc'] }, { ownOrigins: ['https://app.example.org'] });
 const editor = { app: 'org.example.editor', title: 'Draft', url: null };
@@ -53,10 +53,82 @@ test('risky words and own hosts', () => {
   assert.equal(mentionsRiskyWord('Undelete', RISKY_WORDS_DEFAULT), false, 'only at the start of a word');
   assert.equal(mentionsRiskyWord('Do not save', RISKY_WORDS_DEFAULT), true);
   assert.equal(mentionsRiskyWord('Open', RISKY_WORDS_DEFAULT), false);
+  assert.equal(mentionsRiskyWord('Postpone', RISKY_WORDS_DEFAULT), false, 'a whole word unless the entry is a stem');
   assert.equal(namesOwnHost('go to http://localhost:47821', policy), true);
   assert.equal(namesOwnHost('127.0.0.1', policy), true);
   assert.equal(namesOwnHost('see app.example.org/settings', policy), true);
   assert.equal(namesOwnHost('see docs.example.net', policy), false);
+});
+
+/** Consequential controls as an interface in each shipped language labels them. */
+const RISKY_LABELS = {
+  en: ['Send', 'Delete', 'Pay now', 'Buy', 'Confirm', 'Submit', 'Publish', 'Remove', 'Transfer'],
+  de: ['Senden', 'Löschen', 'Jetzt bezahlen', 'Kaufen', 'Bestätigen', 'Absenden', 'Veröffentlichen', 'Entfernen', 'Überweisen', 'Zahlungspflichtig bestellen'],
+  fr: ['Envoyer', 'Supprimer', 'Payer', 'Acheter', 'Confirmer', 'Soumettre', 'Publier', 'Retirer', 'Transférer', 'Valider'],
+  es: ['Enviar', 'Eliminar', 'Pagar', 'Comprar', 'Confirmar', 'Publicar', 'Quitar', 'Transferir', 'Cerrar sesión'],
+  it: ['Invia', 'Elimina', 'Paga ora', 'Acquista', 'Conferma', 'Pubblica', 'Rimuovi', 'Trasferisci', 'Non salvare'],
+  tr: ['Gönder', 'Sil', 'Öde', 'Satın al', 'Onayla', 'Yayınla', 'Kaldır', 'Havale yap', 'Çıkış yap'],
+};
+/** Harmless words that merely begin like a risky one: whole-word matching leaves them alone. */
+const HARMLESS_LABELS = {
+  en: ['Postpone', 'Payload', 'Undelete', 'Silver'],
+  de: ['Posteingang', 'Ordner', 'Abbrechen', 'Speichern'],
+  fr: ['Publicité', 'Annuler', 'Enregistrer'],
+  es: ['Página', 'Cancelar', 'Guardar'],
+  it: ['Pagina', 'Annulla', 'Salva'],
+  tr: ['Silgi', 'Ödev', 'İletişim', 'İptal', 'Kaydet'],
+};
+
+test('risky words of every shipped language raise the class, in any case and as whole words', () => {
+  assert.deepEqual(Object.keys(RISKY_WORDS_DEFAULT), [...LANGUAGES]);
+  assert.deepEqual(Object.keys(RISKY_LABELS), [...LANGUAGES]);
+  for (const lang of LANGUAGES) {
+    for (const label of RISKY_LABELS[lang]) {
+      for (const shown of [label, label.toLocaleUpperCase(lang), label.toLocaleLowerCase(lang)]) {
+        assert.equal(mentionsRiskyWord(shown, policy.riskyWords), true, `${lang}: ${shown}`);
+        assert.equal(mentionsRiskyWord(shown, { [lang]: RISKY_WORDS_DEFAULT[lang] }), true, `${lang} list alone: ${shown}`);
+      }
+      const ruling = decideClass(step('pointer.click', { at: [5, 5] }), seen({ role: 'button', label }), policy, ctx());
+      assert.equal(ruling.cls, 'high', `${lang}: a click on ${label}`);
+      assert.ok(ruling.reasons.includes('risky_target'), `${lang}: ${label} ${ruling.reasons}`);
+      const said = decideClass(step('pointer.click', { at: [5, 5] }, `${label} the draft`), seen({ role: 'button', label: 'Bold' }), policy, ctx());
+      assert.deepEqual(said.reasons, ['risky_purpose'], `${lang}: the purpose ${label}`);
+    }
+    for (const label of HARMLESS_LABELS[lang]) assert.equal(mentionsRiskyWord(label, policy.riskyWords), false, `${lang}: ${label}`);
+  }
+});
+
+test('each language is compared under its own case rules; accents may be left out', () => {
+  // Turkish: the capital of i is İ and the capital of ı is I.
+  assert.equal(mentionsRiskyWord('KALDIR', { tr: ['kaldır'] }), true);
+  assert.equal(mentionsRiskyWord('KALDIR', { en: ['kaldır'] }), false, 'under the root rules KALDIR folds to kaldir');
+  assert.equal(mentionsRiskyWord('SİL', { tr: ['sil'] }), true);
+  assert.equal(mentionsRiskyWord('SIL', { tr: ['sil'] }), true, 'an interface may drop the dot of the capital');
+  assert.equal(mentionsRiskyWord('ONAYLIYORUM', RISKY_WORDS_DEFAULT), true, 'a stem');
+  assert.equal(mentionsRiskyWord('İLET', RISKY_WORDS_DEFAULT), true);
+  assert.equal(mentionsRiskyWord('Silent mode', RISKY_WORDS_DEFAULT), false, 'sil is a whole word');
+  assert.equal(fold('İLET', 'tr'), 'ilet');
+  assert.equal(fold('KALDIR', 'tr'), 'kaldır');
+  // Capitals often go without their accents.
+  assert.equal(mentionsRiskyWord('DESINSTALLER', RISKY_WORDS_DEFAULT), true);
+  assert.equal(mentionsRiskyWord('ENVIO GRATIS', RISKY_WORDS_DEFAULT), true);
+  assert.equal(mentionsRiskyWord('CIKIS YAP', RISKY_WORDS_DEFAULT), true);
+});
+
+test('vague labels of every shipped language raise a click', () => {
+  const vague = { en: 'Continue', de: 'Weiter', fr: 'Continuer', es: 'Siguiente', it: 'Avanti', tr: 'İleri' };
+  assert.deepEqual(Object.keys(VAGUE_LABELS), [...LANGUAGES]);
+  for (const lang of LANGUAGES) {
+    for (const label of [vague[lang], vague[lang].toLocaleUpperCase(lang)]) {
+      assert.equal(saysNothing(label), true, `${lang}: ${label}`);
+      const ruling = decideClass(step('pointer.click', { at: [5, 5] }), seen({ role: 'button', label }), policy, ctx());
+      assert.deepEqual(ruling.reasons, ['target_vague'], `${lang}: ${label}`);
+    }
+  }
+  assert.equal(saysNothing('ILERI'), true);
+  assert.equal(saysNothing(''), true);
+  assert.equal(saysNothing('Weiterleitung einrichten'), false, 'only a whole label is vague');
+  assert.equal(saysNothing('Bold'), false);
 });
 
 test('windows: blocked, own, unverified browser, allow list', () => {
@@ -150,12 +222,18 @@ test('forbidden steps: unknown, malformed, blocked, secret or unknown fields, ke
 test('configured lists: the block list only grows, keys only shrink, blocked apps cannot be allowed', () => {
   assert.deepEqual(checkListOptions({ openApps: ['com.apple.Terminal'] }), ['modules.computer.openApps: com.apple.Terminal is blocked']);
   assert.deepEqual(checkListOptions({ keys: ['enter', 'mod+q'] }), ['modules.computer.keys: only keys of the allow list (mod+q is not)']);
-  assert.deepEqual(checkListOptions({ blockApps: ['org.example.editor'], riskyWords: ['archive'] }), []);
-  const tight = buildPolicy({ blockApps: ['org.example.editor'], keys: ['tab'], riskyWords: ['Archive'] });
+  assert.deepEqual(checkListOptions({ blockApps: ['org.example.editor'], riskyWords: ['archive', 'move to', 'archiv*'] }), []);
+  for (const bad of [['ar*chive'], ['a*'], ['*'], [' x ']]) assert.equal(checkListOptions({ riskyWords: bad }).length, 1, JSON.stringify(bad));
+  const tight = buildPolicy({ blockApps: ['org.example.editor'], keys: ['tab'], riskyWords: ['Archive', 'ARŞİVLE'] });
   for (const id of BLOCKED_APPS_DEFAULT) assert.ok(tight.blocked.has(id));
   assert.ok(tight.blocked.has('org.example.editor'));
   assert.deepEqual([...tight.keys.keys()], ['tab']);
-  assert.ok(tight.riskyWords.includes('archive'));
+  assert.deepEqual(tight.riskyWords[ANY_LANGUAGE], ['Archive', 'ARŞİVLE']);
+  for (const lang of LANGUAGES) assert.deepEqual(tight.riskyWords[lang], RISKY_WORDS_DEFAULT[lang], `the ${lang} defaults stay`);
+  assert.equal(mentionsRiskyWord('archive', tight.riskyWords), true);
+  assert.equal(mentionsRiskyWord('Archived', tight.riskyWords), false, 'a configured word matches whole words');
+  assert.equal(mentionsRiskyWord('Archived', buildPolicy({ riskyWords: ['archiv*'] }).riskyWords), true, 'a trailing * makes a stem');
+  assert.equal(mentionsRiskyWord('Arşivle', tight.riskyWords), true, 'configured words follow every language\'s case rules');
   assert.equal(tight.openable.size, 0);
   assert.equal(decideClass(step('keyboard.press', { key: 'enter' }), seen({ front: { app: 'org.example.notes' }, win: { app: 'org.example.notes', box } }), tight, ctx()).reasons[0], 'key_not_listed');
 });

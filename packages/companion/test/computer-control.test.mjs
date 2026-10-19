@@ -21,9 +21,9 @@ async function settle(rounds = 20) {
 }
 /** Waits until a condition holds (real time, short). */
 async function until(check, ms = 2000) {
-  const end = Date.now() + ms;
+  const deadline = Date.now() + ms;
   while (!check()) {
-    if (Date.now() > end) throw new Error('condition not reached');
+    if (Date.now() > deadline) throw new Error('condition not reached');
     await new Promise((resolve) => setTimeout(resolve, 2));
   }
 }
@@ -64,8 +64,11 @@ function scriptedModel(entries = []) {
   };
 }
 
-/** A controller wired to a mock actor, a scripted model, an in-memory vault namespace and a manual clock. */
-function rig({ scene = DEMO_SCENE, model = [], settings = {}, lists = {}, store = new Map() } = {}) {
+/**
+ * A controller wired to a mock actor, a scripted model, an in-memory vault namespace and a manual clock.
+ * `wrap` may put a layer around the mock actor (the controller gets the wrapped one).
+ */
+function rig({ scene = DEMO_SCENE, model = [], settings = {}, lists = {}, store = new Map(), wrap = (a) => a } = {}) {
   const clock = manualClock();
   const space = {
     getJson: (id) => (store.has(id) ? JSON.parse(store.get(id)) : null),
@@ -82,7 +85,7 @@ function rig({ scene = DEMO_SCENE, model = [], settings = {}, lists = {}, store 
   const actor = createMockActor({ scene });
   const policy = buildPolicy(lists, { ownOrigins: ['https://app.example.org'] });
   const state = openComputerState(space);
-  const controller = createController({ actor, state, audit, clock, policy, settings: { mandateS: 120, approvalS: 60, holdS: 15, quietMs: 2000, ...settings } });
+  const controller = createController({ actor: wrap(actor), state, audit, clock, policy, settings: { mandateS: 120, approvalS: 60, holdS: 15, quietMs: 2000, ...settings } });
   const brains = scriptedModel(model);
   controller.useLoop(createAgentLoop({ controller, brains, policy }).drive);
   const kinds = (kind) => records.filter((r) => r.kind === kind);
@@ -229,9 +232,10 @@ test('stop: any session, never refused, aborts a running step at once and leaves
   assert.equal(r.kinds('computer.mandate.ended')[0].actor, `session:${MEMBER.session.slice(0, 8)}`);
   assert.equal(r.controller.status(OWNER).stopped, true);
   assert.equal(r.state.read().halt.by, MEMBER.session);
-  // A stop with nothing running still answers and is recorded.
+  // A stop with nothing running still answers and is recorded; every request names what it met.
   assert.deepEqual(await r.controller.stop(MEMBER), { stopped: true, mandate: null, stopMs: 0 });
-  assert.equal(r.kinds('computer.stop.requested').length, 1);
+  assert.deepEqual(r.kinds('computer.stop.requested').map((x) => x.details.met), ['running', 'idle']);
+  assert.equal(r.kinds('computer.stop.requested')[0].details.mandate, stopped.mandate);
   // A new mandate is a person's decision: not during the quiet period, and it clears the flag.
   assert.equal(refusal(() => r.controller.startMandate(OWNER, { task: 'Again' })).code, 'actor_busy');
   r.clock.advance(2_001);
@@ -380,17 +384,135 @@ test('an unreadable plan is answered once; a second one in a row ends the mandat
 
 test('a restart ends the mandate that was running; consent and the stop flag survive', async () => {
   const store = new Map();
+  // The stop flag is set by a stop, which also ends that mandate; the flag outlives the process.
   const first = rig({ store });
   first.controller.grantConsent(OWNER, { version: 1 });
-  const m = first.controller.startMandate(OWNER, { task: 'Look' });
-  // The process goes away without ending the mandate; a new controller opens the same vault item.
+  first.controller.startMandate(OWNER, { task: 'Look' });
+  await settle();
+  await first.controller.stop(MEMBER);
+  assert.equal(first.controller.status(OWNER).stopped, true);
   const second = rig({ store });
   second.controller.afterRestart();
-  assert.deepEqual(second.ended(), ['restart']);
-  assert.equal(second.kinds('computer.mandate.ended')[0].details.mandate, m.mandate);
-  assert.equal(second.state.read().mandate.state, 'ended');
+  assert.equal(second.controller.status(OWNER).stopped, true, 'the stop flag holds after the restart');
+  assert.equal(second.state.read().halt.by, MEMBER.session);
+  assert.deepEqual(second.ended(), [], 'the stopped mandate had ended already');
   assert.equal(second.controller.status(OWNER).consent.granted, true);
-  second.controller.afterRestart();
-  assert.equal(second.ended().length, 1, 'only once');
-  await first.controller.stop(OWNER);
+
+  // A new mandate clears the flag; the process goes away without ending it.
+  const m = second.controller.startMandate(OWNER, { task: 'Look again' });
+  assert.equal(second.controller.status(OWNER).stopped, false);
+  const third = rig({ store });
+  third.controller.afterRestart();
+  assert.deepEqual(third.ended(), ['restart']);
+  assert.equal(third.kinds('computer.mandate.ended')[0].details.mandate, m.mandate);
+  assert.equal(third.state.read().mandate.state, 'ended');
+  assert.equal(third.controller.status(OWNER).consent.granted, true);
+  assert.equal(third.controller.status(OWNER).stopped, false);
+  third.controller.afterRestart();
+  assert.equal(third.ended().length, 1, 'only once');
+  await second.controller.stop(OWNER);
+});
+
+test('hints and model summaries are for owner sessions and the mandate owner; other members see the state only', async () => {
+  const r = rig({ model: [done('Typed the word marmalade into the field titled Private.'), done('Looked at the screen.')] });
+  r.controller.grantConsent(OWNER, { version: 1 });
+  r.controller.startMandate(OWNER, { task: 'Look' });
+  await until(() => r.ended().length === 1);
+  assert.equal(r.controller.status(OWNER).notes.at(-1).text, 'Typed the word marmalade into the field titled Private.');
+  assert.equal(r.controller.status(SECOND_OWNER).notes.at(-1).kind, 'model', 'every owner session reads them');
+  const seen = r.controller.status(MEMBER);
+  assert.deepEqual(seen.notes, []);
+  assert.equal(JSON.stringify(seen).includes('marmalade'), false);
+  assert.equal(seen.consent.granted, true, 'the state itself stays visible');
+  assert.equal(seen.mandate, null);
+  assert.equal(r.controller.journal().notes.at(-1).text, 'Typed the word marmalade into the field titled Private.');
+
+  // The controller's own rule: whoever started a mandate reads its notes, and only those.
+  r.clock.advance(2_001);
+  r.controller.startMandate(MEMBER, { task: 'Look' });
+  await until(() => r.ended().length === 2);
+  const own = r.controller.status(MEMBER).notes;
+  assert.deepEqual(own.map((n) => n.text), ['Looked at the screen.']);
+  assert.equal(r.controller.status(OWNER).notes.length, 2);
+});
+
+test('a stop that meets a mandate already ending is recorded with the end it met, and waits for the standstill', async () => {
+  for (const cause of ['revoked', 'expired']) {
+    // Typing that ignores the abort until released, so the end has to wait for it.
+    let release = () => {};
+    const held = new Promise((resolve) => (release = resolve));
+    let typing = 0;
+    const r = rig({
+      model: [plan({ do: 'keyboard.type', text: 'hello', why: 'write the greeting' })],
+      wrap: (actor) => ({
+        ...actor,
+        async typePiece(o) {
+          typing += 1;
+          await held;
+          return actor.typePiece(o);
+        },
+      }),
+    });
+    r.controller.grantConsent(OWNER, { version: 1 });
+    const m = r.controller.startMandate(OWNER, { task: 'Write hello in the note' });
+    await until(() => typing === 1);
+    const ending = cause === 'revoked' ? r.controller.revokeConsent(OWNER) : Promise.resolve(r.clock.advance(120_000));
+    assert.equal(r.controller.current()?.closed, true, `${cause}: the end is under way`);
+    const stopping = r.controller.stop(MEMBER);
+    let answered = false;
+    stopping.then(() => (answered = true));
+    await settle();
+    assert.equal(answered, false, `${cause}: the stop answers after the standstill`);
+    release();
+    const [, stopped] = await Promise.all([ending, stopping]);
+    assert.deepEqual(r.ended(), [cause]);
+    const requests = r.kinds('computer.stop.requested');
+    assert.equal(requests.length, 1, `${cause}: the stop request is recorded`);
+    assert.deepEqual(requests[0].details, { mandate: m.mandate, met: 'ending', ending: cause });
+    assert.equal(requests[0].actor, `session:${MEMBER.session.slice(0, 8)}`);
+    assert.equal(stopped.mandate, m.mandate);
+    assert.equal(r.state.read().halt.by, MEMBER.session);
+    assert.equal(r.controller.current(), null);
+  }
+});
+
+test('a typing step cut short records the characters actually typed', async () => {
+  const text = 'abcdefghijklmnopqrstuvwxyz0123456789ABCD'; // 40 characters: pieces of 16, 16 and 8
+  /** What happens right after the first piece, and the outcome and code it leads to. */
+  const cases = [
+    ['target_moved', (r) => {
+      const scene = r.actor.scene();
+      scene.elements = scene.elements.map((e) => (e.label === 'Note text' ? { ...e, label: 'Other field' } : e));
+      r.actor.setScene(scene);
+    }, 'failed'],
+    ['extension_needed', (r) => r.clock.advance(106_000), 'aborted'],
+    ['aborted', (r) => {
+      r.stopping = r.controller.stop(MEMBER);
+    }, 'aborted'],
+  ];
+  for (const [code, disturb, outcome] of cases) {
+    let pieces = 0;
+    const r = rig({
+      model: [plan({ do: 'keyboard.type', text, why: 'write the code' })],
+      wrap: (actor) => ({
+        ...actor,
+        async typePiece(o) {
+          const result = await actor.typePiece(o);
+          pieces += 1;
+          if (pieces === 1) disturb(r);
+          return result;
+        },
+      }),
+    });
+    r.controller.grantConsent(OWNER, { version: 1 });
+    r.controller.startMandate(OWNER, { task: `Write ${text} in the note` });
+    await until(() => r.kinds('computer.step').length === 1);
+    const step = r.kinds('computer.step')[0].details;
+    assert.equal(step.cls, 'low', code);
+    assert.equal(step.outcome, outcome, code);
+    assert.ok(step.reasons.includes(code), `${code}: ${step.reasons}`);
+    assert.equal(step.typedChars, 16, `${code}: one piece of 16 characters was typed, not all 40`);
+    assert.equal(r.actor.scene().elements.find((e) => e.role === 'textbox').value, text.slice(0, 16));
+    await (r.stopping ?? r.controller.stop(OWNER));
+  }
 });

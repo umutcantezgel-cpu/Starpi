@@ -2,10 +2,12 @@
 // local model server fake and the mock actor, the records in the audit chain, the refused macOS
 // actor, and no way to start a process from the module's code.
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
 import { readdirSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { checkConfig, loadConfig } from '../src/config.js';
 import { startCompanion } from '../src/service.js';
@@ -22,29 +24,28 @@ const SRC = fileURLToPath(new URL('../src/computer/', import.meta.url));
 async function fakeModelServer(replies) {
   const queue = [...replies];
   const seen = [];
-  const server = createServer((req, res) => {
-    let body = '';
-    req.on('data', (c) => (body += c));
-    req.on('end', () => {
-      seen.push(JSON.parse(body));
-      const text = queue.shift() ?? JSON.stringify({ done: 'Nothing left to do.' });
-      res.writeHead(200, { 'content-type': 'text/event-stream' });
-      res.write(`data: ${JSON.stringify({ model: 'fake', choices: [{ delta: { content: text } }] })}\n\n`);
-      res.write(`data: ${JSON.stringify({ model: 'fake', choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n`);
-      res.end('data: [DONE]\n\n');
-    });
+  const model = createServer(async (req, res) => {
+    const parts = [];
+    for await (const part of req) parts.push(part);
+    seen.push(JSON.parse(Buffer.concat(parts).toString('utf8')));
+    const text = queue.shift() ?? JSON.stringify({ done: 'Nothing left to do.' });
+    const event = (delta, finish = null) => `data: ${JSON.stringify({ model: 'fake', choices: [{ delta, ...(finish ? { finish_reason: finish } : {}) }] })}\n\n`;
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.end(`${event({ content: text })}${event({}, 'stop')}data: [DONE]\n\n`);
   });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const port = /** @type {import('node:net').AddressInfo} */ (server.address()).port;
-  return { url: `http://127.0.0.1:${port}/v1`, seen, push: (t) => queue.push(t), close: () => new Promise((resolve) => server.close(resolve)) };
+  model.listen(0, '127.0.0.1');
+  await once(model, 'listening');
+  const { port } = /** @type {import('node:net').AddressInfo} */ (model.address());
+  return { url: `http://127.0.0.1:${port}/v1`, seen, push: (t) => queue.push(t), close: () => new Promise((resolve) => model.close(resolve)) };
 }
 
 /** @param {() => Promise<boolean> | boolean} check */
 async function until(check, ms = 5000) {
-  const end = Date.now() + ms;
-  while (!(await check())) {
-    if (Date.now() > end) throw new Error('condition not reached');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  const deadline = Date.now() + ms;
+  for (;;) {
+    if (await check()) return;
+    if (Date.now() > deadline) throw new Error('condition not reached');
+    await sleep(10);
   }
 }
 
@@ -100,10 +101,10 @@ test('the macOS actor is a preview: refused in the configuration, impossible to 
 test('no file of the module can start a process, and only tests reach the macOS actor factory', () => {
   const files = readdirSync(SRC).filter((f) => f.endsWith('.js'));
   assert.ok(files.length >= 8);
-  for (const file of files) {
-    const source = readFileSync(join(SRC, file), 'utf8');
-    assert.doesNotMatch(source, /child_process|worker_threads|node:cluster|\bspawn\(|\bexecFile\(|process\.execve|new Worker\(/, `${file} must not start processes`);
-    if (file !== 'actor-macos.js') assert.doesNotMatch(source, /createMacosActor\(/, `${file} must not construct the macOS actor`);
+  for (const fileName of files) {
+    const source = readFileSync(join(SRC, fileName), 'utf8');
+    assert.doesNotMatch(source, /child_process|worker_threads|node:cluster|\bspawn\(|\bexecFile\(|process\.execve|new Worker\(/, `${fileName} must not start processes`);
+    if (fileName !== 'actor-macos.js') assert.doesNotMatch(source, /createMacosActor\(/, `${fileName} must not construct the macOS actor`);
   }
 });
 
@@ -149,7 +150,7 @@ test('over HTTP: consent by the owner, a mandate, an approval only by its owner,
   assert.equal((await call(`${base}/mandate`, as(member, 'POST', { task: 'x' }))).status, 403, 'members do not start mandates');
 
   const started = await call(`${base}/mandate`, as(ownerA, 'POST', { task: 'Write a short greeting in the note' }));
-  assert.equal(started.status, 200);
+  assert.equal(started.status, 200, 'the owner starts a mandate');
   const mandate = started.json().mandate;
   await until(async () => (await call(`${base}`, as(ownerA))).json().approval !== null);
   const seenByA = (await call(`${base}`, as(ownerA))).json();
@@ -178,6 +179,10 @@ test('over HTTP: consent by the owner, a mandate, an approval only by its owner,
   const after = (await call(`${base}`, as(ownerA))).json();
   assert.equal(after.notes.at(-1).text, 'Wrote a greeting into the note.');
   assert.equal(after.notes.at(-1).kind, 'model');
+  // A member reads the state, never the model's summary.
+  const byMember = (await call(`${base}`, as(member))).json();
+  assert.deepEqual(byMember.notes, []);
+  assert.equal(byMember.consent.granted, true);
   assert.equal(model.seen[0].messages[0].role, 'system');
   assert.match(model.seen[1].messages.at(-1).content, /Note text/, 'the screen report went back to the model');
 
@@ -251,7 +256,7 @@ test('without a model the mandate ends as failed; a running mandate ends with th
   const two = await boot({ brains: [{ id: 'quiet', type: 'openai-compat', baseUrl: silentUrl, model: 'none' }] });
   assert.equal((await call(two.base, two.as())).json().consent.granted, true, 'the consent survived the restart');
   assert.equal((await call(`${two.base}/mandate`, two.as('POST', { task: 'Look at the screen' }))).status, 200);
-  await until(() => held.length === 1);
+  await until(() => held.length > 0);
   assert.notEqual((await call(two.base, two.as())).json().mandate, null);
   await two.c.stop();
 
