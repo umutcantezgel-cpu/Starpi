@@ -992,6 +992,8 @@ function shareable(path, target) {
 const STAYS_ON_DEVICE = Object.freeze({ icon: 'lock', tone: /** @type {const} */ ('info'), title: 'chat-thread.notice.stays_on_device_title', body: 'chat-thread.notice.stays_on_device_body' });
 /** The same notice for a question asked of the companion. */
 const STAYS_WITH_COMPANION = Object.freeze({ ...STAYS_ON_DEVICE, body: 'chat-thread.notice.stays_on_device_companion_body' });
+/** The notice when the companion is picked but no companion is paired (any more). */
+const COMPANION_UNPAIRED = Object.freeze({ icon: 'plug', tone: /** @type {const} */ ('info'), title: 'chat-thread.notice.companion_unpaired_title', body: 'chat-thread.notice.companion_unpaired_body' });
 
 /**
  * Whether a question was asked to stay on this device (a free one asked there, a grounded one
@@ -1028,6 +1030,17 @@ function heldHere(question) {
  */
 function stayNotice(question) {
   return question && keptForCompanion(question) ? STAYS_WITH_COMPANION : STAYS_ON_DEVICE;
+}
+
+/**
+ * The notice when a model choice cannot answer a question that stays on this device: the companion,
+ * picked but not paired (any more), says so; every other choice gets the stays-on-device notice.
+ * @param {AssistantValue} value
+ * @param {NodeRecord | null} question
+ */
+function refusedHere(value, question) {
+  if (isCompanionValue(value) && routeOf('companion') === 'none') return COMPANION_UNPAIRED;
+  return stayNotice(question);
 }
 
 /**
@@ -1543,7 +1556,7 @@ async function answerCompanion(question, signal, placement, mode) {
   /** @type {Target} */
   const target = { provider: 'companion', model: COMPANION_MODEL, route: routeOf('companion') };
   if (target.route === 'none') {
-    turnNotice({ icon: 'plug', tone: 'info', title: 'chat-thread.notice.companion_unpaired_title', body: 'chat-thread.notice.companion_unpaired_body' });
+    turnNotice(COMPANION_UNPAIRED);
     return null;
   }
   if (question.parts.some((p) => p.type === 'image')) {
@@ -2324,7 +2337,7 @@ export async function sendQuestion(options = {}) {
   const value = getAssistant();
   const deviceOnly = options.localOnly === true;
   if (deviceOnly && !(await answersHere(value))) {
-    appendNotice(STAYS_ON_DEVICE);
+    appendNotice(refusedHere(value, null));
     return;
   }
   if (options.text === undefined) clearComposer();
@@ -2392,7 +2405,7 @@ export async function regenerate(nodeId, value) {
   const route = (metaOf(node).chat_mode ?? node.label) === 'grounded' ? 'grounded' : 'free';
   // A question asked to stay on this device is answered again here, by the own server or the companion only.
   if (staysOnDevice(question) && !(await answersHere(target))) {
-    appendNotice(stayNotice(question));
+    appendNotice(refusedHere(target, question));
     return;
   }
   await withTurn(async (signal) => {
@@ -2434,7 +2447,7 @@ export async function editQuestion(nodeId, text) {
   // An edited question that stays on this device (like the one it replaces) is answered here, by
   // the own server or the companion only.
   if (staysOnDevice(node) && !(await answersHere(value))) {
-    appendNotice(stayNotice(node));
+    appendNotice(refusedHere(value, node));
     return;
   }
   const reuse = node.parts.filter((p) => p.type !== 'text');

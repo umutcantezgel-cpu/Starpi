@@ -282,6 +282,36 @@ describe('a question to the companion stays on this device', () => {
     await thread.regenerate(a.id, COMPANION);
     assert.deepEqual(asked.at(-1), { question: 'My notes say what?', mode: 'free', dataClass: 'sensitive' });
   });
+
+  it('says the companion is not paired when its link went away, for an answer asked again and a changed question', async () => {
+    state.setAssistant(COMPANION);
+    newChat();
+    await ask('Where are the keys?');
+    const { nodes } = await storedChat();
+    const question = /** @type {any} */ (nodes.find((n) => n.role === 'user'));
+    const answer = /** @type {any} */ (nodes.find((n) => n.role === 'assistant'));
+    assert.equal(question.meta.kept_for_companion, true);
+    const providers = await import('../../src/js/providers.js');
+    const unpaired = () => notices().filter((n) => /No companion paired/.test(n)).length;
+    const kept = () => notices().filter((n) => /asked of your companion and stays on this device/.test(n)).length;
+    providers.setCompanionPaired(false);
+    try {
+      const n = asked.length;
+      let before = { unpaired: unpaired(), kept: kept() };
+      await thread.regenerate(answer.id, null);
+      assert.equal(asked.length, n, 'nothing is asked');
+      assert.equal(unpaired(), before.unpaired + 1, notices().join(' | '));
+      assert.equal(kept(), before.kept, 'not the notice for a companion that could answer it');
+
+      before = { unpaired: unpaired(), kept: kept() };
+      await thread.editQuestion(question.id, 'Where is the spare key?');
+      assert.equal(asked.length, n, 'nothing is asked');
+      assert.equal(unpaired(), before.unpaired + 1, notices().join(' | '));
+      assert.equal(kept(), before.kept, 'not the notice for a companion that could answer it');
+    } finally {
+      providers.setCompanionPaired(true);
+    }
+  });
 });
 
 describe('a compare column asks the companion as the thread does', () => {
