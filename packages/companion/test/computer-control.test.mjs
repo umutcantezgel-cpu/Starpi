@@ -21,9 +21,9 @@ async function settle(rounds = 20) {
 }
 /** Waits until a condition holds (real time, short). */
 async function until(check, ms = 2000) {
-  const end = Date.now() + ms;
+  const deadline = Date.now() + ms;
   while (!check()) {
-    if (Date.now() > end) throw new Error('condition not reached');
+    if (Date.now() > deadline) throw new Error('condition not reached');
     await new Promise((resolve) => setTimeout(resolve, 2));
   }
 }

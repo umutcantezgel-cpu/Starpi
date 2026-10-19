@@ -89,8 +89,8 @@ const casingsOf = (lang) => (lang === 'tr' ? ['tr', undefined] : LANGUAGES.inclu
  */
 export function strongest(...classes) {
   let rank = 0;
-  for (const c of classes) {
-    const i = CLASSES.indexOf(/** @type {ActionClass} */ (c));
+  for (const one of classes) {
+    const i = CLASSES.indexOf(/** @type {ActionClass} */ (one));
     rank = Math.max(rank, i === -1 ? CLASSES.length - 1 : i);
   }
   return CLASSES[rank];
@@ -120,8 +120,8 @@ function patternOf(list, casing, plain) {
     const whole = [];
     /** @type {string[]} */
     const stems = [];
-    for (const entry of list) {
-      const folded = fold(entry, casing);
+    for (const item of list) {
+      const folded = fold(item, casing);
       const word = plain ? bare(folded) : folded;
       const stem = word.endsWith('*');
       const body = escapeForRegExp(stem ? word.slice(0, -1).trimEnd() : word);
@@ -190,11 +190,11 @@ export const hasControlCharacter = (text) => [...text].some((ch) => {
  * @param {unknown} task
  */
 export function isFromTask(text, task) {
-  if (typeof text !== 'string' || text === '' || typeof task !== 'string') return false;
+  if (typeof text !== 'string' || typeof task !== 'string' || text.length === 0) return false;
   const wordAt = (/** @type {string | undefined} */ ch) => ch !== undefined && new RegExp(LETTER_OR_DIGIT, 'u').test(ch);
-  const chars = [...text];
-  const before = wordAt(chars[0]) ? `(?<!${LETTER_OR_DIGIT})` : '';
-  const after = wordAt(chars[chars.length - 1]) ? `(?!${LETTER_OR_DIGIT})` : '';
+  const letters = [...text];
+  const before = wordAt(letters[0]) ? `(?<!${LETTER_OR_DIGIT})` : '';
+  const after = wordAt(letters.at(-1)) ? `(?!${LETTER_OR_DIGIT})` : '';
   return new RegExp(`${before}${escapeForRegExp(text)}${after}`, 'u').test(task);
 }
 
@@ -229,17 +229,17 @@ export function keyName(raw) {
   if (raw === ' ') return 'space';
   const spaced = raw.trim().toLowerCase().replace(/^([⌘⇧⌥]+)(?=[^+])/u, (symbols) => `${[...symbols].join('+')}+`);
   const parts = spaced.split('+').map((p) => p.trim().replace(/[\s_-]/g, ''));
-  if (parts.some((p) => p === '')) return null;
+  if (parts.includes('')) return null;
   const last = /** @type {string} */ (parts.pop());
   const base = Object.hasOwn(KEY_NAMES, last) ? KEY_NAMES[/** @type {keyof typeof KEY_NAMES} */ (last)] : /^[a-z0-9]$/.test(last) ? last : null;
   if (base === null) return null;
   /** @type {Set<string>} */
-  const mods = new Set();
-  for (const part of parts) {
-    if (!Object.hasOwn(MODIFIER_NAMES, part)) return null;
-    mods.add(MODIFIER_NAMES[/** @type {keyof typeof MODIFIER_NAMES} */ (part)]);
+  const modifiers = new Set();
+  for (const name of parts) {
+    if (!Object.hasOwn(MODIFIER_NAMES, name)) return null;
+    modifiers.add(MODIFIER_NAMES[/** @type {keyof typeof MODIFIER_NAMES} */ (name)]);
   }
-  return [...[...mods].sort(), base].join('+');
+  return [...[...modifiers].sort(), base].join('+');
 }
 
 /**

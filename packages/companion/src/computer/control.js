@@ -101,6 +101,9 @@ import { SECRET_ROLE } from './lists.js';
  * @typedef {{ report: Record<string, unknown>, flow: 'go' | 'skip' | 'hold' | 'over', ran: boolean }} StepOutcome
  */
 
+/** Whole milliseconds since a performance.now() reading, never below zero. @param {number} since */
+const elapsedMs = (since) => Math.round(Math.max(0, performance.now() - since));
+
 /** @param {number} ms */
 const pause = (ms) => new Promise((resolve) => {
   const handle = setTimeout(resolve, ms);
@@ -235,11 +238,11 @@ export function createController({ actor, state, audit, clock, policy, settings,
       refuse('mandate', who, 'mandate_invalid', 400, `actions is a list taken from ${allowed.join(', ')}`);
     }
     if (loop === null) throw fail('computer_not_ready', 'the computer control has no agent loop', { status: 503 });
-    const now = clock.now();
+    const begun = clock.now();
     /** @type {Run} */
     const run = {
       id: randomUUID(), owner: who.session, task, shareable: b.shareable === true, actions: [.../** @type {string[]} */ (actions)],
-      startedAt: now, expiresAt: now + Math.min(settings.mandateS, MANDATE_LIMIT_S) * 1000, extensions: 0, seq: 0, turns: 0,
+      startedAt: begun, expiresAt: begun + Math.min(settings.mandateS, MANDATE_LIMIT_S) * 1000, extensions: 0, seq: 0, turns: 0,
       screenRead: false, abort: new AbortController(), timer: null, closed: false, ending: null, ended: null, pending: null, onExtend: null,
       history: null,
     };
@@ -306,7 +309,7 @@ export function createController({ actor, state, audit, clock, policy, settings,
     waiting?.(false);
     const inFlight = acting;
     if (inFlight) await Promise.race([inFlight.catch(() => {}), pause(SETTLE_LIMIT_MS)]);
-    const stopMs = Math.max(0, Math.round(performance.now() - t0));
+    const stopMs = elapsedMs(t0);
     if (current === run) current = null;
     try {
       state.setMandate({ ...recordOf(run), endReason: reason, endedAt: iso() });
@@ -325,7 +328,7 @@ export function createController({ actor, state, audit, clock, policy, settings,
    * @param {Who} who
    */
   async function stop(who) {
-    const t0 = performance.now();
+    const askedAt = performance.now();
     const run = current;
     const met = run === null ? 'idle' : run.closed ? 'ending' : 'running';
     state.setHalt({ at: iso(), by: who.session });
@@ -338,10 +341,10 @@ export function createController({ actor, state, audit, clock, policy, settings,
       log('warn', 'stop_not_recorded', { met, error: err });
     }
     let stopMs = 0;
-    if (run !== null && met === 'running') stopMs = (await end(run, 'stopped', who, t0)) ?? 0;
+    if (run !== null && met === 'running') stopMs = (await end(run, 'stopped', who, askedAt)) ?? 0;
     else if (run !== null && run.ended !== null) {
       await run.ended;
-      stopMs = Math.max(0, Math.round(performance.now() - t0));
+      stopMs = elapsedMs(askedAt);
     }
     return { stopped: true, mandate: run?.id ?? null, stopMs };
   }
@@ -362,8 +365,8 @@ export function createController({ actor, state, audit, clock, policy, settings,
   /** @param {Run} run @returns {Promise<boolean>} true when extended, false when the mandate ended */
   function waitForExtension(run) {
     if (run.closed) return Promise.resolve(false);
-    return new Promise((resolve) => {
-      run.onExtend = resolve;
+    return new Promise((answer) => {
+      run.onExtend = answer;
     });
   }
 
@@ -405,7 +408,7 @@ export function createController({ actor, state, audit, clock, policy, settings,
     if (step.action === ACTIONS.open) preview.open = step.args.app;
     record('approval.asked', id, null, { approval: id, mandate: run.id, step: seq, action: step.action, reasons: ruling.reasons, expiresAt: isoAt(expiresAt) });
     hint(run, 'approval_needed');
-    return new Promise((resolve) => {
+    return new Promise((deliver) => {
       /** @type {Pending} */
       const pending = {
         id, seq, action: step.action, reasons: [...ruling.reasons], digest, expiresAt, preview, timer: null,
@@ -413,7 +416,7 @@ export function createController({ actor, state, audit, clock, policy, settings,
           if (run.pending !== pending) return;
           run.pending = null;
           clock.clearTimeout(pending.timer);
-          resolve({ answer, digest });
+          deliver({ answer, digest });
         },
       };
       pending.timer = clock.setTimeout(() => {
@@ -481,12 +484,14 @@ export function createController({ actor, state, audit, clock, policy, settings,
     run.abort.signal.addEventListener('abort', relay, { once: true });
     const signal = local.signal;
     const alive = () => !run.closed && !signal.aborted && clock.now() < run.expiresAt;
+    /** A step cut short, with the reason. @param {string} code */
+    const cut = (code) => ({ ok: /** @type {const} */ (false), code });
     /** @type {import('./actor.js').Expect} */
     const expect = { front: typeof seen.front?.app === 'string' ? seen.front.app : null, app: target.app, title: target.title };
     const args = step.args;
     /** Characters typed so far: a typing step that stops part-way records only these. */
     let typed = 0;
-    const work = (async () => {
+    const job = (async () => {
       switch (step.action) {
         case ACTIONS.look: {
           const r = await actor.look({ signal });
@@ -501,8 +506,8 @@ export function createController({ actor, state, audit, clock, policy, settings,
           const key = /** @type {string} */ (keyName(args.key));
           const times = Number(args.times ?? 1);
           for (let n = 0; n < times; n++) {
-            if (!alive()) return { ok: false, code: 'aborted' };
-            if (n > 0 && holding(run)) return { ok: false, code: 'extension_needed' };
+            if (!alive()) return cut('aborted');
+            if (n > 0 && holding(run)) return cut('extension_needed');
             const r = await actor.press({ key, expect, signal });
             if (!r.ok) return r;
           }
@@ -512,14 +517,14 @@ export function createController({ actor, state, audit, clock, policy, settings,
           const chars = [...String(args.text)];
           const fieldExpect = { ...expect, role: target.role, label: target.label };
           for (let from = 0; from < chars.length; from += TYPE_PIECE_CHARS) {
-            if (!alive()) return { ok: false, code: 'aborted' };
+            if (!alive()) return cut('aborted');
             if (from > 0) {
-              if (holding(run)) return { ok: false, code: 'extension_needed' };
+              if (holding(run)) return cut('extension_needed');
               const now = await inspect(run, step);
               const same = now.front?.app === expect.front && now.window?.app === target.app && (now.window?.title ?? null) === target.title
                 && (now.element?.role ?? null) === target.role && (now.element?.label ?? null) === target.label && target.role !== SECRET_ROLE;
-              if (!same) return { ok: false, code: 'target_moved' };
-              if (!alive()) return { ok: false, code: 'aborted' };
+              if (!same) return cut('target_moved');
+              if (!alive()) return cut('aborted');
             }
             const piece = chars.slice(from, from + TYPE_PIECE_CHARS);
             const r = await actor.typePiece({ text: piece.join(''), expect: fieldExpect, signal });
@@ -531,16 +536,16 @@ export function createController({ actor, state, audit, clock, policy, settings,
         case ACTIONS.open:
           return actor.open({ app: String(args.app), signal });
         default:
-          return { ok: false, code: 'unknown_action' };
+          return cut('unknown_action');
       }
     })();
-    acting = work;
+    acting = job;
     try {
-      return { .../** @type {any} */ (await work), typed };
+      return { .../** @type {any} */ (await job), typed };
     } catch {
       return { ok: false, code: signal.aborted ? 'aborted' : 'actor_failed', typed };
     } finally {
-      if (acting === work) acting = null;
+      if (acting === job) acting = null;
       lastStepEnd = clock.now();
       run.abort.signal.removeEventListener('abort', relay);
     }
@@ -670,7 +675,9 @@ export function createController({ actor, state, audit, clock, policy, settings,
     perform, skip, hint, noteTurn, keepSummary, status, offered,
     journal: () => ({ steps: journal.map((e) => ({ ...e })), notes: notes.map((n) => ({ ...n.note })) }),
     /** @returns {Run | null} */
-    current: () => current,
+    current() {
+      return current;
+    },
     quiet,
   };
 }
