@@ -96,11 +96,11 @@ idealised design. When the code changes, change the diagram in the same pull req
    - [Knowledge graph tab: selection and ask-entity](#knowledge-graph-tab-selection-and-ask-entity)
    - [Knowledge graph tab: new entities](#knowledge-graph-tab-new-entities)
 7. [Languages, storage and offline](#7-languages-storage-and-offline)
-   - [Locale boot and EN/DE switch](#locale-boot-and-ende-switch)
+   - [Locale boot and the language switch](#locale-boot-and-the-language-switch)
    - [How an element gets its translated text](#how-an-element-gets-its-translated-text)
    - [Tests that keep the dictionaries and keys consistent](#tests-that-keep-the-dictionaries-and-keys-consistent)
    - [localStorage, sessionStorage and the auth session](#localstorage-sessionstorage-and-the-auth-session)
-   - [Caches and the on-device workspace](#caches-and-the-on-device-workspace)
+   - [IndexedDB, OPFS and the caches](#indexeddb-opfs-and-the-caches)
    - [In-memory answer stores](#in-memory-answer-stores)
    - [Service worker fetch handler](#service-worker-fetch-handler)
    - [Service worker install, waiting and activate](#service-worker-install-waiting-and-activate)
@@ -3671,380 +3671,253 @@ sequenceDiagram
 
 ## 7. Languages, storage and offline
 
-Runtime translation without a reload, every piece of state the app keeps in the browser, and the service worker that caches the same-origin app shell.
+Six interface languages with dictionaries loaded on demand, what the app keeps where in the browser (web storage, IndexedDB, OPFS, caches and memory), and how the service worker keeps the app usable offline and updates it.
 
-### Locale boot and EN/DE switch
+### Locale boot and the language switch
 
-boot() calls initI18n first, which reads localStorage starpi_locale (only en or de are accepted, anything else or a storage error means en), sets the html lang attribute and translates the whole document. The EN/DE buttons dispatch the set-locale action to setLocale, which persists the choice (a failed write is ignored and the switch still applies to the page), updates html lang, re-runs applyTranslations (which also re-translates every element set through setText and updates aria-pressed) and then calls each onLocaleChange listener without reloading the page. Only engine-ui.js, model-picker.js, graph.js, ingest.js and bench-ui.js subscribe, because they render locale-formatted numbers, option text that t() builds for the assistant pickers, or, in graph.js, an empty or error status text built with t() that no stored attribute can refresh; numbers already formatted into other setText params keep their old format until the view re-renders.
+The dictionaries live in `src/locales`: a root file per language (`<lang>.json`) and one file per namespace (`<ns>/<lang>.json`, 18 namespaces such as `chat-thread`, `providers`, `voice`, `companion` or `sync`), whose keys are reached as `<ns>.<key>` and merged into the root dictionary; a key may be defined only once. English is part of the app bundle and the fallback for every key another language lacks; German, French, Spanish, Italian and Turkish are lazy chunks, one per root file and namespace. i18n/index.js reads `starpi_locale` when it loads and, with top-level await, loads that language before main.js runs, so t() is synchronous and the first render is already in the right language; a language that cannot be loaded (offline before its files were cached) falls back to English. initI18n sets `html lang` and translates the document. The language switch is a select of the six languages, each named in itself (renderLanguageSwitch replaces the two static EN/DE buttons of the pre-boot markup); setLocale switches at once when the language is loaded, otherwise when its files arrive, unless a later choice came first, persists the choice, re-runs applyTranslations and calls every onLocaleChange listener, without a reload. Views that render formatted numbers or text built with t() subscribe (the model pickers, the engine banner, the graph, the workspace, the benchmark, the conversation list, projects, assistants, memory, canvas, council, research, Live and the companion view). The language packs of the source check (core/lang) are separate: English and German are in the first load, the other four load after the first paint (loadShippedLanguages). Answer purposes keep their English instructions and name the answer language.
 
 <!-- diagram: i18n-boot-and-switch -->
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant Main as main.js boot
-    participant I18n as i18n/index.js
-    participant LS as localStorage
-    participant Doc as document
-    participant Subs as engine-ui, model-picker, graph, ingest, bench-ui
-    participant Dom as dom.js delegation
-
-    Note over I18n,LS: importing the module already sets current = readStoredLocale()
-    Main->>I18n: initI18n() before any module renders
-    I18n->>LS: getItem starpi_locale
-    LS-->>I18n: stored value, null or throws
-    Note over I18n: readStoredLocale keeps en or de,<br/>anything else or a storage error gives en
-    I18n->>Doc: html lang = current
-    I18n->>Doc: applyTranslations(document)
-    Main->>Dom: installDelegation, then onAction set-locale
-    Main->>Subs: initModelPicker, initEngineUi, initIngest, initGraph, initBenchUi
-    Subs->>I18n: onLocaleChange(listener)
-    Note over Subs,I18n: ui.js, messages.js, receipts.js and others only call setText and t,<br/>setText stores data-i18n and data-i18n-params on the element
-    User->>Dom: click EN or DE button
-    Dom->>Main: set-locale handler with data-arg
-    Main->>I18n: setLocale(data-arg or en)
-    Note over I18n: values other than en and de become en
-    I18n->>LS: setItem starpi_locale (errors ignored)
-    I18n->>Doc: html lang = locale
-    I18n->>Doc: applyTranslations(document)
-    Note over Doc: re-translates markup and every setText target with its stored params,<br/>sets aria-pressed on the set-locale buttons
-    loop each listener, errors logged and skipped
-        I18n->>Subs: listener(locale)
-    end
-    Note over Subs: engine-ui render(getEngineState()) for percent and GB<br/>model-picker renderModelPickers(): group labels, option text, badges<br/>graph renderGraph() if tab-graph is visible, which rewrites the empty or error status text<br/>ingest renderWorkspace() for formatted counts<br/>bench-ui renderLimits() and refreshIcons
-    Note over Doc,Subs: numbers already formatted into other setText params keep the old format<br/>until re-rendered, voice.js reads getIntlLocale() when recognition starts
+flowchart TD
+    load(["i18n/index.js loads, before main.js runs"])
+    stored["readStoredLocale(): starpi_locale if one of<br/>en, de, fr, es, it, tr; else en"]
+    enQ{"English?"}
+    fetchLang["loadLocale(lang): root file and the 18 namespace files,<br/>lazy chunks, buildDictionary merges them"]
+    okQ{"loaded?"}
+    fallback["current = en, keys show English"]
+    boot["initI18n(): html lang, applyTranslations(document)"]
+    sel(["language select: six languages named in themselves"])
+    set["setLocale(lang): request number recorded"]
+    loadedQ{"dictionary loaded?"}
+    wait["loadLocale(lang), switch only if still<br/>the latest request and it loaded"]
+    apply["apply(): starpi_locale written (a failure is ignored),<br/>html lang, applyTranslations, onLocaleChange listeners"]
+    views["views with formatted numbers or t() text re-render:<br/>pickers, engine banner, graph, workspace, bench,<br/>conversations, projects, memory, canvas, council,<br/>research, Live, companion view"]
+    packs["core/lang: en and de in the first load,<br/>fr, es, it, tr after the first paint (loadShippedLanguages)"]
+    load --> stored --> enQ
+    enQ -->|"yes"| boot
+    enQ -->|"no"| fetchLang --> okQ
+    okQ -->|"yes"| boot
+    okQ -->|"no"| fallback --> boot
+    sel --> set --> loadedQ
+    loadedQ -->|"yes"| apply
+    loadedQ -->|"no"| wait --> apply
+    apply --> views
+    boot -.-> packs
 ```
 
-<sub>Sources: [`src/js/main.js`](../src/js/main.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/voice.js`](../src/js/voice.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/index.html`](../src/index.html), [`src/js/model-picker.js`](../src/js/model-picker.js)</sub>
+<sub>Sources: [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/locales/index.js`](../src/locales/index.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/main.js`](../src/js/main.js), [`src/js/core/lang/index.js`](../src/js/core/lang/index.js), [`src/js/ai/purposes.js`](../src/js/ai/purposes.js), [`src/index.html`](../src/index.html)</sub>
 
 ### How an element gets its translated text
 
-Keys reach the runtime through data-i18n attributes in markup and HTML templates, through setText (which records the key and its params on the element so later language switches re-translate it), through attributes that rag/citations.js and voice.js set directly, or through direct t() calls. applyTranslations, run by initI18n, setLocale and messages.js resetMessages, parses data-i18n-params as JSON and writes only textContent and the placeholder, title and aria-label attributes; direct t() results go, for example, into confirm and alert dialogs, the graph status text, chat prompts and extractive answers, or escaped HTML templates. t() looks the dotted key up in the dictionary of its locale argument, which defaults to the current locale, then in en.json, then returns the key itself; only demo.js passes a locale, so that the deliberately flawed demo answer and its search terms use the language of the sample set in the workspace (the interface language when its set is complete or neither set is). With params it first resolves plural forms {name:one|other} (the one word when String(params[name]) is exactly 1, otherwise the other word) and then replaces {name} placeholders, in both steps only for names present in params; hasKey checks one dictionary without fallback. Numbers, dates and speech recognition use Intl locale en-US or de-DE.
+Keys reach the runtime through data-i18n attributes in markup and HTML templates, through setText (which records the key and its params on the element so later language switches re-translate it), through attributes that modules set directly, or through direct t() calls. applyTranslations, run by initI18n, setLocale and messages.js resetMessages, parses data-i18n-params as JSON and writes only textContent and the placeholder, title and aria-label attributes; direct t() results go into confirm and alert dialogs, status texts, prompts, quoted answers or HTML templates built with the UI kit's escaping. t() looks the dotted key up in the dictionary of its locale argument, which defaults to the current language, then in English, then returns the key itself, so a missing entry stays visible; demo.js passes a locale, so the prepared demo answer uses the language of the sample set in the workspace. With params it first resolves plural forms {name:one|other} (the one word when String(params[name]) is exactly 1) and then replaces {name} placeholders, both only for names present in params; hasKey checks one dictionary without fallback. Numbers, dates and speech recognition use the language's Intl tag (en-US, de-DE, fr-FR, es-ES, it-IT, tr-TR).
 
 <!-- diagram: i18n-translate-and-fallback -->
 ```mermaid
 flowchart TD
     subgraph sg_keys["Where keys come from"]
-        markup["index.html and HTML strings in messages.js, graph.js, ingest.js, library.js<br/>data-i18n, data-i18n-placeholder, data-i18n-title, data-i18n-aria"]
-        settext["setText(el, key, params)<br/>ui, messages, engine-ui, graph, ingest, library, settings, chat,<br/>chat-store, demo, bench-ui, rag/citations, rag/grounding-view, rag/receipts"]
-        attrset["setAttribute: rag/citations.js data-i18n-aria and data-i18n-params,<br/>voice.js data-i18n-aria plus aria-label from t()"]
-        direct["t(key, params) called directly, e.g.<br/>confirm and alert texts, graph status text,<br/>chat prompts, extractive answers, HTML templates;<br/>demo.js alone adds a locale: the language of the<br/>sample set in the workspace for the flawed demo answer"]
+        markup["index.html and HTML templates<br/>data-i18n, data-i18n-placeholder, data-i18n-title, data-i18n-aria"]
+        settext["setText(el, key, params): records key and params on the element"]
+        attrset["setAttribute of data-i18n-aria and data-i18n-params by a module"]
+        direct["t(key, params) called directly: dialogs, status texts,<br/>prompts, quoted answers, kit templates;<br/>demo.js adds the sample set's language"]
     end
-    settext -->|"writes data-i18n, and data-i18n-params<br/>as JSON or removes it"| attrs["annotated element"]
+    settext --> attrs["annotated element"]
     markup --> attrs
     attrset --> attrs
     callers(["initI18n and setLocale on document,<br/>messages.js resetMessages on the chat list"]) --> apply
-    attrs --> apply["applyTranslations(root)<br/>root itself plus all annotated descendants"]
-    apply --> parse{"data-i18n-params is<br/>a valid JSON object?"}
+    attrs --> apply["applyTranslations(root)"]
+    apply --> parse{"data-i18n-params a valid JSON object?"}
     parse -->|"yes"| withParams["params = parsed object"]
-    parse -->|"no or missing"| noParams["params = undefined"]
+    parse -->|"no"| noParams["params = undefined"]
     withParams --> tcall
     noParams --> tcall
     settext -->|"immediately"| tcall
     direct --> tcall
-    tcall["t(key, params, locale = current)"] --> lk1{"dotted key resolves to a string<br/>in the dictionary of locale?"}
+    tcall["t(key, params, locale = current)"] --> lk1{"key resolves in the dictionary of locale?"}
     lk1 -->|"yes"| tmpl["template"]
-    lk1 -->|"no"| lk2{"resolves in en.json?"}
+    lk1 -->|"no"| lk2{"resolves in English?"}
     lk2 -->|"yes"| tmpl
-    lk2 -->|"no"| keyself["the key itself<br/>(missing entry stays visible)"]
+    lk2 -->|"no"| keyself["the key itself"]
     keyself --> tmpl
     tmpl --> hasP{"params given?"}
     hasP -->|"no"| out["translated string"]
-    hasP -->|"yes"| plural["plural forms {name:one|other}:<br/>one when String(params[name]) is 1, else other,<br/>unknown names keep the whole form"]
-    plural --> interp["replace each {name} with params[name],<br/>unknown names keep the placeholder"]
-    interp --> out
-    out -->|"applyTranslations or setText"| write["textContent, placeholder,<br/>title or aria-label (never innerHTML)"]
-    out -->|"direct t() callers"| writeDirect["window.confirm or alert, textContent,<br/>chat or answer text, or escapeHtml inside an HTML template"]
-    haskey["hasKey(key, locale)<br/>same lookup in one dictionary, no en fallback<br/>used by chat.js, graph.js and i18n.test.mjs"] -.-> lk1
-    subgraph sg_intl["Locale-aware formatting"]
+    hasP -->|"yes"| plural["plural forms {name:one|other}"] --> interp["{name} placeholders"] --> out
+    out -->|"applyTranslations or setText"| write["textContent, placeholder, title or aria-label, never innerHTML"]
+    out -->|"direct callers"| writeDirect["dialog text, textContent, answer text,<br/>or escaped inside a kit template"]
+    subgraph sg_intl["Language-aware formatting"]
         fmtN["formatNumber: Intl.NumberFormat"]
-        fmtD["formatDate: Intl.DateTimeFormat,<br/>invalid date gives a dash"]
-        voice["voice.js recognition.lang"]
-        intl["getIntlLocale: en-US or de-DE"]
+        fmtD["formatDate: Intl.DateTimeFormat"]
+        rec["speech recognition language"]
+        intl["getIntlLocale(): en-US, de-DE, fr-FR, es-ES, it-IT, tr-TR"]
     end
     fmtN --> intl
     fmtD --> intl
-    voice --> intl
+    rec --> intl
 ```
 
-<sub>Sources: [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/locales/en.json`](../src/locales/en.json), [`src/locales/de.json`](../src/locales/de.json), [`src/js/ui.js`](../src/js/ui.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/engine-ui.js`](../src/js/engine-ui.js), [`src/js/graph.js`](../src/js/graph.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/library.js`](../src/js/library.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/bench/bench-ui.js`](../src/js/bench/bench-ui.js), [`src/js/voice.js`](../src/js/voice.js)</sub>
+<sub>Sources: [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/locales/index.js`](../src/locales/index.js), [`src/locales/en.json`](../src/locales/en.json), [`src/js/messages.js`](../src/js/messages.js), [`src/js/ui/kit.js`](../src/js/ui/kit.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/voice/recognition.js`](../src/js/voice/recognition.js)</sub>
 
 ### Tests that keep the dictionaries and keys consistent
 
-tests/unit/i18n.test.mjs flattens en.json and de.json and requires identical key sets, the same plain {name} placeholders per key (plural forms {name:one|other} are not part of that comparison), no blank values and less than 15 percent of entries left untranslated. It collects every key literally used in src JavaScript and HTML plus the key families the code assembles at runtime, requires more than 250 keys, requires each to resolve in both en and de without fallback, and pins t() behaviour for the default, German lookup, interpolation, unknown keys and plural forms in both languages. tests/unit/actions.test.mjs also rejects emoji in the src .js, .html and .json files and any static aria-label in index.html without data-i18n-aria (the lang-tagged EN/DE buttons excepted), and the Playwright internationalization test checks the default, the live switch without navigation, German quick prompts, persistence in starpi_locale and, through the diagnostics fixture, that no CSP violation, page error, unexpected console error or request to a host other than the app and the mocked Supabase occurred; CI runs all three.
+tests/unit/i18n.test.mjs checks the layout first: every namespace directory is registered with its English file bundled, every shipped language has a root file and only prepared languages do, a namespace never redefines a root key, and namespace keys stay under their namespace. German and every other language must have exactly the keys of English (root and namespaces), the same placeholders, every plural form kept and flat, no empty values, and fewer than 15 percent of entries identical to English. It collects every key used in the source (data-i18n attributes, t() and setText calls, and the key families the code assembles at runtime), requires more than 250 of them, and requires each to resolve in every language without fallback. It pins t() (the default, a lookup in another language, interpolation, unknown keys, plural forms in every language), that each language is named in itself for the switch, the fallback to English key by key, that unshipped languages cannot be chosen, that a missing file loads to false, that concurrent loads share one request, and buildDictionary's merge. tests/unit/actions.test.mjs rejects emoji in the source and any static aria-label in index.html without data-i18n-aria (the pre-boot EN/DE buttons, named in their own language, excepted). The end-to-end tests check the English default, a switch to German without a reload that persists, six languages with switches to French and Turkish, and namespace strings that load with the language.
 
 <!-- diagram: i18n-test-guards -->
 ```mermaid
 flowchart TD
-    subgraph sg_i18n_test["tests/unit/i18n.test.mjs (npm test, CI)"]
-        run(["load en.json and de.json"]) --> load["flatten() to dotted keys"]
-        load --> parity{"identical key sets<br/>in both directions?"}
-        load --> ph{"same sorted plain {name} placeholders<br/>for every key? plural forms not compared"}
-        load --> empty{"no empty or blank values?"}
-        load --> diff{"fewer than 15 percent of entries<br/>identical in de and en?"}
-        run --> scan["usedKeys() scans every .js and .html file under src"]
-        scan --> patterns["literal keys from data-i18n attributes, t('..'),<br/>setText(el, '..'), setAssistantStatus, setWorkspaceStatus,<br/>title, body or badge properties, strings after ? or :, data-arg"]
-        scan --> built["keys assembled at runtime: engine.progress.*, engine.error.*,<br/>workspace.progress_*, workspace.error_*, diagnostics.phase_*,<br/>graph.type_*, nav.*, graph.outgoing and incoming, trace.role_*,<br/>grounding.review and partial, grounding.reason_*, chat.voice_error_*,<br/>demo.q_* and their _question keys, demo.flawed_find_*, receipt.check_*"]
-        patterns --> keys["used keys, ns.* examples excluded"]
-        built --> keys
-        keys --> count{"more than 250 keys found?"}
-        keys --> resolveEn{"hasKey(key, en) for all?<br/>(no fallback allowed)"}
-        keys --> resolveDe{"hasKey(key, de) for all?<br/>(no fallback allowed)"}
-        run --> tt["t() behaviour"]
-        tt --> t1["DEFAULT_LOCALE is en,<br/>nav.settings gives Settings"]
-        tt --> t2["locale de gives Einstellungen"]
-        tt --> t3["workspace.meta interpolates chunks and chars,<br/>a missing param leaves {chars} visible"]
-        tt --> t4["unknown key returns the key,<br/>hasKey is false"]
-        tt --> t5["plural forms: 1 chunk and 12 chunks in en,<br/>1 Abschnitt, 1 Auszug and 2 Dokumenten in de"]
+    subgraph unit["tests/unit/i18n.test.mjs"]
+        layout["layout: namespaces registered, English bundled,<br/>root file per shipped language, keys defined once,<br/>namespace keys under their namespace"]
+        parity["every language: the keys of English, same placeholders,<br/>plural forms kept and flat, no empty values,<br/>under 15 percent identical to English"]
+        used["used keys: data-i18n, t(), setText and runtime families;<br/>more than 250; each resolves in every language"]
+        tbeh["t(): default, other language, interpolation, unknown key,<br/>plural forms in every language"]
+        load["loadLocale: English fallback key by key, unshipped not selectable,<br/>missing files load to false, one shared request; buildDictionary"]
     end
-    subgraph sg_actions["tests/unit/actions.test.mjs (npm test, CI)"]
-        emoji{"no emoji or pictographs in src .js, .html<br/>and .json files, locales included?"}
-        aria{"every static aria-label in index.html has<br/>data-i18n-aria, except the lang-tagged EN/DE buttons?"}
+    subgraph act["tests/unit/actions.test.mjs"]
+        emoji["no emoji in src"]
+        aria["static aria-label needs data-i18n-aria,<br/>except the lang-tagged EN/DE pre-boot buttons"]
     end
-    subgraph sg_e2e["tests/e2e/app.spec.mjs internationalization (npm run test:e2e, CI)"]
-        e1["starts with html lang en, English placeholder,<br/>nav and privacy notice, EN button aria-pressed true"]
-        e2["click DE: lang de, German texts and send button aria-label,<br/>DE aria-pressed true, no page navigation"]
-        e3["German quick prompt gets a German answer,<br/>reload keeps de"]
-        e4["click EN: English again, localStorage starpi_locale is en,<br/>diagnostics empty: no CSP violation, page error,<br/>unexpected console error or request to another host"]
-        e1 --> e2 --> e3 --> e4
+    subgraph e2e["end-to-end"]
+        e1["app.spec: English default, German without a reload, kept on reload"]
+        e2["app.spec: six languages, French and Turkish without a reload"]
+        e3["shell.spec: namespace strings load with the language"]
     end
-    parity -->|"no"| fail(["test fails"])
-    ph -->|"no"| fail
-    empty -->|"no"| fail
-    diff -->|"no"| fail
-    count -->|"no"| fail
-    resolveEn -->|"no"| fail
-    resolveDe -->|"no"| fail
-    emoji -->|"no"| fail
-    aria -->|"no"| fail
-    e4 -.->|"any expectation not met"| fail
+    fail(["CI fails"])
+    layout -.-> fail
+    parity -.-> fail
+    used -.-> fail
+    tbeh -.-> fail
+    load -.-> fail
+    emoji -.-> fail
+    aria -.-> fail
+    e1 -.-> fail
+    e2 -.-> fail
+    e3 -.-> fail
 ```
 
-<sub>Sources: [`tests/unit/i18n.test.mjs`](../tests/unit/i18n.test.mjs), [`tests/unit/actions.test.mjs`](../tests/unit/actions.test.mjs), [`tests/e2e/app.spec.mjs`](../tests/e2e/app.spec.mjs), [`tests/e2e/fixtures.mjs`](../tests/e2e/fixtures.mjs), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/locales/en.json`](../src/locales/en.json), [`src/locales/de.json`](../src/locales/de.json), [`package.json`](../package.json), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)</sub>
+<sub>Sources: [`tests/unit/i18n.test.mjs`](../tests/unit/i18n.test.mjs), [`tests/unit/actions.test.mjs`](../tests/unit/actions.test.mjs), [`tests/e2e/app.spec.mjs`](../tests/e2e/app.spec.mjs), [`tests/e2e/shell.spec.mjs`](../tests/e2e/shell.spec.mjs), [`src/locales/index.js`](../src/locales/index.js)</sub>
 
 ### localStorage, sessionStorage and the auth session
 
-App preferences live in localStorage under the STORAGE_KEYS names from config.js, and the language under starpi_locale, which i18n/index.js writes directly; state.js normalizes and rewrites compute mode and on-device model preference on every load (a 2.0 value such as qwen-3b becomes webgpu:qwen-3b, an unknown one auto), normalizes the stored NVIDIA model against the allowlist and the chat mode to grounded or free in memory, and removes the legacy starpi_ai_tier key, and writeLocal and writeSecret return false when the storage area is missing, blocked or full, which only Save settings acts on (it alerts settings.save_failed instead of settings.saved_toast). A pick in either assistant picker stores the mode and, for a model, starpi_webgpu_model or starpi_nvidia_model; the chat mode toggle and every quick prompt or sample question that switches it write starpi_chat_mode. Provider API keys go to sessionStorage by default and to localStorage only when starpi_remember_keys is 1; readSecret checks sessionStorage first, Test connection uses a typed but unsaved key as typed, and Delete keys removes them from both. NVIDIA keys never reach the browser. Chat messages go to starpi_local_chats_v1 (10 sessions, 200 messages each, every row stamped with created_at) in client mode, for questions with an attached file and in free chat for their answers too, for the question and answer of a turn that uses workspace excerpts, for an answer quoted without a model (engine synthesizer) whose text names a file in the workspace, or whenever they cannot be synced; every row's metadata records the chat mode, and an answer's its engine and model. persistMessage marks such rows with metadata.local_only (true for messages kept on the device on purpose, false when only syncing is unavailable); a row kept after a failed insert has no flag and, like rows from older versions, counts as an on-device turn on restore, and on-device turns are never sent to a cloud provider, NVIDIA or the own server as history. New chat only rotates starpi_chat_session_id. Delete chat history and Delete this chat are refused while an answer is being written; after the confirm they wait for message writes still under way, empty the local archive or drop the one session, start a new session, and unless the connection is ready but chats cannot sync, call deleteOwnChats or deleteChatSession, which delete this anonymous user's chat_history rows, all of them or those of the session, when a stored session exists and report success when none does, so offline or while still connecting the delete is attempted rather than skipped. A failed delete, for example offline, ends with settings.delete_history_partial or chat.delete_partial_title instead of the success message. supabase-js keeps the anonymous session under starpi-auth, and no in-app action clears it or starpi_locale.
+Preferences live in localStorage, all under `starpi_` names: the picker value (`starpi_assistant_v1`, with `starpi_compute_mode` kept in step for code that still asks for the 2.x mode), the on-device preset (`starpi_webgpu_model`), the NVIDIA model (`starpi_nvidia_model`), the composer's mode (`starpi_chat_mode`), the Web toggle (`starpi_web_search_v1`), the strength and a pinned model, the own server's address, the relay switch and the route each auto provider took last, thinking per answer, the language, the theme and the sidebar (both read by theme-boot.js before the first paint), voice settings, search by meaning, research preferences, the tools switched on, tool approvals, MCP servers, the search service, unsent drafts per conversation, the router's small answer cache, the vault hint and the companion link marker and retrieval ceiling. The chat session id (`starpi_chat_session_id`) names the open conversation. `starpi_local_chats_v1` and the plaintext key names of 2.x are read once by the migration and then removed. Provider keys never go to localStorage: a key of the tab lives in sessionStorage (`starpi_key_<slot>`, or the 2.x name for Gemini and OpenRouter) and is gone with the tab; the vault is in IndexedDB. The Supabase auth session (`starpi-auth`) is in localStorage, written by the Supabase client. Every write goes through storage.js, which returns false instead of throwing when storage is missing, blocked or full; the app then keeps the value for the page.
 
 <!-- diagram: client-storage-web-storage -->
 ```mermaid
 flowchart LR
-    subgraph sg_local["localStorage via storage.js (per origin, survives reload and restart,<br/>helpers never throw, writes return false when not stored)"]
-        k_mode[("starpi_compute_mode<br/>council, client, local or nvidia")]
-        k_model[("starpi_webgpu_model<br/>auto, webgpu:key or wasm:key")]
-        k_nv[("starpi_nvidia_model<br/>an allowlisted NVIDIA model id")]
-        k_chatmode[("starpi_chat_mode<br/>grounded or free")]
-        k_url[("starpi_llm_url<br/>own server URL, written on Save only")]
-        k_remember[("starpi_remember_keys<br/>1 or 0")]
-        k_keys_l[("starpi_gemini_key, starpi_openrouter_key<br/>only when remember is on")]
-        k_sid[("starpi_chat_session_id<br/>starpi_ plus a UUID")]
-        k_chats[("starpi_local_chats_v1<br/>10 newest sessions, 200 messages each,<br/>rows with created_at and metadata.local_only,<br/>chat_mode, engine and model")]
-        k_legacy[("starpi_ai_tier<br/>legacy key")]
+    subgraph ls["localStorage, per origin"]
+        model[("model choice: starpi_assistant_v1, starpi_compute_mode,<br/>starpi_webgpu_model, starpi_nvidia_model,<br/>starpi_model_strength_v1, starpi_model_pinned_v1")]
+        chat[("chat: starpi_chat_mode, starpi_web_search_v1, starpi_thinking_v1,<br/>starpi_chat_session_id, starpi_chat_drafts_v1, starpi_ai_cache_v1")]
+        net[("reach: starpi_llm_url, starpi_relay_fallback,<br/>starpi_transport_id per auto provider")]
+        shell[("shell: starpi_locale, starpi_theme, starpi_sidebar")]
+        feat[("features: starpi_voice_v1, starpi_semantic_search,<br/>starpi_research_prefs_v1, starpi_tools_v1,<br/>starpi_tool_approvals_v1, starpi_mcp_servers_v1, starpi_search_v1")]
+        comp[("companion: starpi_companion_linked,<br/>starpi_companion_source")]
+        misc[("starpi_vault_hint; starpi-auth (Supabase session)")]
+        legacy[("2.x, read once then removed: starpi_local_chats_v1,<br/>starpi_gemini_key, starpi_openrouter_key, starpi_remember_keys")]
     end
-    subgraph sg_i18n["localStorage via i18n/index.js (direct, errors ignored)"]
-        k_locale[("starpi_locale<br/>en or de")]
+    subgraph ss["sessionStorage, per tab"]
+        keys[("provider and service keys: starpi_key_slot,<br/>or starpi_gemini_key and starpi_openrouter_key")]
     end
-    subgraph sg_session["sessionStorage (this tab, survives reload, gone when the tab closes)"]
-        k_keys_s[("starpi_gemini_key, starpi_openrouter_key<br/>when remember is off")]
-    end
-    subgraph sg_auth["supabase-js auth storage (localStorage, in memory if unavailable)"]
-        k_auth[("starpi-auth<br/>anonymous session, persistSession,<br/>autoRefreshToken, detectSessionInUrl false")]
-    end
-    k_remote[("Supabase chat_history<br/>rows owned by this anonymous user")]
-
-    a_load(["Page load: state.js and chat-store.js"])
-    a_mode(["changeEngine: boot restore, a pick in either<br/>assistant picker, or Save with a pending pick"])
-    a_toggle(["Chat mode toggle, or a quick prompt,<br/>sample or entity question switching it"])
-    a_save(["Save settings<br/>alert settings.save_failed when any write returns false"])
-    a_clear(["Delete keys (clear-keys)"])
-    a_read(["readSecret in providers.js and settings.js,<br/>skipped for a typed key under test"])
-    a_locale(["EN/DE toggle"])
-    a_new(["New chat"])
-    a_send(["Send a message: persistMessage"])
-    a_restore(["restoreHistory at boot, not repeated after a reconnect"])
-    a_delete(["Delete chat history (settings) or Delete this chat<br/>(chat menu): refused while an answer is being written,<br/>otherwise after window.confirm, pending writes awaited"])
-    a_connect(["connect() at boot, offline at once while navigator.onLine is false,<br/>retried after going offline (browser offline, or the probe or a later request<br/>fails with network or timeout): online event or 30 s doubling up to 5 min"])
-    a_close(["Close the tab"])
-    a_site(["Browser: clear site data"])
-
-    a_load -->|"normalize legacy aliases, rewrite"| k_mode
-    a_load -->|"normalize, a 2.0 key becomes webgpu:key, rewrite"| k_model
-    a_load -.->|"read and normalized in memory only"| k_nv
-    a_load -.->|"read, unknown counts as grounded"| k_chatmode
-    a_load -->|"removeLocal"| k_legacy
-    a_load -->|"new id if missing or not starpi_ plus<br/>6-120 word or hyphen chars"| k_sid
-    a_mode -->|"setMode"| k_mode
-    a_mode -->|"setModelPreference for an on-device pick"| k_model
-    a_mode -->|"setNvidiaModel for an NVIDIA pick"| k_nv
-    a_toggle -->|"setChatMode"| k_chatmode
-    a_save -->|"setLlmUrl"| k_url
-    a_save -->|"changeEngine only for a pick not applied yet"| a_mode
-    a_save -->|"1 or 0"| k_remember
-    a_save -->|"writeSecret removes from both, writes the typed key<br/>or moves the stored key when remember changes"| k_keys_l
-    a_save --> k_keys_s
-    a_clear -->|"removeSecret"| k_keys_l
-    a_clear -->|"removeSecret"| k_keys_s
-    a_read -.->|"first sessionStorage"| k_keys_s
-    a_read -.->|"then localStorage"| k_keys_l
-    a_locale -->|"setLocale"| k_locale
-    a_new -->|"startNewSession, old archive entry stays"| k_sid
-    a_send -->|"appendLocal: local_only true for client mode, a workspace turn,<br/>the question of an attached file, in free chat its answer too,<br/>or a synthesizer answer naming a workspace file,<br/>false when canSyncChats is false, no flag after a failed insert"| k_chats
-    a_send -->|"insertChatMessage when canSyncChats<br/>and the message is not local-only"| k_remote
-    a_restore -.->|"loadCurrentSession: missing flag counts as local_only,<br/>mergeByTime with the newest 200 synced rows"| k_chats
-    a_restore -.->|"loadChatSession only when canSyncChats,<br/>a failed load falls back to the local rows"| k_remote
-    a_delete -->|"writeLocalJson: an empty object,<br/>or the archive without that session"| k_chats
-    a_delete -->|"startNewSession, for Delete this chat<br/>when it was the current session"| k_sid
-    a_delete -->|"deleteOwnChats or deleteChatSession unless the connection<br/>is ready and canSyncChats is false, also offline or while connecting;<br/>rows of the stored session user only, none without a session;<br/>a failure, e.g. offline, is reported as a partial delete"| k_remote
-    a_connect -->|"getSession, else signInAnonymously unless<br/>/auth/v1/settings reports it disabled or times out"| k_auth
-    a_close -.->|"discards"| k_keys_s
-    a_site -.->|"removes, no Starpi action does"| k_locale
-    a_site -.->|"removes, no Starpi action does"| k_auth
-    a_site -.->|"removes"| k_chats
+    themeboot["theme-boot.js before the first paint"] --> shell
+    state["state.js, model-selection.js"] --> model
+    thread["thread, composer, mode control, router"] --> chat
+    providers["providers view, transport-select.js"] --> net
+    keysjs["ai/keys.js"] --> keys
+    keysjs --> misc
+    migrate["store/migrate.js, once"] --> legacy
+    legacy -.->|"chats into IndexedDB, keys into the tab"| keys
+    sb["Supabase client"] --> misc
+    storage["storage.js: never throws,<br/>false when refused"] -.-> ls
+    storage -.-> ss
 ```
 
-<sub>Sources: [`src/js/config.js`](../src/js/config.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/state.js`](../src/js/state.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/main.js`](../src/js/main.js), [`src/js/i18n/index.js`](../src/js/i18n/index.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/models/nvidia-catalog.js`](../src/js/models/nvidia-catalog.js)</sub>
+<sub>Sources: [`src/js/config.js`](../src/js/config.js), [`src/js/state.js`](../src/js/state.js), [`src/js/storage.js`](../src/js/storage.js), [`src/js/ai/keys.js`](../src/js/ai/keys.js), [`src/js/ai/model-selection.js`](../src/js/ai/model-selection.js), [`src/js/ai/transport-select.js`](../src/js/ai/transport-select.js), [`src/js/ai/thinking.js`](../src/js/ai/thinking.js), [`src/js/ai/router.js`](../src/js/ai/router.js), [`src/js/chat/context.js`](../src/js/chat/context.js), [`src/js/theme-boot.js`](../src/js/theme-boot.js), [`src/js/voice/settings.js`](../src/js/voice/settings.js), [`src/js/rag/embed-client.js`](../src/js/rag/embed-client.js), [`src/js/companion/tier.js`](../src/js/companion/tier.js), [`src/js/store/migrate.js`](../src/js/store/migrate.js), [`src/js/supabase.js`](../src/js/supabase.js)</sub>
 
-### Caches and the on-device workspace
+### IndexedDB, OPFS and the caches
 
-The service worker only caches same-origin GET responses, in two caches: starpi-shell-VERSION holds the precached app shell of one build and the latest HTML of /, and the unversioned starpi-assets holds hashed /assets/* files fetched on a cache miss, such as the lazily loaded WebLLM and pdf.js chunks, the WASM worker and the ONNX Runtime binary. Activation deletes every other starpi- cache and removes from starpi-assets each entry that is not in the new build's ASSETS list, so unchanged chunks survive an update. Supabase, provider, NVIDIA proxy POST and model download traffic bypasses the worker; WebLLM caches model files itself in webllm/model, webllm/wasm and webllm/config, and Transformers.js keeps the files of processor (WASM) models in transformers-cache, whose name does not start with starpi-, so activation never deletes it. Both survive reloads until Delete downloaded model data unloads the engine, deletes transformers-cache and deletes the f16 and f32 builds of all 13 WebGPU presets (26 model ids). Workspace documents and their BM25 index exist only in the ingestion worker memory and vanish on Clear workspace, a worker crash or a reload (the citation dialog then shows citation.note_missing).
+The app database `starpi` (store/schema.js, version 1, one upgrade step per version) holds everything the app keeps: conversations and their message nodes (a tree per conversation), blobs (attachments, generated images, small originals), projects, assistants, memory notes (sealed with the vault key when a passphrase is set), canvas artifacts, workspace documents with their chunks and vectors (the ingestion worker writes them), signing keys (non-extractable CryptoKeys of the device), research jobs, benchmark runs, model integrity records, settings (migration markers, integrity results, the sync state) and the key vault. Large originals and extracted texts go to OPFS (store/opfs.js), or to the database's blobs where OPFS is missing. store/quota.js reads the storage estimate for Settings › Files on this device and asks once for persistent storage when the first file is kept. The pairing secret of the companion is in a database of its own, `starpi-companion`, sealed with a non-extractable AES-GCM key. The service worker caches same-origin GET responses in `starpi-shell-<version>` (the app shell of one build) and `starpi-assets` (hashed /assets files fetched on a miss, kept across updates while the new build still lists them). WebLLM keeps model files in webllm/model, webllm/wasm and webllm/config and Transformers.js in transformers-cache; their names do not start with `starpi-`, so an update never deletes them, and Delete downloaded model data does. "Forget all" in the workspace and Settings deletes every document, chunk, vector and file.
 
 <!-- diagram: client-storage-caches-memory -->
 ```mermaid
 flowchart TD
-    subgraph sg_sw["Cache API owned by sw.js (prefix starpi-, VERSION = 12-hex build hash)"]
-        c_shell[("starpi-shell-VERSION<br/>precached /, app CSS, main JS and its static imports,<br/>ingest worker, Latin font, public files,<br/>plus the latest HTML of /")]
-        c_assets[("starpi-assets, not versioned<br/>/assets/* fetched on a cache miss,<br/>e.g. lazy WebLLM and pdf.js chunks, other fonts,<br/>the WASM worker and the ONNX Runtime binary")]
+    subgraph idb["IndexedDB starpi (store/schema.js)"]
+        conv[("conversations, nodes, blobs")]
+        org[("projects, assistants, memory, artifacts")]
+        ws[("docs, chunks, vectors")]
+        trust[("signingKeys, keyvault")]
+        jobs[("research, bench, modelIntegrity, settings")]
     end
-    subgraph sg_webllm["Cache API owned by WebLLM (cacheBackend cache, never touched by sw.js)"]
-        c_model[("webllm/model, webllm/wasm, webllm/config<br/>weights and tokenizer, model library, mlc-chat-config.json")]
+    opfs[("OPFS: originals and extracted texts<br/>(blobs where OPFS is missing)")]
+    pair[("IndexedDB starpi-companion: sealed pairing secret")]
+    subgraph cache["Cache Storage"]
+        shell[("starpi-shell-version: app shell")]
+        assets[("starpi-assets: hashed /assets files on a miss")]
+        webllm[("webllm/model, webllm/wasm, webllm/config")]
+        tf[("transformers-cache")]
     end
-    subgraph sg_tf["Cache API owned by Transformers.js (env.cacheKey, never touched by sw.js)"]
-        c_tf[("transformers-cache<br/>config, tokenizer and ONNX weights<br/>of the WASM models at their pinned revision")]
-    end
-    subgraph sg_worker["Memory of ingest.worker.js (worker starpi-ingest, started on first request)"]
-        m_docs[("documents Map ws-instanceId-N with full text,<br/>file and text SHA-256, and one BM25Index of all chunks")]
-    end
-    subgraph sg_main["Main-thread memory"]
-        m_list[("rag/workspace.js docs list")]
-    end
-
-    install["sw.js install: cache.addAll PRECACHE,<br/>/ fetched with cache reload, then skipWaiting<br/>only when no window client is open"]
-    activate["sw.js activate: delete every other starpi- cache,<br/>prune starpi-assets to ASSETS, then clients.claim"]
-    req{"sw.js fetch event"}
-    net["bypasses sw.js, never stored by the service worker"]
-    probe["loadModel: certainlyNotCached looks for tensor-cache.json<br/>in webllm/model, then hasModelInCache"]
-    load["model download in the starpi-webllm worker<br/>(Hugging Face weights, GitHub model library)<br/>after checkQuota, the download confirm and storage.persist()"]
-    wprobe["loadModel: wasmCacheStatus matches config,<br/>tokenizer and weights in transformers-cache"]
-    wload["WASM model load in the starpi-wasm worker:<br/>env.fetch answers from transformers-cache,<br/>else the pinned file from Hugging Face,<br/>after the same checks and confirm"]
-    ingest["add files: drop zone or file picker, chat attachment or demo samples<br/>(addToWorkspace; a file with the same SHA-256 and chunk settings<br/>returns the existing document with duplicate true)"]
-
-    u_delete(["Delete downloaded model data, after window.confirm"])
-    u_remove(["Remove one workspace file"])
-    u_clear(["Clear workspace, after window.confirm"])
-    u_crash(["Ingest worker error or messageerror"])
-    u_reload(["Reload or close the page"])
-
-    install --> c_shell
-    req -->|"navigation of /: a cacheable, non-redirected<br/>text/html response is stored under /,<br/>unless the cached shell was already served"| c_shell
-    req -.->|"navigation fails or stalls for 3.5 s:<br/>the cached / answers any navigated path"| c_shell
-    req -.->|"/assets/* or a PRECACHE path: cache-first over all caches,<br/>e.g. demo samples from /samples/"| c_shell
-    req -->|"/assets/* miss: a cacheable response is stored"| c_assets
-    req -->|"non-GET (e.g. POST /api/chat/nvidia), cross-origin<br/>(Supabase, Hugging Face, GitHub, providers)<br/>or another same-origin path such as /sw.js or /api/models/nvidia"| net
-    activate -->|"older starpi-shell caches deleted"| c_shell
-    activate -->|"entries not in ASSETS deleted"| c_assets
-    probe -.->|"reads"| c_model
-    load --> c_model
-    wprobe -.->|"reads"| c_tf
-    wload --> c_tf
-    ingest --> m_docs
-    ingest --> m_list
-    u_delete -->|"unloadModel, deleteModelAllInfoInCache for the 26 WebGPU ids,<br/>failures only logged"| c_model
-    u_delete -->|"caches.delete transformers-cache,<br/>a failure only logged"| c_tf
-    u_remove -->|"remove request, list filtered"| m_docs
-    u_remove --> m_list
-    u_clear -->|"clearWorkspace: pending requests fail with cleared,<br/>worker.terminate"| m_docs
-    u_clear -->|"emptied"| m_list
-    u_crash -->|"pending requests fail with worker_crashed,<br/>worker terminated"| m_docs
-    u_crash -->|"emptied"| m_list
-    u_reload -->|"memory gone"| m_docs
-    u_reload -->|"memory gone"| m_list
+    thread["chat/store.js, thread"] --> conv
+    feat["projects.js, assistants.js, ai/memory.js, canvas.js"] --> org
+    worker["ingestion worker: workspace-core.js"] --> ws
+    worker --> opfs
+    sign["trust/signing.js, ai/keys.js"] --> trust
+    others["research/jobs.js, bench-history.js, integrity.js,<br/>store/migrate.js, sync/sync.js"] --> jobs
+    pairjs["companion/pair.js"] --> pair
+    sw["sw.js"] --> shell
+    sw --> assets
+    eng["WebLLM in starpi-webllm"] --> webllm
+    tfw["Transformers.js in starpi-wasm"] --> tf
+    quota["store/quota.js: estimate, persist() once<br/>when the first file is kept"] -.-> idb
+    forget(["Forget all: documents, chunks, vectors, files"]) -.-> ws
+    forget -.-> opfs
+    del(["Delete downloaded model data"]) -.-> webllm
+    del -.-> tf
+    upd(["sw activate: other starpi- caches deleted,<br/>assets no longer listed removed"]) -.-> assets
 ```
 
-<sub>Sources: [`src/sw.js`](../src/sw.js), [`scripts/build.mjs`](../scripts/build.mjs), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/rag/ingest.worker.js`](../src/js/rag/ingest.worker.js), [`src/js/rag/parser.js`](../src/js/rag/parser.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/models/wasm-catalog.js`](../src/js/models/wasm-catalog.js)</sub>
+<sub>Sources: [`src/js/store/schema.js`](../src/js/store/schema.js), [`src/js/store/idb.js`](../src/js/store/idb.js), [`src/js/store/opfs.js`](../src/js/store/opfs.js), [`src/js/store/quota.js`](../src/js/store/quota.js), [`src/js/rag/workspace-core.js`](../src/js/rag/workspace-core.js), [`src/js/chat/store.js`](../src/js/chat/store.js), [`src/js/trust/signing.js`](../src/js/trust/signing.js), [`src/js/companion/pair.js`](../src/js/companion/pair.js), [`src/js/models/integrity.js`](../src/js/models/integrity.js), [`src/sw.js`](../src/sw.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js)</sub>
 
 ### In-memory answer stores
 
-The cited excerpts, receipt drafts and review highlights of answers exist only in main-thread memory; a stored answer keeps only its text, its source titles and ranks, and metadata with the engine, model, chat mode, trace and duration. The citation registry in rag/citations.js holds the citations of at most 200 chat retrievals, workspace searches or demo answers, the receipt registry in rag/receipts.js holds at most 50 receipt drafts, and in both the oldest entry is evicted first. New chat does not clear either registry; a citation whose scope was evicted no longer opens, and a Receipt button whose draft was evicted does nothing. The source check adds the ranges of statements that need review to one CSS highlight named starpi-review, only where the browser has the Highlight API, and messages.js resetMessages clears it. chat.js keeps the conversation turns with a localOnly flag (set for client mode, workspace excerpts, an attached file or an answer quoted without a model that names a workspace file) and with the engine, model, chat mode and time that the chat export writes: in source mode OpenRouter, the own server and NVIDIA get only the last 4 turns not marked localOnly, Gemini gets no history, and the on-device model gets the last 4 turns including local-only ones; in free chat the remote models, Gemini included, get up to 16 turns not marked localOnly within 24,000 characters, and the on-device model the last 16 turns. providers.js remembers the first model id the own server lists per server URL and the NVIDIA proxy's catalog (five minutes with keys, 30 seconds without), and chat-store.js tracks message writes still under way, so a delete can wait for them. A reload loses all of it; restored history gets neither citation scopes nor receipts back.
+Some things exist only in main-thread memory and are gone on reload. The citation registry (rag/citations.js) holds the citations of at most 200 retrievals, workspace searches or demo answers, and the receipt drafts (rag/receipts.js) at most 50; in both the oldest is evicted first, and New chat clears neither, so a citation whose scope was evicted no longer opens and a Receipt button whose draft was evicted does nothing. The source check adds the ranges of statements that need review to the CSS highlight `starpi-review` where the Highlight API exists; resetMessages clears it. The thread keeps, for at most 50 answers, what read-aloud needs (the label, the excerpts the gate takes, a web grounding), and the decoded data of attachments it already read. Conversations themselves are not in memory: every turn is in IndexedDB, and a grounded answer restored from history keeps its text, sources and counts but no excerpts, so read-aloud withholds its numbers and no receipt can be built again. providers.js remembers the models the own server listed per address, the runner the live model lists of the providers with keys, and chat-store.js the message writes still under way, so a delete can wait for them.
 
 <!-- diagram: client-storage-answer-memory -->
 ```mermaid
 flowchart TD
-    subgraph sg_mem["Main-thread memory (gone on reload or close)"]
-        m_scopes[("rag/citations.js scopes Map c1..cN<br/>MAX_SCOPES 200, oldest evicted")]
-        m_drafts[("rag/receipts.js drafts Map r1..rN<br/>MAX_DRAFTS 50, oldest evicted")]
-        m_hl[("rag/grounding-view.js Highlight starpi-review<br/>in CSS.highlights, ranges of unsupported statements")]
-        m_conv[("chat.js conversation, turns with a localOnly flag:<br/>set for client mode, workspace excerpts, an attached file<br/>or a synthesizer answer naming a workspace file,<br/>plus engine, model, chat mode and time")]
-        m_models[("providers.js serverModels<br/>first string model id listed, up to 200 chars,<br/>per normalized own-server URL")]
-        m_nvcat[("providers.js catalogCache<br/>NVIDIA proxy catalog, 5 min with keys,<br/>30 s without, one request shared")]
-        m_writes[("chat-store.js pendingWrites per session,<br/>deletedSessions of this tab")]
+    subgraph mem["Main-thread memory, gone on reload"]
+        scopes[("rag/citations.js scopes: at most 200, oldest evicted")]
+        drafts[("rag/receipts.js drafts: at most 50, oldest evicted")]
+        hl[("CSS highlight starpi-review")]
+        readable[("thread readable answers: at most 50,<br/>label, gate excerpts, web grounding")]
+        blobs[("thread blob data cache: attachment base64 and text")]
+        models[("providers.js server models per address,<br/>runner live model lists")]
+        writes[("chat-store.js pending writes, deleted sessions")]
     end
-
-    w_retrieve["chat retrieval with excerpts,<br/>before the answer is generated"]
-    w_answer["rendered chat answer with citations,<br/>while its session is still the current one"]
-    w_search["workspace search results (ingest.js)"]
-    w_demo["demo answer with one deliberate error (demo.js)"]
-    w_probe["probeLocalServer: GET base/models, 4 s timeout"]
-    w_turn["finished turn while its session is current,<br/>or restoreHistory"]
-
-    r_open(["open-citation: citation dialog,<br/>getChunkContext for workspace citations"])
-    r_receipt(["open-receipt: preview and download as JSON"])
-    r_cloud(["OpenRouter, own-server or NVIDIA request: shareableHistory,<br/>the last 4 turns not marked localOnly, in free chat up to 16<br/>within 24000 chars, Gemini too in free chat"])
-    r_local(["on-device model: the last 4 turns, 16 in free chat,<br/>local-only ones included, trimmed by budgetPrompt"])
-    r_export(["export-chat: Markdown or JSON starpi.chat/v1<br/>with role, content, time, engine, model, chat mode"])
-    r_pick(["model pickers and NVIDIA answers:<br/>offered models, configured or not"])
-    r_delete(["Delete chat history, Delete this chat:<br/>wait for the writes, then no write stores<br/>a deleted session again"])
-    r_check(["applyGrounding: the question and the user turns<br/>among the last 4 turns count as given text"])
-    r_server(["callLocalServer probes first while no model id is known<br/>for the URL, then sends the model field when one is known"])
-
-    u_new(["New chat or Delete chat history:<br/>resetConversation, resetMessages"])
-    u_restore(["restoreHistory at boot: resetMessages"])
-
-    w_retrieve -->|"registerCitations"| m_scopes
-    w_answer -->|"applyGrounding, only where the Highlight API exists"| m_hl
-    w_answer -->|"storeReceiptDraft"| m_drafts
-    w_search -->|"registerCitations"| m_scopes
-    w_demo -->|"registerCitations"| m_scopes
-    w_demo -->|"applyGrounding"| m_hl
-    w_turn --> m_conv
-    w_probe --> m_models
-    m_scopes -.->|"missing scope: nothing opens,<br/>missing document: citation.note_missing"| r_open
-    m_drafts -.->|"evicted draft: the button does nothing"| r_receipt
-    m_conv -.-> r_cloud
-    m_conv -.-> r_local
-    m_conv -.-> r_check
-    m_models -.-> r_server
-    m_conv -.-> r_export
-    m_nvcat -.-> r_pick
-    m_writes -.-> r_delete
-    u_new -->|"emptied"| m_conv
-    u_new -->|"clearGroundingHighlights"| m_hl
-    u_new -.->|"not cleared"| m_scopes
-    u_new -.->|"not cleared"| m_drafts
-    u_restore -->|"clearGroundingHighlights"| m_hl
-    u_restore -->|"rebuilt from the restored rows,<br/>turns finished while loading appended"| m_conv
+    answer["grounded answer with citations"] --> scopes
+    answer --> drafts
+    answer --> hl
+    answer --> readable
+    search["workspace search, demo answer"] --> scopes
+    store[("IndexedDB: the turns themselves")]
+    answer --> store
+    restored(["answer restored from history: text, sources, counts,<br/>no excerpts, no receipt, read-aloud withholds numbers"])
+    store -.-> restored
+    scopes -.->|"evicted: nothing opens"| open(["citation dialog"])
+    drafts -.->|"evicted: button does nothing"| rcpt(["receipt dialog"])
+    readable -.-> speak(["read aloud through the gate"])
+    writes -.-> del(["delete waits for the writes"])
+    reset(["New chat, resetMessages"]) -->|"clearGroundingHighlights"| hl
+    reset -.->|"not cleared"| scopes
+    reset -.->|"not cleared"| drafts
 ```
 
-<sub>Sources: [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/ingest.js`](../src/js/ingest.js), [`src/js/demo.js`](../src/js/demo.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/settings.js`](../src/js/settings.js), [`src/js/webgpu/models.js`](../src/js/webgpu/models.js), [`src/js/chat-store.js`](../src/js/chat-store.js), [`src/js/chat-export.js`](../src/js/chat-export.js)</sub>
+<sub>Sources: [`src/js/rag/citations.js`](../src/js/rag/citations.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/js/rag/grounding-view.js`](../src/js/rag/grounding-view.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/messages.js`](../src/js/messages.js), [`src/js/providers.js`](../src/js/providers.js), [`src/js/chat/runner.js`](../src/js/chat/runner.js), [`src/js/chat-store.js`](../src/js/chat-store.js)</sub>
 
 ### Service worker fetch handler
 
-sw.js only handles same-origin GET requests; everything else (Supabase, Hugging Face model files, provider APIs, non-GET requests such as the NVIDIA chat POST) bypasses the worker and is never stored by it (WebLLM and Transformers.js keep model files in their own caches). Navigations are network-first with a deadline of NAVIGATION_DEADLINE_MS (3,500 ms): the network response is returned when it comes first, and after the deadline or a network error the cached / from starpi-shell-VERSION answers whatever path was navigated; with no cached shell the page waits for the network or the navigation fails. Only a navigation of / whose response is cacheable, not redirected and text/html is stored, under /, and only while the cached shell has not been served for that navigation: a response that arrives after the deadline answered from the cache is returned to no one and not stored, because the assets of that HTML were never loaded. /assets/* files and PRECACHE entries are cache-first across all caches, and a miss is stored in starpi-assets only for /assets/* paths, the WASM worker and the ONNX Runtime binary included, while other same-origin paths such as /sw.js, /build-manifest.json and GET /api/models/nvidia go straight to the network. At runtime only ok, basic, status 200 responses without no-store in Cache-Control are cached; the install-time precache relies on cache.addAll, which rejects any response that is not ok.
+sw.js only handles same-origin GET requests; everything else (Supabase, Hugging Face model files, provider APIs, non-GET requests such as the relay, pool and research POSTs) bypasses the worker and is never stored by it (WebLLM and Transformers.js keep model files in their own caches). Navigations are network-first with a deadline of NAVIGATION_DEADLINE_MS (3,500 ms): the network response is returned when it comes first, and after the deadline or a network error the cached / from starpi-shell-VERSION answers whatever path was navigated; with no cached shell the page waits for the network or the navigation fails. Only a navigation of / whose response is cacheable, not redirected and text/html is stored, under /, and only while the cached shell has not been served for that navigation: a response that arrives after the deadline answered from the cache is returned to no one and not stored, because the assets of that HTML were never loaded. /assets/* files and PRECACHE entries are cache-first across all caches, and a miss is stored in starpi-assets only for /assets/* paths, the WASM worker and the ONNX Runtime binary included, while other same-origin paths such as /sw.js, /build-manifest.json, GET /api/health and GET /api/models/pool go straight to the network. At runtime only ok, basic, status 200 responses without no-store in Cache-Control are cached; the install-time precache relies on cache.addAll, which rejects any response that is not ok.
 
 <!-- diagram: service-worker-fetch -->
 ```mermaid
 flowchart TD
     F(["fetch event in sw.js"]) --> M{"request.method is GET?"}
-    M -->|"no, e.g. POST /api/chat/nvidia"| NET["Not handled: no respondWith,<br/>the browser goes to the network"]
+    M -->|"no, e.g. POST /api/pool"| NET["Not handled: no respondWith,<br/>the browser goes to the network"]
     M -->|"yes"| O{"url.origin equals<br/>self.location.origin?"}
     O -->|"no: Supabase, Hugging Face,<br/>provider APIs"| NET
     O -->|"yes"| NAV{"request.mode is navigate?"}
@@ -4063,7 +3936,7 @@ flowchart TD
     FB -->|"hit"| RET3(["return the cached shell<br/>for any navigated path"])
     FB -->|"miss"| ERR1(["rethrow: navigation fails"])
     NAV -->|"no"| AS{"pathname starts with /assets/<br/>or is listed in PRECACHE?"}
-    AS -->|"no: e.g. /sw.js, /build-manifest.json,<br/>GET /api/models/nvidia"| NET
+    AS -->|"no: e.g. /sw.js, /build-manifest.json,<br/>GET /api/health"| NET
     AS -->|"yes: e.g. hashed chunks, fonts, the WASM worker,<br/>the ONNX Runtime binary, /manifest.webmanifest,<br/>/icons/ and /samples/ files"| CF["cacheFirstAsset:<br/>caches.match(event.request)<br/>across all caches"]
     CF -->|"hit"| RET4(["return the cached response"])
     CF -->|"miss"| NF2["fetch(event.request)"]
