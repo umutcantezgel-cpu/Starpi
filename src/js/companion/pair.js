@@ -19,10 +19,13 @@
 //
 // Rollback detection: every answer carries the companion's signed audit head. Each one is checked
 // against the public key from the pairing, and the highest verified head is stored per companion
-// (by key id). A head with a lower number than the stored one, or a different hash at the same
-// number, or a newer head whose chain no longer holds the stored record (GET /v1/audit/head?seq=)
-// means the companion's data were put back or replaced: the state becomes `rollback` or `fork`
-// and the app shows a red banner until the user accepts the companion's current state.
+// (by key id). A different hash at the stored number, a newer head whose chain no longer holds the
+// stored record (GET /v1/audit/head?seq=), or a current head (GET /v1/audit/head) with a lower
+// number than the stored one means the companion's data were put back or replaced: the state
+// becomes `rollback` or `fork` and the app shows a red banner until the user accepts the
+// companion's current state. A lower head alone is no proof: answers to requests made at the same
+// time can arrive out of order. So the current head is asked for first, and the late head only has
+// to be the chain's own record at its number.
 import { setCompanionVoiceLink } from '../voice/sources/companion.js';
 import { fromBase64url, toBase64url } from '../core/hash.js';
 import { readLocal, removeLocal, writeLocal } from '../storage.js';
@@ -269,6 +272,21 @@ export function createPairing(options = {}) {
     }
   }
 
+  /**
+   * The companion's verified head of record `seq` now; null when its chain has no such record or the
+   * answer does not verify.
+   * @param {{ key: CryptoKey, keyId: string }} own
+   * @param {number} seq
+   */
+  async function headAt(own, seq) {
+    const at = await /** @type {CompanionClient} */ (client).request('GET', '/v1/audit/head', { query: { seq } }).catch((err) => {
+      if (err instanceof CompanionError && err.code === 'audit_seq_unknown') return { head: null };
+      throw err;
+    });
+    const head = asHead(at?.head);
+    return head && head.seq === seq && (await verifyHead(head, own)) ? head : null;
+  }
+
   /** @param {SignedHead} head */
   async function check(head) {
     const own = identity;
@@ -280,28 +298,52 @@ export function createPairing(options = {}) {
       return;
     }
     const stored = await store.head(own.keyId);
-    const verdict = compareHeads(head, stored);
+    /** The head the verdict is about: the one reported, or the companion's current one. */
+    let judged = head;
+    let verdict = compareHeads(head, stored);
+    if (verdict === 'rollback' && stored) {
+      // Answers can arrive out of order, so an older head may be honest and only late. Ask where the
+      // chain stands now: it is a rollback only when the current head is older than the stored one,
+      // and the late head must be the chain's own record at its number (otherwise: another history).
+      const answer = await /** @type {CompanionClient} */ (client).request('GET', '/v1/audit/head');
+      const current = asHead(answer?.head);
+      if (!current) throw new CompanionError('bad_response');
+      if (!(await verifyHead(current, own))) {
+        setAudit({ state: 'invalid', reported: current });
+        return;
+      }
+      lastChecked = current;
+      if (current.seq >= stored.seq) {
+        const earlier = await headAt(own, head.seq);
+        if (!earlier || earlier.hash !== head.hash) {
+          // Reported is the current head: accepting takes the companion's state, not the stray head.
+          setAudit({ state: 'fork', stored, reported: current });
+          return;
+        }
+      }
+      judged = current;
+      verdict = compareHeads(current, stored);
+    }
     if (verdict === 'rollback' || verdict === 'fork') {
-      setAudit({ state: verdict, stored, reported: head });
+      setAudit({ state: verdict, stored, reported: judged });
       return;
     }
     if (verdict === 'newer' && stored) {
       // The stored record must still be part of the companion's chain.
-      const at = await /** @type {CompanionClient} */ (client).request('GET', '/v1/audit/head', { query: { seq: stored.seq } }).catch((err) => {
-        if (err instanceof CompanionError && err.code === 'audit_seq_unknown') return { head: null };
-        throw err;
-      });
-      const earlier = asHead(at?.head);
-      if (!earlier || earlier.seq !== stored.seq || earlier.hash !== stored.hash || !(await verifyHead(earlier, own))) {
-        setAudit({ state: 'fork', stored, reported: head });
+      const earlier = await headAt(own, stored.seq);
+      if (!earlier || earlier.hash !== stored.hash) {
+        setAudit({ state: 'fork', stored, reported: judged });
         return;
       }
     }
     if (identity !== own) return;
+    // A rollback or fork stays until the user accepts the companion's state: a later head that fits
+    // the stored one does not make the banner go away.
+    if (state.audit.state === 'rollback' || state.audit.state === 'fork') return;
     /** @type {StoredHead} */
-    const next = verdict === 'same' && stored ? stored : { keyId: own.keyId, seq: head.seq, hash: head.hash, sig: head.sig, at: new Date(now()).toISOString() };
+    const next = verdict === 'same' && stored ? stored : { keyId: own.keyId, seq: judged.seq, hash: judged.hash, sig: judged.sig, at: new Date(now()).toISOString() };
     if (verdict !== 'same') await store.saveHead(next);
-    setAudit({ state: 'ok', stored: next, reported: head });
+    setAudit({ state: 'ok', stored: next, reported: judged });
   }
 
   /**
