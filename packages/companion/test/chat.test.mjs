@@ -385,3 +385,95 @@ test('/v1/chat: a waiting turn whose client went away gives its place back at on
   assert.equal(events.find((e) => e.event === 'done')?.data.turn, 3, 'the abandoned turn left nothing behind');
   assert.equal((await c.get(`/v1/chat/conversations/${conversation}`)).json().conversation.turns, 3);
 });
+
+test('/v1/chat: a question after an earlier turn goes on in a copy of the turns up to it; the original stays', async (t) => {
+  /** @type {Array<Array<{ role: string, content: string }>>} */
+  const requests = [];
+  const model = await chatModel((messages) => {
+    requests.push(messages);
+    return `Reply number ${['zero', 'one', 'two', 'three', 'four', 'five'][requests.length]}.`;
+  });
+  const { dir, cleanup } = tempDir();
+  const { companion } = await startModules(dir, { only: ['chat'], raw: localBrain(model.url) });
+  t.after(async () => {
+    await companion.stop();
+    await model.close();
+    cleanup();
+  });
+  const c = await client(companion, { role: 'member' });
+  /** @param {Record<string, unknown>} body */
+  const send = async (body) => {
+    const res = await c.stream('POST', '/v1/chat', { body: { mode: 'free', ...body }, until: streamEnded });
+    return { start: res.events.find((e) => e.event === 'start')?.data, done: res.events.find((e) => e.event === 'done')?.data, error: res.events.find((e) => e.event === 'error')?.data };
+  };
+  /** @param {Array<{ role: string, content: string }>} messages */
+  const replies = (messages) => messages.filter((m) => m.role === 'assistant').map((m) => m.content);
+
+  const first = await send({ question: 'Where is the ladder?' });
+  const original = first.done.conversation;
+  const second = await send({ question: 'And the paint?', conversation: original, after: 1 });
+  assert.equal(second.done.conversation, original, 'after the last turn: the same conversation');
+  assert.equal(second.start.from, undefined);
+  assert.equal(second.done.turn, 2);
+
+  // The second question asked again (a new answer beside the old one): a copy of turn 1 takes it.
+  const again = await send({ question: 'And the paint?', conversation: original, after: 1 });
+  assert.notEqual(again.done.conversation, original);
+  assert.deepEqual(again.start, { conversation: again.done.conversation, turn: 2, from: original });
+  assert.equal(again.done.turn, 2);
+  assert.deepEqual(replies(requests[2]), ['Reply number one.'], 'the replaced answer is not in its history');
+
+  // The second question changed: another copy, whose history holds only the first turn as well.
+  const edited = await send({ question: 'And the brushes?', conversation: original, after: 1 });
+  assert.notEqual(edited.done.conversation, original);
+  assert.notEqual(edited.done.conversation, again.done.conversation);
+  assert.deepEqual(replies(requests[3]), ['Reply number one.']);
+  assert.ok(!requests[3].some((m) => m.role === 'user' && m.content.includes('paint')), 'the discarded question is not in its history');
+
+  // Every branch goes on by itself.
+  const onwards = await send({ question: 'Thanks!', conversation: again.done.conversation, after: 2 });
+  assert.equal(onwards.done.conversation, again.done.conversation);
+  assert.equal(onwards.done.turn, 3);
+  assert.deepEqual(replies(requests[4]), ['Reply number one.', 'Reply number three.']);
+
+  const full = (/** @type {string} */ id) => c.get(`/v1/chat/conversations/${id}`).then((r) => r.json());
+  const kept = await full(original);
+  assert.deepEqual(kept.turns.map((/** @type {any} */ x) => x.answer.text), ['Reply number one.', 'Reply number two.'], 'the original is untouched');
+  const copy = await full(edited.done.conversation);
+  assert.equal(copy.conversation.title, kept.conversation.title);
+  assert.deepEqual(copy.turns.map((/** @type {any} */ x) => [x.n, x.question]), [[1, 'Where is the ladder?'], [2, 'And the brushes?']]);
+  assert.equal((await c.get('/v1/chat/conversations')).json().conversations.length, 3);
+
+  // `after` counts in a conversation and nowhere else.
+  const lone = await c.post('/v1/chat', { question: 'Hello?', after: 0 });
+  assert.equal(lone.status, 400);
+  assert.equal((await c.post('/v1/chat', { question: 'Hello?', conversation: original, after: -1 })).status, 400);
+  assert.equal((await c.post('/v1/chat', { question: 'Hello?', conversation: original, after: 1.5 })).status, 400);
+});
+
+test('/v1/chat: a copy whose first own turn is not answered is not kept', async (t) => {
+  const model = await heldModel(() => 'Sure.');
+  const { dir, cleanup } = tempDir();
+  const modules = standardModules({ hub: createHub(), only: ['chat'] });
+  const { companion } = await startModules(dir, { modules, raw: localBrain(model.url) });
+  t.after(async () => {
+    model.releaseAll();
+    await companion.stop();
+    await model.close();
+    cleanup();
+  });
+  const c = await client(companion);
+  const first = await c.stream('POST', '/v1/chat', { body: { question: 'Hello?', mode: 'free' }, until: streamEnded });
+  const conversation = first.events.find((e) => e.event === 'done')?.data.conversation;
+  const route = /** @type {any} */ (modules.find((m) => m.id === 'chat')).routes.find((/** @type {any} */ r) => r.method === 'POST' && r.path === '/');
+  const gone = new AbortController();
+  const stopped = route.handler({ method: 'POST', path: '/v1/chat', params: {}, body: { question: 'Hello again?', conversation, after: 0, mode: 'free' }, session: null, signal: gone.signal });
+  await eventually(() => model.held.length === 1);
+  const list = (await c.get('/v1/chat/conversations')).json().conversations;
+  assert.equal(list.length, 2, 'the copy exists while its turn runs');
+  gone.abort();
+  model.held.shift()?.();
+  await drainStream(stopped.stream);
+  await eventually(async () => (await c.get('/v1/chat/conversations')).json().conversations.length === 1);
+  assert.equal((await c.get('/v1/chat/conversations')).json().conversations[0].id, conversation, 'only the original is left');
+});

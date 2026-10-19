@@ -87,6 +87,28 @@ export function createChatStore({ namespace, clock }) {
       return out;
     },
     /**
+     * A new conversation that holds the first `upTo` turns of another one, copied as they are: the
+     * place where a question goes on when it follows an earlier turn than the last (the client
+     * asked a question again, or changed one, and keeps the other answers on a branch of its own).
+     * The original stays untouched. The copy keeps the original's class: it only ever rose, so it
+     * is never weaker than what the copied turns drew on.
+     * @param {Conversation} c
+     * @param {number} upTo
+     * @returns {Conversation}
+     */
+    branch(c, upTo) {
+      const at = isoAt(clock.now());
+      const kept = Math.max(0, Math.min(Math.trunc(upTo), c.turns));
+      const copy = { id: newId('conv'), title: c.title, created: at, updated: at, dataClass: c.dataClass, turns: kept };
+      for (let n = 1; n <= kept; n += 1) {
+        const value = namespace.getJson(turnId(c.id, n));
+        if (isRecord(value)) namespace.putJson(turnId(copy.id, n), value);
+      }
+      // The record comes last, so a copy that broke off half-way is never listed.
+      namespace.putJson(copy.id, copy);
+      return copy;
+    },
+    /**
      * Stores a turn and raises the conversation's class to the turn's. The record is read again
      * first, so whatever changed while the answer was written (a new title, a deletion) is kept.
      * @param {Conversation} c
