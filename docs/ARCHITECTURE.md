@@ -170,6 +170,9 @@ idealised design. When the code changes, change the diagram in the same pull req
     - [Which way a call goes](#which-way-a-call-goes)
     - [Purposes, roles, the router and the model wheel](#purposes-roles-the-router-and-the-model-wheel)
     - [Tools, MCP servers, web search, images and memory](#tools-mcp-servers-web-search-images-and-memory)
+15. [Chat thread and conversations](#15-chat-thread-and-conversations)
+    - [One turn of the thread](#one-turn-of-the-thread)
+    - [Conversations, branches, projects and the seams of the chat](#conversations-branches-projects-and-the-seams-of-the-chat)
 
 ## 1. System overview
 
@@ -6815,3 +6818,94 @@ flowchart TD
 ```
 
 <sub>Sources: [`src/js/ai/tools/registry.js`](../src/js/ai/tools/registry.js), [`src/js/ai/tools/builtin.js`](../src/js/ai/tools/builtin.js), [`src/js/ai/tools/approval.js`](../src/js/ai/tools/approval.js), [`src/js/ai/tools/loop.js`](../src/js/ai/tools/loop.js), [`src/js/ai/mcp/client.js`](../src/js/ai/mcp/client.js), [`src/js/ai/mcp/pin.js`](../src/js/ai/mcp/pin.js), [`src/js/ai/mcp/view.js`](../src/js/ai/mcp/view.js), [`src/js/ai/search.js`](../src/js/ai/search.js), [`src/js/ai/memory.js`](../src/js/ai/memory.js), [`src/js/chat/tools.js`](../src/js/chat/tools.js), [`src/js/chat/image-view.js`](../src/js/chat/image-view.js)</sub>
+
+## 15. Chat thread and conversations
+
+The chat tab (chat.js) wires the composer, the mode row and the action bars to the thread (chat/thread.js), which loads after the first paint with the AI layer and the conversation store. A conversation is a message tree on this device: every node is stored once and never changed, editing a question or regenerating an answer adds a sibling, and the shown thread is the path to the conversation's active leaf. Features reach the chat through registries in chat/hooks.js without the chat loading them. Section 3 draws how one grounded answer is retrieved, checked and stored; this section shows the thread around it.
+
+### One turn of the thread
+
+sendQuestion takes the composer's draft (or a quick prompt), decides the route and runs the turn in withTurn, which pins the conversation the turn started in: every node of the turn is written to that conversation (turnConversation), even when the user switches to another chat while the answer streams. An explicit mode wins (Free stays free, Grounded stays grounded); Auto asks ai/hybrid.js, whose route decider and probe give free, mixed or grounded. A question asked to stay on this device (an AI edit of a canvas document from such an answer) goes the free route and is answered only by the model on this device or the own server; with any other model chosen it is not even stored. A free question is stored first, with the context block that went out, and answerFree streams the answer along the runner's candidates with the stable free system prompt, the trimmed history (Anthropic conversations replayed whole with their thinking blocks, compacted on the server near the limit), the tools of the request hooks and the per-turn notes; the answer is labelled "not checked". A grounded or mixed question goes to answerGrounded (section 3). The first answer of a conversation that still has the automatic title asks the title_chat purpose for a name.
+
+The paired companion is picked like any model (companion:starpi-core) and answered by answerCompanion. Its mode follows the mode control alone: Grounded asks it to answer from its own documents and notes, Free and Auto from general knowledge, because what Auto weighs here is not what the companion holds. Only the bare question goes to its POST /v1/chat, and each branch of the conversation has a companion conversation of its own: a question asked under another answer than the last one sends `after` with the companion's turn it follows, so the companion forks its conversation there. The live view shows exactly the units the companion's sentence gate released, and the stored answer is the companion's own text with its label, notice and withheld count; a stopped answer is not kept, because the companion drops the abandoned turn too. Companion questions and answers stay on this device: they are stored local-only, never enter the encrypted sync, and the privacy line under the composer says so (`chat-thread.privacy.companion_unsynced`); nothing here retrieves for a companion answer or checks it again, and the router never caches it.
+
+<!-- diagram: chat-thread-turn -->
+```mermaid
+flowchart TD
+    q(["sendQuestion: the composer's draft or a quick prompt"]) --> busy{"a turn running?"}
+    busy -->|"yes"| bz(["status busy, nothing sent"])
+    busy -->|"no"| dev{"localOnly question and a model<br/>that does not answer here?"}
+    dev -->|"yes"| stay(["notice stays_on_device, not stored"])
+    dev -->|"no"| comp{"the companion picked?"}
+    comp -->|"yes"| cmode["mode control alone: Grounded = sources,<br/>Free and Auto = free"]
+    comp -->|"no"| mode{"explicit mode or a quick prompt?"}
+    mode -->|"Free"| free
+    mode -->|"Grounded"| grounded
+    mode -->|"Auto"| hybrid["ai/hybrid.js: route decider first, attachments,<br/>references, the workspace probe"]
+    hybrid -->|"free"| free
+    hybrid -->|"mixed or grounded"| grounded
+    cmode --> companion
+    subgraph turn["withTurn: every node goes to turnConversation, the chat the turn started in"]
+        free["store the question with its context block,<br/>answerFree: free system prompt, trimmed history,<br/>request hooks (tools), per-turn and request notes"]
+        grounded["answerGrounded: retrieval, the model or a context pack,<br/>source check, receipt draft, see section 3"]
+        companion["answerCompanion: the bare question to POST /v1/chat,<br/>after = the companion turn this branch follows,<br/>units as the companion's gate released them"]
+    end
+    free --> fa(["answer labelled not checked; title_chat after the first answer"])
+    grounded --> ga(["answer labelled grounded, mixed or web, with its check"])
+    companion --> ca{"stopped?"}
+    ca -->|"yes"| cdrop(["not kept, the companion drops the turn too"])
+    ca -->|"no"| ckeep(["stored local-only, never synced, not cached,<br/>privacy line companion_unsynced"])
+```
+
+<sub>Sources: [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/chat.js`](../src/js/chat.js), [`src/js/chat/composer.js`](../src/js/chat/composer.js), [`src/js/chat/mode-control.js`](../src/js/chat/mode-control.js), [`src/js/chat/runner.js`](../src/js/chat/runner.js), [`src/js/ai/hybrid.js`](../src/js/ai/hybrid.js), [`src/js/ai/adapters/companion.js`](../src/js/ai/adapters/companion.js), [`src/js/companion/pair.js`](../src/js/companion/pair.js), [`src/js/prompts.js`](../src/js/prompts.js), [`src/locales/chat-thread/en.json`](../src/locales/chat-thread/en.json)</sub>
+
+### Conversations, branches, projects and the seams of the chat
+
+chat/store.js keeps conversations (title, pinned, archived, project, assistant, the model and mode last used, the active leaf) and their nodes and blobs in the app database; tree.js gives the active path, the branch navigator (‹ 2/3 ›) and the leaf a switch makes active. The sidebar groups chats into Pinned, Today, Previous 7 days, Older and Archived, with Rename, Pin, Move to project, Archive, Export and Delete; a chat an answer is still written in cannot be deleted until it ends. Its search is an in-memory BM25 index over titles and first questions only. Export writes starpi.chat/v2, the whole tree with the active path, attached files as metadata only and nothing that marks local-only turns or looks like a credential; v1 is still read. Projects bring instructions, a default model, workspace files for grounded questions and a memory setting; assistants are presets (instructions, model, a few allowed tools, starters) that run no code. The canvas keeps documents opened from code blocks with their versions in the store artifacts; Compare sends one question to 2 to 4 models side by side, and the council lets up to three models draft while a judge chooses or merges. Both ask through prepareQuestion as the free route would, store the chosen answer as the newest branch under its question (freeAnswerInput, adoptAnswer) and label it with presentAnswer. A Compare column with the companion asks it like the thread does: the bare question, sources or free mode from the mode control, the question's data class, no app tools, and a stopped answer is not kept. The council never seats the companion, Live asks it only in free conversations, and Auto with the companion asks it in free mode.
+
+Known limits: Compare and the council answer in the free route, and the council leaves out the on-device model. A new question typed into Compare for models on this device and the own server only stays on this device, while a thread question to the own server is not marked so (a privacy-first choice that is kept). Grounded answers restored from history keep no excerpts, so read-aloud withholds their numbers.
+
+<!-- diagram: chat-thread-seams -->
+```mermaid
+flowchart LR
+    subgraph hooks["chat/hooks.js registries, each returns its removal"]
+        h1["setRouteDecider: Auto's route, may only tighten"]
+        h2["registerTurnNotes, registerRequestNotes, registerSystemNote:<br/>packs, memory, instructions"]
+        h3["setWorkspaceScope, registerRetrievalSource:<br/>project files, the companion's excerpts"]
+        h4["registerRequestHook, setToolRunner, setAdapterChooser:<br/>tools, approvals, provider-side tools"]
+        h5["registerReceiptHook: relations, second opinions"]
+        h6["registerMessageAction: Research this, read aloud;<br/>setAnswerLabeler, registerAnswerDecorator"]
+        h7["registerSidebarSection: projects, assistants;<br/>registerComposerSlot, registerComposerTool, setMemoryLookup;<br/>registerVoiceUi in voice/hooks.js"]
+    end
+    subgraph features["features loaded after the first paint"]
+        f1["chat/context.js, ai/memory.js, projects.js, assistants.js"]
+        f2["chat/tools.js, ai/mcp/client.js, ai/search.js"]
+        f3["features/research.js, features/voice.js"]
+        f4["features/companion.js"]
+    end
+    thread["chat/thread.js: reads the registries when it needs them"]
+    subgraph store["chat/store.js and tree.js"]
+        s1["conversations: title, flags, project, assistant,<br/>model, mode, activeLeafId"]
+        s2["nodes: append-only parts and opaque state,<br/>siblings for edits and regenerations"]
+        s3["blobs: attachments and generated images"]
+    end
+    subgraph side["side panel and views"]
+        v1["sidebar and search: BM25 over titles and first questions"]
+        v2["export starpi.chat/v2, import v1 and v2"]
+        v3["canvas: artifacts with versions"]
+        v4["Compare and council: prepareQuestion, freeAnswerInput,<br/>adoptAnswer, presentAnswer; the companion in Compare<br/>like the thread, never in the council"]
+    end
+    f1 --> h2
+    f1 --> h3
+    f2 --> h4
+    f3 --> h6
+    f4 --> h3
+    f1 --> h7
+    f3 --> h7
+    hooks --> thread
+    thread --> store
+    side --> thread
+    side --> store
+```
+
+<sub>Sources: [`src/js/chat/hooks.js`](../src/js/chat/hooks.js), [`src/js/chat/thread.js`](../src/js/chat/thread.js), [`src/js/chat/store.js`](../src/js/chat/store.js), [`src/js/chat/tree.js`](../src/js/chat/tree.js), [`src/js/chat/context.js`](../src/js/chat/context.js), [`src/js/chat/projects.js`](../src/js/chat/projects.js), [`src/js/chat/assistants.js`](../src/js/chat/assistants.js), [`src/js/chat/sidebar.js`](../src/js/chat/sidebar.js), [`src/js/chat/search.js`](../src/js/chat/search.js), [`src/js/chat/export.js`](../src/js/chat/export.js), [`src/js/chat/canvas.js`](../src/js/chat/canvas.js), [`src/js/chat/compare.js`](../src/js/chat/compare.js), [`src/js/chat/council-view.js`](../src/js/chat/council-view.js), [`src/js/ai/council.js`](../src/js/ai/council.js), [`src/js/voice/hooks.js`](../src/js/voice/hooks.js), [`src/js/features/companion.js`](../src/js/features/companion.js)</sub>
