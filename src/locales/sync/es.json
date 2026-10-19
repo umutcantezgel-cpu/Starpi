@@ -1,0 +1,86 @@
+{
+  "card": {
+    "title": "Sincronización de chats · cifrada de extremo a extremo",
+    "subtitle": "Tus conversaciones se cifran en este navegador con una clave que solo abre tu frase de contraseña. El servidor solo guarda texto cifrado. Las claves de proveedor, las claves de firma y los turnos que se quedaron en este dispositivo nunca se sincronizan."
+  },
+  "state": {
+    "off": "Desactivada",
+    "on": "Activada",
+    "busy": "Sincronizando",
+    "attention": "Requiere atención",
+    "unavailable": "No disponible aquí"
+  },
+  "form": {
+    "new_hint": "Elige una frase de contraseña de al menos {n} caracteres. La necesitarás para restaurar tus conversaciones en otro navegador. Nadie puede recuperarla por ti y, sin ella, la copia sincronizada no se puede leer.",
+    "join_hint": "Esta cuenta ya se sincroniza desde otro navegador. Introduce la frase de contraseña que elegiste allí para traer aquí sus conversaciones.",
+    "passphrase": "Frase de contraseña de sincronización",
+    "confirm": "Repite la frase de contraseña",
+    "enable": "Activar la sincronización",
+    "join": "Desbloquear y sincronizar",
+    "connection": "La sincronización necesita una conexión con la base de conocimiento con una sesión (Ajustes › Base de conocimiento)."
+  },
+  "on": {
+    "summary": "{n} {n:conversación sincronizada|conversaciones sincronizadas}",
+    "last": "Última sincronización: {time}",
+    "never": "Todavía no sincronizado",
+    "skipped": "{n} {n:conversación no se sincroniza|conversaciones no se sincronizan}: son demasiado grandes o no se pueden leer con esta clave.",
+    "sync_now": "Sincronizar ahora",
+    "off_local": "Desactivar en este navegador",
+    "off_delete": "Desactivar y eliminar los datos sincronizados",
+    "off_local_confirm": "¿Desactivar la sincronización en este navegador? Sus conversaciones se quedan aquí y la copia sincronizada sigue en el servidor para tus otros navegadores.",
+    "off_delete_confirm": "¿Desactivar la sincronización y eliminar del servidor la copia sincronizada de tus conversaciones? Cada navegador conserva las conversaciones que tiene, pero deja de sincronizar. No se puede deshacer.",
+    "purging": "La eliminación de la copia sincronizada no ha terminado. Este navegador lo vuelve a intentar en cada sincronización; usa «Desactivar y eliminar los datos sincronizados» para intentarlo ahora."
+  },
+  "notice": {
+    "remote_off": "La sincronización se desactivó en otro navegador y se eliminó la copia sincronizada. Las conversaciones de este navegador se conservan. Elige una frase de contraseña para volver a sincronizar o desactiva aquí la sincronización.",
+    "rekeyed": "La sincronización se volvió a configurar en otro navegador con una nueva frase de contraseña. Introduce esa frase de contraseña para continuar.",
+    "other_account": "Este navegador ha iniciado sesión en una cuenta distinta de la que usaba para sincronizar. Desactiva aquí la sincronización y luego actívala para esta cuenta.",
+    "unavailable": "Este navegador no puede guardar la clave de sincronización para este sitio (por ejemplo, en una ventana privada o con los datos de sitios desactivados)."
+  },
+  "account": {
+    "title": "Usar la sincronización en otro navegador",
+    "body": "El otro navegador necesita la misma cuenta. Añade una dirección de correo electrónico a la cuenta de este navegador, inicia sesión con esa dirección en el otro navegador y luego introduce allí tu frase de contraseña.",
+    "anonymous": "Este navegador: cuenta anónima (solo este navegador)",
+    "signed_in": "Sesión iniciada como {email}",
+    "email": "Correo electrónico",
+    "link": "Añadir a esta cuenta",
+    "sign_in": "Iniciar sesión en mi cuenta",
+    "sign_in_hint": "Al iniciar sesión se sustituye la cuenta anónima de este navegador; los documentos que añadiste desde ella se quedan en esa cuenta.",
+    "code": "Código del correo",
+    "verify": "Confirmar el código",
+    "sign_out": "Cerrar sesión"
+  },
+  "line": {
+    "on": "Cifrado de extremo a extremo · {n} {n:conversación|conversaciones}",
+    "waiting": "Cifrado de extremo a extremo · esperando conexión",
+    "attention": "La sincronización requiere atención (consulta Sincronización de chats)"
+  },
+  "result": {
+    "enabled": "La sincronización está activada. Tus conversaciones están cifradas y sincronizadas.",
+    "joined": "Desbloqueado. Las conversaciones de esta cuenta se sincronizan en este navegador.",
+    "synced": "Sincronizado.",
+    "off": "La sincronización está desactivada en este navegador.",
+    "deleted": "La sincronización está desactivada y se eliminó la copia sincronizada.",
+    "code_sent": "Hemos enviado un código a {email}. Introdúcelo abajo.",
+    "linked": "La dirección de correo se añadió a esta cuenta.",
+    "signed_in": "Sesión iniciada. Introduce tu frase de contraseña para sincronizar.",
+    "signed_out": "Sesión cerrada. Este navegador tiene una nueva cuenta anónima."
+  },
+  "error": {
+    "too_short": "La frase de contraseña necesita al menos {n} caracteres.",
+    "mismatch": "Las dos frases de contraseña no coinciden.",
+    "wrong_passphrase": "Esa frase de contraseña no desbloquea las conversaciones sincronizadas de esta cuenta.",
+    "no_session": "No hay ninguna sesión con la base de conocimiento. La sincronización la necesita.",
+    "offline": "Ahora mismo no se puede acceder a la base de conocimiento. Vuelve a intentarlo más tarde.",
+    "missing_schema": "La base de datos aún no tiene tablas de sincronización (migración chat_sync en backend/supabase).",
+    "unavailable": "Este navegador no puede guardar la clave de sincronización.",
+    "failed": "No ha funcionado. Vuelve a intentarlo.",
+    "delete_failed": "Ahora mismo no se pudo eliminar por completo la copia sincronizada. Este navegador lo vuelve a intentar en cada sincronización hasta conseguirlo.",
+    "invalid_email": "Introduce una dirección de correo válida.",
+    "invalid_code": "Ese código es incorrecto o ha caducado.",
+    "email_taken": "Esta dirección pertenece a otra cuenta. Usa «Iniciar sesión en mi cuenta» en su lugar.",
+    "no_account": "Ninguna cuenta tiene esta dirección, o el inicio de sesión por correo está desactivado en este sitio.",
+    "email_disabled": "El inicio de sesión por correo está desactivado en este sitio.",
+    "rate_limited": "Demasiados intentos. Espera un minuto y vuelve a intentarlo."
+  }
+}

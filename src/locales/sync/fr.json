@@ -1,0 +1,86 @@
+{
+  "card": {
+    "title": "Synchronisation des discussions · chiffrée de bout en bout",
+    "subtitle": "Vos conversations sont chiffrées dans ce navigateur avec une clé que seule votre phrase secrète permet d’ouvrir. Le serveur ne stocke que du texte chiffré. Les clés de fournisseur, les clés de signature et les échanges restés sur cet appareil ne sont jamais synchronisés."
+  },
+  "state": {
+    "off": "Désactivée",
+    "on": "Activée",
+    "busy": "Synchronisation",
+    "attention": "Action requise",
+    "unavailable": "Non disponible ici"
+  },
+  "form": {
+    "new_hint": "Choisissez une phrase secrète d’au moins {n} caractères. Elle vous servira à restaurer vos conversations dans un autre navigateur. Personne ne peut la récupérer pour vous, et sans elle, la copie synchronisée est illisible.",
+    "join_hint": "Ce compte est déjà synchronisé depuis un autre navigateur. Saisissez la phrase secrète choisie là-bas pour récupérer ses conversations ici.",
+    "passphrase": "Phrase secrète de synchronisation",
+    "confirm": "Répétez la phrase secrète",
+    "enable": "Activer la synchronisation",
+    "join": "Déverrouiller et synchroniser",
+    "connection": "La synchronisation nécessite une connexion à la base de connaissances avec une session (Paramètres › Base de connaissances)."
+  },
+  "on": {
+    "summary": "{n} {n:conversation synchronisée|conversations synchronisées}",
+    "last": "Dernière synchronisation : {time}",
+    "never": "Pas encore synchronisé",
+    "skipped": "{n} {n:conversation n’est pas synchronisée|conversations ne sont pas synchronisées} : trop volumineuse(s) ou illisible(s) avec cette clé.",
+    "sync_now": "Synchroniser maintenant",
+    "off_local": "Désactiver dans ce navigateur",
+    "off_delete": "Désactiver et supprimer les données synchronisées",
+    "off_local_confirm": "Désactiver la synchronisation dans ce navigateur ? Ses conversations restent ici, et la copie synchronisée reste sur le serveur pour vos autres navigateurs.",
+    "off_delete_confirm": "Désactiver la synchronisation et supprimer du serveur la copie synchronisée de vos conversations ? Chaque navigateur garde les conversations qu’il possède, mais cesse de se synchroniser. Cette action est irréversible.",
+    "purging": "La suppression de la copie synchronisée n’est pas terminée. Ce navigateur réessaie à chaque synchronisation ; utilisez « Désactiver et supprimer les données synchronisées » pour réessayer maintenant."
+  },
+  "notice": {
+    "remote_off": "La synchronisation a été désactivée dans un autre navigateur et la copie synchronisée a été supprimée. Les conversations de ce navigateur sont conservées. Choisissez une phrase secrète pour synchroniser à nouveau, ou désactivez la synchronisation ici.",
+    "rekeyed": "La synchronisation a été reconfigurée dans un autre navigateur avec une nouvelle phrase secrète. Saisissez cette phrase secrète pour continuer.",
+    "other_account": "Ce navigateur est connecté à un autre compte que celui avec lequel il était synchronisé. Désactivez la synchronisation ici, puis activez-la pour ce compte.",
+    "unavailable": "Ce navigateur ne peut pas conserver la clé de synchronisation pour ce site (par exemple en navigation privée, ou si les données de site sont désactivées)."
+  },
+  "account": {
+    "title": "Utiliser la synchronisation dans un autre navigateur",
+    "body": "L’autre navigateur doit utiliser le même compte. Ajoutez une adresse e-mail au compte de ce navigateur, connectez-vous avec cette adresse dans l’autre navigateur, puis saisissez-y votre phrase secrète.",
+    "anonymous": "Ce navigateur : compte anonyme (ce navigateur uniquement)",
+    "signed_in": "Connecté en tant que {email}",
+    "email": "Adresse e-mail",
+    "link": "Ajouter à ce compte",
+    "sign_in": "Me connecter à mon compte",
+    "sign_in_hint": "La connexion remplace le compte anonyme de ce navigateur ; les documents ajoutés depuis celui-ci restent associés à ce compte.",
+    "code": "Code reçu par e-mail",
+    "verify": "Confirmer le code",
+    "sign_out": "Se déconnecter"
+  },
+  "line": {
+    "on": "Chiffré de bout en bout · {n} {n:conversation|conversations}",
+    "waiting": "Chiffré de bout en bout · en attente de connexion",
+    "attention": "La synchronisation demande votre attention (voir Synchronisation des discussions)"
+  },
+  "result": {
+    "enabled": "La synchronisation est activée. Vos conversations sont chiffrées et synchronisées.",
+    "joined": "Déverrouillé. Les conversations de ce compte sont synchronisées dans ce navigateur.",
+    "synced": "Synchronisé.",
+    "off": "La synchronisation est désactivée dans ce navigateur.",
+    "deleted": "La synchronisation est désactivée et la copie synchronisée a été supprimée.",
+    "code_sent": "Nous avons envoyé un code à {email}. Saisissez-le ci-dessous.",
+    "linked": "L’adresse e-mail a été ajoutée à ce compte.",
+    "signed_in": "Connecté. Saisissez votre phrase secrète pour synchroniser.",
+    "signed_out": "Déconnecté. Ce navigateur dispose d’un nouveau compte anonyme."
+  },
+  "error": {
+    "too_short": "La phrase secrète doit comporter au moins {n} caractères.",
+    "mismatch": "Les deux phrases secrètes sont différentes.",
+    "wrong_passphrase": "Cette phrase secrète ne déverrouille pas les conversations synchronisées de ce compte.",
+    "no_session": "Il n’y a aucune session avec la base de connaissances. La synchronisation en a besoin.",
+    "offline": "La base de connaissances est injoignable pour le moment. Réessayez plus tard.",
+    "missing_schema": "La base de données n’a pas encore de tables de synchronisation (migration chat_sync dans backend/supabase).",
+    "unavailable": "Ce navigateur ne peut pas conserver la clé de synchronisation.",
+    "failed": "Cela n’a pas fonctionné. Veuillez réessayer.",
+    "delete_failed": "La copie synchronisée n’a pas pu être entièrement supprimée pour le moment. Ce navigateur réessaie à chaque synchronisation jusqu’à ce que ce soit fait.",
+    "invalid_email": "Saisissez une adresse e-mail valide.",
+    "invalid_code": "Ce code est erroné ou a expiré.",
+    "email_taken": "Cette adresse appartient à un autre compte. Utilisez plutôt « Me connecter à mon compte ».",
+    "no_account": "Aucun compte n’utilise cette adresse, ou la connexion par e-mail est désactivée pour ce site.",
+    "email_disabled": "La connexion par e-mail est désactivée pour ce site.",
+    "rate_limited": "Trop de tentatives. Attendez une minute et réessayez."
+  }
+}
