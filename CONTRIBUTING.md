@@ -30,59 +30,31 @@ Before changing a subsystem, read its section in the
 <!-- diagram: build-pipeline-build -->
 ```mermaid
 flowchart TD
-    START(["npm run build: node scripts/build.mjs<br/>also the Vercel buildCommand"]) --> ENV["SUPABASE_URL and SUPABASE_ANON_KEY from<br/>STARPI_SUPABASE_URL and STARPI_SUPABASE_ANON_KEY,<br/>else the public project defaults"]
-    ENV --> APPV["APP_VERSION: the version field of package.json"]
-    APPV --> AK{"assertPublicKey at module load,<br/>scripts/lib/supabase-key.mjs"}
-    AK -->|"blank, or starts with sb_secret_"| FAILTOP(["uncaught Error outside main():<br/>Node prints it with the stack, exit code 1"])
-    AK -->|"JWT payload not readable,<br/>or JWT role is not anon, e.g. service_role"| FAILTOP
-    AK -->|"sb_publishable_ key or anon JWT:<br/>main() calls buildOnce"| TMPD["create .build/"]
-    TMPD --> TW["tailwindcss -c tailwind.config.js<br/>-i src/styles/app.css -o .build/tailwind.css --minify<br/>content: src/index.html and src/js JS files"]
-    TW -->|"exit status not 0"| FAIL
-    TW -->|"ok, pass 1 without URLs"| PASS["remove dist/, clear the placeholders seen"]
-    PASS --> ESB
-    subgraph sg_esb["esbuild.build into dist/assets"]
-      E1["main: src/js/main.js"]
-      E2["webllm-worker: src/js/webgpu/worker.js"]
-      E3["ingest-worker: src/js/rag/ingest.worker.js"]
-      E5["wasm-worker: src/js/wasm/worker.js"]
-      E6["supabase: src/js/supabase-lib.js,<br/>the Supabase library, loaded on first use"]
-      E4["app: src/styles/entry.css<br/>Plus Jakarta Sans font faces + .build/tailwind.css"]
-      ORT["plugin ort-wasm-only: onnxruntime-web/webgpu and<br/>onnxruntime-common resolve to onnxruntime-web/wasm,<br/>one ONNX Runtime without new Function"]
-      URLS["plugin starpi-asset-urls: onLoad of src/js files writes<br/>this pass's URLs over __STARPI_WEBLLM_WORKER_URL__,<br/>__STARPI_INGEST_WORKER_URL__, __STARPI_WASM_WORKER_URL__,<br/>__STARPI_ORT_WASM_URL__ and __STARPI_SUPABASE_LIB_URL__,<br/>none in pass 1"]
-      ESB["bundle, splitting, esm, minify, target es2022,<br/>chrome113, safari17, firefox121, linked sourcemaps<br/>and legal comments, entries name-hash, chunks chunk-hash,<br/>fonts as files, define inlines __STARPI_SUPABASE_URL__,<br/>__STARPI_SUPABASE_ANON_KEY__ and __STARPI_VERSION__"]
-      E1 --> ESB
-      E2 --> ESB
-      E3 --> ESB
-      E5 --> ESB
-      E6 --> ESB
-      E4 --> ESB
-      ORT -.- ESB
-      URLS -.- ESB
-    end
-    ESB -->|"build error"| FAIL
-    ESB --> WARN{"esbuild warnings?"}
-    WARN -->|"yes: warnings are errors"| FAIL
-    WARN -->|"no"| RES["resolveUrls: hashed URLs of the three workers<br/>and the Supabase library, copyOrtWasm: ort-wasm-simd-threaded.wasm from the<br/>onnxruntime-web dist that was bundled, written to<br/>/assets/ort-wasm-simd-threaded-sha256 16 hex.wasm"]
-    RES -->|"no output for an entry,<br/>onnxruntime-web/wasm not bundled"| FAIL
-    RES --> SETTLED{"every URL equals the one<br/>written into this pass?"}
-    SETTLED -->|"no, pass 4"| FAIL
-    SETTLED -->|"no, passes 1 to 3: next pass<br/>with these URLs, settles in pass 3"| PASS
-    SETTLED -->|"yes"| META{"metafile present and all five<br/>entry outputs found, every<br/>placeholder seen in a source file?"}
-    META -->|"no"| FAIL
-    META -->|"yes"| PUB["copyPublic: public/ copied into dist/,<br/>file list kept for the version and the precache"]
-    PUB --> HTML["src/index.html: %STARPI_APP_CSS% and<br/>%STARPI_MAIN_JS% set to the hashed URLs"]
-    HTML --> HCHK{"any %STARPI_ left?"}
-    HCHK -->|"yes"| FAIL
-    HCHK -->|"no"| WHTML["write dist/index.html"]
-    WHTML --> VER["buildVersion, scripts/lib/build-version.mjs:<br/>sha256 over index.html, the sorted asset URLs<br/>without .map and .LEGAL.txt plus the ONNX Runtime binary,<br/>each public file as URL plus bytes, then the src/sw.js<br/>template, first 12 hex chars"]
-    VER --> SHELL["precache shell: /, app CSS, main JS, ingest worker,<br/>the Latin plus-jakarta-sans woff2 when present,<br/>static imports of main, public files,<br/>/index.html, the WASM worker, the binary<br/>and the Supabase library are not listed"]
-    SHELL --> SW["src/sw.js: __STARPI_BUILD_VERSION__ gets the version,<br/>__STARPI_PRECACHE__ the deduplicated shell,<br/>__STARPI_ASSETS__ the sorted asset URLs"]
-    SW --> SCHK{"any __STARPI_ left?"}
-    SCHK -->|"yes"| FAIL
-    SCHK -->|"no"| WSW["write dist/sw.js"]
-    WSW --> MAN["write dist/build-manifest.json: version, entries<br/>mainJs, workerJs, ingestWorkerJs, wasmWorkerJs,<br/>ortWasm, appCss, supabaseJs, then assets,<br/>public, precache"]
-    MAN --> DONE(["log built main JS, app CSS,<br/>version and duration"])
-    FAIL(["main().catch prints the message,<br/>process.exit(1)"])
+    start(["npm run build"])
+    key{"assertPublicKey: publishable key<br/>or a JWT with role anon?"}
+    keyFail(["build fails before anything runs"])
+    prof{"STARPI_HEADER_PROFILE in headers.json:<br/>public, self-host, test or companion?"}
+    profFail(["build fails: unknown profile"])
+    tw["Tailwind: .build/tailwind.css"]
+    es["esbuild, splitting on: main, webllm-worker, ingest-worker,<br/>wasm-worker, integrity-worker, pcm-worklet, supabase,<br/>render-extras, app CSS; URL, key, version, profile inlined"]
+    plug["plugins: onnxruntime-web/wasm only, excluded packages replaced,<br/>hashed URLs into __STARPI_*_URL__ placeholders"]
+    settle{"URLs equal the outputs?"}
+    again["bundle again, at most 4 passes"]
+    classic["classic builds: theme-boot.js for head;<br/>render-frame.js and grounding-frame.js, one file each,<br/>their packages' licences checked"]
+    ort["copy ort-wasm-simd-threaded.wasm to a hashed /assets URL"]
+    html["rewrite index.html: hashed script, CSS and theme script"]
+    sw["sw.js: version = hash of HTML, assets, public files,<br/>template and header digest; precache and asset lists"]
+    man["build-manifest.json: version, entries, profile, header digest;<br/>companion profile: dist/headers.json"]
+    meta["STARPI_META_OUT: esbuild metafile"]
+    out(["dist/ or STARPI_DIST_DIR"])
+    start --> key
+    key -->|"no"| keyFail
+    key -->|"yes"| prof
+    prof -->|"no"| profFail
+    prof -->|"yes"| tw --> es --> plug --> settle
+    settle -->|"no"| again --> es
+    settle -->|"yes"| classic --> ort --> html --> sw --> man --> out
+    es -.-> meta
 ```
 
 ## Checks before opening a pull request
@@ -107,64 +79,34 @@ the README; the unit tests fail until both agree.
 <!-- diagram: test-strategy-ci-gates -->
 ```mermaid
 flowchart LR
-    trig(["CI workflow: push to main, pull_request to main,<br/>workflow_dispatch, permissions contents read,<br/>concurrency cancels the older run"])
-
-    subgraph jobFront["Job frontend: Node 22, npm ci --ignore-scripts"]
-        lint["npm run lint<br/>ESLint, eslint.config.mjs"]
-        tc["npm run typecheck<br/>tsc -p tsconfig.json --noEmit"]
-        unit["npm test<br/>node --test on the 38 tests/unit/*.test.mjs files, 479 tests,<br/>docs.test.mjs, core-package.test.mjs, sbom.test.mjs<br/>and nvidia-proxy.test.mjs included"]
-        pack["npm run pack:core<br/>typed build of @starpi/core, npm pack --dry-run"]
-        build["npm run build<br/>scripts/build.mjs"]
-        verify["npm run verify:dist<br/>scripts/verify-dist.mjs: dist/ is CSP-compatible,<br/>referenced assets exist, sw.js carries the recomputed version"]
-        art[("artifact dist, kept 3 days")]
+    trig(["push or pull request to main, or by hand"])
+    subgraph ciy["ci.yml"]
+        fe["frontend: lint, typecheck, unit tests, pack:core, build,<br/>verify:dist, headers:check, license:check, eol:check, hygiene"]
+        e2e["e2e: Playwright, desktop and mobile Chromium,<br/>production headers, mocked Supabase, provider fakes"]
+        comp["companion, Node 22 and 24: typecheck, tests,<br/>dependency and licence checks, offline bundle install"]
+        sysd["companion-systemd: transient unit, then the user unit"]
+        voice["voice-server, Python 3.11 and 3.13: ruff, compile, tests"]
+        be["backend, Python 3.11 and 3.13: library publisher"]
+        db["database: PostgreSQL 16 + pgvector, run_rls_tests.sh"]
+        aud["audit: npm audit, pip-audit, SBOM artifact"]
+        sec["secrets: gitleaks tree and pull request commits"]
     end
-
-    subgraph jobE2e["Job e2e, needs frontend"]
-        dl["download artifact dist,<br/>npx playwright install --with-deps chromium"]
-        pw["npm run test:e2e<br/>app.spec.mjs 17 tests, trust.spec.mjs 13,<br/>models.spec.mjs 8 and modes.spec.mjs 8,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.1.0,<br/>94 test runs in all"]
-        rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
+    subgraph other["other workflows"]
+        codeql["codeql.yml: every change and weekly"]
+        wl["workflow-lint.yml: actionlint, zizmor"]
+        ml["model-lock.yml: weekly models:lock --check"]
     end
-
-    subgraph jobBack["Job backend, library publisher, matrix Python 3.11 and 3.13"]
-        ruff["ruff check tools/library-publisher backend,<br/>ruff format --check tools/library-publisher backend"]
-        comp["python -m compileall -q tools/library-publisher backend"]
-        ut["python -m unittest discover in tools/library-publisher, 76 tests<br/>chunker, config, structurer, e5 prefixes, mean pooling and<br/>L2 norm with a fake session, pinned model files with a fake hub,<br/>Supabase payloads, shared-row filters and errors,<br/>pipeline and every command against MockTransport<br/>the test against the real model is skipped without<br/>PUBLISHER_TEST_MODEL_DIR"]
-    end
-
-    subgraph jobDb["Job database"]
-        apt["apt-get install postgresql-16,<br/>postgresql-16-pgvector"]
-        rls["bash backend/supabase/tests/run_rls_tests.sh<br/>PG_BIN /usr/lib/postgresql/16/bin<br/>live, fresh, fresh_rerun, legacy_v2, legacy_v1,<br/>guard, guard_order, guard_vectors, schema parity via pg_dump<br/>rls_test.sql: 220 checks, 227 with legacy rows"]
-    end
-
-    subgraph jobAudit["Job audit"]
-        npmRt["npm audit --omit=dev --audit-level=low<br/>any advisory in a runtime dependency fails"]
-        npmAll["npm audit --audit-level=high<br/>development tooling: warning only"]
-        pipAud["pip-audit -r backend/requirements-dev.txt<br/>any advisory fails"]
-        sbom["npm run sbom, also after a failed audit step<br/>CycloneDX 1.5 SBOMs of the app and of @starpi/core<br/>from package-lock.json, artifact sbom, kept 30 days"]
-    end
-
-    subgraph jobSec["Job secrets"]
-        gl["gitleaks 8.30.1 download,<br/>sha256sum -c checksum"]
-        glDir["gitleaks dir . --config .gitleaks.toml<br/>--redact --exit-code 1"]
-        glPr["gitleaks git over BASE_SHA..HEAD_SHA<br/>commits of the pull request"]
-    end
-
-    local["Local gate npm run verify:<br/>lint, typecheck, test, build, verify:dist"]
-
-    trig --> lint
-    trig --> ruff
-    trig --> apt
-    trig --> npmRt
-    trig --> gl
-    lint --> tc --> unit --> pack --> build --> verify --> art
-    art -->|"built once, reused"| dl --> pw
-    pw -.->|"failure"| rep
-    ruff --> comp --> ut
-    apt --> rls
-    npmRt --> npmAll --> pipAud --> sbom
-    gl --> glDir
-    glDir -->|"pull_request only"| glPr
-    local -.->|"same steps as"| lint
+    trig --> fe
+    fe -->|"dist artifact"| e2e
+    trig --> comp
+    trig --> sysd
+    trig --> voice
+    trig --> be
+    trig --> db
+    trig --> aud
+    trig --> sec
+    trig --> codeql
+    trig --> wl
 ```
 
 **Diagrams** live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), the only place they are edited.

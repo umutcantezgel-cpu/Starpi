@@ -132,18 +132,18 @@ idealised design. When the code changes, change the diagram in the same pull req
 11. [Build, test and deploy](#11-build-test-and-deploy)
     - [npm run build (scripts/build.mjs)](#npm-run-build-scriptsbuildmjs)
     - [Build output gate (verify-dist.mjs)](#build-output-gate-verify-distmjs)
-    - [Dev watch mode and the local static server](#dev-watch-mode-and-the-local-static-server)
+    - [Dev watch mode, the local server and the provider fakes](#dev-watch-mode-the-local-server-and-the-provider-fakes)
     - [Command-line tools beside the build](#command-line-tools-beside-the-build)
     - [CI jobs and the test layers they run](#ci-jobs-and-the-test-layers-they-run)
     - [Unit tests grouped by concern](#unit-tests-grouped-by-concern)
-    - [Unit tests for the source check, receipts and sample files](#unit-tests-for-the-source-check-receipts-and-sample-files)
-    - [End-to-end tests with mocked Supabase and diagnostics](#end-to-end-tests-with-mocked-supabase-and-diagnostics)
+    - [Unit tests for the source check, the sentence gate and receipts](#unit-tests-for-the-source-check-the-sentence-gate-and-receipts)
+    - [End-to-end tests with mocked Supabase and the provider fakes](#end-to-end-tests-with-mocked-supabase-and-the-provider-fakes)
     - [End-to-end tests for the source check, receipts and accessibility](#end-to-end-tests-for-the-source-check-receipts-and-accessibility)
     - [CI workflow triggers, jobs and Dependabot](#ci-workflow-triggers-jobs-and-dependabot)
     - [Frontend and end-to-end jobs](#frontend-and-end-to-end-jobs)
-    - [Backend, database, audit and secret-scanning jobs](#backend-database-audit-and-secret-scanning-jobs)
+    - [Companion, backend, database, audit and secret-scanning jobs](#companion-backend-database-audit-and-secret-scanning-jobs)
     - [Release workflow after CI](#release-workflow-after-ci)
-    - [CI workflow and Vercel build of the PWA and the NVIDIA functions](#ci-workflow-and-vercel-build-of-the-pwa-and-the-nvidia-functions)
+    - [CI workflow and the Vercel build of the app and the server functions](#ci-workflow-and-the-vercel-build-of-the-app-and-the-server-functions)
     - [Supabase schema: fresh install or ordered migrations](#supabase-schema-fresh-install-or-ordered-migrations)
 12. [Source check, answer receipts and sample files](#12-source-check-answer-receipts-and-sample-files)
     - [Source check: from the rendered answer to the panel](#source-check-from-the-rendered-answer-to-the-panel)
@@ -5327,904 +5327,457 @@ flowchart TD
 
 ## 11. Build, test and deploy
 
-How the static bundle is built and verified, which command-line tools sit beside the build, which tests guard which behaviour, what CI runs on pushes and pull requests to main, how a GitHub release is created, and how the frontend and the database are deployed.
+How the app and its packages are built, what the build gate refuses, how the local server and the provider fakes run the end-to-end suite, which tests and CI jobs guard what, and how a release is built, attested, signed and published.
 
 ### npm run build (scripts/build.mjs)
 
-When build.mjs loads, it reads APP_VERSION from package.json and calls assertPublicKey from scripts/lib/supabase-key.mjs on the Supabase key. A blank key, a secret key (sb_secret_), a string that is neither a publishable key (sb_publishable_) nor a JWT with a readable payload, and a JWT whose role is not anon each throw an uncaught error before anything else runs. buildOnce then compiles Tailwind into .build/tailwind.css and bundles six esbuild entries (main, webllm-worker, ingest-worker, wasm-worker, supabase, app CSS) into content-hashed files with code splitting, inlining the Supabase URL, the key and APP_VERSION. Two esbuild plugins shape the bundle: ort-wasm-only resolves onnxruntime-web/webgpu and onnxruntime-common, which Transformers.js imports, to onnxruntime-web/wasm, and starpi-asset-urls writes the worker URLs and the ONNX Runtime binary URL into the sources while esbuild loads them, so every output is hashed with its final content. Because a worker's name depends on its content, which can hold another URL (the WASM worker holds the binary's), the build removes dist/ and bundles again until the written URLs equal the outputs, which takes three passes, and fails after four; each pass copies the ONNX Runtime binary from the onnxruntime-web package that was bundled to /assets/ort-wasm-simd-threaded-hash.wasm. It then copies public/ and rewrites the two %STARPI_ placeholders in index.html. buildVersion from scripts/lib/build-version.mjs hashes the page, the asset URLs (the binary included), every public file and the sw.js template into a 12-character version, and dist/sw.js receives that version, the precache list (the page, its CSS and JS, the ingest worker, the Latin font and the public files, never the WASM worker, the binary or the Supabase library) and the list of hashed assets. build-manifest.json records the version, the entries, the assets, the public files and the precache list. Tailwind or esbuild errors, esbuild warnings, a missing entry output, a placeholder in no source file, URLs that do not settle and any placeholder left unresolved each abort the build with exit code 1.
+When build.mjs loads, it reads APP_VERSION from package.json, checks the Supabase key with assertPublicKey (a blank key, a secret key, anything that is neither a publishable key nor a JWT with role anon fails the build), and picks the header profile (STARPI_HEADER_PROFILE: public by default, self-host, test or companion from scripts/headers.json); STARPI_DIST_DIR writes the build to another folder (a companion build next to the site's). buildOnce compiles Tailwind and bundles the module entries with esbuild, code splitting on: main, the four workers, the PCM worklet, the Supabase library and the rendering extras, plus the CSS; the Supabase URL, the key, APP_VERSION and the profile are inlined. Plugins map onnxruntime-web/webgpu and onnxruntime-common to onnxruntime-web/wasm, replace the packages the licence allowlist excludes, and write the hashed URLs of workers, the worklet, the lazy entries and the ONNX Runtime binary into their placeholders, bundling again until the URLs settle (at most four passes; a placeholder no source uses fails the build). The theme script is built as a classic script for `<head>`, and the frame scripts as one classic file each, whose bundled packages must carry a licence the allowlist accepts. build.mjs copies the ONNX Runtime binary to a hashed /assets URL, rewrites index.html, writes sw.js with the build version (a hash over the HTML, the assets, the public files, the sw.js template and the header digest), the precache list and the asset list, and writes build-manifest.json with the profile and the header digest; a companion build also gets dist/headers.json. STARPI_META_OUT writes esbuild's metafile for the import-graph recount. `--watch --serve` rebuilds on changes and serves the result.
 
 <!-- diagram: build-pipeline-build -->
 ```mermaid
 flowchart TD
-    START(["npm run build: node scripts/build.mjs<br/>also the Vercel buildCommand"]) --> ENV["SUPABASE_URL and SUPABASE_ANON_KEY from<br/>STARPI_SUPABASE_URL and STARPI_SUPABASE_ANON_KEY,<br/>else the public project defaults"]
-    ENV --> APPV["APP_VERSION: the version field of package.json"]
-    APPV --> AK{"assertPublicKey at module load,<br/>scripts/lib/supabase-key.mjs"}
-    AK -->|"blank, or starts with sb_secret_"| FAILTOP(["uncaught Error outside main():<br/>Node prints it with the stack, exit code 1"])
-    AK -->|"JWT payload not readable,<br/>or JWT role is not anon, e.g. service_role"| FAILTOP
-    AK -->|"sb_publishable_ key or anon JWT:<br/>main() calls buildOnce"| TMPD["create .build/"]
-    TMPD --> TW["tailwindcss -c tailwind.config.js<br/>-i src/styles/app.css -o .build/tailwind.css --minify<br/>content: src/index.html and src/js JS files"]
-    TW -->|"exit status not 0"| FAIL
-    TW -->|"ok, pass 1 without URLs"| PASS["remove dist/, clear the placeholders seen"]
-    PASS --> ESB
-    subgraph sg_esb["esbuild.build into dist/assets"]
-      E1["main: src/js/main.js"]
-      E2["webllm-worker: src/js/webgpu/worker.js"]
-      E3["ingest-worker: src/js/rag/ingest.worker.js"]
-      E5["wasm-worker: src/js/wasm/worker.js"]
-      E6["supabase: src/js/supabase-lib.js,<br/>the Supabase library, loaded on first use"]
-      E4["app: src/styles/entry.css<br/>Plus Jakarta Sans font faces + .build/tailwind.css"]
-      ORT["plugin ort-wasm-only: onnxruntime-web/webgpu and<br/>onnxruntime-common resolve to onnxruntime-web/wasm,<br/>one ONNX Runtime without new Function"]
-      URLS["plugin starpi-asset-urls: onLoad of src/js files writes<br/>this pass's URLs over __STARPI_WEBLLM_WORKER_URL__,<br/>__STARPI_INGEST_WORKER_URL__, __STARPI_WASM_WORKER_URL__,<br/>__STARPI_ORT_WASM_URL__ and __STARPI_SUPABASE_LIB_URL__,<br/>none in pass 1"]
-      ESB["bundle, splitting, esm, minify, target es2022,<br/>chrome113, safari17, firefox121, linked sourcemaps<br/>and legal comments, entries name-hash, chunks chunk-hash,<br/>fonts as files, define inlines __STARPI_SUPABASE_URL__,<br/>__STARPI_SUPABASE_ANON_KEY__ and __STARPI_VERSION__"]
-      E1 --> ESB
-      E2 --> ESB
-      E3 --> ESB
-      E5 --> ESB
-      E6 --> ESB
-      E4 --> ESB
-      ORT -.- ESB
-      URLS -.- ESB
-    end
-    ESB -->|"build error"| FAIL
-    ESB --> WARN{"esbuild warnings?"}
-    WARN -->|"yes: warnings are errors"| FAIL
-    WARN -->|"no"| RES["resolveUrls: hashed URLs of the three workers<br/>and the Supabase library, copyOrtWasm: ort-wasm-simd-threaded.wasm from the<br/>onnxruntime-web dist that was bundled, written to<br/>/assets/ort-wasm-simd-threaded-sha256 16 hex.wasm"]
-    RES -->|"no output for an entry,<br/>onnxruntime-web/wasm not bundled"| FAIL
-    RES --> SETTLED{"every URL equals the one<br/>written into this pass?"}
-    SETTLED -->|"no, pass 4"| FAIL
-    SETTLED -->|"no, passes 1 to 3: next pass<br/>with these URLs, settles in pass 3"| PASS
-    SETTLED -->|"yes"| META{"metafile present and all five<br/>entry outputs found, every<br/>placeholder seen in a source file?"}
-    META -->|"no"| FAIL
-    META -->|"yes"| PUB["copyPublic: public/ copied into dist/,<br/>file list kept for the version and the precache"]
-    PUB --> HTML["src/index.html: %STARPI_APP_CSS% and<br/>%STARPI_MAIN_JS% set to the hashed URLs"]
-    HTML --> HCHK{"any %STARPI_ left?"}
-    HCHK -->|"yes"| FAIL
-    HCHK -->|"no"| WHTML["write dist/index.html"]
-    WHTML --> VER["buildVersion, scripts/lib/build-version.mjs:<br/>sha256 over index.html, the sorted asset URLs<br/>without .map and .LEGAL.txt plus the ONNX Runtime binary,<br/>each public file as URL plus bytes, then the src/sw.js<br/>template, first 12 hex chars"]
-    VER --> SHELL["precache shell: /, app CSS, main JS, ingest worker,<br/>the Latin plus-jakarta-sans woff2 when present,<br/>static imports of main, public files,<br/>/index.html, the WASM worker, the binary<br/>and the Supabase library are not listed"]
-    SHELL --> SW["src/sw.js: __STARPI_BUILD_VERSION__ gets the version,<br/>__STARPI_PRECACHE__ the deduplicated shell,<br/>__STARPI_ASSETS__ the sorted asset URLs"]
-    SW --> SCHK{"any __STARPI_ left?"}
-    SCHK -->|"yes"| FAIL
-    SCHK -->|"no"| WSW["write dist/sw.js"]
-    WSW --> MAN["write dist/build-manifest.json: version, entries<br/>mainJs, workerJs, ingestWorkerJs, wasmWorkerJs,<br/>ortWasm, appCss, supabaseJs, then assets,<br/>public, precache"]
-    MAN --> DONE(["log built main JS, app CSS,<br/>version and duration"])
-    FAIL(["main().catch prints the message,<br/>process.exit(1)"])
+    start(["npm run build"])
+    key{"assertPublicKey: publishable key<br/>or a JWT with role anon?"}
+    keyFail(["build fails before anything runs"])
+    prof{"STARPI_HEADER_PROFILE in headers.json:<br/>public, self-host, test or companion?"}
+    profFail(["build fails: unknown profile"])
+    tw["Tailwind: .build/tailwind.css"]
+    es["esbuild, splitting on: main, webllm-worker, ingest-worker,<br/>wasm-worker, integrity-worker, pcm-worklet, supabase,<br/>render-extras, app CSS; URL, key, version, profile inlined"]
+    plug["plugins: onnxruntime-web/wasm only, excluded packages replaced,<br/>hashed URLs into __STARPI_*_URL__ placeholders"]
+    settle{"URLs equal the outputs?"}
+    again["bundle again, at most 4 passes"]
+    classic["classic builds: theme-boot.js for head;<br/>render-frame.js and grounding-frame.js, one file each,<br/>their packages' licences checked"]
+    ort["copy ort-wasm-simd-threaded.wasm to a hashed /assets URL"]
+    html["rewrite index.html: hashed script, CSS and theme script"]
+    sw["sw.js: version = hash of HTML, assets, public files,<br/>template and header digest; precache and asset lists"]
+    man["build-manifest.json: version, entries, profile, header digest;<br/>companion profile: dist/headers.json"]
+    meta["STARPI_META_OUT: esbuild metafile"]
+    out(["dist/ or STARPI_DIST_DIR"])
+    start --> key
+    key -->|"no"| keyFail
+    key -->|"yes"| prof
+    prof -->|"no"| profFail
+    prof -->|"yes"| tw --> es --> plug --> settle
+    settle -->|"no"| again --> es
+    settle -->|"yes"| classic --> ort --> html --> sw --> man --> out
+    es -.-> meta
 ```
 
-<sub>Sources: [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/build-version.mjs`](../scripts/lib/build-version.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`package.json`](../package.json), [`tailwind.config.js`](../tailwind.config.js), [`src/styles/entry.css`](../src/styles/entry.css), [`src/index.html`](../src/index.html), [`src/sw.js`](../src/sw.js), [`src/js/config.js`](../src/js/config.js), [`src/js/webgpu/engine.js`](../src/js/webgpu/engine.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/js/wasm/worker.js`](../src/js/wasm/worker.js), [`src/js/supabase.js`](../src/js/supabase.js), [`vercel.json`](../vercel.json)</sub>
+<sub>Sources: [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`scripts/lib/headers.mjs`](../scripts/lib/headers.mjs), [`scripts/headers.json`](../scripts/headers.json), [`scripts/license-allowlist.json`](../scripts/license-allowlist.json), [`src/sw.js`](../src/sw.js), [`package.json`](../package.json)</sub>
 
 ### Build output gate (verify-dist.mjs)
 
-verify-dist.mjs reads build-manifest.json and index.html and runs every check, collecting problems instead of stopping at the first one; only a missing or unparsable file crashes it early. It enforces CSP-compatible HTML (no inline scripts, styles or handlers, only /assets/ scripts and stylesheets, no javascript: URLs) and checks that every referenced and precached file exists. For the service worker it requires the build version and no placeholder in sw.js, a non-empty list of public files, and a version that buildVersion recomputes to the same value from dist/index.html, the listed assets, the listed public files and the src/sw.js template. The ingest worker must be precached, /index.html must not be, and the app CSS must keep the ::highlight(starpi-review) rule that the source check uses. No JS asset may keep a placeholder, new Function or bare eval, and no JS asset, nor index.html, sw.js or build-manifest.json, may contain an NVIDIA API key (nvapi- followed by at least 20 key characters, backslashes included, so keys pasted with Markdown escapes are found too). The processor (WASM) runtime must load on first use only: the WASM worker and the ONNX Runtime binary must exist, the binary under a 16-hex-digit hashed /assets name, with the WebAssembly magic bytes, listed in the assets and referenced by a script, and neither of them, nor the Supabase library, nor any precached script that carries Transformers.js or ONNX Runtime, may be in the precache. vercel.json must carry a Content-Security-Policy without unsafe-inline or unsafe-eval. Any problem prints the list and exits 1.
+verify-dist.mjs reads build-manifest.json and the built files and collects every problem before it fails. The build must name a known header profile whose headers have not changed since the build. index.html must work under `script-src 'self'` and `style-src 'self'` (no inline scripts, styles or handlers, only /assets/ scripts and stylesheets, no javascript: URLs), every referenced and precached file must exist, sw.js must carry the build version and no placeholder, and the version must recompute to the same value. No JavaScript may keep a placeholder, `new Function` or bare `eval`, and no bundle, index.html, sw.js or the manifest may contain a provider key. The ingestion worker must be precached; /index.html, the processor worker, the ONNX Runtime binary and the Supabase library must not be. The initial JavaScript (main and its static chunks) must stay within its budget: the 2.1.0 baseline of 609,945 bytes plus the allowed headroom. The headers of the build's profile must be strict (no `unsafe-inline` or `unsafe-eval`), isolating (COOP and COEP) and identical on every file except the sandboxed frames.
 
 <!-- diagram: build-pipeline-verify-dist -->
 ```mermaid
 flowchart TD
-    START(["npm run verify:dist: node scripts/verify-dist.mjs<br/>after npm run build in npm run verify and CI"]) --> READ["read dist/build-manifest.json<br/>and dist/index.html"]
-    READ -->|"missing file or invalid JSON, here or in a later read:<br/>sw.js, public files, src/sw.js, app CSS,<br/>JS assets, vercel.json"| CRASH(["uncaught error: non-zero exit"])
-    READ --> C1
-    subgraph sg_html["1. index.html works under script-src self and style-src self"]
-      C1["every script tag has a src under /assets/<br/>and no inline content"]
-      C2["no style block and no inline style attribute"]
-      C3["no on* event handler attributes"]
-      C4["every rel=stylesheet link href is under /assets/"]
-      C5["no javascript: URL"]
-      C1 --> C2 --> C3 --> C4 --> C5
-    end
-    C5 --> R1
-    subgraph sg_refs["2. references resolve"]
-      R1["every root-relative src and href in index.html<br/>and every precache entry, except /,<br/>is a file in dist/"]
-    end
-    R1 --> S1
-    subgraph sg_sw["3. service worker and build version"]
-      S1["dist/sw.js has no __STARPI_ placeholder"]
-      S2["dist/sw.js contains manifest.version"]
-      S3["manifest.public lists at least one file"]
-      S4["buildVersion over dist/index.html, manifest.assets,<br/>the dist/ copies of manifest.public and src/sw.js<br/>equals manifest.version"]
-      S1 --> S2 --> S3 --> S4
-    end
-    S4 --> K1
-    subgraph sg_shell["offline shell and app CSS"]
-      K1["precache contains entries.ingestWorkerJs"]
-      K2["precache does not contain /index.html,<br/>/ is the only shell page"]
-      K3["the app CSS contains ::highlight(starpi-review)"]
-      K1 --> K2 --> K3
-    end
-    K3 --> J1
-    subgraph sg_js["4. every .js file in manifest.assets"]
-      J1["no __STARPI_ placeholder"]
-      J2["no new Function( call"]
-      J3["no bare eval( call,<br/>obj.eval( is not matched"]
-      J4["no NVIDIA API key: nvapi- and 20 or more<br/>key characters or backslashes, also checked<br/>in index.html, sw.js and build-manifest.json"]
-      J1 --> J2 --> J3 --> J4
-    end
-    J4 --> W1
-    subgraph sg_wasm["5. processor (WASM) runtime loads on first use"]
-      W1["entries.wasmWorkerJs exists"]
-      W2["entries.ortWasm matches /assets/ort-wasm-simd-threaded-<br/>16 hex digits .wasm, exists, starts with the<br/>WebAssembly magic bytes, is in manifest.assets"]
-      W3["neither is in the precache, a script references the binary,<br/>no precached script carries the Transformers.js<br/>download path or the binary name"]
-      W1 --> W2 --> W3
-    end
-    W3 --> P1
-    subgraph sg_csp["6. production CSP in vercel.json"]
-      P1["a Content-Security-Policy header exists"]
-      P2["no 'unsafe-inline' or 'unsafe-eval'<br/>('wasm-unsafe-eval' passes)"]
-      P1 --> P2
-    end
-    P2 --> Q{"any problem collected?"}
-    Q -->|"yes"| FAIL(["print verify-dist: N problem(s)<br/>with the list, exit 1"])
-    Q -->|"no"| OK(["verify-dist: OK with version,<br/>asset count and precache count"])
+    run(["npm run verify:dist"])
+    p0{"known profile, headers unchanged since the build?"}
+    p1{"index.html CSP-compatible: no inline script, style or handler,<br/>scripts and styles from /assets/ only?"}
+    p2{"referenced and precached files exist?"}
+    p3{"sw.js: build version, no placeholder,<br/>version recomputes the same?"}
+    p4{"no placeholder, new Function or eval in JS?"}
+    p5{"no provider key in bundles, index.html, sw.js, manifest?"}
+    p6{"ingest worker precached; index.html, WASM worker,<br/>ONNX Runtime binary, Supabase library not precached?"}
+    p7{"initial JS within the budget:<br/>2.1.0 baseline 609,945 bytes plus headroom?"}
+    p8{"profile headers strict and isolating, identical on every<br/>file except the sandboxed frames?"}
+    ok(["verify-dist: OK, initial JS share against 2.1.0"])
+    fail(["exit 1 with every problem listed"])
+    run --> p0 --> p1 --> p2 --> p3 --> p4 --> p5 --> p6 --> p7 --> p8
+    p8 -->|"all yes"| ok
+    p0 -.->|"no"| fail
+    p1 -.->|"no"| fail
+    p2 -.->|"no"| fail
+    p3 -.->|"no"| fail
+    p4 -.->|"no"| fail
+    p5 -.->|"no"| fail
+    p6 -.->|"no"| fail
+    p7 -.->|"no"| fail
+    p8 -.->|"no"| fail
 ```
 
-<sub>Sources: [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`scripts/lib/build-version.mjs`](../scripts/lib/build-version.mjs), [`package.json`](../package.json), [`vercel.json`](../vercel.json), [`scripts/build.mjs`](../scripts/build.mjs), [`src/styles/app.css`](../src/styles/app.css)</sub>
+<sub>Sources: [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`scripts/lib/headers.mjs`](../scripts/lib/headers.mjs), [`scripts/headers.json`](../scripts/headers.json), [`scripts/build.mjs`](../scripts/build.mjs)</sub>
 
-### Dev watch mode and the local static server
+### Dev watch mode, the local server and the provider fakes
 
-npm run dev runs the build with --watch --serve: after the first build (whose failure exits 1) it watches src/ and public/ with a 120 ms debounce, where rebuild errors are logged and never stop the watcher, and it spawns serve.mjs on port 3000 with --functions. npm run preview runs the same server with --functions, and the Playwright webServer runs it on STARPI_E2E_PORT (default 4173) without --functions, so the end-to-end tests never reach NVIDIA even when NVIDIA_API_KEYS is set and mock /api/* themselves. serve.mjs only serves an existing dist/ on 127.0.0.1. It applies the vercel.json header rules in file order, with (.*) as the only wildcard: every path gets the CSP and security headers, hashed assets are immutable, and /, /index.html, /sw.js and /manifest.webmanifest add their own rules, so previews and the e2e suite, workers included, run under the production CSP. With --functions, /api/chat/nvidia and /api/models/nvidia run the Vercel function modules from api/ in the same process: only for a Host that is localhost, an IP address or a host named in NVIDIA_ALLOWED_ORIGINS (a page whose name was rebound to this machine gets 403 host_not_allowed and never the developer's keys), with forwarding headers from the client dropped and x-real-ip set from the socket, the request body passed as a stream, the response streamed with backpressure and the function's request aborted when the client goes away. Files resolve as path, path.html or path/index.html inside dist/; misses return 404, HEAD returns no body, and exceptions return 500, or close the connection when a streamed response has already begun. Extensions missing from its MIME table, such as the .pdf, .csv and .md sample files, are served as application/octet-stream, while .wasm is application/wasm.
+npm run dev builds with `--watch --serve`: it rebuilds on changes of src/ and public/ (a failed rebuild is logged, the watcher goes on) and runs scripts/serve.mjs on port 3000 with `--functions`. npm run preview runs the same server on the existing dist/. serve.mjs serves dist/ on 127.0.0.1 with the headers of the build's profile (scripts/headers.json through scripts/lib/headers.mjs), so local previews and the end-to-end suite run under the real CSP and cross-origin isolation; with `--functions` it also serves the functions of api/ by the route table of vercel.json (scripts/lib/routes.mjs: every function at its own path, plus the rewrite of `/api/relay/:provider/:path*`), as Vercel does. `node scripts/serve.mjs --functions` behind a TLS proxy is also how a host without Vercel serves the app. Playwright starts serve.mjs on STARPI_E2E_PORT (default 4173) without functions, and the provider fakes (scripts/fakes, `npm run fakes`) on STARPI_FAKES_PORT and the seven ports after it: OpenAI-compatible flavors (OpenAI, xAI, Groq, Mistral, DeepSeek, OpenRouter, NVIDIA, Ollama), Anthropic, Gemini (with a Live socket), ElevenLabs, a voice server, an MCP server and a search service; outside CI an existing server on those ports is reused, so parallel worktrees need ports of their own.
 
 <!-- diagram: build-pipeline-dev-server -->
 ```mermaid
 flowchart TD
-    DEV(["npm run dev:<br/>build.mjs --watch --serve"]) --> B1["buildOnce: same steps as npm run build"]
-    B1 -->|"first build fails"| X1(["process.exit(1)"])
-    B1 -->|"ok"| WATCH["fs.watch src/ and public/ recursively"]
-    WATCH --> SPAWN["--serve: spawn node scripts/serve.mjs<br/>--port 3000 --functions"]
-    WATCH -->|"file change"| DEB["debounce 120 ms, then buildOnce<br/>(dist/ is removed and rebuilt)"]
-    DEB -->|"ok"| LOGR["log rebuilt with the new version"]
-    DEB -->|"error"| LOGE["console.error, keep watching"]
-    PREV(["npm run preview:<br/>serve.mjs --port 3000 --functions"]) --> SRV
-    SPAWN --> SRV
-    PW(["Playwright webServer: serve.mjs --port STARPI_E2E_PORT,<br/>default 4173, without --functions,<br/>reuses a running server only outside CI,<br/>waits up to 30 s for /"]) --> SRV
-    SRV["serve.mjs on 127.0.0.1 serves the existing dist/,<br/>it never builds"] --> RULES["header rules from vercel.json via toRegExp:<br/>(.*) is the only wildcard, the rest is literal,<br/>every matching rule applies in file order"]
-    RULES --> REQ{"request pathname"}
-    REQ -->|"every path, rule /(.*)"| H1["CSP, nosniff, X-Frame-Options, Referrer-Policy,<br/>COOP, HSTS, Permissions-Policy"]
-    REQ -->|"/, /index.html, /sw.js,<br/>/manifest.webmanifest"| H2["plus the exact-source rule: Cache-Control,<br/>Service-Worker-Allowed or Content-Type"]
-    REQ -->|"/assets/(.*)"| H3["plus Cache-Control: public,<br/>max-age=31536000, immutable"]
-    H1 --> FN
-    H2 --> FN
-    H3 --> FN
-    FN{"--functions and the path is<br/>/api/chat/nvidia or /api/models/nvidia?"}
-    FN -->|"yes"| HOST{"Host is localhost, an IP address<br/>or a host of NVIDIA_ALLOWED_ORIGINS?"}
-    HOST -->|"no, e.g. a rebound DNS name"| F403(["403 host_not_allowed"])
-    HOST -->|"yes"| METH{"the module exports<br/>the request method?"}
-    METH -->|"no, e.g. HEAD"| F405(["405 Method not allowed"])
-    METH -->|"yes"| RUN["Request: client forwarding headers dropped,<br/>x-real-ip from the socket, body as a stream,<br/>aborted when the client closes"]
-    RUN --> HANDLER["POST or GET handler from api/,<br/>handleChat or handleModels with<br/>runtimeDeps from the environment"]
-    HANDLER --> FOUT(["status and headers of the function,<br/>body streamed with backpressure,<br/>reader cancelled when the client goes away"])
-    FN -->|"no"| RES
-    RES{"resolveFile: path, path.html or<br/>path/index.html inside dist/?<br/>/ maps to /index.html"}
-    RES -->|"none, or outside dist/"| NF(["404 Not found"])
-    RES -->|"found"| CT["Content-Type from the MIME table unless a rule<br/>already set it, .wasm application/wasm,<br/>application/octet-stream for other extensions<br/>such as .pdf, .csv and .md"]
-    CT --> HEAD{"HEAD request?"}
-    HEAD -->|"yes"| HEND(["end without a body"])
-    HEAD -->|"no"| STREAM(["stream the file"])
-    RES -->|"exception, e.g. malformed<br/>percent-encoding"| E500(["500 with the error text,<br/>or the connection closed when<br/>a function response had begun"])
+    dev(["npm run dev"]) --> watch["build.mjs --watch --serve:<br/>rebuild on src/ and public/ changes"]
+    watch --> serveF["serve.mjs --port 3000 --functions"]
+    preview(["npm run preview"]) --> serveF
+    serveF --> hdr["headers of the build's profile from headers.json"]
+    serveF --> fn["api/ functions by the vercel.json route table:<br/>own paths plus /api/relay/:provider/:path*"]
+    selfhost(["host without Vercel: serve.mjs --functions behind TLS"]) --> serveF
+    e2e(["npm run test:e2e"]) --> pw["Playwright webServer"]
+    pw --> serveE["serve.mjs --port STARPI_E2E_PORT (4173), no functions"]
+    pw --> fakes["scripts/fakes on STARPI_FAKES_PORT (4610) + 0..7:<br/>list, openai flavors, anthropic, gemini and Live,<br/>elevenlabs, voice, mcp, search"]
+    serveE --> hdr
+    reuse["outside CI: an existing server on the port is reused"] -.-> pw
 ```
 
-<sub>Sources: [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/serve.mjs`](../scripts/serve.mjs), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`api/models/nvidia.js`](../api/models/nvidia.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`package.json`](../package.json), [`playwright.config.mjs`](../playwright.config.mjs), [`tests/e2e/fixtures.mjs`](../tests/e2e/fixtures.mjs), [`vercel.json`](../vercel.json)</sub>
+<sub>Sources: [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/serve.mjs`](../scripts/serve.mjs), [`scripts/lib/routes.mjs`](../scripts/lib/routes.mjs), [`scripts/lib/headers.mjs`](../scripts/lib/headers.mjs), [`scripts/fakes/index.mjs`](../scripts/fakes/index.mjs), [`playwright.config.mjs`](../playwright.config.mjs), [`vercel.json`](../vercel.json)</sub>
 
 ### Command-line tools beside the build
 
-Seven more npm scripts sit outside the build and deploy path; of them, CI runs pack:core directly in the frontend job and sbom in the audit job, and release.yml runs both. verify:receipt checks an answer receipt against the original files with the extraction and chunking code the app uses: it matches files by their SHA-256 fingerprint, not by name, re-extracts them, compares the passage at the recorded offsets and the recorded chunk, and recomputes the source check, with the rules version the receipt records, for every statement whose cited excerpts, and the other excerpts its reasons name, are available, using only the first deliveredChars characters of an excerpt that reached the model in part. For a starpi.receipt/v2 receipt it also recomputes the Merkle root, checks every inclusion proof and checks the signature, if there is one, against the public key given with --public-key (a JWK or PEM file) or else the key embedded in the receipt. It exits 0 when every workspace excerpt was reproduced and the tree and any signature are valid, 1 when something does not match, a file is missing, the root or an inclusion proof fails, the signature is invalid, made with another key or cannot be checked, or a --public-key was given and the receipt is not validly signed with it, and 2 on a usage error, a key file importPublicKey refuses or an invalid receipt, which includes a member or reason code the format does not define. In the text report, strings from the receipt and the given file names (labels, the creation time, the engine, file names in the checks and warnings) are printed with control and bidirectional characters escaped, so a crafted receipt cannot rewrite report lines in a terminal. The app does not sign receipts, so a pass on one of them shows that the cited excerpts can be reproduced from the given files; it does not prove that the receipt is authentic, what a model saw, or that the answer is right. build:core bundles the @starpi/core package (an npm workspace of the root package, which declares Node.js 22.13 or newer and has the app's version) from the app's own modules, including the same verifier and starpi-ground (scripts/ground.mjs, which has no npm script of its own, see source-check-ground-cli) as packaged commands, and pack:core runs npm pack --workspace=@starpi/core --dry-run, whose prepack script runs build:core with type declarations, and lists the package contents without publishing anything; release.yml packs the same way into a real tarball. sbom (scripts/sbom.mjs) writes CycloneDX SBOMs of the app and of @starpi/core from package-lock.json with npm sbom --package-lock-only, without installing anything, and scripts/lib/sbom.mjs makes them deterministic and validates them before they are written. eval:source-check measures the source check on labelled answers with either version of the rules, leaving out the held-out sets (holdout and v2holdout) unless --unblind is given and refusing a v2 held-out file whose SHA-256 differs from the one committed before the version 2 rules were written (docs/eval/v2-protocol.md), and docs:sync copies atlas diagrams into the Markdown files that embed them. nvidia:ping is a maintainer tool that CI never runs, because it spends real quota: it reads NVIDIA_API_KEYS the way the proxy does (exit 2 without a valid key), asks GET /v1/models once which allowlisted ids exist, sends one small streamed request per model, moving to the next key on 429, and prints only id, status, first-byte time and whether reasoning and content arrived, never a key, header or body; it exits 1 when a model fails, an id is not listed or the list cannot be read. The unit tests run verify-receipt.mjs, ground.mjs, build-core.mjs, sbom.mjs and the evaluation.
+The tools beside the build fall into four groups. Checks that CI runs: `npm run verify` (lint, typecheck, unit tests, build, verify:dist, headers:check, license:check, eol:check), `hygiene:check` (private paths and internal identifiers), `pack:core` (a typed build of `@starpi/core` and `npm pack --dry-run`), `test:companion` and `typecheck:companion`, `sbom` (CycloneDX for the app with an ML-BOM of the on-device models, and for `@starpi/core`), `docs:sync -- --check`, and the companion's dependency and licence checks. Generators that a maintainer runs and commits: `headers:gen` (vercel.json from headers.json), `models:sync` (the catalog snapshot from the providers' model lists), `models:lock` (the SHA-256 lock of on-device model files; `--check` in the weekly workflow), `icons:gen` and `docs:sync`. Tools with real keys or real services, for maintainers before a release: `providers:ping` (every provider and pool), `nvidia:ping` (the NVIDIA list) and `eval:answers` (answer quality of a model per language). Tools for users and releases: `verify:receipt` and the package commands `starpi-verify-receipt`, `starpi-ground` and `starpi-gate`, `eval:source-check` (the labelled answer sets, with `--grounding 1|2|3`), `npm run fakes`, scripts/companion-offline-pack.mjs (the offline bundle with SHA256SUMS) and scripts/sign-release.mjs (the Ed25519 signature of SHA256SUMS, Node built-ins only).
 
 <!-- diagram: build-pipeline-cli-tools -->
 ```mermaid
-flowchart TD
-    subgraph sg_receipt["npm run verify:receipt: scripts/verify-receipt.mjs receipt.json [file ...] [--public-key key] [--json]"]
-      V1{"options known, --public-key with a file,<br/>receipt path given and readable,<br/>at most RECEIPT_LIMITS.bytes 2000000,<br/>JSON, and validateReceipt passes:<br/>limits, types, no unknown member or reason code?"}
-      VK{"no --public-key, or importPublicKey<br/>reads the file as a JWK or PEM public key?"}
-      V2{"every given file readable?"}
-      V3["verifyReceipt with EXTRACTOR and extractText<br/>from src/js/rag/parser.js and the public key:<br/>v2 Merkle root, inclusion proofs and signature,<br/>file by SHA-256 fingerprint, extracted text,<br/>passage at the recorded offsets, chunk rebuilt,<br/>source check recomputed with the recorded rules version<br/>for statements whose excerpts are available, a partly<br/>delivered excerpt cut to its recorded deliveredChars"]
-      V4{"receipt id and answer hash match,<br/>every workspace excerpt has file match<br/>and passage match, no excerpt differs<br/>from its recorded fingerprint, root and every proof<br/>valid, signature valid or unsigned, and valid<br/>with the given key when there is one?"}
-      V1 -->|"yes"| VK
-      VK -->|"yes"| V2
-      V2 -->|"yes"| V3 --> V4
+flowchart LR
+    subgraph ci["Checks CI runs"]
+        verify["npm run verify: lint, typecheck, test,<br/>build, verify:dist, headers:check,<br/>license:check, eol:check"]
+        hyg["hygiene:check"]
+        pack["pack:core"]
+        comp["test:companion, typecheck:companion,<br/>companion-deps-check, companion-license-check"]
+        sbom["sbom: app with ML-BOM, @starpi/core"]
+        sync["docs:sync -- --check"]
     end
-    V1 -->|"no"| X2(["usage message on stderr, exit 2"])
-    VK -->|"no"| X2
-    V2 -->|"no"| X2
-    V4 -->|"no"| X1(["report, exit 1"])
-    V4 -->|"yes"| X0(["report, exit 0"])
-    REP["report: ok or FAIL per check, the Merkle line or<br/>n/a for format v1, the signature line, knowledge-base<br/>excerpts n/a, N/M workspace excerpts reproduced,<br/>verdicts that now differ, or JSON with --json;<br/>control and bidi characters in receipt strings<br/>and file names printed as escapes in the text report"]
-    V4 -.- REP
-    subgraph sg_core["npm run build:core: scripts/build-core.mjs [--out dir] [--no-types]"]
-      C1["remove and recreate the output directory,<br/>default packages/core/dist"]
-      C2["esbuild: packages/core/src/index.js to index.js,<br/>platform neutral, es2022, pdfjs-dist external"]
-      C3["esbuild: scripts/verify-receipt.mjs to verify-receipt.js<br/>and scripts/ground.mjs to ground.js, the bins<br/>starpi-verify-receipt and starpi-ground,<br/>platform node, target node20, pdfjs-dist external;<br/>packages/core/package.json engines: node 22.13 or newer"]
-      C4["unless --no-types: tsc -p packages/core/tsconfig.build.json<br/>into types/, then index.d.ts"]
-      C1 --> C2 --> C3 --> C4
+    subgraph gen["Generators, output committed"]
+        hgen["headers:gen: vercel.json from headers.json"]
+        msync["models:sync: catalog snapshot"]
+        mlock["models:lock: SHA-256 lock, --check weekly"]
+        icons["icons:gen"]
+        docs["docs:sync"]
     end
-    PACK["npm run pack:core, also in the CI frontend job:<br/>npm pack --workspace=@starpi/core --dry-run,<br/>its prepack script runs build-core.mjs"] --> C1
-    SBOM["npm run sbom [--out dir]: scripts/sbom.mjs,<br/>npm sbom --package-lock-only for the app and for<br/>--workspace @starpi/core, normalized and validated<br/>by scripts/lib/sbom.mjs, CI audit job and release.yml"]
-    TSBOM["sbom.test.mjs: two runs of scripts/sbom.mjs<br/>write identical files"] -.-> SBOM
-    TCORE["core-package.test.mjs: build-core.mjs --out a temp dir<br/>--no-types, both commands start with a shebang,<br/>the bundle checks an answer and builds a receipt,<br/>the bundled verify-receipt.js reproduces it with a valid tree,<br/>the bundled ground.js writes SARIF with missing_fact, exit 1,<br/>and exits 2 without arguments, package.json: both bins,<br/>files cover every entry point, public, a workspace,<br/>the app's version"] -.-> C1
-    TREC["receipt.test.mjs and receipt-v2.test.mjs run verify-receipt.mjs:<br/>exit 0 with the file, 1 without it, 2 for another schema<br/>and for no arguments; with v2 receipts: tree and signature<br/>lines, exit 1 for another key, an unsigned receipt with a key,<br/>a forged signature or a broken proof, 2 for a private key,<br/>the 1.3.0 receipt still exit 0"] -.-> V1
-    EV["npm run eval:source-check [--sets list] [--grounding 1 or 2]<br/>[--variants] [--unblind] [--json]: labelled answers in eval.json,<br/>eval-v2-dev.json, eval-v2-holdout.json and paraphrases.json<br/>against the sample files, kb-sample.json, sources-v2.json and<br/>the paraphrase sources, per set dev, holdout, v2dev, v2holdout<br/>and paraphrases: false alarms, planted errors caught,<br/>flagged or missed; holdout and v2holdout only with --unblind,<br/>eval-v2-holdout.json checked against eval-v2-holdout.sha256"]
-    TEV["source-check-eval.test.mjs: thresholds on the same<br/>summarize results for rules versions 1 and 2,<br/>see the unit tests below"] -.->|"imports loadItems, loadV2Items,<br/>loadParaphrases, loadCorpora, summarize"| EV
-    DS["npm run docs:sync: copy each diagram of docs/ARCHITECTURE.md<br/>into the Markdown files that embed its id,<br/>with --check change nothing and exit 1 on an outdated copy,<br/>an unknown id exits 1 in both modes"]
-    TDOC["docs.test.mjs: every embedded copy<br/>equals the atlas diagram"] -.- DS
-    NP["npm run nvidia:ping: scripts/nvidia-ping.mjs, maintainer only,<br/>not in CI, real quota: NVIDIA_API_KEYS parsed like the proxy,<br/>exit 2 without a valid key, GET /v1/models once,<br/>one streamed request per allowlisted model, max_tokens 256,<br/>next key on 429, prints id, status, first-byte ms,<br/>reasoning and content flags only, exit 1 on any failure"]
+    subgraph keys["Maintainers with real keys"]
+        ping["providers:ping, nvidia:ping"]
+        evala["eval:answers"]
+    end
+    subgraph users["Users and releases"]
+        vr["verify:receipt, starpi-verify-receipt"]
+        gr["starpi-ground, starpi-gate"]
+        evals["eval:source-check --grounding 1, 2 or 3"]
+        fakes["npm run fakes"]
+        offline["companion-offline-pack.mjs: bundle + SHA256SUMS"]
+        signr["sign-release.mjs: Ed25519 SHA256SUMS.sig"]
+    end
 ```
 
-<sub>Sources: [`package.json`](../package.json), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/core/signature.js`](../src/js/core/signature.js), [`scripts/ground.mjs`](../scripts/ground.mjs), [`scripts/build-core.mjs`](../scripts/build-core.mjs), [`packages/core/package.json`](../packages/core/package.json), [`packages/core/src/index.js`](../packages/core/src/index.js), [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`tests/fixtures/grounding/eval-v2-holdout.sha256`](../tests/fixtures/grounding/eval-v2-holdout.sha256), [`docs/eval/v2-protocol.md`](eval/v2-protocol.md), [`scripts/sync-diagrams.mjs`](../scripts/sync-diagrams.mjs), [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`scripts/lib/sbom.mjs`](../scripts/lib/sbom.mjs), [`tests/unit/receipt.test.mjs`](../tests/unit/receipt.test.mjs), [`tests/unit/receipt-v2.test.mjs`](../tests/unit/receipt-v2.test.mjs), [`tests/unit/sbom.test.mjs`](../tests/unit/sbom.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`tests/unit/source-check-eval.test.mjs`](../tests/unit/source-check-eval.test.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`scripts/nvidia-ping.mjs`](../scripts/nvidia-ping.mjs), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs)</sub>
+<sub>Sources: [`package.json`](../package.json), [`scripts/gen-headers.mjs`](../scripts/gen-headers.mjs), [`scripts/sync-model-catalog.mjs`](../scripts/sync-model-catalog.mjs), [`scripts/models-lock.mjs`](../scripts/models-lock.mjs), [`scripts/provider-ping.mjs`](../scripts/provider-ping.mjs), [`scripts/nvidia-ping.mjs`](../scripts/nvidia-ping.mjs), [`scripts/eval-answers.mjs`](../scripts/eval-answers.mjs), [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`scripts/verify-receipt.mjs`](../scripts/verify-receipt.mjs), [`scripts/ground.mjs`](../scripts/ground.mjs), [`scripts/gate.mjs`](../scripts/gate.mjs), [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`scripts/public-hygiene.mjs`](../scripts/public-hygiene.mjs), [`scripts/companion-offline-pack.mjs`](../scripts/companion-offline-pack.mjs), [`scripts/companion-deps-check.mjs`](../scripts/companion-deps-check.mjs), [`scripts/companion-license-check.mjs`](../scripts/companion-license-check.mjs), [`scripts/sign-release.mjs`](../scripts/sign-release.mjs), [`scripts/sync-diagrams.mjs`](../scripts/sync-diagrams.mjs)</sub>
 
 ### CI jobs and the test layers they run
 
-The CI workflow runs six jobs on pushes and pull requests to main (and on manual dispatch). The frontend job runs lint, typecheck, the node:test unit suite of 38 files with 479 tests (including the documentation test, a build of @starpi/core into a temporary directory, two runs of the SBOM generator and the NVIDIA proxy with injected fetch and real timers), a typed build and dry-run pack of @starpi/core, the production build and verify-dist, then uploads dist, which the e2e job reuses to run Playwright under the production headers: the app spec, the trust spec with its axe accessibility scan, the model picker and chat mode specs with a mocked NVIDIA proxy, and the Mermaid render gate, 94 test runs on two projects. The backend job lints, byte-compiles and runs the offline unittest suite of the library publisher, 76 tests, on Python 3.11 and 3.13. The database job installs PostgreSQL 16 with pgvector and runs the RLS harness, whose rls_test.sql has 220 checks in the fresh and fresh_rerun scenarios and 227 in the three scenarios seeded with legacy rows. The audit job runs npm audit on the lockfile, failing on any advisory in a runtime dependency and only warning about development tooling, and pip-audit on the library publisher's requirements, then writes CycloneDX SBOMs of the app and of @starpi/core from the lockfile and uploads them, and the secrets job scans the tree, and on pull requests the new commits, with a checksum-verified gitleaks. npm run verify repeats the frontend gate locally.
+ci.yml runs on pushes and pull requests to main and by hand. The frontend job runs lint, typecheck, the unit suite, pack:core, the production build, verify:dist, headers:check, the licence gate, the end-of-life register and the public hygiene check, and uploads dist; e2e reuses that dist and runs Playwright on a desktop and a mobile Chromium project under the production headers, against a mocked Supabase and the provider fakes. The companion job runs the companion's typecheck, tests, dependency and licence checks and an install of the offline bundle from its tarball on Node 22 and 24; companion-systemd runs the bundle under a systemd user manager (a transient unit with readiness and watchdog, then the installed user unit); voice-server runs the local voice server's lint and tests with fake engines on Python 3.11 and 3.13; backend runs the library publisher's on 3.11 and 3.13; database runs the migration and RLS suite on PostgreSQL 16 with pgvector; audit runs npm audit (runtime fails, development reported), pip-audit and the SBOMs; secrets runs gitleaks. Beside it, codeql.yml, workflow-lint.yml (actionlint and zizmor) and model-lock.yml (weekly) run.
 
 <!-- diagram: test-strategy-ci-gates -->
 ```mermaid
 flowchart LR
-    trig(["CI workflow: push to main, pull_request to main,<br/>workflow_dispatch, permissions contents read,<br/>concurrency cancels the older run"])
-
-    subgraph jobFront["Job frontend: Node 22, npm ci --ignore-scripts"]
-        lint["npm run lint<br/>ESLint, eslint.config.mjs"]
-        tc["npm run typecheck<br/>tsc -p tsconfig.json --noEmit"]
-        unit["npm test<br/>node --test on the 38 tests/unit/*.test.mjs files, 479 tests,<br/>docs.test.mjs, core-package.test.mjs, sbom.test.mjs<br/>and nvidia-proxy.test.mjs included"]
-        pack["npm run pack:core<br/>typed build of @starpi/core, npm pack --dry-run"]
-        build["npm run build<br/>scripts/build.mjs"]
-        verify["npm run verify:dist<br/>scripts/verify-dist.mjs: dist/ is CSP-compatible,<br/>referenced assets exist, sw.js carries the recomputed version"]
-        art[("artifact dist, kept 3 days")]
+    trig(["push or pull request to main, or by hand"])
+    subgraph ciy["ci.yml"]
+        fe["frontend: lint, typecheck, unit tests, pack:core, build,<br/>verify:dist, headers:check, license:check, eol:check, hygiene"]
+        e2e["e2e: Playwright, desktop and mobile Chromium,<br/>production headers, mocked Supabase, provider fakes"]
+        comp["companion, Node 22 and 24: typecheck, tests,<br/>dependency and licence checks, offline bundle install"]
+        sysd["companion-systemd: transient unit, then the user unit"]
+        voice["voice-server, Python 3.11 and 3.13: ruff, compile, tests"]
+        be["backend, Python 3.11 and 3.13: library publisher"]
+        db["database: PostgreSQL 16 + pgvector, run_rls_tests.sh"]
+        aud["audit: npm audit, pip-audit, SBOM artifact"]
+        sec["secrets: gitleaks tree and pull request commits"]
     end
-
-    subgraph jobE2e["Job e2e, needs frontend"]
-        dl["download artifact dist,<br/>npx playwright install --with-deps chromium"]
-        pw["npm run test:e2e<br/>app.spec.mjs 17 tests, trust.spec.mjs 13,<br/>models.spec.mjs 8 and modes.spec.mjs 8,<br/>on desktop-chromium and mobile-chromium,<br/>docs-diagrams.spec.mjs skipped on mobile, mermaid 12.1.0,<br/>94 test runs in all"]
-        rep[("on failure: playwright-report<br/>and test-results, kept 7 days")]
+    subgraph other["other workflows"]
+        codeql["codeql.yml: every change and weekly"]
+        wl["workflow-lint.yml: actionlint, zizmor"]
+        ml["model-lock.yml: weekly models:lock --check"]
     end
-
-    subgraph jobBack["Job backend, library publisher, matrix Python 3.11 and 3.13"]
-        ruff["ruff check tools/library-publisher backend,<br/>ruff format --check tools/library-publisher backend"]
-        comp["python -m compileall -q tools/library-publisher backend"]
-        ut["python -m unittest discover in tools/library-publisher, 76 tests<br/>chunker, config, structurer, e5 prefixes, mean pooling and<br/>L2 norm with a fake session, pinned model files with a fake hub,<br/>Supabase payloads, shared-row filters and errors,<br/>pipeline and every command against MockTransport<br/>the test against the real model is skipped without<br/>PUBLISHER_TEST_MODEL_DIR"]
-    end
-
-    subgraph jobDb["Job database"]
-        apt["apt-get install postgresql-16,<br/>postgresql-16-pgvector"]
-        rls["bash backend/supabase/tests/run_rls_tests.sh<br/>PG_BIN /usr/lib/postgresql/16/bin<br/>live, fresh, fresh_rerun, legacy_v2, legacy_v1,<br/>guard, guard_order, guard_vectors, schema parity via pg_dump<br/>rls_test.sql: 220 checks, 227 with legacy rows"]
-    end
-
-    subgraph jobAudit["Job audit"]
-        npmRt["npm audit --omit=dev --audit-level=low<br/>any advisory in a runtime dependency fails"]
-        npmAll["npm audit --audit-level=high<br/>development tooling: warning only"]
-        pipAud["pip-audit -r backend/requirements-dev.txt<br/>any advisory fails"]
-        sbom["npm run sbom, also after a failed audit step<br/>CycloneDX 1.5 SBOMs of the app and of @starpi/core<br/>from package-lock.json, artifact sbom, kept 30 days"]
-    end
-
-    subgraph jobSec["Job secrets"]
-        gl["gitleaks 8.30.1 download,<br/>sha256sum -c checksum"]
-        glDir["gitleaks dir . --config .gitleaks.toml<br/>--redact --exit-code 1"]
-        glPr["gitleaks git over BASE_SHA..HEAD_SHA<br/>commits of the pull request"]
-    end
-
-    local["Local gate npm run verify:<br/>lint, typecheck, test, build, verify:dist"]
-
-    trig --> lint
-    trig --> ruff
-    trig --> apt
-    trig --> npmRt
-    trig --> gl
-    lint --> tc --> unit --> pack --> build --> verify --> art
-    art -->|"built once, reused"| dl --> pw
-    pw -.->|"failure"| rep
-    ruff --> comp --> ut
-    apt --> rls
-    npmRt --> npmAll --> pipAud --> sbom
-    gl --> glDir
-    glDir -->|"pull_request only"| glPr
-    local -.->|"same steps as"| lint
+    trig --> fe
+    fe -->|"dist artifact"| e2e
+    trig --> comp
+    trig --> sysd
+    trig --> voice
+    trig --> be
+    trig --> db
+    trig --> aud
+    trig --> sec
+    trig --> codeql
+    trig --> wl
 ```
 
-<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`package.json`](../package.json), [`tools/library-publisher/publisher/tests/test_cli.py`](../tools/library-publisher/publisher/tests/test_cli.py), [`tools/library-publisher/publisher/tests/test_embedder.py`](../tools/library-publisher/publisher/tests/test_embedder.py), [`backend/supabase/tests/run_rls_tests.sh`](../backend/supabase/tests/run_rls_tests.sh), [`backend/supabase/tests/rls_test.sql`](../backend/supabase/tests/rls_test.sql), [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`playwright.config.mjs`](../playwright.config.mjs), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs), [`tests/e2e/app.spec.mjs`](../tests/e2e/app.spec.mjs), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/models.spec.mjs`](../tests/e2e/models.spec.mjs), [`tests/e2e/modes.spec.mjs`](../tests/e2e/modes.spec.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs)</sub>
+<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`.github/workflows/codeql.yml`](../.github/workflows/codeql.yml), [`.github/workflows/workflow-lint.yml`](../.github/workflows/workflow-lint.yml), [`.github/workflows/model-lock.yml`](../.github/workflows/model-lock.yml), [`package.json`](../package.json), [`playwright.config.mjs`](../playwright.config.mjs)</sub>
 
 ### Unit tests grouped by concern
 
-npm test runs the 38 tests/unit/*.test.mjs files (479 tests) with the built-in node:test runner in the frontend CI job; 26 of them are grouped here, the other 12 in the next diagram. Security and UI contract tests cover the sanitizer (on a real jsdom DOM), server URL validation (http only for localhost and 127.0.0.1), the CSP and build settings in vercel.json, handler and icon coverage, and dictionary parity including keys built at run time and plural forms. Retrieval tests pin exact BM25 scores, chunk boundaries, parser error codes (with a generated PDF from tests/fixtures/pdf.mjs) and CSV rows, citation labels, context fences that are never cut and the merge of workspace and knowledge-base hits, and grounded offline answers. Model tests pin the prompts of both chat modes and the fitting of NVIDIA requests, the 13 WebGPU presets and their test-coupled README table, the device classes and recommendations, the picker groups, the pinned WASM catalog with its README table, its download pins and the WASM-only ONNX Runtime bundle, and the benchmark metrics. Chat tests pin the SSE parser and stream assembler, the NVIDIA browser client with its error mapping and partial answers, the chat export and the code copy buttons. The NVIDIA proxy tests run the guards, the shared validation vectors in backend/test_fixtures/nvidia_validation.json, the key router with injected fetch and real but short timers, the stream relay and the Vercel wiring, and the catalog tests check the README table against the catalog and scan every tracked file for NVIDIA keys. Build tests pin buildVersion, assertPublicKey, the typecheck coverage of every @ts-check module and every server module under api/, and the CycloneDX SBOMs (deterministic, valid, one entry per package, @starpi/core without dependencies), and docs.test.mjs keeps every documentation diagram single-sourced in docs/ARCHITECTURE.md and checks relative links and heading anchors in every Markdown file.
+npm test runs the 191 `tests/unit/*.test.mjs` files with the built-in node:test runner. They group by the area they pin: the AI layer (adapters per wire format, contract, stream, SSE, transports and their selection, the router, roles, purposes, the model wheel, Auto's routing and the context packs, search, 30 files), providers, pools, the relay and keys (the guards, pool requests and health, the relay's logs and ping, the key store, the vault and the 2.x key move, origins and routes, the NVIDIA catalog and proxy, the fakes, 17), the chat (thread, turns, runner, tree, store and its migration, sidebar, attachments, composer, tools, export v2, canvas, compare and council, memory, projects and assistants, answer labels, web check and passages, 34), tools and MCP (5), voice, Live and research (10), the companion's browser side and tooling (9), storage and sync (IndexedDB, OPFS, quota, migrations, the sync engine, crypto, wire format and view, workspace persistence and scope, Supabase reconnect, 15), the source check, the sentence gate and receipts (33, next diagram), workspace formats and retrieval (9), on-device models (catalogs, device classes and budgets, benchmark history, integrity, diagnostics, 14), the shell, UI and i18n (8), and repository and release gates (documentation, hygiene, licence gate, end-of-life register, SBOMs, typecheck coverage, 7).
 
 <!-- diagram: test-strategy-unit -->
 ```mermaid
 flowchart LR
-    runner(["npm test: node --test tests/unit/*.test.mjs, 38 files, 479 tests<br/>CI job frontend, also inside npm run verify<br/>26 files here, 12 in the next diagram"])
-
-    subgraph gSec["Security and UI contracts"]
-        render["render.test.mjs, real DOM via jsdom<br/>escapeHtml, renderMarkdown drops scripts, handlers, styles,<br/>images, iframes, javascript: and data: links, data-*, class, id,<br/>https links get rel noopener noreferrer nofollow,<br/>escapeMarkdown, sanitizeModelNames on whole words"]
-        config["config.test.mjs, constants from setup.mjs<br/>normalizeServerUrl: https anywhere, http only on localhost<br/>and 127.0.0.1, http://[::1] rejected, normalizeMode,<br/>normalizeChatMode, callGemini in both chat modes, classifyError,<br/>vercel.json CSP: script-src self wasm-unsafe-eval, no unsafe-*,<br/>object-src, frame-ancestors, base-uri none, img-src without https:,<br/>output dist, npm ci --ignore-scripts, microphone self"]
-        actions["actions.test.mjs, static scan of src/<br/>every data-action and data-change has a handler and vice versa,<br/>no inline on* attributes, lucide icons bundled exactly as used,<br/>no emoji, icon-only buttons named, aria-labels translatable"]
-        i18n["i18n.test.mjs<br/>en.json and de.json: same keys and placeholders, no empty values,<br/>German differs, every key used in src/ resolves without fallback,<br/>also keys built at run time, e.g. engine errors, a source check<br/>reason for every code in REASON_CODES, receipt checks,<br/>sample questions, voice errors, t() interpolation, key fallback,<br/>singular for a count of 1, plural otherwise"]
-    end
-
-    subgraph gRag["Workspace, retrieval and offline answers"]
-        parser["parser.test.mjs with tests/fixtures/pdf.mjs makePdf<br/>extensions, BOM and control characters, JSON flattening,<br/>UTF-8 split across stream chunks, PDF text via pdf.js,<br/>error codes for unsupported, empty and broken files,<br/>CSV quoting, header rows as column: value lines"]
-        chunker["chunker.test.mjs<br/>500-character windows with 50 overlap,<br/>paragraph, sentence, word boundaries,<br/>surrogate pairs kept, linear time, invalid options"]
-        bm25["bm25.test.mjs<br/>tokenize, exact Okapi BM25 with k1 1.2 and b 0.75,<br/>idf, saturation, ties, topK, removal equals never added"]
-        retrieval["retrieval.test.mjs<br/>rankHitsLocally, distinctSources, citation labels,<br/>excerpt truncation, buildContext fencing and size limit,<br/>no fence left open at any budget, cut excerpts end with an ellipsis,<br/>mergeHits: slot split, a strong knowledge-base hit kept,<br/>pinned hits of an attached file kept"]
-        synth["synthesizer.test.mjs<br/>splitSentences, answers only with source sentences<br/>and cites each, admits no match, lists documents,<br/>isGreeting, escapes titles against Markdown links,<br/>describeTrace, describeChatTrace"]
-    end
-
-    subgraph gModel["Prompts, models, device tiers and diagnostics"]
-        prompts["prompts.test.mjs<br/>identity per language, grounding, prompt-injection<br/>and citation rules, context block, readiness prompt,<br/>free-chat rules, the attached file fenced as data,<br/>historyWindow, excerptForChat, fitNvidiaMessages:<br/>oldest pairs first, UTF-8 byte budget, excerpts cut last<br/>with their closing lines, cutFenced, WebLLM load progress"]
-        models["models.test.mjs<br/>13 presets only from the pinned WebLLM prebuilt list,<br/>f32 fallback, VRAM and tier classes, context limits,<br/>README WebGPU table, normalizePreference migrates 2.0 keys,<br/>chooseModel: WASM without WebGPU, explicit runtimes kept,<br/>never T3 automatically, detectMobile, budgetPrompt turnChars"]
-        device["device.test.mjs<br/>classifyDevice for every class, recommendModels<br/>per class, hardwareBadges with keys in every locale,<br/>pure model modules touch no browser globals"]
-        choices["choices.test.mjs<br/>parseAssistantChoice refuses values the pickers never offer,<br/>choiceValue, group order with every preset once,<br/>recommended and pro picks, NVIDIA group per proxy state,<br/>optionParts order, keys in both locales,<br/>model names never in the locale files"]
-        wasmcat["wasm-catalog.test.mjs<br/>pinned revisions and every downloaded file,<br/>sizes and context, cache name outside starpi-,<br/>pinnedWasmUrl refuses other repos and revisions,<br/>README WASM table, Transformers.js pinned exactly,<br/>a WASM-only ONNX Runtime bundle the CSP allows"]
-        diag["diagnostics.test.mjs<br/>computeBenchmarkMetrics: TTFT and decode throughput<br/>from timestamps, no throughput it did not measure,<br/>formatBytes, BYTE_LIMITS"]
-    end
-
-    subgraph gChat["Chat streaming, export and the answer runner"]
-        cstream["chat-stream.test.mjs<br/>createSseParser at every chunk boundary, CRLF and CR,<br/>multi-line data, a final unterminated event, too long throws,<br/>assembler: content, reasoning in a think block, tags split<br/>over deltas, finish_reason and DONE, only an error code kept,<br/>size limit, splitReasoning, splitStreamingText"]
-        nvclient["chat-runner.test.mjs<br/>runAnswer asks the next model only while nothing was answered,<br/>every call is an attempt the wheel hears, a paused answer is<br/>sent back with its content and merged into one answer,<br/>continuations capped, merged citations shifted"]
-        cexport["chat-export.test.mjs<br/>chatToJson schema starpi.chat/v1 without internal fields,<br/>chatToMarkdown with engine labels and closed code fences,<br/>exportFileName dated and safe"]
-        codeb["code-blocks.test.mjs, jsdom<br/>one copy button per code block, idempotent,<br/>source-check blocks unchanged, clipboard copy<br/>without the trailing newline, selection fallback"]
-    end
-
-    subgraph gNv["NVIDIA proxy and catalog"]
-        nvproxy["nvidia-proxy.test.mjs<br/>parseKeys, parseOrigins, the shared validation vectors,<br/>no catalog extra overrides a validated field, key router:<br/>round robin, failover on 429, 5xx, 408, network, timeouts and<br/>empty streams, cooldowns, 401 and 403 parked, 503 and 504,<br/>no failover on 4xx, a budget-shortened timeout parks nothing,<br/>deadline, client abort, keys logged by index; relayStream ends;<br/>handleChat guards in order, rate limit, SSE headers;<br/>handleModels; Vercel exports, 405, vercel.json timings"]
-        nvcat["nvidia-catalog.test.mjs<br/>unique ids with the default, frozen, the proxy answers<br/>before the browser gives up, normalizeNvidiaModel,<br/>publicCatalog without upstream extras, README T4 table<br/>matches the catalog,<br/>gitleaks rule finds plain and escaped keys,<br/>no NVIDIA key in any tracked file"]
-    end
-
-    subgraph gBuild["Build scripts and type checking"]
-        bver["build-version.test.mjs<br/>buildVersion is 12 hex chars, stable under reordering,<br/>changes with a public file, the page, an asset URL<br/>or the service worker template"]
-        skey["supabase-key.test.mjs<br/>assertPublicKey accepts sb_publishable_ keys and anon JWTs,<br/>refuses sb_secret_ keys, service_role JWTs,<br/>other strings and the empty string"]
-        tcov["typecheck-coverage.test.mjs<br/>every src/js module that starts with the @ts-check comment<br/>is in the include list of tsconfig.json,<br/>more than 30 such modules, and every server module under api/"]
-        sbomt["sbom.test.mjs, helpers from scripts/lib/sbom.mjs<br/>uuidV5 against the RFC 9562 example, duplicate bom-refs<br/>merged, root and workspace named by package, serial from<br/>the content, validator catches dangling edges, scripts/sbom.mjs<br/>twice gives identical files, @starpi/core lists no component"]
-    end
-
-    subgraph gDocs["Documentation"]
-        docs["docs.test.mjs, helpers from scripts/markdown.mjs<br/>every mermaid block in docs/ARCHITECTURE.md has a unique<br/>diagram id marker, other Markdown files embed a diagram<br/>only as an exact copy under the same marker,<br/>relative links in every Markdown file resolve to existing files<br/>and their #anchors to existing headings,<br/>helper tests: backtick and tilde fences, link targets,<br/>GitHub heading anchors"]
-    end
-
-    runner --> render
-    runner --> config
-    runner --> actions
-    runner --> i18n
-    runner --> parser
-    runner --> chunker
-    runner --> bm25
-    runner --> retrieval
-    runner --> synth
-    runner --> prompts
-    runner --> models
-    runner --> device
-    runner --> choices
-    runner --> wasmcat
-    runner --> diag
-    runner --> cstream
-    runner --> nvclient
-    runner --> cexport
-    runner --> codeb
-    runner --> nvproxy
-    runner --> nvcat
-    runner --> bver
-    runner --> skey
-    runner --> tcov
-    runner --> sbomt
-    runner --> docs
+    run(["npm test: node --test tests/unit/*.test.mjs, 191 files"])
+    ai["AI layer, 30: ai-adapter-*, ai-contract, ai-stream, ai-sse,<br/>ai-transport, transport-select, router*, purposes, wheel,<br/>routing, hybrid-*, context-pack, search-api, json"]
+    prov["Providers, pools, relay, keys, 17: pool*, relay*, keys*,<br/>origins, routes, nvidia-*, fakes-*, headers, secret-rules"]
+    chat["Chat, 34: chat-*, canvas*, compare-council, council*,<br/>memory*, projects-assistants, answer-labels, web-*,<br/>code-blocks, prompts, locale-prompts, retrieval, synthesizer"]
+    tools["Tools and MCP, 5: tools-*, mcp-*"]
+    voice["Voice, Live, research, 10: voice-*, live-session, research-*"]
+    comp["Companion browser side, 9: companion-*, supabase-companion-build"]
+    store["Storage and sync, 15: store-*, sync-*, workspace-*, supabase*"]
+    trust["Source check, gate, receipts, 33: see test-strategy-unit-trust"]
+    fmt["Formats and retrieval, 9: parser, formats-*, bm25, chunker, html"]
+    models["On-device models, 14: models, wasm-catalog, device*,<br/>choices, integrity*, bench-*, diagnostics, graph-extract"]
+    ui["Shell, UI, i18n, 8: shell, kit, render*, i18n, actions,<br/>config, build-version"]
+    repo["Repository gates, 7: docs, hygiene, license-gate,<br/>eol-check, sbom*, typecheck-coverage"]
+    run --> ai
+    run --> prov
+    run --> chat
+    run --> tools
+    run --> voice
+    run --> comp
+    run --> store
+    run --> trust
+    run --> fmt
+    run --> models
+    run --> ui
+    run --> repo
 ```
 
-<sub>Sources: [`tests/unit/render.test.mjs`](../tests/unit/render.test.mjs), [`tests/unit/config.test.mjs`](../tests/unit/config.test.mjs), [`tests/unit/setup.mjs`](../tests/unit/setup.mjs), [`tests/unit/actions.test.mjs`](../tests/unit/actions.test.mjs), [`tests/unit/i18n.test.mjs`](../tests/unit/i18n.test.mjs), [`src/js/core/grounding.js`](../src/js/core/grounding.js), [`tests/unit/parser.test.mjs`](../tests/unit/parser.test.mjs), [`tests/unit/chunker.test.mjs`](../tests/unit/chunker.test.mjs), [`tests/unit/bm25.test.mjs`](../tests/unit/bm25.test.mjs), [`tests/unit/retrieval.test.mjs`](../tests/unit/retrieval.test.mjs), [`tests/unit/synthesizer.test.mjs`](../tests/unit/synthesizer.test.mjs), [`tests/unit/prompts.test.mjs`](../tests/unit/prompts.test.mjs), [`tests/unit/models.test.mjs`](../tests/unit/models.test.mjs), [`tests/unit/device.test.mjs`](../tests/unit/device.test.mjs), [`tests/unit/choices.test.mjs`](../tests/unit/choices.test.mjs), [`tests/unit/wasm-catalog.test.mjs`](../tests/unit/wasm-catalog.test.mjs), [`tests/unit/diagnostics.test.mjs`](../tests/unit/diagnostics.test.mjs), [`tests/unit/chat-stream.test.mjs`](../tests/unit/chat-stream.test.mjs), [`tests/unit/chat-runner.test.mjs`](../tests/unit/chat-runner.test.mjs), [`tests/unit/chat-export.test.mjs`](../tests/unit/chat-export.test.mjs), [`tests/unit/code-blocks.test.mjs`](../tests/unit/code-blocks.test.mjs), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs), [`tests/unit/nvidia-catalog.test.mjs`](../tests/unit/nvidia-catalog.test.mjs), [`backend/test_fixtures/nvidia_validation.json`](../backend/test_fixtures/nvidia_validation.json), [`tests/unit/build-version.test.mjs`](../tests/unit/build-version.test.mjs), [`tests/unit/supabase-key.test.mjs`](../tests/unit/supabase-key.test.mjs), [`tests/unit/typecheck-coverage.test.mjs`](../tests/unit/typecheck-coverage.test.mjs), [`tests/unit/sbom.test.mjs`](../tests/unit/sbom.test.mjs), [`scripts/lib/sbom.mjs`](../scripts/lib/sbom.mjs), [`tests/fixtures/pdf.mjs`](../tests/fixtures/pdf.mjs), [`package.json`](../package.json), [`tests/unit/docs.test.mjs`](../tests/unit/docs.test.mjs), [`scripts/markdown.mjs`](../scripts/markdown.mjs)</sub>
+<sub>Sources: [`tests/unit/`](../tests/unit), [`package.json`](../package.json)</sub>
 
-### Unit tests for the source check, receipts and sample files
+### Unit tests for the source check, the sentence gate and receipts
 
-Twelve of the unit test files cover the source check, answer receipts, starpi-ground, the sample files and the @starpi/core package. The source check tests pin how facts are read (numbers, dates, times, weekdays, codes, version numbers, spelled numbers, quotations) and how each statement is compared with the excerpts it cites, including in rendered answers; grounding-v2.test.mjs pins the version 2 checks of negations, names and values in another place and that version 1 still gives its old verdicts. The evaluation test fails when a rule change makes a published result on the labelled answers worse, for either rules version: more faithful statements flagged, or fewer planted errors flagged in any category. None of this shows that an answer is correct: the check only compares values and wording with the cited excerpts. The receipt tests cover building, validating and verifying receipts of both formats (including members and reason codes a format does not define, and a partly delivered excerpt recomputed on its delivered part), the Merkle tree against the RFC 6962 test vectors, Ed25519 and ES256 signatures, the exit codes of verify-receipt.mjs, the receipt written by Starpi 1.3.0 and the two JSON Schemas in docs/spec, and the golden test pins extraction, chunking and source-check output, including every verdict and reason of version 1 on the 308 labelled answers and of version 2 on every answer set, to the rule versions that receipts record. ground.test.mjs covers checkDocument, the SARIF output and starpi-ground, the demo test answers each sample question from the sample files and requires the answer to pass the source check without a flagged statement, and the core-package test builds and uses the package the way a consumer would.
+Thirty-three unit test files pin the checks that `@starpi/core` publishes. The source check tests pin how facts are read, how each statement is compared with its excerpts in rendered answers, the version 2 checks of negations, names and values in another place, the version 3 relations, the golden verdicts of the sample files and the language packs (shipped languages, case folding, number words); the evaluation tests fail when a rule change makes a published result on the labelled answer sets worse, and pin the development sets of French, Spanish, Italian and Turkish. The sentence gate tests pin the canonical text, spoken digits, number words, the release of units, the rules in every mode, a corpus of streamed answers, the command line and its timing budget (re-measured before a busy machine fails it). The receipt tests cover building, validating, signing and verifying v1, v2 and v3 receipts, the Merkle tree and inclusion proofs, the device signing key and its view, the release signature script, the entailment client of the second opinion, the label fences, starpi-ground, the demo and the core package's exports.
 
 <!-- diagram: test-strategy-unit-trust -->
 ```mermaid
-flowchart LR
-    runner(["same npm test run, 12 of the 38 files"])
-
-    subgraph gCheck["Source check"]
-        facts["facts.test.mjs<br/>parseNumber with English and German separators,<br/>extractFacts: numbers with scale words, percent and currency,<br/>approximations, ISO, German and English dates, times,<br/>weekdays, codes, numbers written as words, also right after and,<br/>quotations, indexSource and lookupFact across formats<br/>and languages, 4.05. read as a decimal and as a date,<br/>codes with or without a hyphen, typographic dashes in codes,<br/>folding and inflection"]
-        grounding["grounding.test.mjs<br/>sentences with offsets, German day.month dates kept inside,<br/>groundAnswer: supported statements,<br/>changed numbers, dates, weekdays and codes named,<br/>citation inheritance, facts elsewhere or in no excerpt,<br/>facts from the question, approximations, unknown labels,<br/>bad labels on a Sources line, English times such as 10.00 am,<br/>excerpts that did not reach the model, names missing,<br/>a name only in the question: from_conversation,<br/>a value next to other words: fact_context,<br/>size limit, contextCoverage, resolveLabel"]
-        gv2["grounding-v2.test.mjs<br/>GROUNDING starpi-grounding 2, GROUNDING_VERSIONS 1 and 2,<br/>version 3 throws; negations dropped, added or reversed in<br/>English and German: negation_inversion, always weak, none for<br/>negations written differently, time conditions, ranges,<br/>restrictions, questions or clauses with other numbers;<br/>a name the excerpt has in another place: name_context,<br/>not for titles, genitives, hyphenated names, names from<br/>the question or a statement joining two passages, the same<br/>whatever other excerpts were given; values next to other<br/>words: fact_context; version numbers read as codes;<br/>version 1 verdicts unchanged; receipts recompute both<br/>versions, format v1 refuses the version 2 reason codes"]
-        gview["grounding-view.test.mjs, jsdom<br/>blocks from rendered paragraphs, lists and tables, code skipped,<br/>items of a loose list inherit the lead-in's citations,<br/>summary bar, only the flagged citation button marked<br/>with aria-describedby, neutral grounding-none bar with<br/>the shield icon when nothing was compared,<br/>works without the CSS Custom Highlight API,<br/>extractive answers never flagged"]
-        seval["source-check-eval.test.mjs, rules versions 1 and 2<br/>on sets dev, holdout and paraphrases, version 2 also on v2dev<br/>and v2holdout, the held-out file checked against its SHA-256:<br/>no statement of a faithful answer unsupported, faithful<br/>statements marked weak at most as published, version 2:<br/>0 in dev and v2dev, 16 in holdout, 8 in v2holdout,<br/>27 in paraphrases; per category at least the published<br/>number of planted errors marked weak or unsupported,<br/>e.g. version 2 negation 24 in v2dev and 16 in v2holdout;<br/>in dev and holdout every date, time and weekday error unsupported"]
+flowchart TD
+    subgraph check["Source check"]
+        f["facts, grounding, grounding-view, grounding-v2, grounding-v3"]
+        g["golden: every verdict on the sample files"]
+        l["lang, lang-shipped, labels-fence"]
+        e["source-check-eval, eval-intl, eval-answers:<br/>no published result may get worse"]
     end
-
-    subgraph gReceipt["Receipts and pinned rules"]
-        receipt["receipt.test.mjs<br/>SHA-256 over UTF-8, canonical JSON, fingerprints,<br/>offsets, verdicts, id over the rest, optional texts left out,<br/>validateReceipt rejections incl. unknown members and reason codes,<br/>verifyReceipt: passages reproduced, missing or modified file,<br/>edited receipt, changed chunking rules, a partly delivered<br/>excerpt recomputed on its deliveredChars, skipped without them,<br/>reason passages left out with the excerpts,<br/>over 20 reasons (20 kept), a long statement<br/>and a long title still give a valid receipt,<br/>verify-receipt.mjs exit codes 0, 1 and 2,<br/>docs/spec/receipt.schema.json for v1 and receipt-v2.schema.json<br/>for v2 accept the receipts built in their format and reject<br/>what validateReceipt rejects, their reason codes equal<br/>REASON_CODES_V1 and REASON_CODES, the v2 schema<br/>describes signed receipts of both algorithms"]
-        rv2["receipt-v2.test.mjs<br/>v2 by default: a root over one leaf per citation and<br/>a proof in each, one citation checked against the root alone,<br/>the same root without excerpt texts and question, v1 on request,<br/>verifyReceipt reports the root, the proofs and an edited citation;<br/>Ed25519 and ES256: valid with the embedded key, trusted with<br/>the signer's key as CryptoKey, JWK or PEM, also checked<br/>with node:crypto, every edit after signing invalid, a re-signed<br/>receipt key_mismatch for the signer's key; malformed trees,<br/>proofs and signatures and v2 members in v1 refused;<br/>the receipt of Starpi 1.3.0 still verifies; verify-receipt.mjs<br/>with --public-key: exit 0, 1 and 2"]
-        merkle["merkle.test.mjs<br/>Certificate Transparency test vectors, root and every<br/>audit path equal to an independent implementation<br/>for 0 to 64 leaves, a proof for another leaf, position,<br/>size or root, or a changed path, rejected;<br/>hex and base64url encoded canonically"]
-        golden["golden.test.mjs<br/>SHA-256 pins of extracted text and chunk bounds,<br/>verdicts on a fixed answer, SHA-256 of the verdicts and<br/>reasons of version 1 for all 308 labelled answers and<br/>of version 2 for the 2930 statements of every answer set,<br/>per EXTRACTOR, CHUNKER and GROUNDING version:<br/>changed output needs a version bump"]
+    subgraph gate["Sentence gate"]
+        g1["gate, gate-canonical, gate-spoken, gate-number-words,<br/>gate-lang, release"]
+        g2["gate-corpus, gate-cli"]
+        g3["gate-perf: 50 ms budgets, re-measured before failing"]
     end
-
-    subgraph gDemo["Documents, sample files and the package"]
-        ground["ground.test.mjs<br/>checkDocument: line and column of every statement,<br/>labels or every excerpt, a long document split at headings<br/>with the Sources line in each part, an oversized paragraph<br/>reported as not checked; SARIF: a rule per reason code worded<br/>like en.json, one result per statement to review, fingerprints<br/>that survive a moved line; starpi-ground: a directory read<br/>like the app, --fail-on, labels, SARIF to a file, exit 2 on<br/>bad arguments, escaped control characters"]
-        demo["demo.test.mjs<br/>English and German sample files match the list in demo.js,<br/>the sample questions launch, budget and risks find their facts,<br/>the extractive answer has at least 2 supported and<br/>no weak or unsupported statements"]
-        core["core-package.test.mjs<br/>build-core.mjs into a temp dir with --no-types, both commands,<br/>exports equal packages/core/src/index.js, only pdfjs-dist imported,<br/>the bundle checks an answer and builds a valid receipt,<br/>the bundled verify-receipt.js reproduces it with a valid tree,<br/>the bundled ground.js writes SARIF and exits 1, or 2 without<br/>arguments, package.json name, exports, both bins, no dependencies<br/>of any kind, files cover every entry point, publishConfig public,<br/>workspace of the root, same version as the app<br/>and in the lockfile, pdfjs-dist peer major as the app's"]
+    subgraph rcpt["Receipts and signatures"]
+        r1["receipt, receipt-v2, receipt-v3, merkle"]
+        r2["signing, signing-view, sign-release"]
+        r3["entail, nli-client: advisory second opinion"]
     end
-
-    runner --> facts
-    runner --> grounding
-    runner --> gv2
-    runner --> gview
-    runner --> seval
-    runner --> receipt
-    runner --> rv2
-    runner --> merkle
-    runner --> golden
-    runner --> ground
-    runner --> demo
-    runner --> core
+    subgraph pkg["Package and demo"]
+        p1["ground, demo, core-package"]
+    end
+    fail(["npm test fails"])
+    f -.-> fail
+    g -.-> fail
+    l -.-> fail
+    e -.-> fail
+    g1 -.-> fail
+    g2 -.-> fail
+    g3 -.-> fail
+    r1 -.-> fail
+    r2 -.-> fail
+    r3 -.-> fail
+    p1 -.-> fail
 ```
 
-<sub>Sources: [`tests/unit/facts.test.mjs`](../tests/unit/facts.test.mjs), [`tests/unit/grounding.test.mjs`](../tests/unit/grounding.test.mjs), [`tests/unit/grounding-v2.test.mjs`](../tests/unit/grounding-v2.test.mjs), [`tests/unit/grounding-view.test.mjs`](../tests/unit/grounding-view.test.mjs), [`tests/unit/source-check-eval.test.mjs`](../tests/unit/source-check-eval.test.mjs), [`tests/unit/receipt.test.mjs`](../tests/unit/receipt.test.mjs), [`tests/unit/receipt-v2.test.mjs`](../tests/unit/receipt-v2.test.mjs), [`tests/unit/merkle.test.mjs`](../tests/unit/merkle.test.mjs), [`tests/unit/golden.test.mjs`](../tests/unit/golden.test.mjs), [`tests/unit/ground.test.mjs`](../tests/unit/ground.test.mjs), [`tests/unit/demo.test.mjs`](../tests/unit/demo.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs), [`scripts/eval-source-check.mjs`](../scripts/eval-source-check.mjs), [`tests/fixtures/grounding/eval.json`](../tests/fixtures/grounding/eval.json), [`tests/fixtures/receipts/v1.3.0-receipt.json`](../tests/fixtures/receipts/v1.3.0-receipt.json), [`docs/spec/receipt.schema.json`](../docs/spec/receipt.schema.json), [`docs/spec/receipt-v2.schema.json`](../docs/spec/receipt-v2.schema.json), [`src/js/demo.js`](../src/js/demo.js)</sub>
+<sub>Sources: [`tests/unit/grounding.test.mjs`](../tests/unit/grounding.test.mjs), [`tests/unit/grounding-v3.test.mjs`](../tests/unit/grounding-v3.test.mjs), [`tests/unit/golden.test.mjs`](../tests/unit/golden.test.mjs), [`tests/unit/source-check-eval.test.mjs`](../tests/unit/source-check-eval.test.mjs), [`tests/unit/gate.test.mjs`](../tests/unit/gate.test.mjs), [`tests/unit/gate-perf.test.mjs`](../tests/unit/gate-perf.test.mjs), [`tests/unit/receipt-v3.test.mjs`](../tests/unit/receipt-v3.test.mjs), [`tests/unit/signing.test.mjs`](../tests/unit/signing.test.mjs), [`tests/unit/sign-release.test.mjs`](../tests/unit/sign-release.test.mjs), [`tests/unit/core-package.test.mjs`](../tests/unit/core-package.test.mjs)</sub>
 
-### End-to-end tests with mocked Supabase and diagnostics
+### End-to-end tests with mocked Supabase and the provider fakes
 
-Playwright serves the built dist/ through scripts/serve.mjs on STARPI_E2E_PORT (default 4173) without --functions, which applies the vercel.json headers to every path, and runs app.spec.mjs (17 tests), trust.spec.mjs (13 tests), models.spec.mjs (8 tests), modes.spec.mjs (8 tests) and the Mermaid render gate on a desktop and a mobile Chromium project, 94 test runs in all. mockSupabase answers every *.supabase.co request with two independent flags, hardened (otherwise a pre-migration project) and anonymousAuth, reports through auth/v1/settings whether anonymous sign-ins are on, and seeds a document with hostile markup; mockNvidia stands in for Starpi's NVIDIA proxy on /api/models/nvidia and /api/chat/nvidia with the published catalog, streamed answers in the proxy's SSE form or a given error, and records each request body and its Authorization header, which must be absent; without it the server answers 404, which the app reads as no proxy. The diagnostics fixture fails a test on any CSP violation, page error, unexpected console error or request to a host other than 127.0.0.1 and the mocked Supabase, so no test reaches NVIDIA or downloads a model. The workspace tests check that a question answered from workspace files or about an attached file stays in localStorage with its answer while chats sync, that a citation made before Clear workspace never opens a file added afterwards, and that a batch reports every file, refuses the same file twice and renames a different file with the same name. Two settings tests check that the save dialog confirms only what the browser stored, an offline-start test checks that the app reconnects on the online event and then syncs chats, and three tests without WebGPU check that a WebGPU preset is refused with a reason, that the processor model offered instead downloads nothing without consent, and that the diagnostics report the missing support. models.spec.mjs emulates a desktop with or without a WebGPU adapter and checks the picker groups, the recommendation, the T3 warning, the WASM fallback and the 2.0 migration, the settings mirror with badges in both languages, the NVIDIA group per proxy state, the refusal to switch during an answer and the settling of arrow keys. modes.spec.mjs checks the chat mode toggle, free chat with code copy and history, an attached file sent once and never as history, the chat export and delete, and NVIDIA answers in both modes, including a receipt with engine nvidia, the fallback when the proxy has no keys and a rate-limit notice without server text. docs-diagrams.spec.mjs renders every Mermaid block in the repository Markdown with mermaid 12.1.0, skipped on the mobile project.
+Playwright serves the built dist/ through serve.mjs under the build's headers and runs 26 specs on a desktop and a mobile Chromium project (the diagram check on desktop only); service workers are blocked, `test.only` is forbidden on CI and nothing is retried. mockSupabase answers every Supabase request (a hardened or an older project, anonymous sign-ins on or off) and seeds a document with hostile markup; the provider fakes stand in for every provider, the pools, speech, MCP and search. The diagnostics fixture fails a test on any CSP violation, page error, unexpected console error or request to a host other than the app, the mocked Supabase and the fakes. The specs cover the app and its languages, the shell (sidebar, dark mode, mount points), the thread and its modes, Auto's routing, providers, pools, keys and the relay, tools and MCP, the canvas, compare and council, conversations and branches, memory, persistence across reloads, the encrypted sync, voice, research, the companion (with a companion built and started for the test, on STARPI_COMPANION_E2E_PORT or the app port plus 317), model choice and downloads, model integrity, the benchmark, offline use, the render frame, the source check and receipts (trust and grounding), graph extraction, security (cross-origin isolation of the page and its workers, inert payloads), the move of a 2.1 profile (migration), and every Mermaid diagram of the repository.
 
 <!-- diagram: test-strategy-e2e -->
 ```mermaid
-flowchart TD
-    job(["CI job e2e: npm run test:e2e<br/>against the dist artifact from job frontend"])
-    cfg["playwright.config.mjs: testDir tests/e2e, timeout 45 s, retries 0,<br/>forbidOnly in CI, serviceWorkers block, trace retain-on-failure,<br/>port STARPI_E2E_PORT, default 4173"]
-    serve["webServer: node scripts/serve.mjs --port on 127.0.0.1,<br/>without --functions: /api/* gives 404 unless mocked,<br/>serves dist/ with the vercel.json headers on every path,<br/>so pages and workers run under the real CSP"]
-    desk["project desktop-chromium<br/>Desktop Chrome, 1280 x 800"]
-    mob["project mobile-chromium<br/>Pixel 7"]
-    job --> cfg
-    cfg --> serve
-    cfg --> desk
-    cfg --> mob
-
-    subgraph fx["tests/e2e/fixtures.mjs"]
-        mock["mockSupabase with hardened and anonymousAuth flags<br/>routes *.supabase.co: auth/v1/settings with anonymous_users,<br/>signup, knowledge_documents, sections, rpc/search_knowledge,<br/>entities, relations, chat_history, any other path 404 PGRST000<br/>not hardened: 42703 on is_public, PGRST202, PGRST205<br/>no anonymous auth: signup 422 anonymous_provider_disabled<br/>MALICIOUS_DOC and its section: img onerror, script, onmouseover,<br/>javascript: link, remote beacon image"]
-        mocknv["mockNvidia: GET /api/models/nvidia with publicCatalog,<br/>configured or not, POST /api/chat/nvidia as an SSE stream<br/>of reasoning and content deltas, or a given error,<br/>records bodies and the Authorization header<br/>useNvidia: stored mode nvidia and a model"]
-        diagx["diagnostics fixture<br/>securitypolicyviolation logged as CSP_VIOLATION,<br/>pageerror and console.error collected, 4xx resource logs ignored,<br/>requests outside 127.0.0.1 and *.supabase.co aborted and recorded,<br/>the test fails unless the list is empty"]
+flowchart LR
+    pw(["npm run test:e2e: Playwright, desktop and mobile Chromium"])
+    serve["serve.mjs: dist/ with the build's headers"]
+    fakes["provider fakes: OpenAI flavors, Anthropic, Gemini and Live,<br/>ElevenLabs, voice, MCP, search"]
+    sb["mockSupabase: hardened or older project,<br/>anonymous sign-ins on or off, a hostile document"]
+    diag["diagnostics fixture: no CSP violation, page error,<br/>unexpected console error or foreign request"]
+    subgraph specs["26 specs"]
+        s1["app, shell, chat, modes, routing, conversations"]
+        s2["providers, tools, canvas, memory, persistence, sync"]
+        s3["voice, research, companion (own port)"]
+        s4["models, integrity, bench, offline, render-frame"]
+        s5["trust, grounding, graph-extract, security"]
+        s6["migration: a 2.1 profile moves once"]
+        s7["docs-diagrams: every Mermaid block, desktop only"]
     end
-
-    subgraph app["app.spec.mjs, 17 tests, both projects"]
-        direction LR
-        s1["Migration pending, anonymous sign-ins disabled:<br/>CSP and nosniff on index.html, sw.js, manifest and a script,<br/>hashed assets immutable, Migration pending badge,<br/>answer without a model, with a citation, This device only,<br/>no chat_history requests, no emoji, icons aria-hidden"]
-        s2["Hostile database content: card shows the markup as text,<br/>no img and no javascript: link in the modal, window.__xss undefined"]
-        s3["Graph tables missing: honest empty state"]
-        s4["Own server http://evil.example/v1 rejected,<br/>starpi_llm_url not stored"]
-        sSave["Saving settings, 2 tests: own server http://127.0.0.1:11434/v1,<br/>dialog Settings saved. and starpi_llm_url stored,<br/>Storage.setItem throwing: dialog Some settings could not be saved"]
-        s5["Hardened schema: two chat_history POSTs with<br/>Bearer test-access-token, no owner_id in the body,<br/>search_knowledge RPC used"]
-        sOff["Offline start: *.supabase.co aborted as internetdisconnected,<br/>badge Offline, online event, badge Live,<br/>then question and answer give two chat_history POSTs,<br/>net::ERR_INTERNET_DISCONNECTED console errors required,<br/>removed, then no other diagnostics"]
-        s6["No WebGPU, 3 tests: webgpu:llama-1b marked needs WebGPU,<br/>picked anyway: on-device mode explained, question ranked<br/>in the browser, no search RPC or chat POST; the recommended<br/>wasm: model asks once with the 15 MB runtime, declined:<br/>nothing loads, answer quoted; benchmark shows WebGPU not supported"]
-        s7["i18n: English default, German without a reload,<br/>German kept after reload, starpi_locale stored"]
-        s8["Workspace: notes.md and a makePdf plan.pdf indexed in the worker,<br/>1 page and 1 chunk, BM25 scores, cited answer opens the drawer<br/>on the chunk, file text never sent to Supabase,<br/>question and answer kept in starpi_local_chats_v1,<br/>no chat_history POST although chats sync"]
-        s9["Attached orion-roadmap.md while chats sync:<br/>question and answer kept in starpi_local_chats_v1,<br/>no chat_history POST"]
-        s10["Citation of alpha.md, Clear workspace, beta.md added:<br/>the old citation shows the file-missing note<br/>and its own excerpt, never the new file"]
-        sBatch["Batch of photo.png and notes.md: both reported,<br/>the same notes.md again: already in the workspace,<br/>same name with other text: listed as notes (2).md"]
-        s11["Unsupported photo.png rejected with a clear message"]
-    end
-
-    subgraph models["models.spec.mjs, 8 tests, both projects"]
-        direction LR
-        m1["8 GB desktop with WebGPU: Recommended for your device<br/>first with webgpu:qwen-3b, recommended, mode stays council,<br/>a WASM pick asks once, declined, stored as the choice"]
-        m2["T3 gemma-9b: needs a strong GPU, the confirm<br/>starts with the free GPU memory warning"]
-        m3["no WebGPU: a wasm: model recommended,<br/>webgpu:qwen-1.5b marked needs WebGPU,<br/>stored 2.0 value qwen-1.5b migrated"]
-        m4["settings picker mirrors the header, its own labels,<br/>badges WebGPU with f16, 8 GB RAM, desktop,<br/>German group labels and option text after a switch"]
-        m5["NVIDIA proxy with keys: offered models in their group,<br/>the default in Recommended, every value once,<br/>a pick stores mode nvidia and the model"]
-        m6["no proxy: 404, NVIDIA group hidden, a stored<br/>NVIDIA model shown disabled, status line says so"]
-        m7["switch refused with models.switch_busy while<br/>an answer streams, the picker shows the stored choice"]
-        m8["arrow keys: applied once they rest,<br/>not at every step"]
-    end
-
-    subgraph modes["modes.spec.mjs, 8 tests, both projects"]
-        direction LR
-        c1["toggle: grounded by default, free remembered across<br/>reloads, placeholder and privacy notice follow,<br/>German labels, a quick prompt switches back to grounded"]
-        c2["free chat with a mocked OpenRouter: code block<br/>with Copy and Copied, free note, no source check or receipt,<br/>history sent, no search_knowledge request"]
-        c3["free chat with an attached file: fenced as FILE once,<br/>never resent as history, nothing synced"]
-        c4["chat menu: Markdown and JSON export starpi.chat/v1,<br/>Delete this chat removes the session from<br/>chat_history and this browser"]
-        c5["NVIDIA free chat: streamed answer, reasoning only in the<br/>details, model, messages, max_tokens and temperature 0.7 only,<br/>no Authorization header, history without the reasoning"]
-        c6["NVIDIA source mode: excerpts sent at temperature 0.2,<br/>source check ok, receipt with answer.engine nvidia"]
-        c7["proxy without keys: notice not set up,<br/>answer quoted from the sources, no chat request"]
-        c8["429 with Retry-After 7: please wait 7 s,<br/>server text never shown"]
-    end
-
-    trust["trust.spec.mjs, 13 tests, both projects:<br/>sample files, source check, receipts, privacy,<br/>session without sign-in, axe scan and keyboard,<br/>see the next diagram"]
-
-    docs["docs-diagrams.spec.mjs, skipped on the mobile project<br/>every mermaid block in repository Markdown parses and renders<br/>with the pinned mermaid 12.1.0, securityLevel strict,<br/>in a blank page via setContent: no app page, no diagnostics fixture"]
-
-    serve --> app
-    serve --> models
-    serve --> modes
-    serve --> trust
-    desk --> app
-    mob --> app
-    desk --> models
-    mob --> models
-    desk --> modes
-    mob --> modes
-    desk --> trust
-    mob --> trust
-    desk --> docs
-    mock -->|"per test: mockSupabase"| app
-    mock -->|"per test"| models
-    mock -->|"per test"| modes
-    mock -->|"every test: hardened"| trust
-    mocknv -->|"NVIDIA tests"| models
-    mocknv -->|"NVIDIA tests"| modes
-    diagx -->|"every test"| app
-    diagx -->|"every test"| models
-    diagx -->|"every test"| modes
-    diagx -->|"every test"| trust
+    pw --> serve
+    pw --> fakes
+    specs --> sb
+    specs --> diag
+    pw --> specs
 ```
 
-<sub>Sources: [`playwright.config.mjs`](../playwright.config.mjs), [`tests/e2e/fixtures.mjs`](../tests/e2e/fixtures.mjs), [`tests/e2e/app.spec.mjs`](../tests/e2e/app.spec.mjs), [`tests/e2e/models.spec.mjs`](../tests/e2e/models.spec.mjs), [`tests/e2e/modes.spec.mjs`](../tests/e2e/modes.spec.mjs), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs), [`tests/fixtures/pdf.mjs`](../tests/fixtures/pdf.mjs), [`scripts/serve.mjs`](../scripts/serve.mjs), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)</sub>
+<sub>Sources: [`playwright.config.mjs`](../playwright.config.mjs), [`tests/e2e/fixtures.mjs`](../tests/e2e/fixtures.mjs), [`tests/e2e/migration.spec.mjs`](../tests/e2e/migration.spec.mjs), [`tests/e2e/companion.spec.mjs`](../tests/e2e/companion.spec.mjs), [`tests/e2e/security.spec.mjs`](../tests/e2e/security.spec.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs), [`scripts/fakes/index.mjs`](../scripts/fakes/index.mjs)</sub>
 
 ### End-to-end tests for the source check, receipts and accessibility
 
-trust.spec.mjs runs 13 tests on both projects, each with a hardened mockSupabase and the diagnostics fixture. Model answers come from routes for the Gemini and OpenRouter APIs that the spec registers after the diagnostics route; Playwright tries later routes first, so these two hosts are answered instead of aborted. The tests load the sample files in one click and require a sample answer to pass the source check, show the check flagging the deliberate error of the demo, and check that a mocked model answer with a changed number and weekday gets both named, that one which reverses its excerpt and puts a name where the excerpt has another one gets both reasons as weak, without a flagged chip, and that the same facts in German formats pass. Three chat tests cover a question that starts with a greeting, a wide table that must not scroll the conversation sideways, and a message box that grows with multi-line input. They download a starpi.receipt/v2 receipt whose file fingerprint equals the SHA-256 of the file and whose Merkle root the dialog previews, verify it in the dialog against the original (Merkle root and proofs valid, not signed), sign it outside the app with ES256 and check it with the signer's public key and with another key, verify it against a changed copy, keep a turn about an attached file out of the history sent to a cloud provider, and show the published knowledge without a browser session. An axe scan of six views must find no serious or critical violation, and a keyboard test checks that the attach button is two Shift+Tab presses from the message box, that focus stays inside the open citation drawer and that Escape returns it to the citation chip.
+trust.spec.mjs and grounding.spec.mjs check the source check and receipts in the real page: the sample files load in one click and a sample answer passes, the prepared wrong answer is flagged, a model answer with a changed number or weekday gets both named, reversed and misplaced statements are reported as weak, German formats pass, a receipt is exported signed with the device key and verifies against the original files in the dialog, a changed file or a removed signature fails, and the public key can be exported. An axe scan (no serious or critical violations) runs on the main views in light and dark mode. security.spec.mjs checks that the page and its workers are cross-origin isolated (polling until the probe worker reports it), that payloads in documents, answers and file names stay inert, and that no CSP violation happens anywhere in the suite.
 
 <!-- diagram: test-strategy-e2e-trust -->
 ```mermaid
 flowchart TD
-    run(["trust.spec.mjs: 13 tests on desktop-chromium and mobile-chromium,<br/>mockSupabase hardened, diagnostics fixture on every test"])
-
-    subgraph mocks["model mocks in the spec"]
-        gem["mockGemini: starpi_gemini_key in sessionStorage,<br/>generativelanguage.googleapis.com answers a fixed text"]
-        orr["starpi_openrouter_key in sessionStorage,<br/>openrouter.ai answers Noted. and records each body"]
-    end
-
-    subgraph sSamples["sample files, 2 tests"]
-        t1["load-samples, Sample files ready within 20 s,<br/>sample budget question: 480,000 EUR, bar grounding-ok,<br/>N/N statements match their cited excerpts, no flagged chip,<br/>no knowledge-base title in the answer"]
-        t2["demo-check: deliberate error, bar grounding-review and open,<br/>2/3 statements match, 520,000 is not in the nebula-plan.md label,<br/>one flagged chip, one range in CSS.highlights starpi-review"]
-    end
-
-    subgraph sChat["chat, 3 tests"]
-        t3["greeting plus question on the samples:<br/>480,000 EUR, bar grounding-ok"]
-        t4["mocked Gemini table with 8 columns:<br/>chatMessages scrolls sideways by at most 1 px"]
-        t5["four-line question: the message box<br/>grows by more than 30 px"]
-    end
-
-    subgraph sCheck["source check on model answers, 3 tests"]
-        t6["attached budget.md, mocked answer with 520,000 EUR and Friday:<br/>1/3 statements match, 520,000 and Friday each named<br/>as not in the budget.md label, 2 flagged chips"]
-        t6b["attached spec.md, mocked answer: Power over Ethernet<br/>is supported, Marcus Hale owns the specification,<br/>Port 8443 serves the admin interface: 1/3 statements match,<br/>the spec.md label says the opposite and names someone<br/>or something else here, not Marcus Hale, badge 2 partly,<br/>no flagged chip"]
-        t7["mocked German answer with 480.000 € and<br/>dienstags um 10:00 Uhr: bar grounding-ok, 2/2 statements"]
-    end
-
-    subgraph sReceipt["answer receipts, 1 test"]
-        t8["open-receipt shows 1 workspace, download receipt.json:<br/>schema starpi.receipt/v2, fileSha256 equals<br/>the SHA-256 of budget.md, receiptRoot shows<br/>the first 16 hex chars of merkle.root"]
-        t9["verify in the dialog with receiptFile and receiptSources:<br/>1/1 workspace excerpts reproduced from your files,<br/>exact passage found in budget.md, Merkle root reproduced,<br/>2/2 inclusion proofs valid, Not signed."]
-        t9b["signReceipt in the test with a new ECDSA P-256 key,<br/>its public JWK chosen in receiptPublicKey: signed with<br/>the public key you chose, ES256 and the key id,<br/>another key's JWK: not with the public key you chose"]
-        t10["key cleared, the unsigned receipt again,<br/>480,000 changed to 520,000 in the file:<br/>none of the chosen files has the recorded fingerprint,<br/>Escape closes, focus back on open-receipt"]
-        t8 --> t9 --> t9b --> t10
-    end
-
-    subgraph sPriv["privacy and session, 2 tests"]
-        t11["OpenRouter: after a turn on the attached salary.md,<br/>the second request's messages contain<br/>neither Jane Roe nor 187,500"]
-        t12["anonymous sign-ins off: badge Public knowledge,<br/>auth/v1/settings read, no auth/v1/signup request,<br/>Published documents, ingestBtn disabled, session note shown"]
-    end
-
-    subgraph sA11y["accessibility, 2 tests"]
-        t13["axe with wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa<br/>on chat, library, graph, ingest, bench and settings<br/>after demo-check: no serious or critical violation"]
-        t14["two Shift+Tab from chatInput reach pick-chat-file,<br/>4 Tab presses stay inside citationModal,<br/>Escape returns focus to the citation chip"]
-    end
-
-    run --> sSamples
-    run --> sChat
-    run --> sCheck
-    run --> sReceipt
-    run --> sPriv
-    run --> sA11y
-    gem -.-> t4
-    gem -.-> sCheck
-    orr -.-> t11
+    samples["sample files load; a sample answer passes the source check"]
+    flawed["the prepared wrong answer is flagged with the reason"]
+    model["a fake model answer: changed number and weekday named,<br/>reversed and misplaced statements weak, German formats pass"]
+    rcpt["receipt exported signed with the device key,<br/>verified against the original files in the dialog"]
+    neg["a changed file or a removed signature fails;<br/>the public key exports as JWK or PEM"]
+    axe["axe on the main views, light and dark:<br/>no serious or critical violation"]
+    iso["security: page and workers cross-origin isolated,<br/>payloads inert, no CSP violation"]
+    samples --> flawed --> model --> rcpt --> neg
+    axe
+    iso
 ```
 
-<sub>Sources: [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/fixtures.mjs`](../tests/e2e/fixtures.mjs), [`playwright.config.mjs`](../playwright.config.mjs), [`package.json`](../package.json), [`src/js/core/receipt.js`](../src/js/core/receipt.js), [`src/js/rag/receipts.js`](../src/js/rag/receipts.js), [`src/locales/en.json`](../src/locales/en.json)</sub>
+<sub>Sources: [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/grounding.spec.mjs`](../tests/e2e/grounding.spec.mjs), [`tests/e2e/security.spec.mjs`](../tests/e2e/security.spec.mjs), [`tests/e2e/fixtures.mjs`](../tests/e2e/fixtures.mjs)</sub>
 
 ### CI workflow triggers, jobs and Dependabot
 
-The CI workflow runs on pushes and pull requests to main (the default branch) and on manual dispatch, with read-only contents permission and one concurrency group per PR or ref that cancels older runs. Five jobs start in parallel: frontend, the backend matrix (the library publisher on Python 3.11 and 3.13), database, audit and secrets. e2e runs only after frontend succeeds, because it needs the dist artifact that frontend uploads, and besides the app, trust, models and modes specs it renders every Mermaid block in the repository's Markdown. Every completed CI run on main starts the separate Release workflow, whose jobs only run when that CI run passed and was triggered by a push; the Release workflow can also be dispatched by hand, and then its jobs run only on main. Dependabot opens weekly update PRs for npm (dev dependencies grouped, Tailwind majors ignored), pip in /tools/library-publisher and GitHub Actions, and those PRs go through the same workflow.
+ci.yml runs on pushes and pull requests to main and by hand, with read-only contents permission and one concurrency group per pull request or ref that cancels older runs. Every job except e2e starts at once; e2e waits for frontend's dist. codeql.yml runs on every change and weekly, workflow-lint.yml lints the workflow files on every change, and model-lock.yml checks the model lock weekly. A completed CI run on main starts release.yml, whose jobs run only when that run passed and was triggered by a push (or by hand on main). Dependabot proposes weekly updates for npm, pip and GitHub Actions.
 
 <!-- diagram: ci-workflow-overview -->
 ```mermaid
 flowchart TD
-    subgraph sg_dependabot["dependabot.yml: weekly update PRs"]
-      D1["npm at /: at most 5 open PRs,<br/>development deps grouped as dev-tooling,<br/>tailwindcss major updates ignored"]
-      D2["pip at /tools/library-publisher: at most 3 open PRs"]
-      D3["github-actions at /: at most 3 open PRs"]
-    end
-    subgraph sg_on["CI workflow triggers"]
-      T1(["push to main"])
-      T2(["pull_request to main"])
-      T3(["workflow_dispatch"])
-    end
-    sg_dependabot -->|"update PRs against main,<br/>the default branch"| T2
-    sg_on --> CFG["permissions: contents read<br/>concurrency group ci-(workflow)-(PR number or ref),<br/>cancel-in-progress: a newer run cancels the older one"]
-    CFG --> FE["frontend: Frontend (lint, typecheck, unit tests, build)<br/>15 min, packs @starpi/core as a dry run,<br/>uploads the dist artifact"]
-    CFG --> BE["backend: Library publisher (Python 3.11) and (Python 3.13)<br/>10 min, matrix with fail-fast false"]
-    CFG --> DB["database: Database migration and RLS tests<br/>(PostgreSQL 16 + pgvector), 15 min"]
-    CFG --> AUD["audit: Dependency audit (npm audit, pip-audit)<br/>10 min, Node 22 and Python 3.12,<br/>uploads the CycloneDX SBOMs as artifact sbom"]
-    CFG --> SEC["secrets: Secret scanning (gitleaks)<br/>5 min, gitleaks 8.30.1"]
-    FE -->|"needs: frontend succeeded"| E2E["e2e: End-to-end (Playwright, production headers)<br/>20 min, app, trust, models and modes specs plus<br/>rendering of every Mermaid block in the Markdown files"]
-    FE -->|"frontend failed"| SKIP["e2e is skipped"]
-    FE --> RES{"every job succeeded?"}
-    E2E --> RES
-    BE --> RES
-    DB --> RES
-    AUD --> RES
-    SEC --> RES
-    SKIP --> RES
-    RES -->|"yes"| GREEN(["CI run passes"])
-    RES -->|"no: a step exited non-zero<br/>or a job hit its timeout"| RED(["CI run fails"])
-    GREEN -->|"run triggered by a push to main"| REL["release.yml via workflow_run, started by every<br/>completed CI run on main, its jobs run only here<br/>or on a manual dispatch on main:<br/>GitHub release for the package.json version<br/>with the @starpi/core tarball, SBOMs and SHA256SUMS"]
-    NOTE["every job: ubuntu-24.04, actions pinned by commit SHA,<br/>checkout with persist-credentials false"]
-    CFG -.- NOTE
+    push(["push or pull request to main, or by hand"])
+    ci["ci.yml: frontend, e2e after frontend, companion,<br/>companion-systemd, voice-server, backend, database, audit, secrets"]
+    codeql["codeql.yml: every change and weekly"]
+    wl["workflow-lint.yml: actionlint and zizmor"]
+    weekly(["weekly schedule"])
+    ml["model-lock.yml: models:lock --check"]
+    rel["release.yml: only for a passed, push-triggered CI run on main,<br/>or by hand on main"]
+    dep(["Dependabot: weekly npm, pip and Actions updates"])
+    push --> ci
+    push --> codeql
+    push --> wl
+    weekly --> codeql
+    weekly --> ml
+    ci -->|"workflow_run on main"| rel
+    dep -.-> push
 ```
 
-<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`.github/dependabot.yml`](../.github/dependabot.yml), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs)</sub>
+<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`.github/workflows/codeql.yml`](../.github/workflows/codeql.yml), [`.github/workflows/workflow-lint.yml`](../.github/workflows/workflow-lint.yml), [`.github/workflows/model-lock.yml`](../.github/workflows/model-lock.yml), [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`.github/dependabot.yml`](../.github/dependabot.yml)</sub>
 
 ### Frontend and end-to-end jobs
 
-The frontend job installs from the lockfile without install scripts, then runs lint, typecheck, the 38 unit test files, pack:core (a typed build of @starpi/core and npm pack --dry-run, so a broken type declaration or package file list fails the pull request, not the release), the production build and verify:dist, and uploads dist (kept 3 days, and the upload errors if there are no files); any failing step fails the job and skips e2e. e2e downloads that same dist, installs Chromium and runs Playwright against scripts/serve.mjs on port 4173 (STARPI_E2E_PORT can change it) without the NVIDIA functions, with service workers blocked, test.only forbidden on CI and no retries. Its specs exercise the app under the production headers (every response, workers included, carries the CSP) with a mocked Supabase, check the source check, receipts and accessibility with mocked model APIs and axe, the model pickers and the chat modes with a mocked NVIDIA proxy, and parse and render every Mermaid block in the Markdown files with mermaid 12.1.0, skipped on the mobile project. If any e2e step fails, playwright-report and test-results are uploaded for 7 days.
+The frontend job installs from the lockfile without install scripts and runs lint, typecheck, the unit suite, pack:core (so a broken type declaration or package file list fails the pull request, not the release), the production build, verify:dist, headers:check, the licence gate, the end-of-life register and the public hygiene check, then uploads dist. e2e downloads that dist, installs Chromium and runs Playwright with the provider fakes, on both projects, without retries; the HTML report is uploaded on failure.
 
 <!-- diagram: ci-frontend-e2e -->
 ```mermaid
 flowchart TD
-    subgraph sg_fe["frontend job: Frontend (lint, typecheck, unit tests, build)"]
-      F1["actions/checkout v7.0.1, persist-credentials false"]
-      F2["actions/setup-node v7.0.0: Node 22, npm cache"]
-      F3["npm ci --ignore-scripts"]
-      F4["npm run lint: eslint ."]
-      F5["npm run typecheck: tsc -p tsconfig.json --noEmit"]
-      F6["npm test: node --test tests/unit/*.test.mjs,<br/>38 files, 479 tests"]
-      F6b["npm run pack:core: npm pack --workspace=@starpi/core<br/>--dry-run, prepack builds it with type declarations"]
-      F7["npm run build: scripts/build.mjs"]
-      F8["npm run verify:dist: CSP compatibility,<br/>assets, service worker and build version"]
-      F9["actions/upload-artifact v7.0.1: dist,<br/>kept 3 days, if-no-files-found error"]
-      F1 --> F2 --> F3 --> F4 --> F5 --> F6 --> F6b --> F7 --> F8 --> F9
+    subgraph fe["frontend, Node 22"]
+        i["npm ci --ignore-scripts"] --> lint["lint"] --> tc["typecheck"] --> ut["npm test"] --> pk["pack:core"] --> b["build"] --> vd["verify:dist"] --> hc["headers:check"] --> lc["license:check"] --> eol["eol:check"] --> hy["hygiene:check"] --> up["upload dist"]
     end
-    sg_fe -->|"any step exits non-zero"| FEFAIL(["frontend fails, later steps skipped,<br/>e2e skipped"])
-    F9 -->|"needs: frontend"| G1
-    subgraph sg_e2e["e2e job: End-to-end (Playwright, production headers)"]
-      G1["checkout, setup-node 22,<br/>npm ci --ignore-scripts"]
-      G2["actions/download-artifact v8.0.1: dist into dist/"]
-      G3["npx playwright install --with-deps chromium"]
-      G4["npm run test:e2e: playwright test"]
-      G1 --> G2 --> G3 --> G4
+    subgraph e2e["e2e, Node 22, needs frontend"]
+        i2["npm ci --ignore-scripts"] --> dl["download dist"] --> chr["install Chromium"] --> run["npm run test:e2e: serve.mjs + fakes,<br/>desktop and mobile, no retries"] --> rep["report uploaded on failure"]
     end
-    PWC["playwright.config.mjs: testDir tests/e2e,<br/>webServer node scripts/serve.mjs --port 4173<br/>or STARPI_E2E_PORT, without --functions,<br/>projects desktop-chromium and mobile-chromium,<br/>serviceWorkers block, forbidOnly on CI, retries 0,<br/>list + html reporter on CI, trace retain-on-failure"]
-    G4 -.- PWC
-    SPECS["app.spec.mjs: the app under the production CSP,<br/>with a mocked Supabase<br/>trust.spec.mjs: sample files, source check, receipts,<br/>privacy, axe scan via @axe-core/playwright<br/>models.spec.mjs and modes.spec.mjs: model pickers,<br/>chat modes, export, NVIDIA with a mocked proxy<br/>docs-diagrams.spec.mjs: every mermaid block in the<br/>Markdown files parses and renders with mermaid 12.1.0,<br/>skipped on mobile-chromium"]
-    G4 -.- SPECS
-    G4 -->|"all tests passed"| EOK(["e2e passes"])
-    sg_e2e -->|"any step fails"| G5["if failure(): upload-artifact playwright-report<br/>with playwright-report/ and test-results/, kept 7 days"]
-    G5 --> EFAIL(["e2e fails"])
+    up --> dl
 ```
 
-<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`package.json`](../package.json), [`playwright.config.mjs`](../playwright.config.mjs), [`scripts/serve.mjs`](../scripts/serve.mjs), [`tests/e2e/app.spec.mjs`](../tests/e2e/app.spec.mjs), [`tests/e2e/trust.spec.mjs`](../tests/e2e/trust.spec.mjs), [`tests/e2e/fixtures.mjs`](../tests/e2e/fixtures.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs)</sub>
+<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`playwright.config.mjs`](../playwright.config.mjs), [`package.json`](../package.json)</sub>
 
-### Backend, database, audit and secret-scanning jobs
+### Companion, backend, database, audit and secret-scanning jobs
 
-The backend job tests the library publisher once per Python version (3.11, 3.13) with fail-fast off: it installs tools/library-publisher/requirements-dev.txt (with the optional ONNX Runtime stack), runs ruff check, ruff format --check and a byte-compile over tools/library-publisher and backend, and the offline unittest suite of 76 tests in tools/library-publisher, any of which fails its leg. The database job installs PostgreSQL 16 with pgvector and runs run_rls_tests.sh, which starts a throwaway cluster, runs eight scenarios (five apply the schema or the four migration files and run rls_test.sql, while guard, guard_order and guard_vectors only require a file to refuse the database) plus a schema-parity diff, and exits 1 if any of them failed and 2 on a setup error; rls_test.sql has 220 checks in fresh and fresh_rerun and 227 in live, legacy_v2 and legacy_v1, which are seeded with legacy rows. The audit job needs no npm install: npm audit reads package-lock.json and fails on any advisory in a runtime dependency (--omit=dev --audit-level=low); a second npm audit over the whole tree at high severity only emits a warning annotation, because the advisories it can report are in build and test tooling that is not shipped in dist/. It then installs backend/requirements-dev.txt on Python 3.12, which includes the library publisher's requirements, and runs pip-audit, pinned there, over them; any advisory fails the job. Last, unless the run was cancelled, npm run sbom writes the CycloneDX SBOMs of the app and of @starpi/core from the lockfile, again without an npm install (scripts/sbom.mjs imports only Node built-ins and calls npm sbom --package-lock-only), checks them and uploads them as the sbom artifact for 30 days; an invalid document fails the job. The secrets job downloads gitleaks 8.30.1, verifies its pinned SHA-256, scans the working tree with the default rules plus the custom rule starpi-nvidia-api-key (NVIDIA keys, also with Markdown escapes), and on pull requests also scans the commits between the base and head SHAs. A failed download, a checksum mismatch or any leak fails the job.
+The companion job runs on Node 22 and 24: typecheck and tests of `@starpi/companion` (both build `@starpi/core` first), the dependency rules (declared packages, node: prefixes, restricted modules), the licences of its npm tree, of the voice server's requirements and of the voice allowlist, and an install of the offline bundle from its tarball into a temporary folder. companion-systemd starts a systemd user manager on the runner, builds `@starpi/core` and the offline bundle, and runs the companion as a transient unit with readiness and watchdog, then as the installed user unit. voice-server lints, byte-compiles and tests the local voice server with fake engines (no model is downloaded) on Python 3.11 and 3.13; backend does the same for the library publisher. database installs PostgreSQL 16 with pgvector and runs run_rls_tests.sh. audit fails on any advisory in runtime npm dependencies (development dependencies are reported), runs pip-audit on the publisher's requirements and writes the SBOMs as the `sbom` artifact. secrets installs gitleaks with a verified checksum and scans the working tree and the commits of a pull request.
 
 <!-- diagram: ci-backend-database-secrets -->
 ```mermaid
-flowchart TD
-    subgraph sg_be["backend job, library publisher, once per Python 3.11 and 3.13"]
-      B1["checkout, actions/setup-python v7.0.0 with pip cache<br/>keyed on tools/library-publisher/requirements*.txt"]
-      B2["python -m pip install -r tools/library-publisher/requirements-dev.txt<br/>(httpx, numpy, onnxruntime, tokenizers,<br/>ruff 0.16.10 and pip-audit 2.10.1)"]
-      B3["Lint: ruff check tools/library-publisher backend --no-cache"]
-      B4["Lint: ruff format --check tools/library-publisher backend"]
-      B5["python -m compileall -q tools/library-publisher backend"]
-      B6["python -m unittest discover -v<br/>in tools/library-publisher, 76 tests,<br/>offline, httpx MockTransport, no model download"]
-      B1 --> B2 --> B3 --> B4 --> B5 --> B6
-    end
-    sg_be -->|"install error, lint error, unformatted file,<br/>syntax error or failing test"| BFAIL(["that matrix leg fails,<br/>the other leg keeps running"])
-    subgraph sg_db["database job"]
-      D1["checkout"]
-      D2["sudo apt-get update, then apt-get install<br/>postgresql-16 postgresql-16-pgvector"]
-      D3["bash backend/supabase/tests/run_rls_tests.sh<br/>with PG_BIN=/usr/lib/postgresql/16/bin"]
-      D4["throwaway cluster: initdb, pg_ctl start<br/>on a Unix socket, port 55432"]
-      D5["scenarios live, fresh, fresh_rerun, legacy_v2,<br/>legacy_v1, guard, guard_order, the three<br/>migrations/*.sql files in file-name order,<br/>rls_test.sql 191 checks, 198 with legacy=true<br/>in live, legacy_v2 and legacy_v1,<br/>a failed scenario is counted and the rest still run"]
-      D6["schema parity: pg_dump public schemas of<br/>live, fresh and fresh_rerun must be identical"]
-      D1 --> D2 --> D3 --> D4 --> D5 --> D6
-    end
-    D2 -->|"apt error"| DFAIL(["database fails"])
-    D6 --> DX{"run_rls_tests.sh exit code"}
-    DX -->|"0: all scenarios and schema parity pass"| DOK(["database passes"])
-    DX -->|"1: a scenario or schema parity failed"| DFAIL
-    DX -->|"2: setup error, e.g. PG binaries or pgvector<br/>missing, no migrations, initdb or start failed"| DFAIL
-    subgraph sg_audit["audit job"]
-      A1["checkout, actions/setup-node v7.0.0: Node 22"]
-      A2{"npm audit --omit=dev --audit-level=low<br/>reports an advisory in a runtime dependency?"}
-      A3["npm audit --audit-level=high over the whole tree,<br/>a finding only emits a warning annotation"]
-      A4["actions/setup-python v7.0.0: Python 3.12,<br/>pip install -r backend/requirements-dev.txt,<br/>which includes the publisher requirements"]
-      A5{"pip-audit -r backend/requirements-dev.txt<br/>reports an advisory?"}
-      A6{"if not cancelled: npm run sbom,<br/>npm sbom --package-lock-only, normalized,<br/>both documents valid?"}
-      A7["actions/upload-artifact v7.0.1: sbom,<br/>kept 30 days, if-no-files-found error"]
-      A1 --> A2
-      A2 -->|"no"| A3 --> A4 --> A5
-      A5 -->|"no"| A6
-      A6 -->|"yes"| A7
-    end
-    A2 -->|"yes"| AFAIL(["audit fails"])
-    A4 -->|"install error"| AFAIL
-    A5 -->|"yes"| AFAIL
-    A6 -->|"no"| AFAIL
-    A7 --> AOK(["audit passes"])
-    ANOTE["the SBOM steps also run after a failed audit step,<br/>the job still fails"]
-    A6 -.- ANOTE
-    subgraph sg_sec["secrets job"]
-      S1["checkout with fetch-depth 0"]
-      S2["curl -f the gitleaks 8.30.1 linux_x64 tarball<br/>into RUNNER_TEMP, under set -euo pipefail"]
-      S3{"sha256sum -c matches<br/>the pinned checksum?"}
-      S7["tar extracts the gitleaks binary"]
-      S4{"gitleaks dir . --config .gitleaks.toml<br/>--redact --exit-code 1 finds a leak?"}
-      S5{"event is pull_request?"}
-      S6{"gitleaks git . with log-opts<br/>BASE_SHA..HEAD_SHA finds a leak?"}
-      S1 --> S2 --> S3
-      S3 -->|"yes"| S7 --> S4
-      S4 -->|"no"| S5
-      S5 -->|"yes"| S6
-    end
-    GL[".gitleaks.toml: default rules, custom rule<br/>starpi-nvidia-api-key for nvapi- keys, also escaped,<br/>allowlists for the public anon JWT and for<br/>generated paths such as dist/ and node_modules/"]
-    S4 -.- GL
-    S2 -->|"download fails"| SFAIL(["secrets fails"])
-    S3 -->|"no"| SFAIL
-    S4 -->|"yes"| SFAIL
-    S6 -->|"yes"| SFAIL
-    S5 -->|"no: push or workflow_dispatch"| SOK(["secrets passes"])
-    S6 -->|"no"| SOK
+flowchart LR
+    comp["companion, Node 22 and 24: typecheck:companion,<br/>test:companion, companion-deps-check,<br/>companion-license-check, offline bundle installed from its tarball"]
+    sysd["companion-systemd: user manager, build core and bundle,<br/>transient unit with readiness and watchdog, then the user unit"]
+    voice["voice-server, Python 3.11 and 3.13: ruff,<br/>compileall, unittest with fake engines"]
+    be["backend, Python 3.11 and 3.13: ruff, compileall,<br/>offline unittest of the library publisher"]
+    db["database: PostgreSQL 16 + pgvector,<br/>run_rls_tests.sh scenarios and schema parity"]
+    aud["audit: npm audit --omit=dev fails on any advisory,<br/>development reported, pip-audit, npm run sbom artifact"]
+    sec["secrets: gitleaks 8.30.1, checksum verified,<br/>working tree and pull request commits"]
 ```
 
-<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`backend/supabase/tests/run_rls_tests.sh`](../backend/supabase/tests/run_rls_tests.sh), [`backend/supabase/tests/rls_test.sql`](../backend/supabase/tests/rls_test.sql), [`backend/requirements-dev.txt`](../backend/requirements-dev.txt), [`.gitleaks.toml`](../.gitleaks.toml)</sub>
+<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`scripts/companion-deps-check.mjs`](../scripts/companion-deps-check.mjs), [`scripts/companion-license-check.mjs`](../scripts/companion-license-check.mjs), [`scripts/companion-offline-pack.mjs`](../scripts/companion-offline-pack.mjs), [`backend/supabase/tests/run_rls_tests.sh`](../backend/supabase/tests/run_rls_tests.sh), [`.gitleaks.toml`](../.gitleaks.toml)</sub>
 
 ### Release workflow after CI
 
-release.yml publishes a GitHub release for the version in package.json, with the @starpi/core tarball, the CycloneDX SBOMs of the app and of the package, and SHA256SUMS as assets. It starts when the CI workflow completes on main (workflow_run) or by manual dispatch, which takes no inputs, and its jobs run for a dispatch on main or for a CI run that succeeded and was triggered by a push. The prepare job has read-only permissions (contents, and actions to look up CI runs): it checks out the commit CI tested (for a dispatch, the head of main), reads the version from package.json with node -p, requires it to be three dot-separated numbers, and ends successfully without a release when docs/releases/vX.Y.Z.md does not exist or the release vX.Y.Z is already published. Otherwise it requires, for a dispatch, a successful push-triggered CI run of that commit, packages/core/package.json to have the same version, and a tag vX.Y.Z, if one was pushed ahead, to point at the tested commit, then installs from the lockfile without install scripts, packs @starpi/core (its prepack script runs build-core.mjs with type declarations), writes the SBOMs with npm run sbom, smoke-tests the tarball (its file list with dist/verify-receipt.js and dist/ground.js, the version in the bundle banner, an offline install into an empty project, the exported functions, both commands without arguments, and starpi-ground on a plan and an answer with a changed budget, which must exit 1 and write SARIF 2.1.0 with one missing_fact result) and writes SHA256SUMS over the three files, which it uploads as an artifact. The release job needs prepare, is the only job with contents: write and installs and runs nothing from the repository: it checks out the commit only for the notes file, downloads the artifact, checks SHA256SUMS, ends successfully if the release was published in the meantime, fails on a draft release left by an interrupted upload (gh uploads assets to a draft and publishes it at the end), and otherwise gh release create tags that commit (or keeps the pushed tag), titles the release Starpi vX.Y.Z, uses the notes file, marks it as latest and attaches the four files. The release concurrency group never cancels a running release. The workflow deploys nothing and does not publish to npm: the maintainer publishes the attached tarball (CONTRIBUTING.md, Releases).
+release.yml publishes the version in package.json. It starts when CI completes on main (workflow_run) or by hand, which takes no inputs, and its jobs run only for a passed, push-triggered CI run of main or a dispatch on main. prepare has read-only permissions and no secrets: it checks out the commit CI tested, reads the version, and ends without a release when `docs/releases/vX.Y.Z.md` is missing or the release exists; otherwise it installs from the lockfile without scripts, packs `@starpi/core` and `@starpi/companion`, writes both SBOMs, smoke-tests the core tarball offline, checks the companion tarball, builds the companion's offline bundle and writes `SHA256SUMS`. sign installs nothing: it checks the checksums, attests every asset with actions/attest-build-provenance, signs `SHA256SUMS` and the offline bundle keyless with cosign (and verifies the signatures), and signs `SHA256SUMS` with Ed25519 through scripts/sign-release.mjs when the release key is a secret of its environment. release is the only job with `contents: write`: it checks the checksums again and creates the release with every asset and signature. publish publishes both packages to npm from the very tarballs of the release, with provenance, the core first, and skips a version that is already published.
 
 <!-- diagram: ci-release-workflow -->
 ```mermaid
 flowchart TD
-    T1(["workflow_run: CI completed,<br/>branches main"])
-    T2(["workflow_dispatch,<br/>no inputs"])
-    T1 --> IF{"job condition: a dispatch with github.ref<br/>refs/heads/main, or CI concluded success<br/>and was triggered by a push?"}
-    T2 --> IF
-    IF -->|"no: the CI run did not succeed, or was started<br/>by a pull request or a manual dispatch of CI,<br/>or the dispatch ran on another branch"| SKIP(["jobs skipped, nothing released"])
-    subgraph sg_prep["prepare job: contents read, ubuntu-24.04, 15 min"]
-      CO["checkout workflow_run.head_sha, else github.sha,<br/>persist-credentials false"]
-      VER["version: node -p the version field<br/>of the checked-out package.json"]
-      VCHK{"three dot-separated numbers, X.Y.Z?"}
-      NOTES{"docs/releases/vX.Y.Z.md exists?"}
-      VIEW{"gh release view vX.Y.Z<br/>finds a published release?"}
-      LOCK{"for a dispatch: CI passed on a push of the commit,<br/>packages/core/package.json has X.Y.Z,<br/>and a pushed tag vX.Y.Z, if any,<br/>points at the tested commit?"}
-      BUILD["setup-node 22 without cache, npm ci --ignore-scripts,<br/>npm pack --workspace=@starpi/core into release-assets,<br/>prepack runs build-core.mjs,<br/>npm run sbom -- --out release-assets"]
-      SMOKE{"smoke test: package.json, README.md, LICENSE,<br/>dist/index.js, index.d.ts, verify-receipt.js and ground.js<br/>in the tarball, banner version, offline npm install<br/>into an empty project, groundAnswer, blocksFromMarkdown,<br/>checkDocument, toSarif, buildReceipt, signReceipt,<br/>verifyReceipt, verifyReceiptSignature, chunkText and<br/>BM25Index exported as functions, starpi-verify-receipt and<br/>starpi-ground exit 2 without arguments, starpi-ground on<br/>an answer of 520,000 EUR against a plan of 480,000 EUR<br/>exits 1 and writes SARIF 2.1.0 with only missing_fact?"}
-      SUMS["sha256sum of the tarball and both SBOMs<br/>into SHA256SUMS, upload-artifact release-assets"]
-      CO --> VER --> VCHK
-      VCHK -->|"yes"| NOTES
-      NOTES -->|"yes"| VIEW
-      VIEW -->|"no"| LOCK
-      LOCK -->|"yes"| BUILD --> SMOKE
-      SMOKE -->|"yes"| SUMS
+    start(["CI completed on main (workflow_run), or by hand"])
+    gate{"passed and push-triggered,<br/>or a dispatch on main?"}
+    skip(["no job runs"])
+    subgraph prep["prepare: contents read, no secrets"]
+        dec{"docs/releases/vX.Y.Z.md exists<br/>and the release does not?"}
+        none(["ends, no release"])
+        build["npm ci --ignore-scripts; pack core and companion;<br/>SBOMs; core smoke test; companion tarball check;<br/>offline bundle; SHA256SUMS"]
     end
-    IF -->|"yes"| CO
-    VCHK -->|"no"| ERR(["error annotation: not a version number,<br/>exit 1, job fails"])
-    NOTES -->|"no"| NONE(["nothing to release for X.Y.Z, exit 0,<br/>release job skipped"])
-    VIEW -->|"yes"| EXISTS(["Release vX.Y.Z already exists, exit 0,<br/>release job skipped"])
-    LOCK -->|"no"| ERR2(["error annotation: no green CI run,<br/>other package version or tag elsewhere,<br/>job fails"])
-    SMOKE -->|"no"| ERR3(["error annotation, job fails,<br/>nothing released"])
-    subgraph sg_rel["release job: needs prepare, contents write, 10 min"]
-      RCO["checkout of the same commit for the notes file only,<br/>nothing installed or run from it"]
-      DL["actions/download-artifact v8.0.1: release-assets"]
-      CHK{"sha256sum -c SHA256SUMS passes?"}
-      AGAIN{"gh release view vX.Y.Z --json isDraft:<br/>published, a draft, or none?"}
-      CREATE["gh release create vX.Y.Z with GH_TOKEN github.token<br/>--target TARGET_SHA, --title Starpi vX.Y.Z,<br/>--notes-file the release notes, --latest,<br/>starpi-core-X.Y.Z.tgz, starpi-X.Y.Z.cdx.json,<br/>starpi-core-X.Y.Z.cdx.json, SHA256SUMS"]
-      RCO --> DL --> CHK
-      CHK -->|"yes"| AGAIN
-      AGAIN -->|"none"| CREATE
+    subgraph sign["sign: installs nothing, id-token and attestations write"]
+        chk["check SHA256SUMS"]
+        att["actions/attest-build-provenance for every asset"]
+        cos["cosign keyless: SHA256SUMS and the bundle, verified"]
+        ed["Ed25519 SHA256SUMS.sig when the release key exists"]
     end
-    SUMS --> RCO
-    CHK -->|"no"| FAIL(["job fails, nothing released"])
-    AGAIN -->|"published"| LATE(["Release vX.Y.Z already exists, exit 0"])
-    AGAIN -->|"draft"| DRAFT(["error annotation: delete the draft<br/>of an interrupted upload, re-run"])
-    CREATE -->|"ok"| DONE(["Created release vX.Y.Z at TARGET_SHA"])
-    CREATE -->|"gh fails, set -euo pipefail"| FAIL
-    CONC["workflow permissions contents read,<br/>concurrency group release, cancel-in-progress false"]
-    CONC -.- IF
-    NOTE["no deploy step and no npm publish:<br/>the Vercel build is triggered outside this repository,<br/>the maintainer publishes the attached tarball to npm"]
-    DONE -.- NOTE
+    subgraph rel["release: the only contents write job"]
+        chk2["check SHA256SUMS"] --> create["create the release with assets and signatures"]
+    end
+    subgraph pub["publish: id-token write, npm environment"]
+        np["npm publish --provenance from the release tarballs:<br/>core, then companion; published versions skipped"]
+    end
+    start --> gate
+    gate -->|"no"| skip
+    gate -->|"yes"| dec
+    dec -->|"no"| none
+    dec -->|"yes"| build --> chk --> att --> cos --> ed --> chk2
+    create --> np
 ```
 
-<sub>Sources: [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`package.json`](../package.json), [`packages/core/package.json`](../packages/core/package.json), [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`CONTRIBUTING.md`](../CONTRIBUTING.md), [`docs/releases/v1.3.0.md`](../docs/releases/v1.3.0.md)</sub>
+<sub>Sources: [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`scripts/sign-release.mjs`](../scripts/sign-release.mjs), [`scripts/companion-offline-pack.mjs`](../scripts/companion-offline-pack.mjs), [`scripts/sbom.mjs`](../scripts/sbom.mjs), [`docs/releases/v3.0.0.md`](releases/v3.0.0.md)</sub>
 
-### CI workflow and Vercel build of the PWA and the NVIDIA functions
+### CI workflow and the Vercel build of the app and the server functions
 
-Pushes and pull requests to main (and manual dispatch) run six CI jobs: frontend (lint, typecheck, unit tests, a dry-run pack of @starpi/core, build, verify:dist), e2e on the built dist under the vercel.json headers, backend (the library publisher) on Python 3.11 and 3.13, the database migration and RLS suite, a dependency audit (npm audit, pip-audit) with CycloneDX SBOMs and gitleaks secret scanning. Neither ci.yml nor release.yml has a deploy step, so the Vercel build is triggered by settings of the Vercel project outside this repo and nothing in the repo makes it wait for CI. .vercelignore leaves the database files, the library publisher, the tests, the workflows, env files, node_modules and build and test output out of the deployment, but keeps api/ and src/, because the functions import the NVIDIA catalog from src/ (a unit test checks that). vercel.json installs with npm ci --ignore-scripts, builds with npm run build (which stops on a blank or secret Supabase key and on a JWT whose role is not anon) into dist, deploys api/chat/nvidia.js (maxDuration 300 s with supportsCancellation, so a browser that goes away stops the function) and api/models/nvidia.js (maxDuration 10 s) as Node.js functions, and sets a strict CSP, nosniff, X-Frame-Options DENY, COOP, HSTS and Permissions-Policy on all paths, plus immutable caching for assets/ and no-cache for sw.js, the root and index.html. NVIDIA_API_KEYS, and optionally NVIDIA_RATE_LIMIT_PER_MINUTE and NVIDIA_ALLOWED_ORIGINS, are environment variables of the Vercel project, the keys marked sensitive, for Production and Preview. Vercel binds environment variables to a deployment when it is created, so a key added later reaches only deployments created after it; without a valid key the models route reports configured false and the chat route answers 503 nvidia_not_configured.
+Neither ci.yml nor release.yml deploys: the Vercel build is triggered by the Vercel project's settings, outside this repository, and does not wait for CI. vercel.json installs with `npm ci --ignore-scripts`, builds with `npm run build` (profile public) into dist/, carries the generated header rules (headers:check keeps them equal to scripts/headers.json), lists the server functions (the relay, the pools and their model list, health, the speech routes, the research step, and the NVIDIA routes of 2.x) and rewrites `/api/relay/:provider/:path*` to the relay function, which reads the original URL. .vercelignore leaves the database files, the library publisher, the tests, the workflows, env files and build output out, and keeps api/ and src/, because the functions share the pool allowlists and the NVIDIA catalog with the app. Variables are read when Vercel creates a deployment: set them as Sensitive, deploy, and redeploy after a change. Whether the relay function sees the original URL after the rewrite is checked on a preview before a release (otherwise the rewrite passes provider and path as query parameters, which the relay also accepts).
 
 <!-- diagram: deployment-ci-vercel -->
 ```mermaid
-flowchart TD
-    Push(["git push to main"])
-    PR(["pull request to main<br/>or workflow_dispatch"])
-    subgraph sg_ci["GitHub Actions: .github/workflows/ci.yml"]
-        Conc["permissions contents read<br/>concurrency per PR or ref, cancel-in-progress"]
-        FE["frontend job, Node 22<br/>npm ci --ignore-scripts, lint, typecheck,<br/>npm test, npm run pack:core,<br/>npm run build, npm run verify:dist<br/>uploads the dist artifact"]
-        E2E["e2e job, needs frontend<br/>npm ci --ignore-scripts, downloads dist,<br/>installs Chromium, npm run test:e2e<br/>app, trust, models, modes and Mermaid docs specs,<br/>Supabase and the NVIDIA proxy mocked<br/>playwright-report uploaded on failure"]
-        BE["backend job, library publisher, Python 3.11 and 3.13<br/>pip install tools/library-publisher/requirements-dev.txt<br/>ruff check, ruff format --check,<br/>compileall, unittest discover"]
-        DBJ["database job<br/>PostgreSQL 16 and pgvector<br/>backend/supabase/tests/run_rls_tests.sh"]
-        AUD["audit job<br/>npm audit: no advisory in runtime dependencies<br/>pip-audit on backend/requirements-dev.txt<br/>npm run sbom: CycloneDX SBOMs, artifact sbom"]
-        SEC["secrets job<br/>gitleaks 8.30.1, sha256 verified, NVIDIA key rule<br/>working tree, plus PR commits on pull_request"]
-    end
-    Push --> Conc
-    PR --> Conc
-    Conc --> FE
-    Conc --> BE
-    Conc --> DBJ
-    Conc --> AUD
-    Conc --> SEC
-    FE -->|"dist artifact"| E2E
-    sg_ci -.->|"CI passed on a push to main"| REL["release.yml: GitHub release with the<br/>@starpi/core tarball, SBOMs and SHA256SUMS,<br/>no deploy step, no npm publish"]
-    Push -.->|"trigger set in the Vercel project, not in this repo<br/>no workflow deploys, nothing waits for CI"| VIg
-    subgraph sg_vercel["Vercel build from vercel.json"]
-        VIg[".vercelignore leaves out backend/, tools/, tests/, .github/,<br/>.env*, node_modules/, dist/, .build/,<br/>playwright-report/, test-results/,<br/>keeps api/ and src/"]
-        VI["installCommand<br/>npm ci --ignore-scripts"]
-        VB["buildCommand npm run build = scripts/build.mjs<br/>STARPI_SUPABASE_URL, STARPI_SUPABASE_ANON_KEY<br/>or the compiled-in defaults<br/>stops on a blank or sb_secret_ key and on a JWT<br/>whose role is not anon, accepts sb_publishable_ keys<br/>esbuild warnings fail the build"]
-        VO[("outputDirectory dist<br/>framework null, cleanUrls true")]
-        VF["functions: api/chat/nvidia.js maxDuration 300,<br/>supportsCancellation true, api/models/nvidia.js<br/>maxDuration 10, Node.js, import the catalog from src/"]
-        VE[("project environment, bound when a deployment<br/>is created: NVIDIA_API_KEYS sensitive, Production<br/>and Preview, NVIDIA_RATE_LIMIT_PER_MINUTE and<br/>NVIDIA_ALLOWED_ORIGINS optional")]
-        VIg --> VI --> VB --> VO
-        VIg --> VF
-        VE -.->|"read by runtimeDeps"| VF
-    end
-    VO --> Site(["PWA at www.starpi.app"])
-    VF --> Api(["same-origin /api/models/nvidia and<br/>/api/chat/nvidia, keys only on the server,<br/>503 nvidia_not_configured without a valid key"])
-    Site -.->|"the browser calls them without a key"| Api
-    subgraph sg_headers["Response headers from vercel.json"]
-        HCsp["all paths: Content-Security-Policy<br/>default-src 'self'<br/>script-src 'self' 'wasm-unsafe-eval'<br/>style-src, font-src, worker-src, manifest-src 'self'<br/>img-src 'self' data: blob:<br/>connect-src 'self' data: https: wss://*.supabase.co<br/>http://localhost:* http://127.0.0.1:*<br/>media-src, object-src, frame-src 'none'<br/>base-uri, form-action, frame-ancestors 'none'"]
-        HSec["all paths<br/>X-Content-Type-Options nosniff, X-Frame-Options DENY<br/>Referrer-Policy strict-origin-when-cross-origin<br/>Cross-Origin-Opener-Policy same-origin<br/>Strict-Transport-Security max-age=63072000<br/>Permissions-Policy microphone=(self), camera=(),<br/>geolocation=(), payment=(), usb=(), serial=(), hid=()"]
-        HCache["Cache-Control<br/>assets/*: public, max-age=31536000, immutable<br/>sw.js: no-cache, no-store, must-revalidate<br/>and Service-Worker-Allowed /<br/>root and index.html: no-cache<br/>function answers set no-store themselves"]
-        HMan["manifest.webmanifest<br/>Content-Type application/manifest+json"]
-    end
-    Site --> HCsp
-    Site --> HSec
-    Site --> HCache
-    Site --> HMan
-    FE -.->|"verify:dist requires a CSP<br/>without unsafe-inline or unsafe-eval,<br/>and no NVIDIA key in the bundles"| HCsp
-    E2E -.->|"Playwright webServer: scripts/serve.mjs<br/>on port 4173 applies the vercel.json headers"| sg_headers
+flowchart LR
+    gh(["push to main"])
+    ci["ci.yml jobs, no deploy step"]
+    vercel["Vercel project settings: build on push"]
+    install["npm ci --ignore-scripts"]
+    build["npm run build, profile public: dist/"]
+    hdr["vercel.json headers generated from headers.json"]
+    fns["functions: api/relay.js, api/pool.js, api/models/pool.js,<br/>api/health.js, api/voice/*, api/research/step.js,<br/>api/chat/nvidia.js, api/models/nvidia.js"]
+    rw["rewrite /api/relay/:provider/:path* to /api/relay,<br/>the relay reads the original URL (checked on a preview)"]
+    ign[".vercelignore: no backend, tools, tests, workflows,<br/>env files or build output; api/ and src/ kept"]
+    env["variables read at deployment: Sensitive, redeploy after a change"]
+    gh --> ci
+    gh --> vercel --> install --> build
+    build --> hdr
+    vercel --> fns --> rw
+    ign -.-> vercel
+    env -.-> fns
 ```
 
-<sub>Sources: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`.github/workflows/release.yml`](../.github/workflows/release.yml), [`vercel.json`](../vercel.json), [`.vercelignore`](../.vercelignore), [`api/chat/nvidia.js`](../api/chat/nvidia.js), [`api/models/nvidia.js`](../api/models/nvidia.js), [`api/_lib/handlers.js`](../api/_lib/handlers.js), [`api/_lib/env.js`](../api/_lib/env.js), [`README.md`](../README.md), [`package.json`](../package.json), [`scripts/build.mjs`](../scripts/build.mjs), [`scripts/lib/supabase-key.mjs`](../scripts/lib/supabase-key.mjs), [`scripts/verify-dist.mjs`](../scripts/verify-dist.mjs), [`scripts/serve.mjs`](../scripts/serve.mjs), [`playwright.config.mjs`](../playwright.config.mjs), [`tests/unit/nvidia-proxy.test.mjs`](../tests/unit/nvidia-proxy.test.mjs), [`tests/e2e/docs-diagrams.spec.mjs`](../tests/e2e/docs-diagrams.spec.mjs)</sub>
+<sub>Sources: [`vercel.json`](../vercel.json), [`.vercelignore`](../.vercelignore), [`scripts/gen-headers.mjs`](../scripts/gen-headers.mjs), [`scripts/lib/routes.mjs`](../scripts/lib/routes.mjs), [`api/relay.js`](../api/relay.js), [`api/_lib/relay/handler.js`](../api/_lib/relay/handler.js), [`docs/SERVER.md`](SERVER.md)</sub>
 
 ### Supabase schema: fresh install or ordered migrations
 
-A new project gets full_schema.sql, an existing one the four migrations in file-name order: 20260923000000_harden_rls_anonymous_auth.sql, 20260924000000_lock_published_rows.sql, 20260924120000_search_knowledge_shared_terms.sql, then the optional 20261101000000_embedding_384.sql. Each file first checks its preconditions and raises an exception otherwise: full_schema.sql refuses an older schema, the first migration needs vector in public, Supabase auth and the Starpi tables, the second refuses a database without the first, and the third needs search_knowledge(text, integer) and the two knowledge tables, the fourth the hardened knowledge tables, search_knowledge and ingest_document_atomic. Every file runs in a single transaction; full_schema.sql, the first two migrations and the fourth end with notify pgrst to reload the schema, the third does not. An operator applies the files by hand through the SQL editor, a psql loop, apply_migration.py --migrations or supabase db push; no workflow touches the live project. Re-running only the first migration drops and recreates the policies and search_knowledge, which undoes the policy part of the second and the search change of the third, so the whole set is always re-run, and the CI database job checks on a throwaway cluster that fresh and upgraded schemas are identical.
+A new project gets full_schema.sql, an existing one the migrations in file-name order: 20260923000000_harden_rls_anonymous_auth.sql, 20260924000000_lock_published_rows.sql, 20260924120000_search_knowledge_shared_terms.sql, then the two optional ones, 20261101000000_embedding_384.sql (ranking the library by meaning) and 20261102000000_chat_sync.sql (the encrypted chat sync). Each file checks its preconditions, runs in one transaction and is idempotent; apply_migration.py applies full_schema.sql or, with `--migrations`, every file in order and stops at the first failure. For restoring sync in another browser the Magic Link and Change Email templates need `{{ .Token }}`. Section 8 shows the guards in detail.
 
 <!-- diagram: deployment-supabase-migrations -->
 ```mermaid
 flowchart TD
-    Pre["prerequisites, set by hand<br/>anonymous sign-ins enabled<br/>vector extension in schema public<br/>run as the table owner postgres"] --> Backup["pg_dump --data-only backup of the<br/>knowledge_*, chat_history and brain_settings tables"]
-    Backup --> Kind{"new or existing project?"}
-    Kind -->|"new project"| Full["full_schema.sql"]
-    Full --> FullG{"vector in public, auth.users and auth.uid() exist,<br/>no Starpi table without owner_id?"}
-    FullG -->|"no"| FullStop["raise exception, nothing committed<br/>older schema: apply migrations/ instead"]
-    FullG -->|"yes"| Tx
-    Kind -->|"existing project"| M1["migrations/20260923000000_harden_rls_anonymous_auth.sql<br/>owner-based RLS for anonymous sign-ins<br/>deletes ownerless chat_history rows"]
-    M1 --> M1G{"vector in public, auth.users and auth.uid() exist,<br/>knowledge_documents, knowledge_sections<br/>and chat_history exist?"}
-    M1G -->|"no"| M1Stop["raise exception, nothing committed<br/>no Starpi tables: use full_schema.sql"]
-    M1G -->|"yes, then in file-name order"| M2["migrations/20260924000000_lock_published_rows.sql<br/>published rows read-only for browser roles<br/>brain_settings service role only, size limits NOT VALID"]
-    M2 --> M2G{"owner_id and is_public on documents,<br/>entities and relations, and knowledge_sections,<br/>chat_history, brain_settings exist?"}
-    M2G -->|"no"| M2Stop["raise exception, nothing committed<br/>apply 20260923000000 first"]
-    M2G -->|"yes, then"| M3["migrations/20260924120000_search_knowledge_shared_terms.sql<br/>search_knowledge: rows with every term first, otherwise<br/>rows sharing at least two terms, or one term<br/>when the query has only one"]
-    M3 --> M3G{"search_knowledge(text, integer),<br/>knowledge_sections and<br/>knowledge_documents exist?"}
-    M3G -->|"no"| M3Stop["raise exception, nothing committed<br/>apply 20260923000000 and 20260924000000 first"]
-    M3G -->|"yes, then"| M4["migrations/20261101000000_embedding_384.sql, optional<br/>embedding_384 vector(384) with an HNSW index,<br/>match_knowledge_vector_384 for anon and signed-in users,<br/>ingest_document_atomic stores embedding_384"]
-    M4 --> M4G{"hardened knowledge tables, search_knowledge<br/>and ingest_document_atomic exist?"}
-    M4G -->|"no"| M4Stop["raise exception, nothing committed<br/>apply the three earlier migrations first"]
-    M4G -->|"yes"| Tx
-    Full -.->|"migrations afterwards change nothing"| M1
-    subgraph sg_tools["ways to apply, all run by hand"]
-        T1["SQL editor, one file after the other"]
-        T2["psql -X -v ON_ERROR_STOP=1 loop over<br/>migrations/*.sql, break at the first failure"]
-        T3["apply_migration.py with DATABASE_URL<br/>no argument: full_schema.sql<br/>--migrations: file-name order, stops at the first failure<br/>psycopg, psycopg2 or psql, exit 1 SQL error, 2 setup"]
-        T4["supabase db push after copying the files<br/>into the CLI project's supabase/migrations/"]
-    end
-    sg_tools --> Tx["each file: begin, one transaction,<br/>lock_timeout 15s in the migrations, commit<br/>notify pgrst reload schema in full_schema.sql<br/>and every migration but the third"]
-    Tx --> DB[("Supabase Postgres and PostgREST")]
-    DB --> Verify["verify with Supabase security advisors<br/>and the verification queries"]
-    Rerun["re-running 20260923000000 alone drops and recreates<br/>the policies and search_knowledge: it undoes the policy part<br/>of 20260924000000 and the search of 20260924120000,<br/>always re-run the whole set"] -.-> M1
-    CIdb["CI database job: run_rls_tests.sh on a throwaway<br/>PostgreSQL 16 and pgvector cluster, never the live project<br/>every migrations file in file-name order, guard checks,<br/>rls_test.sql 220 checks, 227 with legacy rows,<br/>fresh vs upgraded pg_dump"] -.->|"tests"| Tx
-    PWA(["browser PWA, anon key and RLS"]) --> DB
-    Publisher(["library publisher, service role key"]) --> DB
+    q{"new project?"}
+    full["full_schema.sql: everything, including the vector column<br/>and the chat sync tables"]
+    m1["20260923000000_harden_rls_anonymous_auth.sql"]
+    m2["20260924000000_lock_published_rows.sql"]
+    m3["20260924120000_search_knowledge_shared_terms.sql"]
+    m4["20261101000000_embedding_384.sql, optional"]
+    m5["20261102000000_chat_sync.sql, optional"]
+    tool["apply_migration.py: full_schema.sql by default,<br/>--migrations in file-name order, stops at the first failure"]
+    tmpl["Auth templates: {{ .Token }} in Magic Link and Change Email,<br/>for restoring sync in another browser"]
+    q -->|"yes"| full
+    q -->|"no"| m1 --> m2 --> m3 --> m4 --> m5
+    tool -.-> full
+    tool -.-> m1
+    full -.-> tmpl
+    m5 -.-> tmpl
 ```
 
-<sub>Sources: [`backend/supabase/README.md`](../backend/supabase/README.md), [`backend/supabase/apply_migration.py`](../backend/supabase/apply_migration.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql`](../backend/supabase/migrations/20260923000000_harden_rls_anonymous_auth.sql), [`backend/supabase/migrations/20260924000000_lock_published_rows.sql`](../backend/supabase/migrations/20260924000000_lock_published_rows.sql), [`backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql`](../backend/supabase/migrations/20260924120000_search_knowledge_shared_terms.sql), [`backend/supabase/migrations/20261101000000_embedding_384.sql`](../backend/supabase/migrations/20261101000000_embedding_384.sql), [`backend/supabase/tests/run_rls_tests.sh`](../backend/supabase/tests/run_rls_tests.sh), [`backend/supabase/tests/rls_test.sql`](../backend/supabase/tests/rls_test.sql), [`README.md`](../README.md), [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)</sub>
+<sub>Sources: [`backend/supabase/README.md`](../backend/supabase/README.md), [`backend/supabase/apply_migration.py`](../backend/supabase/apply_migration.py), [`backend/supabase/full_schema.sql`](../backend/supabase/full_schema.sql), [`backend/supabase/migrations/20261102000000_chat_sync.sql`](../backend/supabase/migrations/20261102000000_chat_sync.sql)</sub>
 
 ## 12. Source check, answer receipts and sample files
 
