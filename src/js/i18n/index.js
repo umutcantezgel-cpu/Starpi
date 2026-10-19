@@ -1,7 +1,8 @@
 // @ts-check
-// Zero-dependency runtime localization. English is the default; German is one click away and the
-// choice is kept in localStorage. Switching never reloads the page: static markup is re-translated
-// through data-i18n* attributes and dynamic views subscribe to onLocaleChange().
+// Zero-dependency runtime localization. English is the default; German, French, Spanish, Italian and
+// Turkish are one choice away and the choice is kept in localStorage. Switching never reloads the
+// page: static markup is re-translated through data-i18n* attributes and dynamic views subscribe to
+// onLocaleChange().
 //
 // Dictionaries come from src/locales (see src/locales/index.js): a root file per language plus
 // namespace files whose keys are reached as `<ns>.<key>`. English ships with the app bundle and is
@@ -18,7 +19,7 @@
 // Only textContent and attributes are written, never HTML.
 import { ENGLISH, loadLocaleFiles, SHIPPED_LOCALES } from '../../locales/index.js';
 
-/** @typedef {'en' | 'de'} Locale */
+/** @typedef {'en' | 'de' | 'fr' | 'es' | 'it' | 'tr'} Locale */
 /** @typedef {Record<string, string | number>} Params */
 /** @typedef {import('../../locales/index.js').Dictionary} Dictionary */
 /** @typedef {import('../../locales/index.js').LocaleFiles} LocaleFiles */
