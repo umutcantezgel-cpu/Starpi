@@ -4948,7 +4948,7 @@ flowchart TD
     scen --> guardVectors
 
     aIdem["Second migrations run succeeds on the upgraded schema:<br/>idempotent on the live shape and both earlier schema versions"]
-    aRls["rls_test.sql: 270 checks, 277 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback,<br/>match_knowledge_vector_384 and the encrypted chat sync"]
+    aRls["rls_test.sql: 264 checks, 271 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback,<br/>match_knowledge_vector_384 and the encrypted chat sync"]
     aPost["post_rerun_check.sql, 14 checks: a further migrations run keeps<br/>ownership, visibility, chat rows, the published-row lock,<br/>size limits and brain_settings closed to A and anon"]
     aGuard["Step passes only when psql exits non-zero:<br/>pre-hardening database refused, order enforced"]
     aFreshRerun["full_schema.sql re-runs cleanly on a database it created"]
@@ -4988,7 +4988,7 @@ flowchart TD
 
 ### What rls_test.sql asserts, in order
 
-rls_test.sql runs as superuser, service_role, anon and two anonymous users A and B, switching roles the way PostgREST does, and stops at the first failing check. It checks the catalog (policies, constraints, RPC security, privilege matrices), then tenant isolation in both directions, per-column size limits (SQLSTATE 23514) and permission errors (42501). As anon it also checks how search_knowledge ranks, including the fallback to rows that share terms with a question. It also checks that published rows are read-only for their owner, and the cascade and auth-user deletion paths. Then it checks the 384-dimension vectors: the column and its index, match_knowledge_vector_384 for every role and ingest_document_atomic with embedding_384. The encrypted chat sync follows: RLS, the exact policy set and privilege matrix, the guard trigger, revisions that only grow, the format checks, one key row per user replaced by delete and insert, isolation between A and B, anon locked out, and the deletion of an auth user removing their encrypted rows and key. With legacy=true it adds 7 checks on rows that existed before the migration (277 instead of 270 checks).
+rls_test.sql runs as superuser, service_role, anon and two anonymous users A and B, switching roles the way PostgREST does, and stops at the first failing check. It checks the catalog (policies, constraints, RPC security, privilege matrices), then tenant isolation in both directions, per-column size limits (SQLSTATE 23514) and permission errors (42501). As anon it also checks how search_knowledge ranks, including the fallback to rows that share terms with a question. It also checks that published rows are read-only for their owner, and the cascade and auth-user deletion paths. Then it checks the 384-dimension vectors: the column and its index, match_knowledge_vector_384 for every role and ingest_document_atomic with embedding_384. The encrypted chat sync follows: RLS, the exact policy set and privilege matrix, the guard trigger, revisions that only grow, the format checks, one key row per user replaced by delete and insert, isolation between A and B, anon locked out, and the deletion of an auth user removing their encrypted rows and key. With legacy=true it adds 7 checks on rows that existed before the migration (271 instead of 264 checks).
 
 <!-- diagram: migrations-tests-rls-assertions -->
 ```mermaid

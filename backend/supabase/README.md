@@ -605,7 +605,7 @@ only), loads a small Supabase stand-in (`tests/stub_supabase.sql`: roles,
   refusing a database without `20260923000000`, and `20261101000000` refusing
   a database without the earlier migrations;
 - identical `pg_dump` output for upgraded and fresh installs;
-- 270 RLS / privilege / RPC / size-limit assertions per scenario, 277 in the
+- 264 RLS / privilege / RPC / size-limit assertions per scenario, 271 in the
   scenarios seeded with legacy rows (`tests/rls_test.sql`), run as `anon`, two
   different anonymous users and `service_role`: tenant isolation in both
   directions on every table, published rows staying read-only for their owner,
@@ -654,7 +654,7 @@ flowchart TD
     scen --> guardVectors
 
     aIdem["Second migrations run succeeds on the upgraded schema:<br/>idempotent on the live shape and both earlier schema versions"]
-    aRls["rls_test.sql: 270 checks, 277 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback,<br/>match_knowledge_vector_384 and the encrypted chat sync"]
+    aRls["rls_test.sql: 264 checks, 271 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback,<br/>match_knowledge_vector_384 and the encrypted chat sync"]
     aPost["post_rerun_check.sql, 14 checks: a further migrations run keeps<br/>ownership, visibility, chat rows, the published-row lock,<br/>size limits and brain_settings closed to A and anon"]
     aGuard["Step passes only when psql exits non-zero:<br/>pre-hardening database refused, order enforced"]
     aFreshRerun["full_schema.sql re-runs cleanly on a database it created"]
