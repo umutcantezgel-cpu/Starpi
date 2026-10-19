@@ -251,6 +251,28 @@ describe('references', () => {
       assert.ok(!namesSources(q), q);
     assert.ok(namesSources('How do I qualify for the bonus according to my notes?'), 'a reference phrase counts in a how-to question too');
   });
+
+  it('reads a how-to opener only against a place phrase of its own language', async () => {
+    await loadShippedLanguages();
+    // "comment" and "come" open French and Italian how-to questions, and English requests as well.
+    for (const q of [
+      'Comment on the risks in my notes.',
+      'Comment on the dates in my notes.',
+      'Comment further on the budget in my notes.',
+      'Comment whether the plan in my files is complete.',
+      'Come here and list the dates in my notes.',
+      'Come prepare a summary from my notes.',
+    ])
+      assert.ok(namesSources(q), q);
+    for (const q of ['Comment on fait pour chercher dans mes notes ?', 'Come cercare una parola nelle mie note?', 'Notlarımda nasıl arama yapabilirim?'])
+      assert.ok(!namesSources(q), q);
+    assert.ok(!namesSources('Wie kann man in my files suchen?'), 'English and German openers count together, as they were tuned');
+    const { probe, names } = workspace();
+    for (const question of ['Comment on the risks in my notes.', 'Comment on the main points in my files.']) {
+      const d = await decideRoute({ question, mode: 'auto', workspaceProbe: probe, names, documents: names.length });
+      assert.deepEqual([d.route, d.reasons.includes('reference')], ['grounded', true], question);
+    }
+  });
 });
 
 describe('titles of the knowledge base', () => {

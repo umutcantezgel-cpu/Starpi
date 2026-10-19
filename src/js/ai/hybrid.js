@@ -285,7 +285,7 @@ export const REFERENCE_PHRASES = Object.freeze({
 /**
  * Phrases that place a question in the user's own files ("in my notes"). They also open how-to
  * questions ("How do I search in my files?"), so they count only in a question that does not start
- * like one (HOW_TO).
+ * like one in the same language (HOW_TO).
  */
 export const PLACE_PHRASES = Object.freeze({
   en: Object.freeze(['in my documents', 'in my files', 'in my notes', 'from my documents', 'from my files', 'from my notes', 'in the sources', 'from the sources']),
@@ -297,12 +297,24 @@ export const PLACE_PHRASES = Object.freeze({
 });
 
 /**
- * A how-to question, on the output of `words` ("how do i …", "wie speichere ich …", "comment puis-je
- * …", "comment installer …", "¿cómo puedo …?", "come cercare …", "… nasıl yapabilirim?"). Most
- * languages open one with their question word and a modal or an infinitive; Turkish puts "nasıl"
- * before a verb in the first person or the passive, anywhere.
+ * How-to openers per language, on the output of `words` ("how do i …", "wie speichere ich …",
+ * "comment puis-je …", "comment installer …", "¿cómo puedo …?", "come cercare …", "… nasıl
+ * yapabilirim?"). Most languages open one with their question word and a modal or an infinitive;
+ * Turkish puts "nasıl" before a verb in the first person or the passive, anywhere. An opener counts
+ * only against a place phrase of its own language (`isHowTo`): "comment" and "come" are English
+ * words as well ("Comment on the risks in my notes", "Come prepare a summary from my notes").
  */
-const HOW_TO = /^ (?:how (?:do|can|could|should|would|to) |is there a way |wie (?:\p{L}+ )?(?:ich|man) |gibt es eine möglichkeit |comment (?:je |j |on |puis je |peut on |pourrais je |faut il |est ce que |est ce qu |(?!(?:votre|notre|leur) )\p{L}+(?:er|ir|re) )|y a t il un moyen |existe t il un moyen |c[oó]mo (?:puedo |se |hago |debo |podr[ií]a |\p{L}+(?:ar|er|ir) )|hay (?:alguna|una) (?:forma|manera) |come (?:posso |si |faccio |devo |potrei |\p{L}+(?:are|ere|ire) )|c è un modo |esiste un modo )| nas[ıi]l (?:\p{L}+ )?\p{L}+(?:abilirim|ebilirim|abiliriz|ebiliriz|[ıiuü]r[ıiuü]m|[ae]r[ıi]m|[ıiuü]l[ıiuü]r|[ıiuü]n[ıiuü]r) | bir yolu var m[ıi] /u;
+const HOW_TO = Object.freeze({
+  en: /^ (?:how (?:do|can|could|should|would|to) |is there a way )/u,
+  de: /^ (?:wie (?:\p{L}+ )?(?:ich|man) |gibt es eine möglichkeit )/u,
+  fr: /^ (?:comment (?:je |j |on |puis je |peut on |pourrais je |faut il |est ce que |est ce qu |(?!(?:votre|notre|leur) )\p{L}+(?:er|ir|re) )|y a t il un moyen |existe t il un moyen )/u,
+  es: /^ (?:c[oó]mo (?:puedo |se |hago |debo |podr[ií]a |\p{L}+(?:ar|er|ir) )|hay (?:alguna|una) (?:forma|manera) )/u,
+  it: /^ (?:come (?:posso |si |faccio |devo |potrei |\p{L}+(?:are|ere|ire) )|c è un modo |esiste un modo )/u,
+  tr: / (?:nas[ıi]l (?:\p{L}+ )?\p{L}+(?:abilirim|ebilirim|abiliriz|ebiliriz|[ıiuü]r[ıiuü]m|[ae]r[ıi]m|[ıiuü]l[ıiuü]r|[ıiuü]n[ıiuü]r)|bir yolu var m[ıi]) /u,
+});
+
+/** Languages whose how-to openers cancel each other's place phrases: English and German, tuned together. */
+const HOW_TO_PEERS = Object.freeze({ en: ['en', 'de'], de: ['en', 'de'] });
 
 /** Languages whose phrases also match a question written without accents ("segun mis notas", "belgelerime gore"). */
 const ACCENT_FREE = new Set(['fr', 'es', 'it', 'tr']);
@@ -339,6 +351,20 @@ function holdsPhrase(question, lists) {
 }
 
 /**
+ * Whether a question opens like a how-to question in a language: English and German as written
+ * (each also with the other's openers), the others also without accents and with either Turkish i.
+ * @param {string} question
+ * @param {string} lang  a key of PLACE_PHRASES
+ */
+function isHowTo(question, lang) {
+  const q = words(question);
+  const peers = /** @type {Record<string, string[]>} */ (HOW_TO_PEERS)[lang];
+  if (peers) return peers.some((l) => /** @type {Record<string, RegExp>} */ (HOW_TO)[l].test(q));
+  const pattern = /** @type {Record<string, RegExp | undefined>} */ (HOW_TO)[lang];
+  return !!pattern && (pattern.test(q) || pattern.test(unaccented(turkishWords(question))));
+}
+
+/**
  * Whether a question points at the user's files: one of the reference phrases, a place phrase in a
  * question that is not a how-to question, or the name of a document it can see (the whole name, or
  * a name of several words without its extension; a name under four characters does not count, nor
@@ -349,7 +375,7 @@ function holdsPhrase(question, lists) {
 export function namesSources(question, names = []) {
   const q = words(question);
   if (holdsPhrase(question, REFERENCE_PHRASES)) return true;
-  if (!HOW_TO.test(q) && !HOW_TO.test(unaccented(turkishWords(question))) && holdsPhrase(question, PLACE_PHRASES)) return true;
+  for (const [lang, list] of Object.entries(PLACE_PHRASES)) if (holdsPhrase(question, { [lang]: list }) && !isHowTo(question, lang)) return true;
   for (const name of names) {
     const raw = String(name);
     const full = words(raw).trim();
