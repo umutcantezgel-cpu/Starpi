@@ -11,6 +11,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import AxeBuilder from '@axe-core/playwright';
 import { expect, mockSupabase, test } from './fixtures.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -99,6 +100,17 @@ async function watchProblems(page, opts = {}) {
     problems.push(`console.error: ${text}`);
   });
   return problems;
+}
+
+/**
+ * No serious or critical axe violation in the Companion tab.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} name
+ */
+async function axe(page, name) {
+  const results = await new AxeBuilder({ page }).include('#tab-companion').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+  const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+  expect(serious.map((v) => `${name}: ${v.id} ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
 }
 
 /**
@@ -224,6 +236,7 @@ test('Mode B: the app probes only when asked, pairs with a sealed token, reads t
   await expect(page.locator('[data-companion-list="notes"]')).toContainText('Parking');
   await page.click('[data-action="companion-page"][data-arg="agenda"]');
   await expect(page.locator('[data-companion-list="agenda"]')).toContainText('Water the plants');
+  await axe(page, 'agenda');
 
   // A reload keeps the pairing without asking the companion until the tab opens.
   asked.length = 0;
@@ -282,6 +295,7 @@ test('shows the red audit rollback banner when this browser saw a newer head tha
   await expect(banner).toContainText('Audit rollback');
   await expect(banner).toContainText(`already saw record ${Number(reported) + 100}`);
   await expect(page.locator('#tab-companion')).toContainText('Audit rollback');
+  await axe(page, 'rollback banner');
   // The Settings card carries it too, and checking again does not make it go away.
   await page.click('#nav-settings');
   await expect(page.locator('#companionSettings [data-companion-banner="rollback"]')).toBeVisible();
