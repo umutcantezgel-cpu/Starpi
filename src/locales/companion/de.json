@@ -241,7 +241,9 @@
     "pin_changed": "Beschreibung geändert",
     "pin_missing": "nicht mehr angeboten",
     "calls_ask": "fragt jedes Mal",
-    "calls_allow": "läuft ohne Nachfrage"
+    "calls_allow": "läuft ohne Nachfrage",
+    "approve_tool_allow": "Freigeben, ohne Nachfrage",
+    "approve_allow_confirm": "{tool} mit der Beschreibung freigeben, die der Server jetzt zeigt, und ohne Nachfrage laufen lassen? Ein Aufruf nach einem Werkzeugergebnis fragt trotzdem zuerst bei Ihnen nach."
   },
   "audit": {
     "title": "Protokoll",

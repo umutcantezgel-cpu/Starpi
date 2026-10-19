@@ -241,7 +241,9 @@
     "pin_changed": "description changed",
     "pin_missing": "no longer offered",
     "calls_ask": "asks every time",
-    "calls_allow": "runs without asking"
+    "calls_allow": "runs without asking",
+    "approve_tool_allow": "Approve, run without asking",
+    "approve_allow_confirm": "Approve {tool} with the description the server shows now, and let it run without asking? A call written after a tool result still asks you first."
   },
   "audit": {
     "title": "Audit",

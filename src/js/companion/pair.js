@@ -11,6 +11,9 @@
 // never leave WebCrypto, and kept with the rest of the link in the IndexedDB database
 // `starpi-companion`; nothing about the companion is synced or sent anywhere else.
 //
+// The voice input reaches the companion's voice relay with the token (Mode B). In Mode A it is
+// not offered: the voice input sends no cookies and no CSRF value, so it gets no link there.
+//
 // No network at boot: restore() only reads what is stored. The app talks to the companion when the
 // user opens its card or tab, asks a question that searches it, or pairs.
 //

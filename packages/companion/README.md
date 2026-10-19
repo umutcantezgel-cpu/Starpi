@@ -20,7 +20,9 @@ npx starpi-companion pair           # prints a one-time code (valid 10 minutes)
 ```
 
 Open Starpi, go to Settings > Companion and enter the code. Or, with an app build for the
-companion profile in `appDir`, open `http://127.0.0.1:47821/` directly.
+companion profile in `appDir`, open `http://127.0.0.1:47821/` directly. That build is made from the
+repository root with `STARPI_HEADER_PROFILE=companion STARPI_DIST_DIR=dist-companion npm run build`
+and served with `starpi-companion start --app-dir dist-companion`.
 
 ## Folders
 

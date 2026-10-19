@@ -8,6 +8,7 @@
 # Node / frontend build output
 node_modules/
 dist/
+dist-companion/
 .build/
 coverage/
 *.tsbuildinfo

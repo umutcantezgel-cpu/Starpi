@@ -615,7 +615,7 @@ export function mountCompanionTab(el, services, deps) {
                   (/** @type {any} */ tool) =>
                     html`<li class="flex flex-wrap items-center gap-2"><span class="font-mono">${String(tool.name)}</span>${chip({ label: hasKey(`${NS}.connectors.pin_${tool.state}`) ? `${NS}.connectors.pin_${tool.state}` : { text: String(tool.state) }, tone: tool.state === 'approved' ? 'ok' : tool.state === 'changed' ? 'warn' : 'neutral' })}${tool.calls ? chip({ label: `${NS}.connectors.calls_${tool.calls === 'allow' ? 'allow' : 'ask'}`, tone: 'neutral' }) : ''}<span class="flex-1 min-w-0 truncate text-slate-600">${String(tool.description ?? '')}</span>${
                       isOwner && tool.pin && tool.state !== 'approved'
-                        ? html`<button type="button" class="btn btn-secondary py-1" data-action="companion-tool-approve" data-arg="${String(s.id)}|${String(tool.name)}|${String(tool.pin)}">${label(`${NS}.connectors.approve_tool`)}</button>`
+                        ? html`<button type="button" class="btn btn-secondary py-1" data-action="companion-tool-approve" data-arg="${String(s.id)}|${String(tool.name)}|${String(tool.pin)}|ask">${label(`${NS}.connectors.approve_tool`)}</button><button type="button" class="btn btn-ghost py-1" data-action="companion-tool-approve" data-arg="${String(s.id)}|${String(tool.name)}|${String(tool.pin)}|allow">${label(`${NS}.connectors.approve_tool_allow`)}</button>`
                         : ''
                     }${isOwner && tool.approvedPin ? html`<button type="button" class="btn btn-ghost py-1" data-action="companion-tool-revoke" data-arg="${String(s.id)}|${String(tool.name)}">${label(`${NS}.connectors.revoke_tool`)}</button>` : ''}</li>`,
                 )}</ul></div>`,
@@ -1048,9 +1048,10 @@ export function mountCompanionTab(el, services, deps) {
 
   services.onAction('companion-connector-refresh', (btn) => void change(() => pairing.call('POST', `/v1/connectors/${encodeURIComponent(btn.dataset.arg ?? '')}/refresh`, { timeoutMs: 60_000 })));
   services.onAction('companion-tool-approve', (btn) => {
-    const [server, tool, pin] = String(btn.dataset.arg ?? '').split('|');
-    if (!confirmAction(t(`${NS}.connectors.approve_confirm`, { tool: `${server}.${tool}` }))) return;
-    void change(() => pairing.call('POST', `/v1/connectors/${encodeURIComponent(server)}/approve`, { body: { tool, pin, calls: 'ask' } }));
+    const [server, tool, pin, how] = String(btn.dataset.arg ?? '').split('|');
+    const calls = how === 'allow' ? 'allow' : 'ask';
+    if (!confirmAction(t(calls === 'allow' ? `${NS}.connectors.approve_allow_confirm` : `${NS}.connectors.approve_confirm`, { tool: `${server}.${tool}` }))) return;
+    void change(() => pairing.call('POST', `/v1/connectors/${encodeURIComponent(server)}/approve`, { body: { tool, pin, calls } }));
   });
   services.onAction('companion-tool-revoke', (btn) => {
     const [server, tool] = String(btn.dataset.arg ?? '').split('|');
