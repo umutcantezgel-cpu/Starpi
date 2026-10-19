@@ -92,6 +92,7 @@ idealised design. When the code changes, change the diagram in the same pull req
    - [Knowledge base tab: document list](#knowledge-base-tab-document-list)
    - [Knowledge base tab: document modal](#knowledge-base-tab-document-modal)
    - [Knowledge graph tab: loading, status and entity list](#knowledge-graph-tab-loading-status-and-entity-list)
+   - [Knowledge graph tab: Find in my files](#knowledge-graph-tab-find-in-my-files)
    - [Knowledge graph tab: canvas drawing](#knowledge-graph-tab-canvas-drawing)
    - [Knowledge graph tab: selection and ask-entity](#knowledge-graph-tab-selection-and-ask-entity)
    - [Knowledge graph tab: new entities](#knowledge-graph-tab-new-entities)
@@ -3416,7 +3417,7 @@ flowchart TD
 
 ## 6. Knowledge base views
 
-The library and the knowledge graph read Supabase with the browser's anonymous session when there is one, and with the anon key alone otherwise. The select policies return rows that are public or owned by that session, so RLS decides which rows each visitor sees. Every query these views send goes through run() in supabase.js, which maps errors with classifyError and never rejects; a network or timeout failure while the connection is ready switches the app to offline and schedules a reconnect. The shared client aborts each request after 12 s (TIMEOUTS_MS.supabase) and has postgrest retries turned off. library.js and graph.js do not look at the connection state before they query, so an offline app still tries each request. Writing an entity needs a session: renderConnection in ui.js disables every `data-requires-session` button unless the connection is ready, signed in and on the hardened schema, except while it is still pending.
+The library and the knowledge graph read Supabase with the browser's anonymous session when there is one, and with the anon key alone otherwise. The select policies return rows that are public or owned by that session, so RLS decides which rows each visitor sees. Every query these views send goes through run() in supabase.js, which maps errors with classifyError and never rejects; a network or timeout failure while the connection is ready switches the app to offline and schedules a reconnect. The shared client aborts each request after 12 s (TIMEOUTS_MS.supabase) and has postgrest retries turned off. library.js and graph.js do not look at the connection state before they query, so an offline app still tries each request. Writing an entity needs a session: renderConnection in ui.js disables every `data-requires-session` button unless the connection is ready, signed in and on the hardened schema, except while it is still pending. Next to the entities added by hand, the graph shows what Find in my files found in the workspace documents; that part is read and kept on this device and needs no connection.
 
 ### Knowledge base tab: document list
 
@@ -3512,26 +3513,30 @@ sequenceDiagram
 
 ### Knowledge graph tab: loading, status and entity list
 
-graph.js loads with the graph tab: graph-tab.js imports it when the tab first opens (it is used nowhere else) and handles the tab's reload-graph and open-entity-modal buttons, and a view that does not load leaves the data.error_unreachable text in #graphStatus. loadKnowledgeGraph runs when the graph tab opens, on reload-graph and after an entity is saved, and fetches entities and relations in parallel. If the entity query fails the graph is empty and the describeDataError text becomes the status; a failed relations query is ignored and only drops the edges; zero entities give graph.empty. The status message is stored as a closure, so each redraw translates it again. Selection is reset, then renderGraph checks that the canvas has a size, rebuilds the entity list (one button per entity, the keyboard and screen-reader way into the graph; when a list button had focus, focus moves to the new button of the same entity) and shows empty and error states as text in the #graphStatus element (role status) instead of drawing them on the canvas. Locale changes and window resizes redraw only while the graph tab is visible. Loads have no request token: when two overlap, the one that finishes last sets the graph, and the first to finish already hides the loader.
+graph.js loads with the graph tab: graph-tab.js imports it when the tab first opens (it is used nowhere else) and handles the tab's reload-graph and open-entity-modal buttons, and a view that does not load leaves the data.error_unreachable text in #graphStatus. initGraph adds the Find in my files button next to the reload button, the legend (added by hand: solid; found in your files: dashed) and the find status line with its Stop and Remove buttons above the canvas. loadKnowledgeGraph runs when the graph tab opens, on reload-graph, after an entity is saved, after a find run, after the found results are removed, and when the workspace changes while the tab is open (next section). It first asks the workspace for its documents (null while files stored on this device are not listed yet, so no result is dropped as stale), then loadMergedGraph fetches the entities and relations added by hand in parallel with the results found in files: with a known document list the store puts every result where its file is and drops those of removed or changed files, and liveGraphs keeps the results whose text hash still matches. mergeGraphs puts both side by side: a name found in files that matches an entity added by hand (folded, words only) is that entity with origin both; the other found names get ids of their own (`auto:<name>`, origin auto), of which the view keeps the 80 best connected; a found relation that one added by hand already states is left out, and so is a co-occurrence between two entities another relation already links. If the entity query fails the part added by hand is empty: with nothing found in files the describeDataError text becomes the status, otherwise the find status line adds that the shared knowledge base is not available. A failed relations query is ignored and only drops the edges added by hand; zero entities in total give graph.empty. The status message is stored as a closure, so each redraw translates it again. Selection is reset, then renderGraph checks that the canvas has a size, rebuilds the entity list (one button per entity, the keyboard and screen-reader way into the graph; an entity found in files has a dashed border and says so to screen readers; when a list button had focus, focus moves to the new button of the same entity) and shows empty and error states as text in the #graphStatus element (role status) instead of drawing them on the canvas. renderFindStatus writes what the files gave: how many files, entities and relations, whether a model found them or names that appear together, how many relations were left out and how many entities the view leaves out. Locale changes and window resizes redraw only while the graph tab is visible. Loads have no request token: when two overlap, the one that finishes last sets the graph, and the first to finish already hides the loader.
 
 <!-- diagram: knowledge-views-graph-load -->
 ```mermaid
 flowchart TD
-    Trigger(["Graph tab opened via onTabOpen graph,<br/>reload-graph button or a saved entity"]) --> ShowLoader["loadKnowledgeGraph()<br/>show graphLoading"]
-    ShowLoader --> Fetch["Promise.all: listEntities() and listRelations()<br/>knowledge_entities order name, limit 500<br/>knowledge_relations limit 2000"]
+    Trigger(["Graph tab opened via onTabOpen graph, reload-graph button,<br/>a saved entity, a finished find run, removed results<br/>or a workspace change while the tab is open"]) --> ShowLoader["loadKnowledgeGraph()<br/>show graphLoading"]
+    ShowLoader --> Docs["workspaceDocs(): restoreWorkspace, then listWorkspace()<br/>null while stored files are not listed yet"]
+    Docs --> Fetch["loadMergedGraph, Promise.all:<br/>listEntities(): knowledge_entities order name, limit 500<br/>listRelations(): knowledge_relations limit 2000<br/>found in files: store.place(docs), store.load(), liveGraphs()"]
     Fetch --> EntOk{"entRes.ok?"}
-    EntOk -->|"no"| ErrState["graph = no entities, no relations<br/>emptyMessage = closure over describeDataError(entRes.error)"]
+    EntOk -->|"no"| NoManual["added by hand: no entities, no relations<br/>manualError = entRes.error"]
     EntOk -->|"yes"| RelOk{"relRes.ok?"}
-    RelOk -->|"yes"| WithRel["graph = entities + relations"]
-    RelOk -->|"no, ignored silently"| NoRel["graph = entities, relations = empty list"]
-    WithRel --> Empty{"no entities?"}
-    NoRel --> Empty
-    Empty -->|"yes"| EmptyMsg["emptyMessage = closure over t graph.empty"]
-    Empty -->|"no"| NoMsg["emptyMessage = null"]
+    RelOk -->|"yes"| WithRel["added by hand: entities + relations"]
+    RelOk -->|"no, ignored silently"| NoRel["added by hand: entities, relations = empty list"]
+    NoManual --> Merge
+    WithRel --> Merge
+    NoRel --> Merge["mergeGraphs(): origin manual, auto or both<br/>found entities get ids auto:name, the 80 best connected are kept<br/>found relations already stated by hand are left out<br/>summary for the find status line"]
+    Merge --> Empty{"no entities at all?"}
+    Empty -->|"yes, manualError set"| ErrState["emptyMessage = closure over describeDataError(manualError)"]
+    Empty -->|"yes, no error"| EmptyMsg["emptyMessage = closure over t graph.empty"]
+    Empty -->|"no"| NoMsg["emptyMessage = null<br/>sharedMissing when manualError is set"]
     ErrState --> Reset
     EmptyMsg --> Reset
     NoMsg --> Reset["selectedId = null<br/>showEntityDetails(null): graph.details_badge, graph.details_empty"]
-    Reset --> RenderCall["renderGraph()"]
+    Reset --> RenderCall["renderGraph(), then renderFindStatus()"]
     RenderCall --> Hide["finally: hide graphLoading"]
     RenderCall -.-> Guard
 
@@ -3539,12 +3544,12 @@ flowchart TD
         Guard{"graphCanvas, 2d context<br/>and non-zero size?"}
         Guard -->|"no, e.g. tab hidden"| Skip(["return: canvas, entity list<br/>and graphStatus unchanged"])
         Guard -->|"yes"| Scale["scale canvas by devicePixelRatio<br/>clearRect, reset positions map"]
-        Scale --> List["renderEntityList(): one select-entity button per entity<br/>in graphEntityList, name via textContent,<br/>aria-pressed true on the selected one,<br/>focus in the list moves to the new button with the same id"]
+        Scale --> List["renderEntityList(): one select-entity button per entity<br/>in graphEntityList, name via textContent,<br/>aria-pressed true on the selected one,<br/>found in files: dashed border and an sr-only marker,<br/>focus in the list moves to the new button with the same id"]
         List --> ListLabel["graphEntityListLabel hidden<br/>when there are no entities"]
         ListLabel --> HasEnt{"graph.entities empty?"}
         HasEnt -->|"yes"| Status["graphStatus shown with emptyMessage()<br/>or graph.empty, computed on every draw<br/>so it follows the language, nothing drawn"]
         HasEnt -->|"no"| Hidden["graphStatus hidden"]
-        Hidden --> Canvas(["canvas drawing, see the next diagram"])
+        Hidden --> Canvas(["canvas drawing, see the canvas diagram"])
     end
 
     Locale(["onLocaleChange or window resize"]) --> Visible{"tab-graph visible?"}
@@ -3552,11 +3557,60 @@ flowchart TD
     Visible -->|"no"| Ignore(["no redraw"])
 ```
 
-<sub>Sources: [`src/js/graph.js`](../src/js/graph.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/library.js`](../src/js/library.js), [`src/js/main.js`](../src/js/main.js), [`src/index.html`](../src/index.html)</sub>
+<sub>Sources: [`src/js/graph.js`](../src/js/graph.js), [`src/js/graph-tab.js`](../src/js/graph-tab.js), [`src/js/graph-extract.js`](../src/js/graph-extract.js), [`src/js/supabase.js`](../src/js/supabase.js), [`src/js/library.js`](../src/js/library.js), [`src/js/rag/workspace.js`](../src/js/rag/workspace.js), [`src/index.html`](../src/index.html)</sub>
+
+### Knowledge graph tab: Find in my files
+
+Find in my files reads the workspace documents into the graph (runFind in graph.js, the rules in graph-extract.js). A document needs reading when it has no result for its current text hash, or when a model can run this time and its result is not wholly a model's. The model is the purpose extract_graph through the router (appModelRunner, without the router's answer cache, since the results are kept here); in on-device mode or offline only a model on this device may run it, and when the router's chain would leave the device the user confirms first (graph.confirm_model names the number of files). Without any model the run goes on without one. The chunks come from the app database, or, for a file kept in memory only, are cut again from its text with the chunker settings the document records. extractDocs orders the documents by the chunks left to read, fewest first, so one long file does not hold back the others, and makes at most 60 model calls per run (batches of up to 6 chunks and about 4,000 characters); two unanswered batches in a row end the model's part.
+
+Nothing a model says enters the graph unchecked. Each relation cites a document label of its batch and a chunk index; it stays only when that passage names both ends (every content word matches a word of the passage the way the source check matches words, a word with a digit appears as it is) and the two ends differ. An entity stays only when a passage of its batch names it, and a quote only when it appears in the cited passage. What fails is counted per reason (cite, same, subject, object, entity), and the status line says how many relations were left out. A document no model read completely (no model, the model stopped answering, or the call limit) gets the co-occurrence graph for the rest: capitalised names, the most frequent ones, linked as "appears with" when they appear in the same sentence, each link citing the first chunk it was seen in and checked like a model's relation, with per-language rules for joining words, apostrophes and German nouns. This work pauses every 16 ms so the page stays responsive and Stop takes effect; Stop keeps the documents already finished.
+
+A document the model read only in part is mixed: it keeps the model's entities and relations with the chunks it read, the co-occurrence graph for the others, and a resume record (the chunk count, the chunks read, how many entities are the model's and what it left out). The next run with a model reads only the other chunks of the same text, and the status line says how many files are still partly read. Results are kept per document under `graph.auto:<docId>` in the settings store of the app database, with the text hash they were read from, and follow their files: stored with a stored file, in memory only with a file kept in memory only, not kept at all for a file removed or changed during the run. When the workspace changes, followWorkspace places them again, which drops the results of removed or changed files; removing a file or clearing the workspace deletes the stored copies with it (DERIVED_SETTINGS in rag/workspace-core.js). In the view, entities and relations found in files are dashed and their details name the files and passages they come from; asking about such an entity looks it up only in those files. Remove what was found clears these results, never the files or the entries added by hand.
+
+<!-- diagram: knowledge-views-graph-extract -->
+```mermaid
+flowchart TD
+    Find(["find-in-files button"]) --> Docs{"workspace documents with chunks?"}
+    Docs -->|"none"| NoFiles(["status: graph.status_no_files"])
+    Docs -->|"yes"| Runner["appModelRunner(): purpose extract_graph through the router,<br/>answer cache off; deviceOnly in on-device mode or offline<br/>null when no model can run it"]
+    Runner --> Pending["needsReading(): no result for the current text hash,<br/>or a model can run now and the result is not wholly a model's"]
+    Pending -->|"nothing to read"| UpToDate(["status: graph.status_up_to_date"])
+    Pending --> Leaves{"the chain would leave the device?"}
+    Leaves -->|"yes"| Confirm{"confirm graph.confirm_model<br/>with the number of files"}
+    Confirm -->|"no"| Declined(["nothing read"])
+    Confirm -->|"yes"| Chunks
+    Leaves -->|"no, or no model"| Chunks["readDocChunks(): stored chunks from the app database,<br/>or cut again from the text of a file kept in memory only"]
+    Chunks --> Order["extractDocs(): documents with the fewest chunks left first,<br/>a mixed result for the same text resumes where the model stopped"]
+    Order --> HasModel{"model runner?"}
+    HasModel -->|"yes"| Batch["next batch: up to 6 chunks, about 4,000 characters<br/>at most 60 calls per run"]
+    Batch --> Answer{"answered?"}
+    Answer -->|"no, twice in a row"| Rest
+    Answer -->|"no, once"| Batch
+    Answer -->|"yes"| Verify["verifyAnswer(): each relation checked against the passage it cites<br/>stays only when that passage names subject and object, which differ<br/>an entity stays only when a passage of the batch names it<br/>a quote only when it appears in the cited passage<br/>the rest dropped and counted: cite, same, subject, object, entity"]
+    Verify --> More{"more batches, under the call limit,<br/>not stopped?"}
+    More -->|"yes"| Batch
+    More -->|"no"| Rest
+    HasModel -->|"no"| Rest["documents not wholly read by a model"]
+    Rest --> Cooc["co-occurrence graph: capitalised names in the same sentence,<br/>appears with, each link cites its first chunk and is checked the same way<br/>work in 16 ms slices, Stop takes effect"]
+    Cooc --> Mode{"read by a model?"}
+    Mode -->|"every chunk"| ModelMode["mode model"]
+    Mode -->|"some chunks"| Mixed["mode mixed with a resume record:<br/>chunk count, chunks read, the model's entities and drops"]
+    Mode -->|"none"| CoMode["mode cooccurrence"]
+    ModelMode --> Save
+    Mixed --> Save
+    CoMode --> Save["store.save(): graph.auto:docId with the text hash<br/>persist for a stored file, memory only for a file in memory,<br/>nothing for a file removed or changed meanwhile"]
+    Save --> Reload(["loadKnowledgeGraph(): found entities and relations drawn dashed"])
+
+    Change(["workspace change: onWorkspaceChange"]) --> Place["followWorkspace(): store.place(docs)<br/>removed or changed file: its result goes<br/>file in memory only: result in memory only"]
+    Place -->|"something changed, tab open"| Reload
+    Clear(["Remove what was found"]) --> StoreClear["store.clear(): files and entries added by hand stay"] --> Reload
+```
+
+<sub>Sources: [`src/js/graph.js`](../src/js/graph.js), [`src/js/graph-extract.js`](../src/js/graph-extract.js), [`src/js/ai/purposes.js`](../src/js/ai/purposes.js), [`src/js/ai/router.js`](../src/js/ai/router.js), [`src/js/core/facts.js`](../src/js/core/facts.js), [`src/js/rag/chunker.js`](../src/js/rag/chunker.js), [`src/js/rag/workspace-core.js`](../src/js/rag/workspace-core.js), [`src/locales/graph/en.json`](../src/locales/graph/en.json)</sub>
 
 ### Knowledge graph tab: canvas drawing
 
-With at least one entity, renderGraph lays the entities out on a circle (radius 0.36 of the smaller canvas side, first entity at the top) and then places text so that it does not collide. Nodes reserve a square each; names are placed next, the selected node's name first, below the node or above it, shortened with an ellipsis when neither spot is free, and drawn in full below the node even if it overlaps when no shortened form fits either. Relation lines come next, then their relation_type labels on white pills: with a node selected only its relations get a label, and a label that would cover a node, a name or an earlier label at all three tried spots is left out (every relation is still listed in the entity details). Nodes and names are drawn last, each name over a light halo so that a line passing behind it stays readable. Names reach the canvas only through fillText and strokeText, never as HTML.
+With at least one entity, renderGraph lays the entities out on a circle (radius 0.36 of the smaller canvas side, first entity at the top) and then places text so that it does not collide. Nodes reserve a square each; names are placed next, the selected node's name first, below the node or above it, shortened with an ellipsis when neither spot is free, and drawn in full below the node even if it overlaps when no shortened form fits either. Relation lines come next (dashed for a relation found in files), then their labels on white pills, the relation_type or, for a co-occurrence found in files, "appears with", which is labelled only while one of its ends is selected: with a node selected only its relations get a label, and a label that would cover a node, a name or an earlier label at all three tried spots is left out (every relation is still listed in the entity details). Nodes and names are drawn last (a node found in files has a dashed outline), each name over a light halo so that a line passing behind it stays readable. Names reach the canvas only through fillText and strokeText, never as HTML.
 
 <!-- diagram: knowledge-views-graph-canvas -->
 ```mermaid
@@ -3569,17 +3623,17 @@ flowchart TD
     Pos -->|"yes, first free spot"| Place["name placed there,<br/>its box added to taken"]
     Pos -->|"no spot for any cut"| Fallback["full name below the node,<br/>its box added to taken"]
     Place --> Lines
-    Fallback --> Lines["each relation with both endpoints placed:<br/>straight line, amber and 2.5 px when it touches selectedId,<br/>light grey and 1.5 px otherwise"]
+    Fallback --> Lines["each relation with both endpoints placed:<br/>straight line, amber and 2.5 px when it touches selectedId,<br/>light grey and 1.5 px otherwise, dashed when found in files<br/>a co-occurrence not touching selectedId gets no label"]
     Lines --> Sort["labels: relations touching the selected node first"]
     Sort --> Sel{"a node is selected and<br/>the relation does not touch it?"}
     Sel -->|"yes"| NoLabel(["no label"])
-    Sel -->|"no"| Pill["pill for relation_type: 10px monospace,<br/>width = text + 8, height 14"]
+    Sel -->|"no"| Pill["pill for relation_type, or graph.cooccurs for a co-occurrence:<br/>10px monospace, width = text + 8, height 14"]
     Pill --> Spot{"free spot at 0.5, 0.38 or 0.62<br/>of the line, tried in that order?"}
     Spot -->|"yes"| DrawPill["white pill, amber border when selected,<br/>label drawn, box added to taken"]
     Spot -->|"no, all three overlap"| Skipped(["label left out, the relation<br/>is still listed in the entity details"])
     DrawPill --> Nodes
     NoLabel --> Nodes
-    Skipped --> Nodes["each entity: when selected, a translucent disc of radius r + 6<br/>in the type colour behind the circle<br/>circle r = 18 filled white, or r = 22 filled yellow when selected<br/>stroke in the entity_type colour, amber when selected,<br/>project blue for unknown types"]
+    Skipped --> Nodes["each entity: when selected, a translucent disc of radius r + 6<br/>in the type colour behind the circle<br/>circle r = 18 filled white, or r = 22 filled yellow when selected<br/>stroke in the entity_type colour, amber when selected,<br/>project blue for unknown types, dashed when found in files"]
     Nodes --> Initials["first two characters of the name,<br/>upper case, centred in the circle"]
     Initials --> Name["placed name drawn over a light halo stroke 3 px wide"]
 ```
@@ -3588,7 +3642,7 @@ flowchart TD
 
 ### Knowledge graph tab: selection and ask-entity
 
-A canvas click selects the first node within 25 px; the buttons in the entity list select the same way by id; the redraw rebuilds the list, and renderEntityList moves keyboard focus from the replaced button to the new button of the same entity. selectEntity redraws the graph and shows the details: type badge, description, outgoing edges (listing target names) and incoming edges (listing source names); a click on empty canvas clears the selection. The ask-entity button switches to the chat tab and submits graph.ask_prompt through submitChat, which drops the question with status.busy while an earlier question is still in progress (being answered, or waiting for a file that is still being read). Otherwise submitChat clears the chat input box, so an unsent draft there is lost, and a file attached in the chat input goes along with the question. submitChat gets chatMode grounded, so the question is always answered in verified source mode, and the composer toggle switches to it when it showed free chat. From there the question takes the normal source-mode path of the current mode (section 3), so the entity name goes wherever a typed question would.
+A canvas click selects the first node within 25 px; the buttons in the entity list select the same way by id; the redraw rebuilds the list, and renderEntityList moves keyboard focus from the replaced button to the new button of the same entity. selectEntity redraws the graph and shows the details: type badge, description (none for an entity found only in files), where the entity comes from (added by hand, found in your files with the file names, or both), outgoing edges (listing target names) and incoming edges (listing source names), a relation found in files with its quote and the passages it was found in; a click on empty canvas clears the selection. The ask-entity button switches to the chat tab and submits graph.ask_prompt through submitChat, which drops the question with status.busy while an earlier question is still in progress (being answered, or waiting for a file that is still being read). Otherwise submitChat clears the chat input box, so an unsent draft there is lost, and a file attached in the chat input goes along with the question. submitChat gets chatMode grounded, so the question is always answered in verified source mode, and the composer toggle switches to it when it showed free chat. An entity found only in files is looked up only in the files it was found in (workspaceOnly with their document ids, at most 50). From there the question takes the normal source-mode path of the current mode (section 3), so the entity name goes wherever a typed question would.
 
 <!-- diagram: knowledge-views-graph-interactions -->
 ```mermaid
@@ -3610,7 +3664,7 @@ sequenceDiagram
         G->>G: selectEntity(id): selectedId = id, renderGraph()
         Note over G: the redraw labels only the relations of this node<br/>and rebuilds the entity list with its button aria-pressed,<br/>focus in the list moves to the new button with the same id
         G-->>User: showEntityDetails(entity), the empty state if the id is gone
-        Note over G: badge graph.type_ + entity_type, raw type if no key<br/>swatch in the type colour, name, description or graph.no_description<br/>graph.connections with the count of both directions<br/>outgoing: source is the entity, lists target names, sr-only graph.outgoing<br/>incoming: target is the entity, lists source names, sr-only graph.incoming<br/>unknown ids show graph.unknown_entity, none shows graph.no_edges<br/>an ask-entity button labelled graph.ask
+        Note over G: badge graph.type_ + entity_type, raw type if no key<br/>swatch in the type colour, name, description or graph.no_description<br/>graph.origin_manual, origin_auto or origin_both, found ones with their files<br/>graph.connections with the count of both directions<br/>outgoing: source is the entity, lists target names, sr-only graph.outgoing<br/>incoming: target is the entity, lists source names, sr-only graph.incoming<br/>unknown ids show graph.unknown_entity, none shows graph.no_edges<br/>an ask-entity button labelled graph.ask
     else click on empty canvas
         G->>G: selectedId = null, renderGraph()
         G-->>User: showEntityDetails(null): graph.details_badge, graph.details_empty
@@ -3620,6 +3674,7 @@ sequenceDiagram
     G->>UI: switchTab(chat)
     UI-->>User: chat tab shown, sidebar closed when the window is under 768 px wide
     G->>Chat: submitChat(t graph.ask_prompt with the name, chatMode grounded)
+    Note over G,Chat: an entity found only in files adds workspaceOnly<br/>and docIds, the files it was found in
     alt busy: an earlier question is being answered or waits for its file
         Chat-->>User: status.busy, the question is dropped
     else idle
@@ -3629,7 +3684,7 @@ sequenceDiagram
     end
 ```
 
-<sub>Sources: [`src/js/graph.js`](../src/js/graph.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/chat.js`](../src/js/chat.js), [`src/index.html`](../src/index.html)</sub>
+<sub>Sources: [`src/js/graph.js`](../src/js/graph.js), [`src/js/graph-extract.js`](../src/js/graph-extract.js), [`src/js/ui.js`](../src/js/ui.js), [`src/js/chat.js`](../src/js/chat.js), [`src/index.html`](../src/index.html)</sub>
 
 ### Knowledge graph tab: new entities
 

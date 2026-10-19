@@ -52,6 +52,12 @@ of your own are needed. In English, German, French, Spanish, Italian and Turkish
 - **On your device:** conversations in IndexedDB, workspace files kept across reloads, Word, Excel,
   PowerPoint and HTML files, opt-in search by meaning, model files checked against SHA-256 pins, and
   a benchmark history that informs the model recommendation.
+- **A knowledge graph from your files.** **Find in my files** names the people, organizations and
+  things in the files on this device and how they relate. A model's relation stays only when the
+  passage it cites names both ends; without a model, names that appear in the same sentence are
+  linked. A long file is continued where the last run stopped, and the results stay on the device
+  with their files and go when a file is removed. What was found is drawn dashed next to the entries
+  added by hand, with the passages it comes from.
 - **End-to-end encrypted sync**, off until you turn it on.
 - **Starpi Core, the local companion** (`@starpi/companion`): a sealed vault, a signed audit chain and
   zero network egress by default on your own machine; paired with the app it is a source and a model
@@ -121,7 +127,8 @@ next to it says what the source says. Starpi makes that visible and checkable:
   in the workspace), to a free conversation otherwise, or mixed, where the answer marks which parts
   the sources hold. Grounded always retrieves, cites and checks. Free sends the conversation to the
   model without retrieval, citations, source check or receipt and marks every answer as not checked.
-  Suggested questions and questions about a graph entity always run grounded.
+  Suggested questions and questions about a graph entity always run grounded; an entity found in
+  your files is looked up in those files.
 - **A model for every situation.** The model menu groups the choices: recommended for this device,
   on this device (WebGPU, or WebAssembly on the processor), the local companion, the free models of
   the site's pools, the providers you have a key for and your own server, each with a status from
