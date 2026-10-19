@@ -243,7 +243,10 @@
     "calls_ask": "asks every time",
     "calls_allow": "runs without asking",
     "approve_tool_allow": "Approve, run without asking",
-    "approve_allow_confirm": "Approve {tool} with the description the server shows now, and let it run without asking? A call written after a tool result still asks you first."
+    "approve_allow_confirm": "Approve {tool} with the description the server shows now, and let it run without asking? A call written after a tool result still asks you first.",
+    "state_up": "reachable",
+    "state_down": "not reachable",
+    "state_unknown": "not checked yet"
   },
   "audit": {
     "title": "Audit",
@@ -351,6 +354,8 @@
     "mcp_clients_full": "There are as many MCP clients as allowed.",
     "notify_streams": "Too many open inbox connections; close other tabs.",
     "session_unknown": "That session has ended already.",
-    "audit_seq_unknown": "The companion has no such record."
+    "audit_seq_unknown": "The companion has no such record.",
+    "conversation_busy": "The companion is still working on earlier questions of this conversation. Wait for them, then ask again.",
+    "connector_down": "The MCP server does not answer, so the companion sends it no call now."
   }
 }

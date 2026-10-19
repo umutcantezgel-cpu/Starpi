@@ -75,7 +75,6 @@
     "free_cloud": "Freier Chat: Ihre Frage, eine angehängte Datei und frühere Nachrichten dieses Chats gehen an Ihren Anbieter. Es werden keine Quellen durchsucht.",
     "free_nvidia": "Freier Chat: Ihre Frage, eine angehängte Datei und frühere Nachrichten dieses Chats gehen über den Starpi-Server an NVIDIA. Es werden keine Quellen durchsucht.",
     "free_no_model": "Freier Chat: Es ist kein Modell eingerichtet, daher wird nichts gesendet. Hinterlegen Sie einen Schlüssel in den Einstellungen oder nutzen Sie den verifizierten Quellen-Modus.",
-    "history_synced": "Fragen und Antworten werden in Ihrem privaten Chatverlauf gespeichert; löschen können Sie ihn in den Einstellungen.",
     "history_local": "Chats werden in diesem Browser gespeichert; löschen können Sie sie in den Einstellungen."
   },
   "engine": {
@@ -214,7 +213,6 @@
     "mode_grounded": "Verifizierter Quellen-Modus",
     "mode_free_hint": "Direkt mit dem Modell sprechen. Antworten werden nicht mit Quellen abgeglichen.",
     "mode_grounded_hint": "Antworten stammen aus Ihren Quellen und werden Satz für Satz geprüft.",
-    "free_note": "Freier Chat · nicht mit Quellen abgeglichen",
     "free_no_model_title": "Der freie Chat braucht ein Modell",
     "free_no_model_body": "Hinterlegen Sie in den Einstellungen einen Gemini- oder OpenRouter-Schlüssel, laden Sie das lokale Modell oder verbinden Sie Ihren eigenen Server. Der verifizierte Quellen-Modus antwortet auch ohne Modell, indem er Ihre Quellen zitiert.",
     "free_failed_body": "{reason}. Versuchen Sie es erneut oder wechseln Sie in den verifizierten Quellen-Modus, um eine Antwort aus Ihren Quellen zu erhalten.",

@@ -348,9 +348,6 @@ body {
   .code-action[aria-expanded='true'] {
     @apply bg-slate-200 text-slate-900;
   }
-  .free-note {
-    @apply mt-2 flex items-center gap-1.5 text-[11px] text-slate-500;
-  }
   .stream-thinking {
     @apply text-slate-500 italic animate-pulse;
   }

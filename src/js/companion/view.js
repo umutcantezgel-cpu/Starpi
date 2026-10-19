@@ -96,6 +96,16 @@ function classSelect(id, selected = 'personal') {
 const shortHash = (hash) => `${String(hash).slice(0, 12)}…`;
 
 /**
+ * The state of a connector's server as the companion reports it: `up` (its tools were listed),
+ * `down` (the last listing failed) or `unknown` (not listed yet).
+ * @param {unknown} state
+ */
+export function connectorStateChip(state) {
+  const known = state === 'up' || state === 'down' ? state : 'unknown';
+  return chip({ label: `${NS}.connectors.state_${known}`, tone: known === 'up' ? 'ok' : known === 'down' ? 'warn' : 'neutral', ...(known === 'up' ? { icon: 'plug' } : {}) });
+}
+
+/**
  * The red banner of a failed audit check, or nothing.
  * @param {PairingState['audit']} audit
  * @returns {SafeHtml | string}
@@ -610,7 +620,7 @@ export function mountCompanionTab(el, services, deps) {
         servers.length
           ? servers.map(
               (/** @type {any} */ s) =>
-                html`<div class="space-y-2 border-t border-slate-100 pt-3 first:border-0 first:pt-0"><div class="flex flex-wrap items-center gap-2"><span class="font-medium">${String(s.title ?? s.id)}</span><span class="text-xs font-mono text-slate-500">${String(s.url ?? '')}</span>${chip({ label: { text: String(s.state ?? '') }, tone: s.state === 'ready' ? 'ok' : 'neutral' })}${isOwner ? html`<button type="button" class="btn btn-ghost py-1" data-action="companion-connector-refresh" data-arg="${String(s.id)}">${icon('refresh-cw', 'w-3.5 h-3.5')}${label(`${NS}.refresh`)}</button>` : ''}</div>
+                html`<div class="space-y-2 border-t border-slate-100 pt-3 first:border-0 first:pt-0"><div class="flex flex-wrap items-center gap-2"><span class="font-medium">${String(s.title ?? s.id)}</span><span class="text-xs font-mono text-slate-500">${String(s.url ?? '')}</span>${connectorStateChip(s.state)}${isOwner ? html`<button type="button" class="btn btn-ghost py-1" data-action="companion-connector-refresh" data-arg="${String(s.id)}">${icon('refresh-cw', 'w-3.5 h-3.5')}${label(`${NS}.refresh`)}</button>` : ''}</div>
                 <ul class="text-xs space-y-1.5">${(Array.isArray(s.tools) ? s.tools : []).map(
                   (/** @type {any} */ tool) =>
                     html`<li class="flex flex-wrap items-center gap-2"><span class="font-mono">${String(tool.name)}</span>${chip({ label: hasKey(`${NS}.connectors.pin_${tool.state}`) ? `${NS}.connectors.pin_${tool.state}` : { text: String(tool.state) }, tone: tool.state === 'approved' ? 'ok' : tool.state === 'changed' ? 'warn' : 'neutral' })}${tool.calls ? chip({ label: `${NS}.connectors.calls_${tool.calls === 'allow' ? 'allow' : 'ask'}`, tone: 'neutral' }) : ''}<span class="flex-1 min-w-0 truncate text-slate-600">${String(tool.description ?? '')}</span>${

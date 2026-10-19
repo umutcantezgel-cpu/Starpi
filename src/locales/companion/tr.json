@@ -243,7 +243,10 @@
     "calls_ask": "her seferinde sorar",
     "calls_allow": "sormadan çalışır",
     "approve_tool_allow": "Onayla, sormadan çalıştır",
-    "approve_allow_confirm": "{tool}, sunucunun şu anda gösterdiği açıklamayla onaylanıp sormadan çalışmasına izin verilsin mi? Bir araç sonucundan sonra yazılan bir çağrıda yine önce size sorulur."
+    "approve_allow_confirm": "{tool}, sunucunun şu anda gösterdiği açıklamayla onaylanıp sormadan çalışmasına izin verilsin mi? Bir araç sonucundan sonra yazılan bir çağrıda yine önce size sorulur.",
+    "state_up": "erişilebilir",
+    "state_down": "erişilemiyor",
+    "state_unknown": "henüz denetlenmedi"
   },
   "audit": {
     "title": "Denetim izi",
@@ -351,6 +354,8 @@
     "mcp_clients_full": "İzin verilen sayıda MCP istemcisi zaten var.",
     "notify_streams": "Gelen kutusuna açık çok fazla bağlantı var; diğer sekmeleri kapatın.",
     "session_unknown": "Bu oturum zaten sona erdi.",
-    "audit_seq_unknown": "Companion’da böyle bir kayıt yok."
+    "audit_seq_unknown": "Companion’da böyle bir kayıt yok.",
+    "conversation_busy": "Companion bu sohbetteki önceki sorular üzerinde hâlâ çalışıyor. Bitmesini bekleyin, ardından yeniden sorun.",
+    "connector_down": "MCP sunucusu yanıt vermiyor; bu nedenle Companion onu şu anda çağırmıyor."
   }
 }

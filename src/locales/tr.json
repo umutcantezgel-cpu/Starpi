@@ -75,7 +75,6 @@
     "free_cloud": "Serbest sohbet: sorunuz, ekli bir dosya ve bu sohbetin önceki mesajları sağlayıcınıza gider. Hiçbir kaynakta arama yapılmaz.",
     "free_nvidia": "Serbest sohbet: sorunuz, ekli bir dosya ve bu sohbetin önceki mesajları Starpi’nin sunucusu üzerinden NVIDIA’ya gider. Hiçbir kaynakta arama yapılmaz.",
     "free_no_model": "Serbest sohbet: kurulu model olmadığından hiçbir şey gönderilmez. Ayarlar’dan bir anahtar ekleyin veya doğrulanmış kaynak modunu kullanın.",
-    "history_synced": "Sorular ve yanıtlar özel sohbet geçmişinize kaydedilir; geçmişi Ayarlar’dan silebilirsiniz.",
     "history_local": "Sohbetler bu tarayıcıya kaydedilir; onları Ayarlar’dan silebilirsiniz."
   },
   "engine": {
@@ -214,7 +213,6 @@
     "mode_grounded": "Doğrulanmış kaynak modu",
     "mode_free_hint": "Modelle doğrudan konuşun. Yanıtlar kaynaklarla karşılaştırılarak denetlenmez.",
     "mode_grounded_hint": "Yanıtlar kaynaklarınızdan gelir ve cümle cümle denetlenir.",
-    "free_note": "Serbest sohbet · kaynaklarla denetlenmedi",
     "free_no_model_title": "Serbest sohbet bir model gerektirir",
     "free_no_model_body": "Ayarlar’dan bir Gemini veya OpenRouter anahtarı ekleyin, yerel modeli yükleyin ya da kendi sunucunuzu bağlayın. Doğrulanmış kaynak modu, kaynaklarınızdan alıntı yaparak modelsiz de yanıt verir.",
     "free_failed_body": "{reason}. Yeniden deneyin veya kaynaklarınızdan alıntılanmış bir yanıt için doğrulanmış kaynak moduna geçin.",

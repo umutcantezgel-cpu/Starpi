@@ -243,7 +243,10 @@
     "calls_ask": "chiede ogni volta",
     "calls_allow": "viene eseguito senza chiedere",
     "approve_tool_allow": "Approva ed esegui senza chiedere",
-    "approve_allow_confirm": "Approvare {tool} con la descrizione che il server mostra ora e lasciarlo eseguire senza chiedere? Una chiamata scritta dopo il risultato di uno strumento ti chiederà comunque conferma prima."
+    "approve_allow_confirm": "Approvare {tool} con la descrizione che il server mostra ora e lasciarlo eseguire senza chiedere? Una chiamata scritta dopo il risultato di uno strumento ti chiederà comunque conferma prima.",
+    "state_up": "raggiungibile",
+    "state_down": "non raggiungibile",
+    "state_unknown": "non ancora verificato"
   },
   "audit": {
     "title": "Audit",
@@ -351,6 +354,8 @@
     "mcp_clients_full": "È già stato raggiunto il numero massimo di client MCP.",
     "notify_streams": "Troppe connessioni aperte alla posta in arrivo; chiudi altre schede.",
     "session_unknown": "Quella sessione è già terminata.",
-    "audit_seq_unknown": "Il companion non ha una voce con questo numero."
+    "audit_seq_unknown": "Il companion non ha una voce con questo numero.",
+    "conversation_busy": "Il companion sta ancora elaborando domande precedenti di questa conversazione. Aspetta che finisca, poi chiedi di nuovo.",
+    "connector_down": "Il server MCP non risponde, quindi il companion ora non lo chiama."
   }
 }

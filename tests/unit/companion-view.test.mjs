@@ -298,6 +298,39 @@ describe('Companion tab', () => {
     assert.ok(el.querySelector('[data-action="companion-reload"]'));
   });
 
+  it('names the state of each MCP server in words, with a tone that fits', async () => {
+    const connectors = {
+      'GET /v1/connectors': { servers: [{ id: 'files', title: 'Files', url: 'http://127.0.0.1:8931/mcp', state: 'up', tools: [] }, { id: 'hours', title: 'Hours', url: 'http://127.0.0.1:8932/mcp', state: 'down', tools: [] }, { id: 'wiki', title: 'Wiki', url: 'http://127.0.0.1:8933/mcp', state: 'unknown', tools: [] }] },
+      'GET /v1/connectors/approvals': { approvals: [] },
+    };
+    const { pairing } = fakePairing({ paired: true, routes: connectors });
+    const el = host();
+    view.mountCompanionTab(el, services().value, { pairing });
+    await settle();
+    click(el, '[data-action="companion-page"][data-arg="connectors"]');
+    await settle();
+    const chips = [...el.querySelectorAll('.chip')].map((c) => `${c.className.match(/chip-(\w+)/)?.[1]}:${c.textContent?.trim()}`);
+    assert.ok(chips.includes('ok:reachable'), chips.join(', '));
+    assert.ok(chips.includes('warn:not reachable'));
+    assert.ok(chips.includes('neutral:not checked yet'));
+    assert.doesNotMatch(el.textContent ?? '', /\b(up|down|unknown)\b/, 'no raw state');
+    await i18n.setLocale('de');
+    assert.match(String(view.connectorStateChip('down')), /nicht erreichbar/);
+    assert.match(String(view.connectorStateChip('something else')), /noch nicht geprüft/);
+  });
+
+  it('explains the companion\u2019s new error codes instead of naming them', async () => {
+    for (const code of ['conversation_busy', 'conversation_unknown', 'connector_down']) {
+      const key = view.errorLabel(new client.CompanionError(code));
+      assert.equal(key, `companion.error.${code}`);
+      for (const locale of ['en', 'de', 'fr', 'es', 'it', 'tr']) {
+        await i18n.setLocale(locale);
+        assert.doesNotMatch(i18n.t(/** @type {string} */ (key)), new RegExp(`${code}|companion\\.error`), `${code} in ${locale}`);
+      }
+      await i18n.setLocale('en');
+    }
+  });
+
   it('sends an unpaired browser to Settings', () => {
     const { pairing } = fakePairing();
     const s = services();

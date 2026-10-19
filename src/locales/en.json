@@ -75,7 +75,6 @@
     "free_cloud": "Free chat: your question, an attached file and earlier messages of this chat go to your provider. No sources are searched.",
     "free_nvidia": "Free chat: your question, an attached file and earlier messages of this chat go through Starpi's server to NVIDIA. No sources are searched.",
     "free_no_model": "Free chat: no model is set up, so nothing is sent. Add a key in Settings or use verified source mode.",
-    "history_synced": "Questions and answers are saved to your private chat history; delete it in Settings.",
     "history_local": "Chats are saved in this browser; delete them in Settings."
   },
   "engine": {
@@ -214,7 +213,6 @@
     "mode_grounded": "Verified source mode",
     "mode_free_hint": "Talk with the model directly. Answers are not checked against sources.",
     "mode_grounded_hint": "Answers come from your sources and are checked sentence by sentence.",
-    "free_note": "Free chat · not checked against sources",
     "free_no_model_title": "The free chat needs a model",
     "free_no_model_body": "Add a Gemini or OpenRouter key in Settings, load the on-device model or connect your own server. Verified source mode also answers without a model, by quoting your sources.",
     "free_failed_body": "{reason}. Try again, or switch to verified source mode for an answer quoted from your sources.",
