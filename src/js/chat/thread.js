@@ -21,6 +21,7 @@
  * - registerRequestNotes(fn): notes for the request of the question being answered only (memory).
  * - registerSystemNote(fn): text appended to the free system prompt (stable per conversation).
  * - setWorkspaceScope(fn): the workspace documents a conversation's grounded questions search.
+ * - registerRetrievalSource(source): more excerpts for grounded questions (the paired companion).
  * - registerRequestHook(fn): changes a request before it goes out (tools).
  * - setToolRunner(fn): sees every free answer: runs the tool calls it stopped for (approval cards in
  *   its bubble), links its web results.
@@ -90,7 +91,7 @@ import { answerLabelOf, applyMixedMarks, nextPaint, renderAnswerLabel, renderWeb
 import { attachmentText, blobToBase64, MAX_NATIVE_PDF_BYTES, needsVision, textBudget } from './attachments.js';
 import { clearComposer, setComposerBusy, takeDraft } from './composer.js';
 import { showGeneratedImages, storeGeneratedImages } from './image-view.js';
-import { answerDecorators, receiptHooks, requestHooks, requestNoteHooks, single, systemNoteHooks, turnNoteHooks } from './hooks.js';
+import { answerDecorators, receiptHooks, requestHooks, requestNoteHooks, single, sourceHits, systemNoteHooks, turnNoteHooks } from './hooks.js';
 import { capsOf, chatCandidates, compactingAnthropic, runAnswer } from './runner.js';
 import { activePath, branchInfo, indexNodes, nodeText, pathTo, switchBranch } from './tree.js';
 
@@ -100,6 +101,7 @@ export {
   registerReceiptHook,
   registerRequestHook,
   registerRequestNotes,
+  registerRetrievalSource,
   registerSystemNote,
   registerTurnNotes,
   setAnswerLabeler,
@@ -1238,12 +1240,13 @@ async function scopedWorkspaceSearch(query, focus) {
  * @returns {Promise<{ hits: KnowledgeHit[], method: string, kbUnavailable: boolean }>}
  */
 async function retrieve(query, focus, opts) {
-  const { hits: local, pinned } = await retrieveWorkspace(query, focus);
+  const [{ hits: local, pinned }, extra] = await Promise.all([retrieveWorkspace(query, focus), opts.workspaceOnly ? { hits: [], labels: [] } : sourceHits(query, { deviceOnly: opts.deviceOnly })]);
   const limit = LIMITS.retrievalRows + Math.min(focus.length * 3, 9);
-  const merge = (/** @type {KnowledgeHit[]} */ remote) => mergeHits(local, remote, limit, pinned);
+  // Passages of registered sources (registerRetrievalSource) go in with the library's.
+  const merge = (/** @type {KnowledgeHit[]} */ remote) => mergeHits(local, [...extra.hits, ...remote], limit, pinned);
   const result = (/** @type {KnowledgeHit[]} */ hits, /** @type {string} */ remote, /** @type {boolean} */ kbUnavailable) => {
     const n = hits.filter((h) => h.workspace).length;
-    return { hits, method: [n ? t('retrieval.workspace', { n }) : '', remote].filter(Boolean).join(' + '), kbUnavailable };
+    return { hits, method: [n ? t('retrieval.workspace', { n }) : '', ...extra.labels, remote].filter(Boolean).join(' + '), kbUnavailable };
   };
   if (opts.workspaceOnly) return result(local.slice(0, limit), '', false);
   // While Supabase is known to be unreachable, answer from the workspace at once.

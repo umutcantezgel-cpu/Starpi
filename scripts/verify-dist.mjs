@@ -16,7 +16,8 @@ import { pageScripts, staticImports } from './lib/html.mjs';
 import { credentialRules } from './lib/secret-rules.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DIST = path.join(ROOT, 'dist');
+// STARPI_DIST_DIR: the folder a build was written to, when not dist/ (scripts/build.mjs).
+const DIST = process.env.STARPI_DIST_DIR ? path.resolve(ROOT, process.env.STARPI_DIST_DIR) : path.join(ROOT, 'dist');
 
 /**
  * Bytes of the JavaScript the page needs before it runs (its scripts and their static imports,

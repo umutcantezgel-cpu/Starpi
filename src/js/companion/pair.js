@@ -22,6 +22,7 @@
 // and the app shows a red banner until the user accepts the companion's current state.
 import { setCompanionVoiceLink } from '../voice/sources/companion.js';
 import { fromBase64url, toBase64url } from '../core/hash.js';
+import { readLocal, removeLocal, writeLocal } from '../storage.js';
 import { asHead, CompanionError, createCompanionClient, DEFAULT_COMPANION_ORIGIN, importIdentityKey, keyIdMatches, loopbackOrigin, verifyHead } from './client.js';
 
 /** @typedef {import('./client.js').SignedHead} SignedHead */
@@ -31,6 +32,8 @@ import { asHead, CompanionError, createCompanionClient, DEFAULT_COMPANION_ORIGIN
 /** The IndexedDB database of the companion link (never part of the synced store). */
 export const LINK_DB = 'starpi-companion';
 export const LINK_DB_VERSION = 1;
+/** A flag in localStorage while a link is stored, so a browser that never paired opens no database. */
+export const LINK_MARKER = 'starpi_companion_linked';
 /** What a pairing code looks like once spaces and dashes are dropped. */
 export const CODE_PATTERN = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/;
 
@@ -189,9 +192,14 @@ export function compareHeads(head, stored) {
  * @param {string | null} [options.selfOrigin]  the page's own origin when the companion serves the app (Mode A)
  * @param {() => number} [options.now]
  * @param {(link: { origin: string, token: string } | null) => unknown} [options.voiceLink]
+ * @param {{ get(): boolean, set(on: boolean): void }} [options.marker]  whether a link is stored
  */
 export function createPairing(options = {}) {
   const store = options.store ?? idbLinkStore();
+  const marker = options.marker ?? {
+    get: () => readLocal(LINK_MARKER) === '1',
+    set: (/** @type {boolean} */ on) => (on ? writeLocal(LINK_MARKER, '1') : removeLocal(LINK_MARKER)),
+  };
   const now = options.now ?? (() => Date.now());
   const voiceLink = options.voiceLink ?? setCompanionVoiceLink;
   const selfOrigin = options.selfOrigin ? loopbackOrigin(options.selfOrigin) : null;
@@ -340,6 +348,7 @@ export function createPairing(options = {}) {
     if (err instanceof CompanionError && err.code === 'unauthenticated' && link) {
       const origin = link.origin;
       disconnect();
+      marker.set(false);
       await store.clear().catch(() => {});
       update({ ...blank(origin), lost: true });
     }
@@ -381,6 +390,7 @@ export function createPairing(options = {}) {
      */
     restore() {
       restoring ??= (async () => {
+        if (!marker.get()) return state;
         let stored = null;
         try {
           stored = await store.load();
@@ -390,6 +400,7 @@ export function createPairing(options = {}) {
         if (!stored || (selfOrigin && stored.origin !== selfOrigin)) return state;
         const secret = await openSecret(await store.sealKey(), stored.secret, stored).catch(() => null);
         if (!secret || Date.parse(stored.expiresAt) <= now()) {
+          marker.set(false);
           await store.clear().catch(() => {});
           return state;
         }
@@ -439,6 +450,7 @@ export function createPairing(options = {}) {
         secret: await sealSecret(await store.sealKey(), secret, base),
       };
       await store.save(stored);
+      marker.set(true);
       await connect(stored, secret);
       const head = asHead(answer.auditHead);
       if (head) observe(head);
@@ -453,6 +465,7 @@ export function createPairing(options = {}) {
       const origin = state.origin;
       if (ending) await ending.request('POST', '/v1/session/logout', { timeoutMs: 4000 }).catch(() => null);
       disconnect();
+      marker.set(false);
       await store.clear().catch(() => {});
       update(blank(selfOrigin ?? origin));
     },
