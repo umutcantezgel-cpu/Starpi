@@ -1,0 +1,130 @@
+{
+  "title": "Provider di modelli e chiavi",
+  "subtitle": "Le tue chiavi per i modelli cloud, i modelli gratuiti offerti da questo sito e il tuo server.",
+  "vault": {
+    "title": "Cassaforte delle chiavi",
+    "state": {
+      "none": "Solo questa scheda",
+      "locked": "Cassaforte bloccata",
+      "unlocked": "Cassaforte aperta",
+      "unavailable": "Nessuna cassaforte qui"
+    },
+    "none_body": "Le chiavi vengono conservate finché questa scheda non viene chiusa. Imposta una passphrase per tenerle su questo dispositivo, cifrate con una chiave che solo la tua passphrase può aprire. Le chiavi di questa scheda vengono spostate nella cassaforte.",
+    "locked_body": "Le tue chiavi sono salvate cifrate su questo dispositivo. Inserisci la passphrase per usarle in questa scheda.",
+    "unlocked_body": "La cassaforte è aperta in questa scheda. Si blocca da sola dopo 30 minuti di inattività.",
+    "unavailable_body": "Questo browser non può mantenere una cassaforte (ad esempio in una finestra privata). Le chiavi vengono conservate finché questa scheda non viene chiusa.",
+    "passphrase": "Passphrase della cassaforte",
+    "passphrase_new_hint": "Almeno 8 caratteri. Non può essere recuperata: se la dimentichi, dimentica tutte le chiavi e aggiungile di nuovo.",
+    "create": "Imposta la passphrase",
+    "unlock": "Sblocca",
+    "lock": "Blocca ora",
+    "forget": "Dimentica tutte le chiavi",
+    "forget_confirm": "Eliminare tutte le chiavi da questa scheda e dalla cassaforte di questo dispositivo?",
+    "working": "Elaborazione…",
+    "suggest": "Le chiavi che questo browser conservava in chiaro sono state spostate: ora durano finché questa scheda non viene chiusa. Imposta una passphrase della cassaforte per tenerle cifrate su questo dispositivo.",
+    "suggest_dismiss": "Ignora",
+    "result": {
+      "created": "Cassaforte creata. Le chiavi di questa scheda ora sono salvate al suo interno.",
+      "unlocked": "Cassaforte sbloccata.",
+      "wrong": "Questa passphrase non apre la cassaforte.",
+      "too_short": "La passphrase deve avere almeno 8 caratteri.",
+      "unavailable": "Questo browser non può mantenere una cassaforte.",
+      "locked": "Cassaforte bloccata.",
+      "forgotten": "Tutte le chiavi sono state eliminate.",
+      "idle": "La cassaforte delle chiavi si è bloccata da sola dopo 30 minuti di inattività."
+    }
+  },
+  "error": {
+    "invalid_slot": "Provider sconosciuto.",
+    "invalid_key": "Usa solo caratteri stampabili (lettere, cifre, punteggiatura); una chiave non contiene spazi.",
+    "locked": "Sblocca prima la cassaforte oppure imposta una passphrase.",
+    "unavailable": "Questo browser non può mantenere una cassaforte.",
+    "storage": "Il browser non l’ha salvata (finestra privata, archiviazione bloccata o piena)."
+  },
+  "access": {
+    "title": "Codice di accesso",
+    "body": "Questo sito chiede un codice di accesso prima che rispondano il suo relay, i suoi modelli gratuiti, la voce e la ricerca. Il codice viene inviato solo a questo sito.",
+    "label": "Codice di accesso",
+    "placeholder": "Inserisci il codice",
+    "placeholder_saved": "Salvato; inserisci un nuovo codice per sostituirlo",
+    "save": "Salva il codice",
+    "saved": "Codice di accesso salvato.",
+    "removed": "Codice di accesso rimosso."
+  },
+  "relay": {
+    "label": "Usa il relay di Starpi per i provider che bloccano i browser",
+    "hint": "Alcuni provider rifiutano le chiamate fatte direttamente da una pagina web. Con questa opzione, una chiamata del genere viene inviata ancora una volta tramite il relay di questo sito, che la inoltra con la tua chiave e non conserva nulla. La via che ha funzionato viene ricordata per ogni provider.",
+    "reset": "Dimentica le vie ricordate",
+    "reset_done": "La prossima chiamata a ogni provider prova di nuovo prima la via diretta.",
+    "on": "Ripiego sul relay attivato.",
+    "off": "Ripiego sul relay disattivato: i provider che bloccano i browser non sono raggiungibili."
+  },
+  "pool": {
+    "title": "Modelli gratuiti tramite questo sito",
+    "loading": "Richiesta al sito…",
+    "unreachable": "Questo sito non offre modelli gratuiti (funziona senza funzioni server).",
+    "on": "{provider}: {count} {count:modello gratuito|modelli gratuiti}",
+    "off": "{provider}: non offerto"
+  },
+  "list": {
+    "title": "Le tue chiavi"
+  },
+  "key": {
+    "label": "Chiave API di {provider}",
+    "placeholder": "Incolla una chiave",
+    "hint_prefix": "Le chiavi iniziano con {prefix}. Il campo non mostra mai una chiave salvata.",
+    "hint_any": "Incolla la chiave esattamente come la mostra il provider. Il campo non mostra mai una chiave salvata.",
+    "mismatch": "Salvata, ma non sembra una chiave di {provider}. Usa Prova la chiave per verificarla.",
+    "remember": "Conserva nella cassaforte di questo dispositivo",
+    "remember_locked": "Apri la cassaforte (o imposta una passphrase) per conservare le chiavi su questo dispositivo.",
+    "save": "Salva la chiave",
+    "test": "Prova la chiave",
+    "remove": "Rimuovi la chiave",
+    "get": "Ottieni una chiave",
+    "none": "Nessuna chiave",
+    "session": "Chiave per questa scheda (••••{last4})",
+    "vault": "Chiave nella cassaforte (••••{last4})",
+    "saved": "Chiave salvata per questa scheda.",
+    "saved_vault": "Chiave salvata nella cassaforte.",
+    "removed": "Chiave rimossa.",
+    "empty": "Incolla prima una chiave."
+  },
+  "route": {
+    "direct": "Diretto dal browser",
+    "auto": "Diretto, relay se bloccato",
+    "relay": "Tramite il relay",
+    "pool": "Gratuito tramite questo sito",
+    "device": "Su questo dispositivo",
+    "reason": {
+      "unknown": "Provider sconosciuto",
+      "no_key": "Richiede una chiave",
+      "relay_off": "Richiede il relay",
+      "no_server": "Nessun indirizzo del server",
+      "in_browser": "Su questo dispositivo"
+    }
+  },
+  "test": {
+    "running": "Prova della chiave…",
+    "ok_direct": "La chiave funziona (diretto dal browser).",
+    "ok_relay": "La chiave funziona (tramite il relay).",
+    "failed": "Prova non riuscita ({code}): {reason}"
+  },
+  "local": {
+    "title": "Il tuo server",
+    "presets": "Preimpostazioni:",
+    "url": "Indirizzo del server",
+    "url_hint": "Un endpoint compatibile con OpenAI. Consentiti: indirizzi https://, http://localhost e http://127.0.0.1.",
+    "key": "Chiave del server (facoltativa)",
+    "key_hint": "Solo se il tuo server ne richiede una.",
+    "saved": "Indirizzo del server salvato.",
+    "cors_title": "Consenti a questo sito di chiamare il tuo server",
+    "cors": {
+      "ollama": "Ollama: avvialo con {setting} impostato su {origin}.",
+      "lmstudio": "LM Studio: attiva «{setting}» nelle impostazioni del server.",
+      "vllm": "vLLM: avvialo con {setting} che includa {origin}.",
+      "llamacpp": "llama.cpp: il suo server accetta chiamate dalle pagine web senza configurazione aggiuntiva."
+    },
+    "chrome": "Chrome chiede se questo sito può raggiungere i dispositivi della tua rete locale. Consentilo, altrimenti il browser blocca le chiamate al tuo server.",
+    "relay_never": "Le chiamate al tuo server partono sempre direttamente da questo browser; il relay non raggiunge mai la tua rete."
+  }
+}
