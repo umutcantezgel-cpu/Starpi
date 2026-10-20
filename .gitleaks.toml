@@ -109,6 +109,16 @@ regexes = [
 ]
 
 [[allowlists]]
+description = "Fake Gemini keys of the end-to-end tests (AIzaSyA-e2e-...): never valid, kept for the history scan of commits from before the voice test built its key at runtime."
+condition = "AND"
+paths = [
+  '''^tests/e2e/[^/]+\.spec\.mjs$''',
+]
+regexes = [
+  '''^AIzaSyA-e2e-[A-Za-z0-9-]+$''',
+]
+
+[[allowlists]]
 description = "Generated or vendored output"
 paths = [
   '''(^|/)node_modules/''',
