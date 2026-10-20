@@ -5,6 +5,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Settings → Memory no longer drops a note being typed or undoes a switch when the notes redraw.
+- A question is being answered from the moment it leaves the composer, also while Auto decides its
+  route: Stop shows, and a second question waits instead of starting a turn beside it.
+
 ## [3.0.0] - 2026-10-19
 
 Starpi 3.0 is a new generation of the app: one AI layer for every provider, a chat with branches,
@@ -315,9 +321,6 @@ on your own machine. What to change when you come from 2.x is in
   `/.github/`): the unanchored `tools/` also removed `src/js/ai/tools/` and `src/locales/tools/`, so
   every Vercel build since the tool runner failed. A unit test applies the file the way Vercel does
   and fails when it would remove anything the build or the functions read.
-- Settings → Memory no longer drops a note being typed or undoes a switch when the notes redraw.
-- A question is being answered from the moment it leaves the composer, also while Auto decides its
-  route: Stop shows, and a second question waits instead of starting a turn beside it.
 
 ### Removed
 
