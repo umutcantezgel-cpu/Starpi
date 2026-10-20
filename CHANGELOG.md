@@ -10,6 +10,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - Settings → Memory no longer drops a note being typed or undoes a switch when the notes redraw.
 - A question is being answered from the moment it leaves the composer, also while Auto decides its
   route: Stop shows, and a second question waits instead of starting a turn beside it.
+- The source check parses numbers, excerpt headers, citation labels and sentence ends in linear time;
+  long crafted text no longer makes it backtrack (CodeQL polynomial-redos). Results are unchanged.
 
 ## [3.0.0] - 2026-10-19
 

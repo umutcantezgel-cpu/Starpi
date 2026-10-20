@@ -769,13 +769,11 @@ export function groundAnswer(blocks, sources, options = {}) {
 export function contextCoverage(citations, context) {
   /** @type {Map<number, { text: string, complete: boolean }>} */
   const blocks = new Map();
-  const header = /<<<EXCERPT (\d+) [^\n]*?>>>\n/g;
-  const heads = [...context.matchAll(header)];
-  heads.forEach((m, k) => {
-    const n = Number(m[1]);
-    const bodyStart = (m.index ?? 0) + m[0].length;
-    const next = k + 1 < heads.length ? (heads[k + 1].index ?? context.length) : context.length;
-    const body = context.slice(bodyStart, next);
+  const heads = excerptHeads(context);
+  heads.forEach((h, k) => {
+    const n = Number(h.n);
+    const next = k + 1 < heads.length ? heads[k + 1].start : context.length;
+    const body = context.slice(h.bodyStart, next);
     const end = body.indexOf(`\n<<<END EXCERPT ${n}>>>`);
     if (end >= 0) blocks.set(n, { text: body.slice(0, end), complete: true });
     else blocks.set(n, { text: body.replace(/\n?<<<[^>]*$/, '').replace(/…\s*$/, '').trimEnd(), complete: false });
@@ -788,6 +786,42 @@ export function contextCoverage(citations, context) {
     const cut = !b.complete || b.text.endsWith('…');
     return { delivered: cut ? 'partial' : 'full', text: cut ? b.text.replace(/…\s*$/, '').trimEnd() : b.text };
   });
+}
+
+const EXCERPT_OPEN = '<<<EXCERPT ';
+
+/**
+ * The excerpt headers of a context, exactly the matches of /<<<EXCERPT (\d+) [^\n]*?>>>\n/g, found
+ * in one pass. That expression retried the rest of a line from every "<<<EXCERPT" on it, which is
+ * quadratic on a long line of them; a header line counts only if its first line break follows
+ * ">>>", so a line that does not is skipped whole.
+ * @param {string} context
+ * @returns {Array<{ start: number, bodyStart: number, n: string }>}  where each header starts, where
+ *   its excerpt text starts (after the header's line break) and its number as written
+ */
+export function excerptHeads(context) {
+  /** @type {Array<{ start: number, bodyStart: number, n: string }>} */
+  const heads = [];
+  let from = 0;
+  for (;;) {
+    const start = context.indexOf(EXCERPT_OPEN, from);
+    if (start < 0) break;
+    const digits = start + EXCERPT_OPEN.length;
+    let space = digits;
+    while (space < context.length && context.charCodeAt(space) >= 48 && context.charCodeAt(space) <= 57) space += 1;
+    if (space === digits || context[space] !== ' ') {
+      from = start + 1;
+      continue;
+    }
+    const lineEnd = context.indexOf('\n', space + 1);
+    // No line break left: no header after this one can end either.
+    if (lineEnd < 0) break;
+    if (lineEnd - 3 > space && context.startsWith('>>>', lineEnd - 3)) heads.push({ start, bodyStart: lineEnd + 1, n: context.slice(digits, space) });
+    // A later "<<<EXCERPT" on this line would end at the same line break: it is part of this
+    // header's label, or fails as this one did. The next header starts after the line break.
+    from = lineEnd + 1;
+  }
+  return heads;
 }
 
 /**

@@ -29,6 +29,16 @@ export function isAbbreviation(token) {
 const CLOCK_MINUTES = /(?<![\p{L}\p{N}])\d{1,2}\s?h\s?\d{2}$/iu;
 
 /**
+ * Units at the end of a text that decide CLOCK_MINUTES: its match is at most 7 units long and its
+ * lookbehind reads one code point (2 units at most) before it. Testing only this tail keeps a long
+ * run of abbreviations ("1. 2. 3. …") linear.
+ */
+const CLOCK_TAIL = 16;
+
+/** One UTF-16 unit of whitespace, as `\s` reads it. */
+const SPACE = /\s/;
+
+/**
  * Sentence spans in `text`: offsets into the original string, trimmed of surrounding whitespace.
  * Line breaks always end a sentence; `.`, `!` and `?` end one when whitespace and more text follow,
  * except after ordinals, decimals and known abbreviations.
@@ -48,16 +58,24 @@ export function sentenceSpans(text) {
   while ((line = lines.exec(text)) !== null) {
     const base = line.index;
     const content = line[0];
+    // Scanned by hand: the patterns /[.!?]+(?=\s+\S)/ and /(\S+)$/ backtrack in polynomial time on
+    // long runs of punctuation, whitespace or one token (CodeQL js/polynomial-redos). Same spans.
+    let last = content.length - 1; // the last unit that is not whitespace
+    while (last >= 0 && SPACE.test(content[last])) last -= 1;
     let start = 0;
-    const ends = /[.!?]+(?=\s+\S)/g;
+    const stops = /[.!?]+/g;
     let m;
-    while ((m = ends.exec(content)) !== null) {
-      const before = content.slice(start, m.index);
-      const lastToken = (before.match(/(\S+)$/)?.[1] ?? '').toLowerCase();
+    while ((m = stops.exec(content)) !== null) {
+      const end = m.index + m[0].length;
+      // A stop ends a sentence only when whitespace follows it and more text after that.
+      if (end >= last || !SPACE.test(content[end])) continue;
+      let from = m.index; // the token before the stop: the non-whitespace units since `start`
+      while (from > start && !SPACE.test(content[from - 1])) from -= 1;
+      const lastToken = content.slice(from, m.index).toLowerCase();
       // The minutes of a time written with "h" ("de 8 h 30 à 12 h 00.") are no ordinal: the dot ends the sentence.
-      if (m[0] === '.' && isAbbreviation(lastToken) && !CLOCK_MINUTES.test(before)) continue;
-      push(base + start, base + m.index + m[0].length);
-      start = m.index + m[0].length;
+      if (m[0] === '.' && isAbbreviation(lastToken) && !CLOCK_MINUTES.test(content.slice(Math.max(start, m.index - CLOCK_TAIL), m.index))) continue;
+      push(base + start, base + end);
+      start = end;
     }
     push(base + start, base + content.length);
   }

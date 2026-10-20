@@ -50,13 +50,40 @@ export const CITATION_PATTERN = /\[Doc:\s*([^\]\n]+?),\s*Chunk:\s*(\d{1,6})\s*\]
  */
 export const LOOSE_LABEL_PATTERN = /\[(?:doc|dok|dokument|document|source|quelle)\s*:[^\]\n]{1,300}\]/gi;
 
+/** The start of a label up to its first colon: "[Doc:", "[ quelle :". */
+const LABEL_HEAD = /^\[\s*(?:doc|dok|dokument|document|source|quelle)\s*:/i;
+
+/** The chunk part after the name, from its comma, with the spaces at its end removed. */
+const CHUNK_TAIL = /^,\s*(?:chunk|abschnitt|teil|part)\s*(?::\s*)?(\d{1,6})$/i;
+
+/** Line breaks: the name may not contain one, the spaces around it may. */
+const LINE_BREAK = /[\n\r\u2028\u2029]/;
+
 /**
  * Reads a label leniently: any case, any spacing, "Chunk"/"Abschnitt"/"Teil" and an optional colon.
+ * Split by hand: one pattern with a lazy name between optional spaces backtracks in polynomial
+ * time on long labels (CodeQL js/polynomial-redos). The result is the same for every input.
  * @param {string} text
  * @returns {{ doc: string, chunk: number | null } | null}
  */
 export function parseLabel(text) {
-  const m = /^\[\s*(?:doc|dok|dokument|document|source|quelle)\s*:\s*(.+?)\s*(?:,\s*(?:chunk|abschnitt|teil|part)\s*:?\s*(\d{1,6}))?\s*\]$/i.exec(text.trim());
-  if (!m) return null;
-  return { doc: m[1].replace(/\s+/g, ' ').trim(), chunk: m[2] ? Number(m[2]) : null };
+  const s = text.trim();
+  const head = LABEL_HEAD.exec(s);
+  if (!head || !s.endsWith(']')) return null;
+  const body = s.slice(head[0].length, -1);
+  const rest = body.trimStart();
+  // The chunk part holds no comma, so only the last comma can start it; a name can hold commas.
+  const comma = rest.lastIndexOf(',');
+  const tail = comma >= 0 ? CHUNK_TAIL.exec(rest.slice(comma).trimEnd()) : null;
+  const chunk = tail ? Number(tail[1]) : null;
+  if (rest) {
+    const split = tail !== null && comma > 0;
+    const name = split ? rest.slice(0, comma).trimEnd() : rest.trimEnd();
+    if (!LINE_BREAK.test(name)) return { doc: name.replace(/\s+/g, ' ').trim(), chunk: split ? chunk : null };
+    if (comma !== 0 || !tail) return null;
+  }
+  // Only spaces before the end or the chunk part ("[Doc: ]", "[Doc: ,\nChunk 2]"): read with an
+  // empty name if one of those spaces is not a line break, as the single pattern did.
+  const lead = body.slice(0, body.length - rest.length);
+  return /[^\n\r\u2028\u2029]/.test(lead) ? { doc: '', chunk } : null;
 }

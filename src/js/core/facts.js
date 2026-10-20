@@ -488,6 +488,20 @@ function findQuotes(text) {
   return out;
 }
 
+/** A separator or space that may trail a digit run but ends no number. */
+const NUMBER_TAIL = /[.,'’\s]/u;
+
+/**
+ * `blob` without its trailing separators and spaces. A loop from the end: /[.,'’\s]+$/u rescans
+ * the run from each of its positions when a digit follows it, which is quadratic.
+ * @param {string} blob
+ */
+export function trimNumberTail(blob) {
+  let end = blob.length;
+  while (end > 0 && NUMBER_TAIL.test(blob[end - 1])) end -= 1;
+  return blob.slice(0, end);
+}
+
 /**
  * Numbers in `text` (dates, times, codes and labels must already be masked).
  * @param {string} text
@@ -500,7 +514,7 @@ function findNumbers(text, claim) {
   const re = new RegExp(`${B}\\d(?:[\\d.,'’\\u00A0\\u202F\\u2009]|\\x20(?=\\d{3}(?![\\p{N}])))*`, 'gu');
   let m;
   while ((m = re.exec(text)) !== null) {
-    const blob = m[0].replace(/[.,'’\s]+$/u, '');
+    const blob = trimNumberTail(m[0]);
     const start = m.index;
     let end = start + blob.length;
     const parsed = parseNumber(blob);
