@@ -158,9 +158,9 @@ describe('the canvas and content that stays on this device', () => {
     await thread.showConversation(id);
     const answer = /** @type {HTMLElement} */ ([...document.querySelectorAll('#chatMessages .message-row[data-role="assistant"]')].at(-1));
     /** @type {HTMLButtonElement} */ (answer.querySelector('[data-action="canvas-code"]')).click();
-    await until(() => canvas.canvasState().artifact !== null);
+    // The panel renders after the document list is read again, a moment after the state is set.
+    await until(() => panel().querySelector('[data-canvas-local]') !== null);
     assert.equal(canvas.canvasState().artifact?.localOnly, true);
-    assert.ok(panel().querySelector('[data-canvas-local]'));
   });
 
   it('asks nothing and sends nothing for an AI edit while a cloud model is chosen', async () => {
