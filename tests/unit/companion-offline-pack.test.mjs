@@ -40,7 +40,8 @@ after(() => rmSync(scratch, { recursive: true, force: true }));
 
 /** @param {string} cmd @param {string[]} args @param {{ env?: NodeJS.ProcessEnv, cwd?: string }} [options] */
 const run = (cmd, args, options = {}) => spawnSync(cmd, args, { encoding: 'utf8', timeout: 60_000, ...options });
-const has = (/** @type {string} */ cmd) => run('sh', ['-c', `command -v ${cmd}`]).status === 0;
+// The name goes in as a positional parameter, never into the script text.
+const has = (/** @type {string} */ cmd) => run('sh', ['-c', 'command -v "$1"', 'sh', cmd]).status === 0;
 
 /** An environment for the install scripts with HOME (and nothing of the real one) in `home`. */
 function homeEnv(/** @type {string} */ home) {

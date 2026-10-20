@@ -49,7 +49,7 @@ describe('sign-release', () => {
   });
 
   it('accepts only Ed25519 keys', () => {
-    const rsa = generateKeyPairSync('rsa', { modulusLength: 1024 }).privateKey.export({ type: 'pkcs8', format: 'pem' });
+    const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' });
     assert.throws(() => signRelease(release('rsa'), rsa), /not an Ed25519 key/);
     assert.throws(() => publicKeyOf(rsa), /not an Ed25519 key/);
   });
