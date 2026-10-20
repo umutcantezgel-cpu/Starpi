@@ -51,8 +51,8 @@ description = "ElevenLabs API key (sk_ and 48 hex digits)"
 regex = '''\bsk_[a-f0-9]{48}\b'''
 keywords = ["sk_"]
 
-# Mistral, DeepSeek and MiniMax document no distinctive key prefix, so they have no rule of their own;
-# the default rules still apply to their keys.
+# MiniMax keys: Starpi relies on no key format for them (catalog/providers.js has no keyPattern), so
+# there is no rule of their own; the default rules still apply.
 
 # Google keys: the default rule gcp-api-key covers the AIza format; this rule adds the AQ. format.
 [[rules]]

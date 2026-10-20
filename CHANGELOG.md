@@ -57,7 +57,7 @@ on your own machine. What to change when you come from 2.x is in
   thinking cannot be switched off: it streams as `reasoning_content` into the answer's details,
   never into the answer text, and "thinking off" asks for `reasoning_effort: "low"`, never `none`.
   BYOK with the auto transport (relay allowlist: chat completions only), the key test as one small
-  chat request (MiniMax documents no model list and no key prefix, so no gitleaks rule), a fake
+  chat request (no model list and no key format are relied on, so there is no gitleaks rule), a fake
   flavor for the end-to-end suite and `npm run providers:ping -- --provider minimax`.
 - **Self-hosted MiniMax M3 on your own server**: model names containing `minimax-m3` get their
   published 1M-token window unless the server reports its own (Ollama, llama.cpp, and now vLLM's

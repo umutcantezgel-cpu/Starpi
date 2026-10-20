@@ -70,7 +70,7 @@ describe('MiniMax in the catalog', () => {
     assert.equal(info.quirks, 'minimax');
     assert.equal(info.modelsPath, null);
     assert.equal(info.keyPattern, null);
-    assert.equal(keyLooksValid('minimax', KEY), null, 'no documented key format, no hint');
+    assert.equal(keyLooksValid('minimax', KEY), null, 'no key format is relied on, no hint');
     assert.equal(info.byok, true);
     assert.equal(info.pool, true);
     assert.equal(info.testModel, FLASH);

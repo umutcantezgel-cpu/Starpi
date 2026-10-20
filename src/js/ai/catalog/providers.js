@@ -182,9 +182,9 @@ export const PROVIDERS = Object.freeze({
     byok: true,
     pool: false,
   }),
-  // MiniMax on its OpenAI-compatible endpoint (https://api.minimax.io/v1, as of 2026-10-20). No
-  // model list is documented, so the catalog keeps no modelsPath and the key test asks the base
-  // model for a few tokens instead. No distinctive key prefix is documented either.
+  // MiniMax on its OpenAI-compatible endpoint (https://api.minimax.io/v1, as of 2026-10-20). The
+  // catalog relies on no model list (no modelsPath: the key test asks the base model for a few
+  // tokens instead) and on no key format (no keyPattern or hint).
   minimax: provider({
     id: 'minimax',
     label: 'MiniMax',

@@ -383,8 +383,8 @@ the device class. Grounded answers keep the source check, and free answers keep 
 The model always thinks; its API refuses a request to switch thinking off. Its thinking arrives
 apart from the answer and is shown, like every model's, in the answer's collapsible details, never
 as answer text. With extended thinking off, Starpi asks for the lowest effort (`reasoning_effort:
-"low"`); with it on, the effort you chose. MiniMax documents no model list and no distinctive key
-prefix, so **Test key** sends one small chat request instead of reading a list, and the key field
+"low"`); with it on, the effort you chose. Starpi relies on no model list and no key format for
+MiniMax, so **Test key** sends one small chat request instead of reading a list, and the key field
 shows no prefix hint.
 
 Open weights are announced but not released (as of 2026-10-20). Even then, MiniMax M3.1 Flash is no

@@ -179,7 +179,7 @@ ANTHROPIC_API_KEY=… npm run providers:ping -- --provider anthropic
 npm run providers:ping -- --provider gemini --model gemini-2.5-flash
 ```
 
-The script lists the provider's models (or voices, or one search result; MiniMax documents no
-model list, so it answers one small chat request instead), checks whether the API allows calls
+The script lists the provider's models (or voices, or one search result; for MiniMax, whose
+model list Starpi does not rely on, one small chat request instead), checks whether the API allows calls
 from a browser, and for a pool sends one small streamed request per allowlisted model. It prints statuses, timings and model ids only, and says `skipped` (exit code 0) when no
 key is set. It uses real quota. `npm run nvidia:ping` keeps its own NVIDIA report.
