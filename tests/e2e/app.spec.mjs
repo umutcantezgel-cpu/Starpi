@@ -1,6 +1,6 @@
 import { WASM_CATALOG } from '../../src/js/models/wasm-catalog.js';
 import { makePdf } from '../fixtures/pdf.mjs';
-import { expect, mockSupabase, test } from './fixtures.mjs';
+import { chooseLanguage, expect, mockSupabase, storedChatNodes, storedChatText, test } from './fixtures.mjs';
 
 const WASM_LABELS = Object.values(WASM_CATALOG).map((src) => src.label);
 
@@ -68,6 +68,11 @@ test.describe('migration pending, anonymous sign-ins disabled', () => {
     await expect(page.locator('#chatMessages')).toContainText('Available documents (2)');
 
     expect(await page.evaluate(() => /** @type {any} */ (window).__xss)).toBeUndefined();
+    // Chromium 156 and later report the inline handler of the hostile markup as blocked by the CSP
+    // while the sanitizer parses it in an inert document (nothing runs: window.__xss stays unset).
+    // That report is expected here; anything else is not.
+    const blockedHandler = /Executing inline event handler violates|CSP_VIOLATION script-src-attr inline/;
+    diagnostics.splice(0, diagnostics.length, ...diagnostics.filter((d) => !blockedHandler.test(d)));
     expect(diagnostics).toEqual([]);
   });
 
@@ -84,19 +89,50 @@ test.describe('migration pending, anonymous sign-ins disabled', () => {
     await mockSupabase(page, { hardened: false, anonymousAuth: false });
     await page.goto('/');
     await openTab(page, 'settings');
-    await page.locator('details:has(#cfgLlmUrl) > summary').click();
-    await page.fill('#cfgLlmUrl', 'http://evil.example/v1');
-    /** @type {string[]} */
-    const messages = [];
-    page.on('dialog', (d) => {
-      messages.push(d.message());
-      void d.dismiss();
-    });
-    await page.click('[data-action="save-settings"]');
-    await expect.poll(() => messages.length).toBe(1);
-    expect(messages[0]).toMatch(/^Only https:\/\//);
+    await page.fill('#pvLocalUrl', 'http://evil.example/v1');
+    await page.click('[data-action="providers-save-key"][data-arg="local"]');
+    await expect(page.locator('[data-pv-result="local"]')).toHaveText(/^Only https:\/\//);
     // The rejected URL must not have been persisted.
     expect(await page.evaluate(() => localStorage.getItem('starpi_llm_url'))).toBeNull();
+    expect(diagnostics).toEqual([]);
+  });
+});
+
+test.describe('knowledge graph view', () => {
+  test('says the graph cannot be reached when its view does not load, and draws it after a reload', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    // The graph view is a chunk the page loads when the tab first opens; refuse it once.
+    let refuse = true;
+    let refused = 0;
+    await page.route(/\/assets\/chunk-[A-Z0-9]+\.js$/, async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      if (refuse && body.includes('graphEntityList')) {
+        refused += 1;
+        return route.fulfill({ status: 404, contentType: 'text/plain', body: 'gone' });
+      }
+      return route.fulfill({ response, body });
+    });
+    await page.goto('/');
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
+    await openTab(page, 'graph');
+    await expect(page.locator('#graphLoading')).toBeHidden();
+    await expect(page.locator('#graphStatus')).toHaveText(/cannot be reached/);
+    expect(refused).toBe(1);
+
+    // The browser keeps a failed module import for the page's lifetime; after a reload the tab
+    // draws the (empty) graph.
+    refuse = false;
+    await page.reload();
+    await openTab(page, 'graph');
+    await expect(page.locator('#graphLoading')).toBeHidden();
+    await expect(page.locator('#graphStatus')).toHaveText('The graph has no entities yet.');
+    // The tab's own buttons reach the view.
+    await page.click('[data-action="open-entity-modal"]');
+    await expect(page.locator('#entityModal')).toBeVisible();
+    await expect(page.locator('#newEntityName')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#entityModal')).toBeHidden();
     expect(diagnostics).toEqual([]);
   });
 });
@@ -105,8 +141,7 @@ test.describe('saving settings', () => {
   /** @param {import('@playwright/test').Page} page */
   async function saveAndReadDialog(page) {
     await openTab(page, 'settings');
-    await page.locator('details:has(#cfgLlmUrl) > summary').click();
-    await page.fill('#cfgLlmUrl', 'http://127.0.0.1:11434/v1');
+    await page.selectOption('#cfgStrength', 'fast');
     /** @type {string[]} */
     const messages = [];
     page.on('dialog', (d) => {
@@ -122,7 +157,7 @@ test.describe('saving settings', () => {
     await mockSupabase(page, { hardened: false, anonymousAuth: false });
     await page.goto('/');
     expect(await saveAndReadDialog(page)).toBe('Settings saved.');
-    expect(await page.evaluate(() => localStorage.getItem('starpi_llm_url'))).toBe('http://127.0.0.1:11434/v1');
+    expect(await page.evaluate(() => localStorage.getItem('starpi_model_strength_v1'))).toBe('fast');
     expect(diagnostics).toEqual([]);
   });
 
@@ -140,7 +175,7 @@ test.describe('saving settings', () => {
 });
 
 test.describe('hardened schema with anonymous session', () => {
-  test('syncs chats through RLS-scoped requests and uses full-text search', async ({ page, diagnostics }) => {
+  test('keeps chats on the device (no plaintext chat sync) and uses full-text search', async ({ page, diagnostics }) => {
     const calls = await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await page.goto('/');
     await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
@@ -148,19 +183,16 @@ test.describe('hardened schema with anonymous session', () => {
     await ask(page, 'Wann ist der Launch?');
     await expect(page.locator('#chatMessages')).toContainText('3. März geplant');
 
-    await expect.poll(() => calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history')).length).toBe(2);
-    const inserts = calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history'));
-    for (const insert of inserts) {
-      expect(insert.auth).toBe('Bearer test-access-token');
-      expect(insert.body).not.toContain('owner_id');
-    }
+    // Both turns are stored in the browser; the chat table is never written.
+    await expect.poll(async () => (await storedChatNodes(page)).map((n) => n.role)).toEqual(['user', 'assistant']);
+    expect(calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history'))).toEqual([]);
     expect(calls.some((c) => c.url.startsWith('/rest/v1/rpc/search_knowledge'))).toBe(true);
     expect(diagnostics).toEqual([]);
   });
 });
 
 test.describe('offline start', () => {
-  test('reconnects when the browser is back online and then syncs chats', async ({ page, diagnostics }) => {
+  test('reconnects when the browser is back online and then answers from the knowledge base', async ({ page, diagnostics }) => {
     const calls = await mockSupabase(page, { hardened: true, anonymousAuth: true });
     const supabase = /\.supabase\.co\//;
     /** @param {import('@playwright/test').Route} route */
@@ -175,12 +207,89 @@ test.describe('offline start', () => {
 
     await ask(page, 'Wann ist der Launch?');
     await expect(page.locator('#chatMessages')).toContainText('3. März geplant');
-    await expect.poll(() => calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history')).length).toBe(2);
+    expect(calls.some((c) => c.url.startsWith('/rest/v1/rpc/search_knowledge'))).toBe(true);
+    await expect.poll(async () => (await storedChatNodes(page)).length).toBe(2);
+    expect(calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history'))).toEqual([]);
 
     // The browser logs the requests that failed while Supabase was unreachable; nothing else may be logged.
     const expected = (/** @type {string} */ p) => /^console\.error: Failed to load resource: net::ERR_INTERNET_DISCONNECTED$/.test(p);
     expect(diagnostics.some(expected)).toBe(true);
     diagnostics.splice(0, diagnostics.length, ...diagnostics.filter((p) => !expected(p)));
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('shows the offline state when the Supabase library does not load, and connects once it does', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    // The library is a lazy entry of its own (scripts/build.mjs), loaded on the first connect;
+    // answer it with a 404 as a server does for a file of an older deploy. The browser keeps a
+    // failed module import, so the retry must ask for it under another URL.
+    let missing = true;
+    /** @type {string[]} */
+    const requested = [];
+    await page.route(/\/assets\/supabase-[A-Z0-9]+\.js(?:\?|$)/, (route) => {
+      requested.push(new URL(route.request().url()).search);
+      return missing ? route.fulfill({ status: 404, contentType: 'text/plain', body: 'gone' }) : route.fallback();
+    });
+    await page.goto('/');
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Offline');
+    expect(requested).toEqual(['']);
+    // The views and the chat stay usable.
+    await openTab(page, 'library');
+    await openTab(page, 'chat');
+
+    missing = false;
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
+    // Every attempt (the library view tried once more) asked under a URL of its own.
+    expect(requested.length).toBeGreaterThan(1);
+    expect(new Set(requested).size).toBe(requested.length);
+    // The 404 is logged by the browser and filtered as a mocked 4xx; nothing else may be logged.
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('goes offline and restores the local chat when the Supabase library stalls, and uses it once it arrives', async ({ page, diagnostics }) => {
+    // One Supabase timeout (12 s) to the offline state, then the reconnect.
+    test.setTimeout(60_000);
+    await page.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      localStorage.setItem('starpi_chat_session_id', 'starpi_stalled-session');
+      localStorage.setItem(
+        'starpi_local_chats_v1',
+        JSON.stringify({
+          'starpi_stalled-session': {
+            updatedAt: Date.now(),
+            messages: [
+              { role: 'user', content: 'Where is the kickoff?', sources: [], metadata: { local_only: true }, created_at: '2026-10-01T10:00:00Z' },
+              { role: 'assistant', content: 'The kickoff is in room Aurora.', sources: [], metadata: { local_only: true }, created_at: '2026-10-01T10:00:01Z' },
+            ],
+          },
+        }),
+      );
+    });
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    // A stalled network: the library's download never finishes, until the test lets it.
+    /** @type {import('@playwright/test').Route[]} */
+    const held = [];
+    /** @type {string[]} */
+    const requested = [];
+    await page.route(/\/assets\/supabase-[A-Z0-9]+\.js(?:\?|$)/, (route) => {
+      requested.push(new URL(route.request().url()).search);
+      held.push(route);
+    });
+    await page.goto('/');
+    // The load gets the time of a Supabase request; then the app is offline and finishes booting.
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Offline', { timeout: 20_000 });
+    await expect(page.locator('#chatMessages')).toContainText('The kickoff is in room Aurora.');
+    expect(requested).toEqual(['']);
+
+    // The reconnect asks under another URL, and that download stalls as well; the first one then
+    // arrives after all and is used.
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect.poll(() => requested).toEqual(['', '?attempt=1']);
+    await held[0].fallback();
+    await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
+    await held[1].fallback();
     expect(diagnostics).toEqual([]);
   });
 });
@@ -220,7 +329,7 @@ test.describe('local mode without WebGPU', () => {
     await page.goto('/');
     // The device's recommendation comes first: a processor (WASM) model on a device without WebGPU;
     // which one depends on its memory.
-    const recommended = page.locator('#engineSelector[data-ready="true"] optgroup').first().locator('option').first();
+    const recommended = page.locator('#engineSelector[data-ready="true"] optgroup[data-group="recommended"] option[value^="wasm:"]').first();
     const value = await recommended.getAttribute('value');
     expect(value).toMatch(/^wasm:/);
     await page.selectOption('#engineSelector', value ?? '');
@@ -239,13 +348,13 @@ test.describe('local mode without WebGPU', () => {
     expect(diagnostics).toEqual([]);
   });
 
-  test('diagnostics report the missing WebGPU support instead of numbers', async ({ page, diagnostics }) => {
+  test('diagnostics report the missing WebGPU support and offer the processor benchmark instead', async ({ page, diagnostics }) => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await page.goto('/');
     await openTab(page, 'bench');
     await expect(page.locator('#benchWebgpuStatusText')).toHaveText('WebGPU not supported');
-    await expect(page.locator('#btnRunBenchmark')).toBeDisabled();
-    await expect(page.locator('#benchModelHint')).toContainText('needs WebGPU');
+    await expect(page.locator('#benchModelHint')).toContainText('processor (WASM) model');
+    await expect(page.locator('#btnRunBenchmark')).toBeEnabled();
     await expect(page.locator('#benchResultTTFT')).toHaveText('–');
     expect(diagnostics).toEqual([]);
   });
@@ -259,23 +368,23 @@ test.describe('internationalization', () => {
     const settingsNav = page.locator(isMobile ? '#mobile-nav-settings' : '#nav-settings');
 
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Ask a question…');
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Ask anything…');
     await expect(settingsNav).toHaveText('Settings');
     await expect(page.locator('#privacyNotice')).toContainText('No model configured');
-    await expect(page.locator('[data-action="set-locale"][data-arg="en"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('select[data-change="set-locale"]')).toHaveValue('en');
 
     /** @type {string[]} */
     const navigations = [];
     page.on('framenavigated', (frame) => {
       if (frame === page.mainFrame()) navigations.push(frame.url());
     });
-    await page.click('[data-action="set-locale"][data-arg="de"]');
+    await chooseLanguage(page, 'de');
     await expect(page.locator('html')).toHaveAttribute('lang', 'de');
-    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Frage stellen…');
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Fragen Sie, was Sie wollen…');
     await expect(settingsNav).toHaveText(isMobile ? 'Optionen' : 'Einstellungen');
     await expect(page.locator('#privacyNotice')).toContainText('Kein Modell eingerichtet');
     await expect(page.locator('#sendBtn')).toHaveAttribute('aria-label', 'Senden');
-    await expect(page.locator('[data-action="set-locale"][data-arg="de"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('select[data-change="set-locale"]')).toHaveValue('de');
     expect(navigations).toEqual([]);
 
     // Quick prompts ask in the active language.
@@ -283,13 +392,52 @@ test.describe('internationalization', () => {
     await expect(page.locator('#chatMessages')).toContainText('Welche Dokumente sind in der Wissensdatenbank verfügbar?');
     await expect(page.locator('#chatMessages')).toContainText('Verfügbare Dokumente (2)');
 
+    // The quick prompt switched the composer to source mode, and that is kept as well.
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('lang', 'de');
     await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Frage stellen…');
     await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
 
-    await page.click('[data-action="set-locale"][data-arg="en"]');
+    await chooseLanguage(page, 'en');
     await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Ask a question…');
+    await expect(settingsNav).toHaveText('Settings');
+    expect(await page.evaluate(() => localStorage.getItem('starpi_locale'))).toBe('en');
+    expect(diagnostics).toEqual([]);
+  });
+
+  test('offers six languages and switches to French and Turkish without a reload', async ({ page, diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    await page.goto('/');
+    const isMobile = (page.viewportSize()?.width ?? 1280) < 768;
+    const settingsNav = page.locator(isMobile ? '#mobile-nav-settings' : '#nav-settings');
+    const select = page.locator('select[data-change="set-locale"]');
+    await expect(select.locator('option')).toHaveText(['English', 'Deutsch', 'Français', 'Español', 'Italiano', 'Türkçe']);
+    /** @type {string[]} */
+    const navigations = [];
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) navigations.push(frame.url());
+    });
+
+    await chooseLanguage(page, 'fr');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'Demandez ce que vous voulez…');
+    await expect(settingsNav).toHaveText(isMobile ? 'Réglages' : 'Paramètres');
+    await expect(page.locator('#privacyNotice')).toContainText('Aucun modèle configuré');
+    await expect(page.locator('#sendBtn')).toHaveAttribute('aria-label', 'Envoyer');
+
+    await chooseLanguage(page, 'tr');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'tr');
+    await expect(page.locator('#chatInput')).toHaveAttribute('placeholder', 'İstediğinizi sorun…');
+    await expect(settingsNav).toHaveText('Ayarlar');
+    await expect(page.locator('#privacyNotice')).toContainText('Yapılandırılmış model yok');
+    expect(navigations).toEqual([]);
+
+    // The choice is kept, and its dictionary is loaded before the first render.
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'tr');
+    await expect(select).toHaveValue('tr');
+    await expect(settingsNav).toHaveText('Ayarlar');
+    await chooseLanguage(page, 'en');
     await expect(settingsNav).toHaveText('Settings');
     expect(await page.evaluate(() => localStorage.getItem('starpi_locale'))).toBe('en');
     expect(diagnostics).toEqual([]);
@@ -345,30 +493,34 @@ test.describe('on-device workspace', () => {
     await expect(drawer).toBeHidden();
 
     // File contents never leave the device, and neither does a chat turn answered from them: the
-    // question and the answer are both kept locally although chats sync.
+    // question and the answer are both stored as on-device turns.
     const leaked = calls.filter((c) => /steering group|480000/.test(`${c.url} ${c.body ?? ''}`));
     expect(leaked).toEqual([]);
     expect(calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history'))).toEqual([]);
-    const stored = await page.evaluate(() => localStorage.getItem('starpi_local_chats_v1') ?? '');
+    await expect.poll(async () => (await storedChatNodes(page)).length).toBe(2);
+    const stored = await storedChatText(page);
     expect(stored).toContain('What is the approved budget for Project Nebula?');
     expect(stored).toContain('480000 EUR');
+    expect((await storedChatNodes(page)).map((n) => n.localOnly)).toEqual([true, true]);
     expect(diagnostics).toEqual([]);
   });
 
-  test('keeps a question about an attached file and its answer on the device while chats sync', async ({ page, diagnostics }) => {
+  test('keeps a question about an attached file and its answer on the device', async ({ page, diagnostics }) => {
     const calls = await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await page.goto('/');
     await expect(page.locator('#dbStatusBadge')).toHaveText('Live');
 
     await page.setInputFiles('#chatFileInput', { name: 'orion-roadmap.md', mimeType: 'text/markdown', buffer: Buffer.from('# Orion\n\nThe Orion release ships in calendar week 38.') });
-    await expect(page.locator('#attachedFileName')).toHaveText('orion-roadmap.md · 1 chunk');
+    await expect(page.locator('#attachedInfo')).toContainText('orion-roadmap.md · 1 chunk');
     await ask(page, 'When does the Orion release ship?');
     const answer = page.locator('#chatMessages > div').last();
     await expect(answer).toContainText('calendar week 38');
 
-    const stored = await page.evaluate(() => localStorage.getItem('starpi_local_chats_v1') ?? '');
+    await expect.poll(async () => (await storedChatNodes(page)).length).toBe(2);
+    const stored = await storedChatText(page);
     expect(stored).toContain('orion-roadmap.md');
     expect(stored).toContain('calendar week 38');
+    expect((await storedChatNodes(page)).map((n) => n.localOnly)).toEqual([true, true]);
     expect(calls.filter((c) => c.method === 'POST' && c.url.startsWith('/rest/v1/chat_history'))).toEqual([]);
     expect(diagnostics).toEqual([]);
   });

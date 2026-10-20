@@ -1,0 +1,98 @@
+{
+  "read": {
+    "free_notice": "Free answer, not checked.",
+    "withheld": "{count} {count:sentence|sentences} withheld.",
+    "nothing": "Nothing in this answer could be read aloud as checked.",
+    "button": "Read aloud",
+    "stop": "Stop reading aloud",
+    "unavailable": "This answer cannot be read aloud."
+  },
+  "preview": {
+    "sample": "This is how your answers will sound when they are read aloud."
+  },
+  "source": {
+    "browser": "Browser",
+    "gemini": "Gemini",
+    "openai": "OpenAI",
+    "groq": "Groq",
+    "local": "Local voice server",
+    "companion": "Companion",
+    "elevenlabs": "ElevenLabs"
+  },
+  "fallback": {
+    "to": "{from} could not speak, so {to} reads instead.",
+    "none": "No voice could speak right now. The text stays on the screen."
+  },
+  "dictation": {
+    "listening": "listening",
+    "recording": "recording",
+    "transcribing": "transcribing",
+    "chip": "{source} · {state}",
+    "no_source": "No speech input is set up. Add a key or a local voice server in Settings → Voice.",
+    "too_short": "That was too short. Press the microphone, speak, then press it again.",
+    "failed": "Your speech could not be turned into text. Try again or pick another source in Settings → Voice.",
+    "fallback": "The browser's speech service is not available ({code}). Recording instead: press the microphone again when you are done."
+  },
+  "capture": {
+    "unsupported": "This browser cannot record from the microphone here.",
+    "denied": "Microphone access was blocked. Allow it in the browser's site settings.",
+    "no_microphone": "No microphone was found.",
+    "busy": "The microphone is in use by another program.",
+    "worklet": "The audio processing could not start. Reload the page and try again.",
+    "aborted": "Recording was stopped."
+  },
+  "settings": {
+    "title": "Voice",
+    "subtitle": "Dictate questions, have answers read aloud and talk live. Checked answers are only read as far as the sentence check releases them.",
+    "stt_title": "Speech input",
+    "stt_label": "Try first",
+    "stt_auto": "Automatic order",
+    "not_ready": "not set up",
+    "stt_chain": "Order now: {sources}",
+    "stt_none": "No speech input is set up yet.",
+    "glossary_label": "Names and terms (optional)",
+    "glossary_placeholder": "One per line or separated by commas",
+    "glossary_hint": "Helps the transcription spell your names and terms. Sent only with your recordings.",
+    "tts_title": "Read aloud",
+    "tts_label": "Voice source",
+    "voice_label": "Voice",
+    "voice_auto": "Default voice",
+    "voice_online": "online",
+    "rate_label": "Speed",
+    "preview": "Preview voice",
+    "auto_read": "Read answers aloud automatically",
+    "tts_hint": "If the chosen source fails, the browser's own voices take over; nothing switches to another cloud service.",
+    "local_title": "Local voice server",
+    "local_label": "Address of the local voice server",
+    "local_hint": "A speech server on your own computer (for example faster-whisper with Piper). Only Piper voices with an open licence are used.",
+    "save": "Save",
+    "eleven_title": "ElevenLabs key",
+    "eleven_label": "ElevenLabs API key",
+    "eleven_placeholder": "Paste your ElevenLabs key",
+    "remove": "Remove",
+    "eleven_hint": "Only ElevenLabs' premade voices are used. The key stays in this browser like your other keys.",
+    "live_title": "Live conversation",
+    "live_voice": "Live voice",
+    "camera": "Allow a camera picture",
+    "saved": "Saved.",
+    "local_invalid": "Enter an http or https address, for example http://127.0.0.1:8000.",
+    "local_saved": "Local voice server saved.",
+    "local_cleared": "Local voice server removed.",
+    "key_empty": "Paste a key first.",
+    "key_stored": "Key saved.",
+    "key_failed": "The key could not be saved. Unlock the key vault and try again.",
+    "key_removed": "Key removed.",
+    "key_saved": "Key saved",
+    "key_none": "No key"
+  },
+  "privacy": {
+    "title": "Where your voice goes",
+    "browser": "Recognition runs on the browser vendor's servers in most browsers; on-device where the browser offers it.",
+    "gemini": "Audio goes to Google, with your key directly or with this site's key through this site.",
+    "openai": "Audio goes to OpenAI with your key.",
+    "groq": "Audio goes to Groq with your key, directly or through this site's relay.",
+    "elevenlabs": "The text to read goes to ElevenLabs, with your key or this site's key.",
+    "local": "Audio and text stay on your computer.",
+    "companion": "Audio stays on your machines, through the paired companion."
+  }
+}

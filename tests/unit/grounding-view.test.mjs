@@ -1,5 +1,5 @@
 // The source check on real rendered answers: Markdown -> DOMPurify -> citation buttons -> blocks.
-/* global document */
+/* global document, window */
 import './setup.mjs';
 import assert from 'node:assert/strict';
 import { before, describe, it } from 'node:test';
@@ -100,6 +100,25 @@ describe('source check in the rendered answer', () => {
     assert.equal(bar.querySelector('summary [data-lucide]')?.getAttribute('data-lucide'), 'shield');
   });
 
+  it('reads typeset math as its TeX, the same text as before it was typeset', () => {
+    const { scope, sources } = register();
+    const text = (/** @type {HTMLElement} */ el) =>
+      view
+        .blocksFromElement(/** @type {HTMLElement} */ (el.querySelector('.message-content')), scope, sources)
+        .blocks.map((b) => b.segments.map((s) => (s.type === 'text' ? s.text : '')).join(''))
+        .join('|');
+    const placeholder = message('The ratio is $a/b$ at most [Doc: plan.md, Chunk: 1].', scope);
+    const typeset = message('The ratio is $a/b$ at most [Doc: plan.md, Chunk: 1].', scope);
+    const math = /** @type {HTMLElement} */ (typeset.querySelector('.math-inline'));
+    assert.ok(math, 'the renderer marks inline math');
+    // What render-extras.js leaves behind: MathML (with a TeX annotation) and the TeX in data-tex.
+    math.setAttribute('data-tex', math.textContent ?? '');
+    math.innerHTML = '<math><semantics><mrow><mi>a</mi><mo>/</mo><mi>b</mi></mrow><annotation encoding="application/x-tex">a/b</annotation></semantics></math>';
+    math.classList.add('math-rendered');
+    assert.equal(text(placeholder), 'The ratio is a/b at most .');
+    assert.equal(text(typeset), text(placeholder));
+  });
+
   it('works without the CSS Custom Highlight API and renders nothing for answers without statements', () => {
     const { scope, sources } = register();
     assert.equal(typeof globalThis.Highlight, 'undefined');
@@ -117,5 +136,128 @@ describe('source check in the rendered answer', () => {
       assert.ok(report && report.counts.supported >= 1, `${query}: ${md}`);
       assert.equal(report.counts.weak + report.counts.unsupported, 0, `${query}: ${JSON.stringify(report.sentences)}`);
     }
+  });
+});
+
+/** @param {() => boolean} condition */
+async function until(condition) {
+  for (let i = 0; i < 200 && !condition(); i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.ok(condition(), 'condition not reached');
+}
+
+const REPORT = 'Ticket revenue fell from 310,000 EUR to 280,000 EUR. Membership rose from 1,200 to 1,500.';
+
+function registerReport() {
+  const hits = [{ documentId: 'r', documentTitle: 'report.md', heading: '', content: REPORT, tags: [], rank: 1, workspace: { docId: 'r', chunkIndex: 0, start: 0, end: REPORT.length } }];
+  const list = retrieval.assignCitations(hits, { excerptChars: 1600 });
+  const scope = /** @type {string} */ (citations.registerCitations(list));
+  const sources = list.map((c) => ({ label: c.label, doc: c.doc, heading: c.heading, text: c.text, delivered: /** @type {const} */ ('full') }));
+  return { scope, sources };
+}
+
+describe('grounding version 3 in the rendered answer', () => {
+  it('lists a relation the excerpt gives the other way round, and counts the relations compared', () => {
+    const { scope, sources } = registerReport();
+    const el = message('Ticket revenue rose from 310,000 EUR to 280,000 EUR [Doc: report.md, Chunk: 1]. Membership rose to 1,500 [Doc: report.md, Chunk: 1].', scope);
+    const report = view.applyGrounding(el, { scope, sources });
+    assert.deepEqual(report?.relations?.map((r) => r.verdict), ['inverted', 'supported']);
+    const reasons = [...el.querySelectorAll('.grounding-reason')].map((r) => r.textContent);
+    assert.ok(
+      reasons.includes('“rose from 310,000 EUR to 280,000 EUR” is the wrong way round: [Doc: report.md, Chunk: 1] says “Ticket revenue fell from 310,000 EUR to 280,000 EUR”.'),
+      reasons.join('\n'),
+    );
+    const notes = [...el.querySelectorAll('.grounding-note')].map((n) => n.textContent);
+    assert.ok(notes.includes('2 relations between values or events compared with the excerpts; 1 the wrong way round or not supported.'), notes.join('\n'));
+  });
+
+  it('reads typeset math from its TeX source, not from the MathML', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p>The area is <span class="math-inline math-rendered" data-tex="a^2+b^2"><math><mi>MATHML</mi></math></span> square metres.</p>';
+    const { blocks } = view.blocksFromElement(root, 'none', []);
+    const text = blocks[0].segments.map((seg) => (seg.type === 'text' ? seg.text : '')).join('');
+    assert.equal(text, 'The area is a^2+b^2 square metres.');
+  });
+
+  it('offers a second opinion for weak statements, downloads nothing before it is asked for, and never changes a verdict', async () => {
+    const { scope, sources } = registerReport();
+    const nli = await import('../../src/js/wasm/nli.js');
+    /** @type {any[]} */
+    const workers = [];
+    class FakeWorker extends EventTarget {
+      constructor() {
+        super();
+        workers.push(this);
+      }
+      /** @param {any} msg */
+      postMessage(msg) {
+        queueMicrotask(() => this.dispatchEvent(Object.assign(new Event('message'), { data: { id: msg.id, type: 'classified', scores: msg.pairs.map(() => ({ entailment: 0.05, neutral: 0.05, contradiction: 0.9 })) } })));
+      }
+      terminate() {}
+    }
+    const saved = { Worker: globalThis.Worker, location: globalThis.location };
+    Object.assign(globalThis, { Worker: FakeWorker, location: window.location });
+    nli.setNliRuntime({ worker: () => /** @type {any} */ (new FakeWorker()), verify: async () => undefined, stored: async () => 'none' });
+    try {
+      const el = message('Members praised the friendly staff and the long opening hours of the library [Doc: report.md, Chunk: 1].', scope);
+      const report = /** @type {NonNullable<ReturnType<typeof view.applyGrounding>>} */ (view.applyGrounding(el, { scope, sources }));
+      assert.deepEqual(report.counts, { supported: 0, weak: 1, unsupported: 0, unchecked: 0 });
+      const panel = /** @type {HTMLElement} */ (el.querySelector('.grounding-second'));
+      assert.ok(panel, 'second-opinion controls under a weak statement');
+      const onDevice = /** @type {HTMLButtonElement} */ (panel.querySelector('[data-second-opinion="nli"]'));
+      await until(() => !onDevice.hidden);
+      assert.match(onDevice.textContent ?? '', /downloads about 232 MB once/);
+      assert.equal(workers.length, 0, 'no worker, no download before the click');
+      onDevice.click();
+      await until(() => Boolean(el.querySelector('.grounding-opinion')));
+      assert.equal(workers.length, 1);
+      assert.deepEqual(report.secondOpinion?.map((o) => [o.engine, o.result]), [['nli', 'contradicted']]);
+      assert.equal(el.querySelector('.grounding-opinion')?.textContent, 'Second opinion (model on this device): [Doc: report.md, Chunk: 1] contradicts this statement.');
+      assert.deepEqual(report.counts, { supported: 0, weak: 1, unsupported: 0, unchecked: 0 }, 'the verdict stays');
+      assert.equal(report.sentences.find((x) => x.verdict !== 'neutral')?.verdict, 'weak');
+      assert.ok(el.querySelector('.grounding-item-weak'));
+    } finally {
+      nli.stopNli();
+      Object.assign(globalThis, saved);
+    }
+  });
+
+  it('shows no second-opinion controls without a weak statement, and says when no judge is set up', async () => {
+    const { scope, sources } = registerReport();
+    const ok = message('Membership rose from 1,200 to 1,500 [Doc: report.md, Chunk: 1].', scope);
+    view.applyGrounding(ok, { scope, sources });
+    assert.equal(ok.querySelector('.grounding-second'), null);
+    const weak = message('Members praised the friendly staff and the long opening hours of the library [Doc: report.md, Chunk: 1].', scope);
+    view.applyGrounding(weak, { scope, sources, localOnly: false });
+    const judge = /** @type {HTMLButtonElement} */ (weak.querySelector('[data-second-opinion="judge"]'));
+    judge.click();
+    const status = /** @type {HTMLElement} */ (weak.querySelector('.grounding-second [role="status"]'));
+    await until(() => (status.textContent ?? '').length > 0 && !judge.disabled);
+    assert.equal(status.textContent, 'No AI judge is available: set up a provider in Settings.');
+  });
+
+  it('does not offer the AI judge for an answer that stays on this device', () => {
+    const { scope, sources } = registerReport();
+    const el = message('Members praised the friendly staff and the long opening hours of the library [Doc: report.md, Chunk: 1].', scope);
+    view.applyGrounding(el, { scope, sources, localOnly: true });
+    const panel = /** @type {HTMLElement} */ (el.querySelector('.grounding-second'));
+    assert.ok(panel);
+    assert.equal(panel.querySelector('[data-second-opinion="judge"]'), null);
+    assert.match(panel.textContent ?? '', /this answer stays on this device, so no AI judge is asked/);
+  });
+
+  it('offers the AI judge only when the caller says the answer may leave this device', () => {
+    const { scope, sources } = registerReport();
+    const text = 'Members praised the friendly staff and the long opening hours of the library [Doc: report.md, Chunk: 1].';
+    const unsaid = message(text, scope);
+    view.applyGrounding(unsaid, { scope, sources });
+    const quiet = /** @type {HTMLElement} */ (unsaid.querySelector('.grounding-second'));
+    assert.ok(quiet, 'the on-device second opinion is still offered');
+    assert.equal(quiet.querySelector('[data-second-opinion="judge"]'), null, 'no judge without an explicit localOnly: false');
+    assert.doesNotMatch(quiet.textContent ?? '', /AI judge|AI provider/);
+    const cloud = message(text, scope);
+    view.applyGrounding(cloud, { scope, sources, localOnly: false });
+    const open = /** @type {HTMLElement} */ (cloud.querySelector('.grounding-second'));
+    assert.equal(open.querySelector('[data-second-opinion="judge"]')?.textContent, 'Ask the AI judge');
+    assert.match(open.textContent ?? '', /sends each statement and its passages to your AI provider/);
   });
 });

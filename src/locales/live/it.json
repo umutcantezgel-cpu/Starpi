@@ -1,0 +1,66 @@
+{
+  "spoken": {
+    "free": "Conversazione libera, le risposte non vengono verificate.",
+    "withheld": "{count} {count:frase trattenuta|frasi trattenute}.",
+    "ended": "La conversazione dal vivo è terminata."
+  },
+  "title": "Conversazione dal vivo",
+  "close": "Chiudi la conversazione dal vivo",
+  "open": "Dal vivo",
+  "open_hint": "Avvia una conversazione vocale dal vivo",
+  "mode": {
+    "label": "Modalità di conversazione",
+    "free": "Conversazione libera",
+    "sources": "Dalle tue fonti",
+    "free_hint": "Una conversazione aperta. Le risposte non vengono verificate sui tuoi documenti.",
+    "sources_hint": "Ogni turno cerca nei tuoi documenti. Vengono pronunciate solo le frasi approvate dalla verifica; segue il numero di frasi trattenute."
+  },
+  "state": {
+    "idle": "Pronto per iniziare",
+    "connecting": "Connessione…",
+    "ready": "Premi il microfono per parlare",
+    "listening": "In ascolto",
+    "thinking": "Sto pensando…",
+    "speaking": "Sta parlando",
+    "ended": "Conversazione terminata"
+  },
+  "ended": {
+    "limit": "Terminata dopo 15 minuti.",
+    "silence": "Terminata dopo 3 minuti di silenzio.",
+    "hidden": "Terminata perché hai lasciato la scheda.",
+    "error": "La connessione si è interrotta inaspettatamente.",
+    "no_model": "Nessun modello disponibile. Aggiungi una chiave in Impostazioni → Provider.",
+    "companion_sources": "Starpi Core risponde alle domande parlate solo in una conversazione libera: risponde in base ai propri documenti, non alle fonti trovate qui. Avvia una conversazione libera oppure scegli un altro modello.",
+    "microphone": "Non è stato possibile avviare il microfono."
+  },
+  "hint": {
+    "no_source": "Qui nessun input vocale può trasformare una registrazione in testo. Scrivi il messaggio qui sotto, oppure aggiungi una chiave o un server vocale locale in Impostazioni → Voce.",
+    "not_heard": "Non è stato capito nulla. Premi per parlare e riprova, oppure scrivi il messaggio qui sotto."
+  },
+  "engine": {
+    "live": "Gemini Live",
+    "turns": "Premi per parlare"
+  },
+  "start": "Avvia",
+  "talk": "Premi per parlare",
+  "talk_send": "Premi per inviare",
+  "talk_interrupt": "Premi per interrompere",
+  "camera": "Invia una foto della fotocamera",
+  "stop": "Termina la conversazione",
+  "say_label": "Scrivi invece un messaggio",
+  "say_placeholder": "Oppure scrivi qui…",
+  "say": "Invia",
+  "limits": "Una conversazione termina dopo 15 minuti, dopo 3 minuti di silenzio o quando lasci questa scheda. Non viene registrato nulla.",
+  "transcript": {
+    "empty": "La conversazione comparirà qui.",
+    "thinking": "Risposta in corso…",
+    "nothing": "Nulla di questa risposta è stato approvato."
+  },
+  "label": {
+    "free": "Libera · non verificata",
+    "withheld": "{count} trattenute"
+  },
+  "on_device": "La modalità dal vivo richiede un modello esterno a questo dispositivo. Disattiva la modalità locale per usarla.",
+  "camera_failed": "Non è stato possibile scattare la foto con la fotocamera.",
+  "camera_sent": "Foto della fotocamera inviata con la conversazione."
+}

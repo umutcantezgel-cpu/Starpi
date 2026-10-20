@@ -1,5 +1,5 @@
-# Tooling configuration for the Python backend. The backend is run from this directory
-# (python server.py) and is not packaged, so there is no [project] table.
+# Tooling configuration for the Python helper in backend/ (supabase/apply_migration.py). The
+# library publisher in tools/library-publisher has its own configuration.
 
 [tool.ruff]
 target-version = "py311"
@@ -15,12 +15,3 @@ select = [
     "UP", # pyupgrade
     "S",  # flake8-bandit
 ]
-
-[tool.ruff.lint.per-file-ignores]
-# Tests use throwaway credentials (S105/S106), bind checks against 0.0.0.0 (S104) and plain
-# asserts in helpers (S101).
-"test_*.py" = ["S101", "S104", "S105", "S106"]
-"tests/**" = ["S101", "S104", "S105", "S106"]
-
-[tool.ruff.lint.isort]
-known-first-party = ["core", "server"]

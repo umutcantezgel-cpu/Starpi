@@ -1,0 +1,114 @@
+{
+  "mode": {
+    "auto": "Auto",
+    "free": "Libre",
+    "grounded": "Avec sources",
+    "auto_hint": "Répond à partir de vos fichiers quand la question les concerne, sinon en conversation libre.",
+    "placeholder_auto": "Demandez ce que vous voulez…"
+  },
+  "toggle": {
+    "thinking": "Réflexion",
+    "web": "Web",
+    "web_hint": "Les modèles capables de chercher sur le web peuvent s’en servir pour cette réponse."
+  },
+  "tools": {
+    "label": "Outils",
+    "empty": "Aucun outil n’est encore configuré."
+  },
+  "picker": {
+    "auto": "Auto · le meilleur disponible",
+    "auto_long": "Auto · le meilleur modèle configuré : MiniMax M3.1 Flash s'il est disponible, puis vos clés, les modèles gratuits du site, votre serveur, cet appareil",
+    "group_recommended": "Recommandés pour cet appareil",
+    "group_device": "Sur cet appareil",
+    "group_pools": "Gratuits (via Starpi)",
+    "group_server": "Votre serveur",
+    "runtime_pool": "gratuit via Starpi",
+    "server_first": "Premier modèle de votre serveur",
+    "measured_fast": "mesuré rapide ici",
+    "unverified": "non vérifié",
+    "warn_no_vision": "ne voit pas les images",
+    "warn_workstation": "nécessite une station de travail ou un serveur (environ 160 Go de mémoire)",
+    "pools_label": "Modèles gratuits de ce site :",
+    "strength_hint": "Le modèle qu’Auto prend chez un fournisseur dont vous n’avez choisi aucun modèle.",
+    "served": "Répondu par {model}"
+  },
+  "badge": {
+    "waiting": "Connexion au modèle…",
+    "provider": "{provider} · {model}",
+    "pool": "{provider} via Starpi · {model}",
+    "served": "{provider} · {model} (au lieu de {requested})",
+    "device": "Sur cet appareil · {model}",
+    "server": "Votre serveur · {model}",
+    "companion": "Compagnon local · {model}"
+  },
+  "meta": {
+    "tokens": "{input} en entrée · {output} en sortie",
+    "cached": "{n} depuis le cache",
+    "cost": "environ {usd} $"
+  },
+  "action": {
+    "copy": "Copier",
+    "copy_md": "Copier en Markdown",
+    "regenerate": "Régénérer",
+    "regenerate_same": "Même modèle à nouveau",
+    "edit": "Modifier la question",
+    "edit_label": "Question modifiée",
+    "edit_cancel": "Annuler",
+    "edit_save": "Envoyer la question modifiée",
+    "branch_prev": "Version précédente",
+    "branch_next": "Version suivante",
+    "continue": "Continuer",
+    "research_no_question": "Cette réponse n’a pas de question à approfondir.",
+    "research_failed": "La recherche n’a pas pu être lancée."
+  },
+  "composer": {
+    "attach": "Joindre des fichiers ou des images",
+    "image_size": "{name} · {width}×{height}",
+    "too_many": "Au plus {n} fichiers par message.",
+    "pasted_image": "Image collée",
+    "error_unsupported_type": "{name} ne peut pas être joint : ce type de fichier n’est pas pris en charge.",
+    "error_too_large": "{name} est trop volumineux pour être joint.",
+    "error_unreadable": "{name} n’a pas pu être lu.",
+    "no_vision": "{model} ne voit pas les images. Retirez l’image ou choisissez un modèle qui les voit, par exemple Auto.",
+    "no_vision_auto": "Aucun des modèles configurés ne voit les images. Ajoutez la clé d’un fournisseur dont les modèles lisent les images, ou retirez l’image."
+  },
+  "privacy": {
+    "key": "{provider}, votre clé : votre question va à la recherche dans la base de connaissances et, avec les extraits correspondants, à {provider}.",
+    "free_key": "Discussion libre avec {provider}, votre clé : votre question, les fichiers joints et les messages précédents de cette discussion vont à {provider}. Aucune source n’est consultée.",
+    "pool": "{provider} via Starpi : votre question va à la recherche dans la base de connaissances ; la question, les extraits correspondants et les messages précédents passent par le serveur de Starpi jusqu’à {provider}.",
+    "free_pool": "Discussion libre avec {provider} via Starpi : votre question, les fichiers joints et les messages précédents de cette discussion passent par le serveur de Starpi jusqu’à {provider}. Aucune source n’est consultée.",
+    "history_synced": "La synchronisation est activée : cette discussion est conservée, chiffrée de bout en bout, dans votre copie synchronisée et arrive dans vos autres navigateurs.",
+    "companion_unsynced": "La synchronisation est activée, mais les questions au compagnon et ses réponses restent sur cet appareil : elles ne font pas partie de votre copie synchronisée."
+  },
+  "status": {
+    "not_set_up": "Ce modèle n’est pas configuré : ajoutez sa clé dans les Paramètres ou choisissez-en un autre"
+  },
+  "notice": {
+    "grounded_failed_title": "Le modèle n’a pas pu répondre à partir des sources",
+    "error_retry": "{reason} Réessayez dans {seconds} s.",
+    "no_model_body": "Ajoutez une clé dans Paramètres › Fournisseurs de modèles et clés, chargez un modèle sur cet appareil ou connectez votre propre serveur. Le mode Avec sources répond aussi sans modèle, en citant vos sources.",
+    "no_vision_model": "Aucun des modèles configurés ne voit les images. Ajoutez la clé d’un fournisseur dont les modèles lisent les images, ou posez la question sans l’image.",
+    "image_not_source": "{name} n’a pas été ajouté à vos sources : lire le texte d’une image demande un modèle capable de voir, et votre accord.",
+    "rate_limited_wait": "Trop de requêtes chez le fournisseur en ce moment : patientez {seconds} s puis réessayez.",
+    "stays_on_device_title": "Cette question reste sur cet appareil",
+    "stays_on_device_body": "Elle a été posée sur cet appareil : seul le modèle d’ici, votre propre serveur ou votre compagnon associé y répond. Choisissez l’un d’eux, ou reposez la question dans un nouveau message.",
+    "stays_on_device_companion_body": "Elle a été posée à votre compagnon et reste sur cet appareil comme sa réponse (aucune des deux n’est synchronisée) : seul le modèle d’ici, votre propre serveur ou le compagnon y répond à nouveau. Choisissez l’un d’eux, ou reposez la question dans un nouveau message.",
+    "failed_body": "Un problème est survenu pendant la réponse. Veuillez réessayer.",
+    "store_failed": "La discussion n’a pas pu être enregistrée dans ce navigateur (fenêtre privée, stockage bloqué ou plein).",
+    "attachment_missing_title": "Une pièce jointe ne se trouve que sur l’appareil où elle a été ajoutée",
+    "attachment_missing_body": "Les pièces jointes ne sont pas synchronisées : {names} {n:a été laissée|ont été laissées} de côté pour cette demande.",
+    "deleted_elsewhere_title": "Cette discussion a été supprimée dans un autre onglet ou navigateur",
+    "deleted_elsewhere_body": "Une nouvelle discussion a commencé ici.",
+    "companion_unpaired_title": "Aucun compagnon associé",
+    "companion_unpaired_body": "Associez Starpi Core sur cet ordinateur dans les Paramètres, ou choisissez un autre modèle.",
+    "companion_failed_title": "Le compagnon n’a pas pu répondre"
+  },
+  "continued": "Suite après la limite de longueur",
+  "continue_prompt": "Continue exactement là où tu t’es arrêté.",
+  "describe_images": "Décris {n:l’image jointe|les images jointes}.",
+  "summarize_files": "Résume les {n} fichiers joints.",
+  "web": {
+    "sources": "Depuis le web :",
+    "suggestions": "Suggestions de recherche"
+  }
+}

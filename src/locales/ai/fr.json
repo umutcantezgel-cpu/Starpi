@@ -1,0 +1,27 @@
+{
+  "error": {
+    "auth": "Le fournisseur n’a pas accepté la clé. Vérifiez-la dans les Paramètres.",
+    "quota": "Le compte du fournisseur n’a plus de crédit ni de quota.",
+    "rate_limited": "Le fournisseur reçoit trop de requêtes en ce moment. Réessayez dans un instant.",
+    "not_found": "Le fournisseur ne propose pas ce modèle.",
+    "bad_request": "Le fournisseur a refusé la requête.",
+    "context_length": "La conversation est trop longue pour ce modèle. Commencez une nouvelle discussion ou choisissez un modèle avec un contexte plus grand.",
+    "server": "Le fournisseur rencontre un problème en ce moment. Réessayez plus tard.",
+    "timeout": "Le fournisseur n’a pas répondu à temps.",
+    "network": "Le fournisseur est injoignable. Vérifiez votre connexion.",
+    "aborted": "Arrêté.",
+    "bad_response": "Le fournisseur a envoyé une réponse que Starpi ne peut pas lire.",
+    "cors": "Le fournisseur n’accepte pas les appels directs depuis le navigateur. Activez le relais dans les Paramètres.",
+    "stream_cut": "La réponse a été coupée avant d’être complète.",
+    "refusal": "Le fournisseur a refusé de répondre à cette demande."
+  },
+  "retry_in": "Réessayez dans {seconds} s.",
+  "stop": {
+    "max_tokens": "La réponse a atteint sa longueur maximale.",
+    "refusal": "Le modèle a refusé de répondre.",
+    "pause": "Le fournisseur a mis la réponse en pause ; elle reprend automatiquement.",
+    "cancelled": "Arrêté.",
+    "timeout": "La réponse a pris trop de temps et a été arrêtée.",
+    "error": "La réponse s’est terminée par une erreur."
+  }
+}

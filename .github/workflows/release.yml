@@ -1,19 +1,31 @@
 name: Release
 
 # Publishes a GitHub release for the version in package.json once CI has passed on main, using
-# docs/releases/v<version>.md as the release notes, with the @starpi/core tarball, the CycloneDX
-# SBOMs of the app and of the package, and SHA256SUMS as assets. Nothing happens when the release
+# docs/releases/v<version>.md as the release notes, and publishes @starpi/core and
+# @starpi/companion to npm with provenance. Assets: the tarballs of both packages, the CycloneDX
+# SBOMs of the app and of @starpi/core, the companion's offline bundle, SHA256SUMS over all of
+# them, the Sigstore bundles of SHA256SUMS and of the offline bundle (cosign, keyless) and, when the
+# secret STARPI_RELEASE_SIGNING_KEY exists, the Ed25519 signature SHA256SUMS.sig. Every asset also
+# gets a build provenance attestation (gh attestation verify). Nothing happens when the release
 # already exists or when there are no release notes for the version, so every green run on main is
 # safe. A manual run releases the head of main once CI has passed on a push of it (the same checks
-# apply), never another branch.
+# apply), never another branch. The workflow never pushes a tag of its own: gh release create tags
+# the tested commit, or keeps a tag that already points at it.
 #
-# Two jobs keep write access away from dependency code: `prepare` installs from the lockfile and
-# builds the assets with read-only permissions; `release` has contents: write, installs and runs
-# nothing from the repository, checks the checksums and creates the release.
+# The jobs keep write access and secrets away from dependency code:
+#   prepare  installs from the lockfile and builds the assets, read-only, without secrets;
+#   sign     runs no dependency code: attestations, cosign keyless and the Ed25519 signature
+#            (scripts/sign-release.mjs, Node built-ins only), with id-token: write;
+#   release  has contents: write, installs and runs nothing from the repository, checks the
+#            checksums and creates the release;
+#   publish  publishes the very tarballs the release carries, with provenance (id-token: write),
+#            and skips a version npm already has. When it fails after the release was created,
+#            re-run this job (the artifacts are kept 7 days).
 
 on:
-  # Only CI runs triggered by a push to main get past the job condition below; the checkout uses
-  # the commit CI tested, and no artifact of the CI run is downloaded.
+  # Only CI runs triggered by a push to main get past the job condition below. The jobs check out
+  # the head of main (github.sha), and the decide step releases only when that is the commit CI
+  # tested; no artifact of the CI run is downloaded.
   workflow_run: # zizmor: ignore[dangerous-triggers]
     workflows: [CI]
     types: [completed]
@@ -44,7 +56,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Decide whether to release
@@ -52,10 +64,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
-          TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          TARGET_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           echo "create=false" >> "$GITHUB_OUTPUT"
+          # A CI run releases only the head of main: when main moved on after it, the CI run of the
+          # newer head does.
+          if [[ "$EVENT_NAME" == "workflow_run" && "$RUN_HEAD_SHA" != "$TARGET_SHA" ]]; then
+            echo "Main moved on since the CI run of ${RUN_HEAD_SHA}; the CI run of ${TARGET_SHA} releases it."
+            exit 0
+          fi
           version="$(node -p "require('./package.json').version")"
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::'$version' is not a version number"
@@ -86,6 +105,12 @@ jobs:
             echo "::error::@starpi/core is ${core_version}, the app is ${version}; both must have the same version"
             exit 1
           fi
+          companion_version="$(node -p "require('./packages/companion/package.json').version")"
+          companion_core="$(node -p "require('./packages/companion/package.json').dependencies['@starpi/core']")"
+          if [[ "$companion_version" != "$version" || "$companion_core" != "$version" ]]; then
+            echo "::error::@starpi/companion is ${companion_version} and depends on @starpi/core ${companion_core}; both must be ${version}"
+            exit 1
+          fi
           # A tag pushed ahead of the release must point at the commit CI tested: the assets are
           # built from that commit, and gh release create keeps an existing tag where it is.
           if ref_json="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v${version}" 2>/dev/null)"; then
@@ -103,7 +128,7 @@ jobs:
           echo "create=true" >> "$GITHUB_OUTPUT"
 
       - if: steps.decide.outputs.create == 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
 
@@ -111,12 +136,14 @@ jobs:
         if: steps.decide.outputs.create == 'true'
         run: npm ci --ignore-scripts
 
-      - name: Pack @starpi/core and write the SBOMs
+      # The core first: its prepack script builds dist/, which the companion's offline bundle carries.
+      - name: Pack @starpi/core and @starpi/companion and write the SBOMs
         if: steps.decide.outputs.create == 'true'
         run: |
           set -euo pipefail
           mkdir -p release-assets
           npm pack --workspace=@starpi/core --pack-destination release-assets
+          npm pack --workspace=@starpi/companion --pack-destination release-assets
           npm run sbom -- --out release-assets
 
       # Installs the tarball built above, offline, into an empty project: no package comes from
@@ -161,6 +188,39 @@ jobs:
             const ids = log.runs[0].results.map((r) => r.ruleId);
             if (log.version !== '2.1.0' || ids.join() !== 'missing_fact') throw new Error('unexpected SARIF: ' + log.version + ' ' + ids);"
 
+      - name: Check the @starpi/companion tarball
+        if: steps.decide.outputs.create == 'true'
+        env:
+          VERSION: ${{ steps.decide.outputs.version }}
+        run: |
+          set -euo pipefail
+          tgz="release-assets/starpi-companion-${VERSION}.tgz"
+          listing="$(tar -tzf "$tgz")"
+          for file in package/package.json package/README.md package/LICENSE package/NOTICE package/bin/starpi-companion.mjs package/bin/mcp-stdio.mjs package/src/index.js; do
+            grep -qxF "$file" <<<"$listing" || { echo "::error::$file is missing from $tgz"; exit 1; }
+          done
+          tar -xzOf "$tgz" package/package.json | VERSION="$VERSION" node -e "
+            let text = '';
+            process.stdin.on('data', (chunk) => (text += chunk)).on('end', () => {
+              const pkg = JSON.parse(text);
+              if (pkg.version !== process.env.VERSION || pkg.dependencies['@starpi/core'] !== process.env.VERSION) {
+                throw new Error('the companion tarball is ' + pkg.version + ' with @starpi/core ' + pkg.dependencies['@starpi/core']);
+              }
+            });"
+
+      # Deterministic: SOURCE_DATE_EPOCH is the commit time, so two builds of one commit match. The
+      # bundle carries its own SHA256SUMS; its tarball is listed in the release's SHA256SUMS below.
+      - name: Build the companion's offline bundle
+        if: steps.decide.outputs.create == 'true'
+        env:
+          VERSION: ${{ steps.decide.outputs.version }}
+        run: |
+          set -euo pipefail
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
+          node scripts/companion-offline-pack.mjs --out "$RUNNER_TEMP/offline"
+          cp "$RUNNER_TEMP/offline/starpi-companion-${VERSION}.tar.gz" release-assets/
+
       - name: Checksums
         if: steps.decide.outputs.create == 'true'
         env:
@@ -168,11 +228,11 @@ jobs:
         working-directory: release-assets
         run: |
           set -euo pipefail
-          sha256sum "starpi-core-${VERSION}.tgz" "starpi-${VERSION}.cdx.json" "starpi-core-${VERSION}.cdx.json" > SHA256SUMS
+          sha256sum "starpi-core-${VERSION}.tgz" "starpi-companion-${VERSION}.tgz" "starpi-${VERSION}.cdx.json" "starpi-core-${VERSION}.cdx.json" "starpi-companion-${VERSION}.tar.gz" > SHA256SUMS
           cat SHA256SUMS
 
       - if: steps.decide.outputs.create == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-assets
           path: release-assets
@@ -180,9 +240,91 @@ jobs:
           if-no-files-found: error
           overwrite: true
 
+  sign:
+    name: Attest and sign the release assets
+    needs: prepare
+    if: needs.prepare.outputs.create == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: release # STARPI_RELEASE_SIGNING_KEY may be a secret of this environment
+    permissions:
+      contents: read
+      id-token: write # Sigstore certificates for cosign and the attestations
+      attestations: write # store the build provenance attestations
+    steps:
+      # Only for scripts/sign-release.mjs and the helper it imports: nothing is installed.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: release-assets
+
+      - name: Check the checksums
+        working-directory: release-assets
+        run: sha256sum -c SHA256SUMS
+
+      - name: Build provenance attestations
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release-assets/*.tgz
+            release-assets/*.cdx.json
+            release-assets/*.tar.gz
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      # Keyless: the certificate names this workflow on main as the signer, recorded in Rekor. The
+      # verify step checks exactly what users run (docs/releases notes show the same command).
+      - name: Sign SHA256SUMS and the offline bundle with cosign (keyless)
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/heads/main
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          for blob in SHA256SUMS "starpi-companion-${VERSION}.tar.gz"; do
+            cosign sign-blob --yes --bundle "${blob}.sigstore.json" "$blob"
+            cosign verify-blob --bundle "${blob}.sigstore.json" \
+              --certificate-identity "$IDENTITY" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              "$blob"
+          done
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # Optional: without the secret the release carries the Sigstore bundles only.
+      - name: Ed25519 signature of SHA256SUMS
+        env:
+          STARPI_RELEASE_SIGNING_KEY: ${{ secrets.STARPI_RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${STARPI_RELEASE_SIGNING_KEY}" ]]; then
+            echo "::notice title=Ed25519 signature::STARPI_RELEASE_SIGNING_KEY is not set; the release carries no SHA256SUMS.sig"
+            exit 0
+          fi
+          node scripts/sign-release.mjs sign release-assets
+          node scripts/sign-release.mjs public-key > "$RUNNER_TEMP/release.pub"
+          node scripts/sign-release.mjs verify release-assets --key "$RUNNER_TEMP/release.pub"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-signatures
+          path: |
+            release-assets/*.sigstore.json
+            release-assets/SHA256SUMS.sig
+          retention-days: 7
+          if-no-files-found: error
+          overwrite: true
+
   release:
     name: Create the release for package.json's version
-    needs: prepare
+    needs: [prepare, sign]
     if: needs.prepare.outputs.create == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -192,18 +334,23 @@ jobs:
       # Only for the release notes: nothing is installed or run from the checkout.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-assets
+          path: release-assets
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-signatures
           path: release-assets
 
       - name: Create the release with its assets
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          TARGET_SHA: ${{ github.sha }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
@@ -223,14 +370,64 @@ jobs:
             echo "::error::A draft release v${VERSION} exists, probably from an interrupted upload. Delete it (gh release delete v${VERSION} --yes) and re-run this job."
             exit 1
           fi
+          assets=(
+            "release-assets/starpi-core-${VERSION}.tgz"
+            "release-assets/starpi-companion-${VERSION}.tgz"
+            "release-assets/starpi-${VERSION}.cdx.json"
+            "release-assets/starpi-core-${VERSION}.cdx.json"
+            "release-assets/starpi-companion-${VERSION}.tar.gz"
+            release-assets/SHA256SUMS
+            release-assets/SHA256SUMS.sigstore.json
+            "release-assets/starpi-companion-${VERSION}.tar.gz.sigstore.json"
+          )
+          if [[ -f release-assets/SHA256SUMS.sig ]]; then
+            assets+=(release-assets/SHA256SUMS.sig)
+          fi
           gh release create "v${VERSION}" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$TARGET_SHA" \
             --title "Starpi v${VERSION}" \
             --notes-file "docs/releases/v${VERSION}.md" \
             --latest \
-            "release-assets/starpi-core-${VERSION}.tgz" \
-            "release-assets/starpi-${VERSION}.cdx.json" \
-            "release-assets/starpi-core-${VERSION}.cdx.json" \
-            release-assets/SHA256SUMS
+            "${assets[@]}"
           echo "Created release v${VERSION} at ${TARGET_SHA}."
+
+  publish:
+    name: Publish @starpi/core and @starpi/companion to npm (provenance)
+    needs: [prepare, release]
+    if: needs.prepare.outputs.create == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: npm # NPM_TOKEN may be a secret of this environment
+    permissions:
+      contents: read
+      id-token: write # npm provenance, and trusted publishing where it is set up
+    steps:
+      # No checkout: the job publishes the tarballs the release carries, as built and checked above.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: release-assets
+
+      # Node 24 brings an npm that publishes with an OIDC token (trusted publishing) when no
+      # NPM_TOKEN is set; a package's first publish still needs the token.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish (the core first, the companion depends on it)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        # NPM_TOKEN covers a package's first publish, before npm lets trusted publishing be set up.
+        run: | # zizmor: ignore[use-trusted-publishing]
+          set -euo pipefail
+          (cd release-assets && sha256sum -c SHA256SUMS)
+          for pkg in core companion; do
+            if npm view "@starpi/${pkg}@${VERSION}" version >/dev/null 2>&1; then
+              echo "@starpi/${pkg}@${VERSION} is on npm already."
+              continue
+            fi
+            npm publish "release-assets/starpi-${pkg}-${VERSION}.tgz" --provenance --access public
+          done

@@ -1,0 +1,19 @@
+@starpi/companion (Starpi Core, the local companion)
+Copyright (c) 2026 Umutcan Emre Tezgel. MIT License, see LICENSE.
+
+This package is written for Starpi. Two of its mechanisms follow ideas of other open-source
+projects; no code of theirs is included, and their licenses are kept here as attribution:
+
+1. OpenClaw 2026.9.9, MIT License, Copyright (c) 2026 OpenClaw Foundation.
+   Idea: normalising the stop reasons of different model providers into one small vocabulary
+   (src/brain/stop-reasons.js). License text: LICENSES/openclaw-MIT.txt.
+
+2. NemoClaw 0.1.0, Apache License 2.0, Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES.
+   Idea: reducing an outbound host to a canonical form and refusing internal addresses (private
+   ranges, loopback, link-local and metadata hosts, carrier-grade NAT, unique-local IPv6) before
+   any connection (src/egress/hosts.js). License text: LICENSES/nemoclaw-Apache-2.0.txt.
+   NemoClaw ships no NOTICE file. "NVIDIA" and "NemoClaw" are trademarks of their owners and are
+   named here only to identify the origin of the idea.
+
+Runtime dependency: @anthropic-ai/sdk (MIT License), loaded only when an Anthropic brain is
+configured.

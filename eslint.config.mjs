@@ -1,7 +1,7 @@
 import js from '@eslint/js';
 import globals from 'globals';
 
-const PURE = ['src/js/core/**/*.js', 'src/js/rag/bm25.js', 'src/js/rag/chunker.js', 'src/js/models/**/*.js', 'src/js/chat-stream.js', 'src/js/chat-export.js'];
+const PURE = ['src/js/ai/**/*.js', 'src/js/core/**/*.js', 'src/js/rag/bm25.js', 'src/js/rag/chunker.js', 'src/js/models/**/*.js', 'src/js/chat-stream.js', 'src/js/chat-export.js'];
 
 export default [
   {
@@ -34,6 +34,7 @@ export default [
         __STARPI_SUPABASE_URL__: 'readonly',
         __STARPI_SUPABASE_ANON_KEY__: 'readonly',
         __STARPI_VERSION__: 'readonly',
+        __STARPI_PROFILE__: 'readonly',
       },
     },
     rules: {
@@ -42,8 +43,9 @@ export default [
     },
   },
   {
-    // Pure modules (the source check, receipts, chunking, BM25, the model catalogs, chat streams and
-    // chat exports) run in the browser, in workers and in Node, so they may only use globals all three share.
+    // Pure modules (the AI layer, the source check, receipts, chunking, BM25, the model catalogs, chat
+    // streams and chat exports) run in the browser, in workers and in Node, so they may only use globals
+    // all three share.
     files: PURE,
     languageOptions: {
       ecmaVersion: 'latest',
@@ -66,6 +68,19 @@ export default [
     rules: {
       'no-console': ['error', { allow: ['warn', 'error'] }],
       'no-restricted-globals': ['error', 'process', 'Buffer', 'require', '__dirname'],
+    },
+  },
+  {
+    // The local companion (packages/companion) is a Node.js service: Node globals, logs through its
+    // own logger only.
+    files: ['packages/companion/**/*.js', 'packages/companion/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+    rules: {
+      'no-console': ['error', { allow: ['warn', 'error', 'log'] }],
     },
   },
   {

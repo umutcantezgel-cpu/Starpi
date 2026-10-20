@@ -1,0 +1,45 @@
+{
+  "sidebar": {
+    "collapse": "Réduire la barre latérale",
+    "expand": "Développer la barre latérale",
+    "conversations": "Conversations"
+  },
+  "theme": {
+    "title": "Apparence",
+    "label": "Thème de couleur",
+    "system": "Système",
+    "light": "Clair",
+    "dark": "Sombre",
+    "hint": "« Système » suit le réglage clair ou sombre de votre appareil.",
+    "not_saved": "Le thème de couleur ne s’applique qu’à cette page : le navigateur n’a pas enregistré ce choix."
+  },
+  "aside": {
+    "label": "Panneau latéral",
+    "toggle": "Panneau latéral",
+    "tabs": "Sections du panneau latéral",
+    "canvas": "Canevas",
+    "sources": "Sources",
+    "compare": "Comparer",
+    "research": "Recherche",
+    "close": "Fermer le panneau latéral",
+    "empty": "Rien à afficher pour l’instant."
+  },
+  "mount": {
+    "empty": "Rien à afficher pour l’instant."
+  },
+  "live": {
+    "label": "Conversation en direct"
+  },
+  "toast": {
+    "region": "Notifications",
+    "dismiss": "Fermer"
+  },
+  "label": {
+    "checked": "Vérifié avec vos sources",
+    "mixed": "En partie issu de vos sources",
+    "unchecked": "Non vérifié",
+    "web": "Issu du web · non vérifié",
+    "device": "Sur cet appareil",
+    "withheld": "Retenu"
+  }
+}

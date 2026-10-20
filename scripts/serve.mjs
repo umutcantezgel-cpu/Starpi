@@ -1,10 +1,13 @@
 #!/usr/bin/env node
-// Minimal static server for dist/ that applies the same response headers as production
-// (vercel.json), so local previews and end-to-end tests run under the real CSP. With --functions it
-// also serves the NVIDIA proxy routes from api/ as Vercel does (npm run preview, npm run dev); the
-// end-to-end tests run without it, so they never reach NVIDIA even when NVIDIA_API_KEYS is set.
+// Static server for dist/ under the production response headers: scripts/headers.json, resolved by
+// scripts/lib/headers.mjs for the profile the build was made for (dist/build-manifest.json), so
+// local previews and end-to-end tests run under the real CSP and cross-origin isolation. With
+// --functions it also serves the Vercel Functions of api/ by the route table of vercel.json
+// (functions and rewrites, scripts/lib/routes.mjs), as Vercel does (npm run preview, npm run dev);
+// the end-to-end tests run without it, so they never reach a provider even when keys are set.
 //
-// Usage: node scripts/serve.mjs [--port 3000] [--dir dist] [--functions]
+// Usage: node scripts/serve.mjs [--port 3000] [--dir dist] [--profile <name>] [--functions]
+//   --port 0 picks a free port; the line printed on start names it.
 import { once } from 'node:events';
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
@@ -12,7 +15,9 @@ import { createServer } from 'node:http';
 import { isIP } from 'node:net';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { BUILD_PROFILES, DEFAULT_PROFILE, headersFor, resolveHeaderRules } from './lib/headers.mjs';
+import { functionRoutes, matchRoute } from './lib/routes.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
@@ -32,37 +37,74 @@ const MIME = /** @type {Record<string, string>} */ ({
   '.webmanifest': 'application/manifest+json',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
   '.wasm': 'application/wasm',
   '.map': 'application/json; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+  '.csv': 'text/csv; charset=utf-8',
+  '.pdf': 'application/pdf',
 });
 
-// Vercel Functions by route; loaded only with --functions.
-const functions = new Map(
-  argv.includes('--functions')
-    ? [
-        ['/api/chat/nvidia', await import('../api/chat/nvidia.js')],
-        ['/api/models/nvidia', await import('../api/models/nvidia.js')],
-      ]
-    : [],
-);
+/**
+ * The header profile: --profile, else the one the build recorded, else the default.
+ * @returns {Promise<string>}
+ */
+async function headerProfile() {
+  const chosen = argValue('--profile', '');
+  if (chosen) return chosen;
+  try {
+    const manifest = JSON.parse(await readFile(path.join(DIR, 'build-manifest.json'), 'utf8'));
+    if (typeof manifest.profile === 'string' && BUILD_PROFILES.includes(manifest.profile)) return manifest.profile;
+  } catch {
+    // no build yet: the default profile
+  }
+  return DEFAULT_PROFILE;
+}
+
+const PROFILE = await headerProfile();
+const headerRules = resolveHeaderRules(PROFILE);
+
+/**
+ * Vercel Functions by the route table of vercel.json, loaded only with --functions.
+ * @type {Array<{ route: import('./lib/routes.mjs').Route, module: Record<string, unknown> }>}
+ */
+const functions = [];
+if (argv.includes('--functions')) {
+  const vercel = JSON.parse(await readFile(path.join(ROOT, 'vercel.json'), 'utf8'));
+  /** @type {Map<string, Record<string, unknown>>} */
+  const modules = new Map();
+  for (const route of functionRoutes(vercel)) {
+    if (!modules.has(route.file)) modules.set(route.file, await import(pathToFileURL(path.join(ROOT, route.file)).href));
+    functions.push({ route, module: /** @type {Record<string, unknown>} */ (modules.get(route.file)) });
+  }
+}
+const routes = functions.map((f) => f.route);
 // Address headers from the client are dropped; the function sees the socket address, as on Vercel.
 const FORWARDING_HEADERS = /^(?:forwarded|x-real-ip|x-forwarded-.+)$/;
+
+/** Origins (besides this host) the functions accept; NVIDIA_ and RELAY_ALLOWED_ORIGINS are aliases. */
+function allowedOrigins() {
+  return [process.env.STARPI_ALLOWED_ORIGINS, process.env.NVIDIA_ALLOWED_ORIGINS, process.env.RELAY_ALLOWED_ORIGINS]
+    .flatMap((list) => (list ?? '').split(','))
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
 
 /**
  * Host names the functions answer for. A page whose own name was rebound to this machine (DNS
  * rebinding) sends a matching Origin and Host, which the same-origin check accepts; such names are
  * neither localhost nor an IP address, so they get no function, and no request with the developer's
- * keys. Other names can be allowed through NVIDIA_ALLOWED_ORIGINS.
+ * keys. Other names can be allowed through STARPI_ALLOWED_ORIGINS.
  * @param {string | undefined} host the Host header
  */
 function functionHostAllowed(host) {
   if (!host) return false;
   const name = new URL(`http://${host}`).hostname.replace(/^\[|\]$/g, '');
   if (name === 'localhost' || isIP(name) !== 0) return true;
-  const allowed = (process.env.NVIDIA_ALLOWED_ORIGINS ?? '').split(',').map((origin) => origin.trim()).filter(Boolean);
-  return allowed.some((origin) => {
+  return allowedOrigins().some((origin) => {
     try {
       return new URL(origin).hostname === name;
     } catch {
@@ -72,8 +114,21 @@ function functionHostAllowed(host) {
 }
 
 /**
+ * @param {import('node:http').ServerResponse} res
+ * @param {number} status
+ * @param {string} error
+ */
+function sendError(res, status, error) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.end(JSON.stringify({ error }));
+}
+
+/**
  * Runs a Web-standard route handler (exports named by HTTP method) for a Node request and streams the
  * response with backpressure. A client that disconnects aborts the request and cancels the response.
+ * The handler gets the original URL, also for a rewritten route.
  * @param {Record<string, unknown>} route
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
@@ -87,9 +142,7 @@ async function runFunction(route, req, res, url) {
     // an unparseable Host header
   }
   if (!hostAllowed) {
-    res.statusCode = 403;
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ error: 'host_not_allowed' }));
+    sendError(res, 403, 'host_not_allowed');
     return;
   }
   const method = req.method ?? 'GET';
@@ -112,7 +165,8 @@ async function runFunction(route, req, res, url) {
   }
   headers.set('x-real-ip', req.socket.remoteAddress ?? '');
   const hasBody = method !== 'GET' && method !== 'HEAD';
-  const request = new Request(new URL(url.pathname + url.search, `http://127.0.0.1:${PORT}`), {
+  const port = /** @type {import('node:net').AddressInfo} */ (server.address()).port;
+  const request = new Request(new URL(url.pathname + url.search, `http://127.0.0.1:${port}`), {
     method,
     headers,
     signal: controller.signal,
@@ -140,31 +194,28 @@ async function runFunction(route, req, res, url) {
 }
 
 /**
- * Converts the vercel.json source patterns used here ("/(.*)", "/assets/(.*)", "/sw.js") to RegExps:
- * "(.*)" is the only wildcard, everything else matches literally.
- * @param {string} source
+ * A request path that names one file under two spellings (an encoded slash or backslash, or a dot
+ * segment) could be served with the headers of another path; such paths are refused.
+ * @param {string} pathname as sent, still percent-encoded
  */
-function toRegExp(source) {
-  const escaped = source
-    .split('(.*)')
-    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .join('(.*)');
-  return new RegExp(`^${escaped}$`);
+function ambiguousPath(pathname) {
+  if (/%(?:2f|5c)/i.test(pathname)) return true;
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return true;
+  }
+  return decoded.includes('\\') || decoded.includes('\0') || decoded.split('/').some((segment) => segment === '..' || segment === '.');
 }
 
-const vercel = JSON.parse(await readFile(path.join(ROOT, 'vercel.json'), 'utf8'));
-const headerRules = (vercel.headers ?? []).map((/** @type {{ source: string, headers: Array<{ key: string, value: string }> }} */ rule) => ({
-  re: toRegExp(rule.source),
-  headers: rule.headers,
-}));
-
-/** @param {string} urlPath */
+/** @param {string} urlPath decoded, without dot segments */
 async function resolveFile(urlPath) {
-  const clean = path.normalize(decodeURIComponent(urlPath)).replace(/^(\.\.[/\\])+/, '');
-  const candidates = [clean, `${clean}.html`, path.join(clean, 'index.html')];
+  const clean = path.posix.normalize(urlPath);
+  const candidates = [clean, `${clean}.html`, path.posix.join(clean, 'index.html')];
   for (const candidate of candidates) {
     const file = path.join(DIR, candidate);
-    if (!file.startsWith(DIR)) return null;
+    if (!file.startsWith(DIR + path.sep)) continue;
     try {
       const info = await stat(file);
       if (info.isFile()) return file;
@@ -178,15 +229,18 @@ async function resolveFile(urlPath) {
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? '/', 'http://localhost');
-    for (const rule of headerRules) {
-      if (rule.re.test(url.pathname)) for (const h of rule.headers) res.setHeader(h.key, h.value);
-    }
-    const route = functions.get(url.pathname);
-    if (route) {
-      await runFunction(route, req, res, url);
+    for (const header of headersFor(headerRules, url.pathname).values()) res.setHeader(header.key, header.value);
+    if (ambiguousPath(url.pathname)) {
+      sendError(res, 400, 'bad_path');
       return;
     }
-    const file = await resolveFile(url.pathname === '/' ? '/index.html' : url.pathname);
+    const match = matchRoute(routes, url.pathname);
+    if (match) {
+      const fn = /** @type {(typeof functions)[number]} */ (functions.find((f) => f.route === match.route));
+      await runFunction(fn.module, req, res, url);
+      return;
+    }
+    const file = await resolveFile(url.pathname === '/' ? '/index.html' : decodeURIComponent(url.pathname));
     if (!file) {
       res.statusCode = 404;
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -205,11 +259,15 @@ const server = createServer(async (req, res) => {
       res.destroy();
       return;
     }
+    // The details go to this terminal, never to the browser.
+    console.error('[serve]', err);
     res.statusCode = 500;
-    res.end(String(err));
+    res.end('Internal error');
   }
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`serving ${path.relative(ROOT, DIR) || '.'} with production headers at http://127.0.0.1:${PORT}`);
+  const { port } = /** @type {import('node:net').AddressInfo} */ (server.address());
+  const extra = functions.length > 0 ? `, ${functions.length} function routes` : '';
+  console.log(`serving ${path.relative(ROOT, DIR) || '.'} with the headers of profile ${PROFILE}${extra} at http://127.0.0.1:${port}`);
 });

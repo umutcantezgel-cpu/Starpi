@@ -4,14 +4,19 @@
 //
 // Usage: starpi-ground --answer <file.md> --source <file|dir> [--source …] [--format text|json|sarif]
 //                      [--output <file>] [--fail-on unsupported|weak|never] [--cite auto|labels|all]
+//                      [--grounding 1|2|3]
 //        node scripts/ground.mjs …   (the same code, unbundled)
 //
-// Sources are read like the app reads them (Markdown, text, CSV, logs, JSON; PDF when the optional
-// pdfjs-dist is installed), chunked with the app's chunker and labelled "[Doc: <file name>, Chunk:
-// <n>]"; files that share a name are labelled with their path instead. A directory adds every
-// supported file below it, except hidden ones and node_modules. With --cite labels the document's
-// citation labels decide which excerpts a statement is compared with; with --cite all every
-// statement is compared with every excerpt; auto (the default) uses labels when the document has any.
+// Sources are read like the app reads them (Markdown, text, CSV, logs, JSON, Word, Excel and
+// PowerPoint files (DOCX, XLSX, PPTX) and HTML pages; PDF when the optional pdfjs-dist is installed),
+// chunked with the app's chunker and labelled "[Doc: <file name>, Chunk: <n>]"; files that share a
+// name are labelled with their path instead. A directory adds every supported file below it, except
+// hidden ones and node_modules. With --cite labels the document's citation labels decide which
+// excerpts a statement is compared with; with --cite all every statement is compared with every
+// excerpt; auto (the default) uses labels when the document has any.
+// --grounding runs an earlier version of the source-check rules (default: the current one, which
+// also checks relations between values and events); the output of a version is the same as the
+// output of the release that introduced it.
 //
 // Exit codes: 0 no statement at or above the --fail-on level (default unsupported), 1 findings at or
 // above it (a part too long to check counts as unsupported), 2 usage error or unreadable input.
@@ -19,12 +24,13 @@ import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import pkg from '../packages/core/package.json' with { type: 'json' };
 import { checkDocument } from '../src/js/core/document.js';
+import { GROUNDING, GROUNDING_VERSIONS } from '../src/js/core/grounding.js';
 import { citationLabel } from '../src/js/core/labels.js';
 import { describeReason, toSarif } from '../src/js/core/sarif.js';
 import { chunkText } from '../src/js/rag/chunker.js';
 import { extensionOf, extractText, MAX_FILE_BYTES, SUPPORTED_EXTENSIONS } from '../src/js/rag/parser.js';
 
-const USAGE = 'usage: starpi-ground --answer <file.md> --source <file|dir> [--source …] [--format text|json|sarif] [--output <file>] [--fail-on unsupported|weak|never] [--cite auto|labels|all]';
+const USAGE = `usage: starpi-ground --answer <file.md> --source <file|dir> [--source …] [--format text|json|sarif] [--output <file>] [--fail-on unsupported|weak|never] [--cite auto|labels|all] [--grounding ${GROUNDING_VERSIONS.join('|')}]`;
 const INFORMATION_URI = 'https://github.com/umutcantezgel-cpu/Starpi';
 
 /** @param {string} message @returns {never} */
@@ -33,8 +39,8 @@ function usage(message) {
   process.exit(2);
 }
 
-/** @type {{ answer?: string, sources: string[], format: string, output?: string, failOn: string, cite: string }} */
-const opts = { sources: [], format: 'text', failOn: 'unsupported', cite: 'auto' };
+/** @type {{ answer?: string, sources: string[], format: string, output?: string, failOn: string, cite: string, grounding: number }} */
+const opts = { sources: [], format: 'text', failOn: 'unsupported', cite: 'auto', grounding: GROUNDING.version };
 const CHOICES = /** @type {Record<string, string[]>} */ ({ format: ['text', 'json', 'sarif'], failOn: ['unsupported', 'weak', 'never'], cite: ['auto', 'labels', 'all'] });
 const args = process.argv.slice(2);
 if (args.includes('--help') || args.includes('-h')) {
@@ -56,6 +62,11 @@ for (let i = 0; i < args.length; i += 1) {
   if (name === '--answer') opts.answer = value();
   else if (name === '--source') opts.sources.push(value());
   else if (name === '--output') opts.output = value();
+  else if (name === '--grounding') {
+    const v = Number(value());
+    if (!GROUNDING_VERSIONS.includes(v)) usage(`--grounding must be one of ${GROUNDING_VERSIONS.join(', ')}`);
+    opts.grounding = v;
+  }
   else if (name === '--format' || name === '--fail-on' || name === '--cite') {
     const key = name === '--fail-on' ? 'failOn' : name.slice(2);
     const v = value();
@@ -132,7 +143,7 @@ for (const file of files) {
   read.push({ file: relative(file), doc, chunks: chunks.length });
 }
 
-const report = checkDocument(markdown, sources, { cite: /** @type {'auto' | 'labels' | 'all'} */ (opts.cite) });
+const report = checkDocument(markdown, sources, { cite: /** @type {'auto' | 'labels' | 'all'} */ (opts.cite), version: opts.grounding });
 const uri = relative(path.resolve(answerPath));
 const failing = opts.failOn === 'never' ? 0 : report.skipped.length + report.statements.filter((s) => s.verdict === 'unsupported' || (opts.failOn === 'weak' && s.verdict === 'weak')).length;
 
@@ -163,6 +174,8 @@ if (opts.format === 'sarif') {
         cites: labels(s.cites),
         reasons: s.reasons.map((r) => ({ ...r, cites: r.cites && labels(r.cites), other: r.other && labels(r.other), message: describeReason(r, sources) })),
       })),
+      // Version 3: the relations compared, by statement index (supported ones included).
+      ...(report.relations ? { relations: report.relations.map((r) => ({ ...r, cites: labels(r.cites) })) } : {}),
     },
     null,
     2,

@@ -1,0 +1,27 @@
+{
+  "error": {
+    "auth": "El proveedor no aceptó la clave. Revísala en Ajustes.",
+    "quota": "La cuenta del proveedor no tiene crédito ni cuota disponible.",
+    "rate_limited": "El proveedor está recibiendo demasiadas solicitudes ahora mismo. Vuelve a intentarlo en un momento.",
+    "not_found": "El proveedor no ofrece este modelo.",
+    "bad_request": "El proveedor rechazó la solicitud.",
+    "context_length": "La conversación es demasiado larga para este modelo. Empieza un chat nuevo o elige un modelo con un contexto mayor.",
+    "server": "El proveedor tiene un problema ahora mismo. Vuelve a intentarlo más tarde.",
+    "timeout": "El proveedor no respondió a tiempo.",
+    "network": "No se puede contactar con el proveedor. Comprueba tu conexión.",
+    "aborted": "Detenido.",
+    "bad_response": "El proveedor envió una respuesta que Starpi no puede leer.",
+    "cors": "El proveedor no acepta llamadas directas desde el navegador. Activa el relé en Ajustes.",
+    "stream_cut": "La respuesta se cortó antes de estar completa.",
+    "refusal": "El proveedor se negó a responder a esta solicitud."
+  },
+  "retry_in": "Vuelve a intentarlo en {seconds} s.",
+  "stop": {
+    "max_tokens": "La respuesta alcanzó su límite de longitud.",
+    "refusal": "El modelo se negó a responder.",
+    "pause": "El proveedor pausó la respuesta; continúa automáticamente.",
+    "cancelled": "Detenido.",
+    "timeout": "La respuesta tardó demasiado y se detuvo.",
+    "error": "La respuesta terminó con un error."
+  }
+}

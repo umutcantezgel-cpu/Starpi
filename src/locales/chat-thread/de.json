@@ -1,0 +1,114 @@
+{
+  "mode": {
+    "auto": "Auto",
+    "free": "Frei",
+    "grounded": "Quellen",
+    "auto_hint": "Antworten aus Ihren Dateien, wenn die Frage sie betrifft, sonst ein freies Gespräch.",
+    "placeholder_auto": "Fragen Sie, was Sie wollen…"
+  },
+  "toggle": {
+    "thinking": "Nachdenken",
+    "web": "Web",
+    "web_hint": "Modelle, die im Web suchen können, dürfen es für diese Antwort nutzen."
+  },
+  "tools": {
+    "label": "Werkzeuge",
+    "empty": "Noch keine Werkzeuge eingerichtet."
+  },
+  "picker": {
+    "auto": "Auto · bestes verfügbares",
+    "auto_long": "Auto · das beste eingerichtete Modell: MiniMax M3.1 Flash, wenn verfügbar, dann Ihre Schlüssel, die kostenlosen Modelle der Seite, Ihr Server, dieses Gerät",
+    "group_recommended": "Empfohlen für dieses Gerät",
+    "group_device": "Auf diesem Gerät",
+    "group_pools": "Kostenlos (über Starpi)",
+    "group_server": "Ihr Server",
+    "runtime_pool": "kostenlos über Starpi",
+    "server_first": "Erstes Modell Ihres Servers",
+    "measured_fast": "hier schnell gemessen",
+    "unverified": "ungeprüft",
+    "warn_no_vision": "sieht keine Bilder",
+    "warn_workstation": "braucht eine Workstation oder einen Server (etwa 160 GB Speicher)",
+    "pools_label": "Kostenlose Modelle dieser Seite:",
+    "strength_hint": "Welches Modell Auto bei einem Anbieter nimmt, wenn Sie keines seiner Modelle gewählt haben.",
+    "served": "Beantwortet von {model}"
+  },
+  "badge": {
+    "waiting": "Verbinde mit dem Modell…",
+    "provider": "{provider} · {model}",
+    "pool": "{provider} über Starpi · {model}",
+    "served": "{provider} · {model} (statt {requested})",
+    "device": "Auf diesem Gerät · {model}",
+    "server": "Ihr Server · {model}",
+    "companion": "Lokaler Begleiter · {model}"
+  },
+  "meta": {
+    "tokens": "{input} rein · {output} raus",
+    "cached": "{n} aus dem Cache",
+    "cost": "etwa {usd} $"
+  },
+  "action": {
+    "copy": "Kopieren",
+    "copy_md": "Als Markdown kopieren",
+    "regenerate": "Neu erzeugen",
+    "regenerate_same": "Noch einmal mit demselben Modell",
+    "edit": "Frage bearbeiten",
+    "edit_label": "Bearbeitete Frage",
+    "edit_cancel": "Abbrechen",
+    "edit_save": "Bearbeitete Frage senden",
+    "branch_prev": "Vorherige Fassung",
+    "branch_next": "Nächste Fassung",
+    "continue": "Weiter",
+    "research_no_question": "Zu dieser Antwort gibt es keine Frage, die recherchiert werden kann.",
+    "research_failed": "Die Recherche konnte nicht gestartet werden."
+  },
+  "composer": {
+    "attach": "Dateien oder Bilder anhängen",
+    "image_size": "{name} · {width}×{height}",
+    "too_many": "Höchstens {n} Dateien pro Nachricht.",
+    "pasted_image": "Eingefügtes Bild",
+    "error_unsupported_type": "{name} kann nicht angehängt werden: Dieser Dateityp wird nicht unterstützt.",
+    "error_too_large": "{name} ist zu groß zum Anhängen.",
+    "error_unreadable": "{name} konnte nicht gelesen werden.",
+    "no_vision": "{model} sieht keine Bilder. Entfernen Sie das Bild oder wählen Sie ein Modell, das Bilder sieht, zum Beispiel Auto.",
+    "no_vision_auto": "Keines der eingerichteten Modelle sieht Bilder. Fügen Sie den Schlüssel eines Anbieters hinzu, dessen Modelle Bilder lesen, oder entfernen Sie das Bild."
+  },
+  "privacy": {
+    "key": "{provider}, Ihr Schlüssel: Ihre Frage geht an die Suche in der Wissensdatenbank und mit passenden Auszügen an {provider}.",
+    "free_key": "Freier Chat mit {provider}, Ihr Schlüssel: Ihre Frage, angehängte Dateien und frühere Nachrichten dieses Chats gehen an {provider}. Es werden keine Quellen durchsucht.",
+    "pool": "{provider} über Starpi: Ihre Frage geht an die Suche in der Wissensdatenbank; Frage, passende Auszüge und frühere Nachrichten gehen über Starpis Server an {provider}.",
+    "free_pool": "Freier Chat mit {provider} über Starpi: Ihre Frage, angehängte Dateien und frühere Nachrichten dieses Chats gehen über Starpis Server an {provider}. Es werden keine Quellen durchsucht.",
+    "history_synced": "Die Synchronisierung ist an: Dieser Chat wird Ende-zu-Ende-verschlüsselt in Ihrer synchronisierten Kopie gespeichert und erreicht Ihre anderen Browser.",
+    "companion_unsynced": "Die Synchronisierung ist an, aber Fragen an den Begleiter und seine Antworten bleiben auf diesem Gerät: Sie gehören nicht zu Ihrer synchronisierten Kopie."
+  },
+  "status": {
+    "not_set_up": "Dieses Modell ist nicht eingerichtet: Fügen Sie seinen Schlüssel in den Einstellungen hinzu oder wählen Sie ein anderes"
+  },
+  "notice": {
+    "grounded_failed_title": "Das Modell konnte nicht aus den Quellen antworten",
+    "error_retry": "{reason} Versuchen Sie es in {seconds} s erneut.",
+    "no_model_body": "Fügen Sie in Einstellungen › Modellanbieter und Schlüssel einen Schlüssel hinzu, laden Sie ein Modell auf diesem Gerät oder verbinden Sie Ihren eigenen Server. Der Quellen-Modus antwortet auch ohne Modell, indem er Ihre Quellen zitiert.",
+    "no_vision_model": "Keines der eingerichteten Modelle sieht Bilder. Fügen Sie den Schlüssel eines Anbieters hinzu, dessen Modelle Bilder lesen, oder fragen Sie ohne das Bild.",
+    "image_not_source": "{name} wurde nicht zu Ihren Quellen hinzugefügt: Text in Bildern zu lesen braucht ein Modell, das Bilder sieht, und Ihre Zustimmung.",
+    "rate_limited_wait": "Der Anbieter erhält gerade zu viele Anfragen: Bitte warten Sie {seconds} s und versuchen Sie es dann erneut.",
+    "stays_on_device_title": "Diese Frage bleibt auf diesem Gerät",
+    "stays_on_device_body": "Sie wurde auf diesem Gerät gestellt, deshalb beantwortet sie nur das Modell hier, Ihr eigener Server oder Ihr gekoppelter Begleiter. Wählen Sie eines davon oder stellen Sie die Frage als neue Nachricht.",
+    "stays_on_device_companion_body": "Sie wurde Ihrem Begleiter gestellt und bleibt wie seine Antwort auf diesem Gerät (beide werden nicht synchronisiert), deshalb beantwortet sie nur das Modell hier, Ihr eigener Server oder der Begleiter erneut. Wählen Sie eines davon oder stellen Sie die Frage als neue Nachricht.",
+    "failed_body": "Beim Antworten ist etwas schiefgegangen. Bitte versuchen Sie es noch einmal.",
+    "store_failed": "Der Chat konnte in diesem Browser nicht gespeichert werden (privates Fenster, blockierter oder voller Speicher).",
+    "attachment_missing_title": "Ein Anhang ist nur auf dem Gerät, auf dem er hinzugefügt wurde",
+    "attachment_missing_body": "Anhänge werden nicht synchronisiert, deshalb {n:wurde|wurden} {names} bei dieser Anfrage weggelassen.",
+    "deleted_elsewhere_title": "Dieser Chat wurde in einem anderen Tab oder Browser gelöscht",
+    "deleted_elsewhere_body": "Hier hat ein neuer Chat begonnen.",
+    "companion_unpaired_title": "Kein Begleiter gekoppelt",
+    "companion_unpaired_body": "Koppeln Sie Starpi Core auf diesem Computer in den Einstellungen, oder wählen Sie ein anderes Modell.",
+    "companion_failed_title": "Der Begleiter konnte nicht antworten"
+  },
+  "continued": "Fortgesetzt nach der Längengrenze",
+  "continue_prompt": "Mach genau dort weiter, wo du aufgehört hast.",
+  "describe_images": "Beschreibe {n:das angehängte Bild|die angehängten Bilder}.",
+  "summarize_files": "Fasse die {n} angehängten Dateien zusammen.",
+  "web": {
+    "sources": "Aus dem Web:",
+    "suggestions": "Suchvorschläge"
+  }
+}

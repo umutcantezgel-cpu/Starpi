@@ -1,73 +1,58 @@
 // @ts-check
-// Settings tab: the assistant choice (mode plus on-device or NVIDIA model, picked in either model
-// picker), provider keys (session or device storage), own-server URL, the NVIDIA cloud status, and
-// connection tests.
-import { deleteChatHistory } from './chat-store.js';
+// Settings tab: the assistant (picked in either model picker: Auto, a model on this device, a free
+// model of the site's pools, a model of a provider the user has a key for, or their own server),
+// the model strength Auto and provider picks follow, the privacy notice under the composer, and
+// the deletion of model data and chat history. Keys, the vault, the relay and the own server's
+// address live in Settings › Model providers and keys (settings/providers-view.js, ai/keys.js).
+import { chatSyncActive, deleteChatHistory, onChatSyncChange } from './chat-store.js';
 import { isChatBusy, resetConversation } from './chat.js';
-import { STORAGE_KEYS } from './config.js';
-import { canSyncChats } from './supabase.js';
-import { byId, onAction, onChange, setHidden } from './dom.js';
+import { byId, onAction, onChange } from './dom.js';
 import { renderEngineState, startLocalEngine } from './engine-ui.js';
 import { refreshIcons } from './icons.js';
-import { formatNumber, getLocale, setText, t } from './i18n/index.js';
+import { setText, t } from './i18n/index.js';
 import { currentPickerValue, syncPickerValue } from './model-picker.js';
-import { parseAssistantChoice } from './models/choices.js';
-import { NVIDIA_MODELS } from './models/nvidia-catalog.js';
-import { readinessPrompt } from './prompts.js';
-import { callGemini, callOpenRouter, getNvidiaCatalog, hasGeminiKey, hasOpenRouterKey, normalizeServerUrl, probeLocalServer } from './providers.js';
-import { sanitizeModelNames } from './render.js';
-import {
-  getChatMode,
-  getLlmUrl,
-  getMode,
-  getModelPreference,
-  getNvidiaModel,
-  onChatModeChange,
-  setLlmUrl,
-  setMode,
-  setModelPreference,
-  setNvidiaModel,
-} from './state.js';
-import { readLocal, readSecret, removeSecret, writeLocal, writeSecret } from './storage.js';
+import { parsePickerValue } from './models/choices.js';
+import { configuredProviders, onProvidersChange, probeLocalServer, providerLabel, routeOf } from './providers.js';
+import { assistantTarget, getAssistant, getChatMode, getLlmUrl, getModelPreference, getNvidiaModel, onAssistantChange, onChatModeChange, setAssistant } from './state.js';
 import { setAssistantStatus, setEngineDot } from './ui.js';
 import * as engine from './webgpu/engine.js';
 
-/** The NVIDIA models a picker may name (the allowlist; the proxy may offer fewer). */
-const NVIDIA_IDS = Object.freeze(NVIDIA_MODELS.map((m) => m.id));
-
-function rememberKeys() {
-  return readLocal(STORAGE_KEYS.rememberKeys) === '1';
-}
+/** @typedef {import('./config.js').AssistantValue} AssistantValue */
 
 /**
- * @param {HTMLElement | null} el
- * @param {string} value
+ * Where a question goes with the chosen assistant: on this device, the own server, the paired
+ * companion, a provider with the user's key, a pool of this site, or nowhere (no model is set up).
+ * @param {AssistantValue} value
+ * @returns {{ kind: 'device' | 'local' | 'companion' | 'key' | 'pool' | 'none', provider?: import('./ai/contract.js').ProviderId }}
  */
-function renderKeyHint(el, value) {
-  if (value) setText(el, 'settings.key_saved', { last4: value.slice(-4) });
-  else setText(el, 'settings.key_none');
+export function destinationOf(value) {
+  if (value === 'device') return { kind: 'device' };
+  const provider = value === 'auto' ? configuredProviders()[0] : assistantTarget(value)?.provider;
+  if (!provider) return value === 'auto' && engine.isReady() ? { kind: 'device' } : { kind: 'none' };
+  const route = routeOf(provider);
+  if (route === 'key' || route === 'pool') return { kind: route, provider };
+  if (route === 'local') return { kind: 'local' };
+  if (route === 'companion') return { kind: 'companion' };
+  return { kind: 'none' };
 }
 
-function renderKeyHints() {
-  renderKeyHint(byId('cfgGeminiKeyHint'), readSecret(STORAGE_KEYS.geminiKey));
-  renderKeyHint(byId('cfgOpenrouterKeyHint'), readSecret(STORAGE_KEYS.openrouterKey));
-}
-
-/** Footer under the chat input: where the question goes in the current mode and chat mode. */
+/** Footer under the chat input: where the question goes with the chosen assistant and mode. */
 export function renderPrivacyNotice() {
   const el = byId('privacyNotice');
   if (!el) return;
-  const mode = getMode();
-  // The free chat searches no sources: its notices say what goes where instead.
-  const free = getChatMode() === 'free';
+  const mode = getChatMode();
+  // The free chat searches no sources: its notices say what goes where instead. Auto may search
+  // them, so it says what source mode sends.
+  const free = mode === 'free';
+  const dest = destinationOf(getAssistant());
   let icon = free ? 'info' : 'library';
   let key = free ? 'privacy.free_no_model' : 'privacy.extractive';
   /** @type {Record<string, string> | undefined} */
   let params;
-  if (mode === 'client') {
+  if (dest.kind === 'device') {
     icon = 'lock';
     key = free ? 'privacy.free_local' : 'privacy.local';
-  } else if (mode === 'local') {
+  } else if (dest.kind === 'local') {
     icon = 'server';
     key = free ? 'privacy.free_server' : 'privacy.server';
     let host = '';
@@ -77,13 +62,18 @@ export function renderPrivacyNotice() {
       // keep empty host
     }
     params = { host: host || '–' };
-  } else if (mode === 'nvidia') {
-    // What is sent once the proxy answers; without one nothing goes to NVIDIA (the status line says so).
+  } else if (dest.kind === 'companion') {
+    // The companion answers from its documents and notes only in Grounded mode (Auto and Free: general knowledge).
+    icon = 'plug';
+    key = mode === 'grounded' ? 'privacy.companion' : 'privacy.free_companion';
+  } else if (dest.kind === 'pool') {
     icon = 'cloud';
-    key = free ? 'privacy.free_nvidia' : 'privacy.nvidia';
-  } else if (hasGeminiKey() || hasOpenRouterKey()) {
+    key = free ? 'chat-thread.privacy.free_pool' : 'chat-thread.privacy.pool';
+    params = { provider: providerLabel(/** @type {import('./ai/contract.js').ProviderId} */ (dest.provider)) };
+  } else if (dest.kind === 'key') {
     icon = 'cloud';
-    key = free ? 'privacy.free_cloud' : 'privacy.cloud';
+    key = free ? 'chat-thread.privacy.free_key' : 'chat-thread.privacy.key';
+    params = { provider: providerLabel(/** @type {import('./ai/contract.js').ProviderId} */ (dest.provider)) };
   }
   const iconEl = document.createElement('i');
   iconEl.dataset.lucide = icon;
@@ -91,213 +81,121 @@ export function renderPrivacyNotice() {
   const text = document.createElement('span');
   setText(text, key, params);
   el.replaceChildren(iconEl, text);
-  // Disclose where the conversation itself is kept when it leaves the browser.
-  if (mode !== 'client' && canSyncChats()) {
+  // Disclose where the conversation itself is kept when it leaves the browser: with the encrypted
+  // sync on, in the synced copy and the user's other browsers (a question that stays on this device
+  // never syncs, and neither does a question to the companion or its answer).
+  if (dest.kind !== 'device' && chatSyncActive()) {
     const history = document.createElement('span');
     history.className = 'basis-full sm:basis-auto'; // its own line on phones
-    setText(history, 'privacy.history_synced');
+    const companion = dest.kind === 'companion';
+    if (companion) history.dataset.historyUnsynced = '';
+    else history.dataset.historySynced = '';
+    setText(history, companion ? 'chat-thread.privacy.companion_unsynced' : 'chat-thread.privacy.history_synced');
     el.append(history);
   }
   refreshIcons(el);
 }
 
+/** The engine dot and status line for the chosen assistant (not by colour alone). */
+function renderReach() {
+  const assistant = getAssistant();
+  const dest = destinationOf(assistant);
+  if (dest.kind === 'device') {
+    setEngineDot(engine.isReady() ? 'ok' : 'off');
+    return;
+  }
+  setEngineDot(dest.kind === 'none' ? 'off' : 'ok');
+  // The own server's line comes from its probe; an answer being written keeps its line.
+  if (dest.kind === 'local' || isChatBusy()) return;
+  setAssistantStatus(dest.kind === 'none' && assistant !== 'auto' ? 'chat-thread.status.not_set_up' : 'status.ready');
+}
+
 /**
- * Applies a picker value: a mode ('council', 'local', or before the device probe 'client' and
- * 'nvidia', which keep the stored model), an on-device model ('webgpu:<key>', 'wasm:<key>') or an
- * NVIDIA model ('nvidia:<id>'). `interactive` is true when the user picked it (allows a model
- * download). A switch is refused while an answer is being written; the pickers then show the
+ * Applies a picker value (models/choices.js parsePickerValue): Auto, an on-device preset, a model of
+ * a provider or pool, or the own server. `interactive` is true when the user picked it (allows a
+ * model download). A switch is refused while an answer is being written; the pickers then show the
  * stored choice again.
  * @param {string} value
  * @param {{ interactive: boolean }} opts
  * @returns {Promise<boolean>} whether the choice was also stored for the next visit
  */
 export async function changeEngine(value, opts) {
-  const choice = parseAssistantChoice(value, NVIDIA_IDS);
-  if (!choice) {
+  const picked = parsePickerValue(value, { nvidiaModel: getNvidiaModel() });
+  if (!picked) {
     syncPickerValue();
     return false;
   }
   const previousLocal = getModelPreference();
-  const switching =
-    choice.mode !== getMode() ||
-    (choice.local !== undefined && choice.local !== previousLocal) ||
-    (choice.nvidia !== undefined && choice.nvidia !== getNvidiaModel());
-  // The answer being written keeps its engine; unloading its model would cut it off.
+  const switching = picked.assistant !== getAssistant() || (picked.preference !== undefined && picked.preference !== previousLocal);
+  // The answer being written keeps its model; unloading it would cut the answer off.
   if (switching && isChatBusy()) {
     syncPickerValue();
     if (opts.interactive) window.alert(t('models.switch_busy'));
     return false;
   }
 
-  let stored = true;
-  if (choice.local !== undefined) {
-    stored = setModelPreference(choice.local) && stored;
+  if (picked.preference !== undefined) {
     // Another on-device model was loaded (or is loading) for the previous choice: free it, so the
     // picked one is loaded below or with the next question.
     const s = engine.getEngineState();
-    if (choice.local !== previousLocal && s.status !== 'idle' && !(s.status === 'ready' && s.model?.ref === choice.local)) {
-      await engine.unloadModel();
-    }
+    if (picked.preference !== previousLocal && s.status !== 'idle' && !(s.status === 'ready' && s.model?.ref === picked.preference)) await engine.unloadModel();
   }
-  if (choice.nvidia !== undefined) stored = setNvidiaModel(choice.nvidia) && stored;
-  stored = setMode(choice.mode) && stored;
-  const mode = getMode();
+  const stored = setAssistant(picked.preference ?? picked.assistant);
   syncPickerValue();
   renderPrivacyNotice();
   renderEngineState(engine.getEngineState());
 
-  if (mode === 'client') {
+  const assistant = getAssistant();
+  if (assistant === 'device') {
     if (engine.isReady()) {
       setEngineDot('ok');
       return stored;
     }
     const loaded = await startLocalEngine({ interactive: opts.interactive });
-    if (!loaded && !opts.interactive && engine.getEngineState().status === 'idle') {
-      setEngineDot('off');
-    }
-  } else if (mode === 'local') {
+    if (!loaded && !opts.interactive && engine.getEngineState().status === 'idle') setEngineDot('off');
+  } else if (assistant.startsWith('local:')) {
     setEngineDot('busy');
     const reachable = await probeLocalServer(getLlmUrl());
     setEngineDot(reachable ? 'ok' : 'warn');
     // Not by colour alone: the status line says it too.
     setAssistantStatus(reachable ? 'status.ready' : 'status.server_unreachable');
-  } else if (mode === 'nvidia') {
-    setEngineDot('busy');
-    const catalog = await getNvidiaCatalog({ refresh: true });
-    // Another mode may have been picked while the proxy was asked.
-    if (getMode() !== 'nvidia') return stored;
-    setEngineDot(catalog.configured ? 'ok' : 'warn');
-    setAssistantStatus(catalog.configured ? 'status.ready' : 'status.nvidia_unavailable');
   } else {
-    setEngineDot(hasGeminiKey() || hasOpenRouterKey() ? 'ok' : 'off');
+    renderReach();
   }
   return stored;
 }
 
+/** Applies the model strength (Auto and provider picks follow it) and shows the stored one. */
+async function initStrength() {
+  const sel = /** @type {HTMLSelectElement | null} */ (byId('cfgStrength'));
+  if (!sel) return;
+  const m = await import('./ai/model-selection.js');
+  sel.value = m.getModelStrength();
+  m.onModelSelectionChange((strength) => {
+    sel.value = strength;
+  });
+}
+
+/** The strength picked last could not be stored (it holds for this page). */
+let strengthUnsaved = false;
+
 async function saveSettings() {
-  const urlInput = /** @type {HTMLInputElement | null} */ (byId('cfgLlmUrl'));
-  const geminiInput = /** @type {HTMLInputElement | null} */ (byId('cfgGeminiKey'));
-  const openrouterInput = /** @type {HTMLInputElement | null} */ (byId('cfgOpenrouterKey'));
-  const rememberInput = /** @type {HTMLInputElement | null} */ (byId('cfgRememberKeys'));
   const modeInput = /** @type {HTMLSelectElement | null} */ (byId('cfgComputeMode'));
-
-  let url;
-  try {
-    url = normalizeServerUrl(urlInput?.value ?? '');
-  } catch (err) {
-    window.alert(err instanceof Error ? err.message : t('provider.invalid_url'));
-    urlInput?.focus();
-    return;
+  const strengthInput = /** @type {HTMLSelectElement | null} */ (byId('cfgStrength'));
+  let stored = true;
+  if (strengthInput) {
+    const m = await import('./ai/model-selection.js');
+    // A strength the browser refused when it was picked holds for this page only: try again.
+    if (m.isModelStrength(strengthInput.value) && (strengthUnsaved || strengthInput.value !== m.getModelStrength())) {
+      strengthUnsaved = !m.setModelStrength(strengthInput.value);
+      stored = !strengthUnsaved && stored;
+    }
   }
-  // Every write reports whether the browser stored it (private windows and full or disabled
-  // storage refuse); the confirmation must not claim more than was kept.
-  let stored = setLlmUrl(url);
-  if (urlInput) urlInput.value = url;
-
-  const remember = Boolean(rememberInput?.checked);
-  const wasRemembered = rememberKeys();
-  stored = writeLocal(STORAGE_KEYS.rememberKeys, remember ? '1' : '0') && stored;
-  for (const [key, input] of /** @type {Array<[string, HTMLInputElement | null]>} */ ([
-    [STORAGE_KEYS.geminiKey, geminiInput],
-    [STORAGE_KEYS.openrouterKey, openrouterInput],
-  ])) {
-    const typed = input?.value.trim() ?? '';
-    const existing = readSecret(key);
-    if (typed) stored = writeSecret(key, typed, remember) && stored;
-    else if (existing && remember !== wasRemembered) stored = writeSecret(key, existing, remember) && stored;
-    if (input) input.value = '';
-  }
-  renderKeyHints();
-
   // A pick is applied when it is made. Only a picker showing something else than the stored choice
   // (e.g. a switch that waited for the keyboard to settle) is applied here: re-applying the shown
   // recommendation would replace a stored 'auto' with a fixed model.
-  if (modeInput && modeInput.value !== currentPickerValue()) {
-    stored = (await changeEngine(modeInput.value, { interactive: true })) && stored;
-  }
+  if (modeInput && modeInput.value !== currentPickerValue()) stored = (await changeEngine(modeInput.value, { interactive: true })) && stored;
   window.alert(t(stored ? 'settings.saved_toast' : 'settings.save_failed'));
-}
-
-function clearKeys() {
-  removeSecret(STORAGE_KEYS.geminiKey);
-  removeSecret(STORAGE_KEYS.openrouterKey);
-  renderKeyHints();
-  renderPrivacyNotice();
-  window.alert(t('settings.keys_cleared'));
-}
-
-/**
- * A result line: icon plus a translated text that follows a language switch.
- * @param {string} icon
- * @param {string} iconClass
- * @param {string} key
- * @param {Record<string, string>} [params]
- */
-function statusLine(icon, iconClass, key, params) {
-  const line = document.createElement('span');
-  line.className = 'flex items-center gap-1.5';
-  const i = document.createElement('i');
-  i.dataset.lucide = icon;
-  i.className = `w-3.5 h-3.5 flex-shrink-0 ${iconClass}`;
-  const text = document.createElement('span');
-  setText(text, key, params);
-  line.append(i, text);
-  return line;
-}
-
-/**
- * @param {'gemini' | 'openrouter'} provider
- */
-async function testProvider(provider) {
-  const isGemini = provider === 'gemini';
-  const btn = /** @type {HTMLButtonElement | null} */ (byId(isGemini ? 'btnTestPrimary' : 'btnTestSecondary'));
-  const box = byId(isGemini ? 'primaryTestStatus' : 'secondaryTestStatus');
-  if (!box) return;
-  if (btn) btn.disabled = true;
-  box.className = 'text-xs p-2.5 rounded-lg border bg-amber-500/10 border-amber-500/30 text-amber-800 flex items-center gap-2';
-  box.replaceChildren(statusLine('loader-2', 'animate-spin', isGemini ? 'settings.test_running_primary' : 'settings.test_running_secondary'));
-  refreshIcons(box);
-  setHidden(box, false);
-
-  const t0 = performance.now();
-  try {
-    const prompt = readinessPrompt(getLocale());
-    // A key typed but not saved yet is tested as typed.
-    const typed = /** @type {HTMLInputElement | null} */ (byId(isGemini ? 'cfgGeminiKey' : 'cfgOpenrouterKey'))?.value.trim() || undefined;
-    const text = isGemini
-      ? (await callGemini(prompt, { key: typed })).text
-      : (await callOpenRouter([{ role: 'user', content: prompt }], { key: typed })).text;
-    const elapsed = Math.round(performance.now() - t0);
-    box.className = 'text-xs p-2.5 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-800 space-y-1';
-    const head = document.createElement('div');
-    head.className = 'flex items-center justify-between gap-2 font-semibold';
-    const ms = document.createElement('span');
-    ms.className = 'font-mono text-[11px]';
-    ms.textContent = `${formatNumber(elapsed)} ms`;
-    head.append(statusLine('check-circle-2', 'text-emerald-600', isGemini ? 'settings.test_ok_primary' : 'settings.test_ok_secondary'), ms);
-    const sample = document.createElement('p');
-    sample.className = 'text-[11px] text-slate-600 italic';
-    sample.textContent = `"${sanitizeModelNames(text.slice(0, 140))}"`;
-    box.replaceChildren(head, sample);
-  } catch (err) {
-    const notConfigured = Boolean(err && typeof err === 'object' && 'notConfigured' in err && err.notConfigured);
-    box.className = `text-xs p-2.5 rounded-lg border ${notConfigured ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-rose-500/10 border-rose-500/30 text-rose-700'}`;
-    const head = statusLine(
-      notConfigured ? 'info' : 'alert-circle',
-      '',
-      notConfigured ? 'settings.test_not_configured' : 'settings.test_failed',
-      notConfigured ? { provider: isGemini ? 'Gemini' : 'OpenRouter' } : undefined,
-    );
-    head.classList.add('font-semibold');
-    const detail = document.createElement('p');
-    detail.className = 'text-[11px] mt-1 text-slate-600';
-    if (notConfigured) setText(detail, 'settings.test_enter_key');
-    else detail.textContent = sanitizeModelNames(err instanceof Error ? err.message : String(err));
-    box.replaceChildren(head, detail);
-  } finally {
-    refreshIcons(box);
-    if (btn) btn.disabled = false;
-  }
 }
 
 async function deleteHistory() {
@@ -306,10 +204,12 @@ async function deleteHistory() {
     window.alert(t('settings.delete_history_busy'));
     return;
   }
-  if (!window.confirm(t('settings.delete_history_confirm'))) return;
+  // With sync on, the deletion also reaches the synced copy and the other browsers.
+  const synced = chatSyncActive();
+  if (!window.confirm(t(synced ? 'chat.list.delete_history_confirm_synced' : 'settings.delete_history_confirm'))) return;
   const ok = await deleteChatHistory();
   resetConversation();
-  window.alert(t(ok ? 'settings.delete_history_done' : 'settings.delete_history_partial'));
+  window.alert(t(ok ? 'settings.delete_history_done' : synced ? 'chat.list.delete_history_partial_synced' : 'settings.delete_history_partial'));
 }
 
 async function deleteModelCache() {
@@ -374,22 +274,28 @@ function pickFromSelect(sel) {
 }
 
 export function initSettings() {
-  const urlInput = /** @type {HTMLInputElement | null} */ (byId('cfgLlmUrl'));
-  if (urlInput) urlInput.value = getLlmUrl();
-  const rememberInput = /** @type {HTMLInputElement | null} */ (byId('cfgRememberKeys'));
-  if (rememberInput) rememberInput.checked = rememberKeys();
   syncPickerValue();
-  renderKeyHints();
   renderPrivacyNotice();
-  // The chat mode toggle lives in chat.js, which must not import this module: state.js tells us.
+  // The mode control lives in the chat, which must not import this module: state.js tells us.
   onChatModeChange(() => renderPrivacyNotice());
+  onAssistantChange(() => renderPrivacyNotice());
+  onProvidersChange(() => {
+    renderPrivacyNotice();
+    renderReach();
+  });
+  onChatSyncChange(() => renderPrivacyNotice());
 
   onChange('change-engine', (el) => pickFromSelect(/** @type {HTMLSelectElement} */ (el)));
+  onChange('change-strength', async (el) => {
+    const m = await import('./ai/model-selection.js');
+    const value = /** @type {HTMLSelectElement} */ (el).value;
+    if (m.isModelStrength(value)) strengthUnsaved = !m.setModelStrength(value);
+  });
   document.addEventListener('keydown', notePickerKey, true);
   onAction('save-settings', () => saveSettings());
-  onAction('clear-keys', () => clearKeys());
-  onAction('test-gemini', () => testProvider('gemini'));
-  onAction('test-openrouter', () => testProvider('openrouter'));
   onAction('delete-model-cache', () => deleteModelCache());
   onAction('delete-chat-history', () => deleteHistory());
+  const idle = () => void initStrength().catch(() => {});
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(idle, { timeout: 2_000 });
+  else setTimeout(idle, 0);
 }

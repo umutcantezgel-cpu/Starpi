@@ -22,6 +22,7 @@ import {
   Cpu,
   Database,
   Download,
+  Ellipsis,
   File,
   FileCheck,
   FileText,
@@ -43,6 +44,7 @@ import {
   MousePointerClick,
   Network,
   Paperclip,
+  Pin,
   Plus,
   PlusCircle,
   Quote,
@@ -68,8 +70,59 @@ import {
   X,
   Zap,
 } from 'lucide';
+// Shell and UI kit (ui/sidebar.js, ui/theme.js, ui/kit.js), kept as one block.
+import {
+  CircleDashed,
+  Columns2,
+  EyeOff,
+  Globe,
+  Inbox,
+  Monitor,
+  Moon,
+  OctagonAlert,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRight,
+  Plug,
+  SquarePen,
+  Sun,
+  Telescope,
+} from 'lucide';
+
+// Voice and Live (voice/*, live/*, features/{voice,live}.js), kept as one block.
+import {
+  AudioLines,
+  Camera,
+  Volume2,
+} from 'lucide';
+
+// Memory, projects and assistants (ai/memory.js, chat/{projects,assistants}.js, settings/memory-view.js,
+// the archive entries of the conversation list), kept as one block.
+import {
+  Archive,
+  ArchiveRestore,
+  BookmarkPlus,
+  Bot,
+  Brain,
+  Briefcase,
+  Code,
+  Compass,
+  Folder,
+  FolderPlus,
+  GraduationCap,
+  Palette,
+  PenLine,
+  Pencil,
+} from 'lucide';
+
+const MEMORY_ICONS = { Archive, ArchiveRestore, BookmarkPlus, Bot, Brain, Briefcase, Code, Compass, Folder, FolderPlus, GraduationCap, Palette, PenLine, Pencil };
+const SHELL_ICONS = { CircleDashed, Columns2, EyeOff, Globe, Inbox, Monitor, Moon, OctagonAlert, PanelLeftClose, PanelLeftOpen, PanelRight, Plug, SquarePen, Sun, Telescope };
+const VOICE_ICONS = { AudioLines, Camera, Volume2 };
 
 const ICONS = {
+  ...SHELL_ICONS,
+  ...MEMORY_ICONS,
+  ...VOICE_ICONS,
   Activity,
   AlertCircle,
   ArrowLeft,
@@ -88,6 +141,7 @@ const ICONS = {
   Cpu,
   Database,
   Download,
+  Ellipsis,
   File,
   FileCheck,
   FileText,
@@ -109,6 +163,7 @@ const ICONS = {
   MousePointerClick,
   Network,
   Paperclip,
+  Pin,
   Plus,
   PlusCircle,
   Quote,

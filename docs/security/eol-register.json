@@ -1,0 +1,180 @@
+{
+  "$comment": "End-of-life register of what Starpi runs on and ships, checked by scripts/eol-check.mjs (npm run eol:check, also in CI). A component whose end of life falls within horizonMonths is a warning (an error with --strict, for releases); a passed date, an incomplete entry, a version that no longer matches .nvmrc, package-lock.json or the workflows, and a production dependency of package.json without an entry are errors. eol: 'YYYY-MM-DD', 'YYYY-MM' (read as the first of the month, so warnings come early) or null when the project publishes no end of life; a date needs a source. kind: runtime, npm (a shipped package), service (an external API) or tooling (build and CI only). Update an entry together with the upgrade it describes.",
+  "horizonMonths": 12,
+  "reviewed": "2026-10-16",
+  "components": [
+    {
+      "name": "Node.js",
+      "version": "22",
+      "kind": "runtime",
+      "usedFor": "build, unit and end-to-end tests, scripts/serve.mjs and CI (.nvmrc); the Vercel Functions",
+      "nvmrc": true,
+      "eol": "2027-04-30",
+      "source": "https://nodejs.org/en/about/previous-releases",
+      "note": "Maintenance LTS. Move .nvmrc and the workflows to Node.js 24 well before the date."
+    },
+    {
+      "name": "Node.js",
+      "version": "24",
+      "kind": "runtime",
+      "usedFor": "supported runtime (package.json engines >=22.13), recommended for new installs",
+      "eol": "2028-04-30",
+      "source": "https://nodejs.org/en/about/previous-releases",
+      "note": "Active LTS."
+    },
+    {
+      "name": "Python",
+      "version": "3.11",
+      "kind": "runtime",
+      "usedFor": "tools/library-publisher in the CI test matrix",
+      "eol": "2027-10",
+      "source": "https://peps.python.org/pep-0664/"
+    },
+    {
+      "name": "Python",
+      "version": "3.12",
+      "kind": "runtime",
+      "usedFor": "the dependency audit job",
+      "eol": "2028-10",
+      "source": "https://peps.python.org/pep-0693/"
+    },
+    {
+      "name": "Python",
+      "version": "3.13",
+      "kind": "runtime",
+      "usedFor": "tools/library-publisher in the CI test matrix, newest Python supported",
+      "eol": "2029-10",
+      "source": "https://peps.python.org/pep-0719/"
+    },
+    {
+      "name": "PostgreSQL",
+      "version": "16",
+      "kind": "tooling",
+      "usedFor": "CI job for the Supabase migrations and row level security tests (with pgvector)",
+      "eol": "2028-11-09",
+      "source": "https://www.postgresql.org/support/versioning/"
+    },
+    {
+      "name": "Tailwind CSS",
+      "version": "3.4.19",
+      "kind": "tooling",
+      "npm": "tailwindcss",
+      "usedFor": "the CSS build (v3 CLI in scripts/build.mjs); nothing of it ships but the generated CSS",
+      "eol": null,
+      "note": "Version 4 is the current major; 3.4 gets maintenance releases only. No end of life is published; plan the move to v4."
+    },
+    {
+      "name": "WebLLM",
+      "version": "0.2.86",
+      "kind": "npm",
+      "npm": "@mlc-ai/web-llm",
+      "usedFor": "on-device chat models on the graphics processor (src/js/webgpu)",
+      "eol": null,
+      "note": "No end of life published. Model weights are fetched from the model hub on demand; the SBOM lists the catalog as machine-learning-model components."
+    },
+    {
+      "name": "Transformers.js",
+      "version": "4.3.0",
+      "kind": "npm",
+      "npm": "@huggingface/transformers",
+      "usedFor": "on-device models on the processor (WebAssembly worker, src/js/wasm), with a self-hosted ONNX Runtime binary",
+      "eol": null,
+      "note": "No end of life published. Only the web build ships; its Node-only image backend is never bundled (scripts/license-allowlist.json notShipped)."
+    },
+    {
+      "name": "pdf.js",
+      "version": "6.4.299",
+      "kind": "npm",
+      "npm": "pdfjs-dist",
+      "usedFor": "PDF text extraction in the ingest worker",
+      "eol": null,
+      "note": "No long-term support line: fixes, security fixes included, ship in the newest release only, so keep it current."
+    },
+    {
+      "name": "Anthropic TypeScript SDK",
+      "version": "0.133.0",
+      "kind": "npm",
+      "npm": "@anthropic-ai/sdk",
+      "usedFor": "the Claude adapter of the provider layer, loaded lazily",
+      "eol": null,
+      "note": "Pre-1.0 releases; breaking changes come in minor versions, so upgrade with the adapter tests."
+    },
+    {
+      "name": "highlight.js",
+      "version": "11.12.0",
+      "kind": "npm",
+      "npm": "highlight.js",
+      "usedFor": "syntax highlighting of code blocks, loaded lazily with the rendering extras",
+      "eol": null,
+      "note": "Version 10 is end of life; 11 is the supported major."
+    },
+    {
+      "name": "KaTeX",
+      "version": "0.18.11",
+      "kind": "npm",
+      "npm": "katex",
+      "usedFor": "math rendering to MathML, loaded lazily with the rendering extras",
+      "eol": null,
+      "note": "The package.json override holds this release for every dependent. npm marks 0.18.11 deprecated in favour of 0.19.0; review the move together with the rendering tests."
+    },
+    {
+      "name": "Supabase JavaScript client",
+      "version": "2.117.3",
+      "kind": "npm",
+      "npm": "@supabase/supabase-js",
+      "usedFor": "the shared knowledge base and the optional account features",
+      "eol": null,
+      "note": "No end of life published for the v2 line."
+    },
+    {
+      "name": "DOMPurify",
+      "version": "3.4.16",
+      "kind": "npm",
+      "npm": "dompurify",
+      "usedFor": "sanitizing every rendered answer and document",
+      "eol": null,
+      "note": "Security critical: apply its releases promptly."
+    },
+    {
+      "name": "marked",
+      "version": "18.1.0",
+      "kind": "npm",
+      "npm": "marked",
+      "usedFor": "Markdown rendering",
+      "eol": null
+    },
+    {
+      "name": "Lucide",
+      "version": "1.55.0",
+      "kind": "npm",
+      "npm": "lucide",
+      "usedFor": "interface icons",
+      "eol": null
+    },
+    {
+      "name": "Plus Jakarta Sans (Fontsource)",
+      "version": "5.3.0",
+      "kind": "npm",
+      "npm": "@fontsource-variable/plus-jakarta-sans",
+      "usedFor": "the interface font, self-hosted",
+      "eol": null,
+      "note": "Static font files under OFL-1.1, no code."
+    },
+    {
+      "name": "NVIDIA API catalog",
+      "version": "unversioned",
+      "kind": "service",
+      "usedFor": "hosted models through the site's key pool (api/chat/nvidia.js)",
+      "eol": null,
+      "note": "Models come and go without notice; npm run providers:ping checks the catalog against the live service."
+    },
+    {
+      "name": "Google Gemini API",
+      "version": "unversioned",
+      "kind": "service",
+      "usedFor": "hosted models with the user's own key, and the live voice socket of the profile public",
+      "eol": null,
+      "note": "Model ids are retired on a published schedule; check the catalog before a release."
+    }
+  ]
+}

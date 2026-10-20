@@ -1,0 +1,310 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.starpi.app/schemas/receipt-v3.json",
+  "title": "Starpi answer receipt",
+  "description": "starpi.receipt/v3: the excerpts one answer cited, with file fingerprints, passage offsets and source-check verdicts, a Merkle tree over the citations (RFC 6962) with an inclusion proof per citation, and an optional Ed25519 or ECDSA P-256 signature over the id and the Merkle root. Optional members name the signer key, record what the sentence gate released and withheld, advisory second opinions, relations between statements, and where OCR text came from. Described in docs/spec/receipts.md; implemented in src/js/core/receipt.js.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "createdAt", "generator", "answer", "question", "citations", "grounding", "merkle"],
+  "properties": {
+    "schema": { "const": "starpi.receipt/v3" },
+    "id": { "$ref": "#/$defs/sha256", "description": "SHA-256 of the canonical JSON (RFC 8785) of the receipt without id and signature." },
+    "createdAt": { "type": "string", "maxLength": 64, "description": "ISO 8601 time from the device clock." },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "maxLength": 40 },
+        "version": { "type": "string", "maxLength": 40 }
+      }
+    },
+    "signer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keyId", "alg"],
+      "description": "The key the receipt is meant to be signed with. Covered by the id: a receipt that names a signer verifies only with a signature by that key.",
+      "properties": {
+        "keyId": { "$ref": "#/$defs/keyId" },
+        "alg": { "enum": ["Ed25519", "ES256"] }
+      }
+    },
+    "answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "sha256", "engine", "locale"],
+      "properties": {
+        "text": { "type": "string", "maxLength": 200000 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "engine": { "type": "string", "maxLength": 40, "description": "cloud, client, wasm, local, nvidia or synthesizer" },
+        "locale": { "type": "string", "maxLength": 10 }
+      }
+    },
+    "question": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "properties": { "text": { "type": "string", "maxLength": 10000 } }
+        }
+      ]
+    },
+    "citations": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/citation" } },
+    "grounding": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/grounding" }] },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "released", "withheld"],
+      "description": "What the sentence gate let through for this answer, as recorded. Not recomputed by the verifier.",
+      "properties": {
+        "mode": { "enum": ["sources", "web", "free"] },
+        "released": { "type": "integer", "minimum": 0, "description": "Sentences released." },
+        "withheld": { "type": "integer", "minimum": 0, "description": "Sentences withheld." }
+      }
+    },
+    "secondOpinion": { "type": "array", "maxItems": 500, "items": { "$ref": "#/$defs/secondOpinion" } },
+    "relations": { "type": "array", "maxItems": 500, "items": { "$ref": "#/$defs/relation" } },
+    "merkle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alg", "size", "root"],
+      "description": "Merkle tree (RFC 6962) with one leaf per citation, in order. Leaf: SHA-256(0x00 || UTF-8 canonical JSON of the citation without proof and without excerpt.text).",
+      "properties": {
+        "alg": { "const": "sha256-rfc6962" },
+        "size": { "type": "integer", "minimum": 0, "maximum": 64, "description": "Number of leaves; equals the number of citations." },
+        "root": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "signature": { "anyOf": [{ "$ref": "#/$defs/signatureEd25519" }, { "$ref": "#/$defs/signatureES256" }] }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "base64url32": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$", "description": "32 bytes, base64url without padding." },
+    "signatureValue": { "type": "string", "pattern": "^[A-Za-z0-9_-]{86}$", "description": "64-byte signature, base64url without padding; for ES256 r || s (IEEE P1363)." },
+    "keyId": { "$ref": "#/$defs/sha256", "description": "SHA-256 of the public key as SubjectPublicKeyInfo (DER)." },
+    "signatureEd25519": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alg", "keyId", "publicKey", "value"],
+      "description": "Ed25519 signature over UTF-8(\"starpi.receipt/v2 signature\\n\" + canonical JSON of {alg, id, keyId, merkle}).",
+      "properties": {
+        "alg": { "const": "Ed25519" },
+        "keyId": { "$ref": "#/$defs/keyId" },
+        "publicKey": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kty", "crv", "x"],
+          "properties": { "kty": { "const": "OKP" }, "crv": { "const": "Ed25519" }, "x": { "$ref": "#/$defs/base64url32" } }
+        },
+        "value": { "$ref": "#/$defs/signatureValue" }
+      }
+    },
+    "signatureES256": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alg", "keyId", "publicKey", "value"],
+      "description": "ECDSA signature on P-256 with SHA-256 over the same input.",
+      "properties": {
+        "alg": { "const": "ES256" },
+        "keyId": { "$ref": "#/$defs/keyId" },
+        "publicKey": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kty", "crv", "x", "y"],
+          "properties": { "kty": { "const": "EC" }, "crv": { "const": "P-256" }, "x": { "$ref": "#/$defs/base64url32" }, "y": { "$ref": "#/$defs/base64url32" } }
+        },
+        "value": { "$ref": "#/$defs/signatureValue" }
+      }
+    },
+    "citationIndexes": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+    "secondOpinion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sentence", "cites", "engine", "model", "result"],
+      "description": "An advisory second check of one statement against its excerpts. It never changes the statement's verdict.",
+      "properties": {
+        "sentence": { "type": "integer", "minimum": 0, "description": "Index into grounding.sentences." },
+        "cites": { "$ref": "#/$defs/citationIndexes" },
+        "engine": { "enum": ["nli", "judge"], "description": "nli: an entailment model on the device; judge: a model asked to judge." },
+        "model": { "type": "string", "maxLength": 100 },
+        "result": { "enum": ["entailed", "neutral", "contradicted"] }
+      }
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sentences", "cites", "verdict", "text"],
+      "description": "A relation one or two statements state, checked against the cited excerpts.",
+      "properties": {
+        "kind": { "enum": ["comparative", "temporal", "reference"], "description": "comparative: higher, lower, more, less, a multiple or a share; temporal: before or after; reference: a value carried over from an earlier statement." },
+        "sentences": { "type": "array", "minItems": 1, "maxItems": 2, "items": { "type": "integer", "minimum": 0 }, "description": "Indexes into grounding.sentences." },
+        "cites": { "$ref": "#/$defs/citationIndexes" },
+        "verdict": { "enum": ["supported", "inverted", "unsupported"] },
+        "text": { "type": "string", "maxLength": 500, "description": "The words that state the relation." }
+      }
+    },
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "doc", "heading", "source", "delivered", "excerpt", "verifiable", "proof"],
+      "properties": {
+        "label": { "type": "string", "maxLength": 600 },
+        "doc": { "type": "string", "maxLength": 600 },
+        "heading": { "type": "string", "maxLength": 1000 },
+        "source": { "enum": ["workspace", "knowledge"] },
+        "delivered": { "enum": ["full", "partial", "omitted"] },
+        "deliveredChars": { "type": "integer", "minimum": 0, "maximum": 20000, "description": "Only for delivered partial: how many of the excerpt's first characters reached the model." },
+        "excerpt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text", "sha256", "truncated"],
+          "properties": {
+            "text": { "anyOf": [{ "type": "null" }, { "type": "string", "maxLength": 20000 }] },
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "truncated": { "type": "boolean" }
+          }
+        },
+        "verifiable": { "type": "boolean" },
+        "document": { "$ref": "#/$defs/document" },
+        "chunk": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["index", "start", "end", "sha256"],
+          "properties": {
+            "index": { "type": "integer", "minimum": 0 },
+            "start": { "type": "integer", "minimum": 0, "description": "UTF-16 code units into the extracted text" },
+            "end": { "type": "integer", "minimum": 0, "description": "not before start" },
+            "sha256": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/sha256" }] }
+          }
+        },
+        "knowledge": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["documentId"],
+          "properties": { "documentId": { "anyOf": [{ "type": "null" }, { "type": "string", "maxLength": 100 }] } }
+        },
+        "proof": { "type": "array", "maxItems": 6, "items": { "$ref": "#/$defs/sha256" }, "description": "Audit path of the citation in the Merkle tree, sibling first." }
+      }
+    },
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "bytes", "fileSha256", "textSha256", "textChars", "pages", "extractor", "chunker"],
+      "properties": {
+        "name": { "type": "string", "maxLength": 600 },
+        "kind": { "type": "string", "maxLength": 20, "description": "pdf, md, txt, csv, json, log, docx, xlsx, pptx or html; png, jpg, gif or webp for text recognised by OCR" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "fileSha256": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/sha256" }] },
+        "textSha256": { "$ref": "#/$defs/sha256" },
+        "textChars": { "type": "integer", "minimum": 0 },
+        "pages": { "anyOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
+        "extractor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "pdfjs"],
+          "properties": {
+            "id": { "type": "string", "maxLength": 40, "description": "starpi-extract" },
+            "version": { "type": "integer", "minimum": 0, "description": "2 adds docx, xlsx, pptx and html; the text of the other kinds is that of version 1" },
+            "pdfjs": { "anyOf": [{ "type": "null" }, { "type": "string", "maxLength": 40 }] },
+            "ocr": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["provider", "model"],
+              "description": "Present when text recognition made the text from an image. Such text cannot be extracted again from the file, so only the file fingerprint can be verified and the citation is not verifiable.",
+              "properties": {
+                "provider": { "type": "string", "maxLength": 40 },
+                "model": { "type": "string", "maxLength": 100 }
+              }
+            }
+          }
+        },
+        "chunker": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "size", "overlap"],
+          "properties": {
+            "id": { "type": "string", "maxLength": 40 },
+            "version": { "type": "integer", "minimum": 0 },
+            "size": { "type": "integer", "minimum": 1 },
+            "overlap": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "grounding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "counts", "sentences"],
+      "properties": {
+        "algorithm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version"],
+          "properties": {
+            "id": { "type": "string", "maxLength": 40 },
+            "version": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["supported", "weak", "unsupported", "unchecked"],
+          "properties": {
+            "supported": { "type": "integer", "minimum": 0 },
+            "weak": { "type": "integer", "minimum": 0 },
+            "unsupported": { "type": "integer", "minimum": 0 },
+            "unchecked": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "sentences": { "type": "array", "maxItems": 500, "items": { "$ref": "#/$defs/sentence" } }
+      }
+    },
+    "sentence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "cites", "citeSource", "verdict", "reasons"],
+      "properties": {
+        "text": { "type": "string", "maxLength": 20000 },
+        "cites": { "$ref": "#/$defs/citationIndexes" },
+        "citeSource": { "enum": ["own", "block", "leadin", "answer", null] },
+        "verdict": { "enum": ["supported", "weak", "unsupported", "unchecked"] },
+        "reasons": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/reason" } }
+      }
+    },
+    "reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "level"],
+      "properties": {
+        "code": {
+          "enum": [
+            "missing_fact",
+            "fact_elsewhere",
+            "fact_context",
+            "name_missing",
+            "uncited_found",
+            "uncited_missing",
+            "low_overlap",
+            "unknown_citation",
+            "label_mismatch",
+            "quote_missing",
+            "approximate",
+            "from_conversation",
+            "not_delivered",
+            "negation_inversion",
+            "name_context",
+            "relation_inverted",
+            "relation_unsupported"
+          ]
+        },
+        "level": { "enum": ["weak", "unsupported"] },
+        "fact": { "type": "string", "maxLength": 500 },
+        "found": { "type": "string", "maxLength": 500 },
+        "cites": { "$ref": "#/$defs/citationIndexes" },
+        "other": { "$ref": "#/$defs/citationIndexes" }
+      }
+    }
+  }
+}

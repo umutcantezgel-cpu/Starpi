@@ -2,7 +2,7 @@
 name: "@starpi/core package"
 about: Report a problem with the npm package or its starpi-verify-receipt command
 title: "[CORE]: "
-labels: bug, package
+labels: bug
 assignees: ''
 ---
 
@@ -23,7 +23,7 @@ For a receipt problem, attach the receipt (or the output of
 `npx starpi-verify-receipt receipt.json <files> --json`) and say which files you verified it against.
 
 ### Environment
-* **@starpi/core version**: [such as 1.3.0, from `npm ls @starpi/core`]
+* **@starpi/core version**: [such as 3.0.0, from `npm ls @starpi/core`]
 * **Installed from**: [npm registry, or the release tarball starpi-core-X.Y.Z.tgz]
 * **Runtime**: [such as Node.js 22.13, Chrome 141, a Web Worker]
 * **Bundler or framework**: [such as Vite 7, esbuild, none]

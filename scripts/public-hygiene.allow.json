@@ -1,0 +1,9 @@
+{
+  "$comment": [
+    "Legitimate hits of the public hygiene check (scripts/public-hygiene.mjs) in files that cannot carry a",
+    "'hygiene-allow: <reason>' comment on the same line. Each entry names a \"path\" (glob: * within a",
+    "directory, ** across directories) or a \"commit\" id, optionally a \"rule\" and a \"line\", and always a",
+    "\"reason\". Name the file and the rule; do not repeat the matched text here."
+  ],
+  "allow": []
+}

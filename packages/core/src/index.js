@@ -9,6 +9,7 @@ export { sentenceSpans, splitSentences } from '../../../src/js/core/sentences.js
 // Source check: facts and statement-by-statement comparison with cited excerpts.
 export { contentTokens, extractFacts, fold, guessLanguage, indexSource, lookupFact, numKey, parseNumber, tokenMatches } from '../../../src/js/core/facts.js';
 export {
+  applyRelations,
   associate,
   blocksFromMarkdown,
   checkSentence,
@@ -18,9 +19,29 @@ export {
   groundAnswer,
   REASON_CODES,
   REASON_CODES_V1,
+  REASON_CODES_V2,
+  reasonCodes,
+  receiptAdvisory,
   resolveLabel,
   THRESHOLDS,
 } from '../../../src/js/core/grounding.js';
+
+// Grounding version 3: relations within and across neighbouring statements (changes, comparisons,
+// orders in time, carried-over values), and the rules of the advisory second opinion.
+export { changesIn, findRelations, RELATIONS } from '../../../src/js/core/relations.js';
+export { ENTAIL, eligible, judgeResult, nliResult, opinionCites, opinionReason, premiseFor, SECOND_OPINION_REASON, secondOpinions, shownVerdict } from '../../../src/js/core/entail.js';
+
+// Language packs: the words and conventions the checks read a language with; English and German
+// are built in, loadShippedLanguages() adds French, Spanish, Italian and Turkish, registerLanguage()
+// adds one of your own.
+export { languagePack, LANGUAGES, loadShippedLanguages, lowerCase, registerLanguage, SHIPPED_LANGUAGES } from '../../../src/js/core/lang/index.js';
+
+// Sentence gate: releases a streamed answer unit by unit, only what its sources support (the
+// starpi-gate command), with the canonical and spoken forms it judges and the streaming releaser.
+export { checkText, createSentenceGate, isReleased } from '../../../src/js/core/gate.js';
+export { canonicalText } from '../../../src/js/core/canonical.js';
+export { spokenText } from '../../../src/js/core/spoken.js';
+export { createSentenceReleaser } from '../../../src/js/core/release.js';
 
 // Whole documents of any length, and SARIF 2.1.0 for code scanning (the starpi-ground command).
 export { checkDocument } from '../../../src/js/core/document.js';
@@ -34,6 +55,8 @@ export {
   RECEIPT_LIMITS,
   RECEIPT_SCHEMA,
   RECEIPT_SCHEMA_V1,
+  RECEIPT_SCHEMA_V2,
+  RECEIPT_SCHEMAS,
   sha256Hex,
   signReceipt,
   validateReceipt,
@@ -49,6 +72,7 @@ export {
   csvToText,
   extensionOf,
   EXTRACTOR,
+  EXTRACTOR_COMPATIBLE,
   extractText,
   jsonToText,
   MAX_FILE_BYTES,
@@ -60,3 +84,18 @@ export {
 } from '../../../src/js/rag/parser.js';
 export { CHUNKER, chunkText, DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE } from '../../../src/js/rag/chunker.js';
 export { BM25_PARAMS, BM25Index, STOPWORDS, STOPWORDS_DE, STOPWORDS_EN, tokenize } from '../../../src/js/rag/bm25.js';
+
+// Hybrid retrieval: reciprocal rank fusion of rankings, and the BM25 probe of how well an index
+// matches a question.
+export { fuseRrf, HYBRID_DEPTH, hybridSearch, probeIndex, RRF_K } from '../../../src/js/rag/hybrid.js';
+export { quantizeInt8, VectorIndex } from '../../../src/js/rag/vectors.js';
+
+// Office documents, HTML pages and images (extraction rules version 2): the readers behind
+// extractText, usable on their own, and the dependency-free ZIP reader with its ZIP bomb limits.
+export { HTML_EXTENSIONS, IMAGE_EXTENSIONS, OFFICE_EXTENSIONS } from '../../../src/js/rag/parser.js';
+export { docxToText } from '../../../src/js/rag/formats/docx.js';
+export { decodeHtmlBytes, htmlToText } from '../../../src/js/rag/formats/html.js';
+export { describeImage, imageToText, OCR_PURPOSE } from '../../../src/js/rag/formats/image.js';
+export { pptxToText } from '../../../src/js/rag/formats/pptx.js';
+export { xlsxToText } from '../../../src/js/rag/formats/xlsx.js';
+export { isZip, openZip, ZIP_LIMITS } from '../../../src/js/rag/formats/zip.js';

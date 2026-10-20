@@ -1,0 +1,146 @@
+{
+  "builtin": {
+    "datetime": "Date et heure",
+    "calculator": "Calculatrice",
+    "workspace_search": "Rechercher dans mes fichiers",
+    "memory_lookup": "Mémoire",
+    "web_search": "Recherche web",
+    "generate_image": "Créer une image"
+  },
+  "effect": {
+    "read": "Lecture seule",
+    "low": "Effet limité",
+    "high": "Effet durable",
+    "forbidden": "Non autorisé"
+  },
+  "approval": {
+    "title": "Autoriser « {tool} » ?",
+    "from_server": "Un outil du serveur MCP {server}. Il ne s’exécute que si vous l’autorisez.",
+    "builtin": "Un outil intégré. Il ne s’exécute que si vous l’autorisez.",
+    "args": "Arguments",
+    "once": "Autoriser une fois",
+    "always": "Toujours autoriser",
+    "deny": "Refuser",
+    "allowed": "Autorisé",
+    "allowed_always": "Autorisé – cet outil ne demandera plus (annulable dans Paramètres → Outils et connexions)",
+    "denied": "Non autorisé"
+  },
+  "activity": {
+    "running": "Utilisation de {tool}…",
+    "done": "{tool} a répondu",
+    "failed": "{tool} a échoué",
+    "denied": "{tool} n’a pas été autorisé",
+    "forbidden": "{tool} ne peut pas être utilisé",
+    "round_limit": "La réponse a atteint la limite de {n} tours d’outils et utilise ce qui a été trouvé jusqu’ici."
+  },
+  "image": {
+    "alt": "Image générée",
+    "download": "Télécharger l’image"
+  },
+  "menu": {
+    "basics_on": "Date et calculatrice : activées",
+    "basics_off": "Date et calculatrice : désactivées",
+    "files_on": "Rechercher dans mes fichiers : activé",
+    "files_off": "Rechercher dans mes fichiers : désactivé",
+    "web_on": "Outil de recherche web : activé",
+    "web_off": "Outil de recherche web : désactivé",
+    "images_on": "Créer des images : activé",
+    "images_off": "Créer des images : désactivé",
+    "settings": "Outils et serveurs MCP…"
+  },
+  "settings": {
+    "title": "Outils et connexions",
+    "subtitle": "Ce que les modèles peuvent utiliser pendant qu’ils répondent : outils intégrés, service de recherche web et serveurs MCP. Un appel qui modifie quelque chose demande d’abord l’autorisation ; « Toujours autoriser » n’est proposé que pour les effets limités et peut être annulé en bas de cette carte.",
+    "tools_title": "Outils pour le modèle",
+    "tools_hint": "Proposés aux modèles capables d’appeler des outils ; jamais aux modèles sur cet appareil ni aux modèles gratuits du site.",
+    "switch": {
+      "datetime": "Date et heure",
+      "calculator": "Calculatrice",
+      "workspace_search": "Rechercher dans mes fichiers (le modèle peut lire des passages de vos fichiers)",
+      "memory_lookup": "Mémoire (faits que vous avez demandé à l’assistant de retenir)",
+      "web_search": "Outil de recherche web (le modèle cherche de lui-même avec le service ci-dessous)",
+      "generate_image": "Créer des images (demande avant chaque image ; utilise votre clé OpenAI, Google ou xAI)"
+    },
+    "search_title": "Service de recherche web",
+    "search_hint": "Pour les modèles sans recherche intégrée : avec Web activé, Starpi recherche la question, le modèle répond à partir des résultats, et la réponse est vérifiée par rapport à ceux-ci.",
+    "search": {
+      "provider": "Service",
+      "off": "Désactivé",
+      "brave": "Brave Search",
+      "tavily": "Tavily",
+      "searxng": "SearXNG (auto-hébergé)",
+      "key": "Clé API",
+      "key_set": "Une clé est enregistrée",
+      "key_none": "Pas encore de clé",
+      "url": "Adresse SearXNG",
+      "url_hint": "L’adresse de votre instance ; sa sortie JSON doit être activée.",
+      "save": "Enregistrer",
+      "test": "Tester la recherche",
+      "remove_key": "Retirer la clé",
+      "relay_note": "Brave Search ne répond pas aux appels du navigateur ; il est joint via le relais de ce site, qui transmet la requête et ne conserve rien.",
+      "saved": "Enregistré.",
+      "working": "Recherche…",
+      "ok": "La recherche a trouvé {n} {n:résultat|résultats}.",
+      "failed": "La recherche a échoué : {reason}",
+      "bad_url": "Cette adresse est inutilisable."
+    },
+    "mcp_title": "Serveurs MCP",
+    "mcp_hint": "Des serveurs qui proposent des outils via MCP (Streamable HTTP). Le navigateur ne peut joindre un serveur que s’il autorise les appels depuis cette page. Vous approuvez chaque outil une fois ; ensuite, chaque appel demande l’autorisation, sauf si vous avez choisi « Toujours autoriser » pour un outil en lecture seule ou à effet limité. Un outil dont la définition change doit être approuvé à nouveau et redemande l’autorisation.",
+    "remembered_title": "Toujours autorisés",
+    "remembered_hint": "Les outils pour lesquels vous avez choisi « Toujours autoriser » s’exécutent sans demander. Oubliez un choix ici et l’outil redemandera.",
+    "remembered_empty": "Aucun outil n’est toujours autorisé.",
+    "remembered_mcp": "{tool} (serveur MCP {server})",
+    "remembered_forget": "Oublier",
+    "remembered_forget_all": "Tout oublier",
+    "mcp": {
+      "empty": "Aucun serveur pour l’instant.",
+      "name": "Nom",
+      "url": "Adresse (https, ou http sur cet ordinateur)",
+      "token": "Jeton Bearer (facultatif)",
+      "remember": "Conserver le jeton dans le coffre à clés",
+      "mode": "Connexion",
+      "mode_browser": "Depuis ce navigateur",
+      "mode_provider": "Via le fournisseur (Anthropic, OpenAI)",
+      "add": "Ajouter un serveur",
+      "added": "Serveur ajouté.",
+      "too_many": "{n} serveurs au maximum.",
+      "bad_url": "Cette adresse ne peut pas être utilisée.",
+      "bad_url_provider": "Un fournisseur ne peut joindre qu’une adresse https publique.",
+      "check": "Vérifier les outils",
+      "remove": "Retirer",
+      "enabled": "Utiliser ce serveur",
+      "approve": "Approuver",
+      "revoke": "Retirer l’approbation",
+      "schema": "Arguments tels que le modèle les voit",
+      "provider_flag": "Autoriser les serveurs côté fournisseur",
+      "provider_flag_hint": "Pour les serveurs qui bloquent les appels du navigateur : Anthropic ou OpenAI se connecte au serveur à la place et appelle les outils que vous listez sans demander à chaque fois. Uniquement pour des serveurs https publics de confiance.",
+      "allowed": "Outils que le fournisseur peut appeler (séparés par des virgules)",
+      "save_allowed": "Enregistrer les outils",
+      "provider_note": "Appelé par le fournisseur ; les outils listés s’exécutent sans demander.",
+      "status": {
+        "ok": "Connecté",
+        "off": "Désactivé",
+        "error": "Injoignable : {reason}",
+        "unknown": "Pas encore vérifié"
+      },
+      "error": {
+        "cors": "le serveur n’autorise pas les appels depuis cette page",
+        "auth": "le jeton a été refusé",
+        "session": "la session a pris fin",
+        "http": "le serveur a répondu par une erreur",
+        "protocol": "la réponse n’était pas du MCP",
+        "rpc": "le serveur a signalé une erreur",
+        "timeout": "pas de réponse à temps",
+        "aborted": "arrêté",
+        "bad_url": "l’adresse est inutilisable"
+      },
+      "tool": {
+        "approved": "Approuvé",
+        "new": "Non approuvé",
+        "changed": "Modifié – à approuver de nouveau",
+        "removed": "N’est plus proposé",
+        "invalid": "Définition non valide"
+      }
+    }
+  }
+}

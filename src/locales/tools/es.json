@@ -1,0 +1,146 @@
+{
+  "builtin": {
+    "datetime": "Fecha y hora",
+    "calculator": "Calculadora",
+    "workspace_search": "Buscar en mis archivos",
+    "memory_lookup": "Memoria",
+    "web_search": "Búsqueda web",
+    "generate_image": "Crear imagen"
+  },
+  "effect": {
+    "read": "Solo lectura",
+    "low": "Efecto pequeño",
+    "high": "Efecto duradero",
+    "forbidden": "No permitido"
+  },
+  "approval": {
+    "title": "¿Permitir «{tool}»?",
+    "from_server": "Una herramienta del servidor MCP {server}. Solo se ejecuta si la permites.",
+    "builtin": "Una herramienta integrada. Solo se ejecuta si la permites.",
+    "args": "Argumentos",
+    "once": "Permitir una vez",
+    "always": "Permitir siempre",
+    "deny": "Denegar",
+    "allowed": "Permitido",
+    "allowed_always": "Permitido: esta herramienta no volverá a preguntar (se deshace en Ajustes → Herramientas y conexiones)",
+    "denied": "No permitido"
+  },
+  "activity": {
+    "running": "Usando {tool}…",
+    "done": "{tool} respondió",
+    "failed": "{tool} falló",
+    "denied": "No se permitió {tool}",
+    "forbidden": "{tool} no se puede usar",
+    "round_limit": "La respuesta alcanzó el límite de {n} rondas de herramientas y usa lo encontrado hasta ahora."
+  },
+  "image": {
+    "alt": "Imagen generada",
+    "download": "Descargar la imagen"
+  },
+  "menu": {
+    "basics_on": "Fecha y calculadora: activadas",
+    "basics_off": "Fecha y calculadora: desactivadas",
+    "files_on": "Buscar en mis archivos: activado",
+    "files_off": "Buscar en mis archivos: desactivado",
+    "web_on": "Herramienta de búsqueda web: activada",
+    "web_off": "Herramienta de búsqueda web: desactivada",
+    "images_on": "Crear imágenes: activado",
+    "images_off": "Crear imágenes: desactivado",
+    "settings": "Herramientas y servidores MCP…"
+  },
+  "settings": {
+    "title": "Herramientas y conexiones",
+    "subtitle": "Lo que los modelos pueden usar mientras responden: herramientas integradas, un servicio de búsqueda web y servidores MCP. Una llamada que cambia algo pregunta antes; «Permitir siempre» solo se ofrece para efectos pequeños y se puede deshacer al final de esta tarjeta.",
+    "tools_title": "Herramientas para el modelo",
+    "tools_hint": "Se ofrecen a los modelos que pueden llamar a herramientas; nunca a los modelos de este dispositivo ni a los modelos gratuitos del sitio.",
+    "switch": {
+      "datetime": "Fecha y hora",
+      "calculator": "Calculadora",
+      "workspace_search": "Buscar en mis archivos (el modelo puede leer pasajes de tus archivos)",
+      "memory_lookup": "Memoria (datos que pediste al asistente que recordara)",
+      "web_search": "Herramienta de búsqueda web (el modelo busca por su cuenta con el servicio de abajo)",
+      "generate_image": "Crear imágenes (pregunta antes de cada imagen; usa tu clave de OpenAI, Google o xAI)"
+    },
+    "search_title": "Servicio de búsqueda web",
+    "search_hint": "Para modelos sin búsqueda propia: con Web activado, Starpi busca la pregunta, el modelo responde a partir de los resultados y la respuesta se comprueba con ellos.",
+    "search": {
+      "provider": "Servicio",
+      "off": "Desactivado",
+      "brave": "Brave Search",
+      "tavily": "Tavily",
+      "searxng": "SearXNG (alojado por ti)",
+      "key": "Clave de API",
+      "key_set": "Hay una clave guardada",
+      "key_none": "Todavía no hay clave",
+      "url": "Dirección de SearXNG",
+      "url_hint": "La dirección de tu instancia; su salida JSON debe estar activada.",
+      "save": "Guardar",
+      "test": "Probar la búsqueda",
+      "remove_key": "Quitar la clave",
+      "relay_note": "Brave Search no responde a llamadas del navegador; se llega a él a través del relé de este sitio, que reenvía la solicitud y no guarda nada.",
+      "saved": "Guardado.",
+      "working": "Buscando…",
+      "ok": "La búsqueda encontró {n} {n:resultado|resultados}.",
+      "failed": "La búsqueda falló: {reason}",
+      "bad_url": "Esta dirección no se puede usar."
+    },
+    "mcp_title": "Servidores MCP",
+    "mcp_hint": "Servidores que ofrecen herramientas mediante MCP (Streamable HTTP). El navegador solo puede llegar a un servidor si este permite llamadas desde esta página. Apruebas cada herramienta una vez; después, cada llamada pregunta, salvo que hayas elegido «Permitir siempre» para una herramienta que solo lee o tiene un efecto pequeño. Una herramienta cuya definición cambia debe aprobarse de nuevo y vuelve a preguntar.",
+    "remembered_title": "Permitidas siempre",
+    "remembered_hint": "Las herramientas para las que elegiste «Permitir siempre» se ejecutan sin preguntar. Si olvidas aquí una elección, la herramienta vuelve a preguntar.",
+    "remembered_empty": "Ninguna herramienta está permitida siempre.",
+    "remembered_mcp": "{tool} (servidor MCP {server})",
+    "remembered_forget": "Olvidar",
+    "remembered_forget_all": "Olvidar todo",
+    "mcp": {
+      "empty": "Todavía no hay servidores.",
+      "name": "Nombre",
+      "url": "Dirección (https, o http en este ordenador)",
+      "token": "Token Bearer (opcional)",
+      "remember": "Guardar el token en la bóveda de claves",
+      "mode": "Conexión",
+      "mode_browser": "Desde este navegador",
+      "mode_provider": "A través del proveedor (Anthropic, OpenAI)",
+      "add": "Añadir servidor",
+      "added": "Servidor añadido.",
+      "too_many": "Como máximo {n} servidores.",
+      "bad_url": "No se puede usar esta dirección.",
+      "bad_url_provider": "Un proveedor solo puede llegar a una dirección https pública.",
+      "check": "Comprobar herramientas",
+      "remove": "Quitar",
+      "enabled": "Usar este servidor",
+      "approve": "Aprobar",
+      "revoke": "Retirar la aprobación",
+      "schema": "Argumentos tal como los ve el modelo",
+      "provider_flag": "Permitir servidores del lado del proveedor",
+      "provider_flag_hint": "Para servidores que bloquean las llamadas del navegador: Anthropic u OpenAI se conecta al servidor en su lugar y llama a las herramientas que enumeres sin preguntar cada vez. Solo para servidores https públicos de confianza.",
+      "allowed": "Herramientas que el proveedor puede llamar (separadas por comas)",
+      "save_allowed": "Guardar herramientas",
+      "provider_note": "Lo llama el proveedor; las herramientas enumeradas se ejecutan sin preguntar.",
+      "status": {
+        "ok": "Conectado",
+        "off": "Desactivado",
+        "error": "No disponible: {reason}",
+        "unknown": "Todavía sin comprobar"
+      },
+      "error": {
+        "cors": "el servidor no permite llamadas desde esta página",
+        "auth": "se rechazó el token",
+        "session": "la sesión terminó",
+        "http": "el servidor respondió con un error",
+        "protocol": "la respuesta no era MCP",
+        "rpc": "el servidor informó de un error",
+        "timeout": "sin respuesta a tiempo",
+        "aborted": "detenido",
+        "bad_url": "la dirección no se puede usar"
+      },
+      "tool": {
+        "approved": "Aprobada",
+        "new": "Sin aprobar",
+        "changed": "Cambiada: vuelve a aprobarla",
+        "removed": "Ya no se ofrece",
+        "invalid": "Definición no válida"
+      }
+    }
+  }
+}

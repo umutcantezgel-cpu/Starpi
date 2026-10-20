@@ -1,0 +1,86 @@
+{
+  "card": {
+    "title": "Sincronizzazione chat · crittografia end-to-end",
+    "subtitle": "Le tue conversazioni vengono cifrate in questo browser con una chiave che solo la tua passphrase può aprire. Il server conserva solo testo cifrato. Le chiavi dei provider, le chiavi di firma e i turni rimasti su questo dispositivo non vengono mai sincronizzati."
+  },
+  "state": {
+    "off": "Disattivata",
+    "on": "Attivata",
+    "busy": "Sincronizzazione",
+    "attention": "Richiede attenzione",
+    "unavailable": "Non disponibile qui"
+  },
+  "form": {
+    "new_hint": "Scegli una passphrase di almeno {n} caratteri. Ti servirà per ripristinare le conversazioni in un altro browser. Nessuno può recuperarla per te e, senza di essa, la copia sincronizzata non può essere letta.",
+    "join_hint": "Questo account è già sincronizzato da un altro browser. Inserisci la passphrase scelta lì per portare qui le sue conversazioni.",
+    "passphrase": "Passphrase di sincronizzazione",
+    "confirm": "Ripeti la passphrase",
+    "enable": "Attiva la sincronizzazione",
+    "join": "Sblocca e sincronizza",
+    "connection": "La sincronizzazione richiede una connessione alla base di conoscenza con una sessione (Impostazioni › Base di conoscenza)."
+  },
+  "on": {
+    "summary": "{n} {n:conversazione sincronizzata|conversazioni sincronizzate}",
+    "last": "Ultima sincronizzazione: {time}",
+    "never": "Non ancora sincronizzato",
+    "skipped": "{n} {n:conversazione non è sincronizzata|conversazioni non sono sincronizzate}: troppo grandi o non leggibili con questa chiave.",
+    "sync_now": "Sincronizza ora",
+    "off_local": "Disattiva in questo browser",
+    "off_delete": "Disattiva ed elimina i dati sincronizzati",
+    "off_local_confirm": "Disattivare la sincronizzazione in questo browser? Le sue conversazioni restano qui e la copia sincronizzata resta sul server per gli altri tuoi browser.",
+    "off_delete_confirm": "Disattivare la sincronizzazione ed eliminare dal server la copia sincronizzata delle tue conversazioni? Ogni browser conserva le conversazioni che ha, ma smette di sincronizzarsi. L’operazione non si può annullare.",
+    "purging": "L’eliminazione della copia sincronizzata non è terminata. Questo browser riprova a ogni sincronizzazione; usa «Disattiva ed elimina i dati sincronizzati» per riprovare ora."
+  },
+  "notice": {
+    "remote_off": "La sincronizzazione è stata disattivata in un altro browser e la copia sincronizzata è stata eliminata. Le conversazioni in questo browser vengono conservate. Scegli una passphrase per sincronizzare di nuovo, oppure disattiva qui la sincronizzazione.",
+    "rekeyed": "La sincronizzazione è stata configurata di nuovo in un altro browser con una nuova passphrase. Inserisci quella passphrase per continuare.",
+    "other_account": "Questo browser ha effettuato l’accesso a un account diverso da quello con cui si sincronizzava. Disattiva qui la sincronizzazione, poi attivala per questo account.",
+    "unavailable": "Questo browser non può conservare la chiave di sincronizzazione per questo sito (ad esempio in una finestra privata o con i dati dei siti disattivati)."
+  },
+  "account": {
+    "title": "Usa la sincronizzazione in un altro browser",
+    "body": "L’altro browser ha bisogno dello stesso account. Aggiungi un indirizzo email all’account di questo browser, accedi con quell’indirizzo nell’altro browser, poi inserisci lì la tua passphrase.",
+    "anonymous": "Questo browser: account anonimo (solo questo browser)",
+    "signed_in": "Accesso effettuato come {email}",
+    "email": "Indirizzo email",
+    "link": "Aggiungi a questo account",
+    "sign_in": "Accedi al mio account",
+    "sign_in_hint": "L’accesso sostituisce l’account anonimo di questo browser; i documenti aggiunti da esso restano con quell’account.",
+    "code": "Codice ricevuto via email",
+    "verify": "Conferma il codice",
+    "sign_out": "Esci"
+  },
+  "line": {
+    "on": "Crittografia end-to-end · {n} {n:conversazione|conversazioni}",
+    "waiting": "Crittografia end-to-end · in attesa di connessione",
+    "attention": "La sincronizzazione richiede attenzione (vedi Sincronizzazione chat)"
+  },
+  "result": {
+    "enabled": "La sincronizzazione è attiva. Le tue conversazioni sono cifrate e sincronizzate.",
+    "joined": "Sbloccato. Le conversazioni di questo account vengono sincronizzate in questo browser.",
+    "synced": "Sincronizzato.",
+    "off": "La sincronizzazione è disattivata in questo browser.",
+    "deleted": "La sincronizzazione è disattivata e la copia sincronizzata è stata eliminata.",
+    "code_sent": "Abbiamo inviato un codice a {email}. Inseriscilo qui sotto.",
+    "linked": "L’indirizzo email è stato aggiunto a questo account.",
+    "signed_in": "Accesso effettuato. Inserisci la passphrase per sincronizzare.",
+    "signed_out": "Disconnesso. Questo browser ha un nuovo account anonimo."
+  },
+  "error": {
+    "too_short": "La passphrase deve avere almeno {n} caratteri.",
+    "mismatch": "Le due passphrase sono diverse.",
+    "wrong_passphrase": "Questa passphrase non sblocca le conversazioni sincronizzate di questo account.",
+    "no_session": "Non c’è alcuna sessione con la base di conoscenza. La sincronizzazione ne ha bisogno.",
+    "offline": "La base di conoscenza non è raggiungibile in questo momento. Riprova più tardi.",
+    "missing_schema": "Il database non ha ancora tabelle di sincronizzazione (migrazione chat_sync in backend/supabase).",
+    "unavailable": "Questo browser non può conservare la chiave di sincronizzazione.",
+    "failed": "Non ha funzionato. Riprova.",
+    "delete_failed": "Al momento non è stato possibile eliminare completamente la copia sincronizzata. Questo browser riprova a ogni sincronizzazione finché non ci riesce.",
+    "invalid_email": "Inserisci un indirizzo email valido.",
+    "invalid_code": "Il codice è errato o è scaduto.",
+    "email_taken": "Questo indirizzo appartiene a un altro account. Usa invece «Accedi al mio account».",
+    "no_account": "Nessun account ha questo indirizzo, oppure l’accesso via email è disattivato per questo sito.",
+    "email_disabled": "L’accesso via email è disattivato per questo sito.",
+    "rate_limited": "Troppi tentativi. Attendi un minuto e riprova."
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "read": {
+    "free_notice": "Réponse libre, non vérifiée.",
+    "withheld": "{count} {count:phrase retenue|phrases retenues}.",
+    "nothing": "Rien dans cette réponse n’a pu être lu à voix haute comme vérifié.",
+    "button": "Lire à voix haute",
+    "stop": "Arrêter la lecture à voix haute",
+    "unavailable": "Cette réponse ne peut pas être lue à voix haute."
+  },
+  "preview": {
+    "sample": "Voici comment vos réponses sonneront lorsqu’elles seront lues à voix haute."
+  },
+  "source": {
+    "browser": "Navigateur",
+    "gemini": "Gemini",
+    "openai": "OpenAI",
+    "groq": "Groq",
+    "local": "Serveur vocal local",
+    "companion": "Companion",
+    "elevenlabs": "ElevenLabs"
+  },
+  "fallback": {
+    "to": "{from} n’a pas pu parler : {to} lit à sa place.",
+    "none": "Aucune voix n’a pu parler pour le moment. Le texte reste à l’écran."
+  },
+  "dictation": {
+    "listening": "écoute",
+    "recording": "enregistrement",
+    "transcribing": "transcription",
+    "chip": "{source} · {state}",
+    "no_source": "Aucune saisie vocale n’est configurée. Ajoutez une clé ou un serveur vocal local dans Paramètres → Voix.",
+    "too_short": "C’était trop court. Appuyez sur le microphone, parlez, puis appuyez de nouveau.",
+    "failed": "Votre voix n’a pas pu être transformée en texte. Réessayez ou choisissez une autre source dans Paramètres → Voix.",
+    "fallback": "Le service vocal du navigateur n’est pas disponible ({code}). Enregistrement à la place : appuyez de nouveau sur le microphone quand vous avez terminé."
+  },
+  "capture": {
+    "unsupported": "Ce navigateur ne peut pas enregistrer depuis le microphone ici.",
+    "denied": "L’accès au microphone a été bloqué. Autorisez-le dans les paramètres du site du navigateur.",
+    "no_microphone": "Aucun microphone n’a été trouvé.",
+    "busy": "Le microphone est utilisé par un autre programme.",
+    "worklet": "Le traitement audio n’a pas pu démarrer. Rechargez la page et réessayez.",
+    "aborted": "L’enregistrement a été arrêté."
+  },
+  "settings": {
+    "title": "Voix",
+    "subtitle": "Dictez vos questions, faites lire les réponses à voix haute et parlez en direct. Les réponses vérifiées ne sont lues que dans la mesure où la vérification des phrases les valide.",
+    "stt_title": "Saisie vocale",
+    "stt_label": "Essayer en premier",
+    "stt_auto": "Ordre automatique",
+    "not_ready": "non configuré",
+    "stt_chain": "Ordre actuel : {sources}",
+    "stt_none": "Aucune saisie vocale n’est encore configurée.",
+    "glossary_label": "Noms et termes (facultatif)",
+    "glossary_placeholder": "Un par ligne ou séparés par des virgules",
+    "glossary_hint": "Aide la transcription à orthographier vos noms et vos termes. Envoyé uniquement avec vos enregistrements.",
+    "tts_title": "Lecture à voix haute",
+    "tts_label": "Source de la voix",
+    "voice_label": "Voix",
+    "voice_auto": "Voix par défaut",
+    "voice_online": "en ligne",
+    "rate_label": "Vitesse",
+    "preview": "Écouter la voix",
+    "auto_read": "Lire automatiquement les réponses à voix haute",
+    "tts_hint": "Si la source choisie échoue, les voix du navigateur prennent le relais ; rien ne bascule vers un autre service cloud.",
+    "local_title": "Serveur vocal local",
+    "local_label": "Adresse du serveur vocal local",
+    "local_hint": "Un serveur vocal sur votre propre ordinateur (par exemple faster-whisper avec Piper). Seules les voix Piper sous licence libre sont utilisées.",
+    "save": "Enregistrer",
+    "eleven_title": "Clé ElevenLabs",
+    "eleven_label": "Clé API ElevenLabs",
+    "eleven_placeholder": "Collez votre clé ElevenLabs",
+    "remove": "Retirer",
+    "eleven_hint": "Seules les voix prédéfinies d’ElevenLabs sont utilisées. La clé reste dans ce navigateur, comme vos autres clés.",
+    "live_title": "Conversation en direct",
+    "live_voice": "Voix en direct",
+    "camera": "Autoriser une photo de la caméra",
+    "saved": "Enregistré.",
+    "local_invalid": "Saisissez une adresse http ou https, par exemple http://127.0.0.1:8000.",
+    "local_saved": "Serveur vocal local enregistré.",
+    "local_cleared": "Serveur vocal local retiré.",
+    "key_empty": "Collez d’abord une clé.",
+    "key_stored": "Clé enregistrée.",
+    "key_failed": "La clé n’a pas pu être enregistrée. Déverrouillez le coffre à clés et réessayez.",
+    "key_removed": "Clé retirée.",
+    "key_saved": "Clé enregistrée",
+    "key_none": "Aucune clé"
+  },
+  "privacy": {
+    "title": "Où va votre voix",
+    "browser": "Dans la plupart des navigateurs, la reconnaissance s’effectue sur les serveurs de l’éditeur du navigateur ; sur l’appareil lorsque le navigateur le propose.",
+    "gemini": "L’audio va à Google, directement avec votre clé ou via ce site avec la clé de ce site.",
+    "openai": "L’audio va à OpenAI avec votre clé.",
+    "groq": "L’audio va à Groq avec votre clé, directement ou via le relais de ce site.",
+    "elevenlabs": "Le texte à lire va à ElevenLabs, avec votre clé ou celle de ce site.",
+    "local": "L’audio et le texte restent sur votre ordinateur.",
+    "companion": "L’audio reste sur vos machines, via le Companion associé."
+  }
+}

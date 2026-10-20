@@ -4,10 +4,13 @@ import { initBenchUi, refreshDiagnostics } from './bench/bench-ui.js';
 import { refreshSyncStatus } from './chat-store.js';
 import { initChat, restoreHistory } from './chat.js';
 import { initDemo } from './demo.js';
-import { byId, installDelegation, onAction, reportUnexpected, setHidden } from './dom.js';
+import { loadShippedLanguages } from './core/lang/index.js';
+import { closeDialog, openDialog } from './dialog.js';
+import { byId, installDelegation, onAction, onChange, reportUnexpected, setHidden } from './dom.js';
 import { initEngineUi } from './engine-ui.js';
-import { initGraph, loadKnowledgeGraph } from './graph.js';
-import { initI18n, setLocale } from './i18n/index.js';
+import { mountFeatures } from './features/index.js';
+import { initGraphTab } from './graph-tab.js';
+import { initI18n, onLocaleChange, setLocale } from './i18n/index.js';
 import { refreshIcons } from './icons.js';
 import { initIngest } from './ingest.js';
 import { initLibrary, loadDocuments } from './library.js';
@@ -15,10 +18,14 @@ import { initMessages } from './messages.js';
 import { initModelPicker } from './model-picker.js';
 import { initCitations } from './rag/citations.js';
 import { initReceipts } from './rag/receipts.js';
+import { initProviders } from './providers.js';
 import { changeEngine, initSettings, renderPrivacyNotice } from './settings.js';
-import { getMode } from './state.js';
+import { getAssistant } from './state.js';
 import { connect, onConnectionChange } from './supabase.js';
-import { detectAndDisplayDevice, onTabOpen, renderConnection, switchTab, syncSidebarAccess, toggleSidebar } from './ui.js';
+import { closeChatAside, detectAndDisplayDevice, initChatAside, onTabOpen, openChatAside, renderConnection, renderLanguageSwitch, switchTab } from './ui.js';
+import { toast } from './ui/kit.js';
+import { initSidebar, setNavVisible } from './ui/sidebar.js';
+import { initTheme } from './ui/theme.js';
 import { initVoice } from './voice.js';
 
 function registerServiceWorker() {
@@ -41,7 +48,22 @@ function registerServiceWorker() {
       // Offline or no manifest: nothing to compare against.
     }
   };
-  navigator.serviceWorker.addEventListener('controllerchange', () => void checkForUpdate());
+  // Assets loaded before a worker controlled the page (the first visit) did not pass through it; the
+  // worker caches them on request so an offline start finds every chunk the page has used.
+  const reportLoadedAssets = () => {
+    const controller = navigator.serviceWorker.controller;
+    if (!controller) return;
+    const urls = performance
+      .getEntriesByType('resource')
+      .map((entry) => new URL(entry.name, location.href))
+      .filter((url) => url.origin === location.origin && url.pathname.startsWith('/assets/'))
+      .map((url) => url.pathname);
+    if (urls.length) controller.postMessage({ type: 'CACHE_ASSETS', urls });
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    void checkForUpdate();
+    reportLoadedAssets();
+  });
   window.addEventListener('load', async () => {
     try {
       await navigator.serviceWorker.register('/sw.js', { scope: '/' });
@@ -52,19 +74,27 @@ function registerServiceWorker() {
 }
 
 async function boot() {
-  // English by default; a stored choice wins. Applied before any module renders text.
+  // English by default; a stored choice wins (its dictionary is loaded before this module runs).
+  // Applied before any module renders text.
   initI18n();
   installDelegation();
+  // The shell: theme (already applied by theme-boot.js), sidebar rail and drawer, language switch,
+  // chat side panel.
+  initTheme();
+  initSidebar();
+  renderLanguageSwitch();
+  initChatAside();
   onAction('switch-tab', (el) => switchTab(el.dataset.arg ?? 'chat'));
-  onAction('toggle-sidebar', () => toggleSidebar());
-  syncSidebarAccess(false);
   onAction('set-locale', (el) => setLocale(el.dataset.arg ?? 'en'));
+  onChange('set-locale', (el) => setLocale(/** @type {HTMLSelectElement} */ (el).value));
 
   onTabOpen('library', () => void loadDocuments());
-  onTabOpen('graph', () => void loadKnowledgeGraph());
   onTabOpen('bench', () => void refreshDiagnostics());
 
   initMessages();
+  // The AI layer (adapters, transports, the router's world) is set up once the page is idle and
+  // again whenever keys, pools or the own server change.
+  initProviders();
   initSettings();
   // After the settings: the pickers show the stored choice, then the device's model groups.
   initModelPicker();
@@ -72,16 +102,22 @@ async function boot() {
   initChat();
   initLibrary();
   initIngest();
-  initGraph();
+  initGraphTab();
   initVoice();
   initBenchUi();
   initCitations();
   initDemo();
   initReceipts();
 
+  // Features render into the shell's mount points (features/registry.js).
+  void mountFeatures({ onAction, onChange, onLocaleChange, onTabOpen, switchTab, setNavVisible, openChatAside, closeChatAside, openDialog, closeDialog, toast }).catch(reportUnexpected);
+
   refreshIcons();
   detectAndDisplayDevice();
   registerServiceWorker();
+  // The language packs beyond English and German load after the first paint, each from a chunk of
+  // its own; the source check, Auto routing and the graph read those languages once they are in.
+  void loadShippedLanguages().catch(reportUnexpected);
 
   onConnectionChange((state) => {
     renderConnection(state);
@@ -89,8 +125,8 @@ async function boot() {
     void refreshSyncStatus();
   });
 
-  // Apply the persisted mode without triggering downloads (only an already cached model is loaded).
-  void changeEngine(getMode(), { interactive: false });
+  // Apply the stored assistant without triggering downloads (only an already cached model is loaded).
+  void changeEngine(getAssistant(), { interactive: false });
 
   const state = await connect();
   renderConnection(state);

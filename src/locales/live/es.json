@@ -1,0 +1,66 @@
+{
+  "spoken": {
+    "free": "Conversación libre, las respuestas no se comprueban.",
+    "withheld": "{count} {count:frase retenida|frases retenidas}.",
+    "ended": "La conversación en directo ha terminado."
+  },
+  "title": "Conversación en directo",
+  "close": "Cerrar la conversación en directo",
+  "open": "En directo",
+  "open_hint": "Iniciar una conversación de voz en directo",
+  "mode": {
+    "label": "Modo de conversación",
+    "free": "Conversación libre",
+    "sources": "Según tus fuentes",
+    "free_hint": "Una conversación abierta. Las respuestas no se comprueban con tus documentos.",
+    "sources_hint": "Cada turno busca en tus documentos. Solo se pronuncian las frases que la comprobación valida; después se indica cuántas frases se retuvieron."
+  },
+  "state": {
+    "idle": "Listo para empezar",
+    "connecting": "Conectando…",
+    "ready": "Pulsa el micrófono para hablar",
+    "listening": "Escuchando",
+    "thinking": "Pensando…",
+    "speaking": "Hablando",
+    "ended": "Conversación terminada"
+  },
+  "ended": {
+    "limit": "Terminó tras 15 minutos.",
+    "silence": "Terminó tras 3 minutos de silencio.",
+    "hidden": "Terminó porque se salió de la pestaña.",
+    "error": "La conexión terminó de forma inesperada.",
+    "no_model": "No hay ningún modelo disponible. Añade una clave en Ajustes → Proveedores.",
+    "companion_sources": "Starpi Core solo responde preguntas habladas en una conversación libre: responde a partir de sus propios documentos, no de las fuentes encontradas aquí. Inicia una conversación libre o elige otro modelo.",
+    "microphone": "No se pudo iniciar el micrófono."
+  },
+  "hint": {
+    "no_source": "Aquí ninguna entrada de voz puede convertir una grabación en texto. Escribe tu mensaje abajo o añade una clave o un servidor de voz local en Ajustes → Voz.",
+    "not_heard": "No se entendió nada. Pulsa para hablar y vuelve a intentarlo, o escribe tu mensaje abajo."
+  },
+  "engine": {
+    "live": "Gemini Live",
+    "turns": "Pulsar para hablar"
+  },
+  "start": "Empezar",
+  "talk": "Pulsa para hablar",
+  "talk_send": "Pulsa para enviar",
+  "talk_interrupt": "Pulsa para interrumpir",
+  "camera": "Enviar una foto de la cámara",
+  "stop": "Terminar la conversación",
+  "say_label": "Escribir un mensaje en su lugar",
+  "say_placeholder": "O escribe aquí…",
+  "say": "Enviar",
+  "limits": "Una conversación termina tras 15 minutos, tras 3 minutos de silencio o cuando sales de esta pestaña. No se graba nada.",
+  "transcript": {
+    "empty": "La conversación aparecerá aquí.",
+    "thinking": "Respondiendo…",
+    "nothing": "No se validó nada de esta respuesta."
+  },
+  "label": {
+    "free": "Libre · sin comprobar",
+    "withheld": "{count} retenida(s)"
+  },
+  "on_device": "El directo necesita un modelo fuera de este dispositivo. Desactiva el modo local para usarlo.",
+  "camera_failed": "No se pudo tomar la foto de la cámara.",
+  "camera_sent": "Foto de la cámara enviada con la conversación."
+}

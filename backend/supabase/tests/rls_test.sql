@@ -1095,6 +1095,200 @@ select rls_test.expect_error('anon cannot execute match_knowledge_hybrid', $q$
 $q$);
 
 -- ------------------------------------------------------------------------------
+-- 384-dimensional vectors: embedding_384 and match_knowledge_vector_384
+-- ------------------------------------------------------------------------------
+:as_super
+-- 384-dim vector with weight wa on axis a and wb on axis b (default: unit vector on a).
+create function rls_test.vec384(a integer, wa real default 1, b integer default 0, wb real default 0)
+returns public.vector
+language sql immutable as $$
+    select ('[' || string_agg(case when i = a then wa::text when i = b then wb::text else '0' end, ','
+                              order by i) || ']')::public.vector
+    from generate_series(1, 384) as i
+$$;
+
+select rls_test.expect_true('knowledge_sections.embedding_384 is a nullable vector(384)', $q$
+    select atttypid = 'public.vector'::regtype and atttypmod = 384 and not attnotnull
+    from pg_attribute
+    where attrelid = 'public.knowledge_sections'::regclass and attname = 'embedding_384'
+$q$);
+
+select rls_test.expect_true('embedding_384 has an HNSW cosine index', $q$
+    select count(*) = 1 from pg_indexes
+    where schemaname = 'public' and tablename = 'knowledge_sections'
+      and indexname = 'idx_ksections_embedding_384_hnsw'
+      and indexdef like '%USING hnsw (embedding_384 %vector_cosine_ops)%'
+$q$);
+
+select rls_test.expect_none('match_knowledge_vector_384: SECURITY INVOKER, search_path pinned, one overload', $q$
+    select p.oid::regprocedure, p.prosecdef, p.proconfig
+    from pg_proc p
+    where p.pronamespace = 'public'::regnamespace and p.proname = 'match_knowledge_vector_384'
+      and (p.prosecdef or p.proconfig is distinct from array['search_path=""'])
+    union all
+    select null, null, array['expected 1 function, found ' || count(*)]
+    from pg_proc p
+    where p.pronamespace = 'public'::regnamespace and p.proname = 'match_knowledge_vector_384'
+    having count(*) <> 1
+$q$);
+
+select rls_test.expect_none('match_knowledge_vector_384 EXECUTE: anon, authenticated, service_role, not PUBLIC', $q$
+    select r from (values ('anon'), ('authenticated'), ('service_role')) as m(r)
+    where not has_function_privilege(r, 'public.match_knowledge_vector_384(public.vector, integer, double precision)', 'EXECUTE')
+    union all
+    select 'PUBLIC'
+    from pg_proc p, aclexplode(p.proacl) a
+    where p.oid = 'public.match_knowledge_vector_384(public.vector, integer, double precision)'::regprocedure
+      and a.grantee = 0
+$q$);
+
+:as_service
+select rls_test.expect_ok('service_role ingests sections with embedding_384', $q$
+    select public.ingest_document_atomic(
+        'Vektor Handbuch', 'Bibliothek', array['vektor'], 'markdown', 'handbuch.md', 'Rohtext',
+        jsonb_build_array(
+            jsonb_build_object('heading', 'Oeffnungszeiten', 'markdown_content', 'Samstags 10 bis 14 Uhr',
+                               'embedding_384', rls_test.vec384(1)::text::jsonb),
+            jsonb_build_object('heading', 'Gebuehren', 'markdown_content', 'Mitgliedschaft kostenlos',
+                               'embedding_384', rls_test.vec384(1, 0.6, 2, 0.8)::text::jsonb),
+            jsonb_build_object('heading', 'Ohne Vektor', 'markdown_content', 'Noch nicht eingebettet',
+                               'embedding_384', '[]'::jsonb)
+        )
+    )
+$q$);
+
+select rls_test.expect_true('ingested sections keep their embedding_384, an empty array stores null', $q$
+    select array_agg(public.vector_dims(s.embedding_384) order by s.section_index)
+           is not distinct from array[384, 384, null]::integer[]
+       and bool_and(s.embedding is null)
+    from public.knowledge_sections s
+    join public.knowledge_documents d on d.id = s.document_id
+    where d.title = 'Vektor Handbuch'
+$q$);
+
+select rls_test.expect_error('ingest_document_atomic refuses an embedding_384 of another length', $q$
+    select public.ingest_document_atomic(
+        'Vektor kaputt', null, null, null, null, null,
+        jsonb_build_array(jsonb_build_object('markdown_content', 'x',
+                                             'embedding_384', rls_test.onehot(1)::text::jsonb))
+    )
+$q$, '22000');
+
+select rls_test.expect_count('... and stores nothing of that call', $q$
+    select 1 from public.knowledge_documents where title = 'Vektor kaputt'
+$q$, 0);
+
+select rls_test.expect_affected('service_role publishes the vector handbook', $q$
+    update public.knowledge_documents set is_public = true where title = 'Vektor Handbuch'
+$q$, 1);
+
+select rls_test.expect_ok('service_role adds 25 public sections on another axis', $q$
+    insert into public.knowledge_sections (document_id, section_index, heading, markdown_content, embedding_384)
+    select d.id, 10 + i, 'Achse ' || i, 'Andere Richtung', rls_test.vec384(3)
+    from public.knowledge_documents d, generate_series(1, 25) as i
+    where d.title = 'Vektor Handbuch'
+$q$);
+
+select rls_test.expect_ok('service_role stores an ownerless private section with a vector', $q$
+    with d as (
+        insert into public.knowledge_documents (title) values ('Vektor intern') returning id
+    )
+    insert into public.knowledge_sections (document_id, heading, markdown_content, embedding_384)
+    select d.id, 'Intern', 'Nur fuer den Dienst', rls_test.vec384(1) from d
+$q$);
+
+:as_a
+select rls_test.expect_ok('A inserts a private document for vectors', $q$
+    insert into public.knowledge_documents (id, title) values ('d0000000-0000-4000-8000-0000000003a1', 'A Vektor')
+$q$);
+
+select rls_test.expect_ok('A stores embedding_384 on a section of own private document', $q$
+    insert into public.knowledge_sections (document_id, heading, markdown_content, embedding_384)
+    values ('d0000000-0000-4000-8000-0000000003a1', 'A Abschnitt', 'Privat', rls_test.vec384(1))
+$q$);
+
+select rls_test.expect_affected('A cannot change embedding_384 of a published section', $q$
+    update public.knowledge_sections s set embedding_384 = rls_test.vec384(2)
+    from public.knowledge_documents d
+    where d.id = s.document_id and d.title = 'Vektor Handbuch'
+$q$, 0);
+
+:as_b
+select rls_test.expect_ok('B inserts a private document for vectors', $q$
+    insert into public.knowledge_documents (id, title) values ('d0000000-0000-4000-8000-0000000003b1', 'B Vektor')
+$q$);
+
+select rls_test.expect_ok('B stores embedding_384 on a section of own private document', $q$
+    insert into public.knowledge_sections (document_id, heading, markdown_content, embedding_384)
+    values ('d0000000-0000-4000-8000-0000000003b1', 'B Abschnitt', 'Privat', rls_test.vec384(1))
+$q$);
+
+select rls_test.expect_none('B: vector ranking returns only public and own sections', $q$
+    select m.document_title, m.heading
+    from public.match_knowledge_vector_384(rls_test.vec384(1), 20) m
+    where m.document_title not in ('Vektor Handbuch', 'B Vektor')
+$q$);
+
+:as_a
+select rls_test.expect_none('A: vector ranking returns only public and own sections', $q$
+    select m.document_title, m.heading
+    from public.match_knowledge_vector_384(rls_test.vec384(1), 20) m
+    where m.document_title not in ('Vektor Handbuch', 'A Vektor')
+$q$);
+
+select rls_test.expect_count('A: own private and public exact matches are both ranked', $q$
+    select 1 from public.match_knowledge_vector_384(rls_test.vec384(1), 20, 0.99)
+$q$, 2);
+
+:as_anon
+select rls_test.expect_true('anon: public sections ranked by similarity, none without a vector', $q$
+    select array_agg(m.heading order by m.similarity desc) = array['Oeffnungszeiten', 'Gebuehren']
+       and abs(max(m.similarity) - 1) < 1e-6 and abs(min(m.similarity) - 0.6) < 1e-6
+       and bool_and(m.document_title = 'Vektor Handbuch' and m.tags = array['vektor'])
+    from public.match_knowledge_vector_384(rls_test.vec384(1), 20) m
+$q$);
+
+select rls_test.expect_true('anon: the closest section comes first', $q$
+    select m.heading = 'Oeffnungszeiten' and m.section_id is not null
+    from public.match_knowledge_vector_384(rls_test.vec384(1)) m
+    limit 1
+$q$);
+
+select rls_test.expect_count('anon: match_threshold filters by similarity', $q$
+    select 1 from public.match_knowledge_vector_384(rls_test.vec384(1), 20, 0.7)
+$q$, 1);
+
+select rls_test.expect_count('anon: match_count is clamped to 20', $q$
+    select 1 from public.match_knowledge_vector_384(rls_test.vec384(3), 1000)
+$q$, 20);
+
+select rls_test.expect_count('anon: match_count below 1 returns one row', $q$
+    select 1 from public.match_knowledge_vector_384(rls_test.vec384(3), 0)
+$q$, 1);
+
+select rls_test.expect_count('anon: a null query returns no rows', $q$
+    select 1 from public.match_knowledge_vector_384(null, 5)
+$q$, 0);
+
+select rls_test.expect_error('anon: a query of another dimension is refused', $q$
+    select 1 from public.match_knowledge_vector_384(rls_test.onehot(1))
+$q$, '22023');
+
+select rls_test.expect_error('anon cannot write embedding_384', $q$
+    update public.knowledge_sections set embedding_384 = null
+$q$);
+
+:as_service
+select rls_test.expect_count('service_role: vector ranking reaches every row', $q$
+    select 1 from public.match_knowledge_vector_384(rls_test.vec384(1), 20, 0.99)
+$q$, 4);
+
+select rls_test.expect_affected('service_role removes the vector test documents', $q$
+    delete from public.knowledge_documents
+    where title in ('Vektor Handbuch', 'Vektor intern', 'A Vektor', 'B Vektor')
+$q$, 4);
+
+-- ------------------------------------------------------------------------------
 -- Publishing (service role) and cleanup paths
 -- ------------------------------------------------------------------------------
 :as_service
@@ -1261,12 +1455,281 @@ select rls_test.expect_count('deleting a document cascades to its sections', $q$
     where not exists (select 1 from public.knowledge_documents d where d.id = s.document_id)
 $q$, 0);
 
+-- ------------------------------------------------------------------------------
+-- End-to-end encrypted chat sync: chat_sync and chat_sync_keys
+-- ------------------------------------------------------------------------------
+-- Values below have the shapes the browser sends: a 32-character base64url row
+-- id, a 16-character IV and base64 ciphertext. Nothing is readable.
+:as_super
+select rls_test.expect_count('RLS enabled on chat_sync and chat_sync_keys', $q$
+    select 1 from pg_class
+    where oid in ('public.chat_sync'::regclass, 'public.chat_sync_keys'::regclass) and relrowsecurity
+$q$, 2);
+
+select rls_test.expect_none('chat sync policy set is exactly the expected one', $q$
+    with expected(tablename, policyname, cmd, roles) as (values
+        ('chat_sync', 'chat_sync_select_own', 'SELECT', '{authenticated}'),
+        ('chat_sync', 'chat_sync_insert_own', 'INSERT', '{authenticated}'),
+        ('chat_sync', 'chat_sync_update_own', 'UPDATE', '{authenticated}'),
+        ('chat_sync', 'chat_sync_delete_own', 'DELETE', '{authenticated}'),
+        ('chat_sync_keys', 'chat_sync_keys_select_own', 'SELECT', '{authenticated}'),
+        ('chat_sync_keys', 'chat_sync_keys_insert_own', 'INSERT', '{authenticated}'),
+        ('chat_sync_keys', 'chat_sync_keys_delete_own', 'DELETE', '{authenticated}')
+    ),
+    actual as (
+        select tablename::text, policyname::text, cmd::text, roles::text as roles
+        from pg_policies
+        where schemaname = 'public' and tablename in ('chat_sync', 'chat_sync_keys')
+    )
+    (select 'missing' as problem, * from expected except select 'missing', * from actual)
+    union all
+    (select 'unexpected', * from actual except select 'unexpected', * from expected)
+$q$);
+
+select rls_test.expect_count('every chat sync policy checks the owner', $q$
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename in ('chat_sync', 'chat_sync_keys')
+      and coalesce(qual, with_check) not like '%user_id = ( SELECT auth.uid() AS uid)%'
+$q$, 0);
+
+select rls_test.expect_none('chat sync privilege matrix (anon / authenticated / service_role)', $q$
+    with roles(r) as (values ('anon'), ('authenticated'), ('service_role')),
+    tables(t) as (values ('chat_sync'), ('chat_sync_keys')),
+    privs(p) as (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')),
+    granted(r, t, p) as (
+        select 'authenticated', 'chat_sync', p from unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) as p
+        union all
+        select 'authenticated', 'chat_sync_keys', p from unnest(array['SELECT', 'INSERT', 'DELETE']) as p
+        union all
+        select 'service_role', t, p
+        from unnest(array['chat_sync', 'chat_sync_keys']) as t,
+             unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE']) as p
+    )
+    select roles.r, tables.t, privs.p
+    from roles, tables, privs
+    where has_table_privilege(roles.r, 'public.' || tables.t, privs.p)
+          <> exists (select 1 from granted g where g.r = roles.r and g.t = tables.t and g.p = privs.p)
+$q$);
+
+select rls_test.expect_none('chat_sync_guard: SECURITY INVOKER, search_path pinned, not callable by API roles', $q$
+    select p.oid::regprocedure, p.prosecdef, p.proconfig
+    from pg_proc p
+    where p.oid = 'public.chat_sync_guard()'::regprocedure
+      and (p.prosecdef or p.proconfig is distinct from array['search_path=""']
+           or has_function_privilege('anon', p.oid, 'EXECUTE')
+           or has_function_privilege('authenticated', p.oid, 'EXECUTE'))
+$q$);
+
+select rls_test.expect_true('chat_sync_guard runs before every insert and update', $q$
+    select count(*) = 1 from pg_trigger
+    where tgrelid = 'public.chat_sync'::regclass and tgname = 'chat_sync_guard' and not tgisinternal
+      and tgfoid = 'public.chat_sync_guard()'::regprocedure
+$q$);
+
+:as_a
+select rls_test.expect_ok('A stores an encrypted conversation', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1', 1, 'MDEyMzQ1Njc4OWFi', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$);
+
+select rls_test.expect_true('user_id defaults to auth.uid(); the server stamps updated_at', $q$
+    select user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and updated_at is not null
+    from public.chat_sync where conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1'
+$q$);
+
+select rls_test.expect_affected('A writes the next revision against the matching base revision', $q$
+    update public.chat_sync set rev = 2, iv = 'ZmVkY2JhOTg3NjU0', ciphertext = 'Y2lwaGVydGV4dC10d28tYmJiYmJiYmI='
+    where conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1' and rev = 1
+$q$, 1);
+
+select rls_test.expect_affected('a write against a stale base revision changes nothing', $q$
+    update public.chat_sync set rev = 2, ciphertext = 'c3RhbGUtd3JpdGUtY2NjY2NjY2NjY2M='
+    where conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1' and rev = 1
+$q$, 0);
+
+select rls_test.expect_error('the revision cannot go back', $q$
+    update public.chat_sync set rev = 1 where conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1'
+$q$, '40001');
+
+select rls_test.expect_error('a row keeps its id', $q$
+    update public.chat_sync set conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA9', rev = 3
+    where conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1'
+$q$, '42501');
+
+select rls_test.expect_error('the same row id cannot be inserted twice', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1', 5, 'MDEyMzQ1Njc4OWFi', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$, '23505');
+
+select rls_test.expect_error('a local conversation id instead of the opaque row id is refused', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('starpi_2f6c1d0e-8a1b-4c2d-9e3f-0a1b2c3d4e5f', 1, 'MDEyMzQ1Njc4OWFi', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$, '23514');
+
+select rls_test.expect_error('an IV of the wrong size is refused', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2', 1, 'MDEy', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$, '23514');
+
+select rls_test.expect_error('plain text instead of base64 ciphertext is refused', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2', 1, 'MDEyMzQ1Njc4OWFi', 'What did we plan for the summer?')
+$q$, '23514');
+
+select rls_test.expect_error('ciphertext above 2800000 characters is refused', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2', 1, 'MDEyMzQ1Njc4OWFi', repeat('A', 2800004))
+$q$, '23514');
+
+select rls_test.expect_error('revision 0 is refused', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2', 0, 'MDEyMzQ1Njc4OWFi', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$, '23514');
+
+select rls_test.expect_error('A cannot store a row for B', $q$
+    insert into public.chat_sync (user_id, conv_id, rev, iv, ciphertext)
+    values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA3', 1,
+            'MDEyMzQ1Njc4OWFi', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$);
+
+select rls_test.expect_ok('A stores its wrapped sync key', $q$
+    insert into public.chat_sync_keys (key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('a0a0a0a0a0a0a0a0a0a0a0', 'PBKDF2-SHA256', 600000, 'c2FsdC1zYWx0LXNhbHQtMQ==', 'MDEyMzQ1Njc4OWFi',
+            'd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXkx')
+$q$);
+
+select rls_test.expect_error('a second key row for A is refused', $q$
+    insert into public.chat_sync_keys (key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('a1a1a1a1a1a1a1a1a1a1a1', 'PBKDF2-SHA256', 600000, 'c2FsdC1zYWx0LXNhbHQtMQ==', 'MDEyMzQ1Njc4OWFi',
+            'd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXkx')
+$q$, '23505');
+
+select rls_test.expect_error('the key row cannot be updated in place', $q$
+    update public.chat_sync_keys set iterations = 700000
+$q$);
+
+select rls_test.expect_affected('A replaces its key row by delete and insert', $q$
+    delete from public.chat_sync_keys where user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+$q$, 1);
+
+select rls_test.expect_ok('... and inserts the new wrapped key', $q$
+    insert into public.chat_sync_keys (key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('a2a2a2a2a2a2a2a2a2a2a2', 'PBKDF2-SHA256', 650000, 'c2FsdC1zYWx0LXNhbHQtMg==', 'ZmVkY2JhOTg3NjU0',
+            'd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXky')
+$q$);
+
+:as_b
+select rls_test.expect_count('B sees none of A''s encrypted rows', $q$
+    select 1 from public.chat_sync
+$q$, 0);
+
+select rls_test.expect_count('B sees no other user''s sync key', $q$
+    select 1 from public.chat_sync_keys
+$q$, 0);
+
+select rls_test.expect_affected('B cannot overwrite A''s rows', $q$
+    update public.chat_sync set rev = 9, ciphertext = 'b3ZlcndyaXR0ZW4tYnktYi1iYmJiYmI='
+    where conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1'
+$q$, 0);
+
+select rls_test.expect_affected('B cannot delete A''s rows', $q$
+    delete from public.chat_sync where conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1'
+$q$, 0);
+
+select rls_test.expect_affected('B cannot delete A''s sync key', $q$
+    delete from public.chat_sync_keys where user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+$q$, 0);
+
+select rls_test.expect_error('B cannot insert a row owned by A', $q$
+    insert into public.chat_sync (user_id, conv_id, rev, iv, ciphertext)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4', 1,
+            'MDEyMzQ1Njc4OWFi', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$);
+
+select rls_test.expect_error('B cannot insert a key owned by A', $q$
+    insert into public.chat_sync_keys (user_id, key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'b0b0b0b0b0b0b0b0b0b0b0', 'PBKDF2-SHA256', 600000,
+            'c2FsdC1zYWx0LXNhbHQtMQ==', 'MDEyMzQ1Njc4OWFi',
+            'd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXkx')
+$q$);
+
+select rls_test.expect_ok('B stores its own row under the same row id', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1', 1, 'MDEyMzQ1Njc4OWFi', 'Yi1jaXBoZXJ0ZXh0LWJiYmJiYmJiYmI=')
+$q$);
+
+select rls_test.expect_error('fewer than 600000 PBKDF2 iterations are refused', $q$
+    insert into public.chat_sync_keys (key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('b0b0b0b0b0b0b0b0b0b0b0', 'PBKDF2-SHA256', 100000, 'c2FsdC1zYWx0LXNhbHQtMQ==', 'MDEyMzQ1Njc4OWFi',
+            'd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXkx')
+$q$, '23514');
+
+select rls_test.expect_error('another key derivation is refused', $q$
+    insert into public.chat_sync_keys (key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('b0b0b0b0b0b0b0b0b0b0b0', 'SHA1', 600000, 'c2FsdC1zYWx0LXNhbHQtMQ==', 'MDEyMzQ1Njc4OWFi',
+            'd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXkx')
+$q$, '23514');
+
+select rls_test.expect_error('a wrapped key of the wrong size is refused', $q$
+    insert into public.chat_sync_keys (key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('b0b0b0b0b0b0b0b0b0b0b0', 'PBKDF2-SHA256', 600000, 'c2FsdC1zYWx0LXNhbHQtMQ==', 'MDEyMzQ1Njc4OWFi',
+            'c2hvcnQ=')
+$q$, '23514');
+
+select rls_test.expect_ok('B stores its wrapped sync key', $q$
+    insert into public.chat_sync_keys (key_id, kdf, iterations, salt, iv, wrapped_key)
+    values ('b0b0b0b0b0b0b0b0b0b0b0', 'PBKDF2-SHA256', 600000, 'c2FsdC1zYWx0LXNhbHQtMw==', 'MDEyMzQ1Njc4OWFi',
+            'd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXktd3JhcHBlZC1rZXkz')
+$q$);
+
+select rls_test.expect_affected('B deletes all of its synced conversations', $q$
+    delete from public.chat_sync where user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+$q$, 1);
+
+select rls_test.expect_ok('B syncs again', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB1', 1, 'MDEyMzQ1Njc4OWFi', 'Yi1jaXBoZXJ0ZXh0LWJiYmJiYmJiYmI=')
+$q$);
+
+:as_anon
+select rls_test.expect_error('anon cannot read chat_sync', $q$
+    select * from public.chat_sync
+$q$);
+
+select rls_test.expect_error('anon cannot write chat_sync', $q$
+    insert into public.chat_sync (conv_id, rev, iv, ciphertext)
+    values ('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA5', 1, 'MDEyMzQ1Njc4OWFi', 'Y2lwaGVydGV4dC1vbmUtYWFhYWFhYWE=')
+$q$);
+
+select rls_test.expect_error('anon cannot read chat_sync_keys', $q$
+    select * from public.chat_sync_keys
+$q$);
+
+select rls_test.expect_error('anon cannot delete chat_sync', $q$
+    delete from public.chat_sync
+$q$);
+
+:as_super
+select rls_test.expect_true('A''s encrypted row and key are intact after B''s attempts', $q$
+    select (select rev = 2 and ciphertext = 'Y2lwaGVydGV4dC10d28tYmJiYmJiYmI='
+            from public.chat_sync
+            where user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' and conv_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1')
+       and (select key_id = 'a2a2a2a2a2a2a2a2a2a2a2' from public.chat_sync_keys
+            where user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+$q$);
+
 select rls_test.expect_ok('deleting an auth user', $q$
     delete from auth.users where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 $q$);
 
 select rls_test.expect_count('... removes the user''s chat rows', $q$
     select 1 from public.chat_history where session_id = 'sess-b'
+$q$, 0);
+
+select rls_test.expect_count('... removes the user''s encrypted chat rows and sync key', $q$
+    select 1 from public.chat_sync where user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    union all
+    select 1 from public.chat_sync_keys where user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 $q$, 0);
 
 select rls_test.expect_true('... and keeps the user''s knowledge rows private without owner', $q$

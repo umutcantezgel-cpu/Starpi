@@ -1,24 +1,32 @@
 // @ts-check
 // Sentence splitting with offsets. Deterministic on purpose (no Intl.Segmenter, whose rules depend
 // on the ICU version of each browser and Node), so a receipt verified elsewhere splits the same way.
+import { fromPacks } from './lang/index.js';
 
-/** Tokens that end with a dot without ending a sentence (German and English). */
-const ABBREVIATIONS = new Set([
-  'z', 'b', 'bzw', 'ca', 'nr', 'dr', 'st', 'usw', 'vgl', 'inkl', 'ggf', 'evtl', 'etc', 'u', 'a', 'd', 'h', 'mio', 'mrd',
-  'tsd', 'inc', 'corp', 'ltd', 'vs', 'e', 'g', 'i', 'mr', 'mrs', 'ms', 'prof', 'jr', 'sr', 'fig', 'approx', 'abs',
-  'tel', 'jan', 'feb', 'mär', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'okt', 'oct', 'nov', 'dez', 'dec',
-]);
+/**
+ * Tokens that end with a dot without ending a sentence: the abbreviations and short month names of
+ * every registered language pack (lang/index.js).
+ */
+const abbreviations = fromPacks((packs) => new Set(packs.flatMap((p) => [...p.abbreviations, ...Object.keys(p.monthAbbreviations)])));
 
-/** @param {string} token lowercase, without the final dot */
-function isAbbreviation(token) {
+/**
+ * Whether a dot after this token leaves the sentence open: an ordinal or a day and month ("3.",
+ * "1.6."), or an abbreviation of a language pack. Also used by the streaming releaser (release.js).
+ * @param {string} token lowercase, without the final dot
+ */
+export function isAbbreviation(token) {
   const word = token.replace(/^[^\p{L}\p{N}]+/u, '');
   if (/^\d{1,2}$/.test(word)) return true; // ordinals: "am 3. März"; a year ends a sentence
   if (/^\d{1,2}\.\d{1,2}$/.test(word)) return true; // German day and month: "vom 1.6. bis 31.8."
-  if (ABBREVIATIONS.has(word)) return true;
+  const known = abbreviations();
+  if (known.has(word)) return true;
   // "e.g", "z.B", "u.a": the last dot-separated part decides.
   const last = word.includes('.') ? word.slice(word.lastIndexOf('.') + 1) : '';
-  return last !== '' && ABBREVIATIONS.has(last);
+  return last !== '' && known.has(last);
 }
+
+/** A time of day with "h" between hours and minutes, at the end of a text ("12 h 00", "9h30"). */
+const CLOCK_MINUTES = /(?<![\p{L}\p{N}])\d{1,2}\s?h\s?\d{2}$/iu;
 
 /**
  * Sentence spans in `text`: offsets into the original string, trimmed of surrounding whitespace.
@@ -44,8 +52,10 @@ export function sentenceSpans(text) {
     const ends = /[.!?]+(?=\s+\S)/g;
     let m;
     while ((m = ends.exec(content)) !== null) {
-      const lastToken = (content.slice(start, m.index).match(/(\S+)$/)?.[1] ?? '').toLowerCase();
-      if (m[0] === '.' && isAbbreviation(lastToken)) continue;
+      const before = content.slice(start, m.index);
+      const lastToken = (before.match(/(\S+)$/)?.[1] ?? '').toLowerCase();
+      // The minutes of a time written with "h" ("de 8 h 30 à 12 h 00.") are no ordinal: the dot ends the sentence.
+      if (m[0] === '.' && isAbbreviation(lastToken) && !CLOCK_MINUTES.test(before)) continue;
       push(base + start, base + m.index + m[0].length);
       start = m.index + m[0].length;
     }

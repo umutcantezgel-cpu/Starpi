@@ -3,6 +3,7 @@
 // and offers the part of WebLLM's engine API that webgpu/engine.js uses, so loading, streaming,
 // Stop, the benchmark and unloading work the same for both runtimes. wasmCacheStatus tells whether
 // a model is stored without starting the worker.
+import { embedFileUrl } from '../models/embed-catalog.js';
 import { WASM_CACHE_NAME, wasmFileUrl } from '../models/wasm-catalog.js';
 
 /**
@@ -14,12 +15,18 @@ import { WASM_CACHE_NAME, wasmFileUrl } from '../models/wasm-catalog.js';
  * @typedef {{ role: string, content: string }} ChatMessage
  * @typedef {{ type: 'load', source: { repo: string, revision: string, dtype: string } } | { type: 'unload' }} ControlRequest
  * @typedef {{ type: 'generate', messages: ChatMessage[], maxTokens: number, temperature: number, ignoreEos: boolean }} GenerateRequest
- * @typedef {(ControlRequest | GenerateRequest) & { id: number } | { type: 'interrupt', upTo: number }} WorkerRequest
+ * @typedef {{ type: 'embed', source: { repo: string, revision: string, dtype: string }, texts: string[], kind: 'query' | 'passage' }} EmbedBody
+ * @typedef {EmbedBody & { id: number }} EmbedRequest
+ * @typedef {{ type: 'nli', source: { repo: string, revision: string, dtype: string }, pairs: Array<{ premise: string, hypothesis: string }> }} NliBody
+ * @typedef {NliBody & { id: number }} NliRequest
+ * @typedef {(ControlRequest | GenerateRequest | EmbedBody | NliBody) & { id: number } | { type: 'interrupt', upTo: number }} WorkerRequest
  * @typedef {{ prompt_tokens: number, completion_tokens: number }} Usage
  * @typedef {{ id: number, type: 'progress', file: string, loaded: number, done: boolean }
  *   | { id: number, type: 'ready' | 'unloaded' }
  *   | { id: number, type: 'delta', text: string }
  *   | { id: number, type: 'done', usage: Usage }
+ *   | { id: number, type: 'embedded', dim: number, count: number, data: Float32Array }
+ *   | { id: number, type: 'classified', scores: Array<{ entailment: number, neutral: number, contradiction: number }> }
  *   | { id: number, type: 'error', name: string, message: string }} WorkerReply
  *
  * @typedef {{ progress: number, stage: 'files' | 'session' }} WasmLoadProgress share of the model's
@@ -37,6 +44,23 @@ export async function wasmCacheStatus(src) {
     if (!globalThis.caches || !(await caches.has(WASM_CACHE_NAME))) return 'none';
     const cache = await caches.open(WASM_CACHE_NAME);
     const hits = await Promise.all(src.cacheProbe.map((file) => cache.match(wasmFileUrl(src, file))));
+    return hits.every(Boolean) ? 'full' : hits.some(Boolean) ? 'partial' : 'none';
+  } catch {
+    return 'none';
+  }
+}
+
+/**
+ * Whether an embedding model's files are in the Transformers.js cache (same rules as
+ * wasmCacheStatus).
+ * @param {import('../models/embed-catalog.js').EmbedSource} src
+ * @returns {Promise<'full' | 'partial' | 'none'>}
+ */
+export async function embedCacheStatus(src) {
+  try {
+    if (!globalThis.caches || !(await caches.has(WASM_CACHE_NAME))) return 'none';
+    const cache = await caches.open(WASM_CACHE_NAME);
+    const hits = await Promise.all(src.cacheProbe.map((file) => cache.match(embedFileUrl(src, file))));
     return hits.every(Boolean) ? 'full' : hits.some(Boolean) ? 'partial' : 'none';
   } catch {
     return 'none';
@@ -202,4 +226,73 @@ export class WasmEngineClient {
  */
 function toChatMessage(message) {
   return { role: message.role, content: typeof message.content === 'string' ? message.content : '' };
+}
+
+/**
+ * The embedding side of the processor runtime: one worker of its own (so loading a chat model
+ * never drops the search model), requests of up to EMBED_BATCH_SIZE texts, vectors back as one
+ * transferred Float32Array per request.
+ */
+export class WasmEmbedClient {
+  /** @type {Worker} */
+  #worker;
+  #seq = 0;
+  /** @type {Map<number, (reply: WorkerReply) => void>} */
+  #handlers = new Map();
+
+  /** @param {Worker} worker */
+  constructor(worker) {
+    this.#worker = worker;
+    worker.addEventListener('message', (event) => {
+      const reply = /** @type {WorkerReply} */ (event.data);
+      this.#handlers.get(reply.id)?.(reply);
+    });
+    const crash = (/** @type {Event} */ event) => {
+      const message = event instanceof ErrorEvent && event.message ? event.message : 'Importing a module script failed';
+      for (const [id, handler] of this.#handlers) handler({ id, type: 'error', name: 'Error', message });
+    };
+    worker.addEventListener('error', crash);
+    worker.addEventListener('messageerror', crash);
+  }
+
+  /**
+   * Embeds texts with a catalog model; the first call downloads or loads the model.
+   * @param {import('../models/embed-catalog.js').EmbedSource} src
+   * @param {string[]} texts
+   * @param {'query' | 'passage'} kind
+   * @param {(p: { file: string, loaded: number, done: boolean }) => void} [onProgress]
+   * @returns {Promise<Float32Array[]>} one vector per text
+   */
+  embed(src, texts, kind, onProgress) {
+    const id = ++this.#seq;
+    return new Promise((resolve, reject) => {
+      this.#handlers.set(id, (reply) => {
+        if (reply.type === 'progress') {
+          onProgress?.({ file: reply.file, loaded: reply.loaded, done: reply.done });
+          return;
+        }
+        this.#handlers.delete(id);
+        if (reply.type === 'error') {
+          reject(workerError(reply));
+          return;
+        }
+        if (reply.type !== 'embedded') {
+          reject(new Error(`Unexpected reply: ${reply.type}`));
+          return;
+        }
+        const out = [];
+        for (let i = 0; i < reply.count; i += 1) out.push(reply.data.subarray(i * reply.dim, (i + 1) * reply.dim));
+        resolve(out);
+      });
+      /** @type {WorkerRequest} */
+      const request = { id, type: 'embed', source: { repo: src.repo, revision: src.revision, dtype: src.dtype }, texts, kind };
+      this.#worker.postMessage(request);
+    });
+  }
+
+  terminate() {
+    for (const [id, handler] of this.#handlers) handler({ id, type: 'error', name: 'AbortError', message: 'The embedding worker was stopped' });
+    this.#handlers.clear();
+    this.#worker.terminate();
+  }
 }

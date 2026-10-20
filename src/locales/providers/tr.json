@@ -1,0 +1,131 @@
+{
+  "title": "Model sağlayıcıları ve anahtarlar",
+  "subtitle": "Bulut modelleri için kendi anahtarlarınız, bu sitenin sunduğu ücretsiz modeller ve kendi sunucunuz.",
+  "vault": {
+    "title": "Anahtar kasası",
+    "state": {
+      "none": "Yalnızca bu sekme",
+      "locked": "Kasa kilitli",
+      "unlocked": "Kasa açık",
+      "unavailable": "Burada kasa yok"
+    },
+    "none_body": "Anahtarlar bu sekme kapanana kadar saklanır. Onları bu cihazda, yalnızca parolanızın açabildiği bir anahtarla şifrelenmiş olarak tutmak için bir parola belirleyin. Bu sekmedeki anahtarlar kasaya taşınır.",
+    "locked_body": "Anahtarlarınız bu cihazda şifreli olarak saklanıyor. Bu sekmede kullanmak için parolayı girin.",
+    "unlocked_body": "Kasa bu sekmede açık. 30 dakika hareketsizlikten sonra kendiliğinden kilitlenir.",
+    "unavailable_body": "Bu tarayıcı kasa tutamıyor (örneğin gizli pencerede). Anahtarlar bu sekme kapanana kadar saklanır.",
+    "passphrase": "Kasa parolası",
+    "passphrase_new_hint": "En az 8 karakter. Kurtarılamaz: unutursanız tüm anahtarları unutun ve yeniden ekleyin.",
+    "create": "Parola belirle",
+    "unlock": "Kilidi aç",
+    "lock": "Şimdi kilitle",
+    "forget": "Tüm anahtarları unut",
+    "forget_confirm": "Tüm anahtarlar bu sekmeden ve bu cihazdaki kasadan silinsin mi?",
+    "working": "İşleniyor…",
+    "suggest": "Bu tarayıcının düz metin olarak tuttuğu anahtarlar taşındı: artık bu sekme kapanana kadar geçerliler. Onları bu cihazda şifreli tutmak için bir kasa parolası belirleyin.",
+    "suggest_dismiss": "Kapat",
+    "result": {
+      "created": "Kasa oluşturuldu. Bu sekmedeki anahtarlar artık kasada saklanıyor.",
+      "unlocked": "Kasanın kilidi açıldı.",
+      "wrong": "Bu parola kasayı açmıyor.",
+      "too_short": "Parola en az 8 karakter olmalıdır.",
+      "unavailable": "Bu tarayıcı kasa tutamıyor.",
+      "locked": "Kasa kilitlendi.",
+      "forgotten": "Tüm anahtarlar silindi.",
+      "idle": "Anahtar kasası 30 dakika hareketsizlikten sonra kendiliğinden kilitlendi."
+    }
+  },
+  "error": {
+    "invalid_slot": "Bilinmeyen sağlayıcı.",
+    "invalid_key": "Yalnızca yazdırılabilir karakterler kullanın (harfler, rakamlar, noktalama işaretleri); anahtarda boşluk olmaz.",
+    "locked": "Önce kasanın kilidini açın veya bir parola belirleyin.",
+    "unavailable": "Bu tarayıcı kasa tutamıyor.",
+    "storage": "Tarayıcı kaydetmedi (gizli pencere, engellenmiş veya dolu depolama)."
+  },
+  "access": {
+    "title": "Erişim kodu",
+    "body": "Bu site, aktarıcısı, ücretsiz modelleri, ses ve araştırma yanıt vermeden önce bir erişim kodu ister. Kod yalnızca bu siteye gider.",
+    "label": "Erişim kodu",
+    "placeholder": "Kodu girin",
+    "placeholder_saved": "Kaydedildi; değiştirmek için yeni bir kod girin",
+    "save": "Kodu kaydet",
+    "saved": "Erişim kodu kaydedildi.",
+    "removed": "Erişim kodu kaldırıldı."
+  },
+  "relay": {
+    "label": "Tarayıcıları engelleyen sağlayıcılar için Starpi aktarıcısını kullan",
+    "hint": "Bazı sağlayıcılar doğrudan bir web sayfasından gelen çağrıları reddeder. Bu seçenek açıkken böyle bir çağrı bu sitenin aktarıcısı üzerinden bir kez daha gönderilir; aktarıcı çağrıyı anahtarınızla iletir ve hiçbir şey saklamaz. İşe yarayan yol her sağlayıcı için hatırlanır.",
+    "reset": "Hatırlanan yolları unut",
+    "reset_done": "Her sağlayıcıya yapılacak sonraki çağrı yine önce doğrudan yolu dener.",
+    "on": "Aktarıcıya geri dönüş açık.",
+    "off": "Aktarıcıya geri dönüş kapalı: tarayıcıları engelleyen sağlayıcılara ulaşılamaz."
+  },
+  "pool": {
+    "title": "Bu site üzerinden ücretsiz modeller",
+    "loading": "Siteye soruluyor…",
+    "unreachable": "Bu site ücretsiz model sunmuyor (sunucu işlevleri olmadan çalışıyor).",
+    "on": "{provider}: {count} {count:ücretsiz model|ücretsiz model}",
+    "off": "{provider}: sunulmuyor"
+  },
+  "list": {
+    "title": "Kendi anahtarlarınız"
+  },
+  "key": {
+    "label": "{provider} API anahtarı",
+    "placeholder": "Bir anahtar yapıştırın",
+    "hint_prefix": "Anahtarlar {prefix} ile başlar. Alan, kayıtlı bir anahtarı asla göstermez.",
+    "hint_any": "Anahtarı sağlayıcının gösterdiği şekilde aynen yapıştırın. Alan, kayıtlı bir anahtarı asla göstermez.",
+    "mismatch": "Kaydedildi, ancak bu bir {provider} anahtarına benzemiyor. Denetlemek için Anahtarı test et seçeneğini kullanın.",
+    "remember": "Bu cihazdaki kasada tut",
+    "remember_locked": "Anahtarları bu cihazda tutmak için kasayı açın (veya bir parola belirleyin).",
+    "save": "Anahtarı kaydet",
+    "test": "Anahtarı test et",
+    "remove": "Anahtarı kaldır",
+    "get": "Anahtar al",
+    "none": "Anahtar yok",
+    "session": "Bu sekme için anahtar (••••{last4})",
+    "vault": "Kasadaki anahtar (••••{last4})",
+    "saved": "Anahtar bu sekme için kaydedildi.",
+    "saved_vault": "Anahtar kasaya kaydedildi.",
+    "removed": "Anahtar kaldırıldı.",
+    "empty": "Önce bir anahtar yapıştırın."
+  },
+  "route": {
+    "direct": "Doğrudan tarayıcıdan",
+    "auto": "Doğrudan, engellenirse aktarıcı",
+    "relay": "Aktarıcı üzerinden",
+    "pool": "Bu site üzerinden ücretsiz",
+    "device": "Bu cihazda",
+    "reason": {
+      "unknown": "Bilinmeyen sağlayıcı",
+      "no_key": "Anahtar gerekir",
+      "relay_off": "Aktarıcı gerekir",
+      "no_server": "Sunucu adresi yok",
+      "in_browser": "Bu cihazda"
+    }
+  },
+  "test": {
+    "running": "Anahtar test ediliyor…",
+    "ok_direct": "Anahtar çalışıyor (doğrudan tarayıcıdan).",
+    "ok_relay": "Anahtar çalışıyor (aktarıcı üzerinden).",
+    "failed": "Test başarısız oldu ({code}): {reason}"
+  },
+  "local": {
+    "title": "Kendi sunucunuz",
+    "presets": "Hazır ayarlar:",
+    "url": "Sunucu adresi",
+    "url_hint": "OpenAI uyumlu bir uç nokta. İzin verilenler: https:// adresleri, http://localhost ve http://127.0.0.1.",
+    "key": "Sunucu anahtarı (isteğe bağlı)",
+    "key_hint": "Yalnızca sunucunuz bir anahtar isterse.",
+    "saved": "Sunucu adresi kaydedildi.",
+    "cors_title": "Bu sitenin sunucunuzu çağırmasına izin verin",
+    "cors": {
+      "ollama": "Ollama: {setting} değerini {origin} olarak ayarlayıp başlatın.",
+      "lmstudio": "LM Studio: sunucu ayarlarında “{setting}” seçeneğini açın.",
+      "vllm": "vLLM: {setting} içinde {origin} listelenecek şekilde başlatın.",
+      "llamacpp": "llama.cpp: sunucusu, ek ayar gerektirmeden web sayfalarından gelen çağrıları kabul eder."
+    },
+    "chrome": "Chrome, bu sitenin yerel ağınızdaki cihazlara erişip erişemeyeceğini sorar. İzin verin; aksi hâlde tarayıcı sunucunuza yapılan çağrıları engeller.",
+    "relay_never": "Kendi sunucunuza yapılan çağrılar her zaman doğrudan bu tarayıcıdan gider; aktarıcı ağınıza asla ulaşmaz.",
+    "large_models": "Kendi sunucunuzda MiniMax M3 veya M3.1 için yaklaşık 160 GB veya daha fazla belleğe sahip bir iş istasyonu ya da sunucu gerekir; tarayıcı için bir sürümü yoktur. M3 için GGUF derlemeleri vardır; M3.1 Flash ağırlıkları Ekim 2026'da henüz yayımlanmamıştı. Starpi bunların düşünme metnini ve bağlam penceresini (1 milyon token veya sunucunun bildirdiği değer) okur."
+  }
+}

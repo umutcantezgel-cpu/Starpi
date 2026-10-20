@@ -1,6 +1,6 @@
 {
   "name": "starpi",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "private": true,
   "description": "Knowledge assistant in the browser that shows how far each answer can be trusted: verifiable citations, a deterministic source check on every answer, answer receipts, on-device files and WebGPU inference.",
   "type": "module",
@@ -18,7 +18,8 @@
     "node": ">=22.13"
   },
   "workspaces": [
-    "packages/core"
+    "packages/core",
+    "packages/companion"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -28,16 +29,28 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test \"tests/unit/*.test.mjs\"",
     "test:e2e": "playwright test",
+    "fakes": "node scripts/fakes/index.mjs",
     "verify:dist": "node scripts/verify-dist.mjs",
     "verify:receipt": "node scripts/verify-receipt.mjs",
     "build:core": "node scripts/build-core.mjs",
     "pack:core": "npm pack --workspace=@starpi/core --dry-run",
+    "test:companion": "npm run build:core && npm test --workspace @starpi/companion",
+    "typecheck:companion": "npm run build:core && npm run typecheck --workspace @starpi/companion",
     "sbom": "node scripts/sbom.mjs",
     "eval:source-check": "node scripts/eval-source-check.mjs",
+    "eval:answers": "node scripts/eval-answers.mjs",
     "docs:sync": "node scripts/sync-diagrams.mjs",
-    "nvidia:sync": "node scripts/sync-nvidia-catalog.mjs",
     "nvidia:ping": "node scripts/nvidia-ping.mjs",
-    "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run verify:dist"
+    "headers:gen": "node scripts/gen-headers.mjs",
+    "headers:check": "node scripts/gen-headers.mjs --check",
+    "license:check": "node scripts/license-gate.mjs",
+    "eol:check": "node scripts/eol-check.mjs",
+    "hygiene:check": "node scripts/public-hygiene.mjs",
+    "icons:gen": "node scripts/gen-icons.mjs",
+    "providers:ping": "node scripts/provider-ping.mjs",
+    "models:sync": "node scripts/sync-model-catalog.mjs",
+    "models:lock": "node scripts/models-lock.mjs",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build && npm run verify:dist && npm run headers:check && npm run license:check && npm run eol:check"
   },
   "keywords": [
     "webgpu",
@@ -54,21 +67,25 @@
     "pwa"
   ],
   "dependencies": {
+    "@anthropic-ai/sdk": "0.133.0",
     "@fontsource-variable/plus-jakarta-sans": "5.3.0",
     "@huggingface/transformers": "4.3.0",
-    "@mlc-ai/web-llm": "0.2.85",
-    "@supabase/supabase-js": "2.117.2",
+    "@mlc-ai/web-llm": "0.2.86",
+    "@supabase/supabase-js": "2.117.3",
     "dompurify": "3.4.16",
-    "lucide": "1.52.0",
-    "marked": "18.0.14",
+    "highlight.js": "11.12.0",
+    "katex": "0.18.11",
+    "lucide": "1.55.0",
+    "marked": "18.1.0",
     "pdfjs-dist": "6.4.299"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
     "@eslint/js": "10.0.1",
-    "@playwright/test": "1.63.0",
+    "@playwright/test": "1.64.0",
     "esbuild": "0.28.2",
     "eslint": "10.12.0",
+    "fake-indexeddb": "6.2.6",
     "globals": "17.13.0",
     "jsdom": "30.1.2",
     "mermaid": "12.1.0",

@@ -1,0 +1,27 @@
+{
+  "error": {
+    "auth": "Sağlayıcı anahtarı kabul etmedi. Ayarlar’dan kontrol edin.",
+    "quota": "Sağlayıcı hesabında kredi veya kota kalmadı.",
+    "rate_limited": "Sağlayıcı şu anda çok fazla istek alıyor. Biraz sonra yeniden deneyin.",
+    "not_found": "Sağlayıcı bu modeli sunmuyor.",
+    "bad_request": "Sağlayıcı isteği reddetti.",
+    "context_length": "Sohbet bu model için çok uzun. Yeni bir sohbet başlatın veya daha geniş bağlamlı bir model seçin.",
+    "server": "Sağlayıcıda şu anda bir sorun var. Daha sonra yeniden deneyin.",
+    "timeout": "Sağlayıcı zamanında yanıt vermedi.",
+    "network": "Sağlayıcıya ulaşılamıyor. Bağlantınızı kontrol edin.",
+    "aborted": "Durduruldu.",
+    "bad_response": "Sağlayıcı, Starpi’nin okuyamadığı bir yanıt gönderdi.",
+    "cors": "Sağlayıcı doğrudan tarayıcıdan gelen çağrıları kabul etmiyor. Ayarlar’dan aktarıcıyı açın.",
+    "stream_cut": "Yanıt tamamlanmadan kesildi.",
+    "refusal": "Sağlayıcı bu isteği yanıtlamayı reddetti."
+  },
+  "retry_in": "{seconds} sn sonra yeniden deneyin.",
+  "stop": {
+    "max_tokens": "Yanıt uzunluk sınırına ulaştı.",
+    "refusal": "Model yanıt vermeyi reddetti.",
+    "pause": "Sağlayıcı yanıtı duraklattı; yanıt kendiliğinden devam eder.",
+    "cancelled": "Durduruldu.",
+    "timeout": "Yanıt çok uzun sürdü ve durduruldu.",
+    "error": "Yanıt bir hatayla sona erdi."
+  }
+}

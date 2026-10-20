@@ -3,9 +3,10 @@
 -- ==============================================================================
 --
 -- Canonical schema for a new Supabase project: knowledge base (documents,
--- sections with 1536-dim pgvector embeddings and an HNSW index, German
--- full-text search), knowledge graph, chat history, settings and the RPCs
--- used by the browser and the backend.
+-- sections with 1536-dim and 384-dim pgvector embeddings and HNSW indexes,
+-- German full-text search), knowledge graph, chat history, end-to-end
+-- encrypted chat sync, settings and the RPCs used by the browser and the
+-- library publisher.
 --
 -- Existing databases are upgraded with the files in migrations/ instead; this
 -- file refuses to run on a pre-hardening schema. After a fresh install the
@@ -16,11 +17,13 @@
 -- Security model (details in README.md):
 --   * The browser uses the anon key and Supabase anonymous sign-ins. Signed-in
 --     clients have the role "authenticated" and only reach their own rows.
---   * The backend uses the service role, which bypasses RLS.
+--   * The library publisher (tools/library-publisher) uses the service role,
+--     which bypasses RLS.
 --   * Knowledge rows are public (is_public, set by the service role) or
 --     private to owner_id. Published rows are read-only for browser roles.
---     chat_history is always private to its owner; brain_settings is service
---     role only.
+--     chat_history, chat_sync and chat_sync_keys are always private to their
+--     owner; brain_settings is service role only. chat_sync holds only
+--     ciphertext the browser made.
 --   * CHECK constraints bound the size of every column the browser can write.
 --
 -- Prerequisite: Authentication > Sign In / Providers > Anonymous sign-ins.
@@ -107,6 +110,14 @@ create table if not exists public.knowledge_sections (
         to_tsvector('german', coalesce(heading, '') || ' ' || coalesce(markdown_content, ''))
     ) stored
 );
+
+-- multilingual-e5-small vectors (migrations/20261101000000_embedding_384.sql).
+-- Added after the table, like the migration does, so the column order of
+-- fresh and upgraded schemas is the same.
+alter table public.knowledge_sections add column if not exists embedding_384 public.vector(384);
+
+comment on column public.knowledge_sections.embedding_384 is
+    'multilingual-e5-small, 384 dimensions, L2-normalised: "passage: " + section text. Queries use "query: " + question with the same model.';
 
 -- ------------------------------------------------------------------------------
 -- 3. Chat history (private to the signed-in user)
@@ -231,6 +242,8 @@ create index if not exists idx_kdocs_fts on public.knowledge_documents using gin
 
 create index if not exists idx_ksections_embedding_hnsw on public.knowledge_sections
     using hnsw (embedding public.vector_cosine_ops) with (m = 16, ef_construction = 64);
+create index if not exists idx_ksections_embedding_384_hnsw on public.knowledge_sections
+    using hnsw (embedding_384 public.vector_cosine_ops) with (m = 16, ef_construction = 64);
 create index if not exists idx_ksections_doc_id on public.knowledge_sections (document_id);
 create index if not exists idx_ksections_fts on public.knowledge_sections using gin (fts);
 
@@ -446,7 +459,8 @@ begin
         from pg_proc p
         where p.pronamespace = 'public'::regnamespace
           and p.proname in ('match_knowledge_sections', 'match_knowledge_hybrid',
-                            'ingest_document_atomic', 'search_knowledge')
+                            'ingest_document_atomic', 'search_knowledge',
+                            'match_knowledge_vector_384')
     loop
         execute format('drop function %s', fn);
     end loop;
@@ -693,9 +707,66 @@ as $$
     limit greatest(1, least(coalesce(match_count, 6), 20));
 $$;
 
--- Atomic ingestion of a document and its sections, used by the backend with
--- the service role. SECURITY INVOKER: the service role has the table
--- privileges it needs, and nobody else may execute it.
+-- Vector ranking for the browser (anon and signed-in users). Returns the
+-- visible sections most similar to query_embedding, best first, with the
+-- columns of search_knowledge plus the cosine similarity. Sections without
+-- embedding_384 are never returned; a null query returns no rows; a query of
+-- another dimension fails with SQLSTATE 22023. match_count is clamped to
+-- 1..20, only rows above match_threshold (default 0) are returned.
+-- With the HNSW index the ranking is approximate (it looks at hnsw.ef_search
+-- candidates, 40 by default) and RLS filters those candidates, so a caller who
+-- can see only a small part of the table may get fewer rows than asked for.
+create function public.match_knowledge_vector_384(
+    query_embedding public.vector(384),
+    match_count integer default 6,
+    match_threshold double precision default 0
+)
+returns table (
+    section_id uuid,
+    document_id uuid,
+    document_title text,
+    heading text,
+    markdown_content text,
+    tags text[],
+    similarity double precision
+)
+language plpgsql
+stable
+security invoker
+set search_path = ''
+as $$
+begin
+    if query_embedding is null then
+        return;
+    end if;
+    if public.vector_dims(query_embedding) <> 384 then
+        raise exception 'query_embedding has % dimensions, expected 384', public.vector_dims(query_embedding)
+            using errcode = '22023';
+    end if;
+
+    return query
+        select
+            ks.id,
+            ks.document_id,
+            kd.title,
+            ks.heading,
+            ks.markdown_content,
+            kd.tags,
+            (1 - (ks.embedding_384 operator(public.<=>) query_embedding))::double precision
+        from public.knowledge_sections ks
+        join public.knowledge_documents kd on kd.id = ks.document_id
+        where ks.embedding_384 is not null
+          and 1 - (ks.embedding_384 operator(public.<=>) query_embedding) > coalesce(match_threshold, 0)
+        order by ks.embedding_384 operator(public.<=>) query_embedding
+        limit greatest(1, least(coalesce(match_count, 6), 20));
+end;
+$$;
+
+-- Atomic ingestion of a document and its sections, used by the library
+-- publisher with the service role. SECURITY INVOKER: the service role has the
+-- table privileges it needs, and nobody else may execute it. A section's
+-- "embedding" (1536) and "embedding_384" are optional; an empty or missing
+-- array stores null, an array of another length fails the whole call.
 create function public.ingest_document_atomic(
     doc_title text,
     doc_summary text,
@@ -732,7 +803,7 @@ begin
     returning id into new_doc_id;
 
     insert into public.knowledge_sections (
-        document_id, section_index, heading, markdown_content, token_count, embedding
+        document_id, section_index, heading, markdown_content, token_count, embedding, embedding_384
     )
     select
         new_doc_id,
@@ -744,6 +815,11 @@ begin
             when jsonb_typeof(s.elem -> 'embedding') = 'array'
                  and jsonb_array_length(s.elem -> 'embedding') > 0
             then (s.elem ->> 'embedding')::public.vector(1536)
+        end,
+        case
+            when jsonb_typeof(s.elem -> 'embedding_384') = 'array'
+                 and jsonb_array_length(s.elem -> 'embedding_384') > 0
+            then (s.elem ->> 'embedding_384')::public.vector(384)
         end
     from jsonb_array_elements(payload) with ordinality as s (elem, ord);
 
@@ -792,10 +868,170 @@ revoke all on function public.match_knowledge_hybrid(text, public.vector, intege
 grant execute on function public.match_knowledge_hybrid(text, public.vector, integer, integer)
     to authenticated, service_role;
 
+revoke all on function public.match_knowledge_vector_384(public.vector, integer, double precision)
+    from public, anon, authenticated, service_role;
+grant execute on function public.match_knowledge_vector_384(public.vector, integer, double precision)
+    to anon, authenticated, service_role;
+
 revoke all on function public.ingest_document_atomic(text, text, text[], text, text, text, jsonb)
     from public, anon, authenticated, service_role;
 grant execute on function public.ingest_document_atomic(text, text, text[], text, text, text, jsonb)
     to service_role;
+
+-- ------------------------------------------------------------------------------
+-- 11. End-to-end encrypted chat sync (migrations/20261102000000_chat_sync.sql)
+-- ------------------------------------------------------------------------------
+-- 11.1 Tables
+-- ------------------------------------------------------------------------------
+-- Formats (checked here so that a row can only ever hold opaque data):
+--   conv_id      32 characters of base64url (24 bytes of an HMAC-SHA-256)
+--   iv           16 characters of base64 (12 bytes)
+--   ciphertext   base64 of the AES-GCM output, at most 2800000 characters
+--   key_id       22 characters of base64url (16 random bytes)
+--   salt         24 characters of base64 (16 bytes)
+--   wrapped_key  64 characters of base64 (a 32-byte key plus the 16-byte tag)
+create table if not exists public.chat_sync (
+    user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+    conv_id text not null,
+    rev bigint not null,
+    iv text not null,
+    ciphertext text not null,
+    updated_at timestamptz not null default now(),
+    constraint chat_sync_pkey primary key (user_id, conv_id),
+    constraint chat_sync_conv_id_format check (conv_id ~ '^[A-Za-z0-9_-]{32}$'),
+    constraint chat_sync_rev_positive check (rev > 0),
+    constraint chat_sync_iv_format check (iv ~ '^[A-Za-z0-9+/]{16}$'),
+    constraint chat_sync_ciphertext_format check (
+        char_length(ciphertext) between 24 and 2800000
+        and char_length(ciphertext) % 4 = 0
+        and ciphertext ~ '^[A-Za-z0-9+/]+={0,2}$'
+    )
+);
+
+comment on table public.chat_sync is
+    'End-to-end encrypted conversations: AES-GCM ciphertext made in the browser, opaque ids, owner only.';
+
+create table if not exists public.chat_sync_keys (
+    user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+    key_id text not null,
+    kdf text not null,
+    iterations integer not null,
+    salt text not null,
+    iv text not null,
+    wrapped_key text not null,
+    created_at timestamptz not null default now(),
+    constraint chat_sync_keys_pkey primary key (user_id),
+    constraint chat_sync_keys_key_id_format check (key_id ~ '^[A-Za-z0-9_-]{22}$'),
+    constraint chat_sync_keys_kdf_check check (kdf = 'PBKDF2-SHA256'),
+    constraint chat_sync_keys_iterations_range check (iterations between 600000 and 10000000),
+    constraint chat_sync_keys_salt_format check (salt ~ '^[A-Za-z0-9+/]{22}==$'),
+    constraint chat_sync_keys_iv_format check (iv ~ '^[A-Za-z0-9+/]{16}$'),
+    constraint chat_sync_keys_wrapped_key_format check (wrapped_key ~ '^[A-Za-z0-9+/]{64}$')
+);
+
+comment on table public.chat_sync_keys is
+    'The chat sync key of a user, wrapped with a key derived from a passphrase that never leaves the browser.';
+
+-- ------------------------------------------------------------------------------
+-- 11.2 Row guard
+-- ------------------------------------------------------------------------------
+-- A row keeps its owner and id; an update must raise the revision (a stale
+-- write fails with SQLSTATE 40001 instead of replacing a newer one); the
+-- server sets updated_at.
+create or replace function public.chat_sync_guard()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+    if tg_op = 'UPDATE' then
+        if new.user_id is distinct from old.user_id or new.conv_id is distinct from old.conv_id then
+            raise exception 'a chat_sync row keeps its owner and id' using errcode = '42501';
+        end if;
+        if new.rev <= old.rev then
+            raise exception 'chat_sync revision % is not newer than %', new.rev, old.rev using errcode = '40001';
+        end if;
+    end if;
+    new.updated_at := now();
+    return new;
+end;
+$$;
+
+revoke all on function public.chat_sync_guard() from public, anon, authenticated, service_role;
+
+drop trigger if exists chat_sync_guard on public.chat_sync;
+create trigger chat_sync_guard
+    before insert or update on public.chat_sync
+    for each row execute function public.chat_sync_guard();
+
+-- ------------------------------------------------------------------------------
+-- 11.3 Row level security: owner only, nothing for anon
+-- ------------------------------------------------------------------------------
+alter table public.chat_sync enable row level security;
+alter table public.chat_sync_keys enable row level security;
+
+drop policy if exists chat_sync_select_own on public.chat_sync;
+drop policy if exists chat_sync_insert_own on public.chat_sync;
+drop policy if exists chat_sync_update_own on public.chat_sync;
+drop policy if exists chat_sync_delete_own on public.chat_sync;
+drop policy if exists chat_sync_keys_select_own on public.chat_sync_keys;
+drop policy if exists chat_sync_keys_insert_own on public.chat_sync_keys;
+drop policy if exists chat_sync_keys_delete_own on public.chat_sync_keys;
+
+-- Any other policy on these tables would be OR-ed with the ones below.
+do $$
+declare
+    pol record;
+begin
+    for pol in
+        select tablename, policyname
+        from pg_policies
+        where schemaname = 'public' and tablename in ('chat_sync', 'chat_sync_keys')
+    loop
+        raise notice 'dropping unexpected policy % on public.%', pol.policyname, pol.tablename;
+        execute format('drop policy %I on public.%I', pol.policyname, pol.tablename);
+    end loop;
+end
+$$;
+
+create policy chat_sync_select_own on public.chat_sync
+    for select to authenticated
+    using (user_id = (select auth.uid()));
+
+create policy chat_sync_insert_own on public.chat_sync
+    for insert to authenticated
+    with check (user_id = (select auth.uid()));
+
+create policy chat_sync_update_own on public.chat_sync
+    for update to authenticated
+    using (user_id = (select auth.uid()))
+    with check (user_id = (select auth.uid()));
+
+create policy chat_sync_delete_own on public.chat_sync
+    for delete to authenticated
+    using (user_id = (select auth.uid()));
+
+create policy chat_sync_keys_select_own on public.chat_sync_keys
+    for select to authenticated
+    using (user_id = (select auth.uid()));
+
+create policy chat_sync_keys_insert_own on public.chat_sync_keys
+    for insert to authenticated
+    with check (user_id = (select auth.uid()));
+
+create policy chat_sync_keys_delete_own on public.chat_sync_keys
+    for delete to authenticated
+    using (user_id = (select auth.uid()));
+
+-- ------------------------------------------------------------------------------
+-- 11.4 Privileges
+-- ------------------------------------------------------------------------------
+-- The key row is written once and replaced by delete + insert, never updated.
+revoke all on table public.chat_sync, public.chat_sync_keys from public, anon, authenticated, service_role;
+grant select, insert, update, delete on table public.chat_sync to authenticated, service_role;
+grant select, insert, delete on table public.chat_sync_keys to authenticated;
+grant select, insert, update, delete on table public.chat_sync_keys to service_role;
 
 -- Let PostgREST pick up the new functions and privileges.
 notify pgrst, 'reload schema';

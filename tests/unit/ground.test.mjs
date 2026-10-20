@@ -8,7 +8,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { checkDocument } from '../../src/js/core/document.js';
-import { REASON_CODES, THRESHOLDS } from '../../src/js/core/grounding.js';
+import { REASON_CODES, REASON_CODES_V2, THRESHOLDS } from '../../src/js/core/grounding.js';
 import { describeReason, REASON_MESSAGES, SARIF_SCHEMA, SARIF_VERSION, toSarif } from '../../src/js/core/sarif.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -124,6 +124,21 @@ describe('SARIF', () => {
     assert.equal(moved.runs[0].results[0].locations[0].physicalLocation.region.startLine, 5);
     assert.equal(moved.runs[0].results[0].partialFingerprints['starpiStatement/v1'], run.results[0].partialFingerprints['starpiStatement/v1']);
   });
+
+  it('lists the rules of the version that made the reports, and reports relations of version 3', async () => {
+    const sources = [{ label: '[Doc: costs.md, Chunk: 1]', doc: 'costs.md', heading: '', text: 'Server costs fell from 420,000 EUR to 210,000 EUR.', delivered: /** @type {const} */ ('full') }];
+    const doc = 'Server costs rose from 420,000 EUR to 210,000 EUR [Doc: costs.md, Chunk: 1].\n';
+    const tool = { name: 'starpi-ground', version: '3.0.0', informationUri: 'https://example.org' };
+    const v2 = checkDocument(doc, sources, { version: 2 });
+    assert.equal(v2.relations, undefined);
+    assert.deepEqual((await toSarif([{ uri: 'a.md', report: v2, sources }], tool)).runs[0].tool.driver.rules.map((r) => r.id), [...REASON_CODES_V2, 'too_long']);
+    const v3 = checkDocument(doc, sources);
+    assert.deepEqual(v3.relations?.map((r) => [r.kind, r.verdict, r.sentences]), [['comparative', 'inverted', [0]]]);
+    const log = await toSarif([{ uri: 'a.md', report: v3, sources }], tool);
+    assert.deepEqual(log.runs[0].tool.driver.rules.map((r) => r.id), [...REASON_CODES, 'too_long']);
+    assert.deepEqual(log.runs[0].results.map((r) => [r.ruleId, r.level]), [['negation_inversion', 'warning']]);
+    assert.match(log.runs[0].results[0].message.text, /“rose from 420,000 EUR to 210,000 EUR” is the wrong way round: \[Doc: costs\.md, Chunk: 1\] says “Server costs fell from 420,000 EUR to 210,000 EUR”\./);
+  });
 });
 
 describe('starpi-ground (scripts/ground.mjs)', () => {
@@ -181,6 +196,20 @@ describe('starpi-ground (scripts/ground.mjs)', () => {
       [['fact_elsewhere', 'warning', 'labelled.md', 2]],
     );
     assert.match(log.runs[0].results[0].message.text, /400 is in \[Doc: specs\/a\/limits\.md, Chunk: 1\], not in the cited \[Doc: specs\/b\/limits\.md, Chunk: 1\]\./);
+  });
+
+  it('runs an earlier version of the rules with --grounding, with the output of that version', () => {
+    writeFileSync(path.join(dir, 'specs/costs.md'), '# Costs\n\nServer costs fell from 420,000 EUR to 210,000 EUR.\n');
+    writeFileSync(path.join(dir, 'turned.md'), 'Server costs rose from 420,000 EUR to 210,000 EUR [Doc: costs.md, Chunk: 1].\n');
+    const v3 = JSON.parse(run(['--answer', 'turned.md', '--source', 'specs', '--format', 'json']).stdout);
+    assert.deepEqual(v3.algorithm, { id: 'starpi-grounding', version: 3 });
+    assert.ok(v3.statements[0].reasons.some((/** @type {any} */ r) => r.code === 'relation_inverted'));
+    assert.deepEqual(v3.relations.map((/** @type {any} */ r) => [r.kind, r.verdict, r.cites]), [['comparative', 'inverted', ['[Doc: costs.md, Chunk: 1]']]]);
+    const v2 = JSON.parse(run(['--answer', 'turned.md', '--source', 'specs', '--format', 'json', '--grounding', '2']).stdout);
+    assert.deepEqual(v2.algorithm, { id: 'starpi-grounding', version: 2 });
+    assert.equal('relations' in v2, false);
+    assert.ok(!v2.statements[0].reasons.some((/** @type {any} */ r) => r.code.startsWith('relation_')));
+    assert.equal(run(['--answer', 'turned.md', '--source', 'specs', '--grounding', '4']).status, 2);
   });
 
   it('refuses bad arguments and unreadable input with exit code 2', () => {

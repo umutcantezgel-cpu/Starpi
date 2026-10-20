@@ -1,14 +1,66 @@
 // @ts-check
 // Pure retrieval helpers: local keyword ranking (used in local mode so questions never leave the
-// device, and as a fallback when the search RPC is unavailable) and context assembly for prompts.
+// device, and as a fallback when the search RPC is unavailable), the choice between hybrid and
+// keyword search of the workspace, and context assembly for prompts.
 
-import { citationLabel, labelName } from './core/labels.js';
+import { citationLabel, fenceSafe, labelName } from './core/labels.js';
 import { safeSlice } from './core/sentences.js';
 
 export { CITATION_PATTERN, citationLabel } from './core/labels.js';
 
 /** @typedef {import('./supabase.js').KnowledgeHit} KnowledgeHit */
 /** @typedef {import('./rag/workspace.js').WorkspaceHit} WorkspaceHit */
+
+/** How long a search waits for the question's vector before it ranks by keywords alone. */
+export const QUERY_EMBED_TIMEOUT_MS = 2_000;
+
+/**
+ * The value of a promise, or null when it rejects or takes longer than `ms`.
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} ms
+ * @returns {Promise<T | null>}
+ */
+export function withinTimeout(promise, ms) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(null);
+      },
+    );
+  });
+}
+
+/**
+ * Workspace search as the chat runs it: hybrid when the workspace holds vectors and the question's
+ * vector arrives within the timeout, keyword search (BM25) otherwise. The question is embedded on
+ * this device; a slow or missing model never holds an answer back by more than the timeout.
+ * @template H
+ * @param {string} query
+ * @param {number} topK
+ * @param {{ hasVectors: () => boolean, embed: ((text: string) => Promise<Float32Array | null>) | null, search: (query: string, topK: number, vector: Float32Array | null) => Promise<H[]>, timeoutMs?: number }} deps
+ * @returns {Promise<H[]>}
+ */
+export async function searchWithQueryVector(query, topK, deps) {
+  const vector = deps.embed && deps.hasVectors() ? await withinTimeout(deps.embed(query), deps.timeoutMs ?? QUERY_EMBED_TIMEOUT_MS) : null;
+  return deps.search(query, topK, vector instanceof Float32Array && vector.length > 0 ? vector : null);
+}
+
+/**
+ * Runs of two or more angle brackets in excerpt text, the shape of the markers around an excerpt.
+ * Each bracket becomes its single-guillemet look-alike, so the text keeps its length and line
+ * breaks but can neither close its excerpt early nor forge another one.
+ * @param {string} text
+ */
+export function defuseFences(text) {
+  return text.replace(/<{2,}|>{2,}/g, (run) => (run[0] === '<' ? '\u2039' : '\u203a').repeat(run.length));
+}
 
 /**
  * A workspace search hit in the shape of a knowledge-base hit, so both flow through one pipeline.
@@ -22,7 +74,8 @@ export function workspaceHit(h) {
     heading: '',
     content: h.text,
     tags: [],
-    rank: h.score,
+    // The BM25 score where there is one (a hybrid hit found by meaning alone has none).
+    rank: h.keywordScore !== undefined ? h.keywordScore : h.score,
     workspace: { docId: h.docId, chunkIndex: h.chunkIndex, start: h.start, end: h.end },
   };
 }
@@ -81,7 +134,7 @@ export function distinctSources(hits) {
   /** @type {Map<string, { title: string, rank: number | null }>} */
   const seen = new Map();
   for (const h of hits) {
-    const key = h.documentId ?? h.documentTitle;
+    const key = h.documentId ?? h.web?.url ?? h.documentTitle;
     if (!seen.has(key)) seen.set(key, { title: h.documentTitle, rank: h.rank });
   }
   return [...seen.values()];
@@ -92,13 +145,14 @@ export function distinctSources(hits) {
  * @property {string} label       exact label shown to the model and the user, e.g. "[Doc: a.pdf, Chunk: 2]"
  * @property {string} doc         document or file name
  * @property {number} chunk       1-based chunk number within the document
- * @property {'workspace' | 'knowledge'} source  on-device workspace or Supabase knowledge base
+ * @property {'workspace' | 'knowledge' | 'web'} source  on-device workspace, Supabase knowledge base, or a page of a web search
  * @property {string} heading
  * @property {string} text        the excerpt text as given to the model (cut to the excerpt limit)
  * @property {boolean} truncated  whether `text` was cut, i.e. ends before the retrieved passage does
  * @property {number | null} score  BM25 score (workspace) or search rank (knowledge base)
  * @property {string | null} documentId  knowledge-base document id, or the workspace document id
  * @property {{ docId: string, chunkIndex: number, start: number, end: number } | null} span  workspace chunk and its character offsets in the extracted text
+ * @property {string} [url]   the page of a web passage (its text is what the search said about the page, not the page)
  */
 
 /**
@@ -136,13 +190,14 @@ export function assignCitations(hits, limits) {
       label,
       doc,
       chunk,
-      source: h.workspace ? 'workspace' : 'knowledge',
+      source: h.workspace ? 'workspace' : h.web ? 'web' : 'knowledge',
       heading: h.heading.replace(/^#+\s*/, ''),
       text: truncated ? `${safeSlice(h.content, limits.excerptChars)}…` : h.content,
       truncated,
       score: h.rank,
       documentId: h.documentId ?? null,
       span: h.workspace ? { docId: h.workspace.docId, chunkIndex: h.workspace.chunkIndex, start: h.workspace.start, end: h.workspace.end } : null,
+      ...(h.web ? { url: h.web.url } : {}),
     });
   }
   return out;
@@ -160,13 +215,15 @@ export function buildContext(citations, limits) {
   const blocks = [];
   let used = 0;
   citations.forEach((c, i) => {
-    const heading = c.heading ? ` · ${c.heading}` : '';
+    // Heading and text come from the document: they must not end the marker early or forge another one.
+    const heading = c.heading ? ` · ${fenceSafe(c.heading)}` : '';
+    const body = defuseFences(c.text);
     const open = `<<<EXCERPT ${i + 1} ${c.label}${heading}>>>\n`;
     const close = `\n<<<END EXCERPT ${i + 1}>>>`;
     const separator = blocks.length ? 2 : 0;
     const room = limits.maxChars - used - separator - open.length - close.length;
-    if (room < Math.min(MIN_EXCERPT_CHARS, c.text.length)) return;
-    const text = c.text.length <= room ? c.text : `${safeSlice(c.text, room - 1).trimEnd()}…`;
+    if (room < Math.min(MIN_EXCERPT_CHARS, body.length)) return;
+    const text = body.length <= room ? body : `${safeSlice(body, room - 1).trimEnd()}…`;
     blocks.push(`${open}${text}${close}`);
     used += separator + open.length + text.length + close.length;
   });

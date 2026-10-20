@@ -6,7 +6,7 @@
 //
 // Pure: WebCrypto (crypto.subtle) only, for the fingerprints.
 import { sha256Hex } from './hash.js';
-import { REASON_CODES } from './grounding.js';
+import { GROUNDING, reasonCodes } from './grounding.js';
 
 export const SARIF_VERSION = '2.1.0';
 export const SARIF_SCHEMA = 'https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json';
@@ -32,6 +32,8 @@ export const REASON_MESSAGES = Object.freeze({
   not_delivered: "{label} did not fit into the model's context.",
   negation_inversion: '{label} says the opposite: “{found}”.',
   name_context: '{label} names someone or something else here, not {fact}: “{found}”.',
+  relation_inverted: '“{fact}” is the wrong way round: {label} says “{found}”.',
+  relation_unsupported: '{label} does not support “{fact}”: “{found}”.',
 });
 
 /**
@@ -54,6 +56,8 @@ const RULES = Object.freeze({
   not_delivered: { name: 'NotDelivered', short: 'Cited excerpt not delivered', full: 'The statement cites only excerpts that did not reach the model.', level: 'error' },
   negation_inversion: { name: 'NegationInversion', short: 'Says the opposite of the excerpt', full: 'A clause of the statement matches a clause of the cited excerpt in its words but not in its negation: one says "not", "never", "no", "without", "disabled" or "prohibited" (or the German counterparts) where the other does not. Always weak: a restatement of a negated rule can read the same.', level: 'warning' },
   name_context: { name: 'NameContext', short: 'Name next to something else', full: 'The statement matches a passage of the cited excerpt in its other words, but the passage has a different name (person, site, vendor or product) where the statement has its own, and the statement\u2019s name stands elsewhere or nowhere.', level: 'warning' },
+  relation_inverted: { name: 'RelationInverted', short: 'Relation the wrong way round', full: 'A change, comparison, order in time or value carried over from the statement before goes the other way in the cited excerpts: "rose" where the values fell, "more than" where the other value is larger, "before" where the other event came first. Always weak: the values are bound to their sides by their words.', level: 'warning' },
+  relation_unsupported: { name: 'RelationUnsupported', short: 'Relation not given by the excerpt', full: 'The cited excerpts give the direction of a relation but not the stated factor or share ("doubled" where the value rose by half, "15 % of" where the values give 20 %), or two equal values for a comparison.', level: 'warning' },
   too_long: { name: 'TooLong', short: 'Part too long to check', full: 'A part of the document is longer than the source check accepts (20,000 characters or 300 statements) even after splitting at headings and paragraphs, so it was not checked.', level: 'error' },
 });
 
@@ -99,7 +103,10 @@ const clip = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` 
  * @param {{ name: string, version: string, informationUri: string }} tool
  */
 export async function toSarif(documents, tool) {
-  const ruleIds = [...REASON_CODES, 'too_long'];
+  // The rules of the version of the source check that made the reports (version 2 reports keep
+  // their rule list).
+  const version = documents.reduce((v, d) => Math.max(v, d.report.algorithm.version || 0), 0) || GROUNDING.version;
+  const ruleIds = [...reasonCodes(version), 'too_long'];
   const rules = ruleIds.map((id) => {
     const rule = RULES[id];
     return {

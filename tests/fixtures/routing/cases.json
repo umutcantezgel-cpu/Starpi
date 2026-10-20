@@ -1,0 +1,225 @@
+{
+  "description": "Auto routing cases over workspace.json: neutral questions with the route Auto should take. 'reference' marks a question that names the user's files; 'files' attaches files of the given kinds. Questions that share one word with the workspace by chance stay free; mixed needs at least two matched terms. How-to questions about software that mention a file or a document stay free, and so does text pasted into the question.",
+  "cases": [
+    {
+      "q": "What budget did the steering board approve for Project Nebula?",
+      "route": "grounded"
+    },
+    {
+      "q": "How many days per week may staff work remotely?",
+      "route": "grounded"
+    },
+    {
+      "q": "When does the canteen serve lunch?",
+      "route": "grounded"
+    },
+    {
+      "q": "For how many nights are hotel stays reimbursed per trip?",
+      "route": "grounded"
+    },
+    {
+      "q": "What does the onboarding checklist say about the security training?",
+      "route": "grounded"
+    },
+    {
+      "q": "Which export formats does release 2.3 support?",
+      "route": "grounded"
+    },
+    {
+      "q": "What are the core hours?",
+      "route": "grounded"
+    },
+    {
+      "q": "Who reports spending against the approved budget?",
+      "route": "grounded"
+    },
+    {
+      "q": "Wie viele Urlaubstage haben Beschäftigte im Jahr?",
+      "route": "grounded"
+    },
+    {
+      "q": "Bis wann muss der Resturlaub genommen werden?",
+      "route": "grounded"
+    },
+    {
+      "q": "Wer genehmigt Urlaubsanträge im Personalportal?",
+      "route": "grounded"
+    },
+    {
+      "q": "Summarize what is in my documents.",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "q": "Was steht im Dokument zur Genehmigung?",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "q": "According to the source, what is fixed in this version?",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "q": "Please translate this file into French.",
+      "route": "grounded",
+      "files": [
+        "document"
+      ]
+    },
+    {
+      "q": "What is shown in this picture?",
+      "route": "free",
+      "files": [
+        "image"
+      ]
+    },
+    {
+      "q": "How do other companies usually handle remote work equipment?",
+      "route": "mixed"
+    },
+    {
+      "q": "What are good tips for a healthy lunch?",
+      "route": "free"
+    },
+    {
+      "q": "How do other firms reimburse hotel stays?",
+      "route": "mixed"
+    },
+    {
+      "q": "How should a finance team structure quarterly reports for investors?",
+      "route": "mixed"
+    },
+    {
+      "q": "Welche Länder eignen sich für Urlaubstage im Frühling?",
+      "route": "free"
+    },
+    {
+      "q": "Which laptop and headset are best for programming?",
+      "route": "mixed"
+    },
+    {
+      "q": "Do companies pay for a second monitor at home?",
+      "route": "mixed"
+    },
+    {
+      "q": "What does a typical project budget for a website cost?",
+      "route": "mixed"
+    },
+    {
+      "q": "What is Nebula?",
+      "route": "grounded"
+    },
+    {
+      "q": "What does budget.md say about the reserve?",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "q": "What is the capital of France?",
+      "route": "free"
+    },
+    {
+      "q": "Write a short poem about autumn.",
+      "route": "free"
+    },
+    {
+      "q": "Explain recursion with a simple example.",
+      "route": "free"
+    },
+    {
+      "q": "How do I boil an egg?",
+      "route": "free"
+    },
+    {
+      "q": "Translate good morning into Spanish.",
+      "route": "free"
+    },
+    {
+      "q": "hello",
+      "route": "free"
+    },
+    {
+      "q": "Wie spät ist es gerade in Tokio?",
+      "route": "free"
+    },
+    {
+      "q": "Erkläre mir den Unterschied zwischen Wetter und Klima.",
+      "route": "free"
+    },
+    {
+      "q": "Give me three ideas for a birthday party.",
+      "route": "free"
+    },
+    {
+      "q": "What is the difference between TCP and UDP?",
+      "route": "free"
+    },
+    {
+      "q": "How can I work more efficiently?",
+      "route": "free"
+    },
+    {
+      "q": "What is a good budget for a wedding?",
+      "route": "free"
+    },
+    {
+      "q": "Was ist ein Jahr auf dem Mars?",
+      "route": "free"
+    },
+    {
+      "q": "Plan a week of team lunches.",
+      "route": "free"
+    },
+    {
+      "q": "Which laptop should I buy for programming?",
+      "route": "free"
+    },
+    {
+      "q": "Summarize my notes, please.",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "q": "Laut meinen Unterlagen: wer genehmigt das?",
+      "route": "grounded",
+      "reference": true
+    },
+    {
+      "q": "How do I search for a word in the file with grep?",
+      "route": "free"
+    },
+    {
+      "q": "How do I replace a string in the file using sed?",
+      "route": "free"
+    },
+    {
+      "q": "How can I insert a page break in the document in Word?",
+      "route": "free"
+    },
+    {
+      "q": "How do I back up my documents to the cloud?",
+      "route": "free"
+    },
+    {
+      "q": "How do I handle the uploaded file in an Express server?",
+      "route": "free"
+    },
+    {
+      "q": "How do I search in my files on my laptop?",
+      "route": "free"
+    },
+    {
+      "q": "Wie speichere ich hochgeladene Dateien in PHP?",
+      "route": "free"
+    },
+    {
+      "q": "Wie füge ich im Dokument ein Inhaltsverzeichnis ein?",
+      "route": "free"
+    },
+    {
+      "q": "Please improve this document: Dear Sir, I am writing to ask about the delivery.",
+      "route": "free"
+    }
+  ]
+}

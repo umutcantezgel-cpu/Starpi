@@ -1,0 +1,130 @@
+{
+  "$comment": "The one source of every HTTP response header Starpi is served with. scripts/lib/headers.mjs resolves it per profile; vercel.json carries the generated rules of the profile public (npm run headers:gen, checked by npm run headers:check), and scripts/serve.mjs, scripts/verify-dist.mjs, scripts/build.mjs (the header digest is part of the service worker version) and the end-to-end tests read the same file. A CSP directive or a header value is either one string for every profile or an object keyed by profile with an optional \"default\". A rule that lists \"profiles\" applies to those profiles only. Profiles: public is the hosted site (Vercel) and the only one that names the Gemini Live socket; self-host is for anyone serving dist/ from their own host; test is what the end-to-end suite may build with local provider fakes (it adds loopback WebSockets); companion (listed under coreProfiles) is the build the local companion serves from its own loopback origin, so it talks to that origin only. Every profile is cross-origin isolated (COOP same-origin plus COEP require-corp), which gives the WebAssembly runtimes SharedArrayBuffer; cross-origin data is fetched with CORS, and no cross-origin subresource is embedded.",
+  "profiles": ["public", "self-host", "test"],
+  "coreProfiles": ["companion"],
+  "csp": {
+    "default-src": "'self'",
+    "script-src": "'self' 'wasm-unsafe-eval'",
+    "style-src": "'self'",
+    "font-src": "'self'",
+    "img-src": "'self' data: blob:",
+    "connect-src": {
+      "public": "'self' data: https: wss://*.supabase.co wss://generativelanguage.googleapis.com http://localhost:* http://127.0.0.1:*",
+      "test": "'self' data: https: wss://*.supabase.co http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*",
+      "companion": "'self' data:",
+      "default": "'self' data: https: wss://*.supabase.co http://localhost:* http://127.0.0.1:*"
+    },
+    "worker-src": "'self'",
+    "manifest-src": "'self'",
+    "media-src": "'none'",
+    "object-src": "'none'",
+    "frame-src": "'self'",
+    "base-uri": "'none'",
+    "form-action": "'none'",
+    "frame-ancestors": "'none'"
+  },
+  "rules": [
+    {
+      "source": "/(.*)",
+      "headers": {
+        "Content-Security-Policy": "{{csp}}",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "no-referrer",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Embedder-Policy": "require-corp",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Origin-Agent-Cluster": "?1",
+        "Strict-Transport-Security": "max-age=63072000",
+        "Permissions-Policy": {
+          "companion": "microphone=(self), camera=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), bluetooth=(), display-capture=()",
+          "default": "microphone=(self), camera=(self), geolocation=(), payment=(), usb=(), serial=(), hid=(), bluetooth=(), display-capture=()"
+        }
+      }
+    },
+    {
+      "$comment": "The render frame (public/render-frame.html and its script) previews HTML, SVG and diagrams from answers. The app frames it with sandbox=\"allow-scripts\" and no allow-same-origin, and the CSP sandbox directive enforces the same opaque origin when the page is opened on its own, so nothing in it can read the app's storage or reach its parent. Content arrives by postMessage; user scripts run only after a click, and the frame can fetch nothing (connect-src 'none'). Inline scripts and styles are allowed here and only here. Its script is requested from the frame's opaque origin, a cross-origin request under COEP, hence CORP cross-origin (a public static file). Exact paths only, never a prefix, so an encoded path cannot pick up these headers.",
+      "source": "/render-frame",
+      "profiles": ["public", "self-host", "test", "companion"],
+      "headers": {
+        "Content-Security-Policy": "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; frame-ancestors 'self'; sandbox allow-scripts",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Cross-Origin-Resource-Policy": "cross-origin"
+      }
+    },
+    {
+      "source": "/render-frame.html",
+      "profiles": ["public", "self-host", "test", "companion"],
+      "headers": {
+        "Content-Security-Policy": "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; frame-ancestors 'self'; sandbox allow-scripts",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Cross-Origin-Resource-Policy": "cross-origin"
+      }
+    },
+    {
+      "source": "/render-frame.js",
+      "profiles": ["public", "self-host", "test", "companion"],
+      "headers": {
+        "Content-Security-Policy": "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; frame-ancestors 'self'; sandbox allow-scripts",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Cross-Origin-Resource-Policy": "cross-origin"
+      }
+    },
+    {
+      "$comment": "The grounding frame (public/grounding-frame.html) shows the search suggestions a provider returns with a grounded web answer, unchanged as the provider's terms ask. It runs no app script and no inline script: only its own same-origin script, which takes the HTML by postMessage. Inline styles of that HTML are allowed here, remote resources are not. Opaque origin (CSP sandbox), framed only by the app; the suggestion links open in a new browsing context. CORP cross-origin for the same reason as the render frame. The companion build has no web search, so it serves no grounding frame.",
+      "source": "/grounding-frame",
+      "profiles": ["public", "self-host", "test"],
+      "headers": {
+        "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; frame-ancestors 'self'; sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Cross-Origin-Resource-Policy": "cross-origin"
+      }
+    },
+    {
+      "source": "/grounding-frame.html",
+      "profiles": ["public", "self-host", "test"],
+      "headers": {
+        "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; frame-ancestors 'self'; sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Cross-Origin-Resource-Policy": "cross-origin"
+      }
+    },
+    {
+      "source": "/grounding-frame.js",
+      "profiles": ["public", "self-host", "test"],
+      "headers": {
+        "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; frame-ancestors 'self'; sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Cross-Origin-Resource-Policy": "cross-origin"
+      }
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": { "Cache-Control": "public, max-age=31536000, immutable" }
+    },
+    {
+      "source": "/sw.js",
+      "headers": { "Cache-Control": "no-cache, no-store, must-revalidate", "Service-Worker-Allowed": "/" }
+    },
+    {
+      "source": "/",
+      "headers": { "Cache-Control": "no-cache" }
+    },
+    {
+      "source": "/index.html",
+      "headers": { "Cache-Control": "no-cache" }
+    },
+    {
+      "$comment": "The companion serves this build itself and must revalidate the manifest to notice a new build.",
+      "source": "/build-manifest.json",
+      "profiles": ["companion"],
+      "headers": { "Cache-Control": "no-cache" }
+    },
+    {
+      "$comment": "The companion sets the media type of every file it serves itself and refuses a build that sets one.",
+      "source": "/manifest.webmanifest",
+      "profiles": ["public", "self-host", "test"],
+      "headers": { "Content-Type": "application/manifest+json" }
+    }
+  ]
+}

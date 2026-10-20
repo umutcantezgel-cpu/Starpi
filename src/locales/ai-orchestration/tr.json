@@ -1,0 +1,123 @@
+{
+  "tier": {
+    "selected": "Modeliniz",
+    "role": "Sağlayıcının başka bir modeli",
+    "provider": "Sonraki sağlayıcı",
+    "device": "Bu cihaz",
+    "cache": "Kayıtlı yanıt",
+    "template": "Yapay zekâsız"
+  },
+  "outcome": {
+    "ok": "Yanıtlandı",
+    "invalid": "Yanıt reddedildi",
+    "truncated": "Yanıt kesildi",
+    "refused": "Reddetti",
+    "rate_limited": "Çok fazla istek",
+    "not_found": "Model sunulmuyor",
+    "unavailable": "Ulaşılamıyor",
+    "timeout": "Zamanında yanıt yok",
+    "error": "Başarısız",
+    "skipped": "Atlandı"
+  },
+  "blocked": {
+    "cooldown": "Çok fazla istekten sonra bekleniyor",
+    "circuit_open": "Tekrarlanan hatalardan sonra duraklatıldı",
+    "probing": "Yeniden deneniyor",
+    "not_found": "Şu anda sunulmuyor"
+  },
+  "attempt": {
+    "retry": "İkinci deneme",
+    "served": "Onun yerine {model} yanıtladı",
+    "latency": "{time}"
+  },
+  "result": {
+    "switched": "{requested} yanıt vermedi; onun yerine {served} yanıtladı.",
+    "cached": "{time} tarihli kayıtlı yanıt",
+    "template": "Hiçbir model yanıt vermedi; bu yanıt yapay zekâ olmadan hazırlandı.",
+    "unavailable": "Hiçbir model yanıt vermedi ve bunun için yapay zekâsız bir yanıt yok.",
+    "simulated": "Benzetilmiş sağlayıcı"
+  },
+  "thinking": {
+    "label": "Genişletilmiş düşünme",
+    "hint": "Yetenekli modellerin yanıtlamadan önce akıl yürütmesini sağlar. Daha yavaştır ve daha fazla token kullanır."
+  },
+  "strength": {
+    "label": "Model gücü",
+    "max": "En yüksek",
+    "max_desc": "Sağlayıcının en güçlü modeli. En iyi sonuçlar; en yavaş ve en pahalı.",
+    "super": "Güçlü",
+    "super_desc": "En yükseğin bir basamak altında güçlü bir model: ayrıntılı yanıtlar, daha hızlı ve daha ucuz.",
+    "auto": "Otomatik",
+    "auto_desc": "Starpi her görev için ücretsiz bir model seçer ve meşgul olanları atlar.",
+    "fast": "Hızlı",
+    "fast_desc": "En hızlı model. Kısa sorular için uygun."
+  },
+  "health": {
+    "on": "Kullanılabilir",
+    "off": "Kurulu değil",
+    "unknown": "Durum bilinmiyor"
+  },
+  "council": {
+    "title": "Kurul",
+    "drafts_label": "Kurulun taslakları",
+    "draft": "Taslak {n}",
+    "phase_start": "Kurul başlıyor.",
+    "phase_members": "Hazır taslaklar: {total} taslaktan {done} tanesi.",
+    "phase_judge": "Hakem {valid} taslağı karşılaştırıyor.",
+    "phase_done_judge": "Hakem bir taslak seçti.",
+    "phase_done_merged": "Hakem taslakları birleştirdi.",
+    "phase_done_best": "En iyi geçerli taslak geçerliliğini koruyor.",
+    "phase_done_none": "Hiç geçerli taslak gelmedi.",
+    "phase_aborted": "Kurul durduruldu.",
+    "status": {
+      "pending": "Yazıyor",
+      "ok": "Geçerli",
+      "invalid": "Reddedildi",
+      "error": "Başarısız",
+      "timeout": "Çok yavaş",
+      "skipped": "Atlandı"
+    },
+    "latency": "{time} sürdü",
+    "rejected": "Neden reddedildi",
+    "read_draft": "Bu taslağı oku",
+    "thinking": "Yanıtlamadan önce akıl yürüttü",
+    "chosen": "Hakem tarafından seçildi",
+    "used_best": "En iyi taslak olarak kullanıldı",
+    "judge": "Hakem",
+    "judge_pending": "Hakem taslakları okuyor.",
+    "judge_reasons": "Gerekçeler",
+    "judge_chose": "{draft} seçildi",
+    "judge_merged": "Taslakları tek bir yanıtta birleştirdi",
+    "judge_failed": "Hakem kullanılabilir bir karar vermedi.",
+    "result": "Sonuç",
+    "decided": {
+      "judge": "Hakem seçti",
+      "merged": "Hakem birleştirdi",
+      "best": "En iyi geçerli taslak",
+      "none": "Sonuç yok"
+    },
+    "valid_count": "{total} taslaktan {valid} tanesi geçerli",
+    "finished_at": "Bitiş: {time}",
+    "reason": {
+      "no_models": "Kurul için kullanılabilir model yok.",
+      "no_valid_draft": "Taslakların hiçbiri kullanılamadı.",
+      "one_valid_draft": "Yalnızca bir taslak kullanılabildi, bu yüzden hakeme gerek kalmadı.",
+      "no_judge": "Hakemlik yapacak başka boş model yoktu, bu yüzden en iyi geçerli taslak kullanıldı.",
+      "judge_invalid": "Hakemin kararı kullanılamadı, bu yüzden en iyi geçerli taslak kullanıldı.",
+      "judge_error": "Hakem başarısız oldu, bu yüzden en iyi geçerli taslak kullanıldı.",
+      "judge_timeout": "Hakem çok uzun sürdü, bu yüzden en iyi geçerli taslak kullanıldı.",
+      "judge_skipped": "Hakem kullanılamıyordu, bu yüzden en iyi geçerli taslak kullanıldı."
+    },
+    "error": {
+      "empty": "Taslak boştu.",
+      "truncated": "Taslak uzunluk sınırına ulaştı.",
+      "too_long": "Taslak çok uzundu.",
+      "refusal": "Model reddetti.",
+      "no_json": "Yanıtta JSON nesnesi yoktu.",
+      "schema": "Yanıt beklenen biçimde değildi ({detail}).",
+      "quote_not_found": "Bir alıntı kaynakta bulunamadı.",
+      "unknown_source": "Yanıt var olmayan bir kaynağı adlandırdı ({detail}).",
+      "other": "Reddedildi ({code})."
+    }
+  }
+}

@@ -1,8 +1,11 @@
 # Starpi database (Supabase)
 
-SQL for the Starpi knowledge base: documents and sections with 1536-dim
-pgvector embeddings (HNSW index), German full-text search, a small knowledge
-graph, chat history and the RPCs used by the browser and the backend.
+SQL for the Starpi knowledge base: documents and sections with pgvector
+embeddings (1536-dim, and optionally 384-dim multilingual-e5-small vectors,
+each with an HNSW index), German full-text search, a small knowledge graph,
+the optional end-to-end encrypted chat sync, the chat history table of 2.x and
+the RPCs used by the browser and the library publisher
+(`tools/library-publisher`, see [../README.md](../README.md#library-publisher)).
 
 | Path | Purpose |
 | --- | --- |
@@ -10,6 +13,8 @@ graph, chat history and the RPCs used by the browser and the backend.
 | `migrations/20260923000000_harden_rls_anonymous_auth.sql` | Upgrade 1 of an existing database (the live project and any install from an earlier `schema.sql` / `full_schema.sql`): owner-based RLS for anonymous sign-ins. Idempotent. |
 | `migrations/20260924000000_lock_published_rows.sql` | Upgrade 2 (needs upgrade 1): published rows read-only for browser roles, `brain_settings` service role only, size limits for browser writes. Idempotent. |
 | `migrations/20260924120000_search_knowledge_shared_terms.sql` | Upgrade 3 (needs upgrades 1 and 2): `search_knowledge` answers questions in natural language; when no row contains every term it returns rows that share at least two. Idempotent. |
+| `migrations/20261101000000_embedding_384.sql` | Upgrade 4, optional (needs upgrades 1 to 3): `knowledge_sections.embedding_384 vector(384)` with an HNSW index, `match_knowledge_vector_384` for ranking the visible sections by vector (anon may call it), and `ingest_document_atomic` storing `embedding_384`. Without it the app searches by keywords only. Idempotent. |
+| `migrations/20261102000000_chat_sync.sql` | Upgrade 5, optional (needs only the Supabase auth schema): `chat_sync` and `chat_sync_keys` for the end-to-end encrypted chat sync, owner-only RLS, a revision guard. Without it conversations stay on each device. Idempotent. |
 | `schema.sql` | Kept for old links: includes `full_schema.sql` when run with psql. |
 | `apply_migration.py` | Applies `full_schema.sql`, given files or all migrations (in file-name order) to `DATABASE_URL`. |
 | `tests/` | Local PostgreSQL tests for RLS, privileges, RPCs, size limits and idempotency (`run_rls_tests.sh`). |
@@ -24,15 +29,20 @@ tests with `pg_dump`).
 1. **Enable anonymous sign-ins**: Supabase dashboard, *Authentication > Sign In / Providers > Anonymous sign-ins*.
    The browser calls `supabase.auth.signInAnonymously()` and then works as role
    `authenticated` with its own user id. Without it the browser stays on the
-   `anon` role: it can read public knowledge but cannot store chats or add
-   documents.
+   `anon` role: it can read public knowledge but cannot sync conversations or
+   add documents (conversations are kept on the device either way).
 2. Recommended for anonymous sign-ins: CAPTCHA protection (*Authentication > Attack Protection*)
    and a sensible rate limit for anonymous sign-ins (*Authentication > Rate Limits*).
    Every sign-in creates a row in `auth.users`.
-3. The `vector` extension must live in schema `public` (it does in the live
+3. Optional, for the chat sync in more than one browser: *Authentication > Sign In / Providers > Email*
+   on, and the *Magic Link* and *Change Email Address* templates showing the one-time code
+   (`{{ .Token }}`). A browser adds an address to its anonymous account with a code, another
+   browser signs in to that account with a code; the app never creates accounts this way
+   (`shouldCreateUser: false`). Sync within one browser needs none of this.
+4. The `vector` extension must live in schema `public` (it does in the live
    project; `full_schema.sql` and `20260923000000` check this and stop with a
    clear error otherwise).
-4. Run the SQL as the owner of the Starpi tables (`postgres`, the default in
+5. Run the SQL as the owner of the Starpi tables (`postgres`, the default in
    the SQL editor and for the database connection string). Check with
    `select tablename, tableowner from pg_tables where tablename like 'knowledge_%' or tablename = 'chat_history';`
 
@@ -45,6 +55,8 @@ Take a backup of the Starpi tables first (see [Rollback](#rollback)).
 1. `migrations/20260923000000_harden_rls_anonymous_auth.sql`
 2. `migrations/20260924000000_lock_published_rows.sql`
 3. `migrations/20260924120000_search_knowledge_shared_terms.sql`
+4. `migrations/20261101000000_embedding_384.sql` (optional, for vector ranking)
+5. `migrations/20261102000000_chat_sync.sql` (optional, for the encrypted chat sync)
 
 - SQL editor: paste and run each file, in this order.
 - psql:
@@ -59,7 +71,8 @@ Take a backup of the Starpi tables first (see [Rollback](#rollback)).
   and run `supabase db push`. Each file has its own `begin; ... commit;`.
 
 The second file checks that the first one has been applied and stops
-otherwise; the third checks that `search_knowledge` exists. Both are idempotent, but `20260923000000` re-creates its own
+otherwise; the third checks that `search_knowledge` exists, the fourth that
+the first three have been applied. All are idempotent, but `20260923000000` re-creates its own
 policies on every run (it first drops every policy on the Starpi tables), so
 re-running it alone undoes the policy part of `20260924000000`. Always re-run
 the whole set, as `--migrations` does.
@@ -84,8 +97,9 @@ changed functions and privileges immediately.
   had 0 rows).
 - Knowledge rows that existed before the migration stay **public**
   (`is_public = true`). New rows are **private by default**, including rows the
-  backend writes with the service role (`owner_id` is null for those). To show a
-  backend document to browser users, publish it with the service role:
+  library publisher writes with the service role (`owner_id` is null for those).
+  To show such a document to browser users, publish it with the service role
+  (`publish --public` does this), or by hand:
   `update public.knowledge_documents set is_public = true where id = '...';`
 - `ingest_document_atomic` can only be called with the service role key;
   `match_knowledge_sections` / `match_knowledge_hybrid` need a signed-in user or
@@ -118,7 +132,7 @@ changed functions and privileges immediately.
 
   They sit above what the PWA sends (`src/js/config.js` `LIMITS`: 200000
   characters of document text, 200 character titles, 8000 character chat input)
-  and what the backend writes (it clips generated titles, summaries and
+  and what the library publisher writes (it clips titles, summaries and
   headings to these limits). A violation fails with SQLSTATE `23514` (HTTP 400
   from the REST API).
 - The limits are added `NOT VALID`: every new or updated row is checked, rows
@@ -131,6 +145,56 @@ changed functions and privileges immediately.
   ```
   (`full_schema.sql` adds the same constraints `NOT VALID` as well, so fresh and
   upgraded schemas stay identical.)
+
+`20261101000000` (optional):
+
+- `knowledge_sections.embedding_384 vector(384)` is nullable; rows that exist
+  keep it null until the library publisher fills it (`backfill`). The vectors
+  come from multilingual-e5-small: sections are embedded as `passage: ` + text,
+  questions as `query: ` + question with the same model, mean-pooled and
+  L2-normalised (the column comment says so too).
+- `match_knowledge_vector_384(query_embedding, match_count default 6,
+  match_threshold default 0)` returns the visible sections most similar to the
+  query, best first, with the columns of `search_knowledge` and a `similarity`
+  instead of `rank`. `anon` may call it, so a visitor can rank the shared
+  library by vector without sending the question text; RLS decides what is
+  visible. `match_count` is clamped to 1..20, a null query returns nothing, a
+  query of another dimension fails with SQLSTATE `22023` (HTTP 400). With the
+  HNSW index the ranking is approximate, and RLS filters the index candidates,
+  so a caller who can see only a small part of the table may get fewer rows.
+- `ingest_document_atomic` keeps its signature and privileges and also stores an
+  `embedding_384` array per section; an empty or missing array stores null, an
+  array of another length fails the whole call (SQLSTATE `22000`).
+- Browser roles write `embedding_384` under the same policies as the other
+  columns: only on sections of their own private documents.
+
+`20261102000000` (optional):
+
+- `chat_sync (user_id, conv_id, rev, iv, ciphertext, updated_at)`, primary key
+  `(user_id, conv_id)`: one row per synced conversation. The browser encrypts the
+  conversation (AES-GCM-256) before sending it; `conv_id` is not the conversation id but
+  an HMAC of it under the user's sync key (32 base64url characters), `iv` and `ciphertext`
+  are base64. CHECK constraints refuse anything else (a readable id, plain text, an IV of
+  another size, more than 2800000 characters of ciphertext), so a row can only ever hold
+  opaque data.
+- `chat_sync_keys (user_id, key_id, kdf, iterations, salt, iv, wrapped_key, created_at)`:
+  one row per user with the sync key wrapped by a key the browser derives from the user's
+  passphrase (`PBKDF2-SHA256`, 600000 to 10000000 iterations, 16-byte salt). The passphrase
+  never leaves the browser, and nobody with database access can read the conversations
+  without it (a weak passphrase can still be guessed offline, which is why the app asks for
+  at least 12 characters). The row is replaced by delete + insert, never updated.
+- Both tables: owner only (`user_id = auth.uid()`, which defaults to the caller), nothing for
+  `anon`; `on delete cascade` from `auth.users`. An anonymous user that later adds an email
+  address keeps its user id and therefore its rows.
+- `chat_sync_guard` (trigger, `SECURITY INVOKER`, not callable through the API) keeps
+  `user_id` and `conv_id` of a row fixed, lets `rev` only grow (a stale write fails with
+  SQLSTATE `40001`) and sets `updated_at` to the server time. The browser writes a revision
+  with `... where conv_id = $1 and rev = $base`, so a write that builds on an old revision
+  changes nothing, and the browser merges the newer row first.
+- Turning sync off with deletion removes the key row first and then the rows, so other
+  browsers stop syncing instead of writing the conversations back. When the rows cannot be
+  deleted after the key, the browser keeps retrying the row delete with every sync until it
+  succeeds (owner-only `delete` needs no key).
 
 ## Schema
 
@@ -169,6 +233,7 @@ erDiagram
         vector embedding "vector(1536), nullable, HNSW cosine m 16 ef_construction 64"
         timestamptz created_at "not null, default now()"
         tsvector fts "generated stored, german heading markdown_content, GIN"
+        vector embedding_384 "vector(384), nullable, multilingual-e5-small, HNSW cosine"
     }
     knowledge_entities {
         uuid id PK "default gen_random_uuid()"
@@ -199,7 +264,8 @@ erDiagram
     knowledge_entities |o--o{ knowledge_relations : "target_entity_id, on delete cascade"
 ```
 
-Chat history and settings:
+The encrypted chat sync, the chat history of 2.x (no longer read or written; the app only deletes
+the rows an earlier version stored) and the settings:
 
 <!-- diagram: db-schema-chat-settings -->
 ```mermaid
@@ -207,15 +273,33 @@ erDiagram
     auth_users {
         uuid id PK "Supabase auth.users"
     }
+    chat_sync {
+        uuid user_id PK "PK 1, FK, default auth.uid(), on delete cascade"
+        text conv_id PK "PK 2, 32 chars base64url, HMAC of the conversation id"
+        bigint rev "not null, above 0, only grows"
+        text iv "16 chars base64"
+        text ciphertext "base64, 24 to 2800000 chars, AES-GCM"
+        timestamptz updated_at "set by chat_sync_guard"
+    }
+    chat_sync_keys {
+        uuid user_id PK "FK, default auth.uid(), on delete cascade"
+        text key_id "22 chars base64url"
+        text kdf "PBKDF2-SHA256"
+        int iterations "600000 to 10000000"
+        text salt "24 chars base64"
+        text iv "16 chars base64"
+        text wrapped_key "64 chars base64"
+        timestamptz created_at "default now()"
+    }
     chat_history {
-        uuid id PK "default gen_random_uuid()"
-        text session_id "not null, 1 to 128 chars"
-        text role "not null, user, assistant or system"
-        text content "not null, max 20000 chars, older validated bound 100000"
-        jsonb sources "not null, default empty array, max 64 KiB"
-        jsonb metadata "not null, default empty object, max 64 KiB"
-        timestamptz created_at "not null, default now()"
-        uuid owner_id FK "not null, default auth.uid(), index with session_id, created_at"
+        uuid id PK "2.x, no longer read or written"
+        text session_id "1 to 128 chars"
+        text role "user, assistant or system"
+        text content "max 20000 chars for new rows"
+        jsonb sources "max 64 KiB"
+        jsonb metadata "max 64 KiB"
+        timestamptz created_at "default now()"
+        uuid owner_id FK "not null, own rows still deleted on delete"
     }
     brain_settings {
         text key PK "seeded llm_config and rag_config"
@@ -223,15 +307,16 @@ erDiagram
         text description
         timestamptz updated_at "not null, default now()"
     }
-
+    auth_users ||--o{ chat_sync : "user_id, on delete cascade"
+    auth_users ||--o| chat_sync_keys : "user_id, on delete cascade"
     auth_users ||--o{ chat_history : "owner_id, on delete cascade"
 ```
 
 ## Security model
 
 Roles: `anon` = browser before sign-in (anon key), `authenticated` = browser
-after anonymous sign-in (`owner_id = auth.uid()`), `service_role` = backend
-(bypasses RLS). "own" means `owner_id = auth.uid()`; "visible" means
+after anonymous sign-in (`owner_id = auth.uid()`), `service_role` = library
+publisher (bypasses RLS). "own" means `owner_id = auth.uid()`; "visible" means
 `is_public or owner_id = auth.uid()`.
 
 | Table | anon | authenticated | service_role |
@@ -240,7 +325,9 @@ after anonymous sign-in (`owner_id = auth.uid()`), `service_role` = backend
 | `knowledge_sections` | SELECT if parent document is public | SELECT if parent visible; INSERT / UPDATE / DELETE if parent is own and private | all rows, all DML |
 | `knowledge_entities` | SELECT public rows | same as documents | all rows, all DML |
 | `knowledge_relations` | SELECT public rows | same as documents; both endpoint entities must be visible to the writer | all rows, all DML |
-| `chat_history` | nothing | SELECT / INSERT / DELETE own rows; no UPDATE | all rows, all DML |
+| `chat_history` (2.x) | nothing | SELECT / INSERT / DELETE own rows; no UPDATE (the app only deletes) | all rows, all DML |
+| `chat_sync` (optional) | nothing | SELECT / INSERT / UPDATE / DELETE own rows (`user_id = auth.uid()`); revisions only grow | all rows, all DML |
+| `chat_sync_keys` (optional) | nothing | SELECT / INSERT / DELETE own row; no UPDATE | all rows, all DML |
 | `brain_settings` | nothing | nothing | all DML |
 
 | Function | anon | authenticated | service_role | Notes |
@@ -248,13 +335,14 @@ after anonymous sign-in (`owner_id = auth.uid()`), `service_role` = backend
 | `search_knowledge(query_text, match_count default 6)` | yes | yes | yes | German full-text search, returns `section_id, document_id, document_title, heading, markdown_content, tags, rank`. Rows containing every term come first (websearch syntax); when there are none, rows sharing at least two terms (English function words and one-letter terms do not count), ranked by the number of shared terms; a document stands in for its sections only when it has none. `match_count` clamped to 1..20; blank query returns nothing |
 | `match_knowledge_sections(query_embedding, match_threshold, match_count)` | no | yes | yes | vector search, `match_count` clamped to 1..50 |
 | `match_knowledge_hybrid(query_text, query_embedding, match_count, rrf_k)` | no | yes | yes | reciprocal rank fusion of vector and full-text ranks |
+| `match_knowledge_vector_384(query_embedding, match_count default 6, match_threshold default 0)` | yes | yes | yes | optional (`20261101000000`): cosine ranking on `embedding_384`, returns `section_id, document_id, document_title, heading, markdown_content, tags, similarity`, `match_count` clamped to 1..20 |
 | `ingest_document_atomic(...)` | no | no | yes | document + sections in one transaction |
 
-All four functions are `SECURITY INVOKER` with `search_path = ''`, so RLS
+All five functions are `SECURITY INVOKER` with `search_path = ''`, so RLS
 applies to the caller and results only contain visible rows. Only the service
 role may publish (`is_public = true`), and published rows are read-only for
 every browser role. No policy is unconditional. Deleting a user from `auth.users`
-deletes their chat history and leaves their knowledge rows private without an
+deletes their chat history and synced conversations and leaves their knowledge rows private without an
 owner (`on delete set null`), i.e. visible only to the service role.
 
 How a browser request is decided, per table and for the functions and size limits:
@@ -265,7 +353,7 @@ flowchart TD
     req["Request on knowledge_documents,<br/>knowledge_entities or knowledge_relations"]
     role{"Database role?"}
     req --> role
-    role -->|"service_role, backend key"| svc["RLS bypassed, select, insert, update, delete<br/>on every row, only role that can publish<br/>or unpublish (is_public), size CHECKs still apply"]
+    role -->|"service_role, library publisher key"| svc["RLS bypassed, select, insert, update, delete<br/>on every row, only role that can publish<br/>or unpublish (is_public), size CHECKs still apply"]
     role -->|"anon, no session"| anonOp{"Operation?"}
     role -->|"authenticated, anonymous sign-in"| authOp{"Operation?"}
 
@@ -298,7 +386,7 @@ flowchart TD
 
     names["Policy names are the table name plus<br/>_select_public_or_own, _insert_own,<br/>_update_own and _delete_own"]
     lock["Published-row lock, 20260924000000_lock_published_rows<br/>added and not is_public to the update and delete USING,<br/>before that owners could still change published rows.<br/>Re-running 20260923000000 alone restores the old policies"]
-    brainApi["Brain API, backend/core/supabase_client.py:<br/>document list and match_knowledge_sections results<br/>filtered to is_public or owner_id null (VISIBLE_ROWS),<br/>supabase_service.py for the command line does not filter"]
+    brainApi["Library publisher, tools/library-publisher supabase_service.py:<br/>document list, backfill and vector matches<br/>limited to is_public or owner_id null (SHARED_ROWS)"]
     names -.- role
     lock -.- usingChk
     svc -.- brainApi
@@ -315,7 +403,7 @@ flowchart TD
         bRole -->|"anon, authenticated"| bDeny["Error 42501 on read and write, no table grant<br/>(full_schema.sql never grants it, 20260924000000<br/>revokes it), RLS on with no policy"]
     end
 
-    subgraph sg_chat["chat_history, owner only"]
+    subgraph sg_chat["chat_history, 2.x: owner only, the app only deletes own rows"]
         cReq["Chat row request"]
         cRole{"Role?"}
         cReq --> cRole
@@ -351,8 +439,26 @@ flowchart TD
         sChk -->|"yes"| sDone["Section written"]
         sChk -->|"no"| sSize["Error 23514"]
     end
+    subgraph sg_sync["chat_sync and chat_sync_keys, owner only"]
+        yReq["Sync request"]
+        yRole{"Role?"}
+        yReq --> yRole
+        yRole -->|"service_role"| ySvc["RLS bypassed, all rows"]
+        yRole -->|"anon"| yAnon["Error 42501, no grant, no policy"]
+        yRole -->|"authenticated"| yOwn{"user_id = auth.uid()?<br/>user_id defaults to auth.uid()"}
+        yOwn -->|"no: read"| yHide["other users' rows invisible,<br/>update and delete affect 0 rows"]
+        yOwn -->|"no: insert for another user"| yErr["Error 42501"]
+        yOwn -->|"yes"| yOp{"Operation?"}
+        yOp -->|"chat_sync_keys update"| yNoUpd["Error 42501: the key row<br/>is replaced by delete and insert"]
+        yOp -->|"chat_sync insert or update"| yGuard{"chat_sync_guard: owner and id kept,<br/>revision grows; format CHECKs?"}
+        yGuard -->|"yes"| yOk["Row written, updated_at = now()"]
+        yGuard -->|"revision not newer"| y40001["Error 40001"]
+        yGuard -->|"format"| y23514["Error 23514"]
+        yOp -->|"select, delete"| yRw["own rows only"]
+    end
     sg_settings ~~~ sg_chat
-    sg_chat ~~~ sg_sections
+    sg_chat ~~~ sg_sync
+    sg_sync ~~~ sg_sections
 ```
 
 <!-- diagram: rls-access-functions-limits -->
@@ -366,22 +472,27 @@ flowchart TD
         sk["search_knowledge<br/>(query_text, match_count default 6)<br/>German full text, rows with every term first,<br/>else rows sharing at least two terms or the only one,<br/>match_count clamped to 1 to 20,<br/>blank or null query returns none"]
         mks["match_knowledge_sections<br/>(query_embedding, match_threshold default 0.25,<br/>match_count default 5)<br/>vector search, 1 to 50 rows"]
         mkh["match_knowledge_hybrid<br/>(query_text, query_embedding,<br/>match_count default 5, rrf_k default 60)<br/>RRF of top 25 vector and top 25 full-text ranks,<br/>1 to 50 rows"]
-        ing["ingest_document_atomic<br/>(doc_title, doc_summary, doc_tags,<br/>doc_source_type, doc_source_name,<br/>doc_raw_content, sections_data)<br/>new document is private, owner_id null,<br/>22023 if sections_data is not a JSON array"]
+        mkv["match_knowledge_vector_384, optional migration<br/>(query_embedding, match_count default 6,<br/>match_threshold default 0)<br/>cosine ranking on embedding_384, 1 to 20 rows,<br/>null query returns none, other dimensions 22023"]
+        ing["ingest_document_atomic<br/>(doc_title, doc_summary, doc_tags,<br/>doc_source_type, doc_source_name,<br/>doc_raw_content, sections_data)<br/>new document is private, owner_id null,<br/>embedding and embedding_384 per section optional,<br/>22023 if sections_data is not a JSON array"]
     end
 
     anon --> sk
+    anon --> mkv
     authn --> sk
     authn --> mks
     authn --> mkh
+    authn --> mkv
     svc --> sk
     svc --> mks
     svc --> mkh
+    svc --> mkv
     svc --> ing
 
-    invoker["Runs as the caller, so table RLS<br/>limits rows to what the caller can see,<br/>service_role bypasses RLS.<br/>full_schema.sql and 20260923000000 drop every overload<br/>before create, so no older SECURITY DEFINER variant stays.<br/>20260924120000 uses create or replace, same signature"]
+    invoker["Runs as the caller, so table RLS<br/>limits rows to what the caller can see,<br/>service_role bypasses RLS.<br/>full_schema.sql and 20260923000000 drop every overload<br/>before create, so no older SECURITY DEFINER variant stays.<br/>20260924120000 and 20261101000000 use<br/>create or replace, same signatures"]
     sk -.- invoker
     mks -.- invoker
     mkh -.- invoker
+    mkv -.- invoker
     ing -.- invoker
     denied["EXECUTE revoked from PUBLIC,<br/>so every call without a grant fails with 42501"]
     anon -.->|"match_knowledge_sections,<br/>match_knowledge_hybrid,<br/>ingest_document_atomic"| denied
@@ -400,6 +511,8 @@ flowchart TD
         ckNote --- ckRel
         ckNote --- ckChat
     end
+    ckSync["chat_sync and chat_sync_keys format CHECKs, validated:<br/>conv_id 32 base64url, iv 16 base64, ciphertext base64 up to 2800000,<br/>rev above 0; key_id, salt, iv, wrapped_key formats,<br/>kdf PBKDF2-SHA256, iterations 600000 to 10000000"]
+    ckNote --- ckSync
     ckOld["Validated chat_history checks, inline in full_schema.sql<br/>and added by 20260923000000: role user, assistant or system,<br/>session_id 1 to 128 chars, content 100000 chars,<br/>sources and metadata 65536 bytes"]
     ckChat -.- ckOld
     invoker ~~~ sg_checks
@@ -458,7 +571,8 @@ select p.oid::regprocedure as function, p.prosecdef, p.proconfig,
 from pg_proc p
 where p.pronamespace = 'public'::regnamespace
   and p.proname in ('search_knowledge', 'match_knowledge_sections',
-                    'match_knowledge_hybrid', 'ingest_document_atomic');
+                    'match_knowledge_hybrid', 'ingest_document_atomic',
+                    'match_knowledge_vector_384');
 
 -- Act as a signed-in user (use an id from auth.users) without changing anything
 begin;
@@ -469,7 +583,8 @@ select * from public.search_knowledge('Budget', 5);      -- only visible rows
 rollback;
 ```
 
-Over HTTP with the anon key, `GET /rest/v1/chat_history` and
+With the optional chat sync, `chat_sync` has 4 policies and `chat_sync_keys` 3, all owner only.
+Over HTTP with the anon key, `GET /rest/v1/chat_history`, `GET /rest/v1/chat_sync` and
 `GET /rest/v1/brain_settings` must fail with `42501` (HTTP 401), while
 `GET /rest/v1/knowledge_documents` returns only public rows.
 *Database > Advisors > Security* should show no Starpi findings apart from
@@ -486,15 +601,18 @@ only), loads a small Supabase stand-in (`tests/stub_supabase.sql`: roles,
   present (`tests/post_rerun_check.sql`);
 - a fresh `full_schema.sql` (applied through `apply_migration.py`) plus the
   migrations, and `schema.sql` followed by `full_schema.sql`;
-- `full_schema.sql` refusing a pre-hardening database, and `20260924000000`
-  refusing a database without `20260923000000`;
+- `full_schema.sql` refusing a pre-hardening database, `20260924000000`
+  refusing a database without `20260923000000`, and `20261101000000` refusing
+  a database without the earlier migrations;
 - identical `pg_dump` output for upgraded and fresh installs;
-- 191 RLS / privilege / RPC / size-limit assertions per scenario, 198 in the
+- 264 RLS / privilege / RPC / size-limit assertions per scenario, 271 in the
   scenarios seeded with legacy rows (`tests/rls_test.sql`), run as `anon`, two
   different anonymous users and `service_role`: tenant isolation in both
   directions on every table, published rows staying read-only for their owner,
-  oversized writes rejected, and legacy rows above the limits surviving the
-  upgrade.
+  oversized writes rejected, legacy rows above the limits surviving the
+  upgrade, `match_knowledge_vector_384` returning only visible sections, and the
+  encrypted chat sync: owner-only rows and key rows, the format checks that keep
+  every row opaque, revisions that only grow and a key row that is never updated.
 
 The runner applies every file in `migrations/` in file-name order, so a new
 migration is picked up without changing the script.
@@ -524,6 +642,7 @@ flowchart TD
     subgraph sg_guard["Guards, expect-fail steps"]
         guard["guard: live_shape.sql,<br/>then full_schema.sql must fail"]
         guardOrder["guard_order: live_shape.sql,<br/>then 20260924000000_lock_published_rows.sql must fail"]
+        guardVectors["guard_vectors: live_shape.sql,<br/>then 20261101000000_embedding_384.sql must fail"]
     end
     scen --> live
     scen --> v2
@@ -532,10 +651,11 @@ flowchart TD
     scen --> rerunS
     scen --> guard
     scen --> guardOrder
+    scen --> guardVectors
 
     aIdem["Second migrations run succeeds on the upgraded schema:<br/>idempotent on the live shape and both earlier schema versions"]
-    aRls["rls_test.sql: 191 checks, 198 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback"]
-    aPost["post_rerun_check.sql, 13 checks: a further migrations run keeps<br/>ownership, visibility, chat rows, the published-row lock,<br/>size limits and brain_settings closed to A and anon"]
+    aRls["rls_test.sql: 264 checks, 271 with legacy=true<br/>catalog, tenant isolation, published-row lock, size limits,<br/>RPCs including the search_knowledge shared-term fallback,<br/>match_knowledge_vector_384 and the encrypted chat sync"]
+    aPost["post_rerun_check.sql, 14 checks: a further migrations run keeps<br/>ownership, visibility, chat rows, the published-row lock,<br/>size limits and brain_settings closed to A and anon"]
     aGuard["Step passes only when psql exits non-zero:<br/>pre-hardening database refused, order enforced"]
     aFreshRerun["full_schema.sql re-runs cleanly on a database it created"]
     live --> aIdem
@@ -550,6 +670,7 @@ flowchart TD
     rerunS --> aFreshRerun
     guard --> aGuard
     guardOrder --> aGuard
+    guardVectors --> aGuard
 
     parity{"pg_dump --schema-only --schema=public of starpi_live,<br/>starpi_fresh, starpi_fresh_rerun, restrict lines removed:<br/>diff -u live vs fresh and fresh vs fresh_rerun empty?"}
     live --> parity
@@ -581,14 +702,50 @@ It exits non-zero on any failure. As root it runs the server as the
 
 - A failed run changes nothing: every file runs in a single transaction.
 - Before applying to the live project, keep a copy of the Starpi data:
-  `pg_dump "$DATABASE_URL" --data-only --table='public.knowledge_*' --table=public.chat_history --table=public.brain_settings -f starpi_backup.sql`
-  (Supabase also keeps daily backups / PITR depending on the plan).
+  `pg_dump "$DATABASE_URL" --data-only --table='public.knowledge_*' --table='public.chat_*' --table=public.brain_settings -f starpi_backup.sql`
+  (`public.chat_*` covers `chat_history` and, when installed, `chat_sync` and `chat_sync_keys`,
+  which hold only ciphertext and wrapped keys; Supabase also keeps daily backups / PITR depending
+  on the plan).
 - There is no automatic down migration. Undo the migrations in reverse order,
   and do not run `apply_migration.py --migrations` (or `supabase db push`)
   afterwards, since that applies them again. With the Supabase CLI, mark an
   undone migration with `supabase migration repair --status reverted <version>`.
 - If the browser cannot read or write after an upgrade, check first that
   anonymous sign-ins are enabled and that the frontend signs in.
+
+### Undo `20261102000000` (turn the encrypted chat sync off for good)
+
+The tables hold only ciphertext; dropping them deletes every synced copy, while the
+conversations stay in each browser. A browser that still has sync turned on says in its
+settings that the database has no sync tables:
+
+```sql
+begin;
+drop table if exists public.chat_sync;
+drop table if exists public.chat_sync_keys;
+drop function if exists public.chat_sync_guard();
+notify pgrst, 'reload schema';
+commit;
+```
+
+### Undo `20261101000000` (back to the state after `20260924120000`)
+
+Re-apply the first three migrations (this restores the earlier
+`ingest_document_atomic`), then drop the function and the column (the index goes
+with it):
+
+```bash
+for f in backend/supabase/migrations/2026092*.sql; do
+    psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f "$f" || break
+done
+psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 <<'SQL'
+begin;
+drop function if exists public.match_knowledge_vector_384(public.vector, integer, double precision);
+alter table public.knowledge_sections drop column if exists embedding_384;
+notify pgrst, 'reload schema';
+commit;
+SQL
+```
 
 ### Undo `20260924000000` (back to the state after `20260923000000`)
 

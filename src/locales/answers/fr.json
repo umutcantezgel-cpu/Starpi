@@ -1,0 +1,37 @@
+{
+  "label": {
+    "free": "Discussion libre · non vérifiée",
+    "grounded": "Vérifié avec vos sources",
+    "mixed": "En partie issu des sources (parties vérifiées signalées)",
+    "web": "Issu du web · cité, non vérifié",
+    "checking": "vérification…",
+    "hint_free": "Réponse tirée des connaissances propres du modèle ; rien n’a été comparé à des sources.",
+    "hint_grounded": "Chaque affirmation a été comparée aux extraits de vos sources.",
+    "hint_mixed": "Les affirmations tirées de vos sources sont vérifiées et signalées ; le reste relève des connaissances générales.",
+    "hint_web": "La réponse cite des pages trouvées par une recherche web ; leur contenu n’a pas été vérifié.",
+    "hint_companion": "Le compagnon de cet ordinateur a répondu à partir de ses documents et notes, et son filtre a vérifié chaque nombre par rapport à la source citée par la phrase avant de l’afficher.",
+    "hint_companion_free": "Le compagnon de cet ordinateur a répondu à partir de connaissances générales ; son filtre a retiré les liens, mais rien n’a été comparé à des sources.",
+    "hint_companion_template": "Aucun modèle n’a écrit ceci : le compagnon a répondu avec un texte fixe, et sa remarque en donne la raison."
+  },
+  "mixed": {
+    "title": "Parties vérifiées",
+    "summary": "{ok} affirmation(s) sur {total} trouvée(s) dans vos sources",
+    "none": "Aucune affirmation n’a pu être comparée à vos sources.",
+    "from_sources": "Issu de vos sources",
+    "partly": "En partie trouvé dans la source",
+    "not_in_sources": "Absent de vos sources",
+    "cited_not_found": "Cité, mais introuvable dans la source",
+    "note": "Les affirmations sans source relèvent des connaissances générales du modèle et n’ont pas été vérifiées."
+  },
+  "web": {
+    "checked": "Vérifié avec le texte cité : {ok} affirmation(s) sur {total} trouvée(s)",
+    "checked_none": "Vérifié avec le texte cité : aucune affirmation à comparer",
+    "segments_ok": "Nombres vérifiés : tous se trouvent dans des passages cités",
+    "segments_flagged": "Nombres vérifiés : {n} phrase(s) avec des nombres hors des passages cités",
+    "cited": "Cité, non vérifié"
+  },
+  "notice": {
+    "web_unavailable_title": "Ce modèle ne peut pas chercher sur le web",
+    "web_unavailable_body": "Aucune recherche web n’est configurée pour lui, la réponse arrive donc sans pages web. Choisissez un modèle capable de chercher, ou ajoutez une clé pour l’un d’eux."
+  }
+}

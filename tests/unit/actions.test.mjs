@@ -27,7 +27,8 @@ const html = readFileSync(path.join(SRC, 'index.html'), 'utf8');
 const collect = (re) => new Set([...code.matchAll(re)].map((m) => m[1]));
 
 describe('delegated actions', () => {
-  const usedClicks = new Set([...collect(/data-action="([\w-]+)"/g), ...collect(/dataset\.action = '([\w-]+)'/g)]);
+  // UI kit builders (ui/kit.js) take the action as an option: segmented({ action: 'set-theme', … }).
+  const usedClicks = new Set([...collect(/data-action="([\w-]+)"/g), ...collect(/dataset\.action = '([\w-]+)'/g), ...collect(/\baction: '([\w-]+)'/g)]);
   const usedChanges = collect(/data-change="([\w-]+)"/g);
   const registeredClicks = collect(/onAction\('([\w-]+)'/g);
   const registeredChanges = collect(/onChange\('([\w-]+)'/g);
@@ -54,9 +55,14 @@ describe('icons', () => {
     ...collect(/data-lucide="([a-z0-9-]+)"/g),
     ...collect(/dataset\.lucide = '([a-z0-9-]+)'/g),
     ...collect(/icon: '([a-z0-9-]+)'/g),
+    // the UI kit's icon('name', classes) in templates
+    ...collect(/\bicon\('([a-z0-9-]+)'/g),
     // names chosen at runtime (device type, privacy notice, workspace file kind, graph edge direction,
     // trace phases, provider test result, source check result, sample questions)
     ...collect(/'(laptop|tablet|smartphone|lock|server|cloud|library|file-text|braces|file|database|arrow-right|arrow-left|loader-2|upload|info|alert-circle|search|sparkles|clipboard-list|zap|shield-alert|shield-question-mark|shield-check|shield|calendar|wallet|triangle-alert|check-circle-2)'/g),
+    // the icons an assistant may show (chat/assistants.js ASSISTANT_ICONS) and the archive entry of
+    // the conversation list
+    ...collect(/'(bot|brain|graduation-cap|pen-line|code|languages|lightbulb|briefcase|palette|compass|book-open|archive-restore)'/g),
   ]);
   const registered = new Set([...iconsSrc.matchAll(/^ {2}([A-Z]\w*),$/gm)].map((m) => m[1]));
 
@@ -84,8 +90,13 @@ describe('design system', () => {
   it('gives every icon-only button an accessible name', () => {
     for (const m of html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)) {
       const [, attrs, inner] = m;
-      const visibleText = inner.replace(/<i [^>]*><\/i>/g, '').replace(/<span[^>]*class="[^"]*sr-only[^"]*"[^>]*>[^<]*<\/span>/g, 'x').replace(/<[^>]+>/g, '').trim();
-      if (visibleText) continue;
+      // Tags are stripped until none is left, so a tag cut out of another cannot remain.
+      let visibleText = inner.replace(/<i [^>]*><\/i>/g, '').replace(/<span[^>]*class="[^"]*sr-only[^"]*"[^>]*>[^<]*<\/span>/g, 'x');
+      for (let before = ''; before !== visibleText; ) {
+        before = visibleText;
+        visibleText = visibleText.replace(/<[^>]*>?/g, '');
+      }
+      if (visibleText.trim()) continue;
       assert.match(attrs, /aria-label="[^"]+"/, `button without text or aria-label: <button${attrs}>`);
     }
   });
@@ -93,8 +104,7 @@ describe('design system', () => {
   it('labels every static aria-label for translation', () => {
     for (const m of html.matchAll(/<[a-z]+\b([^>]*\saria-label="[^"]+"[^>]*)>/g)) {
       const attrs = m[1];
-      if (/lang="(en|de)"/.test(attrs)) continue; // the EN/DE buttons are named in their own language
-      assert.match(attrs, /data-i18n-aria="[\w.]+"/, `untranslated aria-label: ${attrs.trim().slice(0, 120)}`);
+      assert.match(attrs, /data-i18n-aria="[\w.-]+"/, `untranslated aria-label: ${attrs.trim().slice(0, 120)}`);
     }
   });
 });

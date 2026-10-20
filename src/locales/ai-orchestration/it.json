@@ -1,0 +1,123 @@
+{
+  "tier": {
+    "selected": "Il tuo modello",
+    "role": "Un altro modello del provider",
+    "provider": "Provider successivo",
+    "device": "Questo dispositivo",
+    "cache": "Risposta salvata",
+    "template": "Senza IA"
+  },
+  "outcome": {
+    "ok": "Risposto",
+    "invalid": "Risposta rifiutata",
+    "truncated": "Risposta troncata",
+    "refused": "Rifiutato",
+    "rate_limited": "Troppe richieste",
+    "not_found": "Modello non offerto",
+    "unavailable": "Non raggiungibile",
+    "timeout": "Nessuna risposta in tempo",
+    "error": "Non riuscito",
+    "skipped": "Saltato"
+  },
+  "blocked": {
+    "cooldown": "In attesa dopo troppe richieste",
+    "circuit_open": "In pausa dopo errori ripetuti",
+    "probing": "Nuovo tentativo in corso",
+    "not_found": "Non offerto al momento"
+  },
+  "attempt": {
+    "retry": "Secondo tentativo",
+    "served": "Ha risposto {model} al suo posto",
+    "latency": "{time}"
+  },
+  "result": {
+    "switched": "{requested} non ha risposto; ha risposto {served} al suo posto.",
+    "cached": "Risposta salvata del {time}",
+    "template": "Nessun modello ha risposto; questa risposta è stata creata senza IA.",
+    "unavailable": "Nessun modello ha risposto e per questo non esiste una risposta senza IA.",
+    "simulated": "Provider simulato"
+  },
+  "thinking": {
+    "label": "Ragionamento esteso",
+    "hint": "Permette ai modelli che ne sono capaci di ragionare prima di rispondere. Più lento, e usa più token."
+  },
+  "strength": {
+    "label": "Potenza del modello",
+    "max": "Massima",
+    "max_desc": "Il modello più potente del provider. I risultati migliori, ma il più lento e costoso.",
+    "super": "Alta",
+    "super_desc": "Un modello potente un gradino sotto il massimo: risposte accurate, più rapide ed economiche.",
+    "auto": "Automatica",
+    "auto_desc": "Starpi sceglie un modello gratuito per ogni attività ed evita quelli occupati.",
+    "fast": "Veloce",
+    "fast_desc": "Il modello più rapido. Adatto alle domande brevi."
+  },
+  "health": {
+    "on": "Disponibile",
+    "off": "Non configurato",
+    "unknown": "Stato sconosciuto"
+  },
+  "council": {
+    "title": "Consiglio",
+    "drafts_label": "Bozze del consiglio",
+    "draft": "Bozza {n}",
+    "phase_start": "Il consiglio sta iniziando.",
+    "phase_members": "Bozze pronte: {done} su {total}.",
+    "phase_judge": "Il giudice sta confrontando {valid} bozze.",
+    "phase_done_judge": "Il giudice ha scelto una bozza.",
+    "phase_done_merged": "Il giudice ha unito le bozze.",
+    "phase_done_best": "Resta la migliore bozza valida.",
+    "phase_done_none": "Non è tornata nessuna bozza valida.",
+    "phase_aborted": "Il consiglio è stato interrotto.",
+    "status": {
+      "pending": "In scrittura",
+      "ok": "Valida",
+      "invalid": "Rifiutata",
+      "error": "Non riuscita",
+      "timeout": "Troppo lenta",
+      "skipped": "Saltata"
+    },
+    "latency": "Ha impiegato {time}",
+    "rejected": "Perché è stata rifiutata",
+    "read_draft": "Leggi questa bozza",
+    "thinking": "Ha ragionato prima di rispondere",
+    "chosen": "Scelta dal giudice",
+    "used_best": "Usata come bozza migliore",
+    "judge": "Giudice",
+    "judge_pending": "Il giudice sta leggendo le bozze.",
+    "judge_reasons": "Motivazioni",
+    "judge_chose": "Ha scelto {draft}",
+    "judge_merged": "Ha unito le bozze in un’unica risposta",
+    "judge_failed": "Il giudice non ha dato un verdetto utilizzabile.",
+    "result": "Risultato",
+    "decided": {
+      "judge": "Scelta dal giudice",
+      "merged": "Unita dal giudice",
+      "best": "Migliore bozza valida",
+      "none": "Nessun risultato"
+    },
+    "valid_count": "{valid} bozze valide su {total}",
+    "finished_at": "Terminato alle {time}",
+    "reason": {
+      "no_models": "Nessun modello è disponibile per un consiglio.",
+      "no_valid_draft": "Nessuna delle bozze è stata utilizzabile.",
+      "one_valid_draft": "Solo una bozza era utilizzabile, quindi non serviva un giudice.",
+      "no_judge": "Nessun altro modello era libero per giudicare, quindi resta la migliore bozza valida.",
+      "judge_invalid": "Il verdetto del giudice non era utilizzabile, quindi resta la migliore bozza valida.",
+      "judge_error": "Il giudice non è riuscito, quindi resta la migliore bozza valida.",
+      "judge_timeout": "Il giudice ha impiegato troppo, quindi resta la migliore bozza valida.",
+      "judge_skipped": "Il giudice non era disponibile, quindi resta la migliore bozza valida."
+    },
+    "error": {
+      "empty": "La bozza era vuota.",
+      "truncated": "La bozza ha raggiunto il limite di lunghezza.",
+      "too_long": "La bozza era troppo lunga.",
+      "refusal": "Il modello ha rifiutato.",
+      "no_json": "La risposta non conteneva alcun oggetto JSON.",
+      "schema": "La risposta non aveva la forma prevista ({detail}).",
+      "quote_not_found": "Una citazione non è stata trovata nella fonte.",
+      "unknown_source": "La risposta citava una fonte che non esiste ({detail}).",
+      "other": "Rifiutata ({code})."
+    }
+  }
+}

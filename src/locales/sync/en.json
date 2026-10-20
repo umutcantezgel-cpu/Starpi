@@ -1,0 +1,86 @@
+{
+  "card": {
+    "title": "Chat sync · end-to-end encrypted",
+    "subtitle": "Your conversations are encrypted in this browser with a key that only your passphrase opens. The server stores ciphertext only. Provider keys, signing keys and turns that stayed on this device are never synced."
+  },
+  "state": {
+    "off": "Off",
+    "on": "On",
+    "busy": "Syncing",
+    "attention": "Needs attention",
+    "unavailable": "Not available here"
+  },
+  "form": {
+    "new_hint": "Choose a passphrase of at least {n} characters. You need it to restore your conversations in another browser. Nobody can recover it for you, and without it the synced copy cannot be read.",
+    "join_hint": "This account already syncs from another browser. Enter the passphrase you chose there to bring its conversations here.",
+    "passphrase": "Sync passphrase",
+    "confirm": "Repeat the passphrase",
+    "enable": "Turn on sync",
+    "join": "Unlock and sync",
+    "connection": "Sync needs a connection to the knowledge base with a session (Settings › Knowledge base)."
+  },
+  "on": {
+    "summary": "{n} conversations synced",
+    "last": "Last sync: {time}",
+    "never": "Not synced yet",
+    "skipped": "{n} conversations are not synced: too large, or not readable with this key.",
+    "sync_now": "Sync now",
+    "off_local": "Turn off in this browser",
+    "off_delete": "Turn off and delete synced data",
+    "off_local_confirm": "Turn sync off in this browser? Its conversations stay here, the synced copy stays on the server for your other browsers.",
+    "off_delete_confirm": "Turn sync off and delete the synced copy of your conversations from the server? Every browser keeps the conversations it has, but stops syncing. This cannot be undone.",
+    "purging": "Deleting the synced copy has not finished. This browser tries again with every sync; use \"Turn off and delete synced data\" to try now."
+  },
+  "notice": {
+    "remote_off": "Sync was turned off in another browser and the synced copy was deleted. The conversations in this browser are kept. Choose a passphrase to sync again, or turn sync off here.",
+    "rekeyed": "Sync was set up again in another browser with a new passphrase. Enter that passphrase to continue.",
+    "other_account": "This browser is signed in to another account than the one it synced with. Turn sync off here, then turn it on for this account.",
+    "unavailable": "This browser cannot keep the sync key for this site (for example in a private window, or with site data turned off)."
+  },
+  "account": {
+    "title": "Use sync in another browser",
+    "body": "Another browser needs the same account. Add an email address to this browser's account, sign in with that address in the other browser, then enter your passphrase there.",
+    "anonymous": "This browser: anonymous account (this browser only)",
+    "signed_in": "Signed in as {email}",
+    "email": "Email address",
+    "link": "Add to this account",
+    "sign_in": "Sign in to my account",
+    "sign_in_hint": "Signing in replaces this browser's anonymous account; documents you added from it stay with that account.",
+    "code": "Code from the email",
+    "verify": "Confirm code",
+    "sign_out": "Sign out"
+  },
+  "line": {
+    "on": "End-to-end encrypted · {n} conversations",
+    "waiting": "End-to-end encrypted · waiting for a connection",
+    "attention": "Sync needs attention (see Chat sync)"
+  },
+  "result": {
+    "enabled": "Sync is on. Your conversations are encrypted and synced.",
+    "joined": "Unlocked. The conversations of this account are synced into this browser.",
+    "synced": "Synced.",
+    "off": "Sync is off in this browser.",
+    "deleted": "Sync is off and the synced copy was deleted.",
+    "code_sent": "We sent a code to {email}. Enter it below.",
+    "linked": "The email address is added to this account.",
+    "signed_in": "Signed in. Enter your passphrase to sync.",
+    "signed_out": "Signed out. This browser has a new anonymous account."
+  },
+  "error": {
+    "too_short": "The passphrase needs at least {n} characters.",
+    "mismatch": "The two passphrases differ.",
+    "wrong_passphrase": "That passphrase does not unlock the synced conversations of this account.",
+    "no_session": "There is no session with the knowledge base. Sync needs one.",
+    "offline": "The knowledge base cannot be reached right now. Try again later.",
+    "missing_schema": "The database has no sync tables yet (migration chat_sync in backend/supabase).",
+    "unavailable": "This browser cannot keep the sync key.",
+    "failed": "That did not work. Please try again.",
+    "delete_failed": "The synced copy could not be deleted completely right now. This browser tries again with every sync until it is done.",
+    "invalid_email": "Enter a valid email address.",
+    "invalid_code": "That code is wrong or has expired.",
+    "email_taken": "This address belongs to another account. Use \"Sign in to my account\" instead.",
+    "no_account": "No account has this address, or email sign-in is off for this site.",
+    "email_disabled": "Email sign-in is turned off for this site.",
+    "rate_limited": "Too many attempts. Wait a minute and try again."
+  }
+}

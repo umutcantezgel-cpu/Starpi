@@ -5,6 +5,344 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-19
+
+Starpi 3.0 is a new generation of the app: one AI layer for every provider, a chat with branches,
+tools, voice and research, chats and files kept on the device, receipts signed on the device, a
+source check that also compares relations, six interface languages, and a local companion that runs
+on your own machine. What to change when you come from 2.x is in
+[docs/MIGRATION-3.md](docs/MIGRATION-3.md).
+
+### Breaking changes
+
+- **Model choice replaces the compute modes.** `COMPUTE_MODES` (`council`, `client`, `local`,
+  `nvidia`) give way to one picker value (`starpi_assistant_v1`): `auto`, `device`,
+  `<provider>:<model>`, `local:*` or `companion:starpi-core`. A stored 2.x mode becomes a picker
+  value once; the council is a chat action now, not a mode.
+- **Chats live in IndexedDB.** Conversations are message trees in the app database; the 2.x chats
+  in `localStorage` move there on the first start. The export format is `starpi.chat/v2`; the
+  importer still reads `starpi.chat/v1`.
+- **Receipts and the source check move to version 3.** Receipts are written as
+  `starpi.receipt/v3` (verifiers of 2.x refuse them), the source check runs rules version 3, text
+  extraction is `starpi-extract` 2, and `REASON_CODES` gains `relation_inverted` and
+  `relation_unsupported`; code that switches exhaustively over reason codes must handle them.
+- **Headers are generated, and the site is cross-origin isolated.** `vercel.json`'s headers come
+  from `scripts/headers.json` (`npm run headers:gen`), and every response carries
+  `Cross-Origin-Embedder-Policy: require-corp` with `Cross-Origin-Opener-Policy: same-origin`. A
+  self-hosted copy that embeds cross-origin resources without CORP or CORS breaks.
+- **The Python service is removed**: `backend/server.py` with `/api/brain/*`, its NVIDIA mirror
+  and the EC2 scripts. `npm run nvidia:sync` is replaced by `npm run models:sync`.
+- **Plaintext key storage and plaintext chat sync are removed.** Remembered keys move into the tab
+  once (the passphrase vault keeps them across sessions); the `chat_history` table is no longer
+  read or written, and conversations sync only end-to-end encrypted.
+- **The workspace persists by default** (IndexedDB and the origin private file system), unless
+  the user chooses "memory only".
+
+### Added
+
+#### AI layer and providers
+
+- **One AI layer for every provider** (`src/js/ai/`): a provider contract with normalized stream
+  events, a stream driver for wire and SDK adapters, and adapters for Anthropic (the official SDK,
+  loaded on demand, with adaptive thinking, prompt caching, web search and append-only replay),
+  OpenAI (Responses API, stateless with encrypted reasoning), Gemini (thinking levels and budgets,
+  Google Search grounding), OpenAI-compatible providers with per-provider quirks (xAI, Groq, Mistral,
+  DeepSeek, MiniMax, OpenRouter, NVIDIA, your own server) and the on-device engines.
+- **MiniMax M3.1 Flash as the cloud base model** (released by MiniMax on 2026-10-19; facts as of
+  2026-10-20): the `minimax` provider on its OpenAI-compatible API (`https://api.minimax.io`, models
+  `MiniMax-M3.1-Flash` and `MiniMax-M3`, 1M-token context) and `minimax/minimax-m3.1-flash` at
+  OpenRouter. Whenever it is set up (a MiniMax key of the user's, or the site's MiniMax pool on
+  `MINIMAX_API_KEYS`), Auto, the purpose router and the privacy notice reach it first, on every
+  kind of device; without it the order and the on-device defaults stay as they were. Its
+  thinking cannot be switched off: it streams as `reasoning_content` into the answer's details,
+  never into the answer text, and "thinking off" asks for `reasoning_effort: "low"`, never `none`.
+  BYOK with the auto transport (relay allowlist: chat completions only), the key test as one small
+  chat request (no model list and no key format are relied on, so there is no gitleaks rule), a fake
+  flavor for the end-to-end suite and `npm run providers:ping -- --provider minimax`.
+- **Self-hosted MiniMax M3 on your own server**: model names containing `minimax-m3` get their
+  published 1M-token window unless the server reports its own (Ollama, llama.cpp, and now vLLM's
+  `max_model_len`), their thinking is read from `reasoning_content` or `<think>` tags, they are
+  never sent `reasoning_effort: "none"`, and the model picker marks them as needing a workstation or
+  server (about 160 GB of memory for a 3-bit build). There is no WebGPU or WebAssembly preset; the
+  M3.1 Flash weights are announced but not yet released.
+- **Model catalog** (`src/js/ai/catalog/`): curated defaults per provider in `snapshot.json`
+  (written by `npm run models:sync`), live model lists merged on top, capability guesses marked
+  unverified, roles (fast, reasoning, vision, judge) and four strengths (max, super, auto, fast).
+- **Purpose router and model wheel**: titles, OCR, graph extraction, council verdicts and other
+  small jobs run along a fallback chain (the selected model, its role, the next provider, the
+  device, a cached answer, a deterministic template); the wheel cools a model down after a 429,
+  opens a circuit after repeated failures and marks models that are gone. Nothing switches
+  silently: every call is recorded.
+- **Transports**: direct with the user's key, a **stateless BYOK relay** for providers that block
+  browsers (tried on its own after a blocked call and remembered per provider), the **site's key
+  pools** (the MiniMax base model, and NVIDIA, Groq, Gemini and OpenRouter free models, no key in
+  the browser) and devices on the user's network (always direct).
+- **Key vault**: keys last for the tab by default; a passphrase keeps them in IndexedDB as AES-GCM
+  ciphertext (PBKDF2-SHA-256, 600,000 iterations), locked after 30 minutes without activity.
+  **Settings › Model providers and keys** tests a key with the provider's model list and shows
+  error codes only, never provider text.
+- **Extended thinking** (one switch) and **web search** per answer, with each provider's own
+  lever; the model picker groups the models by device, companion, free pools, providers with a key
+  and your own server, with status dots from `GET /api/health`.
+
+#### Chat
+
+- **A new chat thread**: an append-only message tree with branches (edit a question, regenerate
+  with another model, the ‹ 2/3 › navigator), Continue after the length limit, streaming with
+  reasoning shown in a collapsible block, usage and latency per answer.
+- **Auto · Free · Grounded**: Auto routes each question without an extra model call (attachments,
+  phrases that point at your sources, a keyword probe of the workspace; mixed answers mark which
+  parts the sources hold). Every answer carries a provenance label (free, grounded, mixed, web,
+  companion).
+- **Context packs** for small and local models: a few short passages sized by the model's window,
+  a stable prefix for the KV cache, short `[S#]`/`[F#]` labels expanded before the source check.
+- **Attachments**: images (scaled on the device), PDFs (sent as they are to models that read them,
+  else as text), Office documents, text and code, within a budget that follows the model's context.
+- **Tools in free chat**: date and time, a calculator, workspace search, memory lookup and web
+  search, each with a side-effect class; an **MCP client** (Streamable HTTP) with tool definitions
+  pinned by SHA-256 and an approval card before a server's tool runs ("Always allow" only for
+  read and low tools, and only while the pin stays the same); web search through
+  Brave, Tavily or a self-hosted SearXNG for models without a search of their own, with a web check
+  of the answer; **image generation** through the Images API.
+- **Canvas** (a document view with versions and AI edits), **Compare** (one question to two to four
+  models side by side) and **the council** (up to three drafts and a judge) in the conversation;
+  their answers are adopted as branches of the question.
+- **Rendering**: syntax highlighting (highlight.js) and math (KaTeX as MathML) loaded on demand,
+  diagrams and HTML/SVG previews only in a sandboxed render frame, and code-block tools (copy,
+  download, open in canvas, preview).
+- **Conversations** in the sidebar: search, groups (pinned, today, previous 7 days, older),
+  archive, rename, pin, move to project, export as Markdown or JSON, import, delete.
+- **Memory, projects and assistants**: memory is off until switched on and stores only what the
+  user keeps on purpose ("Remember this", a note in Settings, an accepted suggestion); notes are
+  sealed with the vault key when a passphrase is set and go along with a question only (at most 8
+  notes, 800 characters), never into the stored question. Projects keep chats together with their
+  own instructions, model, files and memory scope; assistants are presets (instructions, model,
+  tools, starters) with `starpi.assistant/v1` import and export. Custom instructions "About me" and
+  "How to answer".
+- **Device-only questions**: a question answered on this device (the device model, files of the
+  workspace) stays there: never sent to a cloud model as history, never synced, and asked without
+  web search or cloud tools.
+
+#### Voice and Live
+
+- **Dictation** with a chain of speech input sources (the browser, Gemini, OpenAI, Groq, a local
+  voice server, the companion), each handing over to the next on failure, and a glossary of the
+  user's own terms.
+- **Read aloud** speaks only what a sentence gate released: a free answer through the free gate
+  with the notice "not checked", a grounded answer through the source gate (a sentence with a
+  number is spoken only when its cited excerpt holds that number), then how many sentences were
+  withheld. Voices: the browser's, prebuilt Gemini voices, ElevenLabs premade voices, OpenAI voices
+  and Piper voices of a local voice server; nothing can clone or upload a voice.
+- **Live**: a full-screen voice conversation. Free mode streams to Gemini Live with a single-use
+  ephemeral token from the site (the browser never holds a key); source mode runs as push-to-talk
+  turns whose answers pass the source gate. An optional camera picture, taken only on a press.
+- Speech routes with the site's keys (`/api/voice/speak`, `/transcribe`, `/voices`,
+  `/live-token`) with per-IP limits and daily budgets.
+
+#### Research
+
+- **Research jobs**: a question becomes a plan of up to four search queries, a tool loop over your
+  documents with three read-only tools and, if asked, up to four web search rounds; the documents
+  part passes the sentence gate, the web part is judged as a whole, and the report (summary,
+  details, sources, open questions) is stored with a receipt. Jobs survive a reload, run in one tab at a time (Web Locks, a heartbeat,
+  stale jobs offer a retry of what is missing) and start from "Research this" on an answer.
+- Without a key of the user's, research runs on the site's Gemini pool through
+  `POST /api/research/step`, whose tool turns are HMAC-signed so a browser cannot forge what the
+  model said. Optional stripping of e-mail addresses, phone numbers, IBANs, card numbers and IP
+  addresses from web queries.
+
+#### Source check, sentence gate and receipts
+
+- **Source check version 3**: relations between values and events, within a statement and with the
+  statement before it (changes, comparisons, order in time, carried-over values, shares). On two
+  relation sets written for 3.0 it finds 32 of 32 and 23 of 24 planted relation errors, with no
+  faithful statement marked weak or unsupported ([results](docs/eval/v3-relations.md)).
+- **Second opinion** on request for a weak statement, from an entailment model on this device or
+  from the AI judge: advisory, recorded in the receipt, never upgrading a verdict.
+- **Sentence gate** (`src/js/core/gate.js`, the `starpi-gate` command): releases a streamed answer
+  unit by unit, in sources, web or free mode, judging the canonical text that is shown and spoken
+  (character allowlist, no links, every number backed by a cited excerpt, identifiers verbatim,
+  joined digits refused). Read-aloud, Live, research reports and the companion speak or show only
+  released units.
+- **Receipt signing on the device**: Ed25519 (or ECDSA P-256) with a non-extractable key in
+  IndexedDB, "Sign exported receipts" on by default, public key export as JWK or PEM, rotation;
+  **receipts v3** add the signer, the gate's counts, second opinions, relations and OCR origins.
+  `starpi-verify-receipt --require-signature`.
+- **Languages**: the checks read English, German, French, Spanish, Italian and Turkish from
+  language packs (French, Spanish, Italian and Turkish load after the first paint).
+
+#### Workspace and files
+
+- **Persistent workspace**: documents, chunks, vectors and the original bytes stay on the device
+  (IndexedDB and OPFS) and the index is rebuilt at start; **Settings › Files on this device** shows
+  the storage and offers "Forget all".
+- **Semantic search on this device** (opt-in): multilingual-e5-small or MiniLM embeddings in a
+  worker, int8 vectors, hybrid retrieval with reciprocal rank fusion; the shared library is ranked
+  by a query vector, without sending the question.
+- **Word, Excel, PowerPoint and HTML** files (`starpi-extract` 2), read without dependencies by a ZIP
+  reader with bomb limits and a small XML reader; images are read with OCR only after consent, by a
+  model that sees. `starpi-ground` reads the same formats.
+- **Model download integrity**: every on-device model file is hashed in a worker and compared with
+  `model-lock.json` (`npm run models:lock`, checked weekly in CI); a mismatch is deleted and refused,
+  and **Settings › Trust** can allow one model to load unverified after a warning.
+- **Benchmark history** with a history-aware recommendation, output budgets per device class
+  (2,048 tokens for free answers on desktops, at most half the context window), a processor (WASM)
+  benchmark without WebGPU and plain SVG charts.
+- **Knowledge graph from workspace files**: entities and relations named by a model, each relation
+  kept only when its cited chunk names both ends; a co-occurrence graph offline; resumable runs;
+  results follow their files.
+
+#### Conversations and sync
+
+- **End-to-end encrypted chat sync** (optional): a sync secret wrapped with a passphrase
+  (PBKDF2-SHA-256, 600,000 iterations), AES-GCM records padded to a multiple of 512 bytes with HMAC row ids,
+  owner-only row level security (`chat_sync`, `chat_sync_keys`), deletions win over field changes,
+  new messages win over deletions, device-only turns never synced, restore in a second browser
+  with a one-time e-mail code.
+
+#### Local companion (`@starpi/companion`)
+
+- **Starpi's own local companion**: a loopback service on your machine (Node.js 22.13+,
+  `node:sqlite`) with a sealed event store, an append-only audit chain with signed heads and
+  anchors (it refuses to start on a rollback), a sealed vault with a key-encryption key in a file,
+  systemd credentials or the macOS keychain, crypto-erase, sealed backups and bundles.
+- **Zero egress by default**: an in-process guard over sockets, DNS and child processes; modules
+  get a capability for the hosts the owner listed; on Linux the system unit adds `IPAddressDeny`
+  and an egress splice outside the process.
+- **Language models by data class**: public, personal, sensitive (local models only) and secret (no
+  model); no silent switch between local and cloud.
+- **Standard modules**: search (BM25 plus local embeddings, rank fusion), notes, documents,
+  checked answers and conversations through the sentence gate, a read-only MCP server with a
+  stdio bridge for desktop clients, pinned connector tools with approvals, agenda, inbox, a voice
+  relay to a local voice server, setup checks and read-only feeds (CSV, MQTT).
+- **Computer control, experimental and off by default**: consent, a 120-second mandate, a stop that
+  is never refused, owner approvals for risky steps, block and allow lists; this release drives a
+  simulated screen only.
+- **Pairing with the browser**: Mode A (the companion serves the app from its loopback origin, an
+  HttpOnly cookie plus a CSRF value) and Mode B (the hosted app, a token bound to its origin, Chrome's
+  local network prompt). The browser keeps the secret sealed with a non-extractable key in the
+  IndexedDB database `starpi-companion`, checks every signed audit head and shows a red banner on a
+  rollback or fork until the user accepts the companion's current state.
+- **The companion in the app**: a Companion tab and settings card, the retrieval source "Companion
+  documents and notes" for grounded questions (a device-only question may take passages up to the
+  class sensitive, other questions up to the user's ceiling, secret never), and the companion as a
+  model of the chat: it gets the bare question, never the app's prompt, with the mode and the
+  question's data class; its answers arrive already gated, are shown as released with their label,
+  notice and withheld count, and stay on this device like the question asked there (never in the
+  encrypted sync). Each branch of a thread is its own conversation on the companion (`after` on
+  `POST /v1/chat`): asking again, changing a question or going on in another branch continues in a
+  copy of the turns up to there. A Compare column asks it like the thread, without the app's tools;
+  the council never seats it; Live asks it in free conversations only (a conversation from your
+  sources with it picked ends before anything is retrieved); Auto asks it in free mode; a stopped
+  companion answer is not kept, on either side.
+- **Packaging**: systemd user and system units with readiness and a watchdog, the egress splice
+  unit and a credential drop-in, a launchd agent, install and uninstall scripts, an offline bundle
+  with `SHA256SUMS` (and an Ed25519 signature on request), and a local voice server (Whisper-class
+  speech input, Piper voices) in Python.
+
+#### Interface
+
+- **A new shell**: a sidebar that collapses to a rail (a drawer on phones), **dark mode** (system,
+  light or dark, applied before the first paint), a small UI kit, mount points that features render
+  into, and a chat side panel (canvas, compare, research).
+- **Six interface languages**: English, German, French, Spanish, Italian and Turkish, with
+  dictionaries split into namespaces and loaded on demand; a language switch relabels the page in
+  place. Answer purposes keep English instructions and name the answer language.
+
+#### Server functions
+
+- `api/relay.js` (the BYOK relay with a fixed upstream table), `api/pool.js` and
+  `GET /api/models/pool` (site pools with round robin, failover until the first byte, key parking
+  and per-key pacing), `GET /api/health` (booleans only), the speech routes and research steps,
+  all behind an origin check, per-IP limits, optional daily budgets and an optional access code
+  (`STARPI_ACCESS_CODE`). [docs/SERVER.md](docs/SERVER.md) describes them.
+
+#### Tooling, CI and release
+
+- `npm run verify` adds `headers:check`, `license:check` (a licence allowlist for every shipped
+  package) and `eol:check` (an end-of-life register); `npm run hygiene:check` keeps private paths
+  and internal identifiers out of the repository.
+- CI jobs for the companion (Node 22 and 24, a systemd user-unit smoke test), the voice server,
+  CodeQL, a workflow lint (actionlint, zizmor) and the weekly model lock; e2e runs against local
+  provider fakes (`npm run fakes`).
+- `npm run providers:ping` checks every provider and pool with real keys; `npm run eval:answers`
+  measures answer quality per language.
+- **Releases** publish `@starpi/core` and `@starpi/companion` to npm with provenance, attest every
+  asset (`actions/attest-build-provenance`), sign `SHA256SUMS` and the companion's offline bundle
+  keyless with cosign, and sign `SHA256SUMS` with Ed25519 when the release key is set up
+  (`scripts/sign-release.mjs`).
+- An end-to-end test opens a 2.1 profile (chats, remembered keys and settings in `localStorage`)
+  with 3.0 and checks that everything moves once.
+
+### Changed
+
+- The first load stays below 2.1.0's (3 % less initial JavaScript) although the app does far more:
+  the Supabase library, the knowledge graph view, the AI layer, the thread and every feature load
+  after the first paint, and `verify:dist` holds the first load to a budget.
+- The NVIDIA models are a pool of the AI layer; `POST /api/chat/nvidia` and `GET /api/models/nvidia`
+  keep working for 2.x clients. `STARPI_ALLOWED_ORIGINS` and `STARPI_POOL_RPM_PER_IP` replace
+  `NVIDIA_ALLOWED_ORIGINS` and `NVIDIA_RATE_LIMIT_PER_MINUTE` (still read).
+- Pool allowlists follow `src/js/ai/catalog/pools.js`: Groq without Llama 4 Scout, OpenRouter with
+  DeepSeek R1 and Qwen3 Coder (free), the Gemini pool on Gemini 2.5 Flash-Lite with an output cap
+  of 4,096 tokens.
+- The library publisher writes 384-dimensional multilingual-e5-small vectors (optional migration
+  `20261101000000_embedding_384.sql`), the model the browser embeds its questions with.
+- The app SBOM lists what the render frame bundles (mermaid and its tree) as shipped.
+- On-device answers: a free answer may use the device's output budget (512 tokens on phones, 768 on
+  small GPUs, 1,024 on laptops, 2,048 on desktops and strong GPUs), at most half the model's context
+  window; a grounded answer keeps the preset's length within that budget. A smaller budget of 1,024
+  tokens for free answers on strong GPUs was considered for 3.0 and not adopted: the half-window cap
+  already keeps half the context for the conversation.
+- `@starpi/core`, `@starpi/companion` and the app are 3.0.0; `CITATION.cff` follows.
+- Dependencies: `@mlc-ai/web-llm` 0.2.86 (new model library hashes in `model-lock.json`), `lucide`
+  1.55.0, `marked` 18.1.0, `@supabase/supabase-js` 2.117.3, `@playwright/test` 1.64.0, ruff 0.17.0,
+  `actions/setup-node` 7.1.0, `actions/upload-artifact` 7.0.2 and `actions/download-artifact` 8.0.2.
+- The service worker also caches the lazy chunks a first visit loaded before it took control (the
+  page names them once a worker controls it), so an offline start no longer depends on the browser's
+  HTTP cache; Chromium 156 no longer serves them from there offline.
+- Migrations of one page wait for each other where Web Locks are missing, so two starts at once never
+  run a migration twice.
+
+### Removed
+
+- `backend/server.py` and its tests, the `/api/brain/*` routes, the NVIDIA mirror
+  (`backend/core/nvidia_catalog.json`), the EC2 scripts (`backend/aws/`, `backend/remote_sync.sh`)
+  and `npm run nvidia:sync` with `scripts/sync-nvidia-catalog.mjs`.
+- Plaintext key storage ("remember keys") and the plaintext `chat_history` sync.
+
+### Security
+
+- Cross-origin isolation (COOP, COEP, CORP, `Origin-Agent-Cluster`) from one header source per
+  build profile; the render and grounding frames run in opaque origins with their own CSP.
+- The relay never takes a host from the browser (no SSRF), refuses keys in URLs, forwards an
+  allowlist of headers and returns only an error identifier, never upstream text; the pools accept
+  text and images only, no tools.
+- Model files are pinned by SHA-256; tool definitions of MCP servers by SHA-256 of their canonical
+  JSON; the companion pins connector tools the same way.
+- [SECURITY.md](SECURITY.md) describes the new attack surfaces: the relay and pools, the speech and
+  research routes, the key vault, loopback pairing, the companion's egress guard and its limits.
+
+### Known limitations
+
+- Answers grounded by a search API carry no receipt (receipt sources are workspace and knowledge
+  base only); Gemini web turns offer no client tools; provider-side MCP (Anthropic, OpenAI) runs a
+  server's allowed tools without asking per call; Compare and the council answer in the free route,
+  and the council leaves out the on-device model.
+- A new question typed into Compare for models on this device and your own server only stays on
+  this device (no web search, no web, image or MCP tools); a thread question to your own server is
+  not marked so.
+- Grounded answers restored from history keep no excerpts, so read-aloud withholds their numbers.
+- Vectors of a removed embedding model stay stored until another model is selected or the files
+  are forgotten. A model file that was verified is checked again by URL and size only.
+- Hashing a model file holds it in memory once more (about twice the largest file at the peak).
+- `chat_sync` has no per-user quota; a passphrase cannot be changed yet (turn sync off and on).
+- The web query stripper treats a run of 7 to 15 digits that starts with 0 as a phone number.
+- Demo sample files exist in English and German only; the source-check sets for French, Spanish,
+  Italian and Turkish are development sets. The Sources tab of the chat side panel is empty in
+  3.0.
+- The companion's egress guard runs in its process; only the Linux system unit adds a boundary
+  outside it. Computer control drives a simulated screen only.
+
 ## [2.1.0] - 2026-10-14
 
 ### Added
@@ -406,7 +744,8 @@ of 8 of 10 are reached for values, not for names (74 %) or negations (70 %).
 - First public release: knowledge base on Supabase with pgvector, knowledge graph, voice input,
   cloud and on-device (WebGPU) answers, and an installable PWA.
 
-[Unreleased]: https://github.com/umutcantezgel-cpu/Starpi/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/umutcantezgel-cpu/Starpi/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v2.1.0...v3.0.0
 [2.1.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.3.0...v2.0.0
 [1.3.0]: https://github.com/umutcantezgel-cpu/Starpi/compare/v1.2.0...v1.3.0

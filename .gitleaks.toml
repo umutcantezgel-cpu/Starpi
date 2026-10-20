@@ -2,6 +2,11 @@
 [extend]
 useDefault = true
 
+# Provider keys and tokens. Every regex here is also valid JavaScript: tests/unit/secret-rules.test.mjs
+# compiles each rule, checks it against keys assembled at run time, scans the tracked files with it,
+# and scripts/verify-dist.mjs refuses a build that contains a match of a rule whose id ends in -key
+# or -token. Test fixtures build fake values at run time, so no key-shaped literal is committed.
+
 # NVIDIA API keys: nvapi- and 64 characters. Also matches keys pasted with Markdown escapes (\_).
 # tests/unit/nvidia-catalog.test.mjs reads this regex and scans the tracked files with it.
 [[rules]]
@@ -10,11 +15,107 @@ description = "NVIDIA API key (build.nvidia.com, NIM)"
 regex = '''nvapi-(?:\\?[A-Za-z0-9_-]){64}'''
 keywords = ["nvapi-"]
 
+[[rules]]
+id = "starpi-anthropic-api-key"
+description = "Anthropic API or admin key"
+regex = '''sk-ant-(?:api|admin)[0-9]{2}-[A-Za-z0-9_-]{80,}'''
+keywords = ["sk-ant-"]
+
+[[rules]]
+id = "starpi-openai-project-key"
+description = "OpenAI project API key"
+regex = '''sk-proj-[A-Za-z0-9_-]{40,}'''
+keywords = ["sk-proj-"]
+
+[[rules]]
+id = "starpi-openrouter-api-key"
+description = "OpenRouter API key"
+regex = '''sk-or-v1-[a-f0-9]{64}'''
+keywords = ["sk-or-v1-"]
+
+[[rules]]
+id = "starpi-xai-api-key"
+description = "xAI API key"
+regex = '''\bxai-[A-Za-z0-9]{60,}'''
+keywords = ["xai-"]
+
+[[rules]]
+id = "starpi-groq-api-key"
+description = "Groq API key"
+regex = '''\bgsk_[A-Za-z0-9]{48,}'''
+keywords = ["gsk_"]
+
+[[rules]]
+id = "starpi-elevenlabs-api-key"
+description = "ElevenLabs API key (sk_ and 48 hex digits)"
+regex = '''\bsk_[a-f0-9]{48}\b'''
+keywords = ["sk_"]
+
+# MiniMax keys: Starpi relies on no key format for them (catalog/providers.js has no keyPattern), so
+# there is no rule of their own; the default rules still apply.
+
+# Google keys: the default rule gcp-api-key covers the AIza format; this rule adds the AQ. format.
+[[rules]]
+id = "starpi-google-aq-api-key"
+description = "Google API key in the AQ. format"
+regex = '''\bAQ\.[A-Za-z0-9_-]{40,}'''
+keywords = ["aq."]
+
+# Ephemeral tokens of a live voice session (single use, minutes): the resource name auth_tokens/<id>,
+# plain or URL-encoded. They are never logged, stored or committed.
+[[rules]]
+id = "starpi-live-ephemeral-token"
+description = "Ephemeral token of a live voice session (auth_tokens/...)"
+regex = '''auth_tokens(?:/|%2[Ff])[A-Za-z0-9_-]{16,}'''
+keywords = ["auth_tokens"]
+
+# Absolute paths of a personal home directory (a POSIX home or a macOS user folder, and a Windows
+# user profile): they reveal who built or wrote something and where, and have no place in a public
+# repository. Paths in documentation use placeholders such as ~/ or <home>.
+[[rules]]
+id = "starpi-personal-path-posix"
+description = "Absolute path into a personal home directory"
+regex = '''(?:^|[^A-Za-z0-9_.~-])/(?:home|Users)/[A-Za-z_][A-Za-z0-9._-]{0,31}/'''
+keywords = ["/home/", "/users/"]
+
+[[rules]]
+id = "starpi-personal-path-windows"
+description = "Absolute path into a Windows user profile"
+regex = '''\b[A-Za-z]:(?:\\\\|\\|/)Users(?:\\\\|\\|/)[A-Za-z_][A-Za-z0-9._ -]{0,31}(?:\\\\|\\|/)'''
+keywords = ["users"]
+
 [[allowlists]]
 description = "Supabase anon (publishable) JWT for project behnltoogscnbjhvixmw: public by design, access is enforced by RLS. The payload prefix pins role=anon, so a service_role key is still reported."
 regexTarget = "match"
 regexes = [
   '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJlaG5sdG9vZ3NjbmJqaHZpeG13Iiwicm9sZSI6ImFub24i[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+''',
+]
+
+[[allowlists]]
+description = "Names of storage keys and record ids of the app (starpi_thinking_v1, starpi_conversation-1): identifiers, never credentials. A value must consist of nothing but such a name."
+regexes = [
+  '''^starpi_[a-z]+(?:[_-][a-z0-9]+)*$''',
+]
+
+[[allowlists]]
+description = "SHA-256 pins of public model files in the library publisher (PinnedFile(name, sha256, size)): checksums, not secrets."
+condition = "AND"
+paths = [
+  '''^tools/library-publisher/publisher/model_files\.py$''',
+]
+regexTarget = "line"
+regexes = [
+  '''PinnedFile\([A-Z_]+, "[0-9a-f]{64}", [0-9_]+\)''',
+]
+
+[[allowlists]]
+description = "Fake Gemini keys of the end-to-end tests (AIzaSyA-e2e-...): never valid, kept for the history scan of commits from before the voice test built its key at runtime."
+condition = "AND"
+paths = [
+  '''^tests/e2e/[^/]+\.spec\.mjs$''',
+]
+regexes = [
+  '''^AIzaSyA-e2e-[A-Za-z0-9-]+$''',
 ]
 
 [[allowlists]]

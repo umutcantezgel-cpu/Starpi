@@ -1,0 +1,22 @@
+data: {"id":"chatcmpl-7fake","object":"chat.completion.chunk","created":1767225607,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-7fake","object":"chat.completion.chunk","created":1767225607,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"content":"This is "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-7fake","object":"chat.completion.chunk","created":1767225607,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"content":"a simulated "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-7fake","object":"chat.completion.chunk","created":1767225607,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"content":"answer from "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-7fake","object":"chat.completion.chunk","created":1767225607,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"content":"the local "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-7fake","object":"chat.completion.chunk","created":1767225607,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"content":"test provider. "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-7fake","object":"chat.completion.chunk","created":1767225607,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"content":"You asked: "},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-7fake","object":"chat.completion.chunk","created":1767225607,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{"content":"\"Hello\"."},"finish_reason":null,"logprobs":null}]}
+
+data: {"id":"chatcmpl-7fake","object":"chat.completion.chunk","created":1767225607,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[{"index":0,"delta":{},"finish_reason":"stop","logprobs":null}]}
+
+data: {"id":"chatcmpl-7fake","object":"chat.completion.chunk","created":1767225607,"model":"fake-gpt-small","system_fingerprint":"fp_fake","choices":[],"usage":{"prompt_tokens":2,"completion_tokens":19,"total_tokens":21,"completion_tokens_details":{"reasoning_tokens":0}}}
+
+data: [DONE]
+

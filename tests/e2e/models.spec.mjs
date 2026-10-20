@@ -1,8 +1,9 @@
 // End-to-end tests for the device-adaptive model picker: the recommendation per device class, the
-// on-device and NVIDIA groups, consent before any download, the hardware badges in the settings, the
-// migration of a stored 2.0 preference, language switches and switching while an answer is written.
+// on-device group and the site's free models, consent before any download, the hardware badges in
+// the settings, the migration of a stored 2.0 preference, language switches and switching while an
+// answer is written.
 import { NVIDIA_DEFAULT_MODEL, NVIDIA_MODELS } from '../../src/js/models/nvidia-catalog.js';
-import { expect, mockNvidia, mockSupabase, test, useNvidia } from './fixtures.mjs';
+import { chooseLanguage, expect, mockNvidia, mockSupabase, test, useNvidia } from './fixtures.mjs';
 
 /**
  * Emulates a desktop with 8 GB of memory, with or without a WebGPU adapter (Intel, shader-f16, 2 GiB
@@ -68,21 +69,23 @@ test.describe('model picker', () => {
     await page.goto('/');
 
     const recommended = page.locator(`${HEADER} optgroup`).first();
-    await expect(recommended).toHaveAttribute('label', 'Recommended for your device');
-    await expect(recommended.locator('option').first()).toHaveAttribute('value', 'webgpu:qwen-3b');
-    await expect(recommended.locator('option').first()).toContainText('Qwen 2.5 3B · GPU (WebGPU) · 1.9 GB download · recommended');
+    await expect(recommended).toHaveAttribute('label', 'Recommended for this device');
+    await expect(recommended.locator('option').first()).toHaveAttribute('value', 'auto');
+    const pick = recommended.locator('option[value^="webgpu:"]').first();
+    await expect(pick).toHaveAttribute('value', 'webgpu:qwen-3b');
+    await expect(pick).toContainText('Qwen 2.5 3B · GPU (WebGPU) · 1.9 GB download · recommended');
     await expect(page.locator(`${HEADER} option[value="webgpu:gemma-9b"]`)).toContainText('needs a strong GPU');
-    await expect(page.locator(`${HEADER} option[value="council"]`)).toHaveCount(1);
-    // First run stays with the cloud assistant: nothing is picked or downloaded by itself.
-    await expect(page.locator('#engineSelector')).toHaveValue('council');
-    expect(await groupLabels(page, HEADER)).toEqual(['Recommended for your device', 'In this browser (WebGPU/WASM)', 'Other assistants']);
+    // First run stays with Auto: nothing is picked or downloaded by itself.
+    await expect(page.locator('#engineSelector')).toHaveValue('auto');
+    // No keys, no free models on this server, no own server: Auto and this device only.
+    expect(await groupLabels(page, HEADER)).toEqual(['Recommended for this device', 'On this device']);
 
     await page.selectOption('#engineSelector', 'wasm:smollm2-135m');
     await expect.poll(() => dialogs.length).toBe(1);
     expect(dialogs[0]).toContain('"SmolLM2 135M"');
     expect(dialogs[0]).toContain('15 MB');
     expect(await page.evaluate(() => localStorage.getItem('starpi_webgpu_model'))).toBe('wasm:smollm2-135m');
-    expect(await page.evaluate(() => localStorage.getItem('starpi_compute_mode'))).toBe('client');
+    expect(await page.evaluate(() => localStorage.getItem('starpi_assistant_v1'))).toBe('device');
     await expect(page.locator('#engineSelector')).toHaveValue('wasm:smollm2-135m');
     await expect(page.locator('#cfgComputeMode')).toHaveValue('wasm:smollm2-135m');
     await expect(page.locator('#webgpuProgressContainer')).toBeHidden();
@@ -118,7 +121,7 @@ test.describe('model picker', () => {
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await page.goto('/');
 
-    const first = page.locator(`${HEADER} optgroup`).first().locator('option').first();
+    const first = page.locator(`${HEADER} optgroup[data-group="recommended"] option[value^="wasm:"]`).first();
     await expect(first).toHaveAttribute('value', /^wasm:/);
     await expect(first).toContainText('CPU (WASM)');
     await expect(first).toContainText('recommended');
@@ -143,18 +146,18 @@ test.describe('model picker', () => {
     await expect(page.locator(HEADER)).toHaveValue('webgpu:llama-3b');
     expect(await groupLabels(page, SETTINGS)).toEqual(await groupLabels(page, HEADER));
     expect(await optionValues(page, SETTINGS)).toEqual(await optionValues(page, HEADER));
-    // The wider settings picker describes the other assistants in more detail.
-    await expect(page.locator(`${SETTINGS} option[value="council"]`)).toHaveText('Cloud assistant · your own provider key');
-    await expect(page.locator(`${HEADER} option[value="council"]`)).toHaveText('Cloud assistant');
+    // The wider settings picker says more about Auto.
+    await expect(page.locator(`${SETTINGS} option[value="auto"]`)).toHaveText("Auto · the best model that is set up: MiniMax M3.1 Flash when it is available, then your keys, the site's free models, your server, this device");
+    await expect(page.locator(`${HEADER} option[value="auto"]`)).toHaveText('Auto · best available');
     const badges = page.locator('#cfgDeviceBadges');
     await expect(badges).toBeVisible();
     await expect(badges).toContainText('WebGPU with f16');
     await expect(badges).toContainText('8 GB RAM');
     await expect(badges).toContainText('Device class: desktop');
 
-    await page.click('[data-action="set-locale"][data-arg="de"]');
-    await expect(page.locator(`${SETTINGS} optgroup`).first()).toHaveAttribute('label', 'Empfohlen für Ihr Gerät');
-    await expect(page.locator(`${HEADER} optgroup`).nth(1)).toHaveAttribute('label', 'Lokal im Browser (WebGPU/WASM)');
+    await chooseLanguage(page, 'de');
+    await expect(page.locator(`${SETTINGS} optgroup`).first()).toHaveAttribute('label', 'Empfohlen für dieses Gerät');
+    await expect(page.locator(`${HEADER} optgroup`).nth(1)).toHaveAttribute('label', 'Auf diesem Gerät');
     await expect(page.locator(`${HEADER} option[value="webgpu:llama-3b"]`)).toContainText('Llama 3.2 3B · Grafikkarte (WebGPU) · 1,9 GB Download');
     await expect(page.locator(SETTINGS)).toHaveValue('webgpu:llama-3b');
     await expect(page.locator(HEADER)).toHaveValue('webgpu:llama-3b');
@@ -163,46 +166,47 @@ test.describe('model picker', () => {
     expect(dialogs).toEqual([]);
   });
 
-  test('lists the NVIDIA models the proxy offers and recommends its default', async ({ page, diagnostics: _diagnostics }) => {
+  test('lists the free NVIDIA models the site offers and recommends its default', async ({ page, diagnostics: _diagnostics }) => {
     await emulateDesktop(page, { gpu: true });
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
     await mockNvidia(page);
     await page.goto('/');
 
-    const nvidiaGroup = page.locator(`${HEADER} optgroup[label="NVIDIA NIM cloud (fast & free)"]`);
+    const pools = page.locator(`${HEADER} optgroup[label="Free (via Starpi)"]`);
     // The default model is in the recommended group instead, so every value appears once.
-    await expect(nvidiaGroup.locator('option')).toHaveCount(NVIDIA_MODELS.length - 1);
-    await expect(nvidiaGroup.locator('option:disabled')).toHaveCount(0);
+    await expect(pools.locator('option')).toHaveCount(NVIDIA_MODELS.length - 1);
+    await expect(pools.locator('option:disabled')).toHaveCount(0);
     const recommended = page.locator(`${HEADER} optgroup`).first();
     await expect(recommended.locator(`option[value="nvidia:${NVIDIA_DEFAULT_MODEL}"]`)).toHaveCount(1);
     const pick = /** @type {(typeof NVIDIA_MODELS)[number]} */ (NVIDIA_MODELS.find((m) => m.id !== NVIDIA_DEFAULT_MODEL));
-    await expect(nvidiaGroup.locator(`option[value="nvidia:${pick.id}"]`)).toHaveText(`${pick.label} · NVIDIA cloud, no download`);
+    await expect(pools.locator(`option[value="nvidia:${pick.id}"]`)).toHaveText(`${pick.label} · free via Starpi`);
     const values = await optionValues(page, HEADER);
     expect(new Set(values).size).toBe(values.length);
+    await expect(page.locator('#cfgPoolHealth [data-pool="nvidia"]')).toHaveAttribute('data-state', 'on');
 
     await page.selectOption('#engineSelector', `nvidia:${pick.id}`);
     await expect(page.locator('#cfgComputeMode')).toHaveValue(`nvidia:${pick.id}`);
     await expect(page.locator('#privacyNotice')).toContainText("go through Starpi's server to NVIDIA");
-    expect(await page.evaluate(() => [localStorage.getItem('starpi_compute_mode'), localStorage.getItem('starpi_nvidia_model')])).toEqual(['nvidia', pick.id]);
+    expect(await page.evaluate(() => localStorage.getItem('starpi_assistant_v1'))).toBe(`nvidia:${pick.id}`);
   });
 
-  test('hides the NVIDIA group without a proxy and marks a stored NVIDIA model as unavailable', async ({ page, diagnostics: _diagnostics }) => {
+  test('offers no free models without the site pools and marks a stored NVIDIA model as not set up', async ({ page, diagnostics: _diagnostics }) => {
     await emulateDesktop(page, { gpu: true });
     await mockSupabase(page, { hardened: true, anonymousAuth: true });
-    // The preview server has no NVIDIA routes: the catalog request gets a 404.
-    const catalog = page.waitForResponse((res) => new URL(res.url()).pathname === '/api/models/nvidia');
+    // The preview server has no pool routes: the pool list request gets a 404.
+    const catalog = page.waitForResponse((res) => new URL(res.url()).pathname === '/api/models/pool');
     await page.goto('/');
     expect((await catalog).status()).toBe(404);
-    await expect(page.locator(`${HEADER} optgroup`)).toHaveCount(3);
+    await expect(page.locator(`${HEADER} optgroup`)).toHaveCount(2);
     await expect(page.locator(`${HEADER} option[value^="nvidia:"]`)).toHaveCount(0);
 
     // A visitor who picked NVIDIA earlier still sees the choice, disabled and explained.
     await useNvidia(page);
     await page.reload();
-    await expect(page.locator('#assistantStatusText')).toHaveText('NVIDIA cloud is not available on this server');
     const stored = page.locator(`${HEADER} option[value="nvidia:${NVIDIA_DEFAULT_MODEL}"]`);
     await expect(stored).toHaveJSProperty('disabled', true);
     await expect(stored).toContainText('not set up on this server');
+    await expect(page.locator('#assistantStatusText')).toHaveText('This model is not set up: add its key in Settings or pick another one');
     await expect(page.locator(`${HEADER} option[value^="nvidia:"]`)).toHaveCount(1);
     await expect(page.locator('#engineSelector')).toHaveValue(`nvidia:${NVIDIA_DEFAULT_MODEL}`);
   });
@@ -218,11 +222,14 @@ test.describe('model picker', () => {
       release = () => resolve(undefined);
     });
     let asked = false;
-    await page.route('**/api/chat/nvidia', async (route) => {
-      asked = true;
-      await held;
-      await route.fallback();
-    });
+    await page.route(
+      (url) => url.pathname === '/api/pool' && url.searchParams.get('provider') === 'nvidia',
+      async (route) => {
+        asked = true;
+        await held;
+        await route.fallback();
+      },
+    );
     await useNvidia(page);
     const dialogs = captureDialogs(page);
     await page.goto('/');
@@ -231,19 +238,20 @@ test.describe('model picker', () => {
     await ask(page, 'Hello?');
     await expect.poll(() => asked).toBe(true);
 
-    await page.selectOption('#engineSelector', 'council');
+    await page.selectOption('#engineSelector', 'auto');
     await expect.poll(() => dialogs.length).toBe(1);
     expect(dialogs[0]).toBe('Wait until the current answer is finished before switching the model.');
     await expect(page.locator('#engineSelector')).toHaveValue(`nvidia:${NVIDIA_DEFAULT_MODEL}`);
-    expect(await page.evaluate(() => localStorage.getItem('starpi_compute_mode'))).toBe('nvidia');
+    expect(await page.evaluate(() => localStorage.getItem('starpi_assistant_v1'))).toBe(`nvidia:${NVIDIA_DEFAULT_MODEL}`);
 
     release();
     await expect(page.locator('#chatMessages')).toContainText('Hello from the cloud.');
-    await page.selectOption('#engineSelector', 'council');
-    await expect(page.locator('#cfgComputeMode')).toHaveValue('council');
-    expect(await page.evaluate(() => localStorage.getItem('starpi_compute_mode'))).toBe('council');
+    await page.selectOption('#engineSelector', 'auto');
+    await expect(page.locator('#cfgComputeMode')).toHaveValue('auto');
+    expect(await page.evaluate(() => localStorage.getItem('starpi_assistant_v1'))).toBe('auto');
     expect(dialogs).toHaveLength(1);
-    expect(nvidia.bodies).toHaveLength(1);
+    // The question and, once answered, a title request with the same model; no second answer.
+    expect(nvidia.bodies.filter((b) => !JSON.stringify(b.messages).includes('starpi-purpose'))).toHaveLength(1);
   });
 
   test('applies a pick made with the arrow keys once they rest, not at every step', async ({ page, diagnostics: _diagnostics }) => {
@@ -254,12 +262,12 @@ test.describe('model picker', () => {
     await expect(page.locator(HEADER)).toHaveCount(1);
     await page.focus('#engineSelector');
     const start = await page.locator('#engineSelector').inputValue();
-    for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowUp');
+    for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown');
     const picked = await page.locator('#engineSelector').inputValue();
     expect(picked).not.toBe(start);
     // Stepping through the options switches nothing and asks nothing.
     expect(dialogs).toHaveLength(0);
-    expect(await page.evaluate(() => localStorage.getItem('starpi_compute_mode'))).toBe('council');
+    expect(await page.evaluate(() => localStorage.getItem('starpi_assistant_v1'))).toBe('auto');
     // Resting on an option applies it once, for the option it rests on.
     await expect.poll(() => page.evaluate(() => localStorage.getItem('starpi_webgpu_model')), { timeout: 5_000 }).toBe(picked);
     await page.waitForTimeout(1_000);

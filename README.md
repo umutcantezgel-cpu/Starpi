@@ -9,22 +9,66 @@
 </p>
 
 **A knowledge assistant in the browser that shows how far each answer can be trusted.** Starpi
-answers from your files with a model in the browser (WebGPU, or WebAssembly on the processor), your
-own server or a cloud model: NVIDIA NIM models through the site's own proxy, or Gemini and
-OpenRouter with your own key. In verified source mode a deterministic source check compares every
-statement with the passages it cites, and every answer comes with a receipt that anyone can verify
-against the original files; free chat talks with the same models without sources and marks its
-answers as not checked. Your files are read on your device and never uploaded, and the app is a
-static site with two server functions for the NVIDIA models: no account, no API key and no server
-of your own are needed. English and German.
+answers with the model you choose: Anthropic, OpenAI, Gemini, xAI, Groq, Mistral, DeepSeek, MiniMax,
+OpenRouter or NVIDIA with your own key, free models from the site's key pools without any key, your
+own server, a model in the browser (WebGPU, or WebAssembly on the processor), or Starpi Core, the
+local companion on your own machine. **Auto** decides for each question whether your files can
+answer it. Grounded answers cite every passage, a deterministic source check compares every
+statement with the passages it cites, and a receipt signed on your device lets anyone verify them
+against the original files; free answers are marked as not checked. Whatever is read aloud, spoken
+in a Live conversation or written into a research report passes a sentence gate first. Your files
+and conversations stay on your device, and sync is end-to-end encrypted and off until you turn it
+on. The app is a static site with stateless server functions: no account, no API key and no server
+of your own are needed. In English, German, French, Spanish, Italian and Turkish.
 
 <p align="center">
   <img src="docs/assets/screenshots/source-check.png" width="100%" alt="Starpi chat. An answer about the sample project passes the source check (4 of 4 statements match their cited excerpts). A second, prepared answer with one wrong number is flagged: the statement is highlighted and the source check says 520,000 is not in the cited excerpt of nebula-plan.md.">
 </p>
 
-**Live:** [www.starpi.app](https://www.starpi.app) · **Tour of the code:** [walkthrough](docs/WALKTHROUGH.md) ·
+**Live:** [www.starpi.app](https://www.starpi.app) · **New in 3.0:** [overview](#whats-new-in-30),
+[migration guide](docs/MIGRATION-3.md) · **Tour of the code:** [walkthrough](docs/WALKTHROUGH.md) ·
 **How it works in detail:** [architecture atlas](docs/ARCHITECTURE.md) · **The checks as a library:**
-[`@starpi/core`](packages/core/README.md) · [Changelog](CHANGELOG.md)
+[`@starpi/core`](packages/core/README.md) · **The local companion:**
+[`@starpi/companion`](packages/companion/README.md) · [Changelog](CHANGELOG.md)
+
+## What's new in 3.0
+
+- **Every provider in one chat.** One AI layer for Anthropic, OpenAI, Gemini, xAI, Groq, Mistral,
+  DeepSeek, MiniMax, OpenRouter, NVIDIA, your own server and the models on your device, with extended
+  thinking and web search per answer. MiniMax M3.1 Flash is the cloud base model: Auto reaches it
+  first whenever it is set up. Your key goes to the provider directly, or through Starpi's
+  stateless relay when a provider blocks browsers; without a key, the site's pools offer free models.
+- **Auto · Free · Grounded.** Auto routes each question without an extra model call: to your sources
+  when it points at them, to a free conversation otherwise, or mixed. Every answer carries a label
+  that says which it was.
+- **A chat thread with branches:** edit a question, regenerate with another model, continue after
+  the length limit, attach images, PDFs and Office files, use tools with approvals and MCP servers
+  with pinned tool definitions, open answers in a canvas, compare models side by side or ask a
+  council; projects, assistants and an opt-in memory.
+- **Voice, Live and research.** Dictation with a fallback chain of speech services; read-aloud and
+  Live conversations that speak only what the sentence gate released; research jobs that search your
+  documents and the web in the background and survive a reload.
+- **Stronger checks:** source check version 3 (relations between values and events), the sentence
+  gate (also as `starpi-gate`), receipts v3 signed with a key of your device, six languages.
+- **On your device:** conversations in IndexedDB, workspace files kept across reloads, Word, Excel,
+  PowerPoint and HTML files, opt-in search by meaning, model files checked against SHA-256 pins, and
+  a benchmark history that informs the model recommendation.
+- **A knowledge graph from your files.** **Find in my files** names the people, organizations and
+  things in the files on this device and how they relate. A model's relation stays only when the
+  passage it cites names both ends; without a model, names that appear in the same sentence are
+  linked. A long file is continued where the last run stopped, and the results stay on the device
+  with their files and go when a file is removed. What was found is drawn dashed next to the entries
+  added by hand, with the passages it comes from.
+- **End-to-end encrypted sync**, off until you turn it on.
+- **Starpi Core, the local companion** (`@starpi/companion`): a sealed vault, a signed audit chain and
+  zero network egress by default on your own machine; paired with the app it is a source and a model
+  of the chat.
+- **Signed releases:** npm provenance for both packages, build attestations for every asset, and
+  Sigstore signatures for the checksums and the companion's offline bundle.
+
+Coming from 2.x? A browser moves its chats, remembered keys and settings once, on the first start.
+Operators, forks and users of `@starpi/core` find the breaking changes in the
+[migration guide](docs/MIGRATION-3.md); every change is in the [changelog](CHANGELOG.md).
 
 ## Try it in 20 seconds
 
@@ -38,61 +82,74 @@ of your own are needed. English and German.
 5. Open **Receipt** under an answer, download it, and verify it against the sample files, in the
    dialog or on the command line with `npm run verify:receipt`.
 
-Without an API key Starpi answers by quoting the sources, and says so. Pick an NVIDIA cloud model
-in the model menu (where the site has set up the NVIDIA proxy), add a Gemini or OpenRouter key,
-point it at your own server, or load an on-device model in **Settings**, and a model writes the
-answer; the same checks apply. Switch the composer to **Free chat** to talk with the model without
-sources: nothing is searched, and every answer is marked as not checked against sources.
+The model menu offers the free models of the site's pools under **Free (via Starpi)**; **Auto**
+takes the best model that is set up, and without any model Starpi answers grounded questions by
+quoting the sources, and says so. Switch the composer between **Auto**, **Free** and **Grounded**:
+Free talks with the model without sources and marks every answer as not checked. Add a key under
+**Settings › Model providers and keys**, point Starpi at your own server, load a model on this
+device or pair the local companion, and the same checks apply.
 
 ## What is different
 
 Retrieval-augmented assistants cite sources, but a citation does not tell you whether the sentence
 next to it says what the source says. Starpi makes that visible and checkable:
 
-- **Source check on every answer.** Each statement is compared with the excerpts it cites: numbers
-  in English and German formats (480,000 = 480.000 = 480k), dates, times, weekdays, codes, version
-  numbers, quotations and wording; and whether it reverses a negation of the excerpt ("is
-  supported" where the excerpt says "is not supported") or puts a name or a value next to
-  something else than the excerpt does. A value that is not in the cited excerpt is named
-  ("520,000 is not in [Doc: plan.md, Chunk: 1]"), the statement is highlighted and its citation
-  marked; a reversed or misplaced statement is listed for review with the passage that says
+- **Source check on every grounded answer.** Each statement is compared with the excerpts it cites:
+  numbers (480,000 = 480.000 = 480k), dates, times, weekdays, codes, version numbers, quotations and
+  wording; whether it reverses a negation of the excerpt ("is supported" where the excerpt says "is
+  not supported"); whether it puts a name or a value next to something else than the excerpt does;
+  and, since version 3, whether it gives a change, a comparison or an order in time the other way
+  round ("costs rose from 420,000 to 210,000 EUR"). A value that is not in the cited excerpt is
+  named ("520,000 is not in [Doc: plan.md, Chunk: 1]"), the statement is highlighted and its
+  citation marked; a reversed or misplaced statement is listed for review with the passage that says
   otherwise. It runs in the browser, is deterministic and needs no second model. On labelled test
   answers held out from its development it flagged every changed value, about three in four
-  reversed statements, wrong names and misplaced values, and no statement of a faithful answer as
-  unsupported ([how well it works](#how-well-it-works)).
+  reversed statements, wrong names and misplaced values, 23 of 24 reversed relations, and no
+  statement of a faithful answer as unsupported ([how well it works](#how-well-it-works)).
 - **Answer receipts.** A JSON file per answer with SHA-256 fingerprints of the source files, the
-  exact offsets of each cited passage, the source-check verdicts and a Merkle tree (RFC 6962) over
-  the citations, so one cited passage can be shown with its inclusion proof without the others.
-  Anyone with the same files can reproduce every passage, in the app or with a command-line
-  verifier; a deployment can sign receipts with Ed25519 or ECDSA P-256. The format is specified
-  in [`docs/spec/receipts.md`](docs/spec/receipts.md).
-- **A check for CI.** `starpi-ground` checks release notes, generated documentation or any
-  Markdown document against source files and writes SARIF 2.1.0, so a pull request shows an
-  unsupported statement in GitHub code scanning ([CI snippet](#check-documents-in-ci)).
+  exact offsets of each cited passage, the source-check verdicts, what the sentence gate released
+  and withheld, and a Merkle tree (RFC 6962) over the citations, so one cited passage can be shown
+  with its inclusion proof without the others. Anyone with the same files can reproduce every
+  passage, in the app or with a command-line verifier. The app signs the receipts it exports with a
+  key of the device (Ed25519, or ECDSA P-256), on by default; a v3 receipt names its signer inside
+  its id, so a removed or swapped signature is detected, and **Settings › Trust** hands out the
+  public key. The format is specified in [`docs/spec/receipts.md`](docs/spec/receipts.md).
+- **What is spoken is checked.** Read-aloud, Live, research reports and the companion's answers
+  carry only units the sentence gate released: in a grounded answer a number is spoken only when a
+  passage the sentence cites holds that number ([the gate's trust model](#what-is-spoken-is-checked-the-sentence-gate)).
+- **A check for CI.** `starpi-ground` checks release notes, generated documentation or any Markdown
+  document against source files and writes SARIF 2.1.0, so a pull request shows an unsupported
+  statement in GitHub code scanning ([CI snippet](#check-documents-in-ci)); `starpi-gate` gates a
+  streamed answer the way the app does.
 - **Citations the model cannot forge.** Only labels the app registered for the excerpts it sent
   become clickable, and the drawer shows the cited chunk inside its source text.
-- **Verified source mode or free chat.** Verified source mode, the default, retrieves passages,
-  cites them and checks the answer. Free chat sends the conversation to the chosen model without
-  retrieval, citations, source check or receipt, and marks every answer "Free chat · not checked
-  against sources". Suggested questions, quick prompts and questions about a graph entity always
-  run in source mode.
-- **A model for your device.** The model menu groups the choices: recommended for your device,
-  models that run in this browser (WebGPU, or WebAssembly on the processor, which also works
-  without WebGPU), NVIDIA NIM cloud models through the site's proxy, and the other assistants.
-  Nothing is downloaded without confirmation, and the NVIDIA keys stay on the server.
-- **Files are read on the device.** PDF, Markdown, text, JSON and CSV files are parsed, chunked
-  and indexed with BM25 in a Web Worker and never uploaded. Only the excerpts an answer needs go to
-  the model you chose (none in on-device mode); in free chat, a file attached to the question goes
-  to the model as text (at most 12,000 characters of it). Turns that use your files are never
-  synced or sent to a cloud provider, NVIDIA or your own server as chat history.
-- **A privacy statement per mode.** The footer says where the question goes in the current mode
-  and chat mode; in on-device mode it does not leave the browser.
+- **Auto, Free or Grounded.** Auto routes each question without asking a model: to your sources
+  when it points at them (an attached document, "according to my notes", a file name, a strong match
+  in the workspace), to a free conversation otherwise, or mixed, where the answer marks which parts
+  the sources hold. Grounded always retrieves, cites and checks. Free sends the conversation to the
+  model without retrieval, citations, source check or receipt and marks every answer as not checked.
+  Suggested questions and questions about a graph entity always run grounded; an entity found in
+  your files is looked up in those files.
+- **A model for every situation.** The model menu groups the choices: recommended for this device,
+  on this device (WebGPU, or WebAssembly on the processor), the local companion, the free models of
+  the site's pools, the providers you have a key for and your own server, each with a status from
+  the site's health check ([models and providers](#models-and-providers)). Nothing is downloaded
+  without confirmation, and the site's keys stay on the server.
+- **Files are read on the device.** PDF, Markdown, text, JSON, CSV, Word, Excel, PowerPoint and HTML
+  files are parsed, chunked and indexed in a Web Worker (BM25, and on request by meaning with an
+  embedding model on the device) and kept on the device until you forget them; they are never
+  uploaded. Only the excerpts an answer needs go to the model you chose (none on this device). A turn
+  that used your files is never sent to another model as history and never synced; a question
+  answered on this device also gets no web search and no cloud tools.
+- **A privacy statement per answer.** The footer under the composer says where the current question
+  goes with the chosen model and mode; on this device it does not leave the browser.
 
 Both checks have limits, and the app says so where it shows them. The source check compares text;
-a match does not prove a statement true, and a flag means "open the source and look". Receipts
-show that the excerpts are reproducible from the same files, not what a model read. The app does
-not sign the receipts it exports; a signature made by a deployment shows who signed only when it
-is checked with a public key obtained from the signer, not with the key inside the receipt.
+a match does not prove a statement true, and a flag means "open the source and look". The sentence
+gate guards numbers, identifiers, links and characters, not meaning. Receipts show that the
+excerpts are reproducible from the same files, not what a model read. A signature shows who signed
+only when it is checked with a public key obtained from the signer, not with the key inside the
+receipt.
 
 <table>
   <tr>
@@ -139,14 +196,17 @@ own words and still says something else, in English and German:
   value stands. Version 1 checked this too; version 2 compares the passage around each value and
   no longer counts a section heading as the context of every value below it.
 
-Each statement is checked on its own, so a receipt can recompute it; a wrong relation spread over
-two statements is not seen. In English answers, a name that none of the cited excerpts contains
-("the Munich depot" when the plan says Hamburg) is marked weak as before. When the answer and the
-excerpt are in different languages, only the facts are compared. The rules live in
+Each statement is checked on its own, and version 3 also compares it with the statement directly
+before it, so a receipt can recompute it; a wrong relation spread over more statements is not seen.
+In English answers, a name that none of the cited excerpts contains ("the Munich depot" when the
+plan says Hamburg) is marked weak as before. When the answer and the excerpt are in different
+languages, only the facts are compared. The checks read English, German, French, Spanish, Italian
+and Turkish (the last four from language packs loaded after the first paint). The rules live in
 [`src/js/core/facts.js`](src/js/core/facts.js), [`src/js/core/polarity.js`](src/js/core/polarity.js),
-[`src/js/core/binding.js`](src/js/core/binding.js) and
+[`src/js/core/binding.js`](src/js/core/binding.js),
+[`src/js/core/relations.js`](src/js/core/relations.js) and
 [`src/js/core/grounding.js`](src/js/core/grounding.js), carry a version that receipts record
-(version 1 can still be run and is still used to recompute 1.x receipts), and are pinned by golden
+(versions 1 and 2 can still be run and recompute receipts of 1.x and 2.x), and are pinned by golden
 tests.
 
 ### How well it works
@@ -183,63 +243,332 @@ with 843 faithful paraphrases showed that reading negations by their words also 
 restatements ("only allowed after the update" for "prohibited until the update"), and no faithful
 statement may be marked unsupported.
 
+Version 3 (the current rules) adds relations between values or events, within a statement and with
+the statement before it: a change, comparison, order in time or carried-over value that the cited
+excerpts give the other way round ("costs rose from 420,000 to 210,000 EUR") is marked weak with the
+excerpt's passage. On two relation sets written for 3.0 (fictitious reports in English and German,
+[sets and results](docs/eval/v3-relations.md)) it detects 32 of 32 and, on the held-out set, 23 of
+24 planted relation errors, where version 2 detected 2 and 5, and it marks no statement of a
+faithful answer weak or unsupported. On all earlier sets it gives the results of version 2, with one
+more misplaced value detected in the set for 2.0.
+
 The answers were written by language models following fixed instructions, and every label was
 confirmed by two independent model reviewers; they are not answers from real users, and each
 category has 10 to 24 answers per set. Read the table as what the check can and cannot see: it is
 reliable for changed values and finds most reversed statements, wrong names and misplaced values
-within one statement, but not all, and not a wrong relation spread over two statements. The
+within one statement, but not all; relations across statements are checked only with the statement
+directly before. The
 labelled answers are in [`tests/fixtures/grounding/`](tests/fixtures/grounding), and a unit test
 fails if any of these results gets worse.
+
+French, Spanish, Italian and Turkish have development sets only
+([`tests/fixtures/grounding/eval-intl.json`](tests/fixtures/grounding/eval-intl.json)); a held-out
+set per language comes before the rules are tuned further for them. `npm run eval:answers` asks a
+configured model the app's prompts in all six languages and measures the answers, including what
+the source check says about grounded ones.
 
 <!-- diagram: source-check-pipeline -->
 ```mermaid
 flowchart TD
-    sIn(["chat.js submitChat: rendered messageEl, a citation scope,<br/>the same chat session still shown"]) --> sEng{"answer.engine is synthesizer?"}
-    sEng -->|"yes"| sFull["every excerpt delivered full,<br/>text = the excerpt as given"]
-    sEng -->|"no, a model answered"| sCov["contextCoverage(citationList, deliveredContext or context):<br/>the EXCERPT n blocks of the context that was sent give<br/>full, partial without the ellipsis, or omitted"]
-    sFull --> sApply
-    sCov --> sApply
-    sDemo(["demo.js showCheckDemo: excerpts delivered full,<br/>no given, citedOnly off"]) -.-> sApply
-    sApply["applyGrounding(messageEl): scope, sources with label, doc,<br/>heading, delivered text and state, given = the prompt and the<br/>user messages among the last 4 conversation entries,<br/>citedOnly = synthesizer answer"]
-    sApply --> sSlot{".message-content and .message-provenance<br/>present and sources not empty?"}
-    sSlot -->|"no"| sNull(["returns null, no panel"])
-    sSlot -->|"yes"| sBlocks["blocksFromElement: one block per p, li, h1 to h6, tr,<br/>blockquote, dd, dt, pre skipped, br as a line break,<br/>td and th cells joined with a separator,<br/>kind p, li, heading, row, header-row or other"]
-    sBlocks --> sBtn{"button with data-action open-citation<br/>and data-arg of this answer's scope?"}
-    sBtn -->|"yes"| sCite["cite segment, chip position recorded"]
-    sBtn -->|"no"| sIgn["other buttons ignored"]
-    sBlocks --> sLoose["text matching LOOSE_LABEL_PATTERN: badcite,<br/>resolveLabel by document name and chunk number"]
-    sBlocks --> sLead["list item, or the first paragraph of a loose list item,<br/>whose list follows a block ending in a colon:<br/>leadIn = that block"]
-    sCite --> sSize
-    sLoose --> sSize
-    sLead --> sSize
-    sSize{"groundAnswer, rules version GROUNDING.version 2:<br/>text segments over THRESHOLDS.maxChars 20000 characters?"}
+    sIn(["chat/thread.js answerGrounded: the answer streamed and rendered,<br/>pack labels [S#] and [F#] expanded to the canonical labels"]) --> sEng{"who answered?"}
+    sEng -->|"the extractive synthesizer"| sFull["every excerpt delivered full"]
+    sEng -->|"a model, with a context pack"| sPack["the pack's coverage per excerpt:<br/>full, partial or omitted"]
+    sEng -->|"a model, plain context"| sCov["contextCoverage: the EXCERPT n blocks<br/>of the context that was sent"]
+    sFull --> sKind
+    sPack --> sKind
+    sCov --> sKind
+    sKind{"a mixed answer from Auto?"}
+    sKind -->|"yes"| sMixed["applyMixedMarks: the same check, per statement<br/>from the sources, partly, cited but not found<br/>or not in the sources"]
+    sKind -->|"no"| sApply["applyGrounding: sources with their delivered text and state,<br/>given = the question and the user messages among the last 4 entries,<br/>citedOnly = synthesizer answer, localOnly = the answer stays here"]
+    sDemo(["demo.js showCheckDemo: excerpts full, no given"]) -.-> sApply
+    sApply --> sBlocks["blocksFromElement: blocks of the rendered DOM,<br/>citation buttons of this answer's scope as citations,<br/>other label-like text as bad citations"]
+    sBlocks --> sSize{"groundAnswer with GROUNDING.version 3:<br/>more than 20,000 characters or 300 statements?"}
     sSize -->|"yes"| sSkip["skipped too_long"]
-    sSize -->|"no"| sAssoc["associate: sentenceSpans per block, no statement ends at the dot<br/>of an ordinal, a day.month date such as 1.6. or a known abbreviation,<br/>a marker belongs to the last statement that starts before it,<br/>a statement without one inherits from the next cited statement<br/>of its block, then the previous one, then its lead-in up to 4 hops,<br/>then the markers and bad labels of contentless blocks<br/>such as a Sources line"]
-    sAssoc --> sMany{"more than maxSentences 300 statements?"}
-    sMany -->|"yes"| sSkip
-    sMany -->|"no"| sIdx["indexSource per excerpt over text, doc and heading<br/>with the same rules version, no index for an omitted excerpt,<br/>given indexed, answer language from guessLanguage"]
+    sSize -->|"no"| sAssoc["associate: markers to statements, a statement without one<br/>inherits from its block's cited statements or its lead-in"]
+    sAssoc --> sIdx["indexSource per delivered excerpt, given indexed,<br/>answer language from guessLanguage"]
     sIdx --> sCheck["checkSentence per statement,<br/>see source-check-verdicts and source-check-v2-checks"]
-    sCheck --> sCount["counts supported, weak, unsupported, unchecked,<br/>neutral statements not counted"]
-    sCount --> sAny{"anything counted, unchecked or skipped?"}
-    sSkip --> sAny
-    sAny -->|"no"| sQuiet(["report returned, no panel"])
-    sAny -->|"yes"| sBar["details.grounding-bar replaces the .message-provenance content:<br/>grounding-review and shield-alert when a statement is unsupported,<br/>else grounding-partial and shield-question-mark when one is weak,<br/>else grounding-ok and shield-check when statements were compared,<br/>else grounding-none and shield"]
-    sBar --> sSum["summary: grounding.title, then grounding.too_long,<br/>grounding.summary ok of total, or grounding.only_unchecked,<br/>badges grounding.review n and grounding.partial n"]
-    sSum --> sList["ol.grounding-list: unsupported first, then weak, in answer order,<br/>li id grd-n-i, n per panel, i the statement index,<br/>grounding.statement cut to 160 chars,<br/>one grounding.reason_code line per reason, citation badges"]
-    sList --> sNotes["grounding.unchecked n when statements were not compared,<br/>grounding.disclaimer in every panel"]
-    sNotes --> sOpen["details opened when a statement is unsupported"]
-    sOpen --> sChips["each citation button belongs to the last statement of its block<br/>that starts before it, else the first, if that one is unsupported:<br/>class citation-chip-flag, aria-describedby = id of its list item"]
-    sChips --> sHl{"Highlight and CSS.highlights available?"}
-    sHl -->|"yes"| sMark["a Range per unsupported statement in the<br/>starpi-review highlight, no DOM change, no inline style"]
-    sHl -->|"no"| sNoMark["no highlight, the flagged list<br/>stays the accessible channel"]
-    sMark --> sRet(["report returned to chat.js for the receipt draft"])
-    sNoMark --> sRet
-    sReset(["resetMessages: new chat, deleted or restored history"]) -.-> sClear["clearGroundingHighlights"]
+    sCheck --> sRel["applyRelations: changes, comparisons, order in time<br/>and carried-over values, see source-check-relations"]
+    sRel --> sCount["counts supported, weak, unsupported, unchecked,<br/>neutral statements not counted"]
+    sSkip --> sBar
+    sCount --> sBar["details.grounding-bar: review, partial, ok or none;<br/>flagged list, unsupported first, one reason line each;<br/>relations note, unchecked note, disclaimer"]
+    sBar --> sSecond{"a weak statement with a delivered cited excerpt?"}
+    sSecond -->|"yes"| sOp["second-opinion buttons: the entailment model on this device,<br/>the AI judge only when localOnly is false; advisory,<br/>recorded in the report, never a new verdict"]
+    sSecond -->|"no"| sChips
+    sOp --> sChips["citation buttons of unsupported statements flagged with<br/>aria-describedby; Custom Highlight where supported"]
+    sChips --> sRet(["report back to chat/thread.js: answer label,<br/>receipt draft, the stored answer"])
+    sMixed --> sRet
 ```
+
+## What is spoken is checked: the sentence gate
+
+The source check marks statements in the chat bubble; it never hides text. Everything Starpi reads
+aloud or shows as checked outside the bubble passes a second, stricter step first: the sentence gate
+([`src/js/core/gate.js`](src/js/core/gate.js), also the `starpi-gate` command of `@starpi/core`).
+Read-aloud, Live, the documents part of a research report and the companion's answers use it.
+
+- **Unit by unit.** A streamed answer is released one unit at a time (a sentence, list item, table
+  row, heading or code block), and only once the unit can no longer change. Each unit is judged
+  once, on the canonical text that is shown and spoken.
+- **Only the gate can release.** A released unit is a frozen object only the gate creates; the
+  speech queue accepts nothing else, so text that did not pass the gate cannot be spoken.
+- **Sources mode** (grounded answers and Live from your sources): every number of a unit must appear
+  with the same value in an excerpt that the same unit cites, without tolerance; a unit with a
+  number and no citation, or with a label that is not one of the sources, is withheld; identifiers
+  such as "ISO 9001" must appear literally in a cited excerpt or in the question; digits a listener
+  would hear as another number ("4 80", "5OO") withhold the unit.
+- **Web mode:** every number must lie inside a part of the answer that the provider grounded on at
+  least one web page. **Free mode:** only the character and link rules apply, and a free answer is
+  announced as not checked.
+- **In every mode** links, other scripts, look-alike digits and invisible characters withhold a unit.
+- **What you hear:** the released units, then how many were withheld. A receipt v3 records the
+  counts. A second opinion (an entailment model on the device or an AI judge) is advisory: it is
+  recorded in the receipt and never releases or upgrades anything.
+
+What the gate trusts: the excerpts are what retrieval returned (the gate shows that a number is in a
+cited excerpt, not that the excerpt is right), and in web mode the grounding comes from the
+provider. A sentence without numbers or identifiers passes the gate in sources mode; its wording is
+what the source check judges.
+
+## Models and providers
+
+| In the model menu | Models | How a request goes | Key |
+| --- | --- | --- | --- |
+| Providers with your key | Anthropic, OpenAI, Gemini, OpenRouter | direct from the browser | yours, for the tab or in the vault |
+| Providers with your key that refuse browser calls | xAI, Groq, Mistral, DeepSeek, MiniMax (and NVIDIA with an `nvapi-` key) | direct first; a blocked call is retried through the site's stateless relay, and the choice is remembered per provider | yours |
+| **Free (via Starpi)** | the MiniMax, NVIDIA, Groq, Gemini and OpenRouter pools below | the site's pool function, with a site key | none |
+| **Your server** | any Chat Completions server (Ollama, LM Studio, vLLM, llama.cpp, MLX) at `https://…` or `http://localhost`, also a self-hosted MiniMax M3 build ([below](#the-base-model-minimax-m31-flash)) | direct, never through the site | optional |
+| **On this device** | the WebGPU and processor (WASM) presets [below](#on-device-models) | a Web Worker | none |
+| **Starpi Core (local companion)** | the models the companion's owner configured, by data class | the loopback interface | in the companion's vault |
+
+The site's pools accept text, and images for models that see; no tools; at most 4,096 output tokens;
+only the models of their allowlist ([`src/js/ai/catalog/pools.js`](src/js/ai/catalog/pools.js), which
+the browser and the server share). A deployment offers the pools it has keys for:
+
+| Pool | Models (default first) |
+| --- | --- |
+| MiniMax | MiniMax M3.1 Flash, the base model (always with the lowest thinking effort; the site's own MiniMax quota) |
+| NVIDIA | the NIM models of the [T4 table](#nvidia-nim-models-t4) |
+| Groq | Llama 3.3 70B Versatile, Llama 3.1 8B Instant, GPT-OSS 20B, GPT-OSS 120B, Qwen3 32B |
+| Gemini | Gemini 2.5 Flash-Lite, Gemini 2.5 Flash |
+| OpenRouter | Llama 3.3 70B Instruct, DeepSeek R1, Gemma 3 27B, Qwen3 Coder (free variants) |
+
+**Auto** asks, in this order: the base model when it is set up (your MiniMax key, or the site's
+MiniMax pool), your keys (the model of the strength you chose, else the provider's balanced model),
+the site's pools, your own server, then the model already loaded on this device. A
+call that fails before any text arrived moves on to the next model; once text arrived, the answer
+belongs to that model, and the answer says which model wrote it. Small jobs (titles, text
+recognition in images, graph extraction, the council's verdict) run along the same kind of chain,
+and nothing switches silently: every call is recorded. The model catalog ships curated defaults
+(`npm run models:sync` writes the snapshot) and merges the live model lists of the providers you
+have keys for.
+
+Keys last for the tab by default. With a passphrase they are kept in IndexedDB as AES-GCM ciphertext
+(PBKDF2-SHA-256, 600,000 iterations), and the vault locks after 30 minutes without activity.
+**Settings › Model providers and keys** tests a key against the provider's model list (MiniMax,
+which has none, answers one small chat request) and shows an error code, never the provider's error
+text.
+
+### The base model: MiniMax M3.1 Flash
+
+MiniMax released M3.1 Flash on 2026-10-19: a mixture-of-experts model with about 428B parameters in
+total, about 23B of them active, and a context window of 1M tokens (as of 2026-10-20).
+Starpi reaches it at MiniMax's OpenAI-compatible API (`https://api.minimax.io/v1`, model
+`MiniMax-M3.1-Flash`; `MiniMax-M3` is offered beside it) and at OpenRouter
+(`minimax/minimax-m3.1-flash`). Whenever it is set up, with your MiniMax key or through the site's
+MiniMax pool, it is the first model of Auto, of the small jobs and of the privacy notice, on phones,
+tablets, laptops and desktops alike: it runs in MiniMax's cloud, so the device does not matter. When
+it is not set up, nothing changes: the order above stays, and the on-device default still follows
+the device class. Grounded answers keep the source check, and free answers keep their label.
+
+The model always thinks; its API refuses a request to switch thinking off. Its thinking arrives
+apart from the answer and is shown, like every model's, in the answer's collapsible details, never
+as answer text. With extended thinking off, Starpi asks for the lowest effort (`reasoning_effort:
+"low"`); with it on, the effort you chose. Starpi relies on no model list and no key format for
+MiniMax, so **Test key** sends one small chat request instead of reading a list, and the key field
+shows no prefix hint.
+
+Open weights are announced but not released (as of 2026-10-20). Even then, MiniMax M3.1 Flash is no
+on-device model: a 3-bit GGUF build needs about 160 GB of memory, which no phone, laptop browser or
+WebGPU and WebAssembly preset has. **Your server** recognises self-hosted MiniMax M3 and M3.1 builds
+by a model name containing `minimax-m3` (GGUF builds of M3 exist): it reads their thinking from
+`reasoning_content` or `<think>` tags, takes the context window the server reports (Ollama, llama.cpp
+and vLLM say it) or else 1M tokens, and marks them in the model picker as needing a workstation or
+server.
+
+## Modes and what leaves the device
+
+The composer's mode decides whether sources are searched (Auto decides per question); the model
+decides where the answer is written:
+
+| Answered by | Where the answer is written | What leaves the device |
+| --- | --- | --- |
+| **This device** | [WebLLM](https://github.com/mlc-ai/web-llm) on WebGPU, or Transformers.js with ONNX Runtime Web on the processor (WASM), in a Web Worker | Nothing of the question. The library is ranked by a query vector made on the device when search by meaning is on, else by candidates fetched without the question; no web search, no cloud tools. |
+| **A provider with your key** | the provider's API, direct or through the relay | Grounded: the question, the retrieved excerpts and the history the turn may share, and the question to the library search. Free: the question, its attachments and the earlier messages that may be shared. The relay forwards once and keeps nothing. |
+| **Free (via Starpi)** | a model of the site's pools | The same as with your key, through the site's pool function, which stores and logs no content. |
+| **Your server** | your Chat Completions server | The same, sent straight to that server. |
+| **The local companion** | the companion on your machine | The bare question, the mode and its data class, over the loopback interface; the answer comes back gated. Nothing of it is synced. |
+| **Quoted from the sources** | no model | Only the question, to the library search. Matching sentences are quoted verbatim with their citations, when no model is set up or a model fails. |
+
+A turn that used workspace files or ran on this device is never sent as history to another model and
+never synced; neither is a question asked of the companion. Conversations live on the device; the
+optional sync encrypts them in the browser before anything is stored
+([conversations and sync](#conversations-memory-and-sync)).
+
+<details>
+<summary><strong>What leaves the device in each mode</strong> (diagram)</summary>
+
+<!-- diagram: modes-privacy-data-egress -->
+```mermaid
+flowchart TD
+    ask(["question with the picked model and the composer's mode"])
+    who{"who answers?"}
+    subgraph dev["Stays in this browser"]
+        dWorker["starpi-webllm or starpi-wasm: system, excerpts<br/>or attachments, history and question in the worker"]
+        dLib["library: query vector made here,<br/>else 30 newest documents without the question"]
+        dNo["no web search, no cloud tools, no title request"]
+        quote["synthesizeAnswer: quotes the excerpts,<br/>no model"]
+    end
+    subgraph net["Sent over the network"]
+        prov["provider with the user's key: direct (Anthropic,<br/>OpenAI, Gemini, OpenRouter) or through the relay<br/>(xAI, Groq, Mistral, DeepSeek, MiniMax, NVIDIA key)"]
+        pool["site pool: text and images, no tools,<br/>allowlisted model, site key"]
+        srv["own server: direct, https or loopback http"]
+        comp["companion: bare question, mode, data class,<br/>loopback; answer arrives gated"]
+        lib["Supabase search_knowledge: the question,<br/>first 1,000 chars"]
+        web["search API or the provider's web search:<br/>the query, not for device-only questions"]
+        hf["model files after a confirmation: Hugging Face,<br/>raw.githubusercontent.com, ONNX Runtime from /assets"]
+    end
+    grounded{"grounded or mixed route?"}
+    gPayload["excerpts + last 4 shareable turns + question"]
+    fPayload["shareable history + question + attachments"]
+    hist["shareable(): local-only turns and their questions<br/>never go to a model not on this device"]
+    saved[("IndexedDB: localOnly turns stay;<br/>encrypted sync takes the others only")]
+
+    ask --> who
+    who -->|"model on this device"| dWorker
+    dWorker -.-> dLib
+    dWorker -.-> dNo
+    dWorker -.->|"not cached, after a confirmation"| hf
+    who -->|"provider with a key"| grounded
+    who -->|"site pool"| grounded
+    who -->|"own server"| grounded
+    who -->|"companion"| comp
+    who -->|"no model or a failure, grounded"| quote
+    grounded -->|"yes"| gPayload --> lib
+    grounded -->|"no"| fPayload
+    gPayload --> hist
+    fPayload --> hist
+    hist --> prov
+    hist --> pool
+    hist --> srv
+    fPayload -.->|"Web toggle"| web
+    quote -.->|"question to the library search"| lib
+    dWorker --> saved
+    prov --> saved
+    pool --> saved
+    srv --> saved
+    comp --> saved
+    quote --> saved
+```
+
+</details>
+
+## Voice, Live and research
+
+- **Dictation.** The microphone button tries the speech input sources in order (the browser,
+  Gemini, OpenAI, Groq, a voice server on your machine, the companion), each handing over to the
+  next on failure, with a glossary of your own terms. With a model on this device only sources that
+  keep audio on your machines count, and the browser only where it recognises on the device.
+- **Read aloud** speaks only what the sentence gate released: a grounded answer through the source
+  gate, a free answer through the free gate with the notice "not checked", then how many sentences
+  were withheld. Voices: the browser's, prebuilt Gemini voices, ElevenLabs premade voices, OpenAI
+  voices and Piper voices of a local voice server; nothing can clone or upload a voice.
+- **Live** is a full-screen voice conversation. Free mode streams to Gemini Live with a single-use
+  token the site mints for one session (the browser never holds a site key); "from your sources"
+  runs push-to-talk turns whose answers pass the source gate. A camera picture is taken only when you
+  press the button.
+- **Research jobs** turn a question into a plan of up to four searches, a tool loop over your
+  documents with three read-only tools and, if you allow it, up to four web search rounds. The
+  documents part passes the sentence gate, the web part is judged as a whole, and the report
+  (summary, details, sources, open questions) is stored with a receipt. Jobs survive a reload, run in
+  one tab at a time and start from **Research this** under an answer. Without a key of yours they
+  run on the site's Gemini pool, whose tool turns are signed so that a browser cannot forge what the
+  model said. Web queries can be stripped of e-mail addresses, phone numbers, IBANs, card numbers
+  and IP addresses first.
+
+## Starpi Core, the local companion
+
+[`@starpi/companion`](packages/companion/README.md) is Starpi's own small service for your machine
+(Node.js 22.13+, Linux and macOS). It keeps what should not live in a browser tab: notes,
+conversations, documents and API keys, sealed at rest.
+
+- **Loopback only, paired browsers only.** It listens on `127.0.0.1` and answers only a browser
+  paired with a one-time code: the app it serves from its own origin (Mode A, an `HttpOnly` cookie
+  plus a CSRF value) or the hosted app at www.starpi.app (Mode B, a token bound to the page's origin;
+  Chrome asks for local network access).
+- **Sealed and tamper-evident.** A vault whose key-encryption key lives in a file, in systemd
+  credentials or in the macOS keychain; crypto-erase; sealed backups. Every answer carries the
+  companion's signed audit head: the browser checks it and shows a red banner on a rollback or a fork
+  until you accept the companion's current state, and the companion refuses to start on a
+  rolled-back database.
+- **Zero egress by default.** It reaches nothing outside the machine until the owner lists a host
+  for a module. An in-process guard enforces that; on Linux the system unit adds `IPAddressDeny` and
+  an egress splice outside the process ([limits](SECURITY.md#pairing-with-the-local-companion)).
+- **Models by data class:** public, personal, sensitive (local models only) and secret (no model); a
+  failing model is never replaced by one of the other kind.
+- **Modules:** search over your documents (BM25 and local embeddings), notes, documents, checked
+  answers and conversations through the sentence gate, a read-only MCP server with a stdio bridge for
+  desktop clients, connector tools pinned by SHA-256 with approvals, agenda, inbox, a relay to a local
+  voice server, setup checks and read-only feeds (CSV, MQTT). Computer control is experimental, off
+  by default, and drives a simulated screen only in this release.
+- **In the app:** a Companion tab and a settings card; the retrieval source "Companion documents
+  and notes" for grounded questions (a question that stays on this device may take passages up to
+  the class sensitive, other questions up to the ceiling you choose, secret passages never); and
+  **Starpi Core (local companion)** in the model menu. It gets the bare question, never the app's
+  prompt, in sources mode for Grounded and in free mode for Free and Auto, marked sensitive when the
+  question was asked to stay on this device; a question with images is not sent to it. Its answers
+  arrive already gated and are shown as released, with their label, notice and withheld count; they
+  and the questions asked there stay on this device and never enter the encrypted sync (with sync
+  on, the line under the composer says so). Each branch of a thread is its own conversation on the
+  companion: asking again, changing a question or going on in another branch continues in a copy of
+  the turns up to there. A stopped answer is not kept, on either side. A Compare column asks it the
+  same way (sources mode for a grounded question, free otherwise), without the app's tools; the
+  council never seats it; Live asks it in free conversations only, and a conversation from your
+  sources with it picked ends at once, before anything is retrieved.
+- **Packaging:** systemd user and system units with readiness and a watchdog, a launchd agent,
+  install scripts, and an offline bundle with `SHA256SUMS` that each release signs
+  ([Linux](packages/companion/deploy/linux/README.md), [macOS](packages/companion/deploy/macos/README.md));
+  a [local voice server](companion/voice-server/README.md) for Whisper-class speech input and Piper
+  voices.
+
+```bash
+npx --package=@starpi/companion starpi-companion start   # listens on 127.0.0.1:47821
+npx --package=@starpi/companion starpi-companion pair    # a one-time code, valid for 10 minutes
+```
+
+Enter the code under **Settings › Companion**. The package's [NOTICE](packages/companion/NOTICE)
+credits the two open-source projects whose ideas two of its mechanisms follow.
+
+## Conversations, memory and sync
+
+- **Conversations** are message trees in the app's IndexedDB database: a branch when you edit a
+  question or regenerate with another model, search, groups, archive, pin, projects, and export as
+  Markdown or JSON (`starpi.chat/v2`; v1 files still import).
+- **Memory** is off until you switch it on and keeps only what you keep on purpose ("Remember this",
+  a note in Settings, an accepted suggestion). Notes are sealed with the vault key when a passphrase
+  is set and go along with a question (at most 8 notes, 800 characters), never into the stored
+  question. **Projects** keep chats together with their own instructions, model, files and memory
+  scope; **assistants** are presets with `starpi.assistant/v1` import and export.
+- **Sync** is end-to-end encrypted and off by default: a sync key wrapped with your passphrase
+  (PBKDF2-SHA-256, 600,000 iterations), AES-GCM records padded to multiples of 512 bytes under opaque
+  row ids, and owner-only row level security (`chat_sync`, `chat_sync_keys`). Turns that stayed on
+  the device are never synced. Restoring in another browser needs Email sign-in with a one-time code.
+  The plaintext `chat_history` table of 2.x is no longer read or written; deleting a chat still
+  removes rows an earlier version stored there.
 
 ## Use the checks in your own app
 
-The source check, answer receipts, text extraction, chunking and BM25 are published as
+The source check, the sentence gate, answer receipts, text extraction (including Word, Excel,
+PowerPoint and HTML), chunking and BM25 are published as
 [`@starpi/core`](packages/core/README.md): ESM with type declarations, no dependencies, for
 browsers, Web Workers and Node.js 22.13+. It is built from the same modules the app runs.
 
@@ -247,7 +576,7 @@ browsers, Web Workers and Node.js 22.13+. It is built from the same modules the 
 npm install @starpi/core
 # or straight from the tarball attached to each GitHub release (the package README shows
 # how to check it against SHA256SUMS first):
-npm install https://github.com/umutcantezgel-cpu/Starpi/releases/download/v2.1.0/starpi-core-2.1.0.tgz
+npm install https://github.com/umutcantezgel-cpu/Starpi/releases/download/v3.0.0/starpi-core-3.0.0.tgz
 ```
 
 ```js
@@ -262,9 +591,10 @@ console.log(report.counts); // { supported: 0, weak: 0, unsupported: 1, unchecke
 console.log(report.sentences[0].reasons[0]); // { code: 'missing_fact', level: 'unsupported', fact: '520,000', cites: [0] }
 ```
 
-`buildReceipt`, `signReceipt` and `verifyReceipt` create, sign and check receipts, `chunkText` and
-`BM25Index` split and rank text, and `npx starpi-verify-receipt receipt.json file…` verifies a
-receipt on the command line. Examples for each are in the [package README](packages/core/README.md).
+`buildReceipt`, `signReceipt` and `verifyReceipt` create, sign and check receipts,
+`createSentenceGate` releases a streamed answer unit by unit, `chunkText` and `BM25Index` split and
+rank text, and `npx starpi-verify-receipt receipt.json file…` verifies a receipt on the command line.
+Examples for each are in the [package README](packages/core/README.md).
 
 ### Check documents in CI
 
@@ -273,7 +603,7 @@ unsupported statement. In a GitHub Actions job with `security-events: write`, th
 in code scanning at their line:
 
 ```yaml
-- run: npx --yes --package=@starpi/core@2 starpi-ground --answer docs/release-notes.md --source docs/spec --format sarif --output starpi.sarif
+- run: npx --yes --package=@starpi/core@3 starpi-ground --answer docs/release-notes.md --source docs/spec --format sarif --output starpi.sarif
 - uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
   if: always()
   with:
@@ -283,146 +613,18 @@ in code scanning at their line:
 Options, the text and JSON formats and an example run are in the
 [package README](packages/core/README.md#check-documents-in-ci).
 
-## Ecosystem and downstream use
-
-Starpi is the first user of `@starpi/core`: the app runs the same modules in the browser and in its
-ingestion worker. The first downstream project is **Fluid Systems**, a local AI assistant for
-production management and shift supervisors in plastics processing (injection moulding and
-extrusion), by the same maintainer. It is built on Starpi 1.2.0 and takes over the source check,
-answer receipts, text extraction, chunking and BM25: answers about the user's own documents are
-checked by the source check and can be exported as `starpi.receipt/v1` receipts. The sentence
-gate in development for its next version, which lets a sentence about machine or shift figures
-through only when every number comes from its deterministic engine or from a cited excerpt,
-builds on Starpi's citation-label and sentence rules. Fluid Systems is at demo stage (v0.1.0,
-simulated operating data) and not public yet. Starpi is meant as a reusable core for applications where a wrong number in an answer
-matters, not only as a demo app.
-
 ## How it works
 
 <p align="center">
   <img src="docs/assets/starpi-flow.svg" width="100%" alt="Starpi pipeline: dropped PDF, Markdown, JSON or CSV files are parsed on the device in an ingestion worker, split into 500-character chunks with exact offsets and indexed with BM25 in worker memory; an answer model (WebLLM, your own server or a cloud model) answers with citations, and each citation opens the exact span. Badges: files parsed on this device, source check on every answer, verifiable receipts, strict CSP without unsafe-eval.">
 </p>
 
-In verified source mode the browser retrieves passages from the on-device workspace (BM25) and
-from the shared knowledge base (Postgres full-text search behind row level security), labels each
-one `[Doc: <name>, Chunk: <n>]`, and answers in one of five ways. In free chat nothing is
-retrieved or searched: the question goes to the chosen model with the earlier messages of the chat
-(up to 16 messages, 24,000 characters in all) and an attached file, so free chat needs a model.
-
-| Mode | Where the answer is written | What leaves the device |
-| --- | --- | --- |
-| **On-device** | [WebLLM](https://github.com/mlc-ai/web-llm) on WebGPU, or Transformers.js with ONNX Runtime Web on the processor (WASM), in a dedicated Web Worker | Nothing. Knowledge-base candidates are fetched without the question and ranked in the browser. |
-| **NVIDIA NIM cloud** | A model of the NVIDIA API Catalog, through the site's proxy (`/api/chat/nvidia`), which holds the keys on the server; no key of your own | Source mode: the question, the retrieved excerpts and the last 4 messages go through the proxy to NVIDIA, and the question to the knowledge-base search. Free chat: the question, the earlier messages and an attached file. The proxy stores and logs no content. |
-| **Cloud assistant** | Google Gemini or OpenRouter, with **your own** API key | Source mode: the question and the retrieved excerpts go to the provider (OpenRouter also gets the last 4 messages, Gemini none), and the question to the knowledge-base search. Free chat: the question, the earlier messages and an attached file, to either provider. |
-| **Own server** | Any Chat Completions endpoint (`/v1/chat/completions`: MLX, Ollama, vLLM) at `https://…` or `http://localhost` | Source mode: the question, the retrieved excerpts and the last 4 messages go to that server, and the question to the knowledge-base search. Free chat: the question, the earlier messages and an attached file. |
-| **Quoted from the sources** | No model | Only the question, to the knowledge-base search. Matching sentences are quoted verbatim with their citations; used in source mode when no model is configured or a model fails. |
-
-Earlier messages of turns that used your files (workspace excerpts or an attached file) or ran in
-on-device mode are never sent as history, in either chat mode.
-
-Chats are synced to Supabase only when the browser has an anonymous session **and** the hardened
-row-level-security schema is installed, so every row is visible to its owner only; otherwise they
-stay in the browser. **Settings › Delete chat history** removes both.
-
-<details>
-<summary><strong>What leaves the device in each mode</strong> (diagram)</summary>
-
-<!-- diagram: modes-privacy-data-egress -->
-```mermaid
-flowchart TD
-    Ask(["submitChat: question trimmed to 8000 chars<br/>mode = getMode(), stored in starpi_compute_mode<br/>chat mode: grounded for quick prompts and sample<br/>questions, else starpi_chat_mode"])
-    CMode{"chat mode?"}
-    UserTurn{"storeQuestion, question localOnly?<br/>client mode, a file attached,<br/>or any used excerpt from the workspace"}
-    Skip{"demo sample question,<br/>or connection offline?"}
-    RetMode{"retrieve(): mode is client?"}
-    Ctx["mergeHits + assignCitations + buildContext<br/>at most 6 hits, 9 with an attachment, both sources keep slots<br/>excerpt max 1600 chars, context max 9000 chars<br/>a greeting-only message uses no excerpts"]
-    Dispatch{"answer path by mode"}
-    CKeys{"hasGeminiKey()?<br/>else hasOpenRouterKey()?"}
-    Abort(["Stop pressed before a rendered answer:<br/>error to the submitChat catch,<br/>answer not shown or persisted"])
-    Persist{"answer localOnly?<br/>client mode, a file in free chat,<br/>any used excerpt from the workspace,<br/>or a synthesizer answer naming a workspace file"}
-    Sync{"not localOnly: canSyncChats()?<br/>signed in and hardened schema"}
-
-    subgraph dev["Stays in this browser"]
-        WsSearch["retrieveWorkspace: BM25 in the ingest worker, source mode<br/>an attached file pins up to 3 chunks<br/>worker error: no workspace hits"]
-        FreeCtx["free chat: no search, the attached file's text<br/>from the ingest worker, up to 12000 chars"]
-        Keys[("provider keys<br/>readSecret: sessionStorage, then localStorage")]
-        Hist["shareableHistory: turns not marked localOnly,<br/>last 4 in source mode,<br/>16 turns and 24000 chars in free chat"]
-        LGen["client: WebLLM worker on WebGPU or WASM worker<br/>on the processor, budgeted excerpts or file text,<br/>history and question stay in the browser"]
-        Synth["source mode: synthesizeAnswer, extractive quotes<br/>with citation labels, no model<br/>free chat: a notice, no answer"]
-        Check["source check and receipt draft, source mode only,<br/>for every engine, in memory only"]
-        LS[("localStorage<br/>starpi_local_chats_v1")]
-    end
-
-    subgraph net["Sent over the network"]
-        FTS["Supabase rpc search_knowledge<br/>question as query_text, first 1000 chars<br/>match_count 6"]
-        Recent["Supabase recentKnowledge(30)<br/>30 newest documents, question not sent<br/>rankHitsLocally in the browser"]
-        Gem["council: Gemini gemini-2.5-flash generateContent<br/>source mode: one user part, system + excerpts incl. workspace<br/>+ question, no chat history<br/>free chat: system with the attached file, history, question"]
-        OR["council: OpenRouter chat/completions<br/>system + excerpts incl. workspace or the attached file<br/>+ shareable history + question"]
-        Srv["local: own server getLlmUrl()/chat/completions<br/>system + excerpts incl. workspace or the attached file<br/>+ shareable history + question, no key<br/>GET /models first while no model id is known"]
-        NvCat["nvidia: GET /api/models/nvidia on the app's origin,<br/>the offered models, no user text"]
-        NV["nvidia: POST /api/chat/nvidia on the app's origin, no key,<br/>system + excerpts incl. workspace or the attached file<br/>+ shareable history + question, fitted to the proxy limits,<br/>Starpi's proxy forwards it with a pooled key to NVIDIA"]
-        HF["model files only when not cached, after a confirm, no user text:<br/>huggingface.co WebGPU weights and pinned WASM files,<br/>raw.githubusercontent.com model library,<br/>ONNX Runtime binary from the app's /assets"]
-        Titles["Supabase listDocuments, no question sent<br/>skipped while offline, titles cached 60 s"]
-        CH[("Supabase chat_history insert")]
-    end
-
-    Ask --> CMode
-    CMode -->|"grounded"| WsSearch --> Skip
-    CMode -->|"free"| FreeCtx
-    Skip -->|"yes: no Supabase search"| Ctx
-    Skip -->|"no"| RetMode
-    RetMode -->|"no, council, local or nvidia"| FTS
-    RetMode -->|"yes"| Recent
-    FTS -->|"rows found"| Ctx
-    FTS -.->|"zero rows or error"| Recent
-    Recent -->|"ranked hits, none if it fails"| Ctx
-    WsSearch -->|"workspace excerpts"| Ctx
-    Ctx -->|"after retrieval and the greeting check,<br/>before assignCitations"| UserTurn
-    FreeCtx -->|"at once"| UserTurn
-    Ask -.->|"turn throws before that:<br/>catch runs storeQuestion(false)"| UserTurn
-    UserTurn -->|"yes"| LS
-    UserTurn -->|"no"| Sync
-    Ctx --> Dispatch
-    FreeCtx --> Dispatch
-    Dispatch -->|"council"| CKeys
-    Dispatch -->|"client"| LGen
-    Dispatch -->|"local"| Srv
-    Dispatch -->|"nvidia"| NvCat
-    NvCat -->|"proxy with keys"| NV
-    NvCat -.->|"no proxy or no keys"| Synth
-    CKeys -->|"Gemini key"| Gem
-    CKeys -->|"only OpenRouter key"| OR
-    CKeys -->|"no key"| Synth
-    Gem -.->|"fails, OpenRouter key set"| OR
-    Gem -.->|"fails, no OpenRouter key"| Synth
-    OR -.->|"all attempts fail,<br/>or HTTP 401 or 403"| Synth
-    NV -.->|"error code or timeout<br/>without answer text"| Synth
-    Hist -.->|"history"| OR
-    Hist -.->|"history"| Srv
-    Hist -.->|"history"| NV
-    Hist -.->|"free chat only"| Gem
-    HF -.->|"only when not cached"| LGen
-    LGen -.->|"not loaded, declined,<br/>empty or throws"| Synth
-    Srv -.->|"throws, not aborted"| Synth
-    Keys -.->|"Gemini key only,<br/>x-goog-api-key header"| Gem
-    Keys -.->|"OpenRouter key only,<br/>Authorization Bearer"| OR
-    Synth -.->|"known titles, source mode"| Titles
-    Dispatch -.->|"user abort"| Abort
-    Dispatch -.->|"answer with citations,<br/>same session"| Check
-    Gem --> Persist
-    OR --> Persist
-    LGen --> Persist
-    Srv --> Persist
-    NV --> Persist
-    Synth --> Persist
-    Persist -->|"yes"| LS
-    Persist -->|"no"| Sync
-    Sync -->|"yes"| CH
-    Sync -->|"no"| LS
-    CH -.->|"insert fails"| LS
-```
-
-</details>
+The browser runs the app, the models on the device and every check. Stateless server functions
+relay calls for keys of your own, hold the site's keys for the free pools and speech, and run
+research steps; Supabase serves the shared library and the encrypted sync rows; the local companion
+runs on your own machine. Grounded questions retrieve from the on-device workspace (BM25, and by
+meaning when that is on) and from the shared library (Postgres full-text search, or a query vector,
+behind row level security), and every excerpt is labelled `[Doc: <name>, Chunk: <n>]`.
 
 <details>
 <summary><strong>System context and trust boundaries</strong> (diagram)</summary>
@@ -430,122 +632,128 @@ flowchart TD
 <!-- diagram: system-context-overview -->
 ```mermaid
 flowchart LR
-    subgraph device["User device: browser tab on www.starpi.app, CSP enforced"]
+    subgraph device["User device: browser tab on www.starpi.app, cross-origin isolated, CSP enforced"]
         subgraph mainThread["Main thread, src/js"]
-            boot["main.js boot()<br/>chat.js, settings.js, model-picker.js,<br/>demo.js, UI modules"]
-            sbClient["supabase.js createClient<br/>public key compiled in: publishable or anon JWT,<br/>build refuses sb_secret_ keys, non-anon JWTs<br/>and any other key, fetchWithTimeout 12 s, db retry off"]
-            provJs["providers.js<br/>callGemini, callOpenRouter,<br/>callLocalServer, probeLocalServer,<br/>getNvidiaCatalog, callNvidia"]
-            engineJs["webgpu/engine.js<br/>loadModel, generate, unloadModel,<br/>getDeviceProbe, WebGPU or WASM runtime"]
-            wsJs["rag/workspace.js<br/>request(type, payload)"]
-            trustJs["rag/grounding-view.js, rag/receipts.js<br/>source check and receipt drafts,<br/>computed and kept in memory"]
-            voiceJs["voice.js<br/>Web Speech API, processLocally<br/>required in client mode"]
+            boot["main.js boot(), features/registry.js,<br/>ui/sidebar.js, ui/theme.js, views"]
+            thread["chat/thread.js + chat/runner.js<br/>Auto, Free, Grounded, branches,<br/>compare, council, canvas"]
+            ai["ai/: contract, adapters, transports,<br/>router, purposes, keys and vault"]
+            trust["core/: source check, sentence gate,<br/>receipts; trust/signing.js device key"]
+            ws["rag/workspace.js client,<br/>rag/embed-client.js search by meaning"]
+            voice["voice/, live/, research/<br/>speech queue takes released units only"]
+            sync["sync/: encrypted sync engine,<br/>runs only when switched on"]
+            comp["companion/client.js, pair.js<br/>audit head check"]
+            sb["supabase.js, lazy supabase-lib.js<br/>public key and anonymous session"]
         end
-        subgraph llmWorker["Web Worker starpi-webllm"]
-            mlc["webgpu/worker.js<br/>WebWorkerMLCEngineHandler<br/>inference on WebGPU"]
+        subgraph workers["Web Workers and worklet"]
+            ingest["starpi-ingest: parse, chunk, BM25,<br/>vectors, files kept in IndexedDB and OPFS"]
+            webllm["starpi-webllm: WebLLM on WebGPU"]
+            wasm["starpi-wasm: Transformers.js, ONNX Runtime,<br/>up to 4 threads when crossOriginIsolated"]
+            integ["starpi-integrity: SHA-256 of model files<br/>against model-lock.json"]
+            pcm["starpi-pcm AudioWorklet"]
         end
-        subgraph wasmWorker["Web Worker starpi-wasm"]
-            wasmw["wasm/worker.js<br/>Transformers.js 4.3.0, ONNX Runtime WASM,<br/>one thread, catalog models only,<br/>env.fetch pinned to the model revision"]
-        end
-        subgraph ingestWorker["Web Worker starpi-ingest"]
-            ingest["rag/ingest.worker.js<br/>extractText with pdf.js, chunkText,<br/>BM25Index in worker memory only,<br/>SHA-256 of file and text, verify-receipt"]
-        end
-        sw["sw.js service worker<br/>same-origin GET only,<br/>cross-origin requests bypass it,<br/>a new version skips waiting only<br/>when no window is open"]
-        subgraph browserStores["Per-origin browser storage"]
-            ls[("localStorage<br/>starpi_local_chats_v1, starpi_chat_session_id,<br/>starpi_compute_mode, starpi_webgpu_model,<br/>starpi_nvidia_model, starpi_chat_mode,<br/>starpi_llm_url, starpi_remember_keys,<br/>starpi_locale, starpi-auth session")]
-            ss[("sessionStorage<br/>Gemini and OpenRouter keys for this tab,<br/>in localStorage instead if remember is on")]
-            swCache[("CacheStorage<br/>starpi-shell-VERSION, starpi-assets")]
-            modelCache[("Cache API owned by WebLLM<br/>webllm/model, webllm/config, webllm/wasm")]
-            tfCache[("Cache API owned by Transformers.js<br/>transformers-cache")]
-        end
-    end
-
-    subgraph vercel["Vercel: static hosting and two functions"]
-        host["dist/: index.html, hashed /assets/*, sw.js,<br/>build-manifest.json, public files such as /samples/*<br/>vercel.json headers on every path:<br/>CSP script-src self and wasm-unsafe-eval,<br/>connect-src self, data:, https:, wss://*.supabase.co,<br/>http://localhost:* and http://127.0.0.1:*<br/>HSTS, COOP same-origin, X-Frame-Options DENY,<br/>nosniff, Referrer-Policy,<br/>Permissions-Policy microphone self only"]
-        fn["api/models/nvidia.js, api/chat/nvidia.js<br/>Node.js functions, NVIDIA_API_KEYS only in<br/>the server environment, same-origin check,<br/>rate limit, model allowlist, size caps"]
-    end
-
-    subgraph supabase["Supabase project: access decided by roles and RLS"]
-        auth["Auth<br/>anonymous sign-in, session JWT"]
-        rest["PostgREST<br/>/rest/v1 tables and /rest/v1/rpc"]
-        subgraph pg["Postgres, RLS enabled on every table"]
-            tables[("knowledge_documents, knowledge_entities,<br/>knowledge_relations: read is_public or owner_id = auth.uid(),<br/>knowledge_sections: visible with their document,<br/>writes only to own private rows<br/>chat_history: owner only, no anon grant<br/>brain_settings: no policy, service_role only")]
-            rpcFns["SECURITY INVOKER functions<br/>search_knowledge: anon, authenticated, service_role<br/>match_knowledge_sections, match_knowledge_hybrid:<br/>authenticated, service_role<br/>ingest_document_atomic: service_role only"]
+        frames["render-frame and grounding-frame:<br/>sandboxed, opaque origin, no storage"]
+        sw["sw.js: same-origin GET only"]
+        subgraph stores["Per-origin storage"]
+            idb[("IndexedDB starpi: conversations, nodes, blobs,<br/>docs, chunks, vectors, receipts, signingKeys,<br/>research, bench, modelIntegrity, settings, keyvault")]
+            opfs[("OPFS: original files")]
+            pairDb[("IndexedDB starpi-companion:<br/>sealed pairing secret")]
+            web[("localStorage: preferences, picker value,<br/>2.x keys read once by the migration;<br/>sessionStorage: provider keys of the tab")]
+            caches[("Cache API: WebLLM, transformers-cache,<br/>service worker shell and assets")]
         end
     end
 
-    subgraph backendHost["Optional backend host, operator-controlled"]
-        caller["HTTP client of /api/brain/*, or the app<br/>when the NVIDIA routes share its origin"]
-        brain["backend/server.py<br/>default bind 127.0.0.1:9200<br/>/api/brain/* never called by the browser bundle"]
+    subgraph vercel["Vercel: dist/ with headers.json headers, stateless functions"]
+        host["static files: COOP, COEP require-corp, CORP,<br/>CSP script-src self wasm-unsafe-eval"]
+        relay["api/relay.js: user's key forwarded once<br/>to a fixed upstream table"]
+        pool["api/pool.js, api/models/pool.js:<br/>site keys, model allowlists"]
+        speech["api/voice/*: speak, transcribe,<br/>voices, single-use Live token"]
+        research["api/research/step.js:<br/>signed tool turns"]
+        health["api/health.js: booleans only;<br/>api/chat/nvidia.js for 2.x clients"]
     end
 
-    subgraph thirdParty["Third-party services outside Starpi control"]
-        gemini["Google Gemini<br/>gemini-2.5-flash:generateContent"]
-        openrouter["OpenRouter<br/>/api/v1/chat/completions"]
-        ownServer["Own Chat Completions server<br/>https anywhere, http only on<br/>localhost or 127.0.0.1"]
-        nvidia["NVIDIA API<br/>integrate.api.nvidia.com/v1/chat/completions"]
-        hf["Hugging Face<br/>huggingface.co/mlc-ai weights,<br/>WASM model repositories at pinned revisions"]
-        ghLibs["raw.githubusercontent.com<br/>binary-mlc-llm-libs wasm"]
-        speech["Browser speech recognition<br/>vendor servers in most browsers"]
-        backendApis["Backend upstreams<br/>LLM_BASE_URL, EMBEDDING_BASE_URL,<br/>GEMINI_API_KEYS, OPENROUTER_API_KEYS"]
+    subgraph supabase["Supabase: grants and RLS decide"]
+        auth["Auth: anonymous session,<br/>email one-time code for sync"]
+        rest["PostgREST: knowledge tables and RPCs,<br/>chat_sync, chat_sync_keys,<br/>legacy chat_history delete only"]
     end
 
-    host -->|"app shell, hashed assets and<br/>public files with security headers"| sw
-    sw -->|"navigations network-first, cached shell<br/>after 3.5 s or on failure,<br/>/assets/* and precache cache-first"| boot
-    sw -->|"precache at install, / with cache reload,<br/>navigations store / again only as<br/>non-redirected HTML and not after the<br/>cached shell was served, /assets/* put if cacheable()"| swCache
-    boot -->|"register /sw.js, scope /"| sw
-    boot -->|"GET /build-manifest.json no-store<br/>after controllerchange, update banner"| host
-    boot -->|"settings, locale, chat fallback"| ls
-    provJs -->|"readSecret"| ss
-    sbClient -->|"persistSession, storageKey starpi-auth"| ls
-    engineJs -->|"CreateWebWorkerMLCEngine,<br/>messages in, stream deltas out"| mlc
-    engineJs -->|"certainlyNotCached, hasModelInCache,<br/>deleteModelAllInfoInCache"| modelCache
-    engineJs -->|"WasmEngineClient: load, generate,<br/>interrupt, unload messages"| wasmw
-    engineJs -->|"wasmCacheStatus,<br/>delete on Delete downloaded model data"| tfCache
-    mlc -->|"read and write shards"| modelCache
-    mlc -->|"GET weights if not cached,<br/>interactive loads only, after confirmDownload"| hf
-    mlc -->|"GET model_lib wasm"| ghLibs
-    wasmw -->|"read and write model files"| tfCache
-    wasmw -->|"GET pinned files if not cached,<br/>interactive loads only, after confirmDownload"| hf
-    wasmw -->|"GET /assets/ort-wasm-simd-threaded-hash.wasm,<br/>same origin"| host
-    wsJs -->|"postMessage ingest, search, head,<br/>context, text, remove, verify-receipt,<br/>File structured-cloned"| ingest
-    trustJs -->|"verifyReceiptFiles"| wsJs
-    sbClient -->|"getSession, GET /auth/v1/settings,<br/>signInAnonymously unless<br/>anonymous sign-ins are off"| auth
-    sbClient -->|"apikey public key, Bearer session JWT:<br/>select, insert, delete, rpc search_knowledge"| rest
-    rest -->|"SQL as anon or authenticated"| tables
-    rest -->|"rpc"| rpcFns
-    rpcFns -->|"run as the caller role"| tables
-    provJs -->|"x-goog-api-key header,<br/>prompt with retrieved excerpts<br/>or the free-chat conversation"| gemini
-    provJs -->|"Bearer key, messages,<br/>failover over free models"| openrouter
-    provJs -->|"messages, no key sent,<br/>GET /models probe"| ownServer
-    provJs -->|"same-origin GET /api/models/nvidia,<br/>POST /api/chat/nvidia without a key,<br/>answer streamed back as SSE"| fn
-    fn -->|"Bearer key from the pool,<br/>failover before the first byte"| nvidia
-    voiceJs -->|"microphone audio, handled by the browser"| speech
-    caller -->|"Bearer BRAIN_API_TOKEN when set,<br/>else loopback Host only,<br/>/api/chat/nvidia: an allowed Origin or the token"| brain
-    brain -->|"service_role key bypasses RLS:<br/>knowledge_documents, knowledge_sections,<br/>rpc match_knowledge_sections,<br/>reads kept to is_public or no owner"| rest
-    brain -->|"chat/completions, embeddings,<br/>generateContent"| backendApis
-    brain -->|"/api/chat/nvidia: Bearer key<br/>from its own NVIDIA_API_KEYS pool"| nvidia
+    subgraph machine["User's machine"]
+        companion["starpi-companion on 127.0.0.1:47821:<br/>paired browsers only, sealed vault,<br/>signed audit heads, zero egress by default"]
+        ownServer["own Chat Completions server,<br/>local voice server"]
+    end
+
+    publisher["library publisher, operator machine:<br/>service_role key, no listener"]
+
+    subgraph third["Third parties outside Starpi control"]
+        providers["Anthropic, OpenAI, Gemini, OpenRouter"]
+        blocked["xAI, Groq, Mistral, DeepSeek, MiniMax, NVIDIA,<br/>ElevenLabs, Brave, Tavily"]
+        live["Gemini Live socket"]
+        hosts["Hugging Face, raw.githubusercontent.com"]
+        searx["SearXNG, MCP servers the user adds"]
+        bspeech["browser speech services"]
+    end
+
+    host --> sw --> boot
+    boot --> thread --> ai
+    thread --> trust
+    thread --> ws --> ingest
+    ws -.->|"vectors on request"| wasm
+    ai -->|"model on this device"| webllm
+    ai -->|"processor model"| wasm
+    webllm -.-> integ
+    wasm -.-> integ
+    trust --> frames
+    voice --> pcm
+    ingest --> idb
+    ingest --> opfs
+    ai -->|"keys"| web
+    ai -->|"vault"| idb
+    thread --> idb
+    comp --> pairDb
+    webllm --> caches
+    wasm --> caches
+    ai -->|"key in the provider header"| providers
+    ai -->|"blocked call, user's key"| relay --> blocked
+    ai -->|"no key: site pool"| pool --> blocked
+    pool --> providers
+    voice -->|"site speech"| speech --> providers
+    voice -->|"Live token"| speech
+    voice -.->|"WebSocket with the token"| live
+    voice -->|"research step"| research --> providers
+    ai --> health
+    sb --> auth
+    sb --> rest
+    sync --> sb
+    thread -->|"library search"| sb
+    comp -->|"loopback, Mode A cookie or Mode B token"| companion
+    ai -->|"direct, never through the site"| ownServer
+    webllm -.->|"model files after a confirmation"| hosts
+    wasm -.->|"pinned revisions"| hosts
+    ai -.-> searx
+    voice -.-> bspeech
+    publisher -->|"service_role, reads public or ownerless rows"| rest
 
     classDef external stroke-dasharray: 5 5
-    class gemini,openrouter,ownServer,nvidia,hf,ghLibs,speech,backendApis external
+    class providers,blocked,live,hosts,searx,bspeech external
 ```
 
 </details>
 
 The [architecture atlas](docs/ARCHITECTURE.md) documents every subsystem with diagrams checked
-against the code: boot, chat in both modes, retrieval and citations, the source check and
-receipts, the on-device engines (WebGPU and WASM), storage and offline use, the database and its
-policies, the backend, the NVIDIA cloud proxy, and build, test and deployment.
+against the code: boot, the AI layer and its transports, the chat thread, retrieval and citations,
+the source check, the sentence gate and receipts, the on-device engines, voice, Live and research,
+storage, sync and offline use, the database and its policies, the server functions, the local
+companion, and build, test and release.
 
 ## On-device models
 
 On-device presets come in tiers by the GPU memory they need: **T1** fits phones and small GPUs
 (under 2 GB of VRAM), **T2** needs about 2–4 GB and **T3** at least 4 GB. **T4** are the NVIDIA
-NIM cloud models: nothing is downloaded, and they run on NVIDIA's servers
-([below](#nvidia-nim-cloud-models-t4)). Automatic selection picks a T1 or T2 preset from the
-device class and never a T3 preset, because browsers report no VRAM and cap
-`navigator.deviceMemory` at 8 GB; on a strong GPU a T3 preset is only suggested. Without WebGPU it
-picks a processor (WASM) preset, and it never picks a T4 model: a new installation starts with the
-cloud assistant, which quotes the sources until a key or a model is set up.
+NIM models of the site's pool: nothing is downloaded, and they run on NVIDIA's servers
+([below](#nvidia-nim-models-t4)). Automatic selection picks a T1 or T2 preset from the device class
+and never a T3 preset, because browsers report no VRAM and cap `navigator.deviceMemory` at 8 GB; on a
+strong GPU a T3 preset is only suggested. Without WebGPU it picks a processor (WASM) preset. A new
+installation starts with **Auto**, which takes the best model that is set up (the site's free pools,
+where a deployment offers them) and quotes the sources when there is none.
 
 WebLLM model ids are validated against the pinned WebLLM catalog in the unit tests. On adapters
 without the `shader-f16` feature the `q4f32_1` variant is selected automatically, and phones
@@ -577,10 +785,11 @@ pinned to a commit, and the unit tests check the list of files and their sizes:
 | T1 | `qwen-0.5b` (processor default) | `onnx-community/Qwen2.5-0.5B-Instruct` @ `22942cb` | `onnx/model_quantized.onnx` | 0.52 GB | 2,048 |
 
 Without WebGPU, automatic selection picks one of these. They run with Transformers.js and ONNX
-Runtime Web in a worker, on one thread (the app is not cross-origin isolated, so WebAssembly
-threads are unavailable), and answer with at most 384 tokens. The 14 MB ONNX Runtime binary is
-served from the app's own `/assets` and loaded on first use; every model file is downloaded from
-huggingface.co at the pinned revision, so a stored model also loads offline.
+Runtime Web in a worker, on up to four threads (half the processor's cores, as the page is
+cross-origin isolated), and answer with up to 384 tokens unless the benchmark measured the model
+faster on this device. The 14 MB ONNX Runtime binary is served from the app's own `/assets` and
+loaded on first use; every model file is downloaded from huggingface.co at the pinned revision, so a
+stored model also loads offline.
 
 Model licenses: the Llama presets are under the Llama 3.1 and 3.2 community licenses, the Gemma
 presets under the Gemma terms of use and Qwen 2.5 3B under the Qwen research license; the other
@@ -590,17 +799,34 @@ Nothing is downloaded without confirmation. Before asking, the app checks whethe
 already cached and whether the storage quota suffices; persistent storage is requested only after
 you agree. Weights are cached by WebLLM and by Transformers.js (Cache API `transformers-cache`), not
 by the service worker; **Settings › Advanced › Delete downloaded model data** removes both. The
-**Diagnostics** tab reports the WebGPU adapter and measures time to first token and decode speed on
-the loaded model.
+**Diagnostics & Benchmark** tab reports the WebGPU adapter and measures time to first token and
+decode speed on the loaded model (processor models too, without WebGPU); it keeps every run in a
+benchmark history, and the model recommendation takes the measured speed into account. A free
+answer of a model on this device may use the device's output budget (512 tokens on phones, 768 on
+small GPUs, 1,024 on laptops, 2,048 on desktops and strong GPUs), at most half the model's context
+window; a grounded answer keeps the preset's length within that budget.
 
-### NVIDIA NIM cloud models (T4)
+Every downloaded model file is checked before the model runs. [`src/js/models/model-lock.json`](src/js/models/model-lock.json)
+holds the SHA-256 and size of each file the runtimes store (WebLLM configs, tokenizers, parameter
+shards and model libraries; the processor and search models' files; the self-hosted ONNX Runtime
+binary). After a download, and before stored files are read, a worker hashes each Cache Storage
+entry of the model and compares it with the lock: a match is remembered in IndexedDB by URL and
+size, a mismatch is deleted and the model is not loaded. WebLLM downloads its presets at `main`,
+so a model may change upstream after a release; files without a pinned hash are refused as
+unverified until you choose **Load unverified (upstream changed)** for that model in
+**Settings › Trust › Model downloads**, which also shows the result of each check.
+`npm run models:lock` refreshes the lock from the model hosts whenever a catalog or the WebLLM
+version changes (a unit test fails until the lock matches), and a weekly workflow runs it with
+`--check`.
 
-These models run on NVIDIA's servers and are reached only through the site's proxy
-([deployment](#nvidia-cloud-models-deployment)), which accepts no other model. The list lives in
-[`src/js/models/nvidia-catalog.js`](src/js/models/nvidia-catalog.js); the first entry is the
-default and is called with its thinking mode switched off. Reasoning models stream their reasoning
-before the answer; the app keeps it out of the answer and shows it in the answer's details. The
-unit tests fail if this table and the list differ:
+### NVIDIA NIM models (T4)
+
+The site's NVIDIA pool offers these models of the NVIDIA API Catalog without a key of your own; with
+your own `nvapi-` key they go through the relay. The list lives in
+[`src/js/models/nvidia-catalog.js`](src/js/models/nvidia-catalog.js), which also feeds the pool's
+allowlist; the first entry is the default and is called with its thinking mode switched off.
+Reasoning models stream their reasoning before the answer; the app shows it in a collapsible block,
+apart from the answer. The unit tests fail if this table and the list differ:
 
 | Tier | Model id | Name in the model menu | Reasoning |
 | --- | --- | --- | --- |
@@ -618,11 +844,11 @@ unit tests fail if this table and the list differ:
 | T4 | `meta/llama-3.2-11b-vision-instruct` | Llama 3.2 11B Vision Instruct | no |
 | T4 | `google/diffusiongemma-26b-a4b-it` | DiffusionGemma 26B A4B | no |
 
-The app sends text only, also to models that accept images. Requests are fitted to the proxy's
-limits (at most 40 messages, 24,000 characters per message and 64,000 in all) by leaving out the
-oldest earlier messages first, and ask for 1,024 tokens (2,048 for reasoning models). NVIDIA's API
-terms and each model's license apply to what is sent. `npm run nvidia:ping` checks the list
-against the live API before it changes.
+Images go only to the models that see. Requests are fitted to the pool's limits (at most 40
+messages, 24,000 characters per message and 64,000 in all) by leaving out the oldest earlier
+messages first, and ask for 1,024 tokens (2,048 for reasoning models). NVIDIA's API terms and each
+model's license apply to what is sent. `npm run nvidia:ping` checks the list against the live API,
+and `npm run providers:ping` checks every provider and pool.
 
 ## Browser support
 
@@ -632,15 +858,15 @@ against the live API before it changes.
 | Chrome 121+ on Android 12+ | Yes | The compact 1B model with a 2,048-token context is selected by default. |
 | Safari 26 (macOS, iOS, iPadOS) | Yes | iOS may evict cached model data under storage pressure. |
 | Firefox 141+ | Windows; other platforms are rolling out | `about:support` › Graphics shows whether WebGPU is available. |
-| Any browser without WebGPU | Processor (WASM) models only, slower | Automatic selection picks a WASM preset. Everything else works: sample files, workspace, source check, receipts, free chat, NVIDIA cloud, cloud and own-server modes. |
+| Any browser without WebGPU | Processor (WASM) models only, slower | Automatic selection picks a WASM preset. Everything else works: sample files, workspace, source check, receipts, every cloud model, the free pools, your own server and the companion. |
 
-Own-server mode from `https://www.starpi.app` to `http://localhost` triggers Chrome's Local
-Network Access permission prompt (Chrome 142+), and Ollama must allow the origin
-(`OLLAMA_ORIGINS`).
+Your own server or the companion from `https://www.starpi.app` on `http://localhost` or
+`http://127.0.0.1` triggers Chrome's Local Network Access permission prompt (Chrome 142+), and
+Ollama must allow the origin (`OLLAMA_ORIGINS`).
 
 ## Quickstart
 
-Prerequisites: Node.js 22.13+ (`.nvmrc`), npm 10+. Python 3.11+ only for the optional backend.
+Prerequisites: Node.js 22.13+ (`.nvmrc`), npm 10+. Python 3.11+ only for the optional library publisher.
 
 ```bash
 git clone https://github.com/umutcantezgel-cpu/Starpi.git
@@ -649,41 +875,48 @@ npm ci --ignore-scripts   # as in CI and on Vercel: no install scripts of depend
 npm run dev               # build in watch mode and serve dist/ on http://127.0.0.1:3000
 ```
 
-The dev server applies the same response headers as production (`vercel.json`), including the
-Content-Security-Policy, and serves the two NVIDIA routes from `api/` as Vercel does.
+The dev server applies the same response headers as production (generated from
+`scripts/headers.json`) and serves the functions under `api/` as Vercel does.
 
 | Command | Purpose |
 | --- | --- |
 | `npm run build` | Production build into `dist/` (Tailwind CSS, esbuild bundle, hashed assets, generated service worker) |
-| `npm run preview` | Serve `dist/` with production headers, and the NVIDIA routes from `api/` |
+| `npm run preview` | Serve `dist/` with production headers and the server functions from `api/` |
 | `npm run lint` / `npm run typecheck` | ESLint; TypeScript `checkJs` in strict mode for every `@ts-check` module |
 | `npm test` | Unit tests (`node --test`) |
-| `npm run test:e2e` | Playwright tests against `dist/` with a mocked Supabase backend, including an axe accessibility scan |
-| `npm run verify` | Lint, typecheck, unit tests, build and output verification |
+| `npm run test:e2e` | Playwright tests against `dist/` with a mocked Supabase backend and local provider fakes, including an axe accessibility scan |
+| `npm run test:companion` | Tests of `@starpi/companion` (builds `@starpi/core` first) |
+| `npm run verify` | Lint, typecheck, unit tests, build, output verification, generated headers, licence gate and end-of-life register |
+| `npm run hygiene:check` | Keeps private paths and internal identifiers out of the repository |
 | `npm run verify:receipt -- receipt.json file…` | Verify an answer receipt against the original files |
 | `npm run pack:core` | Build `@starpi/core` with its type declarations and list the files `npm pack` would publish |
 | `npm run sbom` | CycloneDX SBOMs of the app and of `@starpi/core` into `sbom/`, from `package-lock.json` |
+| `npm run headers:gen` | Write the headers of `vercel.json` from `scripts/headers.json` (`headers:check` compares) |
+| `npm run models:sync` / `npm run models:lock` | Refresh the model catalog snapshot / the SHA-256 lock of on-device model files |
+| `npm run providers:ping` | Check providers and pools with real keys (maintainers) |
+| `npm run fakes` | Local fake providers, as the end-to-end tests use them |
+| `npm run eval:source-check` / `npm run eval:answers` | The source check on the labelled answer sets / answer quality of a model per language |
 | `npm run docs:sync` | Copy diagrams from the atlas into the README and guides |
 
 ### Reproduce the published numbers
 
 The figures in this README are produced by scripts in the repository and pinned by unit tests.
-None of these steps needs a GPU, an account or an API key. From a fresh clone with an empty npm
-cache, the five commands took 45 seconds in total on a 4-vCPU Linux container with Node.js 22:
+None of these steps needs a GPU, an account or an API key:
 
 ```bash
 git clone https://github.com/umutcantezgel-cpu/Starpi.git && cd Starpi
 npm ci
 npm test                    # unit tests, including the checks in the table below
-npm run eval:source-check -- --unblind --grounding 2   # the source check on every answer set
-npm run eval:source-check -- --unblind --grounding 1   # the same with the rules of 1.x
+npm run eval:source-check -- --unblind --grounding 3   # the current rules on every answer set
+npm run eval:source-check -- --unblind --grounding 2   # the rules of 2.x
+npm run eval:source-check -- --unblind --grounding 1   # the rules of 1.x
 ```
 
 | Figure | Produced by | Pinned by |
 | --- | --- | --- |
 | Source check results ([How well it works](#how-well-it-works)) | `npm run eval:source-check` on the answer sets in [`tests/fixtures/grounding/`](tests/fixtures/grounding) (`--unblind` adds the held-out sets) | `tests/unit/source-check-eval.test.mjs` fails if any result gets worse; `tests/unit/golden.test.mjs` pins every verdict |
 | Tier, VRAM, download size and context window ([On-device models](#on-device-models)) | `vram_required_MB` in the WebLLM catalog pinned by `package-lock.json`; the context window the app requests (`chooseModel`); the pinned Hugging Face revisions and file sizes of the processor (WASM) presets | `tests/unit/models.test.mjs` and `tests/unit/wasm-catalog.test.mjs` fail if the tables and the catalogs differ |
-| Time to first token, prefill and decode speed | **Diagnostics** tab on your device: a warm-up request, then a fixed prompt with exactly 128 generated tokens (`ignore_eos`, temperature 0) on a reset chat | Not published: the result depends on the GPU, the driver and the browser |
+| Time to first token, prefill and decode speed | **Diagnostics & Benchmark** tab on your device: a warm-up request, then a fixed prompt with exactly 128 generated tokens (`ignore_eos`, temperature 0) on a reset chat | Not published: the result depends on the GPU, the driver and the browser |
 
 ### Configuration
 
@@ -699,42 +932,28 @@ npm run build
 The build refuses secret keys (`sb_secret_…`) and any JWT whose role is not `anon`, so a key that
 bypasses row level security can never reach the browser.
 
-### NVIDIA cloud models (deployment)
+### Server functions (deployment)
 
-The NVIDIA NIM models run through two Vercel Functions:
-[`api/models/nvidia.js`](api/models/nvidia.js) (`GET /api/models/nvidia`: the allowed models and
-whether the server has keys, never a key or their number) and
-[`api/chat/nvidia.js`](api/chat/nvidia.js) (`POST /api/chat/nvidia`: streams an answer from
-`integrate.api.nvidia.com` with a key from the server's pool). The browser holds no NVIDIA key; it
-calls these routes on its own origin without an `Authorization` header. Without keys the model menu
-shows the NVIDIA models as not set up on this server; on a host without the functions it does not
-show them.
+Everything the site does on a server is a stateless function under [`api/`](api): none stores a
+request, an answer or a key. [docs/SERVER.md](docs/SERVER.md) describes every route, guard and
+variable.
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `NVIDIA_API_KEYS` | empty: the chat route answers `503 nvidia_not_configured` | The key pool, comma separated: `nvapi-<64 characters>` per key. On Vercel an environment variable of type **Sensitive** for **Production** and **Preview**. Entries of another shape are ignored and only counted in the log. |
-| `NVIDIA_RATE_LIMIT_PER_MINUTE` | `20` | Chat requests per client IP and minute, counted in each function instance |
-| `NVIDIA_ALLOWED_ORIGINS` | empty | Further origins, comma separated, whose pages may call the chat route; the site's own origin always may |
+| Route | Purpose |
+| --- | --- |
+| `/api/relay/<provider>/<path>` | The relay for keys of your own, to a fixed table of provider hosts (no other address can be reached through it) |
+| `POST /api/pool`, `GET /api/models/pool` | The site's key pools (`MINIMAX_API_KEYS` for the base model, `NVIDIA_API_KEYS`, `GROQ_API_KEYS`, `GEMINI_API_KEYS`, `OPENROUTER_API_KEYS`) |
+| `POST /api/voice/speak`, `POST /api/voice/transcribe`, `GET /api/voice/voices`, `POST /api/voice/live-token` | Speech with the site's keys, and single-use Live tokens |
+| `POST /api/research/step` | Research steps on the site's Gemini pool, with signed tool turns |
+| `GET /api/health` | What the site offers, as booleans only |
+| `POST /api/chat/nvidia`, `GET /api/models/nvidia` | The NVIDIA pool under its 2.x addresses |
 
-Vercel reads environment variables when it creates a deployment: set them first, then deploy, and
-redeploy after a change. Each request starts at the next key and moves on to the following keys
-when one is rate limited (429), rejected (401, 403), fails (408, 5xx) or does not answer in time,
-until a stream starts; a key that failed waits before it is used again. The guards, limits and
-timeouts are in [SECURITY.md](SECURITY.md#nvidia-cloud-models-and-offline-use).
-
-Locally, `npm run dev` and `npm run preview` serve the routes for `localhost`, IP addresses and the
-hosts in `NVIDIA_ALLOWED_ORIGINS`; the end-to-end tests run without them and mock `/api/*`:
-
-```bash
-npm run build
-NVIDIA_API_KEYS=nvapi-<64 characters> npm run preview   # app and both routes on :3000
-npm run nvidia:sync                     # copy src/js/models/nvidia-catalog.js for the backend
-NVIDIA_API_KEYS=… npm run nvidia:ping   # maintainers: one request per model, real quota
-```
-
-`nvidia:ping` prints the number of keys and, per model, only the id, the status, the time to the
-first byte and whether reasoning and content arrived, never a key or a response. The Python backend serves the same two
-routes ([below](#optional-backend)).
+Every route checks the origin and a per-IP rate limit first, then an optional access code
+(`STARPI_ACCESS_CODE`), and the pools, speech and research count optional daily budgets. Vercel
+reads environment variables when it creates a deployment: set them as **Sensitive** first, then
+deploy, and redeploy after a change. Locally, `npm run preview` serves the same routes; on a host
+without Vercel, `node scripts/serve.mjs --functions` serves the built app with the functions behind
+a TLS reverse proxy. The guards and their limits are in
+[SECURITY.md](SECURITY.md#relay-pools-and-the-other-server-functions).
 
 ## Database setup (Supabase)
 
@@ -743,46 +962,57 @@ rollback.
 
 1. Enable **Anonymous sign-ins** (Authentication › Sign In / Providers). Consider CAPTCHA and rate
    limits for anonymous sign-ins. Without them the app still reads published knowledge and keeps
-   chats in the browser.
+   conversations on the device.
 2. New project: apply `backend/supabase/full_schema.sql`. Existing project: apply the files in
    `backend/supabase/migrations/` in file-name order.
 3. Check the result with Supabase's security advisors.
+4. Optional: `migrations/20261101000000_embedding_384.sql` (ranking the library by meaning) and
+   `migrations/20261102000000_chat_sync.sql` (the encrypted chat sync). For restoring sync in another
+   browser, put `{{ .Token }}` into the Magic Link and Change Email templates.
 
-## Optional backend
+## Library publisher (optional)
 
-`backend/` is a dependency-light Python service for server-side ingestion (Markdown structuring,
-chunking, 1536-dimensional embeddings) and pgvector retrieval. It holds the **service role** key,
-binds to `127.0.0.1` by default and requires `BRAIN_API_TOKEN` on any other interface. It also
-serves the NVIDIA routes `GET /api/models/nvidia` and `POST /api/chat/nvidia` with the same model
-list, limits, validation and error codes as the Vercel Functions (plus two codes of its own), for
-hosts without Vercel. The app calls them only on its own origin, so the backend has to be served
-behind a reverse proxy on the app's origin for that. See
-[backend/README.md](backend/README.md#nvidia-routes-on-the-apps-origin).
+`tools/library-publisher/` is a Python command line tool that fills the shared library: it splits
+text and Markdown files into sections, embeds each one with multilingual-e5-small (384 dimensions,
+the model the browser uses for its query vectors, run through ONNX Runtime with pinned and
+hash-checked model files) and stores them with the **service role** key on a machine you control.
+It opens no port, and its reads stay within published rows and rows without an owner. The vectors
+need the optional migration `backend/supabase/migrations/20261101000000_embedding_384.sql`. See
+[backend/README.md](backend/README.md#library-publisher). The Python HTTP service of earlier
+releases (`/api/brain/*` and its NVIDIA routes) has been removed.
 
 ## Security
 
-- **Data access:** the public key and an anonymous session; row level security limits chats to
-  their owner and private knowledge rows to their creator, and published rows are read-only for
-  the browser.
-- **Rendering:** Markdown from the database or a model passes DOMPurify with a restrictive
-  profile; the source check, receipts and citations are built with DOM APIs and `textContent`.
-- **Headers:** `script-src 'self' 'wasm-unsafe-eval'`, `style-src 'self'`, no inline code (checked
-  after every build), `frame-ancestors 'none'`, HSTS, COOP and a Permissions-Policy.
-- **Untrusted files:** parsed in a worker; pdf.js runs without `eval` or font loading.
-- **Credentials:** provider keys stay in the browser tab unless you choose to keep them. NVIDIA
-  keys exist only in the server environment and never in the bundle: `verify-dist` fails on an
-  `nvapi-` key in the JavaScript bundles, `index.html`, `sw.js` or the build manifest, and gitleaks
-  (with a rule for NVIDIA keys) and a unit test scan the repository.
-- **NVIDIA proxy:** requests from the site's own pages only (and from origins the operator
-  lists), a per-IP rate limit, the model allowlist and size limits before any upstream call;
-  responses are not cached, and no request or answer content is stored or logged.
-- **Supply chain:** exact dependency pins, `npm ci --ignore-scripts`, SHA-pinned GitHub Actions,
-  a dependency audit (`npm audit`, `pip-audit`) and gitleaks in CI. CycloneDX SBOMs of the app
-  and of `@starpi/core` (`npm run sbom`, deterministic for a given commit and npm version) come
-  with every CI run and every release; the release assets are built without write access and
-  listed in `SHA256SUMS`.
+- **Headers and isolation:** one header set per build profile, generated from
+  `scripts/headers.json`: `script-src 'self' 'wasm-unsafe-eval'`, `style-src 'self'`, no inline code
+  (checked after every build), `frame-ancestors 'none'`, HSTS, cross-origin isolation (COOP, COEP
+  `require-corp`, CORP) and a Permissions-Policy.
+- **Rendering:** Markdown from the database or a model passes DOMPurify with a restrictive profile,
+  highlighting and math a second, narrower sanitizer; diagrams and HTML or SVG previews render only
+  in a sandboxed frame with an opaque origin; the source check, receipts and citations are built with
+  DOM APIs and `textContent`.
+- **Untrusted files:** parsed in a worker; pdf.js runs without `eval` or font loading; Office files
+  pass a ZIP reader with limits against ZIP bombs.
+- **Keys:** provider keys stay in the tab unless you set a vault passphrase, and go only to their
+  provider or through the relay, which keeps nothing. The site's keys exist only in the server
+  environment: `verify-dist` fails on a key in the bundles, and gitleaks and a unit test scan the
+  repository.
+- **Server functions:** the origin check, per-IP limits, optional daily budgets and an optional
+  access code; the relay takes its hosts from a fixed table and returns only error identifiers; the
+  pools accept text and images from an allowlist, no tools.
+- **Data access:** the public key and an anonymous session; row level security limits sync rows to
+  their owner and private knowledge rows to their creator, and published rows are read-only for the
+  browser.
+- **Tools:** MCP tool definitions are pinned by SHA-256, and a server's tool asks before it runs
+  unless you allowed a read or low tool whose pin has not changed.
+- **The companion:** loopback only, paired browsers only, sealed at rest, signed audit heads, zero
+  egress by default.
+- **Supply chain:** exact pins, `npm ci --ignore-scripts`, SHA-pinned GitHub Actions, dependency
+  audits, a licence gate, an end-of-life register, gitleaks, CodeQL and a workflow lint in CI;
+  CycloneDX SBOMs with every CI run and release; model files pinned by SHA-256; signed and attested
+  releases ([below](#releases)).
 
-Details and known limitations are in [SECURITY.md](SECURITY.md).
+Details and known limitations are in [SECURITY.md](SECURITY.md#known-limitations).
 
 ## Testing and CI
 
@@ -790,46 +1020,63 @@ Details and known limitations are in [SECURITY.md](SECURITY.md).
 
 | Job | Checks |
 | --- | --- |
-| `frontend` | ESLint, TypeScript, unit tests (including golden tests for extraction, chunking and the source check, receipt round trips, the model catalogs and device classes, both chat modes, the streaming parser, the NVIDIA proxy with its guards and failover, and its copy for the Python backend), a typed build and dry-run pack of `@starpi/core`, production build, `verify-dist` (also: no NVIDIA key in the bundles) |
-| `e2e` | Playwright on desktop and mobile viewports under the production CSP: zero CSP violations, sample files, source check, receipts verified against the original files, axe (no serious or critical violations), privacy of on-device turns, inert XSS payloads, offline reconnect, the model menu, free chat, chat export and delete, and NVIDIA answers from a mocked proxy |
-| `backend` | ruff, byte-compilation and offline unit tests on Python 3.11 and 3.12, including the NVIDIA routes with a mocked upstream and the validation cases shared with the Vercel Functions |
+| `frontend` | ESLint, TypeScript, unit tests, a typed dry-run pack of `@starpi/core`, production build, `verify-dist` (CSP compatibility, header parity, assets, service worker, first-load budget, no key in the bundles), generated headers, licence gate, end-of-life register, public hygiene |
+| `e2e` | Playwright on desktop and mobile viewports under the production headers, against a mocked Supabase and local provider fakes: zero CSP violations, cross-origin isolation, the thread and its modes, providers, pools and the relay, tools, canvas and compare, voice, research, sync, the companion, persistence, the move from 2.1, offline use, axe, and every Mermaid diagram |
+| `backend` | The library publisher on Python 3.11 and 3.13: ruff, byte-compilation and offline unit tests against mocked HTTP |
+| `companion` | `@starpi/companion` on Node.js 22 and 24: typecheck, tests, dependency and licence checks, and an install of the offline bundle from its tarball |
+| `companion-systemd` | The offline bundle under a systemd user manager: a transient unit with readiness and watchdog, then the installed user unit |
+| `voice-server` | The local voice server on Python 3.11 and 3.13 with fake engines: ruff, byte-compilation, unit tests |
 | `database` | Migration and RLS suite on PostgreSQL 16 with pgvector: live, fresh and legacy schemas, idempotency, schema parity, cross-user isolation, search |
-| `audit` | `npm audit` with no advisory of any severity allowed in runtime dependencies (development tooling is reported, not blocking), `pip-audit` on the backend requirements, CycloneDX SBOMs of the app and of `@starpi/core` from the lockfile, kept as the `sbom` artifact |
-| `secrets` | gitleaks on the working tree and on the commits of a pull request, with a rule for NVIDIA API keys (also when pasted with Markdown escapes) |
+| `audit` | `npm audit` with no advisory allowed in runtime dependencies (development tooling is reported), `pip-audit` on the library publisher's requirements, CycloneDX SBOMs kept as the `sbom` artifact |
+| `secrets` | gitleaks on the working tree and on the commits of a pull request, with a rule for NVIDIA API keys |
 
-In numbers: 479 unit tests in 38 files, 94 end-to-end tests (the desktop and mobile runs counted
-separately; the diagram check runs on desktop only) and 146 backend tests.
+Beside it, `codeql.yml` (CodeQL on every change and weekly), `workflow-lint.yml` (actionlint and
+zizmor) and `model-lock.yml` (the model lock against the hosts, weekly) run.
+
+In numbers: 2,434 unit tests in 193 files, 140 end-to-end tests in 27 specs on desktop Chromium
+(CI also runs them on a mobile viewport; the diagram check runs on desktop only), 148
+tests of the companion in 24 files, and the Python suites of the library publisher and the voice server.
 
 The unit and end-to-end suites also check the documentation: every Mermaid block renders, diagram
 copies match the atlas, and links and anchors resolve.
 
+## Releases
+
 Once CI has passed on a push to `main`, `.github/workflows/release.yml` creates the GitHub release
 for the version in `package.json` when its notes exist in `docs/releases/`. A job without write
-access packs `@starpi/core`, smoke-tests the tarball and writes the SBOMs; the release job, the
-only one with write access, installs nothing, checks `SHA256SUMS` and attaches the tarball, both
-SBOMs and the checksums to the release.
+access or secrets packs `@starpi/core` and `@starpi/companion`, builds the companion's offline
+bundle, smoke-tests the core tarball and writes the SBOMs and `SHA256SUMS`. A signing job attests
+every asset (`actions/attest-build-provenance`), signs `SHA256SUMS` and the offline bundle keyless
+with Sigstore and, when the project's release key is set up, signs `SHA256SUMS` with Ed25519. The
+release job, the only one with write access, creates the release, and a last job publishes both
+packages to npm from the very tarballs of the release, with provenance. How to check a download is
+in [SECURITY.md](SECURITY.md#supply-chain).
 
 ## Roadmap
 
-- **Answer quality evaluation:** an English and German question set over the sample data that
-  compares on-device, own-server and cloud models on faithfulness and citation accuracy, with the
-  source check as one of the measures.
-- **Model-based checks:** an optional second opinion (entailment) for statements the deterministic
-  check can only mark as weak.
-- **Signing in the app:** receipts can be signed since 2.0.0 (`signReceipt`, `starpi-verify-receipt
-  --public-key`); a deployment setting would let the app sign every receipt it exports.
-- **Relations across statements:** the source check compares one statement at a time, so a receipt
-  can recompute it; a wrong relation spread over two statements is not seen yet.
-- **Hybrid retrieval in the browser:** on-device query embeddings, so on-device mode can use
-  pgvector ranking without sending the question to the server.
-- **Benchmark history:** keep Diagnostics results per model and device class and use them for the
-  automatic model choice.
+- **Held-out source-check sets for French, Spanish, Italian and Turkish**, written in advance and
+  measured once, before the rules are tuned further for these languages, and sample files in them.
+- **Receipts for web-grounded answers:** an answer grounded by a search API is checked as far as the
+  provider's citations allow, but carries no receipt yet.
+- **Relations across more statements:** version 3 compares a statement with the one directly before
+  it only.
+- **Sync:** changing the passphrase without turning sync off, and a per-user quota for `chat_sync`.
+- **Model files:** hashing that streams, so a large file is no longer held in memory once more while
+  it is checked.
+- **Computer control on a real screen** for the companion, behind the same consent, mandate and
+  approvals.
+- **The Sources tab** of the chat side panel, which is empty in 3.0.
+- **Answer quality across models:** regular `npm run eval:answers` runs that compare models on this
+  device, your server and the cloud, with the source check as one of the measures.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), the [walkthrough](docs/WALKTHROUGH.md) for a tour of the
-code, and the [Code of Conduct](CODE_OF_CONDUCT.md). Changes are listed in
-[CHANGELOG.md](CHANGELOG.md).
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the setup, the checks and the
+conventions, and the [walkthrough](docs/WALKTHROUGH.md) is a tour of the code. [AGENTS.md](AGENTS.md)
+lists the exact commands in one place, for coding agents and for everyone else. Issues labelled
+[good first issue](https://github.com/umutcantezgel-cpu/Starpi/labels/good%20first%20issue) are a
+good place to begin. Please follow the [Code of Conduct](CODE_OF_CONDUCT.md) and report security
+problems privately ([SECURITY.md](SECURITY.md)). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

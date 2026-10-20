@@ -1,0 +1,66 @@
+{
+  "name": "@starpi/companion",
+  "version": "3.0.0",
+  "description": "Starpi Core, the local companion: a loopback service on your own machine that keeps notes, chats and secrets sealed at rest, signs every answer into a tamper-evident audit chain, talks to language models only through an explicit egress list, and pairs with the Starpi app in the browser.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Umutcan Emre Tezgel (https://github.com/umutcantezgel-cpu)",
+  "homepage": "https://github.com/umutcantezgel-cpu/Starpi/tree/main/packages/companion#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/umutcantezgel-cpu/Starpi.git",
+    "directory": "packages/companion"
+  },
+  "bugs": {
+    "url": "https://github.com/umutcantezgel-cpu/Starpi/issues"
+  },
+  "keywords": [
+    "local-first",
+    "companion",
+    "audit-log",
+    "encryption-at-rest",
+    "egress-control",
+    "loopback",
+    "starpi"
+  ],
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "starpi-companion": "bin/starpi-companion.mjs",
+    "starpi-companion-mcp": "bin/mcp-stdio.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "LICENSES",
+    "NOTICE",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"test/*.test.mjs\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.133.0",
+    "@starpi/core": "3.0.0"
+  },
+  "peerDependencies": {
+    "pdfjs-dist": "^6.3.289"
+  },
+  "peerDependenciesMeta": {
+    "pdfjs-dist": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

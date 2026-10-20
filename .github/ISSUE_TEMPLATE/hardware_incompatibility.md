@@ -2,7 +2,7 @@
 name: Hardware Incompatibility
 about: Report a GPU, WebGPU adapter, or browser failure specific to your device
 title: "[HARDWARE]: "
-labels: hardware, webgpu
+labels: bug
 assignees: ''
 ---
 

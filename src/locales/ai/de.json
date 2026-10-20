@@ -1,0 +1,27 @@
+{
+  "error": {
+    "auth": "Der Anbieter hat den Schlüssel nicht akzeptiert. Prüfen Sie ihn in den Einstellungen.",
+    "quota": "Beim Anbieter ist kein Guthaben oder Kontingent mehr übrig.",
+    "rate_limited": "Der Anbieter erhält gerade zu viele Anfragen. Versuchen Sie es gleich noch einmal.",
+    "not_found": "Der Anbieter bietet dieses Modell nicht an.",
+    "bad_request": "Der Anbieter hat die Anfrage abgelehnt.",
+    "context_length": "Die Unterhaltung ist für dieses Modell zu lang. Beginnen Sie einen neuen Chat oder wählen Sie ein Modell mit größerem Kontext.",
+    "server": "Beim Anbieter gibt es gerade ein Problem. Versuchen Sie es später noch einmal.",
+    "timeout": "Der Anbieter hat nicht rechtzeitig geantwortet.",
+    "network": "Der Anbieter ist nicht erreichbar. Prüfen Sie Ihre Verbindung.",
+    "aborted": "Gestoppt.",
+    "bad_response": "Der Anbieter hat eine Antwort geschickt, die Starpi nicht lesen kann.",
+    "cors": "Der Anbieter nimmt keine Aufrufe direkt aus dem Browser an. Schalten Sie das Relay in den Einstellungen ein.",
+    "stream_cut": "Die Antwort brach ab, bevor sie vollständig war.",
+    "refusal": "Der Anbieter hat die Antwort auf diese Anfrage abgelehnt."
+  },
+  "retry_in": "Versuchen Sie es in {seconds} s noch einmal.",
+  "stop": {
+    "max_tokens": "Die Antwort hat ihre Längengrenze erreicht.",
+    "refusal": "Das Modell hat die Antwort abgelehnt.",
+    "pause": "Der Anbieter hat die Antwort pausiert; sie geht automatisch weiter.",
+    "cancelled": "Gestoppt.",
+    "timeout": "Die Antwort hat zu lange gedauert und wurde gestoppt.",
+    "error": "Die Antwort endete mit einem Fehler."
+  }
+}

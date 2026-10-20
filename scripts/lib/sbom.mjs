@@ -4,6 +4,13 @@
 // at two paths twice under one bom-ref, and describes a workspace inside the root project's tree.
 // normalizeSbom and normalizeCoreSbom remove all of that, so a document depends only on
 // package-lock.json, the package.json files, the timestamp passed in and the npm version.
+//
+// The app SBOM is also an ML-BOM: withModels adds the on-device models of the model catalogs as
+// components of type machine-learning-model (built by webllmModels and wasmModels from the catalog
+// data, so they change exactly when a catalog does). markShipped clears the development mark of the
+// packages a browser bundle ships although package.json lists them for development (the sandboxed
+// render frame bundles mermaid and its tree). findSecrets is the last check before a document is
+// written: an SBOM never carries a key or the value of a secret environment variable.
 import { createHash } from 'node:crypto';
 
 export const SPEC_VERSION = '1.5';
@@ -21,7 +28,137 @@ const SERIAL_NAME = 'https://github.com/umutcantezgel-cpu/Starpi/sbom/';
  * @typedef {{ 'bom-ref': string, type?: string, name: string, version?: string, scope?: string, purl?: string, properties?: Property[], [key: string]: unknown }} Component
  * @typedef {{ ref: string, dependsOn?: string[] }} Dependency
  * @typedef {{ $schema?: string, bomFormat?: string, specVersion?: string, serialNumber?: string, version?: number, metadata: { timestamp?: string, component: Component, [key: string]: unknown }, components: Component[], dependencies?: Dependency[], [key: string]: unknown }} Bom
+ * @typedef {{ label: string, tier: string, f16: string, f32: string, approxDownloadMB: number, vramMB: { f16: number, f32: number }, contextWindow: number }} WebLlmSpec
+ *   an entry of MODEL_CATALOG (src/js/webgpu/models.js)
+ * @typedef {{ key: string, label: string, repo: string, revision: string, dtype: string, weights: string, files: ReadonlyArray<readonly [string, number]>, approxDownloadMB: number, contextWindow: number, maxPositionEmbeddings: number }} WasmSpec
+ *   an entry of WASM_CATALOG (src/js/models/wasm-catalog.js)
  */
+
+/** bom-refs of model components start with this, so they never collide with npm package refs. */
+export const MODEL_REF_PREFIX = 'model:';
+/** WebLLM downloads the prebuilt MLC weights from this organisation on the model hub. */
+const WEBLLM_HUB_GROUP = 'mlc-ai';
+const HUB = 'https://huggingface.co';
+
+/**
+ * @param {string} name
+ * @param {string | number | boolean} value
+ * @returns {Property}
+ */
+const prop = (name, value) => ({ name: `starpi:${name}`, value: String(value) });
+
+/**
+ * The WebGPU catalog as ML-BOM components: both kernel builds of every preset. WebLLM resolves the
+ * weights from the hub's main branch, so no revision is pinned and the purl carries no version.
+ * @param {Readonly<Record<string, WebLlmSpec>>} catalog
+ * @param {{ runtime: string }} options  the runtime package, e.g. "@mlc-ai/web-llm@0.2.85"
+ * @returns {Component[]}
+ */
+export function webllmModels(catalog, { runtime }) {
+  return Object.entries(catalog).flatMap(([key, spec]) =>
+    /** @type {const} */ (['f16', 'f32']).map((kernels) => {
+      const id = spec[kernels];
+      return {
+        type: 'machine-learning-model',
+        'bom-ref': `${MODEL_REF_PREFIX}webllm/${id}`,
+        group: WEBLLM_HUB_GROUP,
+        name: id,
+        scope: 'optional',
+        description: `${spec.label}, ${kernels === 'f16' ? 'shader-f16' : 'f32'} kernels, run on the graphics processor by WebLLM; downloaded only when the user picks it`,
+        purl: `pkg:huggingface/${WEBLLM_HUB_GROUP}/${encodeURIComponent(id)}`,
+        externalReferences: [{ type: 'distribution', url: `${HUB}/${WEBLLM_HUB_GROUP}/${encodeURIComponent(id)}`, comment: 'weights in the MLC format' }],
+        modelCard: { modelParameters: { task: 'text-generation', inputs: [{ format: 'text' }], outputs: [{ format: 'text' }] } },
+        properties: [
+          prop('catalog', 'webgpu'),
+          prop('catalog-key', key),
+          prop('runtime', runtime),
+          prop('kernels', kernels === 'f16' ? 'shader-f16' : 'f32'),
+          prop('tier', spec.tier),
+          prop('revision', 'main (not pinned)'),
+          prop('approx-download-mb', spec.approxDownloadMB),
+          prop('vram-mb', spec.vramMB[kernels]),
+          prop('context-window', spec.contextWindow),
+        ],
+      };
+    }),
+  );
+}
+
+/**
+ * The processor (WASM) catalog as ML-BOM components. Every repository is pinned to a commit, which
+ * becomes the version, and every file the runtime downloads is listed with its size.
+ * @param {Readonly<Record<string, WasmSpec>>} catalog
+ * @param {{ runtime: string }} options  the runtime package, e.g. "@huggingface/transformers@4.3.0"
+ * @returns {Component[]}
+ */
+export function wasmModels(catalog, { runtime }) {
+  return Object.values(catalog).map((src) => {
+    const [owner, repo] = src.repo.split('/');
+    return {
+      type: 'machine-learning-model',
+      'bom-ref': `${MODEL_REF_PREFIX}transformers/${src.repo}@${src.revision}`,
+      group: owner,
+      name: repo,
+      version: src.revision,
+      scope: 'optional',
+      description: `${src.label}, ${src.dtype} ONNX weights, run on the processor by Transformers.js; downloaded only when the user picks it`,
+      purl: `pkg:huggingface/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}@${src.revision}`,
+      externalReferences: [{ type: 'distribution', url: `${HUB}/${src.repo}/tree/${src.revision}`, comment: 'pinned revision' }],
+      modelCard: { modelParameters: { task: 'text-generation', inputs: [{ format: 'text' }], outputs: [{ format: 'text' }] } },
+      properties: [
+        prop('catalog', 'wasm'),
+        prop('catalog-key', src.key),
+        prop('runtime', runtime),
+        prop('dtype', src.dtype),
+        prop('weights', src.weights),
+        prop('approx-download-mb', src.approxDownloadMB),
+        prop('context-window', src.contextWindow),
+        prop('max-position-embeddings', src.maxPositionEmbeddings),
+        ...src.files.map(([file, bytes]) => prop('file', `${file} ${bytes}`)),
+      ],
+    };
+  });
+}
+
+/**
+ * The document with the model components added after the npm components, each one a dependency of
+ * the main component, and a serial number for the new content.
+ * @param {Bom} doc  a normalized document (normalizeSbom)
+ * @param {Component[]} models
+ * @returns {Bom}
+ */
+export function withModels(doc, models) {
+  const main = doc.metadata.component['bom-ref'];
+  const refs = models.map((m) => m['bom-ref']);
+  const dependencies = (doc.dependencies ?? []).map((dep) => (dep.ref === main ? { ref: dep.ref, dependsOn: unique([...(dep.dependsOn ?? []), ...refs]) } : dep));
+  if (!dependencies.some((dep) => dep.ref === main)) dependencies.unshift({ ref: main, dependsOn: refs });
+  return withSerial({ ...doc, components: [...doc.components, ...models], dependencies: [...dependencies, ...refs.map((ref) => ({ ref, dependsOn: [] }))] });
+}
+
+/**
+ * Names of environment variables whose values must never appear in an SBOM: a name segment KEY,
+ * KEYS, TOKEN, SECRET, PASSWORD or CREDENTIALS (NVIDIA_API_KEYS, GITHUB_TOKEN). npm's own variables
+ * (npm_package_keywords_0 and the like) describe the package and are left out.
+ */
+const SECRET_ENV_NAME = /(?:^|_)(?:KEYS?|TOKENS?|SECRETS?|PASSWORD|PASSWD|CREDENTIALS?)(?:_|$)/i;
+
+/**
+ * What in a serialized SBOM looks like a secret: a match of a key rule, a private key block, a URL
+ * with credentials, or the value of a secret environment variable. Labels only, never the match.
+ * @param {string} text
+ * @param {{ rules?: Array<{ id: string, re: RegExp }>, env?: Record<string, string | undefined> }} [options]
+ * @returns {string[]}
+ */
+export function findSecrets(text, { rules = [], env = {} } = {}) {
+  const findings = rules.filter((rule) => rule.re.test(text)).map((rule) => rule.id);
+  if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(text)) findings.push('private key');
+  if (/[a-z][a-z0-9+.-]*:\/\/[^\s/"'@:]+:[^\s/"'@]+@/i.test(text)) findings.push('URL with credentials');
+  for (const [name, value] of Object.entries(env)) {
+    if (!SECRET_ENV_NAME.test(name) || name.startsWith('npm_') || typeof value !== 'string') continue;
+    if (value.split(',').some((part) => part.trim().length >= 8 && text.includes(part.trim()))) findings.push(`value of ${name}`);
+  }
+  return unique(findings);
+}
 
 /**
  * Name-based UUID, version 5 (SHA-1), RFC 4122 section 4.3.
@@ -166,12 +303,35 @@ function withSerial(doc) {
 }
 
 /**
+ * Marks the components a browser bundle ships although npm counts them as development packages:
+ * the scripts of the sandboxed frames (public/render-frame.js) bundle mermaid and what it needs at
+ * run time, so these packages reach every user like a dependency. Each listed component loses the
+ * cdx:npm:package:development property and gets scope required; every other component stays as
+ * it is. A ref that names no component is reported, so a stale list cannot pass unnoticed.
+ * @param {Bom} doc
+ * @param {Iterable<string>} refs  bom-refs (name@version) of the shipped packages
+ * @returns {{ doc: Bom, missing: string[] }}
+ */
+export function markShipped(doc, refs) {
+  const wanted = new Set(refs);
+  const seen = new Set();
+  const components = doc.components.map((component) => {
+    if (!wanted.has(component['bom-ref'])) return component;
+    seen.add(component['bom-ref']);
+    const properties = (component.properties ?? []).filter((p) => p.name !== 'cdx:npm:package:development');
+    return { ...component, scope: 'required', properties };
+  });
+  return { doc: withSerial({ ...doc, components }), missing: [...wanted].filter((ref) => !seen.has(ref)).sort() };
+}
+
+/**
  * Checks what Starpi relies on in an SBOM. The JSON schema does not check that bom-refs are unique
  * or that dependency edges point at components, so this does.
  * @param {Bom} doc
- * @param {{ name: string, version: string, type: 'application' | 'library', required?: string[], noComponents?: boolean }} expected
+ * @param {{ name: string, version: string, type: 'application' | 'library', required?: string[], noComponents?: boolean, models?: string[] }} expected
  *   `required`: package names that must be listed with scope required;
- *   `noComponents`: the document must list no component besides the main one
+ *   `noComponents`: the document must list no component besides the main one;
+ *   `models`: bom-refs of model components the document must list
  * @returns {string[]} problems, empty when the document is fine
  */
 export function validateSbom(doc, expected) {
@@ -201,7 +361,13 @@ export function validateSbom(doc, expected) {
     check(typeof ref === 'string' && ref.length > 0, `component ${component.name} has no bom-ref`);
     check(!refs.has(ref), `bom-ref ${ref} is not unique`);
     refs.add(ref);
-    check(typeof component.purl === 'string' && component.purl.startsWith('pkg:npm/'), `component ${ref} has no npm purl`);
+    if (component.type === 'machine-learning-model') {
+      check(typeof ref === 'string' && ref.startsWith(MODEL_REF_PREFIX), `model ${ref} has a bom-ref outside ${MODEL_REF_PREFIX}`);
+      check(typeof component.purl === 'string' && component.purl.startsWith('pkg:huggingface/'), `model ${ref} has no model hub purl`);
+      check(typeof component.modelCard === 'object' && component.modelCard !== null, `model ${ref} has no modelCard`);
+    } else {
+      check(typeof component.purl === 'string' && component.purl.startsWith('pkg:npm/'), `component ${ref} has no npm purl`);
+    }
   }
   for (const dep of doc.dependencies ?? []) {
     check(refs.has(dep.ref), `dependency entry for unknown ref ${dep.ref}`);
@@ -210,6 +376,9 @@ export function validateSbom(doc, expected) {
   if (expected.noComponents) check(components.length === 0, `expected no components, found ${components.length}`);
   for (const name of expected.required ?? []) {
     check(components.some((c) => c.name === name && c.scope === 'required'), `runtime dependency ${name} is not listed with scope required`);
+  }
+  for (const ref of expected.models ?? []) {
+    check(components.some((c) => c['bom-ref'] === ref && c.type === 'machine-learning-model'), `model ${ref} is missing`);
   }
   return problems;
 }

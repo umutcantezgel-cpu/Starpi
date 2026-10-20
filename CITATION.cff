@@ -2,13 +2,13 @@ cff-version: 1.2.0
 message: "If you use Starpi in your work, please cite it as below."
 type: software
 title: "Starpi"
-abstract: "Knowledge assistant in the browser that shows how far each answer can be trusted: retrieval-augmented generation with verifiable citations, a deterministic source check that compares every statement with the excerpts it cites (facts, reversed negations, and names and values in the wrong place), answer receipts with a Merkle tree and optional signatures that anyone can verify against the original files, and a command that checks documents in CI and writes SARIF. Files are read on the device; answers come from a model chosen for the device (WebGPU or WebAssembly inference in a Web Worker), NVIDIA NIM cloud models through a server-side proxy with a pool of keys, an own server or a cloud model, in a verified source mode or a free chat mode."
+abstract: "Knowledge assistant in the browser that shows how far each answer can be trusted: retrieval-augmented generation with verifiable citations, a deterministic source check that compares every statement with the excerpts it cites (facts, reversed negations, names and values in the wrong place, and relations between values and events), a sentence gate that releases a streamed sentence only once its numbers are backed, answer receipts with a Merkle tree and a device signature that anyone can verify against the original files, and commands that check documents in CI and write SARIF. Files are read and indexed on the device in a persistent workspace with hybrid retrieval; answers come from on-device models (WebGPU or WebAssembly), your own server, a local companion on your machine, or cloud providers with your own key or the site's key pools through a stateless relay, in a verified source mode or a free chat mode with voice, research jobs and tools. Six interface languages."
 authors:
   - family-names: Tezgel
     given-names: Umutcan Emre
     alias: umutcantezgel-cpu
-version: 2.1.0
-date-released: "2026-10-14"
+version: 3.0.0
+date-released: "2026-10-19"
 license: MIT
 repository-code: "https://github.com/umutcantezgel-cpu/Starpi"
 url: "https://www.starpi.app"
@@ -21,7 +21,8 @@ keywords:
   - merkle-tree
   - webgpu
   - webassembly
-  - nvidia-nim
+  - local-first
+  - voice
   - bm25
   - webllm
   - citations

@@ -3,8 +3,13 @@
 // renderMarkdown() (marked + DOMPurify). UI chrome inside messages carries data-i18n keys, so a
 // language switch re-labels it; message content itself stays as written. No inline handlers:
 // toggles and citations use data-action delegation.
+//
+// A message row carries the id of the stored message it shows (data-node-id) and has slots the
+// thread fills: .message-actions (copy, regenerate, edit, branches), .message-provenance (labels,
+// source check, receipt) and .message-meta (usage and latency). A model's reasoning is only ever
+// shown inside the collapsible details block (thoughtBlock), while streaming as well.
 import { splitReasoning, splitStreamingText } from './chat-stream.js';
-import { decorateCodeBlocks, initCodeBlocks } from './code-blocks.js';
+import { decorateCodeBlocks, initCodeBlocks, setAnswerSource } from './code-blocks.js';
 import { byId, onAction } from './dom.js';
 import { refreshIcons } from './icons.js';
 import { applyTranslations, formatNumber, setText, t } from './i18n/index.js';
@@ -179,10 +184,15 @@ function sourcesBlock(sources) {
     </div>`;
 }
 
-const ASSISTANT_AVATAR =
-  '<div class="w-8 h-8 rounded-lg bg-[#FFCA00] flex items-center justify-center text-slate-950 text-sm font-extrabold flex-shrink-0" aria-hidden="true">S</div>';
+const ASSISTANT_AVATAR = '<div class="brand-mark w-8 h-8 text-sm flex-shrink-0" aria-hidden="true">S</div>';
 const USER_AVATAR =
   '<div class="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white flex-shrink-0" aria-hidden="true"><i data-lucide="user" class="w-4 h-4"></i></div>';
+
+/**
+ * An attachment as a message shows it: a name with an icon (images and documents alike; the
+ * thread never shows the image itself, which stays a blob on this device).
+ * @typedef {{ name: string, kind: 'image' | 'file', detail?: string }} AttachmentChip
+ */
 
 /**
  * @typedef {object} MessageOptions
@@ -193,6 +203,10 @@ const USER_AVATAR =
  * @property {string | null} [trace]
  * @property {number | null} [durationMs]
  * @property {string[]} [traceRoles]    i18n keys of the trace phases (default: retrieval, answer)
+ * @property {string} [reasoning]       the model's own reasoning (shown in the details only)
+ * @property {string} [nodeId]          the stored message this element shows
+ * @property {AttachmentChip[]} [attachments]
+ * @property {string} [meta]            usage and latency line under an answer (already formatted)
  */
 
 /**
@@ -206,6 +220,41 @@ function attachSources(bubble, opts) {
 }
 
 /**
+ * Chips naming the files and images of a message.
+ * @param {AttachmentChip[]} list
+ * @param {boolean} onDark the chips sit on the dark bubble of a question
+ */
+export function attachmentChips(list, onDark = false) {
+  const row = document.createElement('div');
+  row.className = 'message-attachments flex flex-wrap gap-1.5 mb-2';
+  for (const a of list) {
+    const chip = document.createElement('span');
+    chip.className = `attachment-chip inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] max-w-full ${onDark ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-700'}`;
+    const icon = document.createElement('i');
+    icon.dataset.lucide = a.kind === 'image' ? 'file' : 'file-text';
+    icon.className = 'w-3 h-3 flex-shrink-0';
+    const name = document.createElement('span');
+    name.className = 'truncate';
+    name.textContent = a.detail ? `${a.name} · ${a.detail}` : a.name;
+    chip.append(icon, name);
+    row.append(chip);
+  }
+  return row;
+}
+
+/**
+ * The usage and latency line of an answer (plain text, set as text).
+ * @param {HTMLElement} msgDiv
+ * @param {string} text
+ */
+export function setMessageMeta(msgDiv, text) {
+  const el = msgDiv.querySelector('.message-meta');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('hidden', !text);
+}
+
+/**
  * @param {'user' | 'assistant'} role
  * @param {string} text
  * @param {MessageOptions} [opts]
@@ -213,35 +262,44 @@ function attachSources(bubble, opts) {
 export function appendMessage(role, text, opts = {}) {
   const isUser = role === 'user';
   const msgDiv = document.createElement('div');
-  msgDiv.className = `flex items-start gap-3 w-full max-w-4xl mx-auto ${isUser ? 'flex-row-reverse' : ''}`;
+  msgDiv.className = `message-row flex items-start gap-3 w-full max-w-4xl mx-auto ${isUser ? 'flex-row-reverse' : ''}`;
+  msgDiv.dataset.role = role;
+  if (opts.nodeId) msgDiv.dataset.nodeId = opts.nodeId;
 
   let mainText = text;
   let trace = opts.trace ?? null;
-  let roles = PHASE_ROLES;
+  let roles = opts.traceRoles ?? PHASE_ROLES;
   if (!isUser) {
     const split = splitReasoning(text);
     mainText = split.answer;
-    if (split.thoughts) trace = trace ? `${split.thoughts}\n\n${trace}` : split.thoughts;
-    roles = rolesWithReasoning(split.thoughts, opts.traceRoles);
+    const thoughts = [split.thoughts, opts.reasoning ?? ''].filter((x) => x.trim()).join('\n\n');
+    if (thoughts) trace = trace ? `${thoughts}\n\n${trace}` : thoughts;
+    roles = rolesWithReasoning(thoughts, opts.traceRoles);
   }
 
   const bodyHtml = isUser ? escapeHtml(text).replace(/\n/g, '<br>') : renderMarkdown(mainText);
 
   msgDiv.innerHTML = `
     ${isUser ? USER_AVATAR : ASSISTANT_AVATAR}
-    <div class="flex-1 min-w-0 ${isUser ? 'sm:max-w-[85%] bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-800'} rounded-2xl p-4 text-sm leading-relaxed shadow-xs">
+    <div class="message-bubble flex-1 min-w-0 ${isUser ? 'sm:max-w-[85%] bg-slate-900 text-white' : 'bg-white border border-slate-200 text-slate-800'} rounded-2xl p-4 text-sm leading-relaxed shadow-xs">
       ${!isUser && trace ? thoughtBlock(trace, opts.durationMs ?? null, roles) : ''}
       <div class="message-content ${isUser ? 'text-white break-words' : 'prose-custom break-words'}">${bodyHtml}</div>
       ${isUser ? '' : '<div class="message-sources"></div><div class="message-provenance"></div>'}
       ${isUser ? '' : badgeBlock(opts.badge ?? '', false)}
+      ${isUser ? '' : '<p class="message-meta hidden mt-1 text-[11px] text-slate-500 font-mono"></p>'}
+      <div class="message-actions"></div>
     </div>`;
 
+  const bubble = /** @type {HTMLElement} */ (msgDiv.querySelector('.message-bubble'));
+  const content = /** @type {HTMLElement} */ (msgDiv.querySelector('.message-content'));
+  if (opts.attachments?.length) bubble.insertBefore(attachmentChips(opts.attachments, isUser), content);
   if (!isUser) {
-    const content = /** @type {HTMLElement} */ (msgDiv.querySelector('.message-content'));
     linkifyCitations(content, opts.citations ?? null);
     decorateCodeBlocks(content);
+    setAnswerSource(content, mainText);
     attachSources(msgDiv, opts);
     setBadgeLabel(msgDiv, opts.badge ?? '', opts.badgeParams);
+    if (opts.meta) setMessageMeta(msgDiv, opts.meta);
   }
 
   container().appendChild(msgDiv);
@@ -285,38 +343,80 @@ export function appendNotice(notice) {
 }
 
 /**
+ * The live details block of a streaming answer: collapsed, it says that the model is reasoning; the
+ * reasoning itself is only ever shown inside it.
+ */
+function liveThoughtBlock() {
+  return `
+    <div class="thought-container live-thought mb-3 rounded-xl border border-slate-200 bg-slate-50/70 overflow-hidden">
+      <button type="button" data-action="toggle-thought" aria-expanded="false" class="w-full px-3.5 py-2 flex items-center justify-between text-left text-slate-600 hover:text-slate-900 bg-slate-100/60 hover:bg-slate-100 transition select-none">
+        <span class="flex items-center gap-2 text-xs font-semibold text-slate-800">
+          <i data-lucide="lightbulb" class="w-3.5 h-3.5 text-amber-600"></i>
+          <span data-i18n="chat.reasoning">${escapeHtml(t('chat.reasoning'))}</span>
+        </span>
+        <span class="flex items-center gap-2 text-[11px] text-slate-600">
+          <span class="thought-status-text text-[11px] text-amber-800 font-semibold" data-i18n="trace.show">${escapeHtml(t('trace.show'))}</span>
+          <i data-lucide="chevron-down" class="thought-chevron w-3.5 h-3.5 transition-transform duration-200 text-slate-600"></i>
+        </span>
+      </button>
+      <div class="thought-body hidden p-3 border-t border-slate-200 bg-white text-[12px] text-slate-600 whitespace-pre-wrap break-words"></div>
+    </div>`;
+}
+
+/**
  * A message bubble that re-renders at most once per animation frame while tokens stream in.
+ * Reasoning streams into a collapsed details block, never into the answer.
  * @param {string} badgeKey i18n key of the engine label
  * @param {Record<string, string>} [badgeParams] parameters of the engine label
+ * @param {{ nodeId?: string, before?: Element | null }} [placement] `before`: insert above this element instead of at the end
  */
-export function createStreamingMessage(badgeKey, badgeParams) {
+export function createStreamingMessage(badgeKey, badgeParams, placement = {}) {
   const msgDiv = document.createElement('div');
-  msgDiv.className = 'flex items-start gap-3 w-full max-w-4xl mx-auto';
+  msgDiv.className = 'message-row flex items-start gap-3 w-full max-w-4xl mx-auto';
+  msgDiv.dataset.role = 'assistant';
+  msgDiv.dataset.streaming = 'true';
+  if (placement.nodeId) msgDiv.dataset.nodeId = placement.nodeId;
   msgDiv.innerHTML = `
     ${ASSISTANT_AVATAR}
-    <div class="flex-1 min-w-0 bg-white border border-slate-200 rounded-2xl p-4 text-slate-800 text-sm leading-relaxed shadow-xs">
+    <div class="message-bubble flex-1 min-w-0 bg-white border border-slate-200 rounded-2xl p-4 text-slate-800 text-sm leading-relaxed shadow-xs">
       <div class="streaming-trace"></div>
-      <div class="message-content prose-custom break-words"><span class="inline-block w-1.5 h-3.5 bg-[#FFCA00] animate-pulse"></span></div>
+      <div class="message-content prose-custom break-words"><span class="stream-cursor inline-block w-1.5 h-3.5 bg-[#FFCA00] animate-pulse"></span></div>
       <div class="message-sources"></div>
       <div class="message-provenance"></div>
-      ${badgeBlock(badgeKey, true)}
+      ${badgeBlock(badgeKey || 'chat-thread.badge.waiting', true)}
+      <p class="message-meta hidden mt-1 text-[11px] text-slate-500 font-mono"></p>
+      <div class="message-actions"></div>
     </div>`;
-  setBadgeLabel(msgDiv, badgeKey, badgeParams);
-  container().appendChild(msgDiv);
+  setBadgeLabel(msgDiv, badgeKey || 'chat-thread.badge.waiting', badgeParams);
+  if (placement.before && placement.before.parentElement === container()) container().insertBefore(msgDiv, placement.before);
+  else container().appendChild(msgDiv);
   scrollToBottom();
 
   const proseEl = /** @type {HTMLElement} */ (msgDiv.querySelector('.message-content'));
   const traceEl = /** @type {HTMLElement} */ (msgDiv.querySelector('.streaming-trace'));
   let pending = '';
+  let reasoning = '';
   let frame = 0;
   let thinkingShown = false;
+
+  /** The live details block, created with the first reasoning. */
+  const liveBody = () => {
+    let body = /** @type {HTMLElement | null} */ (traceEl.querySelector('.live-thought .thought-body'));
+    if (!body) {
+      traceEl.innerHTML = liveThoughtBlock();
+      refreshIcons(traceEl);
+      body = /** @type {HTMLElement} */ (traceEl.querySelector('.live-thought .thought-body'));
+    }
+    return body;
+  };
 
   /** @param {boolean} final  the whole answer: rendered even when it is reasoning only */
   const flush = (final) => {
     frame = 0;
     const view = splitStreamingText(pending);
+    if (reasoning) liveBody().textContent = reasoning;
     if (view.thinking && !final) {
-      // While the model reasons, one line says so instead of re-rendering text that stays hidden.
+      // While the model reasons inside its text (<think>), one line says so instead of re-rendering text that stays hidden.
       if (!thinkingShown) {
         const note = document.createElement('span');
         note.className = 'stream-thinking';
@@ -326,21 +426,38 @@ export function createStreamingMessage(badgeKey, badgeParams) {
       }
     } else {
       thinkingShown = false;
-      proseEl.innerHTML = renderMarkdown(final ? splitReasoning(pending).answer || pending : view.answer);
+      const text = final ? splitReasoning(pending).answer || pending : view.answer;
+      if (text || final) proseEl.innerHTML = renderMarkdown(text);
     }
     scrollToBottom();
+  };
+  const schedule = () => {
+    if (!frame) frame = requestAnimationFrame(() => flush(false));
   };
 
   return {
     element: msgDiv,
-    /** @param {string} text */
+    /** @param {string} text  the answer so far */
     update(text) {
       pending = text;
-      if (!frame) frame = requestAnimationFrame(() => flush(false));
+      schedule();
+    },
+    /** @param {string} text  the model's reasoning so far */
+    reasoning(text) {
+      reasoning = text;
+      schedule();
+    },
+    /**
+     * Names the model that answers once it is known.
+     * @param {string} key
+     * @param {Record<string, string>} [params]
+     */
+    setBadge(key, params) {
+      setBadgeLabel(msgDiv, key, params);
     },
     /**
      * @param {string} finalText
-     * @param {{ citations: string | null, trace: string | null, durationMs: number | null, traceRoles?: string[] }} meta
+     * @param {{ citations: string | null, trace: string | null, durationMs: number | null, traceRoles?: string[], reasoning?: string, meta?: string }} meta
      */
     finalize(finalText, meta) {
       if (frame) cancelAnimationFrame(frame);
@@ -349,10 +466,14 @@ export function createStreamingMessage(badgeKey, badgeParams) {
       linkifyCitations(proseEl, meta.citations);
       decorateCodeBlocks(proseEl);
       const split = splitReasoning(finalText);
-      const fullTrace = [split.thoughts, meta.trace].filter(Boolean).join('\n\n');
-      if (fullTrace) traceEl.innerHTML = thoughtBlock(fullTrace, meta.durationMs, rolesWithReasoning(split.thoughts, meta.traceRoles));
+      setAnswerSource(proseEl, split.answer || finalText);
+      const thoughts = [split.thoughts, meta.reasoning ?? reasoning].filter((x) => x?.trim()).join('\n\n');
+      const fullTrace = [thoughts, meta.trace].filter(Boolean).join('\n\n');
+      traceEl.innerHTML = fullTrace ? thoughtBlock(fullTrace, meta.durationMs, rolesWithReasoning(thoughts, meta.traceRoles)) : '';
       attachSources(msgDiv, { citations: meta.citations });
+      if (meta.meta) setMessageMeta(msgDiv, meta.meta);
       msgDiv.querySelector('.animate-pulse')?.classList.remove('animate-pulse');
+      delete msgDiv.dataset.streaming;
       refreshIcons(msgDiv);
     },
     remove() {
@@ -382,23 +503,4 @@ export function appendLoading(key = 'chat.thinking') {
   container().appendChild(div);
   scrollToBottom();
   return () => div.remove();
-}
-
-/**
- * Marks an answer of the free chat: it searched no sources and was not checked against any.
- * @param {HTMLElement} messageEl
- */
-export function markFreeAnswer(messageEl) {
-  const slot = messageEl.querySelector('.message-provenance');
-  if (!slot) return;
-  const note = document.createElement('p');
-  note.className = 'free-note';
-  const icon = document.createElement('i');
-  icon.dataset.lucide = 'message-square';
-  icon.className = 'w-3.5 h-3.5 flex-shrink-0';
-  const text = document.createElement('span');
-  setText(text, 'chat.free_note');
-  note.append(icon, text);
-  slot.append(note);
-  refreshIcons(note);
 }

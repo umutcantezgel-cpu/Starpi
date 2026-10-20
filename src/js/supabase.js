@@ -1,11 +1,17 @@
 // @ts-check
 // Supabase data layer: timeouts, error classification, anonymous auth bootstrap and typed queries.
 // Every exported query resolves to a Result and never rejects, so callers cannot leak unhandled rejections.
-import { createClient } from '@supabase/supabase-js';
+// The Supabase library itself is not part of the first load: connect() (or the first query) loads it
+// on demand, while the connection state and its listeners answer synchronously from the start.
 import { LIMITS, SUPABASE_ANON_KEY, SUPABASE_URL, TIMEOUTS_MS } from './config.js';
 import { withTimeoutSignal } from './signals.js';
 
-/** @typedef {'timeout' | 'network' | 'missing_schema' | 'missing_function' | 'forbidden' | 'not_found' | 'auth_disabled' | 'not_signed_in' | 'unknown'} ErrorKind */
+/**
+ * conflict: a unique row exists already, or a stale write (the chat sync's revision guard);
+ * invalid_code / email_taken / no_account / email_disabled / invalid_email / rate_limited: answers
+ * of the email sign-in the chat sync uses to reach one account from several browsers.
+ * @typedef {'timeout' | 'network' | 'missing_schema' | 'missing_function' | 'forbidden' | 'not_found' | 'auth_disabled' | 'not_signed_in' | 'conflict' | 'invalid_code' | 'email_taken' | 'no_account' | 'email_disabled' | 'invalid_email' | 'rate_limited' | 'unknown'} ErrorKind
+ */
 /** @typedef {{ kind: ErrorKind, message: string, code?: string }} DataError */
 /**
  * @template T
@@ -21,6 +27,7 @@ import { withTimeoutSignal } from './signals.js';
  * @property {string[]} tags
  * @property {number | null} rank
  * @property {{ docId: string, chunkIndex: number, start: number, end: number }} [workspace] set for chunks from the on-device workspace
+ * @property {{ url: string }} [web] set for passages from a web search: the page they rest on
  */
 
 /**
@@ -35,6 +42,8 @@ import { withTimeoutSignal } from './signals.js';
  */
 
 /**
+ * A chat message as the chat view handles it (also the row shape of the 2.x chat_history table,
+ * which the app no longer writes).
  * @typedef {object} ChatRow
  * @property {'user' | 'assistant'} role
  * @property {string} content
@@ -52,18 +61,111 @@ function fetchWithTimeout(input, init = {}) {
   return fetch(input, { ...init, signal: withTimeoutSignal(init.signal, TIMEOUTS_MS.supabase) });
 }
 
-export const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: false,
-    storageKey: 'starpi-auth',
-  },
-  global: { fetch: fetchWithTimeout },
-  // postgrest-js would retry timed-out reads three more times (about a minute per request); the app
-  // handles failures itself: it marks the connection offline and reconnects in the background.
-  db: { retry: false },
+/** @typedef {import('@supabase/supabase-js').SupabaseClient} SupabaseClient */
+/** @typedef {typeof import('./supabase-lib.js')} SupabaseLib */
+
+/**
+ * The library's URL in a build (scripts/build.mjs writes it here: a lazy entry of its own, not
+ * precached, kept by the service worker once loaded); unbundled (tests, Node), the module next to
+ * this one.
+ */
+const SUPABASE_LIB_URL = '__STARPI_SUPABASE_LIB_URL__';
+
+/**
+ * A build the companion serves (profile `companion`) runs on the companion's own origin, whose
+ * policy lets the page reach that origin only: the library is never loaded there, connect() ends
+ * offline at once without retrying, and every query answers as if the network were gone.
+ */
+const LIBRARY_OFF = typeof __STARPI_PROFILE__ === 'string' && __STARPI_PROFILE__ === 'companion';
+
+/** @type {Promise<SupabaseClient> | null} */
+let clientPromise = null;
+/** Loads of the library that failed or ran out of time so far. */
+let failedLoads = 0;
+/** @type {SupabaseLib | null} */
+let arrivedLib = null;
+/** @type {(lib: SupabaseLib) => void} */
+let libArrived = () => {};
+/**
+ * Resolves with the library once any load of it succeeds, including one that ran out of time
+ * earlier: a module import cannot be cancelled, and a slow download that finishes after all is
+ * used instead of being fetched again.
+ * @type {Promise<SupabaseLib>}
+ */
+const libArrival = new Promise((resolve) => {
+  libArrived = (lib) => {
+    arrivedLib ??= lib;
+    resolve(lib);
+  };
 });
+
+/**
+ * Rejects with a TimeoutError when `promise` has not settled within `ms`.
+ * @template T
+ * @param {Promise<T>} promise
+ * @param {number} ms
+ * @param {string} message
+ * @returns {Promise<T>}
+ */
+function withDeadline(promise, ms, message) {
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timer;
+  /** @type {Promise<never>} */
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new DOMException(message, 'TimeoutError')), ms);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Starts one load of the library, or hands over the one that has already arrived. A load gets the
+ * same time as a Supabase request: a stalled network must not keep connect() and every query
+ * waiting, it ends in the offline state like a request that times out (classifyError() reads the
+ * TimeoutError as 'timeout'). The browser remembers a failed module import for the life of the
+ * page, so after a failure or a timeout the next load asks for the same file under another URL.
+ * @returns {Promise<SupabaseLib>}
+ */
+function loadLib() {
+  if (arrivedLib) return Promise.resolve(arrivedLib);
+  const url = SUPABASE_LIB_URL.startsWith('/') ? SUPABASE_LIB_URL : './supabase-lib.js';
+  const specifier = failedLoads > 0 && url.startsWith('/') ? `${url}?attempt=${failedLoads}` : url;
+  const load = /** @type {Promise<SupabaseLib>} */ (import(specifier));
+  load.then(libArrived, () => {});
+  return withDeadline(Promise.race([load, libArrival]), TIMEOUTS_MS.supabase, `The Supabase library did not load within ${TIMEOUTS_MS.supabase} ms`);
+}
+
+/**
+ * The one Supabase client, created when it is first needed. A failed or timed-out load (the
+ * network is gone or stalls, or the file is gone after a deploy) is not kept, so the next attempt
+ * loads the library again; classifyError() reads that failure as 'network' or 'timeout'.
+ * @returns {Promise<SupabaseClient>}
+ */
+function client() {
+  // The message is one classifyError() reads as 'network'.
+  if (LIBRARY_OFF) return Promise.reject(new Error('NetworkError: the library is not part of a build the companion serves'));
+  if (clientPromise) return clientPromise;
+  clientPromise = loadLib()
+    .then(({ createClient }) =>
+      createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: false,
+          storageKey: 'starpi-auth',
+        },
+        global: { fetch: fetchWithTimeout },
+        // postgrest-js would retry timed-out reads three more times (about a minute per request); the app
+        // handles failures itself: it marks the connection offline and reconnects in the background.
+        db: { retry: false },
+      }),
+    )
+    .catch((err) => {
+      clientPromise = null;
+      failedLoads += 1;
+      throw err;
+    });
+  return clientPromise;
+}
 
 /**
  * Maps Supabase/PostgREST/Auth/network failures onto a small set of actionable kinds.
@@ -82,12 +184,24 @@ export function classifyError(err) {
     return { kind: 'timeout', message, code };
   }
   // postgrest-js/auth-js wrap fetch failures in plain objects ({ message: 'TypeError: Failed to fetch' }).
-  if (/Failed to fetch|NetworkError|Load failed|fetch failed|ERR_[A-Z_]+/i.test(message) || (name === 'TypeError' && /fetch|network/i.test(message))) {
+  // A library chunk that does not load fails with the browser's own words for a dynamic import.
+  if (
+    /Failed to fetch|NetworkError|Load failed|fetch failed|ERR_[A-Z_]+|dynamically imported module|Importing a module script failed/i.test(message) ||
+    (name === 'TypeError' && /fetch|network/i.test(message))
+  ) {
     return { kind: 'network', message, code };
   }
   if (code === 'anonymous_provider_disabled' || /anonymous sign-ins are disabled/i.test(message)) {
     return { kind: 'auth_disabled', message, code };
   }
+  // Email sign-in (auth error codes), before the generic 403 / 429 below.
+  if (code === 'otp_expired' || code === 'invalid_otp' || /token has expired or is invalid/i.test(message)) return { kind: 'invalid_code', message, code };
+  if (code === 'email_exists' || code === 'user_already_exists' || code === 'identity_already_exists') return { kind: 'email_taken', message, code };
+  if (code === 'otp_disabled' || code === 'signup_disabled' || code === 'user_not_found') return { kind: 'no_account', message, code };
+  if (code === 'email_provider_disabled') return { kind: 'email_disabled', message, code };
+  if (code === 'email_address_invalid' || code === 'email_address_not_authorized') return { kind: 'invalid_email', message, code };
+  if (code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit' || e?.status === 429) return { kind: 'rate_limited', message, code };
+  if (code === '23505' || code === '40001' || e?.status === 409) return { kind: 'conflict', message, code };
   if (code === 'PGRST202') return { kind: 'missing_function', message, code };
   if (code === '42P01' || code === 'PGRST205' || code === '42703' || code === 'PGRST204') {
     return { kind: 'missing_schema', message, code };
@@ -99,14 +213,16 @@ export function classifyError(err) {
 }
 
 /**
+ * Builds a request on the client (loading it first) and maps its answer, or any failure on the way,
+ * onto a Result.
  * @template T
- * @param {PromiseLike<{ data: T | null, error: unknown }>} request
+ * @param {(sb: SupabaseClient) => PromiseLike<{ data: T | null, error: unknown }>} request
  * @returns {Promise<Result<T>>}
  */
 async function run(request) {
   let result;
   try {
-    const { data, error } = await request;
+    const { data, error } = await request(await client());
     result = error ? { ok: /** @type {const} */ (false), error: classifyError(error) } : { ok: /** @type {const} */ (true), data: /** @type {T} */ (data) };
   } catch (err) {
     result = { ok: /** @type {const} */ (false), error: classifyError(err) };
@@ -185,6 +301,7 @@ async function anonymousSignInsEnabled() {
 /** @returns {Promise<DataError | null>} */
 async function ensureSession() {
   try {
+    const sb = await client();
     const { data, error } = await sb.auth.getSession();
     if (error) return classifyError(error);
     if (data.session) return null;
@@ -211,14 +328,28 @@ async function ensureSession() {
 export function connect() {
   if (!connectPromise) {
     connectPromise = (async () => {
+      if (LIBRARY_OFF) {
+        const error = /** @type {DataError} */ ({ kind: 'network', message: 'The library is not part of a build the companion serves' });
+        updateConnection({ status: 'offline', signedIn: false, authError: error, hardened: false, probeError: error });
+        return connection;
+      }
       if (globalThis.navigator?.onLine === false) {
         const error = /** @type {DataError} */ ({ kind: 'network', message: 'The browser is offline' });
         updateConnection({ status: 'offline', signedIn: false, authError: error, hardened: false, probeError: error });
         scheduleReconnect();
         return connection;
       }
+      // Without its library Supabase cannot be reached either: the same state as a failed request.
+      try {
+        await client();
+      } catch (err) {
+        const error = classifyError(err);
+        updateConnection({ status: 'offline', signedIn: false, authError: error, hardened: false, probeError: error });
+        scheduleReconnect();
+        return connection;
+      }
       const authError = await ensureSession();
-      const probe = await run(sb.from('knowledge_documents').select('id, is_public').limit(1));
+      const probe = await run((sb) => sb.from('knowledge_documents').select('id, is_public').limit(1));
       const offline = !probe.ok && (probe.error.kind === 'network' || probe.error.kind === 'timeout');
       updateConnection({
         status: offline ? 'offline' : 'ready',
@@ -244,6 +375,9 @@ function scheduleReconnect() {
     if (retryTimer !== null) clearTimeout(retryTimer);
     retryTimer = null;
     globalThis.removeEventListener?.('online', retry);
+    // The reset above can be undone: an attempt that finds the browser offline schedules this
+    // before connect() has stored its promise, which then replaces the null with the settled result.
+    connectPromise = null;
     void connect();
   };
   retryTimer = setTimeout(retry, delay);
@@ -259,14 +393,16 @@ function scheduleReconnect() {
 async function deleteOwnMessages(sessionId) {
   let uid;
   try {
-    const { data } = await sb.auth.getSession();
+    const { data } = await (await client()).auth.getSession();
     uid = data.session?.user?.id;
   } catch (err) {
     return { ok: false, error: classifyError(err) };
   }
   if (!uid) return { ok: true, data: null };
-  const own = sb.from('chat_history').delete().eq('owner_id', uid);
-  return run(sessionId ? own.eq('session_id', sessionId) : own);
+  return run((sb) => {
+    const own = sb.from('chat_history').delete().eq('owner_id', uid);
+    return sessionId ? own.eq('session_id', sessionId) : own;
+  });
 }
 
 /**
@@ -297,7 +433,7 @@ export function canSyncChats() {
 
 /** @returns {Promise<Result<DocumentRow[]>>} */
 export function listDocuments() {
-  return run(
+  return run((sb) =>
     sb
       .from('knowledge_documents')
       .select('id, title, source_type, summary, raw_content, tags, created_at')
@@ -312,8 +448,8 @@ export function listDocuments() {
  */
 export async function getDocument(id) {
   const [doc, sections] = await Promise.all([
-    run(sb.from('knowledge_documents').select('id, title, source_type, summary, raw_content, tags, created_at').eq('id', id).maybeSingle()),
-    run(sb.from('knowledge_sections').select('heading, markdown_content').eq('document_id', id).order('section_index', { ascending: true })),
+    run((sb) => sb.from('knowledge_documents').select('id, title, source_type, summary, raw_content, tags, created_at').eq('id', id).maybeSingle()),
+    run((sb) => sb.from('knowledge_sections').select('heading, markdown_content').eq('document_id', id).order('section_index', { ascending: true })),
   ]);
   if (!doc.ok) return doc;
   if (!doc.data) return { ok: false, error: { kind: 'not_found', message: 'Document not found or not shared.' } };
@@ -327,7 +463,7 @@ export async function getDocument(id) {
  * @returns {Promise<Result<KnowledgeHit[]>>}
  */
 export async function recentKnowledge(limit) {
-  const res = await run(
+  const res = await run((sb) =>
     sb
       .from('knowledge_documents')
       .select('id, title, summary, raw_content, tags, knowledge_sections(heading, markdown_content, section_index)')
@@ -363,7 +499,7 @@ export async function recentKnowledge(limit) {
  * @returns {Promise<Result<KnowledgeHit[]>>}
  */
 export async function searchKnowledge(query, limit = LIMITS.retrievalRows) {
-  const res = await run(sb.rpc('search_knowledge', { query_text: query.slice(0, 1_000), match_count: limit }));
+  const res = await run((sb) => sb.rpc('search_knowledge', { query_text: query.slice(0, 1_000), match_count: limit }));
   if (!res.ok) return res;
   const rows = /** @type {Array<Record<string, unknown>>} */ (Array.isArray(res.data) ? res.data : []);
   return {
@@ -380,13 +516,45 @@ export async function searchKnowledge(query, limit = LIMITS.retrievalRows) {
 }
 
 /**
- * Inserts a document and its single Markdown section. Embeddings are left NULL; the backend
- * computes real vectors (the browser never writes placeholder embeddings).
+ * Ranks the shared library by meaning through the `match_knowledge_vector_384` RPC (optional
+ * migration 20261101000000_embedding_384.sql; RLS applies, SECURITY INVOKER). Only the vector goes
+ * to the server, never the question text: an on-device "query: " embedding of
+ * multilingual-e5-small, the model and revision the library publisher embeds the sections with.
+ * Sections without a vector are not ranked. Fails with 'missing_function' without the migration.
+ * @param {ArrayLike<number>} vector  384 values, L2-normalised
+ * @param {number} [limit]
+ * @returns {Promise<Result<KnowledgeHit[]>>}
+ */
+export async function matchKnowledgeVector(vector, limit = LIMITS.retrievalRows) {
+  if (vector.length !== 384) return { ok: false, error: { kind: 'unknown', message: `A query vector has 384 values, not ${vector.length}` } };
+  // Six decimals keep the request small and change no ranking.
+  const embedding = Array.from(vector, (v) => Math.round(v * 1e6) / 1e6);
+  const res = await run((sb) => sb.rpc('match_knowledge_vector_384', { query_embedding: embedding, match_count: Math.min(Math.max(limit, 1), 20) }));
+  if (!res.ok) return res;
+  const rows = /** @type {Array<Record<string, unknown>>} */ (Array.isArray(res.data) ? res.data : []);
+  return {
+    ok: true,
+    data: rows.map((r) => ({
+      documentId: /** @type {string | null} */ (r.document_id ?? null),
+      documentTitle: String(r.document_title ?? ''),
+      heading: String(r.heading ?? ''),
+      content: String(r.markdown_content ?? ''),
+      tags: /** @type {string[]} */ (Array.isArray(r.tags) ? r.tags : []),
+      rank: typeof r.similarity === 'number' ? Math.round(r.similarity * 1000) / 1000 : null,
+    })),
+  };
+}
+
+/**
+ * Inserts a document and its single Markdown section. Both vector columns stay NULL: the browser
+ * never writes embeddings. Only sections published with tools/library-publisher get an
+ * embedding_384, so a document saved here is found by full-text search (search_knowledge) and
+ * not by match_knowledge_vector_384.
  * @param {{ title: string, sourceType: string, rawContent: string, summary: string, tags: string[], markdown: string, heading: string }} input
  * @returns {Promise<Result<{ id: string }>>}
  */
 export async function insertDocument(input) {
-  const doc = await run(
+  const doc = await run((sb) =>
     sb
       .from('knowledge_documents')
       .insert({
@@ -402,7 +570,7 @@ export async function insertDocument(input) {
   );
   if (!doc.ok) return doc;
   const id = /** @type {{ id: string }} */ (/** @type {unknown} */ (doc.data)).id;
-  const section = await run(
+  const section = await run((sb) =>
     sb.from('knowledge_sections').insert({
       document_id: id,
       section_index: 0,
@@ -414,7 +582,7 @@ export async function insertDocument(input) {
   );
   if (!section.ok) {
     // Do not leave a document without content behind (best effort; requires owner delete rights).
-    await run(sb.from('knowledge_documents').delete().eq('id', id));
+    await run((sb) => sb.from('knowledge_documents').delete().eq('id', id));
     return section;
   }
   return { ok: true, data: { id } };
@@ -422,12 +590,12 @@ export async function insertDocument(input) {
 
 /** @returns {Promise<Result<Array<{ id: string, name: string, entity_type: string, description: string | null }>>>} */
 export function listEntities() {
-  return run(sb.from('knowledge_entities').select('id, name, entity_type, description').order('name').limit(500));
+  return run((sb) => sb.from('knowledge_entities').select('id, name, entity_type, description').order('name').limit(500));
 }
 
 /** @returns {Promise<Result<Array<{ source_entity_id: string, target_entity_id: string, relation_type: string }>>>} */
 export function listRelations() {
-  return run(sb.from('knowledge_relations').select('source_entity_id, target_entity_id, relation_type').limit(2_000));
+  return run((sb) => sb.from('knowledge_relations').select('source_entity_id, target_entity_id, relation_type').limit(2_000));
 }
 
 /**
@@ -435,7 +603,7 @@ export function listRelations() {
  * @returns {Promise<Result<null>>}
  */
 export function insertEntity(input) {
-  return run(
+  return run((sb) =>
     sb.from('knowledge_entities').insert({
       name: input.name,
       entity_type: input.entityType,
@@ -445,51 +613,190 @@ export function insertEntity(input) {
 }
 
 // ---------------------------------------------------------------------------
-// Chat history (only used when canSyncChats() is true)
+// End-to-end encrypted chat sync (sync/sync.js)
 // ---------------------------------------------------------------------------
+// The rows hold opaque row ids, revision numbers, IVs and ciphertext (base64), and the key envelope
+// holds a key wrapped with the user's passphrase; the browser encrypts before anything is sent.
+// Row level security limits every call to the signed-in user's rows. The 2.x plaintext chat_history
+// table is never written; only deleteOwnChats() / deleteChatSession() above still remove its rows.
+
+/** @typedef {import('./sync/sync.js').SyncAccount} SyncAccount */
+/** @typedef {import('./sync/sync.js').RowRevision} RowRevision */
+/** @typedef {import('./sync/sync.js').RemoteRow} RemoteRow */
+/** @typedef {import('./sync/crypto.js').KeyEnvelope} KeyEnvelope */
+
+/** Rows per page when listing revisions (below PostgREST's usual 1000-row cap). */
+const SYNC_PAGE_ROWS = 1000;
+const EMAIL_PATTERN = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,63}$/;
+const CODE_PATTERN = /^\d{6,10}$/;
 
 /**
- * @param {string} sessionId
- * @param {ChatRow} message
- * @returns {Promise<Result<null>>}
+ * The user of the stored session: anonymous, or with a confirmed email address.
+ * @returns {Promise<Result<SyncAccount>>}
  */
-export function insertChatMessage(sessionId, message) {
-  return run(
-    sb.from('chat_history').insert({
-      session_id: sessionId,
-      role: message.role,
-      content: message.content,
-      sources: message.sources,
-      metadata: message.metadata,
-    }),
-  );
-}
-
-/**
- * The newest messages of a session, oldest first.
- * @param {string} sessionId
- * @returns {Promise<Result<ChatRow[]>>}
- */
-export async function loadChatSession(sessionId) {
-  /** @type {Result<ChatRow[]>} */
-  const res = await run(
-    sb
-      .from('chat_history')
-      .select('role, content, sources, metadata, created_at')
-      .eq('session_id', sessionId)
-      .order('created_at', { ascending: false })
-      .limit(LIMITS.localChatMessagesPerSession),
-  );
-  return res.ok ? { ok: true, data: [...(res.data ?? [])].reverse() } : res;
-}
-
-/** @returns {Promise<Result<number>>} */
-export async function countChatMessages() {
+export async function syncAccount() {
   try {
-    const { count, error } = await sb.from('chat_history').select('id', { count: 'exact', head: true });
+    const { data, error } = await (await client()).auth.getSession();
     if (error) return { ok: false, error: classifyError(error) };
-    return { ok: true, data: count ?? 0 };
+    const user = data.session?.user;
+    return { ok: true, data: { userId: user?.id ?? null, email: user?.email || null, anonymous: user ? user.is_anonymous === true || !user.email : true } };
   } catch (err) {
     return { ok: false, error: classifyError(err) };
   }
+}
+
+/** @returns {Promise<string | null>} */
+async function sessionUserId() {
+  const { data } = await (await client()).auth.getSession();
+  return data.session?.user?.id ?? null;
+}
+
+/**
+ * The account's wrapped sync key, or null when sync was never set up (or was turned off).
+ * @returns {Promise<Result<KeyEnvelope | null>>}
+ */
+export async function getSyncKeyEnvelope() {
+  const res = await run((sb) => sb.from('chat_sync_keys').select('key_id, kdf, iterations, salt, iv, wrapped_key').limit(1).maybeSingle());
+  if (!res.ok) return res;
+  const row = /** @type {Record<string, unknown> | null} */ (res.data);
+  if (!row) return { ok: true, data: null };
+  return {
+    ok: true,
+    data: { keyId: String(row.key_id), kdf: /** @type {'PBKDF2-SHA256'} */ (row.kdf), iterations: Number(row.iterations), salt: String(row.salt), iv: String(row.iv), wrappedKey: String(row.wrapped_key) },
+  };
+}
+
+/**
+ * Stores the wrapped sync key once; 'exists' when the account has one already.
+ * @param {KeyEnvelope} envelope
+ * @returns {Promise<Result<'created' | 'exists'>>}
+ */
+export async function putSyncKeyEnvelope(envelope) {
+  const res = await run((sb) =>
+    sb.from('chat_sync_keys').insert({ key_id: envelope.keyId, kdf: envelope.kdf, iterations: envelope.iterations, salt: envelope.salt, iv: envelope.iv, wrapped_key: envelope.wrappedKey }),
+  );
+  if (res.ok) return { ok: true, data: 'created' };
+  return res.error.kind === 'conflict' ? { ok: true, data: 'exists' } : res;
+}
+
+/**
+ * Row ids and revisions of every synced conversation (no ciphertext).
+ * @returns {Promise<Result<RowRevision[]>>}
+ */
+export async function listSyncRevisions() {
+  /** @type {RowRevision[]} */
+  const all = [];
+  for (let from = 0; ; from += SYNC_PAGE_ROWS) {
+    const res = await run((sb) => sb.from('chat_sync').select('conv_id, rev').order('conv_id', { ascending: true }).range(from, from + SYNC_PAGE_ROWS - 1));
+    if (!res.ok) return res;
+    const rows = /** @type {Array<{ conv_id: string, rev: number | string }>} */ (res.data ?? []);
+    for (const r of rows) all.push({ rowId: String(r.conv_id), rev: Number(r.rev) });
+    if (rows.length < SYNC_PAGE_ROWS) return { ok: true, data: all };
+  }
+}
+
+/**
+ * The encrypted rows with these ids (those that exist).
+ * @param {string[]} rowIds
+ * @returns {Promise<Result<RemoteRow[]>>}
+ */
+export async function fetchSyncRows(rowIds) {
+  if (rowIds.length === 0) return { ok: true, data: [] };
+  const res = await run((sb) => sb.from('chat_sync').select('conv_id, rev, iv, ciphertext').in('conv_id', rowIds));
+  if (!res.ok) return res;
+  const rows = /** @type {Array<{ conv_id: string, rev: number | string, iv: string, ciphertext: string }>} */ (res.data ?? []);
+  return { ok: true, data: rows.map((r) => ({ rowId: String(r.conv_id), rev: Number(r.rev), iv: String(r.iv), ciphertext: String(r.ciphertext) })) };
+}
+
+/**
+ * Writes an encrypted row as the revision after `baseRev` (0: a new row). 'conflict' when the row
+ * exists already or has moved past `baseRev`.
+ * @param {RemoteRow} row
+ * @param {number} baseRev
+ * @returns {Promise<Result<'written' | 'conflict'>>}
+ */
+export async function writeSyncRow(row, baseRev) {
+  const values = { rev: row.rev, iv: row.iv, ciphertext: row.ciphertext };
+  const res =
+    baseRev === 0
+      ? await run((sb) => sb.from('chat_sync').insert({ conv_id: row.rowId, ...values }))
+      : await run((sb) => sb.from('chat_sync').update(values).eq('conv_id', row.rowId).eq('rev', baseRev).select('conv_id'));
+  if (!res.ok) return res.error.kind === 'conflict' ? { ok: true, data: 'conflict' } : res;
+  if (baseRev === 0) return { ok: true, data: 'written' };
+  return { ok: true, data: Array.isArray(res.data) && res.data.length > 0 ? 'written' : 'conflict' };
+}
+
+/**
+ * Deletes the account's sync key and then all of its encrypted rows. The key goes first, so other
+ * browsers stop syncing before the rows are gone (instead of writing them again).
+ * @returns {Promise<Result<null>>}
+ */
+export async function deleteSyncData() {
+  let uid;
+  try {
+    uid = await sessionUserId();
+  } catch (err) {
+    return { ok: false, error: classifyError(err) };
+  }
+  if (!uid) return { ok: false, error: { kind: 'not_signed_in', message: 'No session' } };
+  const key = await run((sb) => sb.from('chat_sync_keys').delete().eq('user_id', uid));
+  if (!key.ok) return key;
+  return run((sb) => sb.from('chat_sync').delete().eq('user_id', uid));
+}
+
+/**
+ * Sends a one-time code to an email address. 'link' adds the address to the account this browser
+ * is signed in to (its user id and synced data stay); 'sign_in' signs this browser in to the
+ * account that already has the address, without creating one.
+ * @param {string} email
+ * @param {'link' | 'sign_in'} purpose
+ * @returns {Promise<Result<null>>}
+ */
+export async function sendEmailCode(email, purpose) {
+  const address = email.trim();
+  if (!EMAIL_PATTERN.test(address) || address.length > 254) return { ok: false, error: { kind: 'invalid_email', message: 'Not an email address' } };
+  try {
+    const sb = await client();
+    const { error } = purpose === 'link' ? await sb.auth.updateUser({ email: address }) : await sb.auth.signInWithOtp({ email: address, options: { shouldCreateUser: false } });
+    return error ? { ok: false, error: classifyError(error) } : { ok: true, data: null };
+  } catch (err) {
+    return { ok: false, error: classifyError(err) };
+  }
+}
+
+/**
+ * Confirms a code from sendEmailCode(). After 'sign_in' this browser works as that account.
+ * @param {string} email
+ * @param {string} code
+ * @param {'link' | 'sign_in'} purpose
+ * @returns {Promise<Result<SyncAccount>>}
+ */
+export async function verifyEmailCode(email, code, purpose) {
+  const token = code.replace(/\s+/g, '');
+  if (!CODE_PATTERN.test(token)) return { ok: false, error: { kind: 'invalid_code', message: 'Not a code' } };
+  try {
+    const { error } = await (await client()).auth.verifyOtp({ email: email.trim(), token, type: purpose === 'link' ? 'email_change' : 'email' });
+    if (error) return { ok: false, error: classifyError(error) };
+  } catch (err) {
+    return { ok: false, error: classifyError(err) };
+  }
+  updateConnection({ signedIn: true, authError: null });
+  return syncAccount();
+}
+
+/**
+ * Signs this browser out of its account and starts a new anonymous session.
+ * @returns {Promise<Result<null>>}
+ */
+export async function signOutAccount() {
+  try {
+    const { error } = await (await client()).auth.signOut({ scope: 'local' });
+    if (error) return { ok: false, error: classifyError(error) };
+  } catch (err) {
+    return { ok: false, error: classifyError(err) };
+  }
+  updateConnection({ signedIn: false });
+  connectPromise = null;
+  await connect();
+  return { ok: true, data: null };
 }

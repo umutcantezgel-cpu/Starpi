@@ -1,0 +1,483 @@
+// Projects, memory and assistants against the Anthropic fake (scripts/fakes): a project created in
+// the sidebar keeps its chat, its instructions go into the system prompt and the chip names it;
+// memory stays off until switched on in Settings, and only then do saved notes go along with a
+// question (in the turn, never in the stable system prompt), with "Remember this" on messages; an
+// assistant brings its instructions and conversation starters, and exports and imports as
+// starpi.assistant/v1 without tools it may not use. The memory tool is offered only with memory on
+// and answers from the saved notes; compared answers get the same notes as the thread's; a chat
+// started in a project keeps it across a reload before the first question; an assistant switches
+// on the chat tools it names. No page error, the sidebar passes axe.
+import { readFileSync } from 'node:fs';
+import AxeBuilder from '@axe-core/playwright';
+import { expect, mockSupabase, storedChatNodes, test } from './fixtures.mjs';
+
+const FAKES = Number(process.env.STARPI_FAKES_PORT || 4610);
+const ANTHROPIC_FAKE = `http://127.0.0.1:${FAKES + 2}`;
+
+test.skip(({ isMobile }) => isMobile, 'the sidebar sections and dialogs are checked on desktop');
+
+/**
+ * Sends Anthropic calls to the fake and records the bodies of the chat calls (purpose calls such as
+ * the chat title carry a purpose marker and are left out).
+ * @param {import('@playwright/test').Page} page
+ */
+async function routeAnthropic(page) {
+  /** @type {any[]} */
+  const chats = [];
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-expose-headers': 'request-id' };
+  await page.route('https://api.anthropic.com/**', async (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+    const url = new URL(req.url());
+    if (req.method() === 'POST') {
+      const body = JSON.parse(req.postData() ?? '{}');
+      if (Array.isArray(body.messages) && !JSON.stringify(body.system ?? '').includes('starpi-purpose')) chats.push(body);
+    }
+    const res = await route.fetch({ url: `${ANTHROPIC_FAKE}${url.pathname}${url.search}` });
+    return route.fulfill({ response: res, headers: { ...res.headers(), ...cors } });
+  });
+  return chats;
+}
+
+/**
+ * An Anthropic event stream of one answer that calls a tool.
+ * @param {string} name
+ * @param {Record<string, unknown>} input
+ */
+function toolUseStream(name, input) {
+  const events = [
+    ['message_start', { type: 'message_start', message: { id: 'msg_e2e_tool', type: 'message', role: 'assistant', model: 'claude-haiku-5-5', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 12, output_tokens: 1 } } }],
+    ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_e2e_1', name, input: {} } }],
+    ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(input) } }],
+    ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+    ['message_delta', { type: 'message_delta', delta: { stop_reason: 'tool_use', stop_sequence: null }, usage: { output_tokens: 9 } }],
+    ['message_stop', { type: 'message_stop' }],
+  ];
+  return events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('');
+}
+
+/** A returning visitor with an Anthropic key, free chat and a fast model picked. @param {import('@playwright/test').Page} page */
+async function useAnthropic(page) {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('e2e_seeded')) return;
+    sessionStorage.setItem('e2e_seeded', '1');
+    sessionStorage.setItem('starpi_key_anthropic', 'sk-ant-e2e0123456789abcdefghijklmnop');
+    localStorage.setItem('starpi_chat_mode', 'free');
+    localStorage.setItem('starpi_assistant_v1', 'anthropic:claude-haiku-5-5');
+  });
+}
+
+/** @param {import('@playwright/test').Page} page @param {string} text */
+async function ask(page, text) {
+  await page.fill('#chatInput', text);
+  await page.press('#chatInput', 'Enter');
+}
+
+/** @param {import('@playwright/test').Page} page */
+const answers = (page) => page.locator('#chatMessages .message-row[data-role="assistant"]');
+
+/** Waits until the newest answer is stored and finished. @param {import('@playwright/test').Page} page */
+async function settled(page) {
+  await expect(page.locator('#stopBtn')).toBeHidden();
+  await expect(answers(page).last()).toHaveAttribute('data-node-id', /.+/);
+  await expect(answers(page).last().locator('[data-action="msg-copy"]')).toBeVisible();
+}
+
+/** The system prompt of a recorded call as one string. @param {any} body */
+const systemOf = (body) => (typeof body.system === 'string' ? body.system : (body.system ?? []).map((/** @type {any} */ b) => b.text ?? '').join('\n'));
+/** The text of the question of a recorded call. @param {any} body */
+const questionOf = (body) => {
+  const last = body.messages.at(-1);
+  return typeof last.content === 'string' ? last.content : last.content.map((/** @type {any} */ b) => b.text ?? '').join('\n');
+};
+
+test.describe('projects, memory and assistants', () => {
+  test('a project keeps its chat, instructions and memory setting', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const chats = await routeAnthropic(page);
+    await useAnthropic(page);
+    await page.goto('/');
+
+    await page.click('#chat-sidebar [data-pj="new"]');
+    const dialog = page.locator('#projectDialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('#pjName')).toBeFocused();
+    await dialog.locator('#pjName').fill('Thesis');
+    await dialog.locator('#pjInstructions').fill('Answer like a thesis supervisor would.');
+    await dialog.locator('input[name="memoryScope"][value="project"]').check();
+    await dialog.locator('button[type="submit"]').click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('#toastRegion')).toContainText('Project Thesis created');
+
+    const project = page.locator('#chat-sidebar [data-project-id]');
+    await expect(project).toContainText('Thesis');
+    await project.locator('[data-pj="toggle"]').click();
+    await project.locator('[data-pj="new-chat"]').click();
+    await expect(page.locator('#chatInput')).toBeFocused();
+    await expect(page.locator('#chatToolbarExtras [data-context-chip="project"]')).toContainText('Thesis');
+    await ask(page, 'What should chapter one cover?');
+    await settled(page);
+    expect(systemOf(chats.at(-1))).toContain('Answer like a thesis supervisor would.');
+    expect(systemOf(chats.at(-1))).toContain('project "Thesis"');
+
+    // The chat is stored in the project, listed under it, and the list offers "Move to project".
+    await expect(project.locator('[data-pj="open"]')).toHaveCount(1);
+    const row = page.locator('#chat-sidebar [data-chat-list] li[data-conv-id]').first();
+    await row.locator('[data-action="conv-menu"]').click();
+    await expect(page.locator('#chat-sidebar [data-action="conv-move"]')).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // A new chat outside the project carries no project instructions.
+    await page.click('#chat-sidebar [data-action="new-chat"]');
+    await expect(page.locator('#chatToolbarExtras [data-context-chip]')).toHaveCount(0);
+    await ask(page, 'Something else entirely');
+    await settled(page);
+    expect(systemOf(chats.at(-1))).not.toContain('thesis supervisor');
+
+    const results = await new AxeBuilder({ page }).include('#sidebar').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    const serious = results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+    expect(serious.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([]);
+  });
+
+  test("a project's files are the only workspace files its grounded questions search", async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const chats = await routeAnthropic(page);
+    await useAnthropic(page);
+    await page.goto('/');
+    await page.locator('#chatMessages [data-action="load-samples"]').click();
+    await expect(page.getByText('Sample files ready')).toBeVisible({ timeout: 20_000 });
+
+    // Outside a project every workspace file is searched: the plan answers the launch question.
+    const question = 'When is the public launch of Project Nebula and who leads development?';
+    await page.click('[data-action="set-chat-mode"][data-arg="grounded"]');
+    await ask(page, question);
+    await settled(page);
+    expect(systemOf(chats.at(-1))).toContain('[Doc: nebula-plan.md');
+
+    await page.click('#chat-sidebar [data-pj="new"]');
+    const dialog = page.locator('#projectDialog');
+    await dialog.locator('#pjName').fill('Risks only');
+    await expect(dialog.locator('input[name="doc"]')).toHaveCount(3);
+    await dialog.locator('label:has-text("nebula-risks.csv") input[name="doc"]').check();
+    await dialog.locator('button[type="submit"]').click();
+    await expect(dialog).toHaveCount(0);
+    const project = page.locator('#chat-sidebar [data-project-id]');
+    await project.locator('[data-pj="toggle"]').click();
+    await project.locator('[data-pj="new-chat"]').click();
+    await ask(page, question);
+    await settled(page);
+    expect(systemOf(chats.at(-1))).not.toContain('nebula-plan.md');
+    await ask(page, 'Which risks are rated high?');
+    await settled(page);
+    expect(systemOf(chats.at(-1))).toContain('[Doc: nebula-risks.csv');
+
+    // Auto in the project: a file outside it is no reference (only the project's files are named
+    // and probed); in a chat outside the project it is.
+    const newest = async () => /** @type {any} */ ((await storedChatNodes(page)).filter((n) => n.role === 'assistant').at(-1));
+    await page.click('[data-action="set-chat-mode"][data-arg="auto"]');
+    await ask(page, 'What does nebula-plan.md say about the launch?');
+    await settled(page);
+    expect((await newest()).meta.route_reasons ?? []).not.toContain('reference');
+    expect(systemOf(chats.at(-1))).not.toContain('nebula-plan.md');
+    await page.click('#chat-sidebar [data-action="new-chat"]');
+    await ask(page, 'What does nebula-plan.md say about the launch?');
+    await settled(page);
+    expect((await newest()).meta.route_reasons).toContain('reference');
+  });
+
+  test('memory stays off until switched on; then saved notes go along in the turn', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const chats = await routeAnthropic(page);
+    await useAnthropic(page);
+    await page.goto('/');
+
+    await ask(page, 'Hello there');
+    await settled(page);
+    expect(questionOf(chats.at(-1))).not.toContain('User notes');
+    await expect(answers(page).last().locator('[data-extra="remember"]')).toHaveCount(0);
+
+    // A note saved in Settings while memory is off is kept but not sent.
+    await page.click('#nav-settings');
+    const card = page.locator('[data-memory-settings]');
+    await expect(card.locator('#mvEnabled')).not.toBeChecked();
+    await expect(card.locator('#mvSuggest')).toBeDisabled();
+    await card.locator('#mvAddText').fill('I live in Lisbon');
+    await card.locator('[data-mv-add] button[type="submit"]').click();
+    await expect(card.locator('[data-fact]')).toHaveCount(1);
+    await page.click('#nav-chat');
+    await ask(page, 'Where do I live?');
+    await settled(page);
+    expect(questionOf(chats.at(-1))).not.toContain('Lisbon');
+
+    await page.click('#nav-settings');
+    await card.locator('#mvEnabled').check();
+    await expect(page.locator('#toastRegion')).toContainText('Memory is on');
+    await page.click('#nav-chat');
+    await ask(page, 'Where do I live again?');
+    await settled(page);
+    const turn = questionOf(chats.at(-1));
+    expect(turn).toContain('User notes (may be outdated):');
+    expect(turn).toContain('- I live in Lisbon');
+    // The notes are part of the turn; the system prompt stays the same.
+    expect(systemOf(chats.at(-1))).toBe(systemOf(chats[0]));
+    expect(systemOf(chats.at(-1))).not.toContain('Lisbon');
+
+    // "Remember this" on a message: the note is the message's text, editable, saved on Save only.
+    const remember = answers(page).last().locator('[data-extra="remember"]');
+    await expect(remember).toBeVisible();
+    await remember.click();
+    const dialog = page.locator('#rememberDialog');
+    await expect(dialog.locator('#rmText')).not.toHaveValue('');
+    await dialog.locator('#rmText').fill('I prefer short answers');
+    await dialog.locator('button[type="submit"]').click();
+    await expect(dialog).toHaveCount(0);
+    await page.click('#nav-settings');
+    await expect(card.locator('[data-fact]')).toHaveCount(2);
+    await expect(card).toContainText('I prefer short answers');
+
+    // The notes go with the question they were picked for only: a later turn does not send them
+    // again with the earlier question, and with memory off no turn carries one.
+    await page.click('#nav-chat');
+    await ask(page, 'Thanks, that helps');
+    await settled(page);
+    const later = chats.at(-1);
+    expect(questionOf(later)).toContain('User notes (may be outdated):');
+    expect(JSON.stringify(later.messages.slice(0, -1))).not.toContain('User notes');
+    await page.click('#nav-settings');
+    await card.locator('#mvEnabled').uncheck();
+    await expect(page.locator('#toastRegion')).toContainText('Memory is off');
+    await page.click('#nav-chat');
+    await ask(page, 'One more question');
+    await settled(page);
+    expect(JSON.stringify(chats.at(-1).messages)).not.toContain('Lisbon');
+    expect(JSON.stringify(chats.at(-1).messages)).not.toContain('User notes');
+  });
+
+  test('suggests notes after a free answer only with suggestions on, and keeps one only when accepted', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    /** @type {string[]} */
+    const purposes = [];
+    /** @type {string[]} */
+    const suggestCalls = [];
+    page.on('request', (req) => {
+      const m = /starpi-purpose:(\w+)/.exec(req.postData() ?? '');
+      if (req.url().startsWith('https://api.anthropic.com/') && m) purposes.push(m[1]);
+      if (m?.[1] === 'memory_suggest') suggestCalls.push(req.postData() ?? '');
+    });
+    await routeAnthropic(page);
+    await useAnthropic(page);
+    await page.goto('/');
+    // A project that keeps its notes to itself, with a note of its own, and a note for every chat.
+    await page.click('#chat-sidebar [data-pj="new"]');
+    const project = page.locator('#projectDialog');
+    await project.locator('#pjName').fill('Thesis');
+    await project.locator('input[name="memoryScope"][value="project"]').check();
+    await project.locator('button[type="submit"]').click();
+    await expect(project).toHaveCount(0);
+    await page.click('#nav-settings');
+    const card = page.locator('[data-memory-settings]');
+    await card.locator('#mvAddText').fill('The thesis deadline is in March');
+    await card.locator('#mvAddScope').selectOption({ label: 'Project: Thesis' });
+    await card.locator('[data-mv-add] button[type="submit"]').click();
+    await expect(card.locator('[data-fact]')).toHaveCount(1);
+    await card.locator('#mvAddText').fill('I live in Lisbon');
+    await card.locator('#mvAddScope').selectOption('global');
+    await card.locator('[data-mv-add] button[type="submit"]').click();
+    await expect(card.locator('[data-fact]')).toHaveCount(2);
+    await card.locator('#mvEnabled').check();
+    await expect(card.locator('#mvSuggest')).toBeEnabled();
+    await page.click('#nav-chat');
+    await ask(page, 'I teach biology at a school in Porto. What is osmosis?');
+    await settled(page);
+    // Memory on, suggestions off: no suggestion call at all.
+    await page.waitForTimeout(300);
+    expect(purposes).not.toContain('memory_suggest');
+
+    await page.click('#nav-settings');
+    await card.locator('#mvSuggest').check();
+    await page.click('#nav-chat');
+    await ask(page, 'And what is diffusion?');
+    await settled(page);
+    const strip = page.locator('#chatMessages [data-memory-suggest]');
+    await expect(strip).toBeVisible();
+    expect(purposes).toContain('memory_suggest');
+    // Outside the project the suggestion call carries the notes for every chat, not the project's.
+    expect(suggestCalls.at(-1)).toContain('I live in Lisbon');
+    expect(suggestCalls.at(-1)).not.toContain('thesis deadline');
+    // Shown, not stored.
+    await page.click('#nav-settings');
+    await expect(card.locator('[data-fact]')).toHaveCount(2);
+    await page.click('#nav-chat');
+    await strip.locator('[data-ms="keep"]').first().click();
+    await expect(page.locator('#toastRegion')).toContainText('Note saved');
+    await page.click('#nav-settings');
+    await expect(card.locator('[data-fact]')).toHaveCount(3);
+    await expect(card.locator('[data-fact]').filter({ hasText: 'Suggested' })).toHaveCount(1);
+  });
+
+  test('an assistant brings its instructions and starters, and exports and imports as a file', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const chats = await routeAnthropic(page);
+    await useAnthropic(page);
+    await page.goto('/');
+
+    await page.click('#chat-sidebar [data-as="new"]');
+    const dialog = page.locator('#assistantDialog');
+    await dialog.locator('#asName').fill('Latin tutor');
+    await dialog.locator('label:has(input[name="icon"][value="graduation-cap"])').click();
+    await dialog.locator('#asInstructions').fill('Answer in simple Latin first, then in English.');
+    await dialog.locator('input[name="starter"]').first().fill('Decline the word rosa');
+    await dialog.locator('button[type="submit"]').click();
+    await expect(dialog).toHaveCount(0);
+
+    const row = page.locator('#chat-sidebar [data-assistant-id]');
+    await expect(row).toContainText('Latin tutor');
+    await row.locator('[data-as="start"]').click();
+    await expect(page.locator('#chatToolbarExtras [data-context-chip="assistant"]')).toContainText('Latin tutor');
+    const starter = page.locator('#chatMessages [data-assistant-intro] [data-starter]');
+    await expect(starter).toHaveText('Decline the word rosa');
+    await starter.click();
+    await settled(page);
+    expect(questionOf(chats.at(-1))).toContain('Decline the word rosa');
+    expect(systemOf(chats.at(-1))).toContain('Answer in simple Latin first, then in English.');
+    expect(systemOf(chats.at(-1))).toContain('"Latin tutor"');
+
+    // Export from the editor.
+    await row.locator('[data-as="edit"]').click();
+    const downloading = page.waitForEvent('download');
+    await page.locator('#assistantDialog [data-fd-export]').click();
+    const download = await downloading;
+    expect(download.suggestedFilename()).toBe('latin-tutor.assistant.json');
+    const doc = JSON.parse(readFileSync(/** @type {string} */ (await download.path()), 'utf8'));
+    expect(doc.schema).toBe('starpi.assistant/v1');
+    expect(doc.assistant).toMatchObject({ name: 'Latin tutor', icon: 'graduation-cap', starters: ['Decline the word rosa'], tools: [] });
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#assistantDialog')).toHaveCount(0);
+
+    // Import: tools an assistant may not use (code execution) are left out and named.
+    const file = { schema: 'starpi.assistant/v1', assistant: { name: 'Coach', instructions: 'Ask one question at a time.', tools: ['code_interpreter', 'thinking'] } };
+    await page.setInputFiles('#chat-sidebar [data-as-file]', { name: 'coach.assistant.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) });
+    await expect(row).toHaveCount(2);
+    await expect(page.locator('#toastRegion')).toContainText('imported without these tools: code_interpreter');
+    await page.setInputFiles('#chat-sidebar [data-as-file]', { name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from('{"schema":"something/else"}') });
+    await expect(page.locator('#toastRegion')).toContainText('This file is not a Starpi assistant.');
+  });
+
+  test('the memory tool is offered only with memory on and answers from the notes; compared answers carry the notes too', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-expose-headers': 'request-id' };
+    /** @type {any[]} */
+    const chats = [];
+    await page.route('https://api.anthropic.com/**', async (route) => {
+      const req = route.request();
+      if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+      const url = new URL(req.url());
+      const body = req.method() === 'POST' ? JSON.parse(req.postData() ?? '{}') : null;
+      const chat = body && Array.isArray(body.messages) && !JSON.stringify(body.system ?? '').includes('starpi-purpose');
+      if (chat) chats.push(body);
+      const offers = chat && (body.tools ?? []).some((/** @type {any} */ t) => t.name === 'memory_lookup');
+      const answered = chat && body.messages.some((/** @type {any} */ m) => Array.isArray(m.content) && m.content.some((/** @type {any} */ b) => b.type === 'tool_result'));
+      if (offers && !answered && questionOf(body).includes('Look it up')) return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'text/event-stream', 'request-id': 'req_e2e_tool' }, body: toolUseStream('memory_lookup', { query: 'live Lisbon' }) });
+      const res = await route.fetch({ url: `${ANTHROPIC_FAKE}${url.pathname}${url.search}` });
+      return route.fulfill({ response: res, headers: { ...res.headers(), ...cors } });
+    });
+    await useAnthropic(page);
+    await page.goto('/');
+    const toolNames = (/** @type {any} */ body) => (body.tools ?? []).map((/** @type {any} */ t) => t.name);
+
+    // Memory is off: the memory tool is not offered, even with a note saved.
+    await ask(page, 'Where do I live? Look it up.');
+    await settled(page);
+    expect(toolNames(chats.at(-1))).toContain('datetime');
+    expect(toolNames(chats.at(-1))).not.toContain('memory_lookup');
+    await page.click('#nav-settings');
+    const card = page.locator('[data-memory-settings]');
+    await card.locator('#mvAddText').fill('I live in Lisbon');
+    await card.locator('[data-mv-add] button[type="submit"]').click();
+    await expect(card.locator('[data-fact]')).toHaveCount(1);
+    await page.click('#nav-chat');
+    await ask(page, 'Where do I live, then? Look it up.');
+    await settled(page);
+    expect(toolNames(chats.at(-1))).not.toContain('memory_lookup');
+
+    // Memory on: offered, and its call answers with the matching note.
+    await page.click('#nav-settings');
+    await card.locator('#mvEnabled').check();
+    await expect(page.locator('#toastRegion')).toContainText('Memory is on');
+    await page.click('#nav-chat');
+    await ask(page, 'Where do I live now? Look it up.');
+    await settled(page);
+    await expect(answers(page).last().locator('.tool-call')).toHaveAttribute('data-status', 'done');
+    const round = chats.findLast((/** @type {any} */ b) => b.messages.some((/** @type {any} */ m) => Array.isArray(m.content) && m.content.some((/** @type {any} */ c) => c.type === 'tool_result')));
+    expect(toolNames(round)).toContain('memory_lookup');
+    const results = round.messages.flatMap((/** @type {any} */ m) => (Array.isArray(m.content) ? m.content : [])).filter((/** @type {any} */ c) => c.type === 'tool_result');
+    expect(JSON.stringify(results)).toContain('I live in Lisbon');
+
+    // Compare: every column's request carries the saved notes, as the thread's does.
+    const before = chats.length;
+    await page.fill('#chatInput', 'Which language do people speak where I live?');
+    await page.locator('details.tools-menu summary').click();
+    await page.locator('#toolsMenuList [data-arg="compare"]').click();
+    const panel = page.locator('#chat-aside-compare');
+    await expect(panel.locator('[data-compare-question]')).toHaveValue('Which language do people speak where I live?');
+    const remove = panel.locator('[data-action="compare-remove"]');
+    while ((await panel.locator('[data-compare-model]').count()) > 2) await remove.last().click();
+    await panel.locator('[data-compare-run]').click();
+    await expect(panel.locator('[data-column][data-status="done"]')).toHaveCount(2);
+    const compared = chats.slice(before).filter((/** @type {any} */ b) => questionOf(b).includes('Which language do people speak'));
+    expect(compared.length).toBe(2);
+    for (const body of compared) {
+      expect(questionOf(body)).toContain('User notes (may be outdated):');
+      expect(questionOf(body)).toContain('- I live in Lisbon');
+    }
+
+    // Memory off again: the tool goes, and compared answers carry no notes.
+    await page.click('#nav-settings');
+    await card.locator('#mvEnabled').uncheck();
+    await expect(page.locator('#toastRegion')).toContainText('Memory is off');
+    await page.click('#nav-chat');
+    await ask(page, 'Anything else? Look it up.');
+    await settled(page);
+    expect(toolNames(chats.at(-1))).not.toContain('memory_lookup');
+  });
+
+  test('a chat started in a project keeps it across a reload before the first question; an assistant switches on its chat tools', async ({ page, diagnostics: _diagnostics }) => {
+    await mockSupabase(page, { hardened: true, anonymousAuth: true });
+    const chats = await routeAnthropic(page);
+    await useAnthropic(page);
+    await page.goto('/');
+
+    await page.click('#chat-sidebar [data-pj="new"]');
+    const dialog = page.locator('#projectDialog');
+    await dialog.locator('#pjName').fill('Garden');
+    await dialog.locator('#pjInstructions').fill('Answer like a patient gardener.');
+    await dialog.locator('button[type="submit"]').click();
+    await expect(dialog).toHaveCount(0);
+    const project = page.locator('#chat-sidebar [data-project-id]');
+    await project.locator('[data-pj="toggle"]').click();
+    await project.locator('[data-pj="new-chat"]').click();
+    await expect(page.locator('#chatToolbarExtras [data-context-chip="project"]')).toContainText('Garden');
+    // A reload before the first question: the draft keeps its project.
+    await page.reload();
+    await expect(page.locator('#chatToolbarExtras [data-context-chip="project"]')).toContainText('Garden');
+    await ask(page, 'When do I plant tulips?');
+    await settled(page);
+    expect(systemOf(chats.at(-1))).toContain('Answer like a patient gardener.');
+    // Stored in the project.
+    await expect(project.locator('[data-pj="toggle"]')).toHaveAccessibleName(/Garden 1 chat/);
+
+    // An assistant that names the web search tool switches it on when its chat starts.
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('starpi_tools_v1') ?? '{}').web_search ?? false)).toBe(false);
+    await page.click('#chat-sidebar [data-as="new"]');
+    const editor = page.locator('#assistantDialog');
+    await editor.locator('#asName').fill('Researcher');
+    await editor.locator('#asInstructions').fill('Look things up before you answer.');
+    await expect(editor.locator('input[name="tool"][value="workspace_search"]')).toBeVisible();
+    await editor.locator('input[name="tool"][value="web_search"]').check();
+    await editor.locator('button[type="submit"]').click();
+    await expect(editor).toHaveCount(0);
+    await page.locator('#chat-sidebar [data-assistant-id]').filter({ hasText: 'Researcher' }).locator('[data-as="start"]').click();
+    await expect(page.locator('#chatToolbarExtras [data-context-chip="assistant"]')).toContainText('Researcher');
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('starpi_tools_v1') ?? '{}').web_search ?? false)).toBe(true);
+  });
+});

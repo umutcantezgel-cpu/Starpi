@@ -9,6 +9,8 @@
 //   precached per build. Hashed /assets/* files are immutable: they live in one unversioned cache,
 //   are served cache-first and are pruned on activation when no longer part of the build. The WASM
 //   worker and the ONNX Runtime binary are such files, cached on first use and never precached.
+//   Assets a page loaded before this worker controlled it are named by the page (CACHE_ASSETS) and
+//   cached then.
 // - Navigations are network-first with a short deadline; the cached shell answers when the network
 //   fails or stalls. Only the HTML of "/" is ever stored as the shell.
 // - Activation deletes only caches created by this worker ("starpi-" prefix).
@@ -58,8 +60,33 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') void self.skipWaiting();
+  const data = event.data;
+  if (!data) return;
+  if (data.type === 'SKIP_WAITING') void self.skipWaiting();
+  // The page names the hashed assets it loaded before this worker controlled it (the lazy chunks of
+  // the first visit). They go into the asset cache, so an offline start finds them as well and does
+  // not depend on the browser's HTTP cache.
+  if (data.type === 'CACHE_ASSETS' && Array.isArray(data.urls)) event.waitUntil(cacheLoadedAssets(data.urls));
 });
+
+/**
+ * Adds the named assets of this build to the asset cache unless they are there already.
+ * @param {unknown[]} urls  pathnames such as /assets/chunk-ABCD1234.js
+ */
+async function cacheLoadedAssets(urls) {
+  const current = new Set(ASSETS);
+  const wanted = [...new Set(urls.filter((url) => typeof url === 'string' && current.has(url)))];
+  const cache = await caches.open(ASSET_CACHE);
+  for (const url of wanted) {
+    if (await cache.match(url)) continue;
+    try {
+      const response = await fetch(url);
+      if (cacheable(response)) await cache.put(url, response);
+    } catch {
+      // Offline or gone: the next visit names it again.
+    }
+  }
+}
 
 /** @param {Response} response */
 function cacheable(response) {

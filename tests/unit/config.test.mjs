@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-const { callGemini, normalizeServerUrl } = await import('../../src/js/providers.js');
-const { normalizeChatMode, normalizeMode } = await import('../../src/js/state.js');
+const { normalizeServerUrl } = await import('../../src/js/providers.js');
+const { assistantTarget, computeModeOf, normalizeAssistant, normalizeChatMode, normalizeMode } = await import('../../src/js/state.js');
 const { classifyError } = await import('../../src/js/supabase.js');
 
 describe('normalizeServerUrl', () => {
@@ -21,44 +21,6 @@ describe('normalizeServerUrl', () => {
   });
 });
 
-describe('callGemini', () => {
-  /**
-   * Calls Gemini with a stubbed fetch and returns the request body as sent.
-   * @param {Parameters<typeof callGemini>[1]} opts
-   */
-  async function bodyOf(opts) {
-    const realFetch = globalThis.fetch;
-    /** @type {string[]} */
-    const sent = [];
-    globalThis.fetch = async (_url, init) => {
-      sent.push(String(init?.body));
-      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }), { status: 200 });
-    };
-    try {
-      assert.equal((await callGemini('Question?', { key: 'test-key-1', ...opts })).text, 'ok');
-    } finally {
-      globalThis.fetch = realFetch;
-    }
-    return sent[0];
-  }
-
-  it('sends one user turn in source mode, as before', async () => {
-    assert.equal(await bodyOf({}), '{"contents":[{"role":"user","parts":[{"text":"Question?"}]}]}');
-  });
-
-  it('sends the system prompt and the conversation in free chat', async () => {
-    const body = JSON.parse(await bodyOf({ system: 'Be brief.', history: [{ role: 'user', content: 'Hi' }, { role: 'assistant', content: 'Hello' }] }));
-    assert.deepEqual(body, {
-      systemInstruction: { parts: [{ text: 'Be brief.' }] },
-      contents: [
-        { role: 'user', parts: [{ text: 'Hi' }] },
-        { role: 'model', parts: [{ text: 'Hello' }] },
-        { role: 'user', parts: [{ text: 'Question?' }] },
-      ],
-    });
-  });
-});
-
 describe('normalizeMode', () => {
   it('maps legacy values and rejects unknown ones', () => {
     assert.equal(normalizeMode('webgpu'), 'client');
@@ -71,9 +33,26 @@ describe('normalizeMode', () => {
 });
 
 describe('normalizeChatMode', () => {
-  it('defaults to the source-checked mode', () => {
-    assert.equal(normalizeChatMode('free'), 'free');
-    for (const other of ['grounded', 'FREE', '__proto__', null, undefined, 1]) assert.equal(normalizeChatMode(other), 'grounded');
+  it('keeps Auto, Free and Grounded and defaults to Auto', () => {
+    for (const mode of ['auto', 'free', 'grounded']) assert.equal(normalizeChatMode(mode), mode);
+    for (const other of ['FREE', '__proto__', null, undefined, 1]) assert.equal(normalizeChatMode(other), 'auto');
+  });
+});
+
+describe('assistant values', () => {
+  it('accept auto, device and provider:model, and refuse everything else', () => {
+    for (const value of ['auto', 'device', 'anthropic:claude-opus-5-5', 'nvidia:nvidia/nemotron-3-super-120b-a12b', 'local:*', 'local:llama3.2:3b', 'openrouter:meta-llama/llama-3.3-70b-instruct:free']) assert.equal(normalizeAssistant(value), value);
+    for (const value of ['council', 'webgpu:qwen-3b', 'wasm:x', 'anthropic:*', 'unknown:model', 'anthropic:', ':x', 'anthropic:has space', '__proto__', null, 7]) assert.equal(normalizeAssistant(value), null, String(value));
+    assert.deepEqual(assistantTarget('local:llama3.2:3b'), { provider: 'local', model: 'llama3.2:3b' });
+    assert.equal(assistantTarget('auto'), null);
+  });
+
+  it('map onto the 2.x compute modes for the modules that only ask where answers run', () => {
+    assert.equal(computeModeOf('device'), 'client');
+    assert.equal(computeModeOf('local:*'), 'local');
+    assert.equal(computeModeOf('nvidia:x/y'), 'nvidia');
+    assert.equal(computeModeOf('auto'), 'council');
+    assert.equal(computeModeOf('anthropic:claude-opus-5-5'), 'council');
   });
 });
 

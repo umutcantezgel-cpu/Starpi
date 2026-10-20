@@ -1,0 +1,111 @@
+{
+  "description": "Sources of the relation sets (relations-dev.json, relations-holdout.json): fictitious annual and quarterly reports in English and German, one entry per excerpt as the app delivers it.",
+  "corpora": {
+    "rel_en": [
+      {
+        "label": "[Doc: Riverside Public Library annual report 2025 (sample), Chunk: 1]",
+        "doc": "Riverside Public Library annual report 2025 (sample)",
+        "heading": "Visits",
+        "text": "## Visits\n\nThis is sample data: the library, its branches, people and all figures are fictitious. In 2025 the library counted 182,400 visits, up from 151,900 in 2024. The children's room had 46,300 visits and the reading hall 39,800 visits."
+      },
+      {
+        "label": "[Doc: Riverside Public Library annual report 2025 (sample), Chunk: 2]",
+        "doc": "Riverside Public Library annual report 2025 (sample)",
+        "heading": "Loans",
+        "text": "## Loans\n\nLoans of printed books fell from 212,000 in 2024 to 198,500 in 2025, while e-book loans rose from 31,200 to 44,700. The Northgate branch lent 41,000 items and the Harbour branch 27,500 items."
+      },
+      {
+        "label": "[Doc: Riverside Public Library annual report 2025 (sample), Chunk: 3]",
+        "doc": "Riverside Public Library annual report 2025 (sample)",
+        "heading": "Building work",
+        "text": "## Building work\n\nThe new east wing opened on 14 March 2025. The renovation of the reading hall was completed on 2 June 2025. The roof repair began on 3 November 2025 and is to be finished by 30 April 2026."
+      },
+      {
+        "label": "[Doc: Riverside Public Library annual report 2025 (sample), Chunk: 4]",
+        "doc": "Riverside Public Library annual report 2025 (sample)",
+        "heading": "Staff and budget",
+        "text": "## Staff and budget\n\nAt the end of 2025 the library employed 38 people, compared with 34 a year earlier. The budget for 2025 was 2.4 million EUR, of which 480,000 EUR went to new media. Northgate is open 52 hours a week and Harbour 38 hours a week."
+      },
+      {
+        "label": "[Doc: Brightline Software quarterly report Q2 2026 (sample), Chunk: 1]",
+        "doc": "Brightline Software quarterly report Q2 2026 (sample)",
+        "heading": "Revenue",
+        "text": "## Revenue\n\nThis is sample data: the company, its products and all figures are fictitious. Revenue in the second quarter of 2026 was 6.8 million EUR, after 5.9 million EUR in the first quarter. Subscription revenue doubled from 1.6 million EUR in Q2 2025 to 3.2 million EUR in Q2 2026."
+      },
+      {
+        "label": "[Doc: Brightline Software quarterly report Q2 2026 (sample), Chunk: 2]",
+        "doc": "Brightline Software quarterly report Q2 2026 (sample)",
+        "heading": "Customers",
+        "text": "## Customers\n\nActive users grew from 84,000 at the end of March to 97,000 at the end of June. The churn rate dropped from 3.1 % to 2.4 %."
+      },
+      {
+        "label": "[Doc: Brightline Software quarterly report Q2 2026 (sample), Chunk: 3]",
+        "doc": "Brightline Software quarterly report Q2 2026 (sample)",
+        "heading": "Support",
+        "text": "## Support\n\nThe support team closed 4,120 tickets in the quarter and the operations team 2,860. The median first response time fell from 5.2 hours to 3.5 hours."
+      },
+      {
+        "label": "[Doc: Brightline Software quarterly report Q2 2026 (sample), Chunk: 4]",
+        "doc": "Brightline Software quarterly report Q2 2026 (sample)",
+        "heading": "Releases",
+        "text": "## Releases\n\nVersion 8.0 was released on 21 April 2026, and version 8.1 followed on 9 June 2026. The beta of version 9.0 is planned for 15 September 2026."
+      },
+      {
+        "label": "[Doc: Brightline Software quarterly report Q2 2026 (sample), Chunk: 5]",
+        "doc": "Brightline Software quarterly report Q2 2026 (sample)",
+        "heading": "Costs",
+        "text": "## Costs\n\nServer costs fell from 420,000 EUR to 210,000 EUR after the move to the new data centre on 1 May 2026. Marketing spending rose from 300,000 EUR to 360,000 EUR."
+      },
+      {
+        "label": "[Doc: Hill Farm weather station yearbook 2025 (sample), Chunk: 1]",
+        "doc": "Hill Farm weather station yearbook 2025 (sample)",
+        "heading": "Temperature and rain",
+        "text": "## Temperature and rain\n\nThis is sample data: the station and all figures are fictitious. July was the warmest month with an average of 19.4 °C; January was the coldest at 1.2 °C. Rainfall in 2025 totalled 712 mm, compared with 804 mm in 2024. The last spring frost was on 6 April 2025 and the first autumn frost on 28 October 2025."
+      }
+    ],
+    "rel_de": [
+      {
+        "label": "[Doc: Jahresbericht Stadtbibliothek Lindenau 2025 (Beispiel), Chunk: 1]",
+        "doc": "Jahresbericht Stadtbibliothek Lindenau 2025 (Beispiel)",
+        "heading": "Besuche",
+        "text": "## Besuche\n\nDies sind Beispieldaten: Bibliothek, Zweigstellen und alle Zahlen sind frei erfunden. Im Jahr 2025 zählte die Bibliothek 96.300 Besuche, nach 88.100 im Jahr 2024. Die Kinderbibliothek hatte 21.700 Besuche, der Lesesaal 17.900."
+      },
+      {
+        "label": "[Doc: Jahresbericht Stadtbibliothek Lindenau 2025 (Beispiel), Chunk: 2]",
+        "doc": "Jahresbericht Stadtbibliothek Lindenau 2025 (Beispiel)",
+        "heading": "Ausleihen",
+        "text": "## Ausleihen\n\nDie Ausleihen gedruckter Bücher sanken von 141.000 im Jahr 2024 auf 133.500 im Jahr 2025, die Ausleihen von E-Books stiegen von 18.400 auf 25.900. Die Zweigstelle Ost verlieh 22.000 Medien, die Zweigstelle West 15.600."
+      },
+      {
+        "label": "[Doc: Jahresbericht Stadtbibliothek Lindenau 2025 (Beispiel), Chunk: 3]",
+        "doc": "Jahresbericht Stadtbibliothek Lindenau 2025 (Beispiel)",
+        "heading": "Bau",
+        "text": "## Bau\n\nDie Sanierung des Magazins wurde am 3. März 2025 abgeschlossen. Der neue Lesegarten wurde am 12. Mai 2025 eröffnet. Die Erneuerung der Heizung begann am 6. Oktober 2025."
+      },
+      {
+        "label": "[Doc: Jahresbericht Stadtbibliothek Lindenau 2025 (Beispiel), Chunk: 4]",
+        "doc": "Jahresbericht Stadtbibliothek Lindenau 2025 (Beispiel)",
+        "heading": "Personal und Budget",
+        "text": "## Personal und Budget\n\nEnde 2025 arbeiteten 21 Personen in der Bibliothek, ein Jahr zuvor waren es 19. Das Budget für 2025 betrug 1,3 Millionen Euro, davon flossen 260.000 Euro in neue Medien."
+      },
+      {
+        "label": "[Doc: Quartalsbericht Nordlicht Software Q2 2026 (Beispiel), Chunk: 1]",
+        "doc": "Quartalsbericht Nordlicht Software Q2 2026 (Beispiel)",
+        "heading": "Umsatz",
+        "text": "## Umsatz\n\nDies sind Beispieldaten: Firma, Produkte und alle Zahlen sind frei erfunden. Der Umsatz lag im zweiten Quartal 2026 bei 4,2 Millionen Euro, nach 3,6 Millionen Euro im ersten Quartal. Die Abo-Umsätze verdoppelten sich von 0,9 Millionen Euro auf 1,8 Millionen Euro."
+      },
+      {
+        "label": "[Doc: Quartalsbericht Nordlicht Software Q2 2026 (Beispiel), Chunk: 2]",
+        "doc": "Quartalsbericht Nordlicht Software Q2 2026 (Beispiel)",
+        "heading": "Kunden",
+        "text": "## Kunden\n\nDie Zahl der aktiven Nutzer stieg von 52.000 Ende März auf 61.000 Ende Juni. Die Kündigungsquote sank von 2,8 % auf 2,1 %."
+      },
+      {
+        "label": "[Doc: Quartalsbericht Nordlicht Software Q2 2026 (Beispiel), Chunk: 3]",
+        "doc": "Quartalsbericht Nordlicht Software Q2 2026 (Beispiel)",
+        "heading": "Releases und Kosten",
+        "text": "## Releases und Kosten\n\nVersion 5.0 erschien am 14. April 2026, Version 5.1 folgte am 2. Juni 2026. Die Serverkosten sanken von 180.000 Euro auf 90.000 Euro. Das Support-Team schloss 2.300 Tickets, das Betriebsteam 1.450."
+      }
+    ]
+  }
+}

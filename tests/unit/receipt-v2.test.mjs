@@ -15,8 +15,8 @@ import {
   buildReceipt,
   citationLeafHash,
   RECEIPT_LIMITS,
-  RECEIPT_SCHEMA,
   RECEIPT_SCHEMA_V1,
+  RECEIPT_SCHEMA_V2,
   sha256Hex,
   signReceipt,
   validateReceipt,
@@ -45,7 +45,8 @@ const FILES = [
 ];
 
 /**
- * A receipt over the first chunks of the two sample files plus one knowledge-base excerpt.
+ * A v2 receipt (unless options ask for another format) over the first chunks of the two sample
+ * files plus one knowledge-base excerpt.
  * @param {Parameters<typeof buildReceipt>[1]} [options]
  */
 async function sampleReceipt(options) {
@@ -77,7 +78,7 @@ async function sampleReceipt(options) {
   const answer = 'The approved budget for Project Nebula is 480,000 EUR [Doc: nebula-plan.md, Chunk: 1]. The public launch is planned for 12 June 2027 [Doc: nebula-plan.md, Chunk: 1].';
   return buildReceipt(
     { createdAt: '2026-10-13T12:00:00.000Z', version: '2.0.0', answer: { text: answer, engine: 'cloud', locale: 'en' }, question: 'Budget and launch?', grounding: groundAnswer(blocksFromMarkdown(answer, sources), sources), citations },
-    options,
+    { schema: RECEIPT_SCHEMA_V2, ...options },
   );
 }
 
@@ -104,10 +105,10 @@ const pemOf = async (key) => {
 };
 
 describe('receipts v2: Merkle tree', () => {
-  it('writes v2 by default, with a root over one leaf per citation and a proof in every citation', async () => {
+  it('writes v2 on request, with a root over one leaf per citation and a proof in every citation', async () => {
     const r = await sampleReceipt();
-    assert.equal(r.schema, RECEIPT_SCHEMA);
-    assert.equal(RECEIPT_SCHEMA, 'starpi.receipt/v2');
+    assert.equal(r.schema, RECEIPT_SCHEMA_V2);
+    assert.equal(RECEIPT_SCHEMA_V2, 'starpi.receipt/v2');
     assert.deepEqual(Object.keys(r).slice(0, 2), ['schema', 'id']);
     assert.equal(r.citations.length, 5);
     assert.deepEqual({ alg: r.merkle?.alg, size: r.merkle?.size }, { alg: 'sha256-rfc6962', size: 5 });
@@ -148,13 +149,13 @@ describe('receipts v2: Merkle tree', () => {
     assert.ok(v1.citations.every((c) => c.proof === undefined));
     assert.equal(validateReceipt(JSON.parse(JSON.stringify(v1))).ok, true);
     // @ts-expect-error -- an unknown schema is refused
-    await assert.rejects(sampleReceipt({ schema: 'starpi.receipt/v3' }), /unknown schema/);
+    await assert.rejects(sampleReceipt({ schema: 'starpi.receipt/v9' }), /unknown schema/);
   });
 
   it('reports the root, every proof and an edited citation in verifyReceipt', async () => {
     const r = await sampleReceipt();
     const report = await verifyReceipt(r, FILES, tools);
-    assert.equal(report.schema, RECEIPT_SCHEMA);
+    assert.equal(report.schema, RECEIPT_SCHEMA_V2);
     assert.equal(report.idMatches, true);
     assert.deepEqual(report.merkle, { size: 5, rootMatches: true, validProofs: 5 });
     assert.deepEqual(report.citations.map((c) => c.proof), [true, true, true, true, true]);
@@ -288,7 +289,7 @@ describe('receipts v2: validation', () => {
       edit(r);
       return validateReceipt(r);
     };
-    assert.deepEqual(validateReceipt({ ...signed, schema: 'starpi.receipt/v3' }), { ok: false, error: 'unsupported_version', path: 'schema' });
+    assert.deepEqual(validateReceipt({ ...signed, schema: 'starpi.receipt/v9' }), { ok: false, error: 'unsupported_version', path: 'schema' });
     assert.deepEqual(fails((r) => delete r.merkle), { ok: false, error: 'object', path: 'merkle' });
     assert.deepEqual(fails((r) => (r.merkle.size = 4)), { ok: false, error: 'number of citations', path: 'merkle.size' });
     assert.deepEqual(fails((r) => (r.merkle.alg = 'sha1')), { ok: false, error: 'one of sha256-rfc6962', path: 'merkle.alg' });

@@ -1,0 +1,98 @@
+{
+  "read": {
+    "free_notice": "Risposta libera, non verificata.",
+    "withheld": "{count} {count:frase trattenuta|frasi trattenute}.",
+    "nothing": "Nulla di questa risposta ha potuto essere letto ad alta voce come verificato.",
+    "button": "Leggi ad alta voce",
+    "stop": "Interrompi la lettura ad alta voce",
+    "unavailable": "Questa risposta non può essere letta ad alta voce."
+  },
+  "preview": {
+    "sample": "Ecco come suoneranno le tue risposte quando verranno lette ad alta voce."
+  },
+  "source": {
+    "browser": "Browser",
+    "gemini": "Gemini",
+    "openai": "OpenAI",
+    "groq": "Groq",
+    "local": "Server vocale locale",
+    "companion": "Companion",
+    "elevenlabs": "ElevenLabs"
+  },
+  "fallback": {
+    "to": "{from} non è riuscito a parlare, quindi legge {to} al suo posto.",
+    "none": "Al momento nessuna voce è riuscita a parlare. Il testo resta sullo schermo."
+  },
+  "dictation": {
+    "listening": "in ascolto",
+    "recording": "registrazione",
+    "transcribing": "trascrizione",
+    "chip": "{source} · {state}",
+    "no_source": "Nessun input vocale è configurato. Aggiungi una chiave o un server vocale locale in Impostazioni → Voce.",
+    "too_short": "Era troppo breve. Premi il microfono, parla, poi premilo di nuovo.",
+    "failed": "Non è stato possibile trasformare la tua voce in testo. Riprova o scegli un’altra sorgente in Impostazioni → Voce.",
+    "fallback": "Il servizio vocale del browser non è disponibile ({code}). Al suo posto si registra: premi di nuovo il microfono quando hai finito."
+  },
+  "capture": {
+    "unsupported": "Questo browser non può registrare dal microfono qui.",
+    "denied": "L’accesso al microfono è stato bloccato. Consentilo nelle impostazioni del sito del browser.",
+    "no_microphone": "Non è stato trovato alcun microfono.",
+    "busy": "Il microfono è usato da un altro programma.",
+    "worklet": "Non è stato possibile avviare l’elaborazione audio. Ricarica la pagina e riprova.",
+    "aborted": "La registrazione è stata interrotta."
+  },
+  "settings": {
+    "title": "Voce",
+    "subtitle": "Detta le domande, fatti leggere le risposte ad alta voce e parla dal vivo. Le risposte verificate vengono lette solo fin dove la verifica delle frasi le approva.",
+    "stt_title": "Input vocale",
+    "stt_label": "Prova per prima",
+    "stt_auto": "Ordine automatico",
+    "not_ready": "non configurato",
+    "stt_chain": "Ordine attuale: {sources}",
+    "stt_none": "Nessun input vocale è ancora configurato.",
+    "glossary_label": "Nomi e termini (facoltativo)",
+    "glossary_placeholder": "Uno per riga o separati da virgole",
+    "glossary_hint": "Aiuta la trascrizione a scrivere correttamente i tuoi nomi e termini. Inviato solo con le tue registrazioni.",
+    "tts_title": "Lettura ad alta voce",
+    "tts_label": "Sorgente della voce",
+    "voice_label": "Voce",
+    "voice_auto": "Voce predefinita",
+    "voice_online": "online",
+    "rate_label": "Velocità",
+    "preview": "Ascolta la voce",
+    "auto_read": "Leggi automaticamente le risposte ad alta voce",
+    "tts_hint": "Se la sorgente scelta non funziona, subentrano le voci del browser; nulla passa a un altro servizio cloud.",
+    "local_title": "Server vocale locale",
+    "local_label": "Indirizzo del server vocale locale",
+    "local_hint": "Un server vocale sul tuo computer (ad esempio faster-whisper con Piper). Vengono usate solo voci Piper con licenza aperta.",
+    "save": "Salva",
+    "eleven_title": "Chiave ElevenLabs",
+    "eleven_label": "Chiave API di ElevenLabs",
+    "eleven_placeholder": "Incolla la tua chiave ElevenLabs",
+    "remove": "Rimuovi",
+    "eleven_hint": "Vengono usate solo le voci predefinite di ElevenLabs. La chiave resta in questo browser, come le altre tue chiavi.",
+    "live_title": "Conversazione dal vivo",
+    "live_voice": "Voce dal vivo",
+    "camera": "Consenti una foto della fotocamera",
+    "saved": "Salvato.",
+    "local_invalid": "Inserisci un indirizzo http o https, ad esempio http://127.0.0.1:8000.",
+    "local_saved": "Server vocale locale salvato.",
+    "local_cleared": "Server vocale locale rimosso.",
+    "key_empty": "Incolla prima una chiave.",
+    "key_stored": "Chiave salvata.",
+    "key_failed": "Non è stato possibile salvare la chiave. Sblocca la cassaforte delle chiavi e riprova.",
+    "key_removed": "Chiave rimossa.",
+    "key_saved": "Chiave salvata",
+    "key_none": "Nessuna chiave"
+  },
+  "privacy": {
+    "title": "Dove va la tua voce",
+    "browser": "Nella maggior parte dei browser il riconoscimento avviene sui server del produttore del browser; sul dispositivo dove il browser lo offre.",
+    "gemini": "L’audio va a Google, direttamente con la tua chiave oppure tramite questo sito con la chiave di questo sito.",
+    "openai": "L’audio va a OpenAI con la tua chiave.",
+    "groq": "L’audio va a Groq con la tua chiave, direttamente o tramite il relay di questo sito.",
+    "elevenlabs": "Il testo da leggere va a ElevenLabs, con la tua chiave o con quella di questo sito.",
+    "local": "Audio e testo restano sul tuo computer.",
+    "companion": "L’audio resta sui tuoi dispositivi, tramite il Companion associato."
+  }
+}
