@@ -169,8 +169,10 @@ export async function changeEngine(value, opts) {
 async function initStrength() {
   const sel = /** @type {HTMLSelectElement | null} */ (byId('cfgStrength'));
   if (!sel) return;
+  const shown = sel.value;
   const m = await import('./ai/model-selection.js');
-  sel.value = m.getModelStrength();
+  // A pick made while the module loaded stays: Save stores it.
+  if (sel.value === shown) sel.value = m.getModelStrength();
   m.onModelSelectionChange((strength) => {
     sel.value = strength;
   });
