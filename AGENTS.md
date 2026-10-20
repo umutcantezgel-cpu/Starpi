@@ -67,7 +67,7 @@ Run them from the repository root.
 | All of the above plus `headers:check`, `license:check` and `eol:check` | `npm run verify` |
 | Public hygiene (CI runs it after `verify`) | `npm run hygiene:check` |
 | `@starpi/core`: typed build and the file list `npm pack` would publish | `npm run pack:core` |
-| Companion typecheck and tests (build `@starpi/core` first) | `npm run typecheck:companion`, `npm run test:companion` |
+| Companion typecheck and tests (both build `@starpi/core` first) | `npm run typecheck:companion`, `npm run test:companion` |
 | Companion dependency and licence rules | `node scripts/companion-deps-check.mjs`, `node scripts/companion-license-check.mjs` |
 | End-to-end tests | `npm run build && npm run test:e2e` |
 | Voice server tests | `python3 -I -B -m unittest discover -s companion/voice-server -v` |
@@ -106,6 +106,9 @@ The projects are `desktop-chromium` and `mobile-chromium`. The specs never reach
   (`tests/unit/docs.test.mjs`).
 - **Versioned rules.** A change to text extraction, chunking or the source check that moves the
   golden tests bumps `EXTRACTOR`, `CHUNKER` or `GROUNDING` (see CONTRIBUTING).
+- **Docs pinned by tests.** The README tables of on-device models, WASM presets and the NVIDIA list
+  must match their catalogs (`src/js/webgpu/models.js`, `src/js/models/wasm-catalog.js`,
+  `src/js/models/nvidia-catalog.js`); change the catalog and the table together.
 - **Budgets and gates.** `verify:dist` enforces the first-load bundle budget, so load heavy code
   lazily. Dependencies are exact pins; the lockfile changes only through npm. New production
   dependencies must pass the licence gate (`scripts/license-allowlist.json`) and the end-of-life
@@ -119,17 +122,19 @@ The projects are `desktop-chromium` and `mobile-chromium`. The specs never reach
 ## Security rules
 
 - Never put a real key, token or password in code, tests, fixtures, logs, commit messages or pull
-  request text. Tests build fake keys at runtime; gitleaks (`.gitleaks.toml`) and a unit test scan
-  the repository, and `verify:dist` fails on a site key in the bundles.
+  request text. Tests build fake keys at runtime; gitleaks (`.gitleaks.toml`) and
+  `tests/unit/secret-rules.test.mjs` scan the repository, and `verify:dist` fails on a site key in the
+  bundles.
 - Bring your own key: a user's key lives in the tab's session storage, or encrypted in the key vault
   when a passphrase is set, and goes only to its provider, directly or through the relay. Keys never
   go into URLs, receipts, syncs, exports or logs. The site's own keys exist only in the server
   environment.
 - The relay forwards only to the fixed hosts, methods and paths in `api/_lib/relay/upstreams.js`;
   never to a URL from the request. The pools forward only allowlisted models
-  (`api/_lib/pool/allowlist.js`). Extend these tables with tests, never bypass them.
+  (`api/_lib/pool/allowlist.js`, with the lists of `src/js/ai/catalog/pools.js`). Extend these tables
+  with tests, never bypass them.
 - Never log a secret, a request body or a provider answer. The relay returns only an error
-  identifier of the upstream's answer, the pools name a key by its index only, and key-shaped text
+  identifier of the upstream's answer, pool log lines name a key by its index only, and key-shaped text
   goes through `api/_lib/relay/scrub.js` before it reaches a log line or an error answer.
 - The browser gets only the publishable (or `anon`) Supabase key; the build refuses others. New
   tables and functions need RLS policies, explicit grants and tests.

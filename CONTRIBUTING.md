@@ -163,9 +163,10 @@ every flowchart label and keep colours and `init` directives out.
   holds for `src/js/models/` (device classes, the model menu's choices, the WASM presets and the
   NVIDIA allowlist), `chat-stream.js` and `chat-export.js`.
 - **Server functions:** `api/` holds the Vercel Functions: the relay, the site's key pools, speech,
-  research steps, health and the NVIDIA routes of 2.x. They use Web `Request` and `Response` only, and ESLint forbids `process`, `Buffer` and `require` there;
-  `api/_lib/env.js` is the one module that reads the environment, through `globalThis`. Keys never
-  appear in a log line, a response or a test fixture: tests build fake keys at runtime.
+  research steps, health and the NVIDIA routes of 2.x. They use Web `Request` and `Response` only,
+  and ESLint forbids `process`, `Buffer` and `require` there; `api/_lib/env.js` is the one module
+  that reads the environment, through `globalThis`. Keys never appear in a log line, a response or
+  a test fixture: tests build fake keys at runtime.
 - **Versioned rules:** answer receipts record the version of the text extraction, chunking and
   source-check rules. The golden tests (`tests/unit/golden.test.mjs`) fail when a change alters
   the extracted text or chunks of the sample files, or any verdict or reason of either version of
