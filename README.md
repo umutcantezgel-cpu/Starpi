@@ -1040,9 +1040,12 @@ in [SECURITY.md](SECURITY.md#supply-chain).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), the [walkthrough](docs/WALKTHROUGH.md) for a tour of the
-code, and the [Code of Conduct](CODE_OF_CONDUCT.md). Changes are listed in
-[CHANGELOG.md](CHANGELOG.md).
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the setup, the checks and the
+conventions, and the [walkthrough](docs/WALKTHROUGH.md) is a tour of the code. [AGENTS.md](AGENTS.md)
+lists the exact commands in one place, for coding agents and for everyone else. Issues labelled
+[good first issue](https://github.com/umutcantezgel-cpu/Starpi/labels/good%20first%20issue) are a
+good place to begin. Please follow the [Code of Conduct](CODE_OF_CONDUCT.md) and report security
+problems privately ([SECURITY.md](SECURITY.md)). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
