@@ -65,7 +65,7 @@
     },
     {
       "name": "WebLLM",
-      "version": "0.2.85",
+      "version": "0.2.86",
       "kind": "npm",
       "npm": "@mlc-ai/web-llm",
       "usedFor": "on-device chat models on the graphics processor (src/js/webgpu)",

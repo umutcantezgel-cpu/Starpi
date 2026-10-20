@@ -70,7 +70,7 @@
     "@anthropic-ai/sdk": "0.133.0",
     "@fontsource-variable/plus-jakarta-sans": "5.3.0",
     "@huggingface/transformers": "4.3.0",
-    "@mlc-ai/web-llm": "0.2.85",
+    "@mlc-ai/web-llm": "0.2.86",
     "@supabase/supabase-js": "2.117.3",
     "dompurify": "3.4.16",
     "highlight.js": "11.12.0",
