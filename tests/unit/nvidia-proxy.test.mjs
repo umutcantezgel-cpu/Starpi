@@ -4,6 +4,7 @@
 // pool.test.mjs). Upstream calls go to an injected fetch; timings are a few milliseconds and
 // cooldowns use a fake clock.
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -700,5 +701,15 @@ describe('Vercel wiring', () => {
     for (const dir of ['api', 'src']) {
       assert.ok(!ignored.some((pattern) => pattern.replace(/^\//, '').replace(/\/?\*?$/, '') === dir), `.vercelignore excludes ${dir}/`);
     }
+  });
+
+  it('keeps every file the build and the functions read (gitignore matching, as Vercel applies it)', () => {
+    // An unanchored pattern matches at any depth: "tools/" once removed src/js/ai/tools/ from the build.
+    const removed = execFileSync('git', ['ls-files', '-z', '--cached', '--ignored', '--exclude-from=.vercelignore'], { cwd: ROOT, encoding: 'utf8' })
+      .split('\0')
+      .filter(Boolean);
+    const needed = /^(?:api|src|public|scripts|packages)\/|^(?:package(?:-lock)?\.json|vercel\.json|tailwind\.config\.js)$/;
+    assert.deepEqual(removed.filter((file) => needed.test(file)), []);
+    assert.ok(removed.some((file) => file.startsWith('tools/')), 'the library publisher stays out of the deployment');
   });
 });

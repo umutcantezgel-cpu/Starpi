@@ -1,8 +1,10 @@
 # Only the frontend sources are needed to build the static site on Vercel.
-backend/
-tools/
-tests/
-.github/
+# Folders of the repository root are anchored with a leading slash: an unanchored name matches at any
+# depth, and "tools/" once removed src/js/ai/tools/ and src/locales/tools/ from the build.
+/backend/
+/tools/
+/tests/
+/.github/
 .env*
 node_modules/
 dist/
