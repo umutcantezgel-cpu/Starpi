@@ -47,7 +47,24 @@ on your own machine. What to change when you come from 2.x is in
   loaded on demand, with adaptive thinking, prompt caching, web search and append-only replay),
   OpenAI (Responses API, stateless with encrypted reasoning), Gemini (thinking levels and budgets,
   Google Search grounding), OpenAI-compatible providers with per-provider quirks (xAI, Groq, Mistral,
-  DeepSeek, OpenRouter, NVIDIA, your own server) and the on-device engines.
+  DeepSeek, MiniMax, OpenRouter, NVIDIA, your own server) and the on-device engines.
+- **MiniMax M3.1 Flash as the cloud base model** (released by MiniMax on 2026-10-19; facts as of
+  2026-10-20): the `minimax` provider on its OpenAI-compatible API (`https://api.minimax.io`, models
+  `MiniMax-M3.1-Flash` and `MiniMax-M3`, 1M-token context) and `minimax/minimax-m3.1-flash` at
+  OpenRouter. Whenever it is set up (a MiniMax key of the user's, or the site's MiniMax pool on
+  `MINIMAX_API_KEYS`), Auto, the purpose router and the privacy notice reach it first, on every
+  kind of device; without it the order and the on-device defaults stay as they were. Its
+  thinking cannot be switched off: it streams as `reasoning_content` into the answer's details,
+  never into the answer text, and "thinking off" asks for `reasoning_effort: "low"`, never `none`.
+  BYOK with the auto transport (relay allowlist: chat completions only), the key test as one small
+  chat request (MiniMax documents no model list and no key prefix, so no gitleaks rule), a fake
+  flavor for the end-to-end suite and `npm run providers:ping -- --provider minimax`.
+- **Self-hosted MiniMax M3 on your own server**: model names containing `minimax-m3` get their
+  published 1M-token window unless the server reports its own (Ollama, llama.cpp, and now vLLM's
+  `max_model_len`), their thinking is read from `reasoning_content` or `<think>` tags, they are
+  never sent `reasoning_effort: "none"`, and the model picker marks them as needing a workstation or
+  server (about 160 GB of memory for a 3-bit build). There is no WebGPU or WebAssembly preset; the
+  M3.1 Flash weights are announced but not yet released.
 - **Model catalog** (`src/js/ai/catalog/`): curated defaults per provider in `snapshot.json`
   (written by `npm run models:sync`), live model lists merged on top, capability guesses marked
   unverified, roles (fast, reasoning, vision, judge) and four strengths (max, super, auto, fast).
@@ -58,8 +75,8 @@ on your own machine. What to change when you come from 2.x is in
   silently: every call is recorded.
 - **Transports**: direct with the user's key, a **stateless BYOK relay** for providers that block
   browsers (tried on its own after a blocked call and remembered per provider), the **site's key
-  pools** (NVIDIA, Groq, Gemini and OpenRouter free models, no key in the browser) and devices on
-  the user's network (always direct).
+  pools** (the MiniMax base model, and NVIDIA, Groq, Gemini and OpenRouter free models, no key in
+  the browser) and devices on the user's network (always direct).
 - **Key vault**: keys last for the tab by default; a passphrase keeps them in IndexedDB as AES-GCM
   ciphertext (PBKDF2-SHA-256, 600,000 iterations), locked after 30 minutes without activity.
   **Settings › Model providers and keys** tests a key with the provider's model list and shows

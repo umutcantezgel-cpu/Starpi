@@ -14,7 +14,8 @@ each one `[Doc: <name>, Chunk: <n>]`, answers from them and checks the answer; *
 the model without sources and marks every answer as not checked; **Auto** picks the route per
 question without an extra model call, or answers mixed and marks which parts the sources hold.
 The answer comes from one AI layer for every provider (Anthropic, OpenAI, Gemini, xAI, Groq,
-Mistral, DeepSeek, OpenRouter, NVIDIA), a model on the device (WebGPU, or the processor with
+Mistral, DeepSeek, MiniMax, OpenRouter, NVIDIA; MiniMax M3.1 Flash is the cloud base model Auto
+reaches first when it is set up), a model on the device (WebGPU, or the processor with
 WebAssembly), the user's own Chat Completions-compatible server, the free models of the site's
 pools, or the paired local companion; without any model the sources are quoted. Every citation
 opens the exact passage, every grounded answer runs through a source check that compares its

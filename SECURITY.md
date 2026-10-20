@@ -99,7 +99,7 @@ Out of scope:
 - Prompt injection that makes a model write something false: the source check and the gate are
   the controls for what is shown as checked; a free answer is labelled as not checked
 - Vulnerabilities in third-party providers (Supabase, Anthropic, OpenAI, Google, xAI, Groq,
-  Mistral, DeepSeek, OpenRouter, NVIDIA, ElevenLabs, Brave, Tavily, Hugging Face)
+  Mistral, DeepSeek, MiniMax, OpenRouter, NVIDIA, ElevenLabs, Brave, Tavily, Hugging Face)
 
 ## Security model in brief
 
@@ -144,8 +144,8 @@ Out of scope:
 | Destination | When | What is sent |
 | --- | --- | --- |
 | A provider, direct | a model of a provider the user has a key for, whose API accepts browser calls (Anthropic, OpenAI, Gemini, OpenRouter) | the request (system prompt, history the turn may share, the question, its attachments, excerpts of a grounded question) with the key in the provider's header |
-| The site's relay | the same, for providers that refuse browser calls (xAI, Groq, Mistral, DeepSeek; also ElevenLabs, Brave and Tavily) | the same request and the user's key, forwarded once and kept nowhere |
-| The site's pools | a free model without a key of the user's | text and images only, no tools, a model from the pool's allowlist; forwarded with a site key |
+| The site's relay | the same, for providers that refuse browser calls (xAI, Groq, Mistral, DeepSeek, MiniMax; also ElevenLabs, Brave and Tavily) | the same request and the user's key, forwarded once and kept nowhere |
+| The site's pools | a free model without a key of the user's (with MiniMax keys on the site, the base model MiniMax M3.1 Flash comes first) | text and images only, no tools, a model from the pool's allowlist; forwarded with a site key |
 | Your own server | a model of your server (`https://…`, or `http://localhost`) | the request, called direct, never through the site |
 | The model on this device | WebGPU or processor (WASM) models | nothing; model files are downloaded once after a confirmation |
 | The paired companion | the companion as a model or a retrieval source | the question (and its mode and data class) to the loopback service; passages come back up to the class the question allows |
