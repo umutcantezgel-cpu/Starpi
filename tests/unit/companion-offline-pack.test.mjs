@@ -38,10 +38,10 @@ before(() => {
 });
 after(() => rmSync(scratch, { recursive: true, force: true }));
 
-/** @param {string} cmd @param {string[]} args @param {{ env?: NodeJS.ProcessEnv, cwd?: string }} [options] */
+/** @param {string} cmd @param {string[]} args @param {{ env?: NodeJS.ProcessEnv, cwd?: string, input?: string }} [options] */
 const run = (cmd, args, options = {}) => spawnSync(cmd, args, { encoding: 'utf8', timeout: 60_000, ...options });
-// The name goes in as a positional parameter, never into the script text.
-const has = (/** @type {string} */ cmd) => run('sh', ['-c', 'command -v "$1"', 'sh', cmd]).status === 0;
+// A program is there when it starts; no shell reads its name.
+const has = (/** @type {string} */ cmd) => !run(cmd, ['--version']).error;
 
 /** An environment for the install scripts with HOME (and nothing of the real one) in `home`. */
 function homeEnv(/** @type {string} */ home) {
@@ -265,7 +265,8 @@ describe('the macOS install scripts', () => {
     assert.match(text, /<string>\/usr\/bin\/sandbox-exec<\/string>/);
     assert.match(text, /<key>KeepAlive<\/key>\s*<dict>\s*<key>SuccessfulExit<\/key>\s*<false\/>/);
     if (has('python3')) {
-      const parsed = run('python3', ['-I', '-c', 'import json, plistlib, sys; print(json.dumps(plistlib.load(open(sys.argv[1], "rb"))))', plist]);
+      // The script comes on stdin, so no argument list here carries a -c.
+      const parsed = run('python3', ['-I', '-', plist], { input: 'import json, plistlib, sys; print(json.dumps(plistlib.load(open(sys.argv[1], "rb"))))' });
       assert.equal(parsed.status, 0, parsed.stderr);
       const agent = JSON.parse(parsed.stdout);
       assert.equal(agent.Label, 'app.starpi.companion');

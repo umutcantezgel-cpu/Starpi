@@ -114,6 +114,20 @@ export function headingSlugs(file) {
 }
 
 /**
+ * Inline HTML tags removed. One pass already leaves none behind; repeating it until nothing changes
+ * makes that plain to code scanning.
+ * @param {string} text
+ */
+function withoutTags(text) {
+  let out = text;
+  for (let before = ''; out !== before; ) {
+    before = out;
+    out = out.replace(/<[^>]+>/g, '');
+  }
+  return out;
+}
+
+/**
  * @param {string[]} lines
  * @returns {Set<string>}
  */
@@ -130,9 +144,7 @@ export function slugsOf(lines) {
       .map((part, i) =>
         i % 2
           ? part
-          : part
-              .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-              .replace(/<[^>]+>/g, '')
+          : withoutTags(part.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1'))
               .replace(/(^|[^\p{L}\p{N}])[*_]+|[*_]+(?=[^\p{L}\p{N}]|$)/gu, '$1'),
       )
       .join('');
