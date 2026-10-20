@@ -294,14 +294,22 @@ on your own machine. What to change when you come from 2.x is in
   tokens for free answers on strong GPUs was considered for 3.0 and not adopted: the half-window cap
   already keeps half the context for the conversation.
 - `@starpi/core`, `@starpi/companion` and the app are 3.0.0; `CITATION.cff` follows.
-- Dependencies: `@mlc-ai/web-llm` 0.2.86 (new model library hashes in `model-lock.json`), `lucide`
-  1.55.0, `marked` 18.1.0, `@supabase/supabase-js` 2.117.3, `@playwright/test` 1.64.0, ruff 0.17.0,
-  `actions/setup-node` 7.1.0, `actions/upload-artifact` 7.0.2 and `actions/download-artifact` 8.0.2.
+- Dependencies: `@mlc-ai/web-llm` 0.2.86 (new model library hashes in `model-lock.json`),
+  `@huggingface/transformers` 4.3.1 (same ONNX Runtime binary, `model-lock.json` unchanged), `lucide`
+  1.56.0, `marked` 18.1.1, `dompurify` 3.4.17, `katex` 0.19.0 (also the override under mermaid; it
+  reports missing glyphs through `strict`, which the app sets to `ignore`), `@supabase/supabase-js`
+  2.117.3, `@playwright/test` 1.64.0, ruff 0.17.0, `actions/setup-node` 7.1.0,
+  `actions/upload-artifact` 7.0.2, `actions/download-artifact` 8.0.2 and
+  `github/codeql-action` 4.38.3.
+- Dependabot raises the lower bound of a Python requirement range only when the range does not
+  admit the new release (`increase-if-necessary`), so the library publisher keeps Python 3.11.
 - The service worker also caches the lazy chunks a first visit loaded before it took control (the
   page names them once a worker controls it), so an offline start no longer depends on the browser's
   HTTP cache; Chromium 156 no longer serves them from there offline.
 - Migrations of one page wait for each other where Web Locks are missing, so two starts at once never
   run a migration twice.
+- A model strength picked in Settings before the stored one was shown is no longer overwritten by it,
+  so Save stores the pick it confirms.
 
 ### Removed
 

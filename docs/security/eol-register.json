@@ -74,7 +74,7 @@
     },
     {
       "name": "Transformers.js",
-      "version": "4.3.0",
+      "version": "4.3.1",
       "kind": "npm",
       "npm": "@huggingface/transformers",
       "usedFor": "on-device models on the processor (WebAssembly worker, src/js/wasm), with a self-hosted ONNX Runtime binary",
@@ -110,12 +110,12 @@
     },
     {
       "name": "KaTeX",
-      "version": "0.18.11",
+      "version": "0.19.0",
       "kind": "npm",
       "npm": "katex",
       "usedFor": "math rendering to MathML, loaded lazily with the rendering extras",
       "eol": null,
-      "note": "The package.json override holds this release for every dependent. npm marks 0.18.11 deprecated in favour of 0.19.0; review the move together with the rendering tests."
+      "note": "The package.json override holds this release for every dependent. 0.19 reports missing glyphs through strict; the app renders with strict: 'ignore', so the warnings stay off."
     },
     {
       "name": "Supabase JavaScript client",
@@ -128,7 +128,7 @@
     },
     {
       "name": "DOMPurify",
-      "version": "3.4.16",
+      "version": "3.4.17",
       "kind": "npm",
       "npm": "dompurify",
       "usedFor": "sanitizing every rendered answer and document",
@@ -137,7 +137,7 @@
     },
     {
       "name": "marked",
-      "version": "18.1.0",
+      "version": "18.1.1",
       "kind": "npm",
       "npm": "marked",
       "usedFor": "Markdown rendering",
@@ -145,7 +145,7 @@
     },
     {
       "name": "Lucide",
-      "version": "1.55.0",
+      "version": "1.56.0",
       "kind": "npm",
       "npm": "lucide",
       "usedFor": "interface icons",

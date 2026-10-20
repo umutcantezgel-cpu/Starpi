@@ -48,6 +48,10 @@ updates:
     directory: /tools/library-publisher
     schedule:
       interval: weekly
+    # The optional ranges (requirements-embed.txt) move their lower bound only when they no longer
+    # admit the new release: raising it to the newest release would drop Python versions the
+    # publisher still supports (numpy 2.5 needs 3.12, CI tests 3.11 and 3.13).
+    versioning-strategy: increase-if-necessary
     cooldown:
       default-days: 7
     open-pull-requests-limit: 2

@@ -130,9 +130,9 @@ describe('Transformers.js and ONNX Runtime packages', () => {
   const ort = readFileSync(path.join(ortDist, 'ort.wasm.bundle.min.mjs'), 'utf8');
 
   it('pins Transformers.js exactly', () => {
-    assert.equal(JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).dependencies['@huggingface/transformers'], '4.3.0');
+    assert.equal(JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).dependencies['@huggingface/transformers'], '4.3.1');
     const lock = JSON.parse(readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
-    assert.equal(lock.packages['node_modules/@huggingface/transformers'].version, '4.3.0');
+    assert.equal(lock.packages['node_modules/@huggingface/transformers'].version, '4.3.1');
   });
 
   it('caches and names model files the way the app checks for them', () => {
