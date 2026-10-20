@@ -429,5 +429,6 @@ jobs:
               echo "@starpi/${pkg}@${VERSION} is on npm already."
               continue
             fi
-            npm publish "release-assets/starpi-${pkg}-${VERSION}.tgz" --provenance --access public
+            # The ./ makes npm read a file: "release-assets/…" alone is taken for a GitHub repository.
+            npm publish "./release-assets/starpi-${pkg}-${VERSION}.tgz" --provenance --access public
           done
