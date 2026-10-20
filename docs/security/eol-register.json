@@ -145,7 +145,7 @@
     },
     {
       "name": "Lucide",
-      "version": "1.52.0",
+      "version": "1.55.0",
       "kind": "npm",
       "npm": "lucide",
       "usedFor": "interface icons",
