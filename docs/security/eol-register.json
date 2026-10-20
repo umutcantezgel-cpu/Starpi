@@ -65,7 +65,7 @@
     },
     {
       "name": "WebLLM",
-      "version": "0.2.85",
+      "version": "0.2.86",
       "kind": "npm",
       "npm": "@mlc-ai/web-llm",
       "usedFor": "on-device chat models on the graphics processor (src/js/webgpu)",
@@ -119,7 +119,7 @@
     },
     {
       "name": "Supabase JavaScript client",
-      "version": "2.117.2",
+      "version": "2.117.3",
       "kind": "npm",
       "npm": "@supabase/supabase-js",
       "usedFor": "the shared knowledge base and the optional account features",
@@ -137,7 +137,7 @@
     },
     {
       "name": "marked",
-      "version": "18.0.14",
+      "version": "18.1.0",
       "kind": "npm",
       "npm": "marked",
       "usedFor": "Markdown rendering",
@@ -145,7 +145,7 @@
     },
     {
       "name": "Lucide",
-      "version": "1.52.0",
+      "version": "1.55.0",
       "kind": "npm",
       "npm": "lucide",
       "usedFor": "interface icons",
