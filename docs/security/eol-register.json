@@ -137,7 +137,7 @@
     },
     {
       "name": "marked",
-      "version": "18.0.14",
+      "version": "18.1.0",
       "kind": "npm",
       "npm": "marked",
       "usedFor": "Markdown rendering",
