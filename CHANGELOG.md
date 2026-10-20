@@ -315,6 +315,7 @@ on your own machine. What to change when you come from 2.x is in
   `/.github/`): the unanchored `tools/` also removed `src/js/ai/tools/` and `src/locales/tools/`, so
   every Vercel build since the tool runner failed. A unit test applies the file the way Vercel does
   and fails when it would remove anything the build or the functions read.
+- Settings → Memory no longer drops a note being typed or undoes a switch when the notes redraw.
 
 ### Removed
 

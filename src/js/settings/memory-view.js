@@ -169,14 +169,22 @@ export async function mountMemoryView(el, services, given = {}) {
     refreshIcons(el);
   }
 
-  /** Redraws the notes part only (the instruction fields keep what is being typed). */
+  /** Redraws the notes part only (the instruction fields and the note being added keep what is being typed). */
   function renderNotes() {
     const box = part('[data-mv-notes]');
     if (!box) return render();
     const active = document.activeElement instanceof HTMLElement && box.contains(document.activeElement) ? document.activeElement : null;
     const key = active ? `${active.dataset.mv ?? active.id}:${active.dataset.id ?? ''}` : '';
+    const addText = () => /** @type {HTMLInputElement | null} */ (part('#mvAddText'));
+    const addScope = () => /** @type {HTMLSelectElement | null} */ (part('#mvAddScope'));
+    const adding = { text: addText()?.value ?? '', scope: addScope()?.value ?? 'global' };
     box.innerHTML = notesPart().value;
     refreshIcons(box);
+    const text = addText();
+    const scope = addScope();
+    if (text) text.value = adding.text;
+    // A project deleted meanwhile leaves the note for every chat.
+    if (scope && [...scope.options].some((o) => o.value === adding.scope)) scope.value = adding.scope;
     if (state.editing) /** @type {HTMLTextAreaElement | null} */ (box.querySelector('[data-mv-edit-text]'))?.focus();
     else if (key) {
       const match = [...box.querySelectorAll('button, input, select')].find((x) => x instanceof HTMLElement && `${x.dataset.mv ?? x.id}:${x.dataset.id ?? ''}` === key);
@@ -219,15 +227,21 @@ export async function mountMemoryView(el, services, given = {}) {
     services.toast(`memory.error_${code}`, { tone: 'warn' });
   };
 
+  /** Switch clicks not yet stored: a redraw meanwhile leaves the switches as clicked. */
+  let switching = 0;
+
   el.addEventListener('change', async (event) => {
     const target = event.target instanceof HTMLInputElement ? event.target : null;
     const which = target?.dataset.mvToggle;
     if (!target || !which) return;
+    switching += 1;
     try {
       state.prefs = await store.setPrefs(which === 'enabled' ? { enabled: target.checked, ...(target.checked ? {} : { suggest: false }) } : { suggest: target.checked });
       services.toast(which === 'enabled' ? (state.prefs.enabled ? 'memory.settings.enabled_on' : 'memory.settings.enabled_off') : state.prefs.suggest ? 'memory.settings.suggest_on' : 'memory.settings.suggest_off', { tone: 'ok' });
     } catch (err) {
       failed(err);
+    } finally {
+      switching -= 1;
     }
     const instructions = { aboutMe: /** @type {HTMLTextAreaElement | null} */ (part('#mvAboutMe'))?.value ?? '', howToAnswer: /** @type {HTMLTextAreaElement | null} */ (part('#mvHowToAnswer'))?.value ?? '' };
     render();
@@ -245,7 +259,8 @@ export async function mountMemoryView(el, services, given = {}) {
     const scope = /** @type {HTMLSelectElement} */ (form.querySelector('#mvAddScope')).value;
     try {
       await store.add({ text: input.value, scope, source: 'explicit' });
-      input.value = '';
+      // The next note starts empty and for every chat (also when a redraw replaced the form meanwhile).
+      /** @type {HTMLFormElement | null} */ (part('[data-mv-add]'))?.reset();
       announce(t('memory.remember.saved'));
       await loadNotes();
       renderNotes();
@@ -335,8 +350,8 @@ export async function mountMemoryView(el, services, given = {}) {
       const box = part('[data-mv-notes]');
       const enabled = /** @type {HTMLInputElement | null} */ (part('#mvEnabled'));
       const suggest = /** @type {HTMLInputElement | null} */ (part('#mvSuggest'));
-      if (enabled) enabled.checked = state.prefs.enabled;
-      if (suggest) {
+      if (enabled && !switching) enabled.checked = state.prefs.enabled;
+      if (suggest && !switching) {
         suggest.checked = state.prefs.suggest;
         suggest.disabled = !state.prefs.enabled;
         suggest.closest('label')?.classList.toggle('opacity-60', !state.prefs.enabled);

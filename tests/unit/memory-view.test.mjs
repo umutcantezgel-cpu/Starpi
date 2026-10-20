@@ -1,6 +1,7 @@
 // Settings -> Memory and personalization in a DOM (settings/memory-view.js): memory off by default,
 // the suggestion switch only with memory on, custom instructions, adding, editing, deleting and
-// exporting notes with their scope, the vault line, and the notes hidden while the vault is locked.
+// exporting notes with their scope, a redraw after a change that keeps what is being typed and
+// clicked, the vault line, and the notes hidden while the vault is locked.
 /* global document */
 import './setup.mjs';
 import assert from 'node:assert/strict';
@@ -50,11 +51,12 @@ async function until(check, what) {
 
 let seq = 0;
 
-/** @param {{ vault?: 'none' | 'locked' | 'unlocked' | 'unavailable' }} [opts] */
+/** @param {{ vault?: 'none' | 'locked' | 'unlocked' | 'unavailable', wrap?: (store: any) => any }} [opts] */
 async function setup(opts = {}) {
   const db = await schema.openAppDb({ name: `memory-view-${(seq += 1)}`, factory: new IDBFactory() });
   let ids = 0;
-  const store = memory.createMemoryStore({ open: async () => db, now: () => NOW, uuid: () => `n${(ids += 1)}` });
+  const created = memory.createMemoryStore({ open: async () => db, now: () => NOW, uuid: () => `n${(ids += 1)}` });
+  const store = opts.wrap ? opts.wrap(created) : created;
   const el = /** @type {HTMLElement} */ (document.getElementById('memorySettings'));
   el.replaceWith(el.cloneNode(false));
   const host = /** @type {HTMLElement} */ (document.getElementById('memorySettings'));
@@ -169,6 +171,32 @@ describe('memory settings', () => {
     calls.confirm = true;
     q(host, '[data-mv="clear"]').click();
     await until(() => noteTexts(host).length === 0, 'the clear');
+  });
+
+  it('a redraw after a change keeps the note being typed and a switch just clicked', async () => {
+    // The redraw after a change reads the store first; a switch clicked meanwhile is written after it.
+    const held = { on: false, list: /** @type {(() => void) | null} */ (null), prefs: /** @type {(() => void) | null} */ (null) };
+    /** @param {'list' | 'prefs'} which */
+    const hold = (which) => (held.on ? new Promise((r) => (held[which] = () => r(undefined))) : undefined);
+    const { host, store, calls } = await setup({
+      wrap: (s) => ({ ...s, list: async () => (await hold('list'), s.list()), setPrefs: async (/** @type {any} */ p) => (await hold('prefs'), s.setPrefs(p)) }),
+    });
+    /** @type {HTMLInputElement} */ (q(host, '#mvAddText')).value = 'Chapter two is due in May';
+    /** @type {HTMLSelectElement} */ (q(host, '#mvAddScope')).value = 'project_p1';
+    held.on = true;
+    await store.add({ text: 'I live in Lisbon', source: 'explicit' });
+    await until(() => held.list, 'the redraw reading the notes');
+    toggle(/** @type {HTMLInputElement} */ (q(host, '#mvEnabled')), true);
+    held.on = false;
+    held.list?.();
+    await until(() => noteTexts(host).length === 1, 'the redrawn notes');
+    assert.equal(/** @type {HTMLInputElement} */ (q(host, '#mvAddText')).value, 'Chapter two is due in May');
+    assert.equal(/** @type {HTMLSelectElement} */ (q(host, '#mvAddScope')).value, 'project_p1');
+    assert.equal(/** @type {HTMLInputElement} */ (q(host, '#mvEnabled')).checked, true, 'the click is not undone');
+    held.prefs?.();
+    await until(() => calls.toasts.length === 1, 'the switch');
+    assert.deepEqual(await store.prefs(), { enabled: true, suggest: false });
+    assert.equal(/** @type {HTMLInputElement} */ (q(host, '#mvEnabled')).checked, true);
   });
 
   it('says whether the notes are encrypted and hides them while the vault is locked', async () => {
