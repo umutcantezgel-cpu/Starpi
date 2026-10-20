@@ -364,7 +364,9 @@ export const KEY_TEST_TOKENS = 16;
 /**
  * What a key test sends: the provider's model list, or, for a provider without one, a chat request
  * for a few tokens of its test model, shaped by its quirks like a real call (so a field the
- * provider refuses is never sent). Null when the provider offers neither.
+ * provider refuses is never sent). Its test model always thinks, so the request asks for the lowest
+ * effort with the plain token limit: only the status matters, the answer is not read. Null when the
+ * provider offers neither.
  * @param {string} id
  * @returns {BuiltRequest | null}
  */
@@ -373,7 +375,7 @@ export function keyTestRequest(id) {
   if (info?.modelsPath) return { path: info.modelsPath, method: 'GET', headers: listHeaders(id) };
   if (!info?.testModel || info.dialect !== 'openai-chat') return null;
   const adapter = createOpenAiChatAdapter({ provider: info.id, quirks: getQuirks(info.quirks) });
-  return adapter.buildRequest({ provider: info.id, model: info.testModel, messages: [{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }], maxOutputTokens: KEY_TEST_TOKENS, thinking: { mode: 'off' } });
+  return adapter.buildRequest({ provider: info.id, model: info.testModel, messages: [{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }], maxOutputTokens: KEY_TEST_TOKENS, thinking: { mode: 'on', effort: 'low', show: false } });
 }
 
 /**
