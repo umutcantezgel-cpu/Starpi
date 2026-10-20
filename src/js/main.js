@@ -48,7 +48,22 @@ function registerServiceWorker() {
       // Offline or no manifest: nothing to compare against.
     }
   };
-  navigator.serviceWorker.addEventListener('controllerchange', () => void checkForUpdate());
+  // Assets loaded before a worker controlled the page (the first visit) did not pass through it; the
+  // worker caches them on request so an offline start finds every chunk the page has used.
+  const reportLoadedAssets = () => {
+    const controller = navigator.serviceWorker.controller;
+    if (!controller) return;
+    const urls = performance
+      .getEntriesByType('resource')
+      .map((entry) => new URL(entry.name, location.href))
+      .filter((url) => url.origin === location.origin && url.pathname.startsWith('/assets/'))
+      .map((url) => url.pathname);
+    if (urls.length) controller.postMessage({ type: 'CACHE_ASSETS', urls });
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    void checkForUpdate();
+    reportLoadedAssets();
+  });
   window.addEventListener('load', async () => {
     try {
       await navigator.serviceWorker.register('/sw.js', { scope: '/' });

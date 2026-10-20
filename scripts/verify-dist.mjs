@@ -55,7 +55,7 @@ const digest = headersDigest(rules);
 if (manifest.headersDigest !== digest) problems.push(`header digest ${manifest.headersDigest} does not match scripts/headers.json (${digest}); rebuild`);
 
 // 1. index.html must be compatible with script-src 'self' / style-src 'self'.
-for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
   const attrs = m[1];
   const src = attrs.match(/\bsrc="([^"]+)"/)?.[1];
   if (!src) problems.push('inline <script> block in index.html');

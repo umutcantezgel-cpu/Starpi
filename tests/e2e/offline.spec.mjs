@@ -9,8 +9,11 @@ import { expect, mockSupabase, test } from './fixtures.mjs';
 test.use({ serviceWorkers: 'allow' });
 
 const ISOLATED = { crossOriginIsolated: true, sharedArrayBuffer: true };
-/** What the browser logs while the network is gone (the update check, the knowledge base). */
-const OFFLINE_FAILURE = /^console\.error: Failed to load resource: net::ERR_INTERNET_DISCONNECTED$/;
+/**
+ * What the browser logs while the network is gone (the update check, the knowledge base). Chromium
+ * 156 and later report a request the service worker lets through as net::ERR_FAILED.
+ */
+const OFFLINE_FAILURE = /^console\.error: Failed to load resource: net::(?:ERR_INTERNET_DISCONNECTED|ERR_FAILED)$/;
 
 /** Self-contained: serialized into the page. */
 function isolationProbe() {
@@ -45,8 +48,25 @@ test('serves the shell offline after the first visit, isolated, under the curren
     `starpi-shell-${manifest.version}`,
   );
   expect(new Set(cached)).toEqual(new Set(manifest.precache));
+  // The lazy chunks of this first visit were loaded before the worker took control; the page names
+  // them and the worker caches them, so the offline start below needs no HTTP cache.
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const loaded = performance
+          .getEntriesByType('resource')
+          .map((entry) => new URL(entry.name, location.href))
+          .filter((url) => url.origin === location.origin && url.pathname.startsWith('/assets/'))
+          .map((url) => url.pathname);
+        const missing = [];
+        for (const path of new Set(loaded)) if (!(await caches.match(path))) missing.push(path);
+        return missing;
+      }),
+    )
+    .toEqual([]);
 
   // Offline: no network at all, the knowledge base unreachable as well.
+  const onlineProblems = diagnostics.length;
   await context.setOffline(true);
   await page.route(/^https:\/\/[a-z0-9]+\.supabase\.co\//, (route) => route.abort('internetdisconnected'));
   const response = await page.reload();
@@ -66,6 +86,7 @@ test('serves the shell offline after the first visit, isolated, under the curren
   await expect(answer).toContainText('4 June');
   await expect(answer).toContainText('no AI model was used');
 
-  diagnostics.splice(0, diagnostics.length, ...diagnostics.filter((d) => !OFFLINE_FAILURE.test(d)));
+  // Only failures from after the switch to offline are expected.
+  diagnostics.splice(0, diagnostics.length, ...diagnostics.filter((d, i) => i < onlineProblems || !OFFLINE_FAILURE.test(d)));
   expect(diagnostics).toEqual([]);
 });

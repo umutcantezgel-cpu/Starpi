@@ -259,8 +259,10 @@ const server = createServer(async (req, res) => {
       res.destroy();
       return;
     }
+    // The details go to this terminal, never to the browser.
+    console.error('[serve]', err);
     res.statusCode = 500;
-    res.end(String(err));
+    res.end('Internal error');
   }
 });
 

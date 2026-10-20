@@ -68,6 +68,11 @@ test.describe('migration pending, anonymous sign-ins disabled', () => {
     await expect(page.locator('#chatMessages')).toContainText('Available documents (2)');
 
     expect(await page.evaluate(() => /** @type {any} */ (window).__xss)).toBeUndefined();
+    // Chromium 156 and later report the inline handler of the hostile markup as blocked by the CSP
+    // while the sanitizer parses it in an inert document (nothing runs: window.__xss stays unset).
+    // That report is expected here; anything else is not.
+    const blockedHandler = /Executing inline event handler violates|CSP_VIOLATION script-src-attr inline/;
+    diagnostics.splice(0, diagnostics.length, ...diagnostics.filter((d) => !blockedHandler.test(d)));
     expect(diagnostics).toEqual([]);
   });
 

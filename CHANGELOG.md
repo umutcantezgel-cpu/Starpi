@@ -297,6 +297,11 @@ on your own machine. What to change when you come from 2.x is in
 - Dependencies: `@mlc-ai/web-llm` 0.2.86 (new model library hashes in `model-lock.json`), `lucide`
   1.55.0, `marked` 18.1.0, `@supabase/supabase-js` 2.117.3, `@playwright/test` 1.64.0, ruff 0.17.0,
   `actions/setup-node` 7.1.0, `actions/upload-artifact` 7.0.2 and `actions/download-artifact` 8.0.2.
+- The service worker also caches the lazy chunks a first visit loaded before it took control (the
+  page names them once a worker controls it), so an offline start no longer depends on the browser's
+  HTTP cache; Chromium 156 no longer serves them from there offline.
+- Migrations of one page wait for each other where Web Locks are missing, so two starts at once never
+  run a migration twice.
 
 ### Removed
 
