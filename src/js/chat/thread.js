@@ -2349,17 +2349,20 @@ export async function sendQuestion(options = {}) {
   // documents and notes, Free and Auto from general knowledge (what Auto weighs, the files and the
   // library here, is not what the companion holds).
   const companion = isCompanionValue(value);
-  const decision = options.chatMode || deviceOnly || companion ? null : await routeFor(draft.text, mode, kinds, value);
-  const route = deviceOnly ? 'free' : (options.chatMode ?? (companion ? (mode === 'grounded' ? 'grounded' : 'free') : decision?.route === 'free' || decision?.route === 'mixed' ? decision.route : 'grounded'));
-  if (decision?.reasons.includes('web_unavailable') && !webNoticeShown) {
-    webNoticeShown = true;
-    appendNotice({ icon: 'info', tone: 'info', title: 'answers.notice.web_unavailable_title', body: 'answers.notice.web_unavailable_body' });
-  }
-  const onlyImages = draft.attachments.length > 0 && draft.attachments.every((a) => a.kind === 'image');
-  const text =
-    draft.text ||
-    (onlyImages ? t('chat-thread.describe_images', { n: draft.attachments.length }) : draft.attachments.length === 1 ? t('chat.summarize_file', { name: draft.attachments[0].name }) : t('chat-thread.summarize_files', { n: draft.attachments.length }));
+  // The turn starts before Auto decides the route (the workspace probe, the library's titles): the
+  // question has left the composer, so from here on the chat is busy and Stop shows, and another
+  // question waits instead of starting a turn beside this one.
   await withTurn(async (signal) => {
+    const decision = options.chatMode || deviceOnly || companion ? null : await routeFor(draft.text, mode, kinds, value);
+    const route = deviceOnly ? 'free' : (options.chatMode ?? (companion ? (mode === 'grounded' ? 'grounded' : 'free') : decision?.route === 'free' || decision?.route === 'mixed' ? decision.route : 'grounded'));
+    if (decision?.reasons.includes('web_unavailable') && !webNoticeShown) {
+      webNoticeShown = true;
+      appendNotice({ icon: 'info', tone: 'info', title: 'answers.notice.web_unavailable_title', body: 'answers.notice.web_unavailable_body' });
+    }
+    const onlyImages = draft.attachments.length > 0 && draft.attachments.every((a) => a.kind === 'image');
+    const text =
+      draft.text ||
+      (onlyImages ? t('chat-thread.describe_images', { n: draft.attachments.length }) : draft.attachments.length === 1 ? t('chat.summarize_file', { name: draft.attachments[0].name }) : t('chat-thread.summarize_files', { n: draft.attachments.length }));
     if (route !== 'free') {
       const web = decision?.retrieval.sources.includes('web') ?? false;
       const docIds = options.docIds?.filter((d) => typeof d === 'string' && d).slice(0, 50);

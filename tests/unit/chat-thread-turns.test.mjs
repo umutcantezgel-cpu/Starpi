@@ -4,7 +4,8 @@
 // an answer still streaming when the user starts a new chat or opens another one is stored beside
 // its question and shows again in its chat; a question asked on this device is answered again only
 // on this device or by the own server (the regenerate menu offers only those); a request that cannot
-// be built leaves no bubble behind and says so in i18n text.
+// be built leaves no bubble behind and says so in i18n text; a question is busy from the moment it is
+// taken, so a second one sent while the route of the first is decided starts no turn beside it.
 /* global document */
 import './setup.mjs';
 import 'fake-indexeddb/auto';
@@ -336,5 +337,20 @@ describe('failures inside a turn', () => {
     assert.equal(thread.workspaceErrorKey({ code: 'title' }), 'workspace.error_internal');
     assert.equal(thread.workspaceErrorKey({ code: 'no such code' }), 'workspace.error_internal');
     assert.equal(thread.workspaceErrorKey(new Error('x')), 'workspace.error_internal');
+  });
+});
+
+describe('a second question while the route of the first is decided', () => {
+  it('is refused: the turn starts when the first question is taken, not after its route', async () => {
+    newChat();
+    await thread.showConversation();
+    const id = chatStore.currentSessionId();
+    // A starter question clicked twice: the second click comes while the first one's route is decided.
+    const first = thread.sendQuestion({ text: 'What is the capital of France?' });
+    assert.equal(thread.isThreadBusy(), true, 'busy while the route is decided');
+    assert.equal(document.getElementById('stopBtn')?.classList.contains('hidden'), false, 'Stop shows');
+    await thread.sendQuestion({ text: 'What is the capital of France?' });
+    await first;
+    assert.deepEqual((await storedPath(id)).map((n) => n.role), ['user', 'assistant'], 'one turn, not two beside each other');
   });
 });
