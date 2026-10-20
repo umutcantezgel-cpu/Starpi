@@ -49,19 +49,42 @@ function registerServiceWorker() {
     }
   };
   // Assets loaded before a worker controlled the page (the first visit) did not pass through it; the
-  // worker caches them on request so an offline start finds every chunk the page has used.
+  // worker caches them on request so an offline start finds every chunk the page has used. A load that
+  // started before the worker took control can finish after it, so loads are collected as they finish
+  // and named whenever a worker controls the page.
+  /** @type {Set<string>} */
+  const loadedAssets = new Set();
+  /** @type {Set<string>} */
+  const unreported = new Set();
   const reportLoadedAssets = () => {
     const controller = navigator.serviceWorker.controller;
-    if (!controller) return;
-    const urls = performance
-      .getEntriesByType('resource')
-      .map((entry) => new URL(entry.name, location.href))
-      .filter((url) => url.origin === location.origin && url.pathname.startsWith('/assets/'))
-      .map((url) => url.pathname);
-    if (urls.length) controller.postMessage({ type: 'CACHE_ASSETS', urls });
+    if (!controller || unreported.size === 0) return;
+    controller.postMessage({ type: 'CACHE_ASSETS', urls: [...unreported] });
+    unreported.clear();
   };
+  /** @param {PerformanceEntryList} entries */
+  const noteLoadedAssets = (entries) => {
+    for (const entry of entries) {
+      // A load the worker answered (workerStart set) is cached by the worker itself.
+      if (/** @type {PerformanceResourceTiming} */ (entry).workerStart > 0) continue;
+      const url = new URL(entry.name, location.href);
+      if (url.origin !== location.origin || !url.pathname.startsWith('/assets/') || loadedAssets.has(url.pathname)) continue;
+      loadedAssets.add(url.pathname);
+      unreported.add(url.pathname);
+    }
+    reportLoadedAssets();
+  };
+  noteLoadedAssets(performance.getEntriesByType('resource'));
+  if (typeof PerformanceObserver === 'function') {
+    try {
+      new PerformanceObserver((list) => noteLoadedAssets(list.getEntries())).observe({ type: 'resource' });
+    } catch {
+      // Without resource observation the loads seen when the worker takes control are named.
+    }
+  }
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     void checkForUpdate();
+    noteLoadedAssets(performance.getEntriesByType('resource'));
     reportLoadedAssets();
   });
   window.addEventListener('load', async () => {

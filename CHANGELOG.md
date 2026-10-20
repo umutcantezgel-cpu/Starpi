@@ -304,8 +304,9 @@ on your own machine. What to change when you come from 2.x is in
 - Dependabot raises the lower bound of a Python requirement range only when the range does not
   admit the new release (`increase-if-necessary`), so the library publisher keeps Python 3.11.
 - The service worker also caches the lazy chunks a first visit loaded before it took control (the
-  page names them once a worker controls it), so an offline start no longer depends on the browser's
-  HTTP cache; Chromium 156 no longer serves them from there offline.
+  page names each one once a worker controls it, also a load that started before and finished after
+  the worker took over), so an offline start no longer depends on the browser's HTTP cache;
+  Chromium 156 no longer serves them from there offline.
 - Migrations of one page wait for each other where Web Locks are missing, so two starts at once never
   run a migration twice.
 - A model strength picked in Settings before the stored one was shown is no longer overwritten by it,
