@@ -99,7 +99,7 @@ before(async () => {
     const url = String(input instanceof Request ? input.url : input);
     const json = (/** @type {number} */ status, /** @type {unknown} */ body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
     if (url.endsWith('/api/models/pool')) return json(200, { pools: {} });
-    if (url.includes('api.anthropic.com')) {
+    if (new URL(url).hostname === 'api.anthropic.com') {
       cloudBodies.push(String(init?.body ?? ''));
       return json(401, { type: 'error', error: { type: 'authentication_error', message: 'x' } });
     }

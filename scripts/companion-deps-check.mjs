@@ -20,7 +20,7 @@
 // Usage: node scripts/companion-deps-check.mjs [--root <package folder>] [--json]
 // Exit: 0 clean, 1 findings, 2 usage or read error.
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { builtinModules } from 'node:module';
+import { builtinModules, isBuiltin } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -230,7 +230,7 @@ export function checkDependencies({ root = PACKAGE } = {}) {
     const inDeploy = file.startsWith('deploy/');
     for (const { spec, line } of specifiers) {
       if (spec.startsWith('node:')) {
-        if (!builtins.has(spec.slice(5).split('/')[0])) add(line, 'unknown-builtin', `${spec} is not a Node.js built-in`);
+        if (!isBuiltin(spec)) add(line, 'unknown-builtin', `${spec} is not a Node.js built-in`);
       } else if (spec.startsWith('.') || spec.startsWith('/')) {
         if (inDeploy) add(line, 'deploy-import', `deploy/ files run on their own from the bundle and may import node: built-ins only (${spec})`);
         const target = path.resolve(path.dirname(path.join(root, file)), spec);

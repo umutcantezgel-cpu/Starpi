@@ -6,6 +6,7 @@ import { checkBrainRequest, providerError, splitSystem, transportError } from '.
 import { guardStream, readSse } from './sse.js';
 import { mapStopReason } from './stop-reasons.js';
 import { fail } from '../lib/errors.js';
+import { trimTrailingSlashes } from '../lib/text.js';
 
 export const GEMINI_HOST = 'generativelanguage.googleapis.com';
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
@@ -24,7 +25,7 @@ const MODEL_ID = /^[a-z0-9][a-z0-9.-]{1,80}$/;
  */
 export function createGeminiBrain({ id, fetch, apiKey, model = DEFAULT_GEMINI_MODEL, showReasoning = false, baseUrl = `https://${GEMINI_HOST}`, timeoutMs = 300_000 }) {
   if (!MODEL_ID.test(model)) throw fail('brain_config', `${JSON.stringify(model)} is not a Gemini model id`);
-  const endpoint = `${baseUrl.replace(/\/+$/, '')}/v1beta/models/${model}:streamGenerateContent?alt=sse`;
+  const endpoint = `${trimTrailingSlashes(baseUrl)}/v1beta/models/${model}:streamGenerateContent?alt=sse`;
   return {
     id,
     kind: 'gemini',

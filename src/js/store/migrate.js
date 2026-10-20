@@ -49,6 +49,23 @@ export const LEGACY_CHATS_MIGRATION_ID = 'local-chats-v1';
 export const LEGACY_KEYS_MIGRATION_ID = 'legacy-keys-v1';
 const TITLE_CHARS = 60;
 
+/** Runs of this page per database, so two starts in one page never overlap without Web Locks. */
+/** @type {Map<string, Promise<unknown>>} */
+const pageQueues = new Map();
+
+/**
+ * Runs `work` after every earlier run queued under `name` in this page has settled.
+ * @template T
+ * @param {string} name
+ * @param {() => Promise<T>} work
+ * @returns {Promise<T>}
+ */
+function inPageQueue(name, work) {
+  const run = (pageQueues.get(name) ?? Promise.resolve()).then(work, work);
+  pageQueues.set(name, run.catch(() => undefined));
+  return run;
+}
+
 /** @returns {LockManager | null} */
 function webLocks() {
   try {
@@ -80,10 +97,12 @@ export async function runMigrations(db, migrations, options = {}) {
   if (ids.some((id, i) => !id || ids.indexOf(id) !== i)) throw new StoreError('data', 'Migration ids must be unique and non-empty');
   const now = options.now ?? Date.now;
   const work = () => runInOrder(db, migrations, now);
+  const name = `${db.name}-migrations`;
   const locks = webLocks();
-  // Only a database shared with other tabs needs the lock; the memory stand-in is this page's own.
-  if (!db.persistent || !locks) return work();
-  return locks.request(`${db.name}-migrations`, work);
+  // Only a database shared with other tabs needs the Web Lock; the memory stand-in is this page's
+  // own. Without Web Locks the runs of this page still wait for each other.
+  if (db.persistent && locks) return locks.request(name, work);
+  return inPageQueue(name, work);
 }
 
 /**

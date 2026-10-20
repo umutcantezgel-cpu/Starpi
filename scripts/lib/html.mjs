@@ -15,7 +15,13 @@ export const THEME_BOOT_PLACEHOLDER = '%STARPI_THEME_BOOT_JS%';
 export function injectThemeBoot(html, url) {
   if (html.includes(THEME_BOOT_PLACEHOLDER)) {
     if (url) return html.replaceAll(THEME_BOOT_PLACEHOLDER, url);
-    return html.replace(/[ \t]*<script\b[^>]*%STARPI_THEME_BOOT_JS%[^>]*>\s*<\/script>[ \t]*\r?\n?/g, '');
+    // Repeated until nothing changes, so no tag can be left behind by one that was cut out of it.
+    let out = html;
+    for (let before = ''; before !== out; ) {
+      before = out;
+      out = out.replace(/[ \t]*<script\b[^>]*%STARPI_THEME_BOOT_JS%[^>]*>\s*<\/script>[ \t]*\r?\n?/g, '');
+    }
+    return out;
   }
   if (!url) return html;
   const stylesheet = html.search(/<link\b[^>]*\brel="stylesheet"/i);

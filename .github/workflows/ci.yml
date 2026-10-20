@@ -348,7 +348,7 @@ jobs:
           tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP" gitleaks
 
       - name: Scan working tree
-        run: "$RUNNER_TEMP/gitleaks dir . --config .gitleaks.toml --redact --no-banner --exit-code 1"
+        run: '"$RUNNER_TEMP/gitleaks" dir . --config .gitleaks.toml --redact --no-banner --exit-code 1'
 
       - name: Scan commits of this pull request
         if: github.event_name == 'pull_request'

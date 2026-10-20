@@ -487,7 +487,7 @@ function blockText(el, md) {
       const rows = [...el.querySelectorAll('tr')].map((tr) => [...tr.children].map((cell) => inlineText(cell, md).trim().replace(/\n/g, ' ')));
       if (!md) return rows.map((row) => row.join('\t')).join('\n');
       if (rows.length === 0) return '';
-      const line = (/** @type {string[]} */ row) => `| ${row.map((cell) => cell.replace(/\|/g, '\\|')).join(' | ')} |`;
+      const line = (/** @type {string[]} */ row) => `| ${row.map((cell) => cell.replace(/\\/g, '\\\\').replace(/\|/g, '\\|')).join(' | ')} |`;
       return [line(rows[0]), `| ${rows[0].map(() => '---').join(' | ')} |`, ...rows.slice(1).map(line)].join('\n');
     }
     case 'HR':

@@ -179,7 +179,7 @@ const FROM = words('from|von', 'iu');
 const TO = words('to|auf', 'iu');
 const UP_FROM = words('up from|down from', 'giu');
 /** Clause boundaries: a relation and its values stay within one. */
-const CLAUSE = /[;:]\s+|,\s+|\s+(?:while|whereas|but|während|wobei|aber|sowie)\s+|\s[–—-]\s/giu;
+const CLAUSE = /[;:]\s+|,\s+|(?<!\s)\s+(?:while|whereas|but|während|wobei|aber|sowie)\s+|\s[–—-]\s/giu;
 /** Boundaries of the right side of a comparison or of an order in time (not the dot or comma of a number). */
 const SIDE_END = /[;:!?]|[.,](?!\d)|\s(?:and|but|while|whereas|und|aber|während|wobei|sowie)\s|\s[–—-]\s/iu;
 /** Punctuation that ends a clause (not the dot or comma of a number). */

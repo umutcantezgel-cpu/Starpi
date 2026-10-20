@@ -8,6 +8,7 @@ import { checkBrainRequest, providerError, transportError } from './contract.js'
 import { guardStream, readSse } from './sse.js';
 import { mapStopReason } from './stop-reasons.js';
 import { fail } from '../lib/errors.js';
+import { trimTrailingSlashes } from '../lib/text.js';
 
 /**
  * @param {object} options
@@ -24,7 +25,7 @@ import { fail } from '../lib/errors.js';
  * @returns {import('./contract.js').Brain}
  */
 export function createOpenAiCompatBrain({ id, baseUrl, model, locality, fetch, apiKey = () => null, hosts = [], memoryMb, timeoutMs = 300_000, kind = 'openai-compat' }) {
-  const endpoint = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+  const endpoint = `${trimTrailingSlashes(baseUrl)}/chat/completions`;
   return {
     id,
     kind,

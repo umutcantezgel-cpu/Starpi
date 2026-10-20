@@ -140,8 +140,15 @@ class EngineFailure(Exception):
 
 # ==== text checks ====
 
-# C0 controls except tab and line breaks, DEL and the C1 block.
-CONTROL_CHARS = re.compile("[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]")
+# Line breaks and tab are the only control characters a text may hold.
+ALLOWED_CONTROLS = frozenset("\t\n\r")
+
+
+def has_control_char(value: str) -> bool:
+    """Whether the text holds a C0 control other than tab or a line break, DEL or a C1 control."""
+    return any((ord(ch) < 0x20 and ch not in ALLOWED_CONTROLS) or 0x7F <= ord(ch) <= 0x9F for ch in value)
+
+
 TERM_SEPARATORS = re.compile(r"[\r\n,;]+")
 
 
@@ -159,7 +166,7 @@ def checked_text(value: Any, name: str, limit: int, *, required: bool = False) -
     # A lone surrogate (from a broken JSON escape) cannot be written out as UTF-8.
     if any(0xD800 <= ord(ch) <= 0xDFFF for ch in value):
         raise bad_request("invalid_text", f"{name} is not valid Unicode")
-    if CONTROL_CHARS.search(value):
+    if has_control_char(value):
         raise bad_request("invalid_text", f"{name} holds control characters")
     return value
 

@@ -62,6 +62,8 @@ export function buildDictionary(root, namespaces, conflicts = []) {
    */
   const merge = (target, source, path) => {
     for (const [key, value] of Object.entries(source)) {
+      // A locale file never names these; skipping them keeps a crafted one off Object.prototype.
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
       const at = `${path}.${key}`;
       const existing = target[key];
       if (typeof value === 'string') {

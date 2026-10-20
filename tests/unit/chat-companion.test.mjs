@@ -169,7 +169,7 @@ before(async () => {
   globalThis.fetch = async (input, init) => {
     const url = String(input instanceof Request ? input.url : input);
     if (url.startsWith(companion.origin)) return companion.fetch(url, init);
-    if (url.includes('api.anthropic.com')) {
+    if (new URL(url).hostname === 'api.anthropic.com') {
       cloudBodies.push(String(init?.body ?? ''));
       return new Response(JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'x' } }), { status: 401, headers: { 'content-type': 'application/json' } });
     }

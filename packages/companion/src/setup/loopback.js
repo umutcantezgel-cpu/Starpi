@@ -8,6 +8,7 @@
 // Accepted: `<scheme>://127.0.0.1:<port>/<path>`, `<scheme>://[::1]:<port>/<path>` and
 // `<scheme>://localhost:<port>/<path>`, with an explicit port and without user, query or fragment.
 import { fail } from '../lib/errors.js';
+import { trimTrailingSlashes } from '../lib/text.js';
 
 const LOOPBACK_HOSTS = Object.freeze(new Set(['127.0.0.1', '[::1]', 'localhost']));
 
@@ -42,7 +43,7 @@ export function parseLoopbackUrl(value, label, { schemes = ['http'] } = {}) {
   if (url.port === '') throw refuse('name the port explicitly');
   if (url.username || url.password) throw refuse('no user or password in the address');
   if (url.search || url.hash) throw refuse('no query or fragment');
-  const path = url.pathname.replace(/\/+$/, '');
+  const path = trimTrailingSlashes(url.pathname);
   return Object.freeze({
     url: `${scheme}://${url.host}${path}`,
     scheme,

@@ -72,7 +72,7 @@ export function decodeHtmlBytes(bytes) {
   let label = 'utf-8';
   if (!(bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf)) {
     const head = String.fromCharCode(...bytes.subarray(0, 1024));
-    const meta = /<meta\b[^>]*?charset\s*=\s*["']?\s*([\w.:-]+)/i.exec(head);
+    const meta = /<meta\b[^>]*?charset\s*=\s*(?:["']\s*)?([\w.:-]+)/i.exec(head);
     // A page that says UTF-16 without a byte order mark is read as UTF-8, as browsers do.
     if (meta && !/^utf-?16/i.test(meta[1])) label = meta[1].toLowerCase();
   }

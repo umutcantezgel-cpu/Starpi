@@ -101,7 +101,7 @@ before(async () => {
       poolBodies.push(String(init?.body ?? ''));
       return json(500, { error: 'unavailable' });
     }
-    if (url.includes('api.anthropic.com')) {
+    if (new URL(url).hostname === 'api.anthropic.com') {
       anthropicBodies.push(String(init?.body ?? ''));
       return json(401, { type: 'error', error: { type: 'authentication_error', message: 'x' } });
     }

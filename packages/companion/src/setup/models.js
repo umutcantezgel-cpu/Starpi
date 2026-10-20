@@ -4,6 +4,7 @@
 // hints only suggest; nothing is downloaded or changed.
 import { totalmem, freemem } from 'node:os';
 import { isLoopbackUrl } from './loopback.js';
+import { trimTrailingSlashes } from '../lib/text.js';
 
 export const PROBE_TIMEOUT_MS = 2_000;
 
@@ -29,7 +30,7 @@ export async function listServerModels(baseUrl, { fetchImpl = globalThis.fetch, 
   if (!isLoopbackUrl(baseUrl)) return { reachable: false, models: [], code: 'not_local' };
   const limit = AbortSignal.timeout(PROBE_TIMEOUT_MS);
   try {
-    const res = await fetchImpl(`${baseUrl.replace(/\/+$/, '')}/models`, { headers: { accept: 'application/json' }, redirect: 'error', signal: signal ? AbortSignal.any([signal, limit]) : limit });
+    const res = await fetchImpl(`${trimTrailingSlashes(baseUrl)}/models`, { headers: { accept: 'application/json' }, redirect: 'error', signal: signal ? AbortSignal.any([signal, limit]) : limit });
     if (!res.ok) {
       await res.body?.cancel().catch(() => {});
       return { reachable: true, models: [], code: `http_${res.status}` };
