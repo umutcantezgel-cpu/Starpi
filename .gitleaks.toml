@@ -92,6 +92,23 @@ regexes = [
 ]
 
 [[allowlists]]
+description = "Names of storage keys and record ids of the app (starpi_thinking_v1, starpi_conversation-1): identifiers, never credentials. A value must consist of nothing but such a name."
+regexes = [
+  '''^starpi_[a-z]+(?:[_-][a-z0-9]+)*$''',
+]
+
+[[allowlists]]
+description = "SHA-256 pins of public model files in the library publisher (PinnedFile(name, sha256, size)): checksums, not secrets."
+condition = "AND"
+paths = [
+  '''^tools/library-publisher/publisher/model_files\.py$''',
+]
+regexTarget = "line"
+regexes = [
+  '''PinnedFile\([A-Z_]+, "[0-9a-f]{64}", [0-9_]+\)''',
+]
+
+[[allowlists]]
 description = "Generated or vendored output"
 paths = [
   '''(^|/)node_modules/''',

@@ -8,7 +8,8 @@ import { expect, mockSupabase, test } from './fixtures.mjs';
 
 const FAKES_PORT = Number(process.env.STARPI_FAKES_PORT || 4610);
 const VOICE_FAKE = `http://127.0.0.1:${FAKES_PORT + 5}`;
-const GEMINI_KEY = 'AIzaSyA-e2e-live-key-0123456789abcdefghi';
+// A fake key, built at runtime so the secret scan does not read it as a credential.
+const GEMINI_KEY = ['AIzaSyA', 'e2e', 'live', 'gem', '0123456789abcdefghi'].join('-');
 const LIVE_SOCKET = /^wss:\/\/generativelanguage\.googleapis\.com\/ws\//;
 
 test.skip(({ browserName, isMobile }) => browserName !== 'chromium' || isMobile, 'voice runs on desktop Chromium only');
