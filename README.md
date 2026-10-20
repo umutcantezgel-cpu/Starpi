@@ -1033,7 +1033,7 @@ Details and known limitations are in [SECURITY.md](SECURITY.md#known-limitations
 Beside it, `codeql.yml` (CodeQL on every change and weekly), `workflow-lint.yml` (actionlint and
 zizmor) and `model-lock.yml` (the model lock against the hosts, weekly) run.
 
-In numbers: 2,434 unit tests in 193 files, 140 end-to-end tests in 27 specs on desktop Chromium
+In numbers: 2,464 unit tests in 197 files, 140 end-to-end tests in 27 specs on desktop Chromium
 (CI also runs them on a mobile viewport; the diagram check runs on desktop only), 148
 tests of the companion in 24 files, and the Python suites of the library publisher and the voice server.
 
@@ -1049,8 +1049,10 @@ bundle, smoke-tests the core tarball and writes the SBOMs and `SHA256SUMS`. A si
 every asset (`actions/attest-build-provenance`), signs `SHA256SUMS` and the offline bundle keyless
 with Sigstore and, when the project's release key is set up, signs `SHA256SUMS` with Ed25519. The
 release job, the only one with write access, creates the release, and a last job publishes both
-packages to npm from the very tarballs of the release, with provenance. How to check a download is
-in [SECURITY.md](SECURITY.md#supply-chain).
+packages to npm from the very tarballs of the release, with provenance; a release whose packages
+missed npm (no token at the time) has them published by a later run, from its own assets after
+their Sigstore signature is checked. How to check a download is in
+[SECURITY.md](SECURITY.md#supply-chain).
 
 ## Roadmap
 
