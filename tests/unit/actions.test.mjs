@@ -90,8 +90,13 @@ describe('design system', () => {
   it('gives every icon-only button an accessible name', () => {
     for (const m of html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)) {
       const [, attrs, inner] = m;
-      const visibleText = inner.replace(/<i [^>]*><\/i>/g, '').replace(/<span[^>]*class="[^"]*sr-only[^"]*"[^>]*>[^<]*<\/span>/g, 'x').replace(/<[^>]*>?/g, '').trim();
-      if (visibleText) continue;
+      // Tags are stripped until none is left, so a tag cut out of another cannot remain.
+      let visibleText = inner.replace(/<i [^>]*><\/i>/g, '').replace(/<span[^>]*class="[^"]*sr-only[^"]*"[^>]*>[^<]*<\/span>/g, 'x');
+      for (let before = ''; before !== visibleText; ) {
+        before = visibleText;
+        visibleText = visibleText.replace(/<[^>]*>?/g, '');
+      }
+      if (visibleText.trim()) continue;
       assert.match(attrs, /aria-label="[^"]+"/, `button without text or aria-label: <button${attrs}>`);
     }
   });
