@@ -58,8 +58,8 @@ allowlist (`api/_lib/pool/allowlist.js`). The pools are `minimax`, `nvidia`, `gr
 
 The `minimax` pool serves the cloud base model, MiniMax M3.1 Flash (`MiniMax-M3.1-Flash` at
 `https://api.minimax.io/v1`, as of 2026-10-20). Once it has keys (`MINIMAX_API_KEYS`) and is among
-the enabled pools, Auto, the small jobs (titles, text recognition, graph extraction, council
-verdicts) and the privacy notice of every visitor without a MiniMax key of their own reach it
+the enabled pools, Auto, the small text jobs (titles, graph extraction, council verdicts; text recognition
+needs a model that can see, so it never goes to MiniMax) and the privacy notice of every visitor without a MiniMax key of their own reach it
 first, on phones, tablets, laptops and desktops alike; the browser's on-device presets do not
 change. Its models always think and cannot switch thinking off, so the pool sends every request
 with `reasoning_effort: "low"` and drops the browser's own effort field like every other extra.

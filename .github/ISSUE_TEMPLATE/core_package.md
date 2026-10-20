@@ -2,7 +2,7 @@
 name: "@starpi/core package"
 about: Report a problem with the npm package or its starpi-verify-receipt command
 title: "[CORE]: "
-labels: bug, package
+labels: bug
 assignees: ''
 ---
 

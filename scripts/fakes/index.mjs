@@ -15,8 +15,8 @@
 //
 // Usage: node scripts/fakes/index.mjs [--base-port 4610] [--marker starpi-purpose] [--fixtures dir] [--verbose]
 // (environment: STARPI_FAKES_PORT for the base port, FAKE_FLAVOR, FAKE_GAP_MS, FAKE_LATENCY_MS, FAKE_CORS)
-// The planned `npm run fakes` script runs exactly this command; until package.json has it, call
-// node directly. Each fake also runs on its own: node scripts/fakes/<name>.mjs --port <n>.
+// `npm run fakes` runs exactly this command. Each fake also runs on its own:
+// node scripts/fakes/<name>.mjs --port <n>.
 import { createServer } from 'node:http';
 import { createAnthropicFake } from './anthropic.mjs';
 import { createElevenLabsFake } from './elevenlabs.mjs';

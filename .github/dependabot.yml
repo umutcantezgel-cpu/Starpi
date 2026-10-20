@@ -28,6 +28,9 @@ updates:
         applies-to: version-updates
         dependency-type: production
         update-types: [minor, patch]
+        # These two change the hashes in models/model-lock.json (model libraries, the ONNX runtime
+        # binary), so each comes alone and is merged after `npm run models:lock`.
+        exclude-patterns: ['@mlc-ai/web-llm', '@huggingface/transformers']
       development-minor-patch:
         applies-to: version-updates
         dependency-type: development

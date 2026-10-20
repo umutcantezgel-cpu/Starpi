@@ -5,6 +5,9 @@ The root [AGENTS.md](../../AGENTS.md) applies; this file lists what differs here
 - **The source is not in this folder.** `src/index.js` only re-exports modules of the app
   (`src/js/core/` and `src/js/rag/`). Change the module in `src/js`, then the export
   here if the public API changes. `scripts/build-core.mjs` bundles it into `dist/` (ignored by git).
+- **The three CLIs are bundled from `scripts/`:** `starpi-gate` from `scripts/gate.mjs`,
+  `starpi-ground` from `scripts/ground.mjs` and `starpi-verify-receipt` from
+  `scripts/verify-receipt.mjs`; change a CLI there.
 - **No dependencies, platform-neutral.** The bundle may import nothing but the optional peer
   `pdfjs-dist`, and must run in browsers, workers and Node.js (no DOM, network or storage APIs in the
   exported code paths).
