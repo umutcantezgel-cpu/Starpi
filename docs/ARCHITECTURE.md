@@ -5704,7 +5704,7 @@ flowchart TD
 
 ### CI workflow triggers, jobs and Dependabot
 
-ci.yml runs on pushes and pull requests to main and by hand, with read-only contents permission and one concurrency group per pull request or ref that cancels older runs. Every job except e2e starts at once; e2e waits for frontend's dist. codeql.yml runs on every change and weekly, workflow-lint.yml lints the workflow files on every change, and model-lock.yml checks the model lock weekly. A completed CI run on main starts release.yml, whose jobs run only when that run passed and was triggered by a push (or by hand on main). Dependabot proposes weekly updates for npm, pip and GitHub Actions.
+ci.yml runs on pushes and pull requests to main and by hand, with read-only contents permission and one concurrency group per pull request or ref that cancels older runs. Every job except e2e starts at once; e2e waits for frontend's dist. codeql.yml runs on every change and weekly, workflow-lint.yml lints the workflow files on every change, and model-lock.yml checks the model lock weekly. A completed CI run on main starts release.yml, whose jobs run only when that run passed and was triggered by a push (or by hand on main). Dependabot proposes weekly updates for npm, pip (the library publisher) and GitHub Actions, and monthly ones for the voice server's requirements: minor and patch releases share one grouped pull request per ecosystem (npm production and development dependencies apart), a major release gets its own, and security updates are never grouped or held back.
 
 <!-- diagram: ci-workflow-overview -->
 ```mermaid

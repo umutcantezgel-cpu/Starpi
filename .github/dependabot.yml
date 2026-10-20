@@ -1,5 +1,16 @@
 version: 2
+
+# Version updates come in a few grouped pull requests a week: minor and patch releases of each
+# ecosystem share one pull request (npm production and development dependencies separately), and
+# only a major release gets a pull request of its own, since it needs a deliberate review.
+#
+# Security updates are not affected by any of this: the groups apply to version updates only, the
+# cooldown never holds back a security fix, and open-pull-requests-limit does not count security
+# pull requests (GitHub opens those as soon as an advisory matches, with a limit of its own).
+#
+# Commit messages read chore(deps): ... (chore(deps-dev): ... for npm development dependencies).
 updates:
+  # The root lockfile covers the workspaces too (packages/core, packages/companion).
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -9,26 +20,73 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
     groups:
-      dev-tooling:
+      production-minor-patch:
+        applies-to: version-updates
+        dependency-type: production
+        update-types: [minor, patch]
+      development-minor-patch:
+        applies-to: version-updates
         dependency-type: development
+        update-types: [minor, patch]
     ignore:
+      # The workspace packages are released together with the app at one version (release.yml
+      # checks it), never bumped on their own.
+      - dependency-name: '@starpi/*'
       # Tailwind v4 changes utility semantics (shadow and blur scales); upgrade deliberately.
       - dependency-name: tailwindcss
         update-types: ['version-update:semver-major']
 
+  # The Python tooling of the library publisher (backend/requirements-dev.txt only points here).
   - package-ecosystem: pip
     directory: /tools/library-publisher
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      library-publisher-minor-patch:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: [minor, patch]
 
+  # The local voice server of the companion: two pinned packages, checked once a month.
+  - package-ecosystem: pip
+    directory: /companion/voice-server
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      voice-server-minor-patch:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  # Workflow actions stay pinned to full commit SHAs; Dependabot moves the SHA and the version comment.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      github-actions-minor-patch:
+        applies-to: version-updates
+        patterns: ['*']
+        update-types: [minor, patch]
