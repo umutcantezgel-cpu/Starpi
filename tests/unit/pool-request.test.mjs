@@ -36,8 +36,8 @@ function expand(/** @type {unknown} */ value) {
 }
 
 describe('pool allowlists', () => {
-  it('describes four pools, each with a default model from its own list', () => {
-    assert.deepEqual([...POOL_IDS], ['nvidia', 'groq', 'gemini', 'openrouter']);
+  it('describes five pools, each with a default model from its own list', () => {
+    assert.deepEqual([...POOL_IDS], ['minimax', 'nvidia', 'groq', 'gemini', 'openrouter']);
     for (const spec of Object.values(POOL_SPECS)) {
       assert.ok(spec.models.some((m) => m.id === spec.defaultModel), spec.id);
       assert.ok(new URL(spec.root).protocol === 'https:', spec.id);

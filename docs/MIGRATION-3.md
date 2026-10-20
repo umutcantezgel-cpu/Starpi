@@ -41,6 +41,10 @@ Nothing needs to be done. On the first start of 3.0 in a browser profile:
   stays on the device, your own server becomes `local:*` (the first model it lists), an NVIDIA model
   becomes that model of the site's NVIDIA pool. The chat mode (free or verified source mode), the
   language and your server's address stay.
+- **The base model.** Where MiniMax M3.1 Flash is set up (a MiniMax key of yours, or the site's
+  MiniMax pool), **Auto** asks it first, ahead of your other keys; pick a model in the menu to use
+  another provider. Without it, Auto keeps the order of your keys, the site's pools, your server and
+  this device.
 - **Sync.** 3.0 never reads or writes the plaintext `chat_history` table of 2.x. Conversations sync
   only when you turn on **Settings › Chat sync** with a passphrase; rows are encrypted in the
   browser. Deleting a chat still removes the rows an earlier version stored in the old table.
@@ -91,8 +95,8 @@ Nothing needs to be done. On the first start of 3.0 in a browser profile:
 ### New server functions and variables
 
 The functions under `api/` are stateless and store nothing: the BYOK relay
-(`/api/relay/<provider>/<path>`), the site's key pools (`/api/pool`, NVIDIA, Groq, Gemini and
-OpenRouter), the speech routes (`/api/voice/*`), research steps (`/api/research/step`) and
+(`/api/relay/<provider>/<path>`), the site's key pools (`/api/pool`, MiniMax, NVIDIA, Groq, Gemini
+and OpenRouter), the speech routes (`/api/voice/*`), research steps (`/api/research/step`) and
 `/api/health`. `POST /api/chat/nvidia` and `GET /api/models/nvidia` keep working for clients of 2.x.
 [docs/SERVER.md](SERVER.md) lists every route, guard and variable. Renamed variables (the old names
 are still read):
@@ -103,7 +107,10 @@ are still read):
 | `NVIDIA_RATE_LIMIT_PER_MINUTE` | `STARPI_POOL_RPM_PER_IP` |
 
 `STARPI_ACCESS_CODE` makes the relay, the pools, the speech routes and research steps require a
-code; `STARPI_POOL_PROVIDERS` chooses the pools the site offers.
+code; `STARPI_POOL_PROVIDERS` chooses the pools the site offers. `MINIMAX_API_KEYS` is new: with it,
+the MiniMax pool serves the cloud base model, MiniMax M3.1 Flash, to every visitor without a key of
+their own, ahead of the free pools and at the cost of the site's MiniMax quota (always with the
+lowest thinking effort). Leave it unset to keep a site on free models only.
 
 ### Database
 

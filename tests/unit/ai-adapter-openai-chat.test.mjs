@@ -141,7 +141,7 @@ describe('openai chat adapter: request body and quirks', () => {
     assert.equal(plain.cache_prompt, undefined);
     assert.equal(plain.reasoning_effort, undefined);
     assert.equal(bodyOf('local', req, createLocalQuirks({ server: 'ollama', reasoningOff: true })).reasoning_effort, 'none');
-    assert.deepEqual(Object.keys(QUIRKS).sort(), ['deepseek', 'generic', 'groq', 'local', 'mistral', 'nvidia', 'openrouter', 'xai']);
+    assert.deepEqual(Object.keys(QUIRKS).sort(), ['deepseek', 'generic', 'groq', 'local', 'minimax', 'mistral', 'nvidia', 'openrouter', 'xai']);
   });
 });
 

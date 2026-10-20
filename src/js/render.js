@@ -357,9 +357,9 @@ export function sanitizeModelNames(str) {
   if (!str) return '';
   const label = t('app.model_generic');
   return String(str)
-    .replace(/\b(?:google|nvidia|liquid|openrouter|meta-llama|qwen|microsoft|deepseek)\/[^\s,)\]]+/gi, label)
+    .replace(/\b(?:google|nvidia|liquid|openrouter|meta-llama|qwen|microsoft|deepseek|minimax)\/[^\s,)\]]+/gi, label)
     .replace(
-      /\b(?:(?:Google\s+)?Gemini(?:[\s-]\d+(?:\.\d+)?)?(?:[\s-](?:Flash|Pro|Exp))?|OpenRouter|(?:Meta\s+)?Llama(?:[\s-]?\d+(?:\.\d+)?)?(?:-\d+(?:\.\d+)?B)?(?:-Instruct)?|Qwen\d*(?:\.\d+)?(?:-\d+(?:\.\d+)?B)?(?:-Instruct)?|DeepSeek(?:-R1)?|Nemotron|SmolLM2?|ChatGPT|GPT-[34][.\w-]*)\b/gi,
+      /\b(?:(?:Google\s+)?Gemini(?:[\s-]\d+(?:\.\d+)?)?(?:[\s-](?:Flash|Pro|Exp))?|OpenRouter|(?:Meta\s+)?Llama(?:[\s-]?\d+(?:\.\d+)?)?(?:-\d+(?:\.\d+)?B)?(?:-Instruct)?|Qwen\d*(?:\.\d+)?(?:-\d+(?:\.\d+)?B)?(?:-Instruct)?|DeepSeek(?:-R1)?|MiniMax(?:[\s-]M\d+(?:\.\d+)?(?:[\s-]Flash)?)?|Nemotron|SmolLM2?|ChatGPT|GPT-[34][.\w-]*)\b/gi,
       label,
     );
 }

@@ -1,6 +1,6 @@
 {
   "format": "starpi.role-candidates/v1",
-  "note": "Preferred models per provider and router role, most preferred first. Each list starts with the model catalog's tiers (catalog/snapshot.json): fast with the catalog's fast model; reasoning with balanced, then max (where balanced is the fast model, the list names a middle model first and max after it); judge with max; vision with those of balanced, fast and max that see images. Other models of the snapshot may follow. At run time only models a provider's live model list names are used. Edit freely: this file is data, and a unit test checks that it still agrees with the catalog.",
+  "note": "Preferred models per provider and router role, most preferred first. Each list starts with the model catalog's tiers (catalog/snapshot.json): fast with the catalog's fast model; reasoning with balanced, then max (where balanced is the fast model, the list names a middle model first and max after it; a provider with one model for every tier starts every list with it); judge with max; vision with those of balanced, fast and max that see images. Other models of the snapshot may follow. At run time only models a provider's live model list names are used. Edit freely: this file is data, and a unit test checks that it still agrees with the catalog.",
   "providers": {
     "anthropic": {
       "fast": ["claude-haiku-5-5", "claude-sonnet-5-5"],
@@ -43,6 +43,12 @@
       "reasoning": ["deepseek-reasoner", "deepseek-chat"],
       "vision": [],
       "judge": ["deepseek-reasoner"]
+    },
+    "minimax": {
+      "fast": ["MiniMax-M3.1-Flash", "MiniMax-M3"],
+      "reasoning": ["MiniMax-M3.1-Flash", "MiniMax-M3"],
+      "vision": [],
+      "judge": ["MiniMax-M3.1-Flash", "MiniMax-M3"]
     },
     "openrouter": {
       "fast": ["meta-llama/llama-3.3-70b-instruct:free"],

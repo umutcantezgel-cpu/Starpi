@@ -34,7 +34,7 @@ describe('provider catalog', () => {
   });
 
   it('gives remote providers an https API root without a version segment and their native auth header', () => {
-    for (const id of ['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter', 'nvidia']) {
+    for (const id of ['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'minimax', 'openrouter', 'nvidia']) {
       const info = PROVIDERS[/** @type {keyof typeof PROVIDERS} */ (id)];
       assert.match(info.baseUrl ?? '', /^https:\/\/[a-z0-9.-]+(?:\/[a-z]+)?$/, id);
       assert.doesNotMatch(info.baseUrl ?? '', /\/v\d/, id);
@@ -46,7 +46,7 @@ describe('provider catalog', () => {
 
   it('sets the transport defaults of the design: direct where browsers are allowed, auto, pool, device', () => {
     const transport = Object.fromEntries(PROVIDER_IDS.map((id) => [id, PROVIDERS[id].transport]));
-    assert.deepEqual(transport, { anthropic: 'direct', openai: 'direct', gemini: 'direct', xai: 'auto', groq: 'auto', mistral: 'auto', deepseek: 'auto', openrouter: 'direct', nvidia: 'pool', local: 'device', webgpu: 'device', wasm: 'device', companion: 'device' });
+    assert.deepEqual(transport, { anthropic: 'direct', openai: 'direct', gemini: 'direct', xai: 'auto', groq: 'auto', mistral: 'auto', deepseek: 'auto', minimax: 'auto', openrouter: 'direct', nvidia: 'pool', local: 'device', webgpu: 'device', wasm: 'device', companion: 'device' });
     assert.equal(PROVIDERS.local.auth, 'optional-bearer');
   });
 
@@ -92,7 +92,7 @@ describe('model snapshot', () => {
   });
 
   it('marks guessed capabilities of other providers as unverified', () => {
-    for (const provider of ['openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter']) {
+    for (const provider of ['openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'minimax', 'openrouter']) {
       const models = snapshotModels(/** @type {any} */ (provider));
       assert.ok(models.length > 0, provider);
       assert.ok(models.every((m) => m.caps.verified === false), provider);
@@ -244,7 +244,7 @@ describe('live model lists', () => {
 
 describe('pool allowlists', () => {
   it('take the NVIDIA list from its catalog and know their defaults', () => {
-    assert.deepEqual([...POOL_IDS], ['nvidia', 'groq', 'gemini', 'openrouter']);
+    assert.deepEqual([...POOL_IDS], ['minimax', 'nvidia', 'groq', 'gemini', 'openrouter']);
     assert.deepEqual([...poolAllowlist('nvidia')], NVIDIA_MODELS.map((m) => m.id));
     for (const id of POOL_IDS) {
       const pool = POOLS[id];
@@ -257,7 +257,7 @@ describe('pool allowlists', () => {
   });
 
   it('only allow models the snapshot knows for their provider; router pool models are free', () => {
-    for (const id of /** @type {const} */ (['groq', 'gemini', 'openrouter'])) {
+    for (const id of /** @type {const} */ (['minimax', 'groq', 'gemini', 'openrouter'])) {
       for (const model of POOLS[id].models) assert.ok(findModel(POOLS[id].provider, model), `${id}: ${model}`);
     }
     for (const model of POOLS.openrouter.models) assert.equal(capsFor('openrouter', model).free, true, model);

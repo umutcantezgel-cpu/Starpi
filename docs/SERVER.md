@@ -23,8 +23,8 @@ All of them run with Node.js on Vercel, or locally with `npm run preview`
 
 The relay answers only for a fixed list of providers, each with a fixed API root
 (`api/_lib/relay/upstreams.js`): `anthropic`, `openai`, `gemini`, `xai`, `groq`, `mistral`,
-`deepseek`, `openrouter`, `nvidia`, `elevenlabs` (speech and voices), `brave` and `tavily`
-(search). The host never comes from the browser, so local servers and custom URLs cannot be
+`deepseek`, `minimax` (chat completions only), `openrouter`, `nvidia`, `elevenlabs` (speech and
+voices), `brave` and `tavily` (search). The host never comes from the browser, so local servers and custom URLs cannot be
 reached through it; the browser talks to those directly.
 
 Every request runs these checks in this order:
@@ -53,8 +53,18 @@ short snake_case word.
 
 A pool spends the site's keys, so it accepts much less than the relay: chat text, images for
 models marked as vision models, no tools, a clamped output length and a model from the pool's
-allowlist (`api/_lib/pool/allowlist.js`). The pools are `nvidia`, `groq` and `openrouter`
-(OpenAI-compatible chat completions) and `gemini` (`streamGenerateContent`).
+allowlist (`api/_lib/pool/allowlist.js`). The pools are `minimax`, `nvidia`, `groq` and
+`openrouter` (OpenAI-compatible chat completions) and `gemini` (`streamGenerateContent`).
+
+The `minimax` pool serves the cloud base model, MiniMax M3.1 Flash (`MiniMax-M3.1-Flash` at
+`https://api.minimax.io/v1`, as of 2026-10-20). Once it has keys (`MINIMAX_API_KEYS`) and is among
+the enabled pools, Auto, the small jobs (titles, text recognition, graph extraction, council
+verdicts) and the privacy notice of every visitor without a MiniMax key of their own reach it
+first, on phones, tablets, laptops and desktops alike; the browser's on-device presets do not
+change. Its models always think and cannot switch thinking off, so the pool sends every request
+with `reasoning_effort: "low"` and drops the browser's own effort field like every other extra.
+It costs the site's MiniMax quota: leave the keys out, or name the other pools in
+`STARPI_POOL_PROVIDERS`, to offer free models only.
 
 Each request starts at the next key of the pool and moves on to the following keys until a
 stream starts. A key answered with 429 waits for its `Retry-After`, a key rejected with 401 or 403
@@ -109,8 +119,8 @@ between steps.
 | --- | --- | --- |
 | `STARPI_ALLOWED_ORIGINS` | empty | Further origins, comma separated, whose pages may call the functions. `NVIDIA_ALLOWED_ORIGINS` and `RELAY_ALLOWED_ORIGINS` are older names for the same list. |
 | `STARPI_RELAY_RPM_PER_IP` | `30` | Relay requests per client IP and minute. |
-| `STARPI_POOL_PROVIDERS` | all four | The pools the site offers, comma separated: `nvidia,groq,gemini,openrouter`. A pool also needs keys. |
-| `NVIDIA_API_KEYS`, `GROQ_API_KEYS`, `GEMINI_API_KEYS`, `OPENROUTER_API_KEYS` | empty | The keys of each pool, comma separated. Entries of another shape are ignored and only counted in the log. |
+| `STARPI_POOL_PROVIDERS` | all five | The pools the site offers, comma separated: `minimax,nvidia,groq,gemini,openrouter`. A pool also needs keys. |
+| `MINIMAX_API_KEYS`, `NVIDIA_API_KEYS`, `GROQ_API_KEYS`, `GEMINI_API_KEYS`, `OPENROUTER_API_KEYS` | empty | The keys of each pool, comma separated. Entries of another shape are ignored and only counted in the log. MiniMax keys make M3.1 Flash the first model of every visitor without a key of their own (see [site pools](#site-pools)). |
 | `STARPI_POOL_RPM_PER_IP` | `20` | Pool requests per client IP and minute, over all pools. `NVIDIA_RATE_LIMIT_PER_MINUTE` is the older name. |
 | `STARPI_POOL_DAILY_PER_IP` | `200` | Pool requests per client IP and UTC day that reach a provider; `0` turns the budget off. |
 | `ELEVENLABS_API_KEYS` | empty | The site's ElevenLabs keys for read-aloud, comma separated. |
@@ -147,7 +157,7 @@ functions only, not the static site.
 ```json
 {
   "version": "3.0.0",
-  "pools": { "nvidia": true, "groq": false, "gemini": true, "openrouter": false },
+  "pools": { "minimax": false, "nvidia": true, "groq": false, "gemini": true, "openrouter": false },
   "simulated": { "anthropic": false, "openai": false, "gemini": false },
   "voice": { "tts": false, "stt": false, "live": false },
   "research": false,
@@ -164,11 +174,12 @@ voice flags are true when the site's own keys can speak, transcribe or start Liv
 
 ```bash
 GROQ_API_KEYS=… npm run providers:ping -- --provider groq
+MINIMAX_API_KEYS=… npm run providers:ping -- --provider minimax
 ANTHROPIC_API_KEY=… npm run providers:ping -- --provider anthropic
 npm run providers:ping -- --provider gemini --model gemini-2.5-flash
 ```
 
-The script lists the provider's models (or voices, or one search result), checks whether the API
-allows calls from a browser, and for a pool sends one small streamed request per allowlisted
-model. It prints statuses, timings and model ids only, and says `skipped` (exit code 0) when no
+The script lists the provider's models (or voices, or one search result; for MiniMax, whose
+model list Starpi does not rely on, one small chat request instead), checks whether the API allows calls
+from a browser, and for a pool sends one small streamed request per allowlisted model. It prints statuses, timings and model ids only, and says `skipped` (exit code 0) when no
 key is set. It uses real quota. `npm run nvidia:ping` keeps its own NVIDIA report.

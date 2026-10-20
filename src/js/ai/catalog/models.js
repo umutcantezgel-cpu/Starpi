@@ -6,7 +6,8 @@
 //
 // Reasoning kinds (Caps.reasoning) say how thinking is controlled:
 //   none      no control (the model may still reason internally)
-//   effort    an effort level (OpenAI reasoning effort, Gemini thinking level, xAI reasoning effort)
+//   effort    an effort level (OpenAI reasoning effort, Gemini thinking level, xAI reasoning effort,
+//             MiniMax reasoning effort, whose lowest level still thinks)
 //   budget    a thinking token budget (Gemini thinking budget)
 //   adaptive  the model decides how much to think; effort tunes it (Anthropic)
 //   tagged    the model always reasons and sends the reasoning as text (a reasoning field or <think>)
@@ -14,7 +15,7 @@ import { NVIDIA_DEFAULT_MODEL } from '../../models/nvidia-catalog.js';
 import { WASM_CATALOG } from '../../models/wasm-catalog.js';
 import { MODEL_CATALOG } from '../../webgpu/models.js';
 import { readText } from '../sse.js';
-import { COMPANION_MODEL, getProvider } from './providers.js';
+import { COMPANION_MODEL, getProvider, MINIMAX_M3 } from './providers.js';
 import snapshotData from './snapshot.json' with { type: 'json' };
 
 /** @typedef {import('../contract.js').Caps} Caps */
@@ -85,6 +86,12 @@ const DEFAULT_CONTEXT = /** @type {Partial<Record<ProviderId, number>>} */ ({ an
 const ON_DEVICE = new Set(['local', 'webgpu', 'wasm']);
 
 /**
+ * The published context window of MiniMax M3 builds (providers.js MINIMAX_M3), as of 2026-10-20;
+ * a local server's own figure wins over it.
+ */
+export const MINIMAX_M3_CONTEXT = 1_000_000;
+
+/**
  * @param {unknown} value
  * @returns {value is Record<string, any>}
  */
@@ -104,14 +111,15 @@ export function heuristicCaps(provider, id, hints = {}) {
   const cloudVision = /claude|gemini|gpt-4o|gpt-4\.1|gpt-5|grok-4|pixtral|mistral-(?:small|medium|large)|llama-4|gemma-3|vision|[-_]vl\b|omni|llava/;
   // Written without a colon inside a bracket: the style build scans these files for class names.
   const tagged = /(?:^|[-/_.])(?:r1|qwq|magistral|reasoner|thinking)(?:$|[-_.]|:)|deepseek-r1|qwen3/;
+  const minimax = MINIMAX_M3.test(lower);
   /** @type {Caps['reasoning']} */
   let reasoning = 'none';
   if (provider === 'anthropic') reasoning = 'adaptive';
   else if (provider === 'gemini') reasoning = /gemini-[3-9]/.test(lower) ? 'effort' : /gemini-2\.5/.test(lower) ? 'budget' : 'none';
   else if (provider === 'openai') reasoning = /^(?:o\d|gpt-5)/.test(lower) ? 'effort' : 'none';
-  else if (/gpt-oss|grok-3-mini/.test(lower)) reasoning = 'effort';
-  else if (tagged.test(lower)) reasoning = 'tagged';
-  const context = hints.contextTokens ?? DEFAULT_CONTEXT[provider] ?? 32_768;
+  else if (provider === 'minimax' || /gpt-oss|grok-3-mini/.test(lower)) reasoning = 'effort';
+  else if (tagged.test(lower) || minimax) reasoning = 'tagged';
+  const context = hints.contextTokens ?? (minimax ? MINIMAX_M3_CONTEXT : DEFAULT_CONTEXT[provider]) ?? 32_768;
   const local = ON_DEVICE.has(provider);
   const free = provider === 'nvidia' || local || (provider === 'openrouter' && lower.endsWith(':free'));
   /** @type {Caps} */
@@ -130,7 +138,8 @@ export function heuristicCaps(provider, id, hints = {}) {
     json: !local,
     contextTokens: context,
     maxOutput: Math.min(hints.maxOutput ?? 8192, context),
-    latency: /mini|nano|flash|lite|instant|small|haiku|fast|\b[1-8]b\b/.test(lower) ? 'fast' : /opus|pro\b|large|ultra|reasoner|405b|\b[1-9]\d{2}b\b/.test(lower) ? 'slow' : 'normal',
+    // A MiniMax M3 build on a local server is a workstation model, whatever its name says.
+    latency: minimax && local ? 'slow' : /mini|nano|flash|lite|instant|small|haiku|fast|\b[1-8]b\b/.test(lower) ? 'fast' : /opus|pro\b|large|ultra|reasoner|405b|\b[1-9]\d{2}b\b/.test(lower) ? 'slow' : 'normal',
     free,
     local,
     verified: false,
@@ -168,7 +177,7 @@ export function onDeviceModels() {
 /** @type {ModelEntry[] | null} */
 let deviceCache = null;
 
-export { COMPANION_MODEL };
+export { COMPANION_MODEL, MINIMAX_M3 };
 
 
 /**
@@ -353,6 +362,7 @@ export function parseModelList(provider, json) {
       if (isCount(m.context_length)) entry.contextTokens = m.context_length;
       else if (isCount(m.context_window)) entry.contextTokens = m.context_window;
       else if (isCount(m.max_context_length)) entry.contextTokens = m.max_context_length;
+      else if (isCount(m.max_model_len)) entry.contextTokens = m.max_model_len;
     }
     out.push(entry);
   }

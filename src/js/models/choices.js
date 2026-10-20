@@ -15,7 +15,7 @@
 // Before the device probe the pickers hold the static options of index.html ('auto', 'device',
 // 'local:*'); 2.x values ('council', 'client', 'local', 'nvidia') are still read once.
 import { POOLS } from '../ai/catalog/pools.js';
-import { COMPANION_MODEL, getProvider } from '../ai/catalog/providers.js';
+import { COMPANION_MODEL, getProvider, MINIMAX_M3 } from '../ai/catalog/providers.js';
 import { MODEL_CATALOG, normalizePreference } from '../webgpu/models.js';
 import { recommendModels } from './device.js';
 import { NVIDIA_MODELS } from './nvidia-catalog.js';
@@ -29,9 +29,9 @@ import { WASM_CATALOG } from './wasm-catalog.js';
  * @typedef {import('./device.js').HardwareProfile} HardwareProfile
  * @typedef {import('./device.js').MeasuredRun} MeasuredRun
  *
- * @typedef {'recommended' | 'device' | 'companion' | 'pools' | 'anthropic' | 'openai' | 'gemini' | 'xai' | 'groq' | 'mistral' | 'deepseek' | 'openrouter' | 'nvidia' | 'server'} GroupId
+ * @typedef {'recommended' | 'device' | 'companion' | 'pools' | 'anthropic' | 'openai' | 'gemini' | 'xai' | 'groq' | 'mistral' | 'deepseek' | 'minimax' | 'openrouter' | 'nvidia' | 'server'} GroupId
  *
- * @typedef {'needs-webgpu' | 'heavy' | 'no-vision' | 'not-configured'} PickerWarning
+ * @typedef {'needs-webgpu' | 'heavy' | 'no-vision' | 'not-configured' | 'workstation'} PickerWarning
  *
  * @typedef {object} PickerItem
  * @property {string} value
@@ -80,7 +80,7 @@ import { WASM_CATALOG } from './wasm-catalog.js';
  */
 
 /** Provider groups, in picker order. */
-export const PROVIDER_GROUPS = /** @type {readonly ProviderId[]} */ (Object.freeze(['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter', 'nvidia']));
+export const PROVIDER_GROUPS = /** @type {readonly ProviderId[]} */ (Object.freeze(['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'minimax', 'openrouter', 'nvidia']));
 
 /** i18n keys of the option group labels (provider groups are named by the catalog's label). */
 export const GROUP_KEYS = Object.freeze({
@@ -103,6 +103,7 @@ const WARNING_KEYS = Object.freeze({
   heavy: 'models.warn_heavy',
   'no-vision': 'chat-thread.picker.warn_no_vision',
   'not-configured': 'models.warn_not_configured',
+  workstation: 'chat-thread.picker.warn_workstation',
 });
 
 /** @type {Readonly<Record<NonNullable<PickerItem['recommended']>, string>>} */
@@ -242,7 +243,8 @@ function promote(from, to, value, extra) {
 }
 
 /**
- * The value of the site's default free model, when a pool serves one: NVIDIA first, then the others.
+ * The value of the site's default free model, when a pool serves one, in the catalog's pool order:
+ * the base model's pool (MiniMax) first, then NVIDIA and the others.
  * @param {PickerState} state
  * @returns {string | null}
  */
@@ -289,11 +291,23 @@ export function assistantGroups(state) {
     groups.splice(2, 0, { id: 'companion', items: [{ value: COMPANION_VALUE, runtime: 'companion', provider: 'companion', labelKey: COMPANION_LABEL_KEY, ...(state.companion ? {} : { disabled: true }) }] });
   }
   if (state.server || state.current?.startsWith('local:')) {
-    const items = [{ value: 'local:*', runtime: /** @type {const} */ ('server'), labelKey: 'chat-thread.picker.server_first' }, ...state.serverModels.map((id) => ({ value: `local:${id}`, runtime: /** @type {const} */ ('server'), label: id }))];
+    /** @type {PickerItem[]} */
+    const items = [{ value: 'local:*', runtime: 'server', labelKey: 'chat-thread.picker.server_first' }, ...state.serverModels.map((id) => serverItem(id))];
     groups.push({ id: 'server', items });
   }
   keepCurrent(groups, state);
   return groups.filter((g) => g.items.length > 0);
+}
+
+/**
+ * A model the own server lists. A self-hosted MiniMax M3 or M3.1 build is marked as a workstation
+ * model: it needs about 160 GB of memory or more, which no phone, laptop browser or in-browser
+ * engine has.
+ * @param {string} id
+ * @returns {PickerItem}
+ */
+export function serverItem(id) {
+  return { value: `local:${id}`, runtime: 'server', label: id, ...(MINIMAX_M3.test(id) ? { warning: /** @type {const} */ ('workstation') } : {}) };
 }
 
 /**
@@ -313,7 +327,7 @@ function keepCurrent(groups, state) {
   const model = value.slice(at + 1);
   if (provider === 'local') {
     const server = groups.find((g) => g.id === 'server');
-    if (server) server.items.push({ value, runtime: 'server', label: model });
+    if (server) server.items.push(serverItem(model));
     return;
   }
   const keyed = state.keyed.includes(provider);

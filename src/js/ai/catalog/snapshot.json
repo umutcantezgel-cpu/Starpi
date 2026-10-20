@@ -739,6 +739,63 @@
         }
       ]
     },
+    "minimax": {
+      "roles": {
+        "fast": "MiniMax-M3.1-Flash",
+        "balanced": "MiniMax-M3.1-Flash",
+        "max": "MiniMax-M3.1-Flash"
+      },
+      "models": [
+        {
+          "id": "MiniMax-M3.1-Flash",
+          "label": "MiniMax M3.1 Flash",
+          "caps": {
+            "text": true,
+            "vision": false,
+            "pdf": false,
+            "tools": true,
+            "parallelTools": false,
+            "reasoning": "effort",
+            "reasoningVisible": true,
+            "search": "none",
+            "imageOut": false,
+            "audioIn": false,
+            "live": false,
+            "json": false,
+            "contextTokens": 1000000,
+            "maxOutput": 32768,
+            "latency": "normal",
+            "free": false,
+            "local": false,
+            "verified": false
+          }
+        },
+        {
+          "id": "MiniMax-M3",
+          "label": "MiniMax M3",
+          "caps": {
+            "text": true,
+            "vision": false,
+            "pdf": false,
+            "tools": true,
+            "parallelTools": false,
+            "reasoning": "effort",
+            "reasoningVisible": true,
+            "search": "none",
+            "imageOut": false,
+            "audioIn": false,
+            "live": false,
+            "json": false,
+            "contextTokens": 1000000,
+            "maxOutput": 32768,
+            "latency": "normal",
+            "free": false,
+            "local": false,
+            "verified": false
+          }
+        }
+      ]
+    },
     "openrouter": {
       "roles": {
         "fast": "meta-llama/llama-3.3-70b-instruct:free",
@@ -763,6 +820,30 @@
             "live": false,
             "json": true,
             "contextTokens": 2000000,
+            "maxOutput": 32768,
+            "latency": "normal",
+            "free": false,
+            "local": false,
+            "verified": false
+          }
+        },
+        {
+          "id": "minimax/minimax-m3.1-flash",
+          "label": "MiniMax M3.1 Flash",
+          "caps": {
+            "text": true,
+            "vision": false,
+            "pdf": false,
+            "tools": true,
+            "parallelTools": false,
+            "reasoning": "effort",
+            "reasoningVisible": true,
+            "search": "plugin",
+            "imageOut": false,
+            "audioIn": false,
+            "live": false,
+            "json": false,
+            "contextTokens": 1000000,
             "maxOutput": 32768,
             "latency": "normal",
             "free": false,

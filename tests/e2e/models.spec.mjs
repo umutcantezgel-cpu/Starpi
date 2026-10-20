@@ -147,7 +147,7 @@ test.describe('model picker', () => {
     expect(await groupLabels(page, SETTINGS)).toEqual(await groupLabels(page, HEADER));
     expect(await optionValues(page, SETTINGS)).toEqual(await optionValues(page, HEADER));
     // The wider settings picker says more about Auto.
-    await expect(page.locator(`${SETTINGS} option[value="auto"]`)).toHaveText("Auto · the best model that is set up: your keys, the site's free models, your server, this device");
+    await expect(page.locator(`${SETTINGS} option[value="auto"]`)).toHaveText("Auto · the best model that is set up: MiniMax M3.1 Flash when it is available, then your keys, the site's free models, your server, this device");
     await expect(page.locator(`${HEADER} option[value="auto"]`)).toHaveText('Auto · best available');
     const badges = page.locator('#cfgDeviceBadges');
     await expect(badges).toBeVisible();

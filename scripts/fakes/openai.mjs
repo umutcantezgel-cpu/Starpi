@@ -11,6 +11,8 @@
 //   deepseek    reasoning_content; ": keep-alive" comments before the first chunk
 //   openrouter  reasoning plus reasoning_details; ": OPENROUTER PROCESSING" comments; web plugin annotations
 //   nvidia      reasoning_content; the model list of Starpi's NVIDIA catalog
+//   minimax     always thinks: reasoning_content on every answer; reasoning_effort none, an effort
+//               it does not know, or a thinking switch set to disabled answer 400
 //   ollama      no key needed; reasoning as <think> tags in the content; /api/tags and /api/show
 //
 // Scenarios (see shared.mjs for how to pick one): text (default), reasoning, tool, search,
@@ -41,7 +43,7 @@ export const DEFAULT_PORT = 4611;
 
 /**
  * @typedef {'reasoning_content' | 'reasoning' | 'thinking_chunks' | 'think_tags' | 'count_only'} ReasoningShape
- * @typedef {{ models: string[], reasoning: ReasoningShape, keyOptional?: boolean, comment?: string, wholeToolCalls?: boolean, lengthReason?: string, usageField?: 'x_groq', alwaysUsage?: boolean }} Flavor
+ * @typedef {{ models: string[], reasoning: ReasoningShape, keyOptional?: boolean, comment?: string, wholeToolCalls?: boolean, lengthReason?: string, usageField?: 'x_groq', alwaysUsage?: boolean, alwaysThinks?: boolean }} Flavor
  */
 
 /** @type {Readonly<Record<string, Flavor>>} */
@@ -53,8 +55,23 @@ export const FLAVORS = Object.freeze({
   deepseek: { models: ['fake-deepseek-chat', 'fake-deepseek-reasoner'], reasoning: 'reasoning_content', comment: ': keep-alive', alwaysUsage: true },
   openrouter: { models: ['fake/router-small', 'fake/router-reasoner:free'], reasoning: 'reasoning', comment: ': OPENROUTER PROCESSING', alwaysUsage: true },
   nvidia: { models: NVIDIA_MODELS.map((m) => m.id), reasoning: 'reasoning_content', alwaysUsage: true },
+  minimax: { models: ['MiniMax-M3.1-Flash', 'MiniMax-M3'], reasoning: 'reasoning_content', alwaysUsage: true, alwaysThinks: true },
   ollama: { models: ['fake-local:8b', 'fake-local-reasoner:4b'], reasoning: 'think_tags', keyOptional: true, wholeToolCalls: true },
 });
+
+/** The effort levels of a flavor that always thinks; anything else is refused. */
+const THINKING_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+/**
+ * Whether a request asks a model that always thinks not to think (or for an effort it does not know).
+ * @param {any} body
+ */
+function refusesThinking(body) {
+  const effort = body?.reasoning_effort;
+  const thinking = body?.thinking;
+  if (effort !== undefined && !THINKING_EFFORTS.includes(effort)) return true;
+  return thinking === 'disabled' || thinking === false || (thinking && typeof thinking === 'object' && thinking.type === 'disabled');
+}
 
 /** @param {unknown} content */
 function textOf(content) {
@@ -227,8 +244,11 @@ export function createOpenAiFake(options = {}) {
    */
   async function chat(ctx, flavorName, flavor, n) {
     if (!ctx.json || !Array.isArray(ctx.json.messages) || ctx.json.messages.length === 0) return ctx.fail(400, 'bad_request');
+    if (flavor.alwaysThinks && refusesThinking(ctx.json)) return ctx.fail(400, 'bad_request');
     const r = readRequest(ctx.json, 'chat');
-    const { scenario, reasoning } = decide(ctx.control.scenario, r);
+    const decided = decide(ctx.control.scenario, r);
+    const scenario = decided.scenario;
+    const reasoning = decided.reasoning || flavor.alwaysThinks === true;
     const id = `chatcmpl-${n}fake`;
     const created = 1767225600 + n;
     const text = scenario === 'tool' ? '' : answerText(scenario, r, book);

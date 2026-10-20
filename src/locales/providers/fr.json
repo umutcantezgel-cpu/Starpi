@@ -125,6 +125,7 @@
       "llamacpp": "llama.cpp : son serveur accepte les appels des pages web sans configuration supplémentaire."
     },
     "chrome": "Chrome demande si ce site peut accéder aux appareils de votre réseau local. Autorisez-le, sinon le navigateur bloque les appels vers votre serveur.",
-    "relay_never": "Les appels vers votre propre serveur partent toujours directement de ce navigateur ; le relais n’atteint jamais votre réseau."
+    "relay_never": "Les appels vers votre propre serveur partent toujours directement de ce navigateur ; le relais n’atteint jamais votre réseau.",
+    "large_models": "MiniMax M3 ou M3.1 sur votre propre serveur nécessite une station de travail ou un serveur avec environ 160 Go de mémoire ou plus ; il n'existe pas de version pour le navigateur. Des builds GGUF de M3 existent ; les poids de M3.1 Flash n'étaient pas encore publics en octobre 2026. Starpi lit leur réflexion et leur fenêtre de contexte (1 M de tokens, ou ce que le serveur indique)."
   }
 }

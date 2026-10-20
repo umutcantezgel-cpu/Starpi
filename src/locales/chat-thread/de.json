@@ -17,7 +17,7 @@
   },
   "picker": {
     "auto": "Auto · bestes verfügbares",
-    "auto_long": "Auto · das beste eingerichtete Modell: Ihre Schlüssel, die kostenlosen Modelle der Seite, Ihr Server, dieses Gerät",
+    "auto_long": "Auto · das beste eingerichtete Modell: MiniMax M3.1 Flash, wenn verfügbar, dann Ihre Schlüssel, die kostenlosen Modelle der Seite, Ihr Server, dieses Gerät",
     "group_recommended": "Empfohlen für dieses Gerät",
     "group_device": "Auf diesem Gerät",
     "group_pools": "Kostenlos (über Starpi)",
@@ -27,6 +27,7 @@
     "measured_fast": "hier schnell gemessen",
     "unverified": "ungeprüft",
     "warn_no_vision": "sieht keine Bilder",
+    "warn_workstation": "braucht eine Workstation oder einen Server (etwa 160 GB Speicher)",
     "pools_label": "Kostenlose Modelle dieser Seite:",
     "strength_hint": "Welches Modell Auto bei einem Anbieter nimmt, wenn Sie keines seiner Modelle gewählt haben.",
     "served": "Beantwortet von {model}"

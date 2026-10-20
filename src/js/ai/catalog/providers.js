@@ -41,6 +41,8 @@
  * @property {string | null} modelsPath  live model list below baseUrl
  * @property {boolean} byok            a user key can be added
  * @property {boolean} pool            the site may offer a key pool for it
+ * @property {string} [testModel]      for a provider without a live model list: the model the key
+ *   test sends one tiny chat request to instead
  */
 
 /**
@@ -180,6 +182,27 @@ export const PROVIDERS = Object.freeze({
     byok: true,
     pool: false,
   }),
+  // MiniMax on its OpenAI-compatible endpoint (https://api.minimax.io/v1, as of 2026-10-20). The
+  // catalog relies on no model list (no modelsPath: the key test asks the base model for a few
+  // tokens instead) and on no key format (no keyPattern or hint).
+  minimax: provider({
+    id: 'minimax',
+    label: 'MiniMax',
+    dialect: 'openai-chat',
+    baseUrl: 'https://api.minimax.io',
+    auth: 'bearer',
+    authHeader: 'authorization',
+    transport: 'auto',
+    keyPattern: null,
+    keyHint: null,
+    docsUrl: 'https://platform.minimax.io/docs',
+    keysUrl: 'https://platform.minimax.io',
+    quirks: 'minimax',
+    modelsPath: null,
+    byok: true,
+    pool: true,
+    testModel: 'MiniMax-M3.1-Flash',
+  }),
   openrouter: provider({
     id: 'openrouter',
     label: 'OpenRouter',
@@ -290,8 +313,36 @@ export const COMPANION_MODEL = 'starpi-core';
 
 /** Provider ids in the order pickers list them. */
 export const PROVIDER_ORDER = /** @type {readonly ProviderId[]} */ (
-  Object.freeze(['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter', 'nvidia', 'local', 'webgpu', 'wasm', 'companion'])
+  Object.freeze(['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'minimax', 'openrouter', 'nvidia', 'local', 'webgpu', 'wasm', 'companion'])
 );
+
+/**
+ * The cloud base model: what Auto, the purposes and the privacy notice reach first whenever it can
+ * answer (a key of the user's, or this site's pool for it), on every kind of device. Without it the
+ * order stays as it is, and the on-device default is untouched.
+ */
+export const BASE_PROVIDER = /** @type {ProviderId} */ ('minimax');
+export const BASE_MODEL = 'MiniMax-M3.1-Flash';
+
+/**
+ * MiniMax M3 and M3.1 builds by name, also as a self-hosted server lists them (with a vendor prefix,
+ * a quantization suffix or a tag). They always think; catalog/models.js knows their context window.
+ */
+export const MINIMAX_M3 = /minimax[-_. ]?m3/i;
+
+/**
+ * The providers with the base model's provider moved to the front when it is among them; the
+ * others keep their order.
+ * @template {string} T
+ * @param {readonly T[]} providers
+ * @returns {T[]}
+ */
+export function baseFirst(providers) {
+  const out = [...providers];
+  const at = out.indexOf(/** @type {T} */ (/** @type {string} */ (BASE_PROVIDER)));
+  if (at > 0) out.unshift(...out.splice(at, 1));
+  return out;
+}
 
 /**
  * Local OpenAI-compatible servers with their default address. A browser page may call one only

@@ -74,7 +74,7 @@ const NATIVE_AUTH = /** @type {Readonly<Partial<Record<RelayTarget, string>>>} *
 );
 
 /** Providers the site can relay or pool; local servers and in-browser engines never leave the device. */
-const REMOTE_PROVIDERS = new Set(['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter', 'nvidia']);
+const REMOTE_PROVIDERS = new Set(['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'minimax', 'openrouter', 'nvidia']);
 /** Voice and search services the relay also forwards to (never pooled). */
 export const RELAY_SERVICES = /** @type {readonly ServiceId[]} */ (Object.freeze(['elevenlabs', 'brave', 'tavily']));
 const RELAY_TARGETS = new Set([...REMOTE_PROVIDERS, ...RELAY_SERVICES]);

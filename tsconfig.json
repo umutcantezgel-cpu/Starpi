@@ -117,6 +117,7 @@
     "src/js/ai/quirks/groq.js",
     "src/js/ai/quirks/index.js",
     "src/js/ai/quirks/local.js",
+    "src/js/ai/quirks/minimax.js",
     "src/js/ai/quirks/mistral.js",
     "src/js/ai/quirks/nvidia.js",
     "src/js/ai/quirks/openrouter.js",

@@ -1,14 +1,16 @@
 // @ts-check
 // Model allowlists of the site's key pools (/api/pool): which models a pool may call with the
 // site's own keys, what the pool tells about each (name, vendor, reasoning, images), its default
-// model and its output cap. The NVIDIA pool takes its list from the NVIDIA catalog; the others list
-// free-tier models of their provider. Pure data, imported by the browser (the "Free (via Starpi)"
-// picker group) and by the server's pool allowlist (api/_lib/pool/allowlist.js), so both agree on
-// what is allowed.
+// model and its output cap. The NVIDIA pool takes its list from the NVIDIA catalog; the MiniMax pool
+// serves the cloud base model (catalog/providers.js BASE_MODEL) and comes first, so a site that
+// offers it makes it the default free model; the others list free-tier models of their provider.
+// Pure data, imported by the browser (the "Free (via Starpi)" picker group) and by the server's
+// pool allowlist (api/_lib/pool/allowlist.js), so both agree on what is allowed.
 import { NVIDIA_DEFAULT_MODEL, NVIDIA_LIMITS, NVIDIA_MODELS } from '../../models/nvidia-catalog.js';
+import { BASE_MODEL } from './providers.js';
 
 /** @typedef {import('../contract.js').ProviderId} ProviderId */
-/** @typedef {'nvidia' | 'groq' | 'gemini' | 'openrouter'} PoolId */
+/** @typedef {'minimax' | 'nvidia' | 'groq' | 'gemini' | 'openrouter'} PoolId */
 
 /**
  * @typedef {object} PoolModelInfo
@@ -30,7 +32,7 @@ import { NVIDIA_DEFAULT_MODEL, NVIDIA_LIMITS, NVIDIA_MODELS } from '../../models
  * @property {number} maxOutputTokens          cap on `max_tokens` the pool enforces
  */
 
-export const POOL_IDS = /** @type {readonly PoolId[]} */ (Object.freeze(['nvidia', 'groq', 'gemini', 'openrouter']));
+export const POOL_IDS = /** @type {readonly PoolId[]} */ (Object.freeze(['minimax', 'nvidia', 'groq', 'gemini', 'openrouter']));
 
 /**
  * @param {Omit<PoolInfo, 'models' | 'visionModels'>} info
@@ -52,6 +54,14 @@ const entry = (id, label, vendor, flags = {}) => ({ id, label, vendor, reasoning
 
 /** @type {Readonly<Record<PoolId, Readonly<PoolInfo>>>} */
 export const POOLS = Object.freeze({
+  // The base model; the server asks it for the lowest thinking effort (api/_lib/pool/allowlist.js).
+  minimax: pool({
+    id: 'minimax',
+    provider: 'minimax',
+    entries: [entry(BASE_MODEL, 'MiniMax M3.1 Flash', 'MiniMax', { reasoning: true })],
+    defaultModel: BASE_MODEL,
+    maxOutputTokens: 4096,
+  }),
   nvidia: pool({
     id: 'nvidia',
     provider: 'nvidia',

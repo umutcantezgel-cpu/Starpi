@@ -9,7 +9,7 @@
 </p>
 
 **A knowledge assistant in the browser that shows how far each answer can be trusted.** Starpi
-answers with the model you choose: Anthropic, OpenAI, Gemini, xAI, Groq, Mistral, DeepSeek,
+answers with the model you choose: Anthropic, OpenAI, Gemini, xAI, Groq, Mistral, DeepSeek, MiniMax,
 OpenRouter or NVIDIA with your own key, free models from the site's key pools without any key, your
 own server, a model in the browser (WebGPU, or WebAssembly on the processor), or Starpi Core, the
 local companion on your own machine. **Auto** decides for each question whether your files can
@@ -34,8 +34,9 @@ of your own are needed. In English, German, French, Spanish, Italian and Turkish
 ## What's new in 3.0
 
 - **Every provider in one chat.** One AI layer for Anthropic, OpenAI, Gemini, xAI, Groq, Mistral,
-  DeepSeek, OpenRouter, NVIDIA, your own server and the models on your device, with extended
-  thinking and web search per answer. Your key goes to the provider directly, or through Starpi's
+  DeepSeek, MiniMax, OpenRouter, NVIDIA, your own server and the models on your device, with extended
+  thinking and web search per answer. MiniMax M3.1 Flash is the cloud base model: Auto reaches it
+  first whenever it is set up. Your key goes to the provider directly, or through Starpi's
   stateless relay when a provider blocks browsers; without a key, the site's pools offer free models.
 - **Auto · Free · Grounded.** Auto routes each question without an extra model call: to your sources
   when it points at them, to a free conversation otherwise, or mixed. Every answer carries a label
@@ -333,9 +334,9 @@ what the source check judges.
 | In the model menu | Models | How a request goes | Key |
 | --- | --- | --- | --- |
 | Providers with your key | Anthropic, OpenAI, Gemini, OpenRouter | direct from the browser | yours, for the tab or in the vault |
-| Providers with your key that refuse browser calls | xAI, Groq, Mistral, DeepSeek (and NVIDIA with an `nvapi-` key) | direct first; a blocked call is retried through the site's stateless relay, and the choice is remembered per provider | yours |
-| **Free (via Starpi)** | the NVIDIA, Groq, Gemini and OpenRouter pools below | the site's pool function, with a site key | none |
-| **Your server** | any Chat Completions server (Ollama, LM Studio, vLLM, llama.cpp, MLX) at `https://…` or `http://localhost` | direct, never through the site | optional |
+| Providers with your key that refuse browser calls | xAI, Groq, Mistral, DeepSeek, MiniMax (and NVIDIA with an `nvapi-` key) | direct first; a blocked call is retried through the site's stateless relay, and the choice is remembered per provider | yours |
+| **Free (via Starpi)** | the MiniMax, NVIDIA, Groq, Gemini and OpenRouter pools below | the site's pool function, with a site key | none |
+| **Your server** | any Chat Completions server (Ollama, LM Studio, vLLM, llama.cpp, MLX) at `https://…` or `http://localhost`, also a self-hosted MiniMax M3 build ([below](#the-base-model-minimax-m31-flash)) | direct, never through the site | optional |
 | **On this device** | the WebGPU and processor (WASM) presets [below](#on-device-models) | a Web Worker | none |
 | **Starpi Core (local companion)** | the models the companion's owner configured, by data class | the loopback interface | in the companion's vault |
 
@@ -345,13 +346,15 @@ the browser and the server share). A deployment offers the pools it has keys for
 
 | Pool | Models (default first) |
 | --- | --- |
+| MiniMax | MiniMax M3.1 Flash, the base model (always with the lowest thinking effort; the site's own MiniMax quota) |
 | NVIDIA | the NIM models of the [T4 table](#nvidia-nim-models-t4) |
 | Groq | Llama 3.3 70B Versatile, Llama 3.1 8B Instant, GPT-OSS 20B, GPT-OSS 120B, Qwen3 32B |
 | Gemini | Gemini 2.5 Flash-Lite, Gemini 2.5 Flash |
 | OpenRouter | Llama 3.3 70B Instruct, DeepSeek R1, Gemma 3 27B, Qwen3 Coder (free variants) |
 
-**Auto** asks, in this order: your keys (the model of the strength you chose, else the provider's
-balanced model), the site's pools, your own server, then the model already loaded on this device. A
+**Auto** asks, in this order: the base model when it is set up (your MiniMax key, or the site's
+MiniMax pool), your keys (the model of the strength you chose, else the provider's balanced model),
+the site's pools, your own server, then the model already loaded on this device. A
 call that fails before any text arrived moves on to the next model; once text arrived, the answer
 belongs to that model, and the answer says which model wrote it. Small jobs (titles, text
 recognition in images, graph extraction, the council's verdict) run along the same kind of chain,
@@ -361,8 +364,36 @@ have keys for.
 
 Keys last for the tab by default. With a passphrase they are kept in IndexedDB as AES-GCM ciphertext
 (PBKDF2-SHA-256, 600,000 iterations), and the vault locks after 30 minutes without activity.
-**Settings › Model providers and keys** tests a key against the provider's model list and shows an
-error code, never the provider's error text.
+**Settings › Model providers and keys** tests a key against the provider's model list (MiniMax,
+which has none, answers one small chat request) and shows an error code, never the provider's error
+text.
+
+### The base model: MiniMax M3.1 Flash
+
+MiniMax released M3.1 Flash on 2026-10-19: a mixture-of-experts model with about 428B parameters in
+total, about 23B of them active, and a context window of 1M tokens (as of 2026-10-20).
+Starpi reaches it at MiniMax's OpenAI-compatible API (`https://api.minimax.io/v1`, model
+`MiniMax-M3.1-Flash`; `MiniMax-M3` is offered beside it) and at OpenRouter
+(`minimax/minimax-m3.1-flash`). Whenever it is set up, with your MiniMax key or through the site's
+MiniMax pool, it is the first model of Auto, of the small jobs and of the privacy notice, on phones,
+tablets, laptops and desktops alike: it runs in MiniMax's cloud, so the device does not matter. When
+it is not set up, nothing changes: the order above stays, and the on-device default still follows
+the device class. Grounded answers keep the source check, and free answers keep their label.
+
+The model always thinks; its API refuses a request to switch thinking off. Its thinking arrives
+apart from the answer and is shown, like every model's, in the answer's collapsible details, never
+as answer text. With extended thinking off, Starpi asks for the lowest effort (`reasoning_effort:
+"low"`); with it on, the effort you chose. Starpi relies on no model list and no key format for
+MiniMax, so **Test key** sends one small chat request instead of reading a list, and the key field
+shows no prefix hint.
+
+Open weights are announced but not released (as of 2026-10-20). Even then, MiniMax M3.1 Flash is no
+on-device model: a 3-bit GGUF build needs about 160 GB of memory, which no phone, laptop browser or
+WebGPU and WebAssembly preset has. **Your server** recognises self-hosted MiniMax M3 and M3.1 builds
+by a model name containing `minimax-m3` (GGUF builds of M3 exist): it reads their thinking from
+`reasoning_content` or `<think>` tags, takes the context window the server reports (Ollama, llama.cpp
+and vLLM say it) or else 1M tokens, and marks them in the model picker as needing a workstation or
+server.
 
 ## Modes and what leaves the device
 
@@ -398,7 +429,7 @@ flowchart TD
         quote["synthesizeAnswer: quotes the excerpts,<br/>no model"]
     end
     subgraph net["Sent over the network"]
-        prov["provider with the user's key: direct (Anthropic,<br/>OpenAI, Gemini, OpenRouter) or through the relay<br/>(xAI, Groq, Mistral, DeepSeek, NVIDIA key)"]
+        prov["provider with the user's key: direct (Anthropic,<br/>OpenAI, Gemini, OpenRouter) or through the relay<br/>(xAI, Groq, Mistral, DeepSeek, MiniMax, NVIDIA key)"]
         pool["site pool: text and images, no tools,<br/>allowlisted model, site key"]
         srv["own server: direct, https or loopback http"]
         comp["companion: bare question, mode, data class,<br/>loopback; answer arrives gated"]
@@ -654,7 +685,7 @@ flowchart LR
 
     subgraph third["Third parties outside Starpi control"]
         providers["Anthropic, OpenAI, Gemini, OpenRouter"]
-        blocked["xAI, Groq, Mistral, DeepSeek, NVIDIA,<br/>ElevenLabs, Brave, Tavily"]
+        blocked["xAI, Groq, Mistral, DeepSeek, MiniMax, NVIDIA,<br/>ElevenLabs, Brave, Tavily"]
         live["Gemini Live socket"]
         hosts["Hugging Face, raw.githubusercontent.com"]
         searx["SearXNG, MCP servers the user adds"]
@@ -910,7 +941,7 @@ variable.
 | Route | Purpose |
 | --- | --- |
 | `/api/relay/<provider>/<path>` | The relay for keys of your own, to a fixed table of provider hosts (no other address can be reached through it) |
-| `POST /api/pool`, `GET /api/models/pool` | The site's key pools (`NVIDIA_API_KEYS`, `GROQ_API_KEYS`, `GEMINI_API_KEYS`, `OPENROUTER_API_KEYS`) |
+| `POST /api/pool`, `GET /api/models/pool` | The site's key pools (`MINIMAX_API_KEYS` for the base model, `NVIDIA_API_KEYS`, `GROQ_API_KEYS`, `GEMINI_API_KEYS`, `OPENROUTER_API_KEYS`) |
 | `POST /api/voice/speak`, `POST /api/voice/transcribe`, `GET /api/voice/voices`, `POST /api/voice/live-token` | Speech with the site's keys, and single-use Live tokens |
 | `POST /api/research/step` | Research steps on the site's Gemini pool, with signed tool turns |
 | `GET /api/health` | What the site offers, as booleans only |

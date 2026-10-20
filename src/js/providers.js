@@ -18,7 +18,7 @@
 // (the flag companion/pair.js keeps in localStorage while a link is stored, so a browser that never
 // paired opens no database for it), reached through the pairing, never part of Auto and never
 // asked for a purpose (titles, OCR, council).
-import { COMPANION_MODEL, getProvider, PROVIDER_ORDER } from './ai/catalog/providers.js';
+import { baseFirst, COMPANION_MODEL, getProvider, PROVIDER_ORDER } from './ai/catalog/providers.js';
 import { POOLS } from './ai/catalog/pools.js';
 import { hasKey, onKeysChange } from './ai/keys.js';
 import { STORAGE_KEYS, TIMEOUTS_MS } from './config.js';
@@ -218,9 +218,10 @@ export function routeOf(provider) {
 }
 
 /**
- * Providers that can answer now, in the order Auto tries them: the user's keys, the site's pools,
- * the own server. The engine in this browser comes last and is not listed here; the paired
- * companion answers only when it is picked.
+ * Providers that can answer now, in the order Auto tries them: the cloud base model's provider
+ * first whenever it can answer (a key of the user's or the site's pool for it; catalog/providers.js
+ * BASE_PROVIDER), then the user's keys, the site's pools, the own server. The engine in this browser
+ * comes last and is not listed here; the paired companion answers only when it is picked.
  * @returns {ProviderId[]}
  */
 export function configuredProviders() {
@@ -228,7 +229,7 @@ export function configuredProviders() {
   const out = [...state.keyed];
   for (const pool of Object.values(POOLS)) if (!out.includes(pool.provider) && state.pools?.[pool.id]?.configured) out.push(pool.provider);
   if (state.server) out.push('local');
-  return out;
+  return baseFirst(out);
 }
 
 /**

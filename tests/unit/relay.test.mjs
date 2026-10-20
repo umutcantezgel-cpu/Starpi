@@ -36,7 +36,7 @@ const bearer = (/** @type {string} */ key) => ({ authorization: `Bearer ${key}` 
 
 describe('upstream map', () => {
   it('names a fixed https root for every provider and never a local address', () => {
-    assert.deepEqual([...RELAY_PROVIDERS].sort(), ['anthropic', 'brave', 'deepseek', 'elevenlabs', 'gemini', 'groq', 'mistral', 'nvidia', 'openai', 'openrouter', 'tavily', 'xai']);
+    assert.deepEqual([...RELAY_PROVIDERS].sort(), ['anthropic', 'brave', 'deepseek', 'elevenlabs', 'gemini', 'groq', 'minimax', 'mistral', 'nvidia', 'openai', 'openrouter', 'tavily', 'xai']);
     for (const upstream of Object.values(UPSTREAMS)) {
       const url = new URL(upstream.root);
       assert.equal(url.protocol, 'https:', upstream.id);
@@ -65,6 +65,7 @@ describe('upstream map', () => {
       ['groq', 'POST', '/v1/audio/transcriptions'],
       ['mistral', 'POST', '/v1/chat/completions'],
       ['deepseek', 'POST', '/v1/chat/completions'],
+      ['minimax', 'POST', '/v1/chat/completions'],
       ['xai', 'POST', '/v1/chat/completions'],
       ['openrouter', 'POST', '/v1/chat/completions'],
       ['nvidia', 'POST', '/v1/chat/completions'],
@@ -92,6 +93,9 @@ describe('upstream map', () => {
       ['gemini', 'POST', '/v1beta/models/Gemini-Pro:generateContent'],
       ['gemini', 'POST', '/upload/v1beta/files'],
       ['deepseek', 'POST', '/v1/audio/speech'],
+      ['minimax', 'GET', '/v1/models'],
+      ['minimax', 'POST', '/anthropic/v1/messages'],
+      ['minimax', 'POST', '/v1/text/chatcompletion_v2'],
       ['elevenlabs', 'POST', '/v1/voices/add'],
       ['brave', 'GET', '/res/v1/images/search'],
       ['tavily', 'POST', '/extract'],

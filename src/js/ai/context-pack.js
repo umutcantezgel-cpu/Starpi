@@ -427,8 +427,9 @@ export function forgetContextWindows(baseUrl = null, model = '') {
 
 /**
  * The context window a pack is sized for: the loaded model's on this device, the window the own
- * server reports (Ollama /api/show, llama.cpp /props; 4096 when it does not say or cannot be
- * reached, read again after UNKNOWN_WINDOW_RETRY_MS), else the catalog's.
+ * server reports (Ollama /api/show, llama.cpp /props, vLLM /v1/models; when it does not say or
+ * cannot be reached, 4096, or the larger window the catalog knows for the model's name, such as a
+ * MiniMax M3 build's, read again after UNKNOWN_WINDOW_RETRY_MS), else the catalog's.
  * @param {{ route: string, model: string }} target
  * @param {Pick<Caps, 'contextTokens'>} caps
  * @param {{ deviceWindow?: number | null, baseUrl?: string | null, key?: string | null, probe?: typeof probeContextWindow, now?: () => number }} [deps]
@@ -441,11 +442,12 @@ export function contextWindowFor(target, caps, deps = {}) {
   const key = windowKey(deps.baseUrl, target.model);
   const known = windows.get(key);
   if (known && known.until > now()) return known.window;
+  const unknown = Math.max(FALLBACK_CONTEXT_TOKENS, caps.contextTokens);
   // Shared while the probe runs; a fallback answer then sets when it is asked again.
-  const entry = { window: Promise.resolve(FALLBACK_CONTEXT_TOKENS), until: Infinity };
+  const entry = { window: Promise.resolve(unknown), until: Infinity };
   const retryLater = () => {
     entry.until = now() + UNKNOWN_WINDOW_RETRY_MS;
-    return FALLBACK_CONTEXT_TOKENS;
+    return unknown;
   };
   entry.window = (deps.probe ?? probeContextWindow)(deps.baseUrl, { model: target.model, key: deps.key || null }).then((r) => (r.source === 'fallback' ? retryLater() : r.contextTokens), retryLater);
   windows.set(key, entry);

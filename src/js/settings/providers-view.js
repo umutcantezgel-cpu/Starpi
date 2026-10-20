@@ -294,6 +294,7 @@ export function mountProvidersView(el, services, deps = {}) {
         ${label(`${NS}.local.chrome`, { tag: 'p' })}
         ${label(`${NS}.local.relay_never`, { tag: 'p', className: 'text-slate-500' })}
       </div>
+      ${label(`${NS}.local.large_models`, { tag: 'p', className: 'text-[11px] text-slate-500', id: 'pvLocalLarge' })}
     </div>`;
   }
 

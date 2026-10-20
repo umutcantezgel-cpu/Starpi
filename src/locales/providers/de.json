@@ -125,6 +125,7 @@
       "llamacpp": "llama.cpp: Sein Server nimmt Aufrufe aus Webseiten ohne weitere Einrichtung an."
     },
     "chrome": "Chrome fragt, ob diese Website Geräte in deinem lokalen Netzwerk erreichen darf. Erlaube es, sonst blockiert der Browser Aufrufe an deinen Server.",
-    "relay_never": "Aufrufe an deinen eigenen Server gehen immer direkt aus diesem Browser; das Relay erreicht dein Netzwerk nie."
+    "relay_never": "Aufrufe an deinen eigenen Server gehen immer direkt aus diesem Browser; das Relay erreicht dein Netzwerk nie.",
+    "large_models": "MiniMax M3 oder M3.1 auf Ihrem eigenen Server braucht eine Workstation oder einen Server mit etwa 160 GB Speicher oder mehr; eine Version für den Browser gibt es nicht. GGUF-Builds von M3 gibt es; die Gewichte von M3.1 Flash waren im Oktober 2026 noch nicht öffentlich. Starpi liest ihr Nachdenken und ihr Kontextfenster (1 Mio. Tokens oder was der Server meldet)."
   }
 }
