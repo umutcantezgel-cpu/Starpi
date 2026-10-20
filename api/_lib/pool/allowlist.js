@@ -2,6 +2,8 @@
 // The site's key pools: which providers the site can offer with its own keys, the dialect each one
 // speaks, its endpoint and key variable, per-key pacing, request limits and the model allowlist.
 // A pool model must be free or cheap to serve and must not need tools; nothing else is forwarded.
+// The MiniMax pool serves the cloud base model with the site's own keys (MINIMAX_API_KEYS); it is
+// offered only where the operator sets them.
 //
 // The model lists, default models and output caps come from the browser catalog
 // (src/js/ai/catalog/pools.js), so the picker and the server always agree on what a pool allows;
@@ -61,6 +63,8 @@ function deepFreeze(value) {
 
 /** Keys of providers without a fixed shape: one token of URL-safe characters. */
 const GENERIC_KEY = /^[A-Za-z0-9._~+/=-]{16,512}$/;
+/** The same for a provider whose keys may be long signed tokens: as long as the relay accepts. */
+const LONG_KEY = /^[A-Za-z0-9._~+/=-]{16,1024}$/;
 
 /** Limits shared by the pools; the NVIDIA text limits stay those of its catalog. */
 const IMAGE_LIMITS = { maxBodyBytes: 4_000_000, maxImages: 4, maxImageChars: 3_600_000 };
@@ -70,11 +74,13 @@ const DEFAULT_MAX_TOKENS = 1024;
 const DEFAULT_MAX_TOKENS_REASONING = 2048;
 
 /**
- * The models of a pool as the catalog lists them, capped at the pool's output limit.
+ * The models of a pool as the catalog lists them, capped at the pool's output limit, with fixed
+ * upstream fields when the pool sets any.
  * @param {import('../../../src/js/ai/catalog/pools.js').PoolId} id
+ * @param {Readonly<Record<string, unknown>>} [upstream]
  * @returns {PoolModel[]}
  */
-function catalogModels(id) {
+function catalogModels(id, upstream) {
   const pool = POOLS[id];
   return pool.entries.map(({ id: modelId, label, vendor, reasoning, vision }) => ({
     id: modelId,
@@ -84,8 +90,16 @@ function catalogModels(id) {
     vision,
     maxOutputTokens: pool.maxOutputTokens,
     defaultMaxTokens: Math.min(pool.maxOutputTokens, reasoning ? DEFAULT_MAX_TOKENS_REASONING : DEFAULT_MAX_TOKENS),
+    ...(upstream ? { upstream } : {}),
   }));
 }
+
+/**
+ * The MiniMax pool always asks for the lowest thinking effort: its models cannot switch thinking
+ * off (src/js/ai/quirks/minimax.js), and the site's keys should not pay for the provider's default
+ * of the highest effort. The browser's own effort field is dropped like every other extra.
+ */
+export const MINIMAX_POOL_UPSTREAM = Object.freeze({ reasoning_effort: 'low' });
 
 /**
  * The NVIDIA pool's models: the catalog's list with NVIDIA's own per-model limits and fixed
@@ -103,6 +117,20 @@ function nvidiaModels() {
 
 /** @type {Readonly<Record<string, PoolSpec>>} */
 export const POOL_SPECS = deepFreeze({
+  minimax: {
+    id: 'minimax',
+    label: 'MiniMax',
+    dialect: 'openai-chat',
+    root: 'https://api.minimax.io',
+    auth: 'bearer',
+    keysVariable: 'MINIMAX_API_KEYS',
+    keyPattern: LONG_KEY,
+    keyRpm: 20,
+    defaultModel: POOLS.minimax.defaultModel,
+    limits: { maxMessages: 40, maxMessageChars: 24000, maxTotalChars: 64000, maxOutputTokens: POOLS.minimax.maxOutputTokens, ...IMAGE_LIMITS },
+    timing: NVIDIA_PROXY,
+    models: catalogModels('minimax', MINIMAX_POOL_UPSTREAM),
+  },
   nvidia: {
     id: 'nvidia',
     label: 'NVIDIA NIM',

@@ -3,7 +3,7 @@
 //
 //   direct  the provider allows browser calls (Anthropic with its browser-access header, OpenAI,
 //           Gemini, OpenRouter): the browser calls it with the user's key
-//   auto    providers that may block browsers (xAI, Groq, Mistral, DeepSeek): the first call goes
+//   auto    providers that may block browsers (xAI, Groq, Mistral, DeepSeek, MiniMax): the first call goes
 //           direct; when it is blocked before any answer (an AiError `cors`) it is sent once more
 //           through this site's relay, if the setting "use the relay for providers that block
 //           browsers" is on (the default). The outcome is remembered per provider in localStorage
@@ -17,12 +17,14 @@
 // call, never with a direct one. Pool availability comes from GET /api/models/pool.
 import { DEFAULT_LLM_URL, STORAGE_KEYS } from '../config.js';
 import { readLocal, removeLocal, writeLocal } from '../storage.js';
+import { createOpenAiChatAdapter } from './adapters/openai-chat.js';
 import { isPoolId } from './catalog/pools.js';
 import { getProvider, localApiRoot, PROVIDER_ORDER } from './catalog/providers.js';
 import { AiError, fromHttp, MAX_ERROR_SNIPPET_CHARS, toAiError } from './errors.js';
 import { healthClient } from './health-client.js';
 import { setTransportResolver } from './index.js';
 import { ACCESS_SLOT, getKey } from './keys.js';
+import { getQuirks } from './quirks/index.js';
 import { directTransport, poolTransport, RELAY_SERVICES, relayTransport } from './transport.js';
 
 /** @typedef {import('./contract.js').ProviderId} ProviderId */
@@ -356,23 +358,42 @@ function listHeaders(id) {
  * @typedef {{ ok: true, via: 'direct' | 'relay', status: number } | { ok: false, code: AiErrorCode, via: 'direct' | 'relay' | null, status: number }} KeyTestResult
  */
 
+/** Output tokens a key test asks a provider without a model list for. */
+export const KEY_TEST_TOKENS = 16;
+
 /**
- * Tests a key with the provider's model list (GET /models) through the transport a call would take.
- * Only the outcome is kept: ok, or an error code (never the provider's error text).
+ * What a key test sends: the provider's model list, or, for a provider without one, a chat request
+ * for a few tokens of its test model, shaped by its quirks like a real call (so a field the
+ * provider refuses is never sent). Null when the provider offers neither.
+ * @param {string} id
+ * @returns {BuiltRequest | null}
+ */
+export function keyTestRequest(id) {
+  const info = getProvider(id);
+  if (info?.modelsPath) return { path: info.modelsPath, method: 'GET', headers: listHeaders(id) };
+  if (!info?.testModel || info.dialect !== 'openai-chat') return null;
+  const adapter = createOpenAiChatAdapter({ provider: info.id, quirks: getQuirks(info.quirks) });
+  return adapter.buildRequest({ provider: info.id, model: info.testModel, messages: [{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }], maxOutputTokens: KEY_TEST_TOKENS, thinking: { mode: 'off' } });
+}
+
+/**
+ * Tests a key with the provider's model list (GET /models), or with one tiny chat request where the
+ * provider has no list, through the transport a call would take. Only the outcome is kept: ok, or
+ * an error code (never the provider's error text).
  * @param {string} id a provider id
  * @param {string} key '' for a local server without a key
  * @param {SelectOptions & { signal?: AbortSignal, timeoutMs?: number }} [opts]
  * @returns {Promise<KeyTestResult>}
  */
 export async function testKey(id, key, opts = {}) {
-  const info = getProvider(id);
-  if (!info?.modelsPath) return { ok: false, code: 'bad_request', via: null, status: 0 };
+  const built = keyTestRequest(id);
+  if (!built) return { ok: false, code: 'bad_request', via: null, status: 0 };
   const transport = selectTransport(id, { ...opts, key, pool: false });
   if (!transport) return { ok: false, code: planTransport(id, { ...opts, key, pool: false }).reason === 'relay_off' ? 'cors' : 'auth', via: null, status: 0 };
   const via = () => ('route' in transport ? transport.route() : transport.kind === 'relay' ? 'relay' : 'direct');
   const signal = opts.signal ?? AbortSignal.timeout(opts.timeoutMs ?? TEST_TIMEOUT_MS);
   try {
-    const res = await transport(null, { path: info.modelsPath, method: 'GET', headers: listHeaders(id) }, { signal });
+    const res = await transport(null, built, { signal });
     if (res.ok) {
       void res.body?.cancel().catch(() => {});
       return { ok: true, via: via(), status: res.status };

@@ -9,10 +9,11 @@
 // providers the user has keys for, and configureRouter() with all of it plus the model loaded on
 // this device, so purposes (titles, OCR, council) run on what is set up.
 //
-// Candidates (chatCandidates): an explicit pick is one model; Auto is the user's keys first (the
-// model their strength names, else the provider's balanced model), then the site's free pools, then
-// the own server, then the model already loaded on this device. A question with images only goes to
-// models that can see.
+// Candidates (chatCandidates): an explicit pick is one model; Auto is the cloud base model first
+// when it can answer (MiniMax M3.1 Flash with the user's key or the site's pool), then the user's
+// keys (the model their strength names, else the provider's balanced model), then the site's free
+// pools, then the own server, then the model already loaded on this device. A question with images
+// only goes to models that can see.
 //
 // Running (runAnswer): one model after the other until one starts answering. A call that fails
 // before any text or reasoning arrived (no key, quota, rate limit, model gone, network, server) moves

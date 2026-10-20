@@ -50,6 +50,10 @@ describe('role candidates agree with the model catalog', () => {
       assert.equal(list('judge')[0], tiers.max, `${provider} judge`);
       if (tiers.balanced !== tiers.fast) {
         assert.deepEqual(list('reasoning').slice(0, catalogRoleModels(provider, 'reasoning').length), catalogRoleModels(provider, 'reasoning'), `${provider} reasoning`);
+      } else if (tiers.max === tiers.fast) {
+        // One model for every tier: every list starts with it.
+        assert.equal(list('reasoning')[0], tiers.fast, `${provider} reasoning starts with its one tier model`);
+        assert.deepEqual(catalogRoleModels(provider, 'reasoning'), [tiers.max], `${provider} reasoning from the catalog`);
       } else {
         // No middle tier: the data names a middle model first, and max still follows.
         assert.notEqual(list('reasoning')[0], tiers.fast, `${provider} reasoning does not start with the fast model`);

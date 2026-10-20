@@ -125,6 +125,7 @@
       "llamacpp": "llama.cpp: il suo server accetta chiamate dalle pagine web senza configurazione aggiuntiva."
     },
     "chrome": "Chrome chiede se questo sito può raggiungere i dispositivi della tua rete locale. Consentilo, altrimenti il browser blocca le chiamate al tuo server.",
-    "relay_never": "Le chiamate al tuo server partono sempre direttamente da questo browser; il relay non raggiunge mai la tua rete."
+    "relay_never": "Le chiamate al tuo server partono sempre direttamente da questo browser; il relay non raggiunge mai la tua rete.",
+    "large_models": "MiniMax M3 o M3.1 sul tuo server richiede una workstation o un server con circa 160 GB di memoria o più; non esiste una versione per il browser. Esistono build GGUF di M3; i pesi di M3.1 Flash non erano ancora pubblici a ottobre 2026. Starpi legge il loro ragionamento e la loro finestra di contesto (1 M di token, o quanto indica il server)."
   }
 }

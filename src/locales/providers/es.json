@@ -125,6 +125,7 @@
       "llamacpp": "llama.cpp: su servidor acepta llamadas de páginas web sin configuración adicional."
     },
     "chrome": "Chrome pregunta si este sitio puede acceder a dispositivos de tu red local. Permítelo o el navegador bloqueará las llamadas a tu servidor.",
-    "relay_never": "Las llamadas a tu propio servidor siempre salen directamente de este navegador; el relé nunca llega a tu red."
+    "relay_never": "Las llamadas a tu propio servidor siempre salen directamente de este navegador; el relé nunca llega a tu red.",
+    "large_models": "MiniMax M3 o M3.1 en tu propio servidor requiere una estación de trabajo o un servidor con unos 160 GB de memoria o más; no hay versión para el navegador. Existen builds GGUF de M3; los pesos de M3.1 Flash aún no eran públicos en octubre de 2026. Starpi lee su razonamiento y su ventana de contexto (1 M de tokens, o lo que indique el servidor)."
   }
 }

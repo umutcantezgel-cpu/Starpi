@@ -17,7 +17,7 @@
   },
   "picker": {
     "auto": "Otomatik · mevcut en iyisi",
-    "auto_long": "Otomatik · kurulu en iyi model: anahtarlarınız, sitenin ücretsiz modelleri, sunucunuz, bu cihaz",
+    "auto_long": "Otomatik · kurulu en iyi model: varsa MiniMax M3.1 Flash, ardından anahtarlarınız, sitenin ücretsiz modelleri, sunucunuz, bu cihaz",
     "group_recommended": "Bu cihaz için önerilenler",
     "group_device": "Bu cihazda",
     "group_pools": "Ücretsiz (Starpi üzerinden)",
@@ -27,6 +27,7 @@
     "measured_fast": "burada hızlı ölçüldü",
     "unverified": "doğrulanmadı",
     "warn_no_vision": "görselleri göremez",
+    "warn_workstation": "iş istasyonu veya sunucu gerektirir (yaklaşık 160 GB bellek)",
     "pools_label": "Bu sitenin ücretsiz modelleri:",
     "strength_hint": "Bir sağlayıcının hiçbir modelini seçmediğinizde Otomatik’in o sağlayıcıdan aldığı model.",
     "served": "{model} yanıtladı"

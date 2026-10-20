@@ -125,6 +125,7 @@
       "llamacpp": "llama.cpp: its server accepts calls from web pages without extra setup."
     },
     "chrome": "Chrome asks whether this site may reach devices on your local network. Allow it, or the browser blocks calls to your server.",
-    "relay_never": "Calls to your own server always go straight from this browser; the relay never reaches your network."
+    "relay_never": "Calls to your own server always go straight from this browser; the relay never reaches your network.",
+    "large_models": "MiniMax M3 or M3.1 on your own server needs a workstation or server with about 160 GB of memory or more; there is no version for the browser. GGUF builds of M3 exist; the M3.1 Flash weights were not public yet in October 2026. Starpi reads their thinking and their context window (1M tokens, or what the server reports)."
   }
 }

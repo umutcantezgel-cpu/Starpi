@@ -32,7 +32,7 @@ describe('health report', () => {
     const report = healthRoute.healthReport(env, poolStatus(buildPools(env, io)));
     assert.deepEqual(Object.keys(report), ['version', 'pools', 'simulated', 'voice', 'research', 'access']);
     assert.equal(report.version, version);
-    assert.deepEqual(report.pools, { nvidia: true, groq: false, gemini: true, openrouter: false });
+    assert.deepEqual(report.pools, { minimax: false, nvidia: true, groq: false, gemini: true, openrouter: false });
     assert.deepEqual(Object.keys(report.simulated).sort(), [...RELAY_PROVIDERS].sort());
     assert.equal(report.simulated.gemini, true);
     assert.equal(report.simulated.nvidia, false);
@@ -50,7 +50,7 @@ describe('health report', () => {
   it('reports pools disabled by STARPI_POOL_PROVIDERS as unconfigured, fakes off loopback as real, and the access code as a flag', () => {
     const env = { STARPI_POOL_PROVIDERS: 'groq', NVIDIA_API_KEYS: testKey('nvidia'), GROQ_API_KEYS: testKey('groq'), STARPI_OPENAI_BASE_URL: 'https://fake.example', STARPI_ACCESS_CODE: 'abcdefghijklmnop' };
     const report = healthRoute.healthReport(env, poolStatus(buildPools(env, io)));
-    assert.deepEqual(report.pools, { nvidia: false, groq: true, gemini: false, openrouter: false });
+    assert.deepEqual(report.pools, { minimax: false, nvidia: false, groq: true, gemini: false, openrouter: false });
     assert.equal(report.simulated.openai, false);
     assert.equal(report.access, true);
     assert.ok(!JSON.stringify(report).includes('abcdefghijklmnop'));
@@ -71,7 +71,7 @@ describe('pool models', () => {
     assert.equal(res.headers.get('cache-control'), 'no-store');
     const body = await res.json();
     assert.equal(body.version, 1);
-    assert.deepEqual(Object.keys(body.pools), ['nvidia', 'groq', 'gemini', 'openrouter']);
+    assert.deepEqual(Object.keys(body.pools), ['minimax', 'nvidia', 'groq', 'gemini', 'openrouter']);
     assert.equal(body.pools.groq.configured, true);
     assert.equal(body.pools.nvidia.configured, false);
     assert.equal(body.pools.gemini.dialect, 'gemini');
@@ -80,12 +80,12 @@ describe('pool models', () => {
       for (const m of /** @type {any} */ (pool).models) assert.deepEqual(Object.keys(m), ['id', 'label', 'vendor', 'reasoning', 'vision', 'maxOutputTokens', 'defaultMaxTokens']);
     }
     const text = JSON.stringify(body);
-    assert.ok(!text.includes('gsk_') && !text.includes('chat_template_kwargs') && !/keys|count/i.test(text));
+    assert.ok(!text.includes('gsk_') && !text.includes('chat_template_kwargs') && !text.includes('reasoning_effort') && !/keys|count/i.test(text));
   });
 });
 
 describe('health and models routes', () => {
-  const ENV = ['NVIDIA_API_KEYS', 'GROQ_API_KEYS', 'GEMINI_API_KEYS', 'OPENROUTER_API_KEYS', 'STARPI_POOL_PROVIDERS', 'STARPI_ACCESS_CODE'];
+  const ENV = ['MINIMAX_API_KEYS', 'NVIDIA_API_KEYS', 'GROQ_API_KEYS', 'GEMINI_API_KEYS', 'OPENROUTER_API_KEYS', 'STARPI_POOL_PROVIDERS', 'STARPI_ACCESS_CODE'];
   /** @type {Record<string, string | undefined>} */
   let saved = {};
   beforeEach(() => {

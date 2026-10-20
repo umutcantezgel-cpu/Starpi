@@ -125,7 +125,7 @@ describe('providers view', () => {
   it('renders every provider with its chips, the vault, the relay switch, pools and the local server', async () => {
     const { host, q } = await mount({ access: true });
     const rows = [...host.querySelectorAll('details[data-provider]')].map((el) => /** @type {HTMLElement} */ (el).dataset.provider);
-    assert.deepEqual(rows, ['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter', 'nvidia']);
+    assert.deepEqual(rows, ['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'minimax', 'openrouter', 'nvidia']);
     assert.equal(q('[data-pv-status="anthropic"] [data-key]').dataset.key, 'none');
     assert.equal(q('[data-pv-status="anthropic"] [data-route]').dataset.route, 'none');
     assert.equal(q('[data-pv-status="groq"] [data-route]').dataset.route, 'pool', 'groq without a key uses the site pool');

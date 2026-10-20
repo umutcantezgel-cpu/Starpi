@@ -11,7 +11,8 @@
 // balanced and max. The roles build on them (CATALOG_ROLE_MAP):
 //   fast       starts with the catalog's fast model
 //   reasoning  starts with balanced, then max; a provider whose balanced model is its fast one has
-//              no middle tier, so its list names a middle model first and max after it
+//              no middle tier, so its list names a middle model first and max after it (a provider
+//              with one model for every tier, such as the base model's, starts with that model)
 //   judge      starts with max, the strongest model
 //   vision     those of balanced, fast and max (in that order) whose capabilities say they see images
 // Further models of the provider's snapshot may follow in each list. A provider the data leaves out
@@ -80,8 +81,8 @@ const SHIPPED_CATALOG = Object.freeze({
 
 /**
  * The models the catalog's tiers give a role at a provider, without repeats: for reasoning the fast
- * model is left out (a provider without a middle tier starts with max), for vision only models that
- * see images.
+ * model is left out unless it is max as well (a provider without a middle tier starts with max), for
+ * vision only models that see images.
  * @param {ProviderId} provider
  * @param {ModelRole} role
  * @param {CatalogView} [catalog]
@@ -94,7 +95,7 @@ export function catalogRoleModels(provider, role, catalog = SHIPPED_CATALOG) {
   for (const tier of CATALOG_ROLE_MAP[role] ?? []) {
     const model = catalog.tier(provider, tier);
     if (!model || out.includes(model)) continue;
-    if (role === 'reasoning' && model === fast) continue;
+    if (role === 'reasoning' && model === fast && tier !== 'max') continue;
     if (role === 'vision' && catalog.caps(provider, model)?.vision !== true) continue;
     out.push(model);
   }

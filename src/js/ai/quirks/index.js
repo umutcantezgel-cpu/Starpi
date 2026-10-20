@@ -4,6 +4,7 @@ import { deepseekQuirks } from './deepseek.js';
 import { GENERIC_QUIRKS } from './generic.js';
 import { groqQuirks } from './groq.js';
 import { createLocalQuirks, localQuirks } from './local.js';
+import { minimaxQuirks } from './minimax.js';
 import { mistralQuirks } from './mistral.js';
 import { nvidiaQuirks } from './nvidia.js';
 import { createOpenRouterQuirks, openrouterQuirks } from './openrouter.js';
@@ -20,6 +21,7 @@ export const QUIRKS = Object.freeze({
   groq: groqQuirks,
   mistral: mistralQuirks,
   deepseek: deepseekQuirks,
+  minimax: minimaxQuirks,
   openrouter: openrouterQuirks,
   nvidia: nvidiaQuirks,
   local: localQuirks,

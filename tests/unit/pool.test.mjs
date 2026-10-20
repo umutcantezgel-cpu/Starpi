@@ -194,8 +194,9 @@ describe('handlePool', () => {
 
 describe('pool environment', () => {
   it('enables the listed pools, all when unset, and parses keys by count only', () => {
-    assert.deepEqual(enabledPoolIds(undefined), ['nvidia', 'groq', 'gemini', 'openrouter']);
-    assert.deepEqual(enabledPoolIds(''), ['nvidia', 'groq', 'gemini', 'openrouter']);
+    assert.deepEqual(enabledPoolIds(undefined), ['minimax', 'nvidia', 'groq', 'gemini', 'openrouter']);
+    assert.deepEqual(enabledPoolIds(''), ['minimax', 'nvidia', 'groq', 'gemini', 'openrouter']);
+    assert.deepEqual(enabledPoolIds('minimax'), ['minimax']);
     assert.deepEqual(enabledPoolIds('Gemini, groq,unknown'), ['groq', 'gemini']);
     const groq = /** @type {import('../../api/_lib/pool/allowlist.js').PoolSpec} */ (findPoolSpec('groq'));
     assert.deepEqual(parsePoolKeys(groq, `${testKey('groq', 1)}, short ${testKey('groq', 1)}\n${testKey('groq', 2)}`), { keys: [testKey('groq', 1), testKey('groq', 2)], invalid: 1 });

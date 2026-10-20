@@ -88,7 +88,7 @@ async function setup(opts = {}) {
 
 describe('key slots', () => {
   it('cover the providers that take a key, the services and the access code', () => {
-    for (const id of ['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'openrouter', 'nvidia', 'local', 'elevenlabs', 'brave', 'tavily', ACCESS_SLOT]) assert.ok(isKeySlot(id), id);
+    for (const id of ['anthropic', 'openai', 'gemini', 'xai', 'groq', 'mistral', 'deepseek', 'minimax', 'openrouter', 'nvidia', 'local', 'elevenlabs', 'brave', 'tavily', ACCESS_SLOT]) assert.ok(isKeySlot(id), id);
     for (const id of ['webgpu', 'wasm', 'nope', '', 42]) assert.equal(isKeySlot(id), false, String(id));
     assert.equal(new Set(KEY_SLOTS).size, KEY_SLOTS.length);
   });

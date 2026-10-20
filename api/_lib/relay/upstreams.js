@@ -102,6 +102,13 @@ export const UPSTREAMS = Object.freeze({
     auth: 'bearer',
     routes: [CHAT, MODELS],
   },
+  // Chat Completions only: no model list is documented (as of 2026-10-20).
+  minimax: {
+    id: 'minimax',
+    root: 'https://api.minimax.io',
+    auth: 'bearer',
+    routes: [CHAT],
+  },
   openrouter: {
     id: 'openrouter',
     root: 'https://openrouter.ai/api',

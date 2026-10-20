@@ -10,7 +10,7 @@
 //
 // The printed URLs are what a client is configured with: API roots (requests add /v1/..., or
 // /v1beta/... for Gemini) and the MCP endpoint. The OpenAI-compatible fake serves every flavor
-// under <root>/flavor/<name> (xai, groq, mistral, deepseek, openrouter, nvidia, ollama); the root
+// under <root>/flavor/<name> (xai, groq, mistral, deepseek, minimax, openrouter, nvidia, ollama); the root
 // itself is the default flavor (FAKE_FLAVOR, else openai).
 //
 // Usage: node scripts/fakes/index.mjs [--base-port 4610] [--marker starpi-purpose] [--fixtures dir] [--verbose]

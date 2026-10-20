@@ -125,6 +125,7 @@
       "llamacpp": "llama.cpp: sunucusu, ek ayar gerektirmeden web sayfalarından gelen çağrıları kabul eder."
     },
     "chrome": "Chrome, bu sitenin yerel ağınızdaki cihazlara erişip erişemeyeceğini sorar. İzin verin; aksi hâlde tarayıcı sunucunuza yapılan çağrıları engeller.",
-    "relay_never": "Kendi sunucunuza yapılan çağrılar her zaman doğrudan bu tarayıcıdan gider; aktarıcı ağınıza asla ulaşmaz."
+    "relay_never": "Kendi sunucunuza yapılan çağrılar her zaman doğrudan bu tarayıcıdan gider; aktarıcı ağınıza asla ulaşmaz.",
+    "large_models": "Kendi sunucunuzda MiniMax M3 veya M3.1 için yaklaşık 160 GB veya daha fazla belleğe sahip bir iş istasyonu ya da sunucu gerekir; tarayıcı için bir sürümü yoktur. M3 için GGUF derlemeleri vardır; M3.1 Flash ağırlıkları Ekim 2026'da henüz yayımlanmamıştı. Starpi bunların düşünme metnini ve bağlam penceresini (1 milyon token veya sunucunun bildirdiği değer) okur."
   }
 }

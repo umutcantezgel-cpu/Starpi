@@ -2,7 +2,8 @@
 // Maintainer tool, not part of CI: checks one provider live with a real key before its catalog,
 // pool allowlist or relay entry changes. Without a key it prints "skipped" and exits 0, so it is
 // safe to run anywhere. With a key it
-//   - lists the provider's models (or voices, or one search) and counts the entries,
+//   - lists the provider's models (or voices, or one search) and counts the entries; a provider
+//     without a model list (MiniMax) answers one small chat request instead,
 //   - asks whether the API allows browser calls (a CORS preflight from a foreign origin),
 //   - for a site pool: sends one small streamed request per allowlisted model (or --model) and
 //     names the allowlisted ids the list does not contain.
@@ -10,12 +11,12 @@
 // printed, and every line goes through the relay's secret scrubber. It uses real quota.
 //
 // Usage: node scripts/provider-ping.mjs --provider <id> [--model <id>]
-//   keys: the pool variable (NVIDIA_API_KEYS, GROQ_API_KEYS, GEMINI_API_KEYS, OPENROUTER_API_KEYS)
+//   keys: the pool variable (MINIMAX_API_KEYS, NVIDIA_API_KEYS, GROQ_API_KEYS, GEMINI_API_KEYS, OPENROUTER_API_KEYS)
 //   or <ID>_API_KEY (ANTHROPIC_API_KEY, OPENAI_API_KEY, ELEVENLABS_API_KEY, BRAVE_API_KEY, ...);
 //   STARPI_<ID>_BASE_URL points it at a local fake. `npm run nvidia:ping` keeps its own report.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findPoolModel, findPoolSpec, parsePoolKeys } from '../api/_lib/pool/allowlist.js';
+import { findPoolModel, findPoolSpec, MINIMAX_POOL_UPSTREAM, parsePoolKeys } from '../api/_lib/pool/allowlist.js';
 import { poolRoute, validatePoolRequest } from '../api/_lib/pool/request.js';
 import { scrubSecrets } from '../api/_lib/relay/scrub.js';
 import { authHeaderFor, findUpstream, RELAY_PROVIDERS, resolveRoot } from '../api/_lib/relay/upstreams.js';
@@ -33,13 +34,23 @@ const SINGLE_KEY = /^[\x21-\x7e]{8,1024}$/;
  */
 
 /**
- * What one list check asks for: a GET of the models (or voices, or one search), or Tavily's POST.
+ * What one list check asks for: a GET of the models (or voices, or one search), Tavily's POST, or
+ * for a provider without a model list one small chat request (`models: false`: its answer names no
+ * models to compare with a pool allowlist).
  * @param {string} id
- * @returns {{ method: 'GET' | 'POST', path: string, body?: unknown, headers?: Record<string, string>, count: (json: any) => number }}
+ * @returns {{ method: 'GET' | 'POST', path: string, body?: unknown, headers?: Record<string, string>, count: (json: any) => number, models?: false }}
  */
 function listCheck(id) {
   const data = (/** @type {any} */ json) => (Array.isArray(json?.data) ? json.data.length : 0);
   switch (id) {
+    case 'minimax':
+      return {
+        method: 'POST',
+        path: '/v1/chat/completions',
+        body: { model: findPoolSpec('minimax')?.defaultModel, messages: [{ role: 'user', content: PROMPT }], max_tokens: MAX_TOKENS, ...MINIMAX_POOL_UPSTREAM },
+        count: (json) => (Array.isArray(json?.choices) ? json.choices.length : 0),
+        models: false,
+      };
     case 'anthropic':
       return { method: 'GET', path: '/v1/models', headers: { 'anthropic-version': '2023-06-01' }, count: data };
     case 'gemini':
@@ -222,7 +233,7 @@ export async function pingProvider({ id, env, fetch: send = fetch, print = (line
   const spec = findPoolSpec(id);
   if (spec) {
     const poolSpec = { ...spec, root };
-    if (listJson) {
+    if (listJson && check.models !== false) {
       const ids = listedIds(id, listJson);
       const missing = spec.models.filter((m) => !ids.has(m.id)).map((m) => m.id);
       say(missing.length ? `not listed: ${missing.join(', ')}` : `all ${spec.models.length} allowlisted ids are listed`);

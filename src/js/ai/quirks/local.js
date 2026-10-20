@@ -9,7 +9,12 @@
 //   llama.cpp  cache_prompt: true reuses the KV cache of a stable prompt prefix
 // A server's real context window can be read with probeContextWindow(): Ollama's OpenAI endpoint
 // otherwise cuts long prompts silently at its configured size.
-import { LOCAL_SERVER_PRESETS, localApiRoot } from '../catalog/providers.js';
+//
+// A self-hosted MiniMax M3 or M3.1 build (a model name containing "minimax-m3") always thinks: its
+// reasoning arrives as `reasoning_content` or inside <think> tags like any other, and it is never
+// sent `reasoning_effort: 'none'`. Such a build needs a workstation or server (about 160 GB of
+// memory or more, as of 2026-10-20); there is no in-browser preset for it.
+import { LOCAL_SERVER_PRESETS, localApiRoot, MINIMAX_M3 } from '../catalog/providers.js';
 import { defineQuirks } from './generic.js';
 
 /** @typedef {import('../catalog/providers.js').LocalServerPreset} LocalServerPreset */
@@ -28,7 +33,8 @@ export const PROBE_TIMEOUT_MS = 3000;
  * @property {LocalServer | (() => LocalServer)} [server]  which server runs there (detectServer() guesses it from
  *   the port); a function is asked for every request, so the server's address may change meanwhile
  * @property {boolean} [reasoningOff] send `reasoning_effort: 'none'` when thinking is off; only for
- *   servers known to accept it (one that refuses the field answers 400, and the caller retries without)
+ *   servers known to accept it (one that refuses the field answers 400, and the caller retries without),
+ *   and never for a model that cannot stop thinking (a MiniMax M3 build)
  */
 
 /**
@@ -45,7 +51,7 @@ export function createLocalQuirks(options = {}) {
       const server = serverOf();
       if (server === 'ollama') body.keep_alive = '30m';
       if (server === 'llamacpp') body.cache_prompt = true;
-      if (options.reasoningOff && req.thinking?.mode === 'off') body.reasoning_effort = 'none';
+      if (options.reasoningOff && req.thinking?.mode === 'off' && !MINIMAX_M3.test(req.model)) body.reasoning_effort = 'none';
     },
   });
 }
@@ -102,12 +108,26 @@ export function llamaCppContext(json) {
 }
 
 /**
+ * The context window vLLM serves a model with: `max_model_len` of its entry in GET /v1/models (the
+ * only entry when the server lists one model under another name); null when absent.
+ * @param {unknown} json
+ * @param {string} model
+ * @returns {number | null}
+ */
+export function vllmContext(json, model) {
+  const data = json && typeof json === 'object' && Array.isArray(/** @type {any} */ (json).data) ? /** @type {unknown[]} */ (/** @type {any} */ (json).data) : [];
+  const entries = /** @type {Array<Record<string, unknown>>} */ (data.filter((m) => m && typeof m === 'object'));
+  const entry = entries.find((m) => m.id === model) ?? (entries.length === 1 ? entries[0] : null);
+  return entry ? positive(entry.max_model_len) : null;
+}
+
+/**
  * Reads the real context window of a local server: Ollama (POST /api/show for the model), then
- * llama.cpp (GET /props), else FALLBACK_CONTEXT_TOKENS. Never throws; `source` tells where the
- * number came from.
+ * llama.cpp (GET /props), then vLLM (GET /v1/models), else FALLBACK_CONTEXT_TOKENS. Never throws;
+ * `source` tells where the number came from.
  * @param {string} baseUrl  the server's address, with or without /v1
  * @param {{ model?: string, server?: LocalServer, key?: string | null, fetch?: FetchLike, signal?: AbortSignal, timeoutMs?: number }} [options]
- * @returns {Promise<{ contextTokens: number, source: 'ollama' | 'llamacpp' | 'fallback' }>}
+ * @returns {Promise<{ contextTokens: number, source: 'ollama' | 'llamacpp' | 'vllm' | 'fallback' }>}
  */
 export async function probeContextWindow(baseUrl, options = {}) {
   const root = localApiRoot(baseUrl);
@@ -139,6 +159,10 @@ export async function probeContextWindow(baseUrl, options = {}) {
   if (server === 'llamacpp' || server === 'other') {
     const n = llamaCppContext(await read('/props', { method: 'GET' }));
     if (n) return { contextTokens: n, source: 'llamacpp' };
+  }
+  if ((server === 'vllm' || server === 'other') && options.model) {
+    const n = vllmContext(await read('/v1/models', { method: 'GET' }), options.model);
+    if (n) return { contextTokens: n, source: 'vllm' };
   }
   return fallback;
 }

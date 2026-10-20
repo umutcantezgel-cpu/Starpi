@@ -4,7 +4,9 @@
 // with `reasoning: { effort }` and streams as `reasoning` text plus structured `reasoning_details`,
 // which some upstream models need back unchanged in later turns, so they are kept as opaque state
 // and replayed. Web search is the `web` plugin; its sources arrive as url_citation annotations.
-// PDFs travel as file parts.
+// PDFs travel as file parts. A model that cannot stop thinking (MiniMax M3) is asked for the low
+// effort when thinking is off, never for none.
+import { MINIMAX_M3 } from '../catalog/providers.js';
 import { defineQuirks, threeStepEffort } from './generic.js';
 
 export const OPENROUTER_REFERER = 'https://www.starpi.app';
@@ -24,7 +26,7 @@ export function createOpenRouterQuirks(options = {}) {
       const mode = req.thinking?.mode ?? 'auto';
       if (caps.reasoning !== 'none' && mode !== 'off' && (mode === 'on' || req.thinking?.effort)) {
         body.reasoning = { effort: threeStepEffort(req, 'high'), ...(req.thinking?.show === false ? { exclude: true } : {}) };
-      }
+      } else if (mode === 'off' && MINIMAX_M3.test(req.model)) body.reasoning = { effort: 'low' };
       if (req.search?.enabled) body.plugins = [{ id: 'web', ...(req.search.maxUses ? { max_results: req.search.maxUses } : {}) }];
     },
   });
