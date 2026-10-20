@@ -1,7 +1,23 @@
 # Contributing to Starpi
 
 Thanks for helping improve Starpi. This guide covers the local setup, the checks every change
-must pass and the conventions the codebase relies on.
+must pass and the conventions the codebase relies on. [AGENTS.md](AGENTS.md) is the short version
+with the exact commands, written for coding agents and useful for everyone; the
+[walkthrough](docs/WALKTHROUGH.md) is a tour of the code.
+
+## Where to start
+
+- Issues labelled
+  [good first issue](https://github.com/umutcantezgel-cpu/Starpi/labels/good%20first%20issue) are
+  small and self-contained; [help wanted](https://github.com/umutcantezgel-cpu/Starpi/labels/help%20wanted)
+  marks larger ones where help is welcome. Say in the issue that you are working on it.
+- Good first areas without an issue: a clearer sentence in one of the five translations
+  (`src/locales/`, French, Spanish, Italian, Turkish or German), a missing test for a behaviour you
+  rely on, an accessibility problem the axe scans do not catch, or a broken step in the docs.
+- Larger work: the [roadmap](README.md#roadmap) lists what is planned. Open an issue with the
+  feature template before you start, so the design can be agreed first.
+- Read the section of the [architecture atlas](docs/ARCHITECTURE.md) for the part you change; every
+  diagram there answers one question about the system.
 
 ## Development setup
 
@@ -10,16 +26,20 @@ npm ci --ignore-scripts   # Node.js 22.13+ (see .nvmrc); no install scripts, as 
 npm run dev               # watch build + local server with production headers on :3000
 ```
 
-`npm run dev` and `npm run preview` also serve the NVIDIA routes from `api/`
-(`scripts/serve.mjs --functions`) for `localhost` and IP addresses; set
-`NVIDIA_API_KEYS=nvapi-<64 characters>` in the environment to use them. The end-to-end tests run
-without the functions and mock `/api/*`, so they never reach NVIDIA.
+`npm run dev` and `npm run preview` also serve the server functions of `api/` (relay, key pools,
+speech, research steps, health; `scripts/serve.mjs --functions`). Keys of the site's pools come from
+the environment, for example `GROQ_API_KEYS=<key> npm run dev`; [docs/SERVER.md](docs/SERVER.md)
+lists every variable. The end-to-end tests run without the functions, against local provider fakes
+(`npm run fakes`) and a mocked Supabase, so they never reach a provider.
 
 Library publisher (optional, Python 3.11+):
 
 ```bash
 cd tools/library-publisher && python -m pip install -r requirements-dev.txt
 ```
+
+The local voice server (`companion/voice-server`, Python 3.11+) needs nothing installed for its
+tests; its lint uses the ruff version pinned in `.github/workflows/ci.yml`.
 
 Database tests need PostgreSQL 16 and pgvector
 (`apt-get install postgresql-16 postgresql-16-pgvector` on Debian/Ubuntu).
@@ -61,9 +81,12 @@ flowchart TD
 
 | Area | Command |
 | --- | --- |
-| Frontend | `npm run verify` (lint, typecheck, unit tests, build, output verification) |
+| Frontend | `npm run verify` (lint, typecheck, unit tests, build, output verification, generated headers, licence gate, end-of-life register) |
+| Public hygiene | `npm run hygiene:check` (no private paths or internal identifiers in tracked files) |
 | `@starpi/core` | `npm run pack:core` (typed build, lists the files the package would publish) |
-| End-to-end | `npm run build && npm run test:e2e` (first run: `npx playwright install chromium`) |
+| `@starpi/companion` | `npm run typecheck:companion`, `npm run test:companion`, `node scripts/companion-deps-check.mjs`, `node scripts/companion-license-check.mjs` |
+| End-to-end | `npm run build && npm run test:e2e` (first run: `npx playwright install chromium`; `STARPI_E2E_PORT` and `STARPI_FAKES_PORT` choose other ports) |
+| Voice server | `ruff check --no-cache . && ruff format --check --no-cache .` in `companion/voice-server`, then `python3 -I -B -m unittest discover -s companion/voice-server -v` |
 | Library publisher | `ruff check tools/library-publisher backend && ruff format --check tools/library-publisher backend`, then `python -m unittest discover` in `tools/library-publisher` |
 | Database | `bash backend/supabase/tests/run_rls_tests.sh` |
 | Dependencies | `npm audit --omit=dev`, `pip-audit -r backend/requirements-dev.txt` and `npm run sbom` (CycloneDX SBOMs into `sbom/`) |
@@ -139,10 +162,11 @@ every flowchart label and keep colours and `init` directives out.
   it that way; the ESLint configuration only allows globals available in all three. The same
   holds for `src/js/models/` (device classes, the model menu's choices, the WASM presets and the
   NVIDIA allowlist), `chat-stream.js` and `chat-export.js`.
-- **Server functions:** `api/` holds the Vercel Functions of the NVIDIA proxy. They use Web
-  `Request` and `Response` only, and ESLint forbids `process`, `Buffer` and `require` there;
-  `api/_lib/env.js` is the one module that reads the environment, through `globalThis`. Keys never
-  appear in a log line, a response or a test fixture: tests build fake keys at runtime.
+- **Server functions:** `api/` holds the Vercel Functions: the relay, the site's key pools, speech,
+  research steps, health and the NVIDIA routes of 2.x. They use Web `Request` and `Response` only,
+  and ESLint forbids `process`, `Buffer` and `require` there; `api/_lib/env.js` is the one module
+  that reads the environment, through `globalThis`. Keys never appear in a log line, a response or
+  a test fixture: tests build fake keys at runtime.
 - **Versioned rules:** answer receipts record the version of the text extraction, chunking and
   source-check rules. The golden tests (`tests/unit/golden.test.mjs`) fail when a change alters
   the extracted text or chunks of the sample files, or any verdict or reason of either version of
@@ -155,10 +179,12 @@ every flowchart label and keep colours and `init` directives out.
   of new rules ([protocol](docs/eval/v2-protocol.md)).
 - **Tailwind** is pinned to v3 to keep the current design; class names must be complete strings
   so the compiler can find them.
-- **User-facing text** lives in `src/locales/en.json` (default) and `src/locales/de.json`, never
-  inline. Use `data-i18n` / `data-i18n-placeholder` / `data-i18n-title` / `data-i18n-aria` in
-  markup and `t()` or `setText()` (which re-translates on a language switch) in code. Add every
-  key to both files with the same `{placeholders}`; `npm test` fails on missing keys. Code,
+- **User-facing text** lives in `src/locales/`, never inline: a root file per language
+  (`en.json`, the default and fallback, `de.json`, `fr.json`, `es.json`, `it.json`, `tr.json`) and one
+  file per namespace and language (`<namespace>/<lang>.json`, keys reached as `<namespace>.<key>`).
+  Use `data-i18n` / `data-i18n-placeholder` / `data-i18n-title` / `data-i18n-aria` in markup and
+  `t()` or `setText()` (which re-translates on a language switch) in code. Add every key to all six
+  languages with the same `{placeholders}`; `npm test` fails on missing keys. Code,
   comments and docs are English. Do not claim capabilities the code does not have (privacy,
   locality, hosting region).
 - **Icons** are Lucide icons registered in `src/js/icons.js` (esbuild bundles only those
@@ -399,6 +425,8 @@ flowchart TD
 
 - Branch from `main`, keep changes focused, and use [Conventional Commits](https://www.conventionalcommits.org/)
   (`fix(chat): …`, `feat(webgpu): …`, `docs: …`).
+- Run the checks above for the parts you touched before you open it ([AGENTS.md](AGENTS.md#commands)
+  lists every command in one table).
 - Fill in the pull request template. Include benchmark numbers (tokens per second, time to
   first token, memory) when a change affects inference performance.
 - Report security problems privately (see [SECURITY.md](SECURITY.md)), not in public issues.
