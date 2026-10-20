@@ -277,6 +277,9 @@ on your own machine. What to change when you come from 2.x is in
   tokens for free answers on strong GPUs was considered for 3.0 and not adopted: the half-window cap
   already keeps half the context for the conversation.
 - `@starpi/core`, `@starpi/companion` and the app are 3.0.0; `CITATION.cff` follows.
+- Dependencies: `@mlc-ai/web-llm` 0.2.86 (new model library hashes in `model-lock.json`), `lucide`
+  1.55.0, `marked` 18.1.0, `@supabase/supabase-js` 2.117.3, `@playwright/test` 1.64.0, ruff 0.17.0,
+  `actions/setup-node` 7.1.0, `actions/upload-artifact` 7.0.2 and `actions/download-artifact` 8.0.2.
 
 ### Removed
 
