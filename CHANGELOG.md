@@ -30,6 +30,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - The CI examples in the `@starpi/core` README pin `@starpi/core@3` (they said `@2` or nothing), and
   the README's test counts are current (2,466 unit tests, 149 companion tests in 25 files).
 
+### Security
+
+- `undici` 8.12.3 under `jsdom` (development and unit tests only, not shipped): 8.11.2 was affected
+  by eight advisories fixed in 8.12.2 (GHSA-4qv8-2p9j-2685, GHSA-f72v-6w45-q472, GHSA-xjj6-f33q-929c,
+  GHSA-4w7w-5xrc-9h26, GHSA-2m5v-pch6-74hx, GHSA-qrxm-fqhp-jwvm, GHSA-9fm3-97px-rjf6,
+  GHSA-55wc-3pg8-jfw6).
+
 ## [3.0.0] - 2026-10-19
 
 Starpi 3.0 is a new generation of the app: one AI layer for every provider, a chat with branches,
