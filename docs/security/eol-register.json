@@ -92,7 +92,7 @@
     },
     {
       "name": "Anthropic TypeScript SDK",
-      "version": "0.133.0",
+      "version": "0.134.0",
       "kind": "npm",
       "npm": "@anthropic-ai/sdk",
       "usedFor": "the Claude adapter of the provider layer, loaded lazily",
@@ -145,7 +145,7 @@
     },
     {
       "name": "Lucide",
-      "version": "1.56.0",
+      "version": "1.57.0",
       "kind": "npm",
       "npm": "lucide",
       "usedFor": "interface icons",

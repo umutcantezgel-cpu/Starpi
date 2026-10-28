@@ -12,6 +12,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
   `starpi-verify-receipt` on a signed and on an edited receipt; the `@starpi/core` README shows the
   two terminal clips and gains an example that gates an OpenAI Responses API stream.
 
+### Changed
+
+- Dependencies: `@anthropic-ai/sdk` 0.134.0 (app and companion; it adds `@opentelemetry/api` 1.9.1,
+  Apache-2.0), `lucide` 1.57.0, `@playwright/test` 1.64.1 and `mermaid` 12.2.0 (`katex` stays at
+  0.19.0 through the override). The end-of-life register follows the new versions.
+
 ### Fixed
 
 - Settings → Memory no longer drops a note being typed or undoes a switch when the notes redraw.
