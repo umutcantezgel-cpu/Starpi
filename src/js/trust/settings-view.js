@@ -172,7 +172,7 @@ export function mountTrustView(el, services, deps = {}) {
         <div class="space-y-1.5 pt-3 border-t border-slate-100 text-xs text-slate-600">
           ${label(`${NS}.check.title`, { tag: 'h4', className: 'text-sm font-semibold text-slate-800' })}
           ${label(`${NS}.check.body`, { tag: 'p', className: 'leading-relaxed' })}
-          <pre class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 font-mono text-[11px] text-slate-800 whitespace-pre-wrap break-all">npx -p @starpi/core starpi-verify-receipt receipt.json &lt;files&gt; --public-key starpi-signing-key.pem --require-signature</pre>
+          <pre class="p-2.5 rounded-lg bg-slate-50 border border-slate-200 font-mono text-[11px] text-slate-800 whitespace-pre-wrap break-all">npx -p @starpi/core -p pdfjs-dist@6 starpi-verify-receipt receipt.json &lt;files&gt; --public-key starpi-signing-key.pem --require-signature</pre>
         </div>
       </div>`.value,
     );

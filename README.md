@@ -82,6 +82,12 @@ Operators, forks and users of `@starpi/core` find the breaking changes in the
 5. Open **Receipt** under an answer, download it, and verify it against the sample files, in the
    dialog or on the command line with `npm run verify:receipt`.
 
+<p align="center">
+  <a href="docs/assets/video/app-demo.mp4"><img src="docs/assets/video/app-demo.webp" width="100%" alt="Screen recording of www.starpi.app with captions: three sample files are loaded into the on-device workspace; a free model answers when Project Nebula launches and who leads development, and the source check shows 1/1 statements matching their cited excerpts; a citation opens its passage, highlighted in the file; the prepared demo answer with 520,000 EUR is flagged because 520,000 is not in its cited excerpt; the answer receipt shows its Merkle root and the device signature (Ed25519), and verifying it against the three files reports 4/4 workspace excerpts reproduced."></a>
+</p>
+<p align="center"><sub>These steps on the live site, recorded with captions (39 s, one question to a free
+model, idle pauses cut). <a href="docs/assets/video/app-demo.mp4">MP4</a></sub></p>
+
 The model menu offers the free models of the site's pools under **Free (via Starpi)**; **Auto**
 takes the best model that is set up, and without any model Starpi answers grounded questions by
 quoting the sources, and says so. Switch the composer between **Auto**, **Free** and **Grounded**:
@@ -328,6 +334,19 @@ What the gate trusts: the excerpts are what retrieval returned (the gate shows t
 cited excerpt, not that the excerpt is right), and in web mode the grounding comes from the
 provider. A sentence without numbers or identifiers passes the gate in sources mode; its wording is
 what the source check judges.
+
+<p align="center">
+  <a href="docs/assets/video/gate-stream.mp4"><img src="docs/assets/video/gate-stream.webp" width="100%" alt="Terminal replay of a real run of the sentence gate over simulated text deltas: the sentence with 12 May 2027, which its cited excerpt holds, is released while the stream runs; the sentence with 520,000 EUR, which the excerpt does not hold, and an uncited sentence with a number are withheld; gate.end() reports 1 released, 2 withheld."></a>
+</p>
+<p align="center"><sub>The gate on simulated text deltas: a replay of a real run of <code>@starpi/core</code> 3.0.0,
+no API call (10 s, <a href="docs/assets/video/gate-stream.mp4">MP4</a>)</sub></p>
+
+<p align="center">
+  <img src="docs/assets/cards/responses-gate.png" width="80%" alt="Code and terminal output: an OpenAI Responses API stream created with the openai SDK, each response.output_text.delta pushed into createSentenceGate. Against a local stand-in for the streaming events whose scripted answer has one wrong number, the 480,000 EUR sentence is released and the 520,000 EUR sentence is withheld as unsupported_number.">
+</p>
+<p align="center"><sub>The same gate on an OpenAI Responses API stream, run against a local stand-in for the
+streaming events, not the live API
+(<a href="packages/core/README.md#with-the-openai-responses-api">code</a>)</sub></p>
 
 ## Models and providers
 
@@ -595,6 +614,13 @@ console.log(report.sentences[0].reasons[0]); // { code: 'missing_fact', level: '
 `createSentenceGate` releases a streamed answer unit by unit, `chunkText` and `BM25Index` split and
 rank text, and `npx starpi-verify-receipt receipt.json file…` verifies a receipt on the command line.
 Examples for each are in the [package README](packages/core/README.md).
+
+<p align="center">
+  <a href="docs/assets/video/receipt-verify.mp4"><img src="docs/assets/video/receipt-verify.webp" width="100%" alt="Terminal recording of starpi-verify-receipt: a signed demo receipt checked against nebula-plan.md passes every check (receipt hash, answer hash, Merkle root with 2/2 inclusion proofs, Ed25519 signature with the given public key, both passages reproduced) and exits 0; the same receipt with the answer changed from 480,000 to 520,000 EUR after signing fails the receipt hash, the answer hash and the signature and exits 1."></a>
+</p>
+<p align="center"><sub><code>starpi-verify-receipt</code> on a signed demo receipt, then on a copy whose
+answer was changed after signing: the receipt hash, the answer hash and the signature catch the edit
+(8 s, <a href="docs/assets/video/receipt-verify.mp4">MP4</a>)</sub></p>
 
 ### Check documents in CI
 
@@ -1033,9 +1059,9 @@ Details and known limitations are in [SECURITY.md](SECURITY.md#known-limitations
 Beside it, `codeql.yml` (CodeQL on every change and weekly), `workflow-lint.yml` (actionlint and
 zizmor) and `model-lock.yml` (the model lock against the hosts, weekly) run.
 
-In numbers: 2,464 unit tests in 197 files, 140 end-to-end tests in 27 specs on desktop Chromium
-(CI also runs them on a mobile viewport; the diagram check runs on desktop only), 148
-tests of the companion in 24 files, and the Python suites of the library publisher and the voice server.
+In numbers: 2,466 unit tests in 197 files, 140 end-to-end tests in 27 specs on desktop Chromium
+(CI also runs them on a mobile viewport; the diagram check runs on desktop only), 149
+tests of the companion in 25 files, and the Python suites of the library publisher and the voice server.
 
 The unit and end-to-end suites also check the documentation: every Mermaid block renders, diagram
 copies match the atlas, and links and anchors resolve.
