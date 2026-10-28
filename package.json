@@ -67,7 +67,7 @@
     "pwa"
   ],
   "dependencies": {
-    "@anthropic-ai/sdk": "0.134.0",
+    "@anthropic-ai/sdk": "1.0.0",
     "@fontsource-variable/plus-jakarta-sans": "5.3.0",
     "@huggingface/transformers": "4.3.1",
     "@mlc-ai/web-llm": "0.2.86",
