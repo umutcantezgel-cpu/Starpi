@@ -5,6 +5,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Demo recordings in the README (`docs/assets/video/`, MP4 with an animated WebP preview): the live
+  demo from sample files to a verified receipt, the sentence gate on a stream, and
+  `starpi-verify-receipt` on a signed and on an edited receipt; the `@starpi/core` README shows the
+  two terminal clips and gains an example that gates an OpenAI Responses API stream.
+
 ### Fixed
 
 - Settings → Memory no longer drops a note being typed or undoes a switch when the notes redraw.
@@ -12,6 +19,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
   route: Stop shows, and a second question waits instead of starting a turn beside it.
 - The source check parses numbers, excerpt headers, citation labels and sentence ends in linear time;
   long crafted text no longer makes it backtrack (CodeQL polynomial-redos). Results are unchanged.
+- Settings › Trust and the receipt spec show the command-line check with `-p pdfjs-dist@6`, so a
+  receipt that cites a PDF verifies; without it the PDF excerpt was reported as not reproduced.
+- The CI examples in the `@starpi/core` README pin `@starpi/core@3` (they said `@2` or nothing), and
+  the README's test counts are current (2,466 unit tests, 149 companion tests in 25 files).
 
 ## [3.0.0] - 2026-10-19
 

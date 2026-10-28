@@ -449,7 +449,7 @@ says when the signing key is one of this device's own.
 ```bash
 npm run verify:receipt -- receipt.json plan.pdf notes.md
 node scripts/verify-receipt.mjs receipt.json plan.pdf notes.md --public-key signer.pem --require-signature --json
-npx -p @starpi/core starpi-verify-receipt receipt.json plan.pdf notes.md
+npx -p @starpi/core -p pdfjs-dist@6 starpi-verify-receipt receipt.json plan.pdf notes.md
 ```
 
 ```text

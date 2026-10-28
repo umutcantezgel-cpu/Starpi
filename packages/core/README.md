@@ -285,6 +285,8 @@ workspace excerpt was reproduced (and, for v2, the Merkle tree and any signature
 when something did not match, a file is missing or the receipt is not signed with the given key,
 2 for a usage error or an invalid receipt.
 
+[![starpi-verify-receipt on a signed demo receipt: the checks pass, exit 0; then on a copy whose answer was changed after signing: the receipt hash, the answer hash and the signature fail, exit 1.](https://raw.githubusercontent.com/umutcantezgel-cpu/Starpi/main/docs/assets/video/receipt-verify.webp)](https://github.com/umutcantezgel-cpu/Starpi/blob/main/docs/assets/video/receipt-verify.mp4)
+
 ## Check documents in CI
 
 `starpi-ground` checks a Markdown document (release notes, generated documentation, an answer)
@@ -301,7 +303,7 @@ The public launch is planned for 12 June 2027.
 ```
 
 ```bash
-npx --yes --package=@starpi/core@2 --package=pdfjs-dist@6 starpi-ground --answer notes.md --source public/samples/en
+npx --yes --package=@starpi/core@3 --package=pdfjs-dist@6 starpi-ground --answer notes.md --source public/samples/en
 ```
 
 ```text
@@ -337,7 +339,7 @@ a `warning`, at its line and column, with the reason as the rule and a fingerpri
 same when the statement moves. In GitHub Actions (the job needs `security-events: write`):
 
 ```yaml
-- run: npx --yes --package=@starpi/core@2 starpi-ground --answer docs/release-notes.md --source docs/spec --format sarif --output starpi.sarif
+- run: npx --yes --package=@starpi/core@3 starpi-ground --answer docs/release-notes.md --source docs/spec --format sarif --output starpi.sarif
 - uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
   if: always()
   with:
@@ -347,6 +349,8 @@ same when the statement moves. In GitHub Actions (the job needs `security-events
 `checkDocument(markdown, sources)` and `toSarif(documents, tool)` do the same in code.
 
 ## Gate a streamed answer
+
+[![The sentence gate on simulated text deltas: the sentence with 12 May 2027, which its cited excerpt holds, is released while the stream runs; the sentence with 520,000 EUR, which the excerpt does not hold, is withheld.](https://raw.githubusercontent.com/umutcantezgel-cpu/Starpi/main/docs/assets/video/gate-stream.webp)](https://github.com/umutcantezgel-cpu/Starpi/blob/main/docs/assets/video/gate-stream.mp4)
 
 ```js
 import { createSentenceGate, isReleased } from '@starpi/core';
@@ -378,11 +382,52 @@ number. `checkText(text, options)` judges a complete text, and `canonicalText`, 
 `createSentenceReleaser` are the parts the gate is built from.
 
 ```sh
-npx --yes --package=@starpi/core starpi-gate --text answer.md --source docs/ --format sarif --output gate.sarif
+npx --yes --package=@starpi/core@3 starpi-gate --text answer.md --source docs/ --format sarif --output gate.sarif
 ```
 
 `starpi-gate` exits with 1 when it withholds a unit, 0 when it releases everything, 2 on a usage
 error.
+
+### With the OpenAI Responses API
+
+The gate takes text deltas from any stream. With the OpenAI Responses API, push the `delta` of each
+`response.output_text.delta` event; `push` returns only released units, each as soon as it can no
+longer change:
+
+```js
+// Gate an OpenAI Responses API stream with @starpi/core.
+import OpenAI from 'openai';
+import { createSentenceGate } from '@starpi/core';
+
+const label = '[Doc: nebula-plan.md, Chunk: 1]';
+const text = 'The approved budget for Project Nebula is 480,000 EUR.';
+const gate = createSentenceGate({
+  mode: 'sources', locale: 'en', sources: [{ label, text }],
+});
+const show = (unit) => console.log('released:', unit.text);
+
+const stream = await new OpenAI().responses.create({
+  model: process.env.OPENAI_MODEL, stream: true, store: false,
+  input: `Source ${label}: "${text}" Cite it. What is the budget?`,
+});
+for await (const event of stream) {
+  if (event.type !== 'response.output_text.delta') continue;
+  gate.push(event.delta).forEach(show); // units that can no longer change
+}
+const { released, withheld } = gate.end();
+released.forEach(show);
+for (const w of withheld) {
+  console.log('withheld:', w.reason, w.token, '|', w.text);
+}
+process.exitCode = withheld.length ? 1 : 0;
+```
+
+Set `OPENAI_API_KEY` and `OPENAI_MODEL` to run it; `openai` is not a dependency of this package. The
+example was checked with `openai` 7.45.1 against a local stand-in for the streaming events whose
+scripted answer adds a sentence with 520,000 EUR: it prints
+`released: The approved budget for Project Nebula is 480,000 EUR.`, then
+`withheld: unsupported_number 520,000 | The steering group approved 520,000 EUR [Doc: nebula-plan.md, Chunk: 1].`
+and exits with 1.
 
 ## Chunk and search
 
