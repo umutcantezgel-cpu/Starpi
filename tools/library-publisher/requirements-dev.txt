@@ -1,4 +1,4 @@
 -r requirements.txt
 -r requirements-embed.txt
-ruff==0.17.0
+ruff==0.17.3
 pip-audit==2.10.1
