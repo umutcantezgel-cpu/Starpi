@@ -3,7 +3,8 @@
 // and only where allowed), the events it reads from recorded Messages API streams (text,
 // reasoning with signatures, tool calls, citations, pause, refusal, errors, a fallback midway),
 // append-only replay of whole answers, and the SDK and wire forms end to end against the local
-// fake, including Stop in the middle of a stream.
+// fake, on the same API version (so an older model keeps its temperature), including Stop in the
+// middle of a stream.
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { createAnthropicFake, signatureOf } from '../../scripts/fakes/anthropic.mjs';
@@ -327,11 +328,29 @@ describe('anthropic adapter: end to end against the fake', () => {
       assert.ok(r2.text.length > 0);
       const sent = fake.requests.at(-1);
       assert.equal(sent?.headers['x-api-key'], 'test-key');
+      assert.equal(sent?.headers.authorization, undefined, 'the placeholder the SDK holds never reaches the provider');
       assert.equal(sent?.headers['anthropic-dangerous-direct-browser-access'], 'true');
       assert.equal(sent?.headers['anthropic-version'], '2023-06-01');
       assert.deepEqual(sent?.body.messages[1].content, /** @type {any} */ (r1.opaque[0].block).content);
       assert.equal(sent?.body.messages[1].content[0].signature, signatureOf(REASONING_TEXT, 'claude-opus-5-5'));
       assert.equal(sent?.body.fallbacks, undefined);
+    });
+  }
+
+  // The fake, like the API, refuses sampling parameters from API version 2026-10-21 on, the default
+  // of @anthropic-ai/sdk 1.x; an SDK form that left the version to the SDK would fail here.
+  for (const [label, adapter] of /** @type {const} */ ([
+    ['SDK', createAnthropicAdapter()],
+    ['wire', createAnthropicWireAdapter()],
+  ])) {
+    it(`${label}: gives an older model its temperature on the API version both forms send`, async () => {
+      fake.requests.length = 0;
+      const r = await collect(await run(adapter, request('anthropic', 'claude-haiku-4-5', 'Hi', { temperature: 0.3, thinking: { mode: 'off' } }), transport()));
+      assert.equal(r.error, null);
+      assert.equal(r.stopReason, 'end_turn');
+      const sent = fake.requests.at(-1);
+      assert.equal(sent?.body.temperature, 0.3);
+      assert.equal(sent?.headers['anthropic-version'], '2023-06-01');
     });
   }
 

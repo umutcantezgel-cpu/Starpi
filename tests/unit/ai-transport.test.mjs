@@ -91,9 +91,13 @@ describe('directTransport', () => {
     assert.equal(calls[0].headers.get('x-api-key'), 'real-key');
     assert.equal(calls[0].headers.get('anthropic-version'), '2023-06-01');
     assert.equal(calls[0].init.redirect, 'error');
+    // @anthropic-ai/sdk 1.x puts its key in Authorization: Bearer; the placeholder is dropped too.
+    await t.fetch('https://api.example.com/v1/messages', { method: 'POST', headers: { authorization: 'Bearer placeholder' }, body: '{}' });
+    assert.equal(calls[1].headers.get('authorization'), null);
+    assert.equal(calls[1].headers.get('x-api-key'), 'real-key');
     await assert.rejects(t.fetch('https://elsewhere.example/v1/messages', {}), (/** @type {any} */ err) => err.code === 'bad_request');
     await assert.rejects(t.fetch('https://api.example.com/v1/messages?key=x', {}), (/** @type {any} */ err) => err.code === 'bad_request');
-    assert.equal(calls.length, 1);
+    assert.equal(calls.length, 2);
   });
 
   it("falls back to the provider's native header, also for SDK requests", async () => {

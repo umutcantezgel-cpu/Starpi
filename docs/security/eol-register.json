@@ -92,12 +92,12 @@
     },
     {
       "name": "Anthropic TypeScript SDK",
-      "version": "0.134.0",
+      "version": "1.3.0",
       "kind": "npm",
       "npm": "@anthropic-ai/sdk",
-      "usedFor": "the Claude adapter of the provider layer, loaded lazily",
+      "usedFor": "the Claude adapter of the provider layer, loaded lazily, and the companion's Anthropic brain",
       "eol": null,
-      "note": "Pre-1.0 releases; breaking changes come in minor versions, so upgrade with the adapter tests."
+      "note": "Breaking changes come in major versions; 1.0 moved the default API version to 2026-10-21, which the app's adapter overrides with its own (src/js/ai/adapters/anthropic.js). Upgrade with the adapter and companion tests."
     },
     {
       "name": "highlight.js",

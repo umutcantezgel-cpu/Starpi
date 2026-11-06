@@ -361,6 +361,41 @@ describe('anthropic fake', () => {
     assert.equal((await post(messages(), body({ model: 'claude-haiku-5-5', tool_choice: { type: 'any' } }), ANTHROPIC)).status, 200);
   });
 
+  it('rejects what API version 2026-10-21 rejects, and only from that version on', async () => {
+    const v2026 = { ...ANTHROPIC, 'anthropic-version': '2026-10-21' };
+    /** @param {any} b @param {Record<string, string>} headers @param {string} [path] */
+    const status = async (b, headers, path = messages()) => {
+      const res = await post(path, { ...b, stream: false }, headers);
+      if (res.status === 400) assert.equal((await res.json()).error.type, 'invalid_request_error');
+      else await res.body?.cancel();
+      return res.status;
+    };
+    // Sampling parameters, on every model and even at their defaults; token counting too.
+    for (const extra of [{ temperature: 0.2 }, { temperature: 1 }, { top_p: 0.9 }, { top_k: 40 }]) {
+      const older = body({ model: 'claude-haiku-4-5', ...extra });
+      assert.equal(await status(older, v2026), 400, JSON.stringify(extra));
+      assert.equal(await status(older, ANTHROPIC), 200, `${JSON.stringify(extra)} with 2023-06-01`);
+    }
+    assert.equal(await status(body({ temperature: 0.5 }), v2026, `${url.anthropic}/v1/messages/count_tokens`), 400);
+    assert.equal(await status(body(), v2026), 200);
+    // A document directly in an assistant message; in a user message it stays welcome.
+    const doc = { type: 'document', source: { type: 'text', media_type: 'text/plain', data: 'Notes' } };
+    const docInAnswer = body({ messages: [{ role: 'user', content: 'Hi' }, { role: 'assistant', content: [doc] }, { role: 'user', content: 'More' }] });
+    assert.equal(await status(docInAnswer, v2026), 400);
+    assert.equal(await status(docInAnswer, ANTHROPIC), 200);
+    assert.equal(await status(body({ messages: [{ role: 'user', content: [doc, { type: 'text', text: 'Sum it up' }] }] }), v2026), 200);
+    // Cited text in a user message, directly or in a search result inside a tool result; cited
+    // text in an answer that goes back stays welcome.
+    const cited = { type: 'text', text: 'Quoted.', citations: [{ type: 'char_location', cited_text: 'Quoted.', document_index: 0, start_char_index: 0, end_char_index: 7 }] };
+    const result = { type: 'search_result', source: 'https://example.com/a', title: 'A', content: [cited] };
+    for (const content of [[cited], [{ type: 'tool_result', tool_use_id: 'toolu_1', content: [result] }]]) {
+      const b = body({ messages: [{ role: 'user', content }] });
+      assert.equal(await status(b, v2026), 400);
+      assert.equal(await status(b, ANTHROPIC), 200);
+    }
+    assert.equal(await status(body({ messages: [{ role: 'user', content: 'Hi' }, { role: 'assistant', content: [cited] }, { role: 'user', content: 'More' }] }), v2026), 200);
+  });
+
   it('answers browsers only with the direct-access header', async () => {
     const origin = 'http://127.0.0.1:4173';
     const allowed = await fetch(messages(), {

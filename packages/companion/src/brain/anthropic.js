@@ -3,7 +3,9 @@
 // first request needs it). The SDK gets the egress capability's fetch, so its requests can reach
 // the API host the owner listed and nothing else. The model is configurable; the default is the
 // current Opus model. Thinking stays adaptive (the current models do not switch it off); `effort`
-// sets its depth, and `showReasoning` asks for a summarized view of it.
+// sets its depth, and `showReasoning` asks for a summarized view of it. The SDK's defaults apply:
+// API version 2026-10-21 and the key as `Authorization: Bearer`. That version refuses temperature,
+// top_p and top_k, so a request never carries them.
 //
 // No server-side fallback to another model is requested: a request the model declines comes back
 // as a refusal, never as an answer of a different model the owner did not choose.

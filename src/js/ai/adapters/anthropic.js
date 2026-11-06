@@ -3,10 +3,12 @@
 // - `anthropicAdapter` (kind 'sdk') runs the official @anthropic-ai/sdk, loaded lazily as its own
 //   chunk. The transport's fetch and base URL are injected, so the SDK's requests go direct, through
 //   the relay or through any server transport, and the transport sets the key: the SDK only ever
-//   holds a placeholder. `dangerouslyAllowBrowser` makes the SDK send the direct-browser-access
-//   header the API wants from web pages.
+//   holds a placeholder, whatever header it puts it in (the transport drops every auth header an
+//   SDK sets). `dangerouslyAllowBrowser` makes the SDK send the direct-browser-access header the
+//   API wants from web pages.
 // - `anthropicWireAdapter` (kind 'wire') sends the same body with the stream driver's own fetch,
 //   for hosts that do not ship the SDK.
+// Both send the same API version and beta headers (apiHeaders()), not the SDK's default version.
 //
 // Request rules for the current models:
 // - thinking "off" is `output_config.effort: 'low'` (thinking cannot be switched off on all of
@@ -39,6 +41,12 @@ import { argsObject, base64Text, isRecord, streamError, usageEvent } from './com
 /** @typedef {import('../stream.js').SdkContext} SdkContext */
 /** @typedef {import('../transport.js').BuiltRequest} BuiltRequest */
 
+/**
+ * The Messages API version of every request, in both forms. @anthropic-ai/sdk 1.x sends 2026-10-21
+ * unless told otherwise, and that version refuses `temperature` on every model, which this adapter
+ * still sends to the older models that take it (Claude 4.6 and earlier, in requests without
+ * thinking). Moving to 2026-10-21 means dropping those sampling settings first.
+ */
 export const ANTHROPIC_VERSION = '2023-06-01';
 /** Beta header of `fallbacks: "default"`. */
 export const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
@@ -480,7 +488,16 @@ export function parseAnthropicEvent(data, state) {
 }
 
 /**
- * Headers of the wire form (the SDK sets the same ones itself).
+ * The API version and beta headers of a request, the same in both forms.
+ * @param {string[]} betas
+ * @returns {Record<string, string>}
+ */
+function apiHeaders(betas) {
+  return { 'anthropic-version': ANTHROPIC_VERSION, ...(betas.length ? { 'anthropic-beta': betas.join(',') } : {}) };
+}
+
+/**
+ * Headers of the wire form (the SDK sets the others itself and gets apiHeaders() per request).
  * @param {string[]} betas
  * @returns {Record<string, string>}
  */
@@ -488,9 +505,8 @@ function wireHeaders(betas) {
   return {
     'content-type': 'application/json',
     accept: 'text/event-stream',
-    'anthropic-version': ANTHROPIC_VERSION,
     'anthropic-dangerous-direct-browser-access': 'true',
-    ...(betas.length ? { 'anthropic-beta': betas.join(',') } : {}),
+    ...apiHeaders(betas),
   };
 }
 
@@ -537,7 +553,7 @@ export function createAnthropicAdapter(options = {}) {
         logLevel: 'off',
       });
       const { body, betas } = buildAnthropicBody(req, options);
-      const headers = betas.length ? { 'anthropic-beta': betas.join(',') } : {};
+      const headers = apiHeaders(betas);
       const state = createAnthropicState(req);
       const { data: events, request_id: requestId } = await client.messages.create(body, { signal: context.signal, headers }).withResponse();
       state.requestId = typeof requestId === 'string' ? requestId : null;
