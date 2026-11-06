@@ -4,7 +4,7 @@ Starpi 3.0 rebuilds the app around a provider-neutral AI layer, keeps chats and 
 in IndexedDB, signs receipts on the device and checks relations between statements. Most of the
 move happens on its own the first time a browser opens 3.0. This guide lists what changes for
 **users**, for **operators** who deploy their own copy, for **forks and embedding apps**, and for
-code that uses **`@starpi/core`**. The [changelog](../CHANGELOG.md#300---2026-10-19) lists
+code that uses **`@starpi/core`**. The [changelog](../CHANGELOG.md#300---2026-10-20) lists
 everything that was added.
 
 ## At a glance

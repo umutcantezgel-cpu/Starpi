@@ -1061,7 +1061,7 @@ Details and known limitations are in [SECURITY.md](SECURITY.md#known-limitations
 Beside it, `codeql.yml` (CodeQL on every change and weekly), `workflow-lint.yml` (actionlint and
 zizmor) and `model-lock.yml` (the model lock against the hosts, weekly) run.
 
-In numbers: 2,466 unit tests in 197 files, 140 end-to-end tests in 27 specs on desktop Chromium
+In numbers: 2,475 unit tests in 198 files, 140 end-to-end tests in 27 specs on desktop Chromium
 (CI also runs them on a mobile viewport; the diagram check runs on desktop only), 149
 tests of the companion in 25 files, and the Python suites of the library publisher and the voice server.
 

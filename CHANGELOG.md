@@ -42,7 +42,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - Settings › Trust and the receipt spec show the command-line check with `-p pdfjs-dist@6`, so a
   receipt that cites a PDF verifies; without it the PDF excerpt was reported as not reproduced.
 - The CI examples in the `@starpi/core` README pin `@starpi/core@3` (they said `@2` or nothing), and
-  the README's test counts are current (2,466 unit tests, 149 companion tests in 25 files).
+  the README's test counts are current (2,475 unit tests, 149 companion tests in 25 files).
 - Controls whose accessible name left out their visible text now contain it (WCAG 2.5.3, label in
   name), in all six languages. Citation chips are read as "file · chunk (open source, chunk n)", Run
   preview in the canvas and Continue with this in a comparison start with their label, and the drop
@@ -59,6 +59,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - The OpenAI Responses adapter and the architecture atlas no longer say that `store: false` keeps
   nothing on OpenAI's side: the response is not stored for later retrieval, while OpenAI may keep
   abuse-monitoring logs (by default for up to 30 days).
+- 3.0.0 is dated 2026-10-20 here and in `CITATION.cff`, the day it was tagged and published to npm,
+  as the date item of its release checklist asks.
 
 ### Security
 
@@ -67,7 +69,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
   GHSA-4w7w-5xrc-9h26, GHSA-2m5v-pch6-74hx, GHSA-qrxm-fqhp-jwvm, GHSA-9fm3-97px-rjf6,
   GHSA-55wc-3pg8-jfw6).
 
-## [3.0.0] - 2026-10-19
+## [3.0.0] - 2026-10-20
 
 Starpi 3.0 is a new generation of the app: one AI layer for every provider, a chat with branches,
 tools, voice and research, chats and files kept on the device, receipts signed on the device, a
