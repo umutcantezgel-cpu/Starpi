@@ -18,8 +18,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
   Apache-2.0), `lucide` 1.63.0, `marked` 18.1.2, `@supabase/supabase-js` 2.118.0,
   `@huggingface/transformers` 4.3.2 (same ONNX Runtime binary, `model-lock.json` unchanged),
   `@playwright/test` 1.64.1, `mermaid` 12.2.0 with `katex` 0.19.1 (also the override under mermaid),
-  ruff 0.17.3, `actions/setup-python` 7.1.0 and `github/codeql-action` 4.39.1 (also in the SARIF
-  examples of both READMEs). The end-of-life register follows the new versions.
+  `@axe-core/playwright` 4.14.0, `eslint` 10.13.0, `jsdom` 30.1.3, ruff 0.17.3,
+  `actions/setup-python` 7.1.0 and `github/codeql-action` 4.39.1 (also in the SARIF examples of both
+  READMEs). The end-of-life register follows the new versions.
+- The end-to-end accessibility scans run axe-core 4.14, whose WCAG 2.1 A rules now include label in
+  name (WCAG 2.5.3).
 
 ### Fixed
 
@@ -32,6 +35,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
   receipt that cites a PDF verifies; without it the PDF excerpt was reported as not reproduced.
 - The CI examples in the `@starpi/core` README pin `@starpi/core@3` (they said `@2` or nothing), and
   the README's test counts are current (2,466 unit tests, 149 companion tests in 25 files).
+- Controls whose accessible name left out their visible text now contain it (WCAG 2.5.3, label in
+  name), in all six languages. Citation chips are read as "file · chunk (open source, chunk n)", Run
+  preview in the canvas and Continue with this in a comparison start with their label, and the drop
+  zone of the on-device workspace is named by the text it shows. Export (German, Turkish), Unload
+  (Spanish, Italian) and Stop in a comparison (German) contain their label too, and a comparison's
+  Stop and Continue buttons follow a language switch.
 
 ### Security
 

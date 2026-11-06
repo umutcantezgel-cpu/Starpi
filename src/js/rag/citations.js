@@ -59,6 +59,8 @@ export function citationButton(scope, index, variant) {
   btn.dataset.action = 'open-citation';
   btn.dataset.arg = `${scope}:${index}`;
   btn.className = variant === 'inline' ? 'citation-chip' : 'citation-chip citation-chip-lg';
+  // The name starts with the visible text ("doc · chunk") and says more after it, so it contains
+  // what the chip shows (WCAG 2.5.3, label in name) and speech input finds the chip by its text.
   btn.setAttribute('data-i18n-aria', 'citation.open');
   btn.setAttribute('data-i18n-params', JSON.stringify({ doc: c.doc, chunk: c.chunk }));
   btn.setAttribute('aria-label', t('citation.open', { doc: c.doc, chunk: c.chunk }));

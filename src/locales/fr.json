@@ -314,7 +314,7 @@
   },
   "citation": {
     "title": "Source",
-    "open": "Ouvrir la source : {doc}, segment {chunk}",
+    "open": "{doc} · {chunk} (ouvrir la source, segment {chunk})",
     "source_workspace": "Espace de travail local",
     "source_knowledge": "Base de connaissances",
     "source_web": "Page web",
@@ -437,7 +437,6 @@
     "title": "Espace de travail local",
     "badge": "Privé · sur cet appareil",
     "description": "Les fichiers sont analysés, découpés en segments et indexés avec BM25 dans un processus d’arrière-plan sur cet appareil, puis conservés dans le stockage de ce navigateur, sauf si vous choisissez la mémoire seule. Rien n’est envoyé ni synchronisé. Ce n’est que lorsqu’un modèle extérieur à cet appareil répond (l’assistant cloud, NVIDIA NIM cloud via le serveur de Starpi, ou votre serveur personnel) que du texte des fichiers accompagne la question : en mode sources, les extraits correspondants ; en discussion libre, le texte d’un fichier joint à cette question (jusqu’à environ 12 000 caractères). Les réponses citent les extraits sous la forme [Doc: fichier, Chunk: n].",
-    "drop_label": "Ajouter des fichiers à l’espace de travail local",
     "drop_title": "Déposez des fichiers ici ou cliquez pour choisir",
     "drop_hint": "PDF, DOCX, XLSX, PPTX, HTML, TXT, Markdown, JSON ou CSV · jusqu’à 25 Mo chacun",
     "empty": "Aucun fichier dans l’espace de travail pour l’instant.",
