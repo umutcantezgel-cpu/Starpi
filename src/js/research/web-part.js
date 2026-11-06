@@ -2,13 +2,14 @@
 // Origin: generic infrastructure first written for a related project of the same author (MIT); re-expressed for Starpi.
 //
 // The web part of a research job: what a web search finds. Each round is one call with web search
-// on (Gemini's google_search by default; Anthropic, OpenAI, xAI and OpenRouter search the same way
-// through the AI layer, or the site's Gemini pool over POST /api/research/step). Every answer is
-// brought into one shape, WebAnswer { text, segments, sources, queries, suggestionsHtml }, the
-// rounds are joined, and the joined text is judged as a whole by the sentence gate in web mode:
-// every number must lie inside a segment that rests on an http(s) source. One unit that fails
-// withholds the whole part. A withheld part keeps only the list of sources it consulted and the
-// class of the reason, never a piece of its text and never its search suggestions.
+// on (Gemini's google_search by default; Anthropic, xAI and OpenRouter search the same way through
+// the AI layer, never OpenAI for a report (runtime.js RESEARCH_WEB_ORDER says why), or the site's
+// Gemini pool over POST /api/research/step). Every answer is brought into one shape, WebAnswer
+// { text, segments, sources, queries, suggestionsHtml }, the rounds are joined, and the joined text
+// is judged as a whole by the sentence gate in web mode: every number must lie inside a segment
+// that rests on an http(s) source. One unit that fails withholds the whole part. A withheld part
+// keeps only the list of sources it consulted and the class of the reason, never a piece of its
+// text and never its search suggestions.
 import { checkText } from '../core/gate.js';
 import { MAX_PLAN_QUERIES, webPrompt } from './prompts.js';
 

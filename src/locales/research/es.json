@@ -81,7 +81,7 @@
   },
   "web_released": "Comprobada en su conjunto: cada número está en un pasaje que respaldan los resultados de búsqueda.",
   "web_withheld": "La respuesta de la web se retiene porque no superó la comprobación en su conjunto: {reason}. Solo se enumeran las páginas que consultó.",
-  "web_off": "Sin búsqueda web: ninguno de tus proveedores busca en la web y este sitio no ofrece ninguna.",
+  "web_off": "Sin búsqueda web: ninguno de tus proveedores busca en la web para los informes de investigación y este sitio no ofrece ninguna.",
   "web_empty": "Tras quitar los datos personales, no quedó nada de la pregunta para una búsqueda web.",
   "web_failed": "La búsqueda web falló ({code}).",
   "web_running": "La búsqueda web está en curso…",

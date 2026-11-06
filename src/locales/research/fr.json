@@ -81,7 +81,7 @@
   },
   "web_released": "Vérifiée dans son ensemble : chaque nombre figure dans un passage confirmé par les résultats de recherche.",
   "web_withheld": "La réponse web est retenue, car elle n’a pas passé la vérification dans son ensemble : {reason}. Seules les pages consultées sont listées.",
-  "web_off": "Pas de recherche web : aucun de vos fournisseurs ne cherche sur le web, et ce site n’en propose pas.",
+  "web_off": "Pas de recherche web : aucun de vos fournisseurs ne cherche sur le web pour les rapports de recherche, et ce site n’en propose pas.",
   "web_empty": "Une fois les informations personnelles retirées, il ne restait rien de la question pour une recherche web.",
   "web_failed": "La recherche web a échoué ({code}).",
   "web_running": "Recherche web en cours…",

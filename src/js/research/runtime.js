@@ -26,7 +26,13 @@ import { patientStep } from './sources-part.js';
 /** Where the research step lives. */
 export const STEP_URL = '/api/research/step';
 /** Cloud providers a web search is tried on, in this order (Gemini's search is the default). */
-const WEB_ORDER = /** @type {readonly ProviderId[]} */ (['gemini', 'anthropic', 'openai', 'xai', 'openrouter']);
+export const WEB_ORDER = /** @type {readonly ProviderId[]} */ (Object.freeze(['gemini', 'anthropic', 'openai', 'xai', 'openrouter']));
+/**
+ * WEB_ORDER for a research report's web part, without OpenAI: the report shows that part without
+ * inline citation links (plain paragraphs, its pages listed apart), and OpenAI's web search guide
+ * requires clickable inline citations. The chat (ai/hybrid.js) keeps WEB_ORDER: it cites its web passages inline.
+ */
+export const RESEARCH_WEB_ORDER = /** @type {readonly ProviderId[]} */ (Object.freeze(WEB_ORDER.filter((id) => id !== 'openai')));
 
 /** An error of the research step, with the server's code (and its Retry-After, when it sent one). */
 export class StepError extends Error {
@@ -172,9 +178,13 @@ export async function loadReport(artifactId) {
 
 /**
  * The runtime of research jobs in this browser.
+ * @param {{ webOrder?: readonly ProviderId[] }} [options]  webOrder: the providers a web search is
+ *   tried on, in this order (RESEARCH_WEB_ORDER unless the caller shows web results with inline
+ *   citations)
  * @returns {ResearchRuntime}
  */
-export function browserRuntime() {
+export function browserRuntime(options = {}) {
+  const webOrder = options.webOrder ?? RESEARCH_WEB_ORDER;
   return {
     complete,
     // Three jobs at once can reach the site's per-minute limit: wait it out rather than fail.
@@ -185,7 +195,7 @@ export function browserRuntime() {
       const health = getHealth().data ?? (await loadHealth().catch(() => null))?.data ?? null;
       return {
         sources: firstWith(PROVIDER_ORDER, (caps) => caps.tools),
-        web: firstWith(WEB_ORDER, (caps) => caps.search !== 'none'),
+        web: firstWith(webOrder, (caps) => caps.search !== 'none'),
         pool: health?.research === true,
       };
     },

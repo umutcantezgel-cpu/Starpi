@@ -512,7 +512,9 @@ flowchart TD
   one tab at a time and start from **Research this** under an answer. Without a key of yours they
   run on the site's Gemini pool, whose tool turns are signed so that a browser cannot forge what the
   model said. Web queries can be stripped of e-mail addresses, phone numbers, IBANs, card numbers
-  and IP addresses first.
+  and IP addresses first. The web rounds search with your key for Gemini, Anthropic, xAI or
+  OpenRouter, else on the site's pool, never with OpenAI: OpenAI's web search guide requires
+  clickable inline citations, and the report lists its web pages apart.
 
 ## Starpi Core, the local companion
 

@@ -49,6 +49,16 @@ and versions follow [Semantic Versioning](https://semver.org/).
   zone of the on-device workspace is named by the text it shows. Export (German, Turkish), Unload
   (Spanish, Italian) and Stop in a comparison (German) contain their label too, and a comparison's
   Stop and Continue buttons follow a language switch.
+- Research reports no longer search the web with OpenAI. A report shows its web part as plain
+  paragraphs with its pages listed apart, without the clickable inline citations that OpenAI's web
+  search guide requires wherever its results are shown, so the web part takes the next provider you
+  have a key for (Gemini, Anthropic, xAI, OpenRouter) or the site's Gemini pool. The chat is
+  unchanged: its web passages still search with OpenAI first and are cited inline. With only an
+  OpenAI key and no site pool, the notice says that none of your providers searches the web for
+  research reports.
+- The OpenAI Responses adapter and the architecture atlas no longer say that `store: false` keeps
+  nothing on OpenAI's side: the response is not stored for later retrieval, while OpenAI may keep
+  abuse-monitoring logs (by default for up to 30 days).
 
 ### Security
 

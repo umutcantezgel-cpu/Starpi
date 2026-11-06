@@ -81,7 +81,7 @@
   },
   "web_released": "Bütün olarak denetlendi: her sayı, arama sonuçlarının desteklediği bir pasajda yer alıyor.",
   "web_withheld": "Web yanıtı bütün olarak denetimden geçemediği için alıkonuldu: {reason}. Yalnızca başvurduğu sayfalar listeleniyor.",
-  "web_off": "Web araması yok: sağlayıcılarınızdan hiçbiri web’de arama yapmıyor ve bu site de arama sunmuyor.",
+  "web_off": "Web araması yok: sağlayıcılarınızdan hiçbiri araştırma raporları için web’de arama yapmıyor ve bu site de arama sunmuyor.",
   "web_empty": "Kişisel ayrıntılar çıkarıldıktan sonra sorudan web araması için hiçbir şey kalmadı.",
   "web_failed": "Web araması başarısız oldu ({code}).",
   "web_running": "Web araması çalışıyor…",
