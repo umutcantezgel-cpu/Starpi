@@ -15,8 +15,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - Dependencies: `@anthropic-ai/sdk` 0.134.0 (app and companion; it adds `@opentelemetry/api` 1.9.1,
-  Apache-2.0), `lucide` 1.57.0, `@playwright/test` 1.64.1 and `mermaid` 12.2.0 (`katex` stays at
-  0.19.0 through the override). The end-of-life register follows the new versions.
+  Apache-2.0), `lucide` 1.63.0, `marked` 18.1.2, `@supabase/supabase-js` 2.118.0,
+  `@huggingface/transformers` 4.3.2 (same ONNX Runtime binary, `model-lock.json` unchanged),
+  `@playwright/test` 1.64.1, `mermaid` 12.2.0 with `katex` 0.19.1 (also the override under mermaid),
+  ruff 0.17.3, `actions/setup-python` 7.1.0 and `github/codeql-action` 4.39.1 (also in the SARIF
+  examples of both READMEs). The end-of-life register follows the new versions.
 
 ### Fixed
 

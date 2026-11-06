@@ -630,7 +630,7 @@ in code scanning at their line:
 
 ```yaml
 - run: npx --yes --package=@starpi/core@3 starpi-ground --answer docs/release-notes.md --source docs/spec --format sarif --output starpi.sarif
-- uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+- uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
   if: always()
   with:
     sarif_file: starpi.sarif
