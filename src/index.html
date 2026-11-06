@@ -458,7 +458,8 @@
           </div>
           <p class="text-[13px] text-slate-600" data-i18n="workspace.description">Files are parsed, split into chunks and indexed with BM25 in a background worker on this device, and kept in this browser's storage unless you choose memory only. Nothing is uploaded or synced. Only when a model outside this device answers (the cloud assistant, NVIDIA NIM cloud through Starpi's server, or your own server) does file text go along with the question: in source mode the matching excerpts, in free chat the text of a file attached to that question (up to about 12,000 characters). Answers cite excerpts as [Doc: file, Chunk: n].</p>
 
-          <div id="dropZone" role="button" tabindex="0" data-action="pick-workspace-files" class="border-2 border-dashed border-slate-300 hover:border-amber-400 rounded-xl p-6 text-center transition cursor-pointer bg-slate-50/60 hover:bg-amber-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400" data-i18n-aria="workspace.drop_label" aria-label="Add files to the on-device workspace">
+          <!-- Named by its visible text, without an aria-label, so the name holds all it shows (WCAG 2.5.3). -->
+          <div id="dropZone" role="button" tabindex="0" data-action="pick-workspace-files" class="border-2 border-dashed border-slate-300 hover:border-amber-400 rounded-xl p-6 text-center transition cursor-pointer bg-slate-50/60 hover:bg-amber-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
             <i data-lucide="upload" class="w-6 h-6 mx-auto mb-2 text-slate-500"></i>
             <p class="text-sm font-medium text-slate-900" data-i18n="workspace.drop_title">Drop files here or click to choose</p>
             <p class="text-xs text-slate-500 mt-1" data-i18n="workspace.drop_hint">PDF, DOCX, XLSX, PPTX, HTML, TXT, Markdown, JSON or CSV · up to 25 MB each</p>

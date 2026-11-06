@@ -326,12 +326,15 @@ function paintColumn(i) {
   }
   const actions = /** @type {HTMLElement} */ (el.querySelector('[data-column-actions]'));
   const name = servedLabel(col);
+  // The names contain the visible label and add the model (WCAG 2.5.3, label in name); their i18n
+  // keys relabel them in place on a language switch, together with the visible text.
+  const named = JSON.stringify({ model: name });
   if (col.status === 'pending' || col.status === 'streaming') {
-    setHtml(actions, html`<button type="button" class="btn btn-secondary px-2 py-1 text-xs" data-action="compare-stop" data-arg="${String(i)}" aria-label="${t('canvas.compare.stop_aria', { model: name })}">${icon('square', 'w-3.5 h-3.5')}${label('canvas.compare.stop')}</button>`.value);
+    setHtml(actions, html`<button type="button" class="btn btn-secondary px-2 py-1 text-xs" data-action="compare-stop" data-arg="${String(i)}" aria-label="${t('canvas.compare.stop_aria', { model: name })}" data-i18n-aria="canvas.compare.stop_aria" data-i18n-params="${named}">${icon('square', 'w-3.5 h-3.5')}${label('canvas.compare.stop')}</button>`.value);
   } else if (col.adopted) {
     setHtml(actions, html`<p class="text-[11px] text-emerald-800 flex items-center gap-1">${icon('check', 'w-3.5 h-3.5')}${label('canvas.compare.continued')}</p>`.value);
   } else if ((col.status === 'done' || col.status === 'stopped') && col.result && col.text.trim()) {
-    setHtml(actions, html`<button type="button" class="btn btn-primary px-2 py-1 text-xs" data-action="compare-continue" data-arg="${String(i)}" aria-label="${t('canvas.compare.continue_aria', { model: name })}">${icon('git-fork', 'w-3.5 h-3.5')}${label('canvas.compare.continue')}</button>`.value);
+    setHtml(actions, html`<button type="button" class="btn btn-primary px-2 py-1 text-xs" data-action="compare-continue" data-arg="${String(i)}" aria-label="${t('canvas.compare.continue_aria', { model: name })}" data-i18n-aria="canvas.compare.continue_aria" data-i18n-params="${named}">${icon('git-fork', 'w-3.5 h-3.5')}${label('canvas.compare.continue')}</button>`.value);
   } else actions.replaceChildren();
 }
 

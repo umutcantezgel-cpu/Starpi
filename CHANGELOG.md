@@ -14,9 +14,23 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Dependencies: `@anthropic-ai/sdk` 0.134.0 (app and companion; it adds `@opentelemetry/api` 1.9.1,
-  Apache-2.0), `lucide` 1.57.0, `@playwright/test` 1.64.1 and `mermaid` 12.2.0 (`katex` stays at
-  0.19.0 through the override). The end-of-life register follows the new versions.
+- Dependencies: `@anthropic-ai/sdk` 1.3.0 (app and companion; it adds `@opentelemetry/api` 1.9.1,
+  Apache-2.0, and is itself Apache-2.0 from 1.0.0, with earlier contributions under MIT), `lucide`
+  1.63.0, `marked` 18.1.2, `@supabase/supabase-js` 2.118.0,
+  `@huggingface/transformers` 4.3.2 (same ONNX Runtime binary, `model-lock.json` unchanged),
+  `@playwright/test` 1.64.1, `mermaid` 12.2.0 with `katex` 0.19.1 (also the override under mermaid),
+  `@axe-core/playwright` 4.14.0, `eslint` 10.13.0, `jsdom` 30.1.3, ruff 0.17.3,
+  `actions/setup-python` 7.1.0 and `github/codeql-action` 4.39.1 (also in the SARIF examples of both
+  READMEs). The end-of-life register and the companion's NOTICE follow the new versions.
+- `@anthropic-ai/sdk` 1.x sends API version 2026-10-21 unless told otherwise, and that version
+  refuses `temperature`, `top_p` and `top_k` on every model. The app's Anthropic adapter now sends
+  its own version, 2023-06-01, in the SDK form as in the wire form, so Claude 4.6 and earlier keep
+  the temperature the app gives them. The companion's Anthropic brain follows the SDK (version
+  2026-10-21, the key as `Authorization: Bearer`) and sends no sampling parameters. The Anthropic
+  fake rejects what 2026-10-21 rejects: sampling parameters, a document directly in an assistant
+  message and cited text in a user message.
+- The end-to-end accessibility scans run axe-core 4.14, whose WCAG 2.1 A rules now include label in
+  name (WCAG 2.5.3).
 
 ### Fixed
 
@@ -28,7 +42,25 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - Settings › Trust and the receipt spec show the command-line check with `-p pdfjs-dist@6`, so a
   receipt that cites a PDF verifies; without it the PDF excerpt was reported as not reproduced.
 - The CI examples in the `@starpi/core` README pin `@starpi/core@3` (they said `@2` or nothing), and
-  the README's test counts are current (2,466 unit tests, 149 companion tests in 25 files).
+  the README's test counts are current (2,475 unit tests, 149 companion tests in 25 files).
+- Controls whose accessible name left out their visible text now contain it (WCAG 2.5.3, label in
+  name), in all six languages. Citation chips are read as "file · chunk (open source, chunk n)", Run
+  preview in the canvas and Continue with this in a comparison start with their label, and the drop
+  zone of the on-device workspace is named by the text it shows. Export (German, Turkish), Unload
+  (Spanish, Italian) and Stop in a comparison (German) contain their label too, and a comparison's
+  Stop and Continue buttons follow a language switch.
+- Research reports no longer search the web with OpenAI. A report shows its web part as plain
+  paragraphs with its pages listed apart, without the clickable inline citations that OpenAI's web
+  search guide requires wherever its results are shown, so the web part takes the next provider you
+  have a key for (Gemini, Anthropic, xAI, OpenRouter) or the site's Gemini pool. The chat is
+  unchanged: its web passages still search with OpenAI first and are cited inline. With only an
+  OpenAI key and no site pool, the notice says that none of your providers searches the web for
+  research reports.
+- The OpenAI Responses adapter and the architecture atlas no longer say that `store: false` keeps
+  nothing on OpenAI's side: the response is not stored for later retrieval, while OpenAI may keep
+  abuse-monitoring logs (by default for up to 30 days).
+- 3.0.0 is dated 2026-10-20 here and in `CITATION.cff`, the day it was tagged and published to npm,
+  as the date item of its release checklist asks.
 
 ### Security
 
@@ -37,7 +69,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
   GHSA-4w7w-5xrc-9h26, GHSA-2m5v-pch6-74hx, GHSA-qrxm-fqhp-jwvm, GHSA-9fm3-97px-rjf6,
   GHSA-55wc-3pg8-jfw6).
 
-## [3.0.0] - 2026-10-19
+## [3.0.0] - 2026-10-20
 
 Starpi 3.0 is a new generation of the app: one AI layer for every provider, a chat with branches,
 tools, voice and research, chats and files kept on the device, receipts signed on the device, a

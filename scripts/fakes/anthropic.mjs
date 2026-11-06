@@ -3,7 +3,10 @@
 // POST /v1/messages/count_tokens and GET /v1/models. It answers browser calls only when they carry
 // the direct-browser-access header, as the real API does, and rejects request shapes current models
 // reject (a forced tool_choice, disabled thinking or a thinking budget on the 5.5 models), so an
-// adapter that sends them fails in tests too.
+// adapter that sends them fails in tests too. With `anthropic-version: 2026-10-21` or later (the
+// default of @anthropic-ai/sdk 1.x) it also rejects what that version rejects: temperature, top_p
+// and top_k, a document block directly in an assistant message, and a text block with citations in
+// a user message.
 //
 // Scenarios (see shared.mjs): text (default), reasoning (a thinking block; its text is empty unless
 // thinking.display is "summarized", always with a signature), redacted (a redacted_thinking block),
@@ -84,6 +87,43 @@ function rejectShape(body) {
   return null;
 }
 
+/** The API version from which the rules of rejectForVersion() apply (the default of @anthropic-ai/sdk 1.x). */
+const API_VERSION_2026_10_21 = '2026-10-21';
+const SAMPLING_FIELDS = Object.freeze(['temperature', 'top_p', 'top_k']);
+
+/**
+ * Whether content has a text block with citations, directly or inside a search_result block, also
+ * one in a tool_result.
+ * @param {unknown} content
+ * @returns {boolean}
+ */
+function hasCitedText(content) {
+  if (!Array.isArray(content)) return false;
+  return content.some((b) => {
+    if (!b || typeof b !== 'object') return false;
+    if (b.type === 'text') return Array.isArray(b.citations) && b.citations.length > 0;
+    return (b.type === 'search_result' || b.type === 'tool_result') && hasCitedText(b.content);
+  });
+}
+
+/**
+ * The 400 that API version 2026-10-21 and later give for this request shape, or null: sampling
+ * parameters on any model, a document block directly in an assistant message, and a text block
+ * with citations in a user message. Earlier versions accept all three.
+ * @param {any} body
+ * @param {unknown} version  the anthropic-version header
+ */
+function rejectForVersion(body, version) {
+  if (typeof version !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(version) || version < API_VERSION_2026_10_21) return null;
+  const sampling = SAMPLING_FIELDS.find((name) => body[name] !== undefined);
+  if (sampling) return `${sampling}: sampling parameters are not supported with anthropic-version ${version}.`;
+  for (const [i, m] of (Array.isArray(body.messages) ? body.messages : []).entries()) {
+    if (m?.role === 'assistant' && Array.isArray(m.content) && m.content.some((/** @type {any} */ b) => b?.type === 'document')) return `messages.${i}: a document block cannot be sent in an assistant message.`;
+    if (m?.role === 'user' && hasCitedText(m.content)) return `messages.${i}: a text block in a user message cannot carry citations.`;
+  }
+  return null;
+}
+
 /**
  * Creates the fake (not yet listening).
  * @param {{ marker?: string, fixtures?: any, fixturesDir?: string, gapMs?: number, latencyMs?: number, cors?: boolean, log?: (line: string) => void }} [options]
@@ -125,6 +165,8 @@ export function createAnthropicFake(options = {}) {
         if (method !== 'POST') return false;
         if (typeof ctx.req.headers['anthropic-version'] !== 'string') return ctx.send(400, errorBody(400, 'anthropic-version: header is required'));
         if (!ctx.json || typeof ctx.json !== 'object') return ctx.send(400, errorBody(400, 'There was an issue with the request body.'));
+        const refused = rejectForVersion(ctx.json, ctx.req.headers['anthropic-version']);
+        if (refused) return ctx.send(400, errorBody(400, refused));
         if (ctx.path === '/v1/messages/count_tokens') {
           const all = (ctx.json.messages ?? []).map((/** @type {any} */ m) => textOf(m?.content)).join('\n');
           return ctx.send(200, { input_tokens: tokens(`${textOf(ctx.json.system)}${all}`) });

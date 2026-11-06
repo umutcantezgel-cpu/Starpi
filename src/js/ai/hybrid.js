@@ -617,8 +617,8 @@ export function searchServiceWebSearch(search) {
 /**
  * The search API of this browser for questions to models that cannot search themselves: the search
  * service set up under Settings › Tools (ai/search.js), else a web search with the person's own key
- * at a provider that can (research/runtime.js picks it), else the site's search step when it offers
- * one; null when none is set up. Loaded on first use.
+ * at a provider that can (research/runtime.js picks it in WEB_ORDER), else the site's search step
+ * when it offers one; null when none is set up. Loaded on first use.
  * @param {string} locale
  * @returns {Promise<import('../research/web-part.js').WebSearch | null>}
  */
@@ -636,8 +636,9 @@ export async function browserWebSearch(locale) {
     console.warn('[starpi] the search service could not be set up', err);
   }
   try {
-    const [{ browserRuntime }, { byokWebSearch, poolWebSearch }, { researchLocale }] = await Promise.all([import('../research/runtime.js'), import('../research/web-part.js'), import('../research/prompts.js')]);
-    const runtime = browserRuntime();
+    const [{ browserRuntime, WEB_ORDER }, { byokWebSearch, poolWebSearch }, { researchLocale }] = await Promise.all([import('../research/runtime.js'), import('../research/web-part.js'), import('../research/prompts.js')]);
+    // The whole order, OpenAI included: the answer cites these web passages inline.
+    const runtime = browserRuntime({ webOrder: WEB_ORDER });
     const routes = await runtime.routes();
     const lang = researchLocale(locale);
     if (routes.web) return byokWebSearch({ complete: runtime.complete, provider: routes.web.provider, model: routes.web.model, locale: lang });

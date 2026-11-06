@@ -1,6 +1,7 @@
 // @ts-check
-// Adapter for OpenAI's Responses API. Requests are stateless (`store: false`): nothing is kept on
-// the provider's side, so each call sends the whole conversation, and reasoning models return their
+// Adapter for OpenAI's Responses API. Requests go with `store: false`: the response is not stored
+// for later retrieval through the API (OpenAI may still keep abuse-monitoring logs, by default for
+// up to 30 days), so each call sends the whole conversation, and reasoning models return their
 // reasoning as encrypted items (`include: ['reasoning.encrypted_content']`) that are kept as opaque
 // state and sent back unchanged in later turns.
 //

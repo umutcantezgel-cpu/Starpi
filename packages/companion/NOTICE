@@ -15,5 +15,6 @@ projects; no code of theirs is included, and their licenses are kept here as att
    NemoClaw ships no NOTICE file. "NVIDIA" and "NemoClaw" are trademarks of their owners and are
    named here only to identify the origin of the idea.
 
-Runtime dependency: @anthropic-ai/sdk (MIT License), loaded only when an Anthropic brain is
-configured.
+Runtime dependency: @anthropic-ai/sdk (Apache License 2.0 since its version 1.0.0; earlier
+contributions stay under the MIT License, see the package's LICENSE-MIT), loaded only when an
+Anthropic brain is configured.

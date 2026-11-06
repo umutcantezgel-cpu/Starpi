@@ -118,6 +118,9 @@ test.describe('tools', () => {
     await expect(page.locator('#stopBtn')).toBeHidden();
     await expect(answers(page).last()).toHaveAttribute('data-node-id', /.+/);
     await expect(answers(page).last().locator('.message-content')).not.toBeEmpty();
+    // The title purpose names the chat after its first answer, through the route above; once the
+    // name is there, no call is left in flight when the test ends.
+    await expect(page.locator('#chat-sidebar [data-conv-id]').first()).not.toContainText('What does latency mean?');
 
     // The first call offered the tool; the second carried its result, quoted as untrusted data.
     expect(bodies[0].tools.some((/** @type {any} */ t) => t.name === 'mcp_Dictionary_define_word')).toBe(true);

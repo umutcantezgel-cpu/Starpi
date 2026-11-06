@@ -512,7 +512,9 @@ flowchart TD
   one tab at a time and start from **Research this** under an answer. Without a key of yours they
   run on the site's Gemini pool, whose tool turns are signed so that a browser cannot forge what the
   model said. Web queries can be stripped of e-mail addresses, phone numbers, IBANs, card numbers
-  and IP addresses first.
+  and IP addresses first. The web rounds search with your key for Gemini, Anthropic, xAI or
+  OpenRouter, else on the site's pool, never with OpenAI: OpenAI's web search guide requires
+  clickable inline citations, and the report lists its web pages apart.
 
 ## Starpi Core, the local companion
 
@@ -630,7 +632,7 @@ in code scanning at their line:
 
 ```yaml
 - run: npx --yes --package=@starpi/core@3 starpi-ground --answer docs/release-notes.md --source docs/spec --format sarif --output starpi.sarif
-- uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+- uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
   if: always()
   with:
     sarif_file: starpi.sarif
@@ -1059,7 +1061,7 @@ Details and known limitations are in [SECURITY.md](SECURITY.md#known-limitations
 Beside it, `codeql.yml` (CodeQL on every change and weekly), `workflow-lint.yml` (actionlint and
 zizmor) and `model-lock.yml` (the model lock against the hosts, weekly) run.
 
-In numbers: 2,466 unit tests in 197 files, 140 end-to-end tests in 27 specs on desktop Chromium
+In numbers: 2,475 unit tests in 198 files, 140 end-to-end tests in 27 specs on desktop Chromium
 (CI also runs them on a mobile viewport; the diagram check runs on desktop only), 149
 tests of the companion in 25 files, and the Python suites of the library publisher and the voice server.
 
